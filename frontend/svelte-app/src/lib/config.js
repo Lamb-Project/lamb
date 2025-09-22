@@ -2,36 +2,39 @@ import { browser } from '$app/environment';
 
 // Default config structure (adjust as needed based on actual config.js)
 const defaultConfig = {
-    api: {
-        baseUrl: '/creator', // Default or fallback base URL
-        lambServer: 'http://localhost:9099', // Default LAMB server URL
-        // Note: lambApiKey removed for security - now using user authentication
-    },
-    // Static assets configuration
-    assets: {
-        path: '/static'
-    },
-    // Feature flags
-    features: {
-        enableOpenWebUi: true,
-        enableDebugMode: true
-    }
+	api: {
+		baseUrl: '/creator', // Default or fallback base URL
+		lambServer: 'http://localhost:9099' // Default LAMB server URL
+		// Note: lambApiKey removed for security - now using user authentication
+	},
+	// Static assets configuration
+	assets: {
+		path: '/static'
+	},
+	// Feature flags
+	features: {
+		enableOpenWebUi: true,
+		enableDebugMode: true
+	}
 };
 
 // Function to safely get the config
 // Export this function so stores can access the full config if needed
 export function getConfig() {
-    console.log('[DEBUG] getConfig: Checking for window.LAMB_CONFIG');
-    if (browser && window.LAMB_CONFIG) {
-        console.log('[DEBUG] getConfig: Found window.LAMB_CONFIG:', JSON.stringify(window.LAMB_CONFIG, null, 2));
-        // Merge with default to ensure all keys exist?
-        // Or assume window.LAMB_CONFIG is complete
-        return window.LAMB_CONFIG;
-    }
-    // Provide a default or throw an error if config is essential
-    console.log('[DEBUG] getConfig: window.LAMB_CONFIG not found. Returning default.');
-    console.warn('LAMB_CONFIG not found on window, using default.');
-    return defaultConfig;
+	console.log('[DEBUG] getConfig: Checking for window.LAMB_CONFIG');
+	if (browser && window.LAMB_CONFIG) {
+		console.log(
+			'[DEBUG] getConfig: Found window.LAMB_CONFIG:',
+			JSON.stringify(window.LAMB_CONFIG, null, 2)
+		);
+		// Merge with default to ensure all keys exist?
+		// Or assume window.LAMB_CONFIG is complete
+		return window.LAMB_CONFIG;
+	}
+	// Provide a default or throw an error if config is essential
+	console.log('[DEBUG] getConfig: window.LAMB_CONFIG not found. Returning default.');
+	console.warn('LAMB_CONFIG not found on window, using default.');
+	return defaultConfig;
 }
 
 /**
@@ -40,11 +43,11 @@ export function getConfig() {
  * @returns {string} The full API URL.
  */
 export function getApiUrl(endpoint) {
-    const config = getConfig();
-    const base = config?.api?.baseUrl || defaultConfig.api.baseUrl;
-    // Ensure no double slashes
-    return `${base.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
+	const config = getConfig();
+	const base = config?.api?.baseUrl || defaultConfig.api.baseUrl;
+	// Ensure no double slashes
+	return `${base.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
 }
 
 // You might export other config values if needed
-// export const API_CONFIG = getConfig().api; 
+// export const API_CONFIG = getConfig().api;

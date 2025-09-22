@@ -6,9 +6,10 @@
 </script>
 
 <div class="min-h-screen bg-gray-50">
-	<Nav /> <!-- TODO: Restore on:help handler when Help System is migrated -->
-	
-	<main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+	<Nav />
+	<!-- TODO: Restore on:help handler when Help System is migrated -->
+
+	<main class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
 		{@render children()}
 	</main>
 

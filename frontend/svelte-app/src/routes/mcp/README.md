@@ -14,16 +14,19 @@ The MCP testing interface allows you to:
 ## Key Features
 
 ### Prompt Testing
+
 - Lists all LAMB assistants as MCP prompts
 - Allows testing prompts with custom user input
 - Shows the fully crafted prompt with RAG context (instead of LLM response)
 - Displays the result in a formatted JSON view
 
 ### Authentication
+
 - Uses the same authentication system as the rest of the LAMB frontend
 - Automatically includes the API key from the configuration
 
 ### Error Handling
+
 - Displays clear error messages for failed requests
 - Shows loading states during API calls
 
@@ -45,4 +48,4 @@ The MCP testing interface allows you to:
 ## Files
 
 - `+page.svelte` - Main MCP testing interface component
-- `README.md` - This documentation file 
+- `README.md` - This documentation file

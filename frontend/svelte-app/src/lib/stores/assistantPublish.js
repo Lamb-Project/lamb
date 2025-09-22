@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 /** @type {import('svelte/store').Writable<boolean>} */
 export const publishModalOpen = writable(false);
 
-/** 
+/**
  * @typedef {{ id: string; name: string; }} SelectedAssistantData
  */
 
@@ -19,18 +19,18 @@ export const selectedAssistant = writable(null);
 
 /** @type {import('svelte/store').Writable<PublishingStatus>} */
 export const publishingStatus = writable({
-    loading: false,
-    error: null,
-    success: false
+	loading: false,
+	error: null,
+	success: false
 });
 
 /** Resets the publishing status store to its initial state. */
 export const resetPublishingStatus = () => {
-    publishingStatus.set({
-        loading: false,
-        error: null,
-        success: false
-    });
+	publishingStatus.set({
+		loading: false,
+		error: null,
+		success: false
+	});
 };
 
-// Note: API call functions (publishAssistant, unpublishAssistant) are kept in assistantService.js 
+// Note: API call functions (publishAssistant, unpublishAssistant) are kept in assistantService.js

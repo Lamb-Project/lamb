@@ -1,160 +1,180 @@
 <script>
-    import { publishModalOpen, selectedAssistant, publishingStatus, resetPublishingStatus } from '$lib/stores/assistantPublish';
-    import { publishAssistant } from '$lib/services/assistantService'; // Import service function
-    import { _, locale } from '$lib/i18n'; // Import i18n
-    import { createEventDispatcher, onMount } from 'svelte'; // For dispatching event and onMount
+	import {
+		publishModalOpen,
+		selectedAssistant,
+		publishingStatus,
+		resetPublishingStatus
+	} from '$lib/stores/assistantPublish';
+	import { publishAssistant } from '$lib/services/assistantService'; // Import service function
+	import { _, locale } from '$lib/i18n'; // Import i18n
+	import { createEventDispatcher, onMount } from 'svelte'; // For dispatching event and onMount
 
-    let localeLoaded = $state(false);
-    let form = $state(); // Use $state for form ref
-    let groupName = $state('');
-    let oauthConsumerName = $state('');
-    
-    const dispatch = createEventDispatcher();
+	let localeLoaded = $state(false);
+	let form = $state(); // Use $state for form ref
+	let groupName = $state('');
+	let oauthConsumerName = $state('');
 
-    // Check locale loaded state
-    onMount(() => {
-        const unsubscribe = locale.subscribe(value => {
-            if (value) localeLoaded = true;
-        });
-        return unsubscribe;
-    });
+	const dispatch = createEventDispatcher();
 
-    // Derive from selectedAssistant store
-    $effect(() => {
-        if ($selectedAssistant) {
-            groupName = `assistant_${$selectedAssistant.id}`;
-            oauthConsumerName = `${$selectedAssistant.id}_consumer`;
-        } else {
-            groupName = '';
-            oauthConsumerName = '';
-        }
-    });
+	// Check locale loaded state
+	onMount(() => {
+		const unsubscribe = locale.subscribe((value) => {
+			if (value) localeLoaded = true;
+		});
+		return unsubscribe;
+	});
 
-    function handleClose() {
-        $publishModalOpen = false;
-        resetPublishingStatus(); // Reset status on close
-    }
+	// Derive from selectedAssistant store
+	$effect(() => {
+		if ($selectedAssistant) {
+			groupName = `assistant_${$selectedAssistant.id}`;
+			oauthConsumerName = `${$selectedAssistant.id}_consumer`;
+		} else {
+			groupName = '';
+			oauthConsumerName = '';
+		}
+	});
 
-    /** @param {SubmitEvent} event */
-    async function handleSubmit(event) {
-        event.preventDefault();
-        if (!$selectedAssistant) return; // Check the object
+	function handleClose() {
+		$publishModalOpen = false;
+		resetPublishingStatus(); // Reset status on close
+	}
 
-        publishingStatus.set({ loading: true, error: null, success: false });
+	/** @param {SubmitEvent} event */
+	async function handleSubmit(event) {
+		event.preventDefault();
+		if (!$selectedAssistant) return; // Check the object
 
-        try {
-            // Pass ID and Name to the service function
-            await publishAssistant($selectedAssistant.id, $selectedAssistant.name, groupName, oauthConsumerName);
-            
-            publishingStatus.set({ loading: false, error: null, success: true });
-            
-            // Dispatch event with ID
-            dispatch('assistantPublished', { assistantId: $selectedAssistant.id });
-            
-            setTimeout(() => {
-                handleClose();
-            }, 1500);
-        } catch (error) {
-            console.error('Error publishing assistant:', error);
-            const message = error instanceof Error ? error.message : 'Unknown publishing error';
-            publishingStatus.set({ loading: false, error: message, success: false });
-        }
-    }
+		publishingStatus.set({ loading: true, error: null, success: false });
 
-    /** @param {KeyboardEvent} event */
-    function handleKeydown(event) {
-        if (event.key === 'Escape') {
-            handleClose();
-        }
-    }
+		try {
+			// Pass ID and Name to the service function
+			await publishAssistant(
+				$selectedAssistant.id,
+				$selectedAssistant.name,
+				groupName,
+				oauthConsumerName
+			);
+
+			publishingStatus.set({ loading: false, error: null, success: true });
+
+			// Dispatch event with ID
+			dispatch('assistantPublished', { assistantId: $selectedAssistant.id });
+
+			setTimeout(() => {
+				handleClose();
+			}, 1500);
+		} catch (error) {
+			console.error('Error publishing assistant:', error);
+			const message = error instanceof Error ? error.message : 'Unknown publishing error';
+			publishingStatus.set({ loading: false, error: message, success: false });
+		}
+	}
+
+	/** @param {KeyboardEvent} event */
+	function handleKeydown(event) {
+		if (event.key === 'Escape') {
+			handleClose();
+		}
+	}
 </script>
 
-<svelte:window onkeydown={handleKeydown}/>
+<svelte:window onkeydown={handleKeydown} />
 
 {#if $publishModalOpen}
-    <!-- Add role=dialog, aria-modal=true -->
-    <div 
-        class="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" 
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="publish-modal-title" 
-    >
-         <!-- The aria-labelledby attribute points to the h2 below -->
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div class="p-4 border-b flex justify-between items-center">
-                <h2 class="text-lg font-semibold" id="publish-modal-title">
-                    {localeLoaded ? $_('assistants.publishModal.title') : 'Publish Assistant'}
-                </h2>
-                <button class="text-gray-500 hover:text-gray-700" onclick={handleClose} aria-label="{localeLoaded ? $_('common.close') : 'Close modal'}">&times;</button>
-            </div>
+	<!-- Add role=dialog, aria-modal=true -->
+	<div
+		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="publish-modal-title"
+	>
+		<!-- The aria-labelledby attribute points to the h2 below -->
+		<div class="w-full max-w-md rounded-lg bg-white shadow-xl">
+			<div class="flex items-center justify-between border-b p-4">
+				<h2 class="text-lg font-semibold" id="publish-modal-title">
+					{localeLoaded ? $_('assistants.publishModal.title') : 'Publish Assistant'}
+				</h2>
+				<button
+					class="text-gray-500 hover:text-gray-700"
+					onclick={handleClose}
+					aria-label={localeLoaded ? $_('common.close') : 'Close modal'}>&times;</button
+				>
+			</div>
 
-            <form bind:this={form} onsubmit={handleSubmit} class="p-4">
-                <div class="mb-4">
-                    <label for="groupName" class="block text-sm font-medium text-gray-700 mb-1">
-                        {localeLoaded ? $_('assistants.publishModal.groupName') : 'Group Name'}
-                    </label>
-                    <input 
-                        type="text" 
-                        id="groupName" 
-                        bind:value={groupName} 
-                        required
-                        readonly
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
-                        placeholder="{localeLoaded ? $_('assistants.publishModal.groupNamePlaceholder') : 'e.g., assistant_123'}"
-                    />
-                </div>
+			<form bind:this={form} onsubmit={handleSubmit} class="p-4">
+				<div class="mb-4">
+					<label for="groupName" class="mb-1 block text-sm font-medium text-gray-700">
+						{localeLoaded ? $_('assistants.publishModal.groupName') : 'Group Name'}
+					</label>
+					<input
+						type="text"
+						id="groupName"
+						bind:value={groupName}
+						required
+						readonly
+						class="w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-100 px-3 py-2"
+						placeholder={localeLoaded
+							? $_('assistants.publishModal.groupNamePlaceholder')
+							: 'e.g., assistant_123'}
+					/>
+				</div>
 
-                <div class="mb-4">
-                    <label for="oauthConsumerName" class="block text-sm font-medium text-gray-700 mb-1">
-                        {localeLoaded ? $_('assistants.publishModal.oauthConsumer') : 'OAuth Consumer Name'}
-                    </label>
-                    <input 
-                        type="text" 
-                        id="oauthConsumerName" 
-                        bind:value={oauthConsumerName} 
-                        required
-                        readonly
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
-                        placeholder="{localeLoaded ? $_('assistants.publishModal.oauthConsumerPlaceholder') : 'e.g., 123_consumer'}"
-                    />
-                </div>
+				<div class="mb-4">
+					<label for="oauthConsumerName" class="mb-1 block text-sm font-medium text-gray-700">
+						{localeLoaded ? $_('assistants.publishModal.oauthConsumer') : 'OAuth Consumer Name'}
+					</label>
+					<input
+						type="text"
+						id="oauthConsumerName"
+						bind:value={oauthConsumerName}
+						required
+						readonly
+						class="w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-100 px-3 py-2"
+						placeholder={localeLoaded
+							? $_('assistants.publishModal.oauthConsumerPlaceholder')
+							: 'e.g., 123_consumer'}
+					/>
+				</div>
 
-                {#if $publishingStatus.error}
-                    <div class="mt-4 p-2 rounded-md bg-red-100 text-red-700 text-sm">
-                        {localeLoaded ? $_('common.error') : 'Error'}: {$publishingStatus.error}
-                    </div>
-                {/if}
+				{#if $publishingStatus.error}
+					<div class="mt-4 rounded-md bg-red-100 p-2 text-sm text-red-700">
+						{localeLoaded ? $_('common.error') : 'Error'}: {$publishingStatus.error}
+					</div>
+				{/if}
 
-                {#if $publishingStatus.success}
-                    <div class="mt-4 p-2 rounded-md bg-green-100 text-green-700 text-sm">
-                        {localeLoaded ? $_('assistants.publishModal.success') : 'Assistant published successfully!'}
-                    </div>
-                {/if}
+				{#if $publishingStatus.success}
+					<div class="mt-4 rounded-md bg-green-100 p-2 text-sm text-green-700">
+						{localeLoaded
+							? $_('assistants.publishModal.success')
+							: 'Assistant published successfully!'}
+					</div>
+				{/if}
 
-                <div class="mt-6 flex justify-end gap-2">
-                    <button 
-                        type="button" 
-                        onclick={handleClose} 
-                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                    >
-                        {$_('common.cancel', { default: 'Cancel' })}
-                    </button>
-                    <button 
-                        type="submit" 
-                        disabled={$publishingStatus.loading || $publishingStatus.success}
-                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-brand text-base font-medium text-white hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm"
-                        style="background-color: #2271b3;"
-                    >
-                        {#if $publishingStatus.loading}
-                            {localeLoaded ? $_('assistants.publishModal.publishing') : 'Publishing...'}
-                        {:else}
-                            {localeLoaded ? $_('assistants.publish') : 'Publish'}
-                        {/if}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+				<div class="mt-6 flex justify-end gap-2">
+					<button
+						type="button"
+						onclick={handleClose}
+						class="focus:ring-brand mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+					>
+						{$_('common.cancel', { default: 'Cancel' })}
+					</button>
+					<button
+						type="submit"
+						disabled={$publishingStatus.loading || $publishingStatus.success}
+						class="bg-brand hover:bg-brand-hover focus:ring-brand inline-flex w-full justify-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm"
+						style="background-color: #2271b3;"
+					>
+						{#if $publishingStatus.loading}
+							{localeLoaded ? $_('assistants.publishModal.publishing') : 'Publishing...'}
+						{:else}
+							{localeLoaded ? $_('assistants.publish') : 'Publish'}
+						{/if}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
 {/if}
 
-<!-- Removing old style block, assuming Tailwind is used --> 
+<!-- Removing old style block, assuming Tailwind is used -->

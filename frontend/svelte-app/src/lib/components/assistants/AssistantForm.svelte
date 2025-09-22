@@ -16,22 +16,24 @@
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
 
-	// --- Props --- 
+	// --- Props ---
 	// Use $props for Svelte 5 runes mode
-	let { 
+	let {
 		assistant = null,
 		startInEdit = false // Add the new prop
-	} = $props(); 
-	console.log(`[AssistantForm] Received props: assistant=${!!assistant}, startInEdit=${startInEdit}`); // Log received props
+	} = $props();
+	console.log(
+		`[AssistantForm] Received props: assistant=${!!assistant}, startInEdit=${startInEdit}`
+	); // Log received props
 
 	// --- Component State ---
 	/** @type {'edit' | 'create'} */
 	// Initialize formState based on assistant and startInEdit prop
 	let initialMode = assistant ? 'edit' : 'create';
 	console.log(`[AssistantForm] Calculated initialMode: ${initialMode}`); // Log calculated initial mode
-	let formState = $state(initialMode); 
+	let formState = $state(initialMode);
 	/** @type {any | null} */ // Store initial data for cancel/revert
-	let initialAssistantData = $state(null); 
+	let initialAssistantData = $state(null);
 
 	// --- Form Field State Variables ---
 	let name = $state('');
@@ -41,9 +43,9 @@
 	let system_prompt = $state('');
 	let prompt_template = $state('');
 	let RAG_Top_k = $state(3);
-	let isAdvancedMode = $state(false); // New state for advanced mode toggle 
+	let isAdvancedMode = $state(false); // New state for advanced mode toggle
 
-	// State for dynamic options 
+	// State for dynamic options
 	/** @type {string[]} */
 	let promptProcessors = $state([]);
 	/** @type {string[]} */
@@ -80,13 +82,13 @@
 
 	// Loading/error/success state
 	let formError = $state('');
-	let formLoading = $state(false); 
+	let formLoading = $state(false);
 	let generatingDescription = $state(false);
-	let configInitialized = $state(false); 
-	let successMessage = $state(''); 
+	let configInitialized = $state(false);
+	let successMessage = $state('');
 
 	// Initialize with default, will be set correctly by populate/reset functions later
-	let ragProcessor = $state('simple_rag'); 
+	let ragProcessor = $state('simple_rag');
 	let isProcessing = $state(false);
 	let serverError = $state('');
 	let importError = $state(''); // State for import errors
@@ -95,9 +97,9 @@
 	/** @type {HTMLTextAreaElement | null} */
 	let textareaRef = $state(null);
 	/** @type {string[]} */
-	let ragPlaceholders = $state([]);  // Initialize as empty array to be filled from config
+	let ragPlaceholders = $state([]); // Initialize as empty array to be filled from config
 	// Plain text placeholder to avoid template interpolation issues
-	const promptPlaceholderText = "e.g. Use the {context} to answer the question: {user_input}";
+	const promptPlaceholderText = 'e.g. Use the {context} to answer the question: {user_input}';
 
 	/**
 	 * Determines if a field should be editable based on current form state
@@ -107,7 +109,7 @@
 	function isFieldEditable(fieldName) {
 		// In create mode, all fields are editable
 		if (formState === 'create') return true;
-		
+
 		// In edit mode, certain fields may be restricted
 		// Add specific field restrictions here if needed
 		// For now, make all fields editable
@@ -123,22 +125,24 @@
 		if (!text) return '';
 		let result = text;
 		// Escape HTML to prevent XSS
-		result = result.replace(/&/g, '&amp;')
-					  .replace(/</g, '&lt;')
-					  .replace(/>/g, '&gt;')
-					  .replace(/"/g, '&quot;')
-					  .replace(/'/g, '&#039;');
-		
+		result = result
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#039;');
+
 		// Replace placeholders with highlighted spans
 		for (const placeholder of ragPlaceholders) {
-			const escapedPlaceholder = placeholder.replace(/&/g, '&amp;')
-											   .replace(/</g, '&lt;')
-											   .replace(/>/g, '&gt;')
-											   .replace(/"/g, '&quot;')
-											   .replace(/'/g, '&#039;');
-			
+			const escapedPlaceholder = placeholder
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#039;');
+
 			result = result.replace(
-				new RegExp(escapedPlaceholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
+				new RegExp(escapedPlaceholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
 				`<span class="bg-blue-100 text-blue-800 font-medium px-1 rounded">${escapedPlaceholder}</span>`
 			);
 		}
@@ -148,19 +152,23 @@
 	// --- Store Integration and Initialization ---
 	$effect(() => {
 		console.log('AssistantForm.svelte: $effect (assistant prop) running...');
-		
+
 		const assistantIdChanged = assistant?.id !== initialAssistantData?.id;
-		const assistantNullStatusChanged = (assistant === null && initialAssistantData !== null) || (assistant !== null && initialAssistantData === null);
-		
+		const assistantNullStatusChanged =
+			(assistant === null && initialAssistantData !== null) ||
+			(assistant !== null && initialAssistantData === null);
+
 		if (assistantIdChanged || assistantNullStatusChanged) {
-			console.log(`[AssistantForm] Assistant change detected (ID changed: ${assistantIdChanged}, Null status changed: ${assistantNullStatusChanged})`);
+			console.log(
+				`[AssistantForm] Assistant change detected (ID changed: ${assistantIdChanged}, Null status changed: ${assistantNullStatusChanged})`
+			);
 			if (assistant) {
 				console.log('[AssistantForm] Assistant prop received or changed:', assistant);
 				console.log('Assistant prop received or changed:', assistant);
-				initialAssistantData = { ...assistant }; 
+				initialAssistantData = { ...assistant };
 				console.log('Stored initial assistant data:', initialAssistantData);
 				// Always set to edit mode when assistant changes
-				formState = 'edit'; 
+				formState = 'edit';
 				console.log(`Initial formState set to: ${formState}`);
 				populateFormFields(assistant);
 				formError = '';
@@ -185,24 +193,33 @@
 
 	// Effect for loading config and applying defaults
 	$effect.pre(() => {
-		if (!configInitialized && !$assistantConfigStore.loading && !$assistantConfigStore.systemCapabilities) {
+		if (
+			!configInitialized &&
+			!$assistantConfigStore.loading &&
+			!$assistantConfigStore.systemCapabilities
+		) {
 			console.log('AssistantForm.svelte: $effect.pre - Explicitly calling loadConfig()...');
 			assistantConfigStore.loadConfig();
 		}
 
-		const unsubscribe = assistantConfigStore.subscribe(state => {
+		const unsubscribe = assistantConfigStore.subscribe((state) => {
 			// console.log(`AssistantForm.svelte: Store subscribed - State (Loading: ${state.loading}, Caps: ${!!state.systemCapabilities}, Defaults: ${!!state.configDefaults}, Initialized: ${configInitialized})`);
 
-			if (!state.loading && state.systemCapabilities && state.configDefaults && !configInitialized) {
+			if (
+				!state.loading &&
+				state.systemCapabilities &&
+				state.configDefaults &&
+				!configInitialized
+			) {
 				const capabilities = state.systemCapabilities;
-				
+
 				console.log('Populating dropdown options from capabilities...');
 				promptProcessors = capabilities.prompt_processors || [];
 				connectorsList = Object.keys(capabilities.connectors || {});
 				ragProcessors = capabilities.rag_processors || [];
 				// console.log('Options populated:', { promptProcessors, connectorsList, ragProcessors });
 
-				configInitialized = true; 
+				configInitialized = true;
 
 				if (formState === 'create') {
 					console.log('Applying defaults for CREATE mode...');
@@ -210,7 +227,7 @@
 				} else {
 					console.log('Config loaded for VIEW/EDIT mode. Repopulating fields.');
 					// Use initialAssistantData here as assistant prop might not be stable yet
-					populateFormFields(initialAssistantData); 
+					populateFormFields(initialAssistantData);
 				}
 			}
 		});
@@ -224,30 +241,38 @@
 		system_prompt = defaults.system_prompt || '';
 		prompt_template = defaults.prompt_template || '';
 		RAG_Top_k = parseInt(defaults.RAG_Top_k || '3', 10) || 3;
-		selectedPromptProcessor = defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
+		selectedPromptProcessor =
+			defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
 		selectedConnector = defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 		let defaultRag = defaults.rag_processor?.trim().toLowerCase();
 		if (defaultRag === 'no rag') defaultRag = 'no_rag';
 		selectedRagProcessor = defaultRag || (ragProcessors.length > 0 ? ragProcessors[0] : '');
-		
+
 		// Load the placeholders from config
 		// Using a more robust approach to handle the property access
 		try {
 			// @ts-ignore - Property exists at runtime but not in type definition
-			ragPlaceholders = Array.isArray(defaults.rag_placeholders) ? defaults.rag_placeholders : ["{context}", "{user_input}"];
+			ragPlaceholders = Array.isArray(defaults.rag_placeholders)
+				? defaults.rag_placeholders
+				: ['{context}', '{user_input}'];
 		} catch (e) {
-			console.warn("Could not load rag_placeholders from config, using defaults:", e);
-			ragPlaceholders = ["{context}", "{user_input}"];
+			console.warn('Could not load rag_placeholders from config, using defaults:', e);
+			ragPlaceholders = ['{context}', '{user_input}'];
 		}
-		
+
 		updateAvailableModels();
 		selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
 		// Reset name/description only if truly starting fresh?
-		// name = ''; 
-		// description = ''; 
-		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor });
+		// name = '';
+		// description = '';
+		console.log('Form reset to defaults for CREATE:', {
+			selectedPromptProcessor,
+			selectedConnector,
+			selectedLlm,
+			selectedRagProcessor
+		});
 		if (selectedRagProcessor === 'simple_rag') {
 			tick().then(fetchKnowledgeBases);
 		}
@@ -287,34 +312,41 @@
 		name = data.name?.replace(/^\d+_/, '') || '';
 		// Only update description if not preserving current edits
 		if (!preserveDescription) {
-			description = data.description || ''; 
+			description = data.description || '';
 		}
 		system_prompt = data.system_prompt || '';
 		prompt_template = data.prompt_template || '';
 		RAG_Top_k = data.RAG_Top_k ?? 3;
-		
+
 		if (configInitialized) {
 			// Use direct properties from the data object
-			selectedPromptProcessor = data.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
+			selectedPromptProcessor =
+				data.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
 			selectedConnector = data.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
-			selectedRagProcessor = data.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
-			
+			selectedRagProcessor =
+				data.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
+
 			updateAvailableModels(); // Update models based on connector
 			selectedLlm = data.llm || (availableModels.length > 0 ? availableModels[0] : '');
 
 			// Set selected KBs
 			selectedKnowledgeBases = data.RAG_collections?.split(',').filter(Boolean) || [];
-			
+
 			// Load placeholders from config for edit mode as well
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
 			try {
 				// @ts-ignore - Property exists at runtime but not in type definition
-				ragPlaceholders = Array.isArray(defaults.rag_placeholders) ? defaults.rag_placeholders : ["{context}", "{user_input}"];
+				ragPlaceholders = Array.isArray(defaults.rag_placeholders)
+					? defaults.rag_placeholders
+					: ['{context}', '{user_input}'];
 			} catch (e) {
-				console.warn("Could not load rag_placeholders from config in edit mode, using defaults:", e);
-				ragPlaceholders = ["{context}", "{user_input}"];
+				console.warn(
+					'Could not load rag_placeholders from config in edit mode, using defaults:',
+					e
+				);
+				ragPlaceholders = ['{context}', '{user_input}'];
 			}
-			
+
 			// Fetch KBs if needed
 			if (selectedRagProcessor === 'simple_rag' && !kbFetchAttempted && !loadingKnowledgeBases) {
 				console.log('Populate: Triggering KB fetch');
@@ -323,18 +355,26 @@
 			// TODO: Handle file selection for single_file_rag if needed
 			// selectedFilePath = data.file_path || '';
 		}
-		console.log('Form fields populated:', { name, description, selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor });
+		console.log('Form fields populated:', {
+			name,
+			description,
+			selectedPromptProcessor,
+			selectedConnector,
+			selectedLlm,
+			selectedRagProcessor
+		});
 	}
 
-	/** 
-	 * Extracts models from potentially varied connector data structures 
+	/**
+	 * Extracts models from potentially varied connector data structures
 	 * @param {any} connectorData - The connector data object (structure may vary)
 	 */
 	function extractModelsFromConnectorData(connectorData) {
 		if (!connectorData) return [];
 		if (Array.isArray(connectorData.models)) return connectorData.models;
 		if (Array.isArray(connectorData.available_llms)) return connectorData.available_llms;
-		if (typeof connectorData.models === 'object' && connectorData.models !== null) return Object.keys(connectorData.models);
+		if (typeof connectorData.models === 'object' && connectorData.models !== null)
+			return Object.keys(connectorData.models);
 		return [];
 	}
 
@@ -353,7 +393,7 @@
 	async function handleConnectorChange() {
 		console.log('Connector changed to:', selectedConnector);
 		updateAvailableModels();
-		await tick(); 
+		await tick();
 		if (!availableModels.includes(selectedLlm)) {
 			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
 			console.log('Resetting LLM to:', selectedLlm);
@@ -364,7 +404,9 @@
 	async function fetchKnowledgeBases() {
 		// Prevent fetch if already loading OR if already attempted for this selection
 		if (loadingKnowledgeBases || kbFetchAttempted) {
-			console.log(`Skipping KB fetch (Loading: ${loadingKnowledgeBases}, Attempted: ${kbFetchAttempted})`);
+			console.log(
+				`Skipping KB fetch (Loading: ${loadingKnowledgeBases}, Attempted: ${kbFetchAttempted})`
+			);
 			return;
 		}
 		// Ensure we actually need KBs
@@ -377,11 +419,11 @@
 		loadingKnowledgeBases = true;
 		knowledgeBaseError = '';
 		// Don't clear selected KBs here on refetch
-		// selectedKnowledgeBases = []; 
+		// selectedKnowledgeBases = [];
 
 		try {
 			const kbs = await getKnowledgeBases();
-			kbs.sort((a, b) => a.name.localeCompare(b.name)); 
+			kbs.sort((a, b) => a.name.localeCompare(b.name));
 			accessibleKnowledgeBases = kbs;
 		} catch (err) {
 			console.error('Error fetching knowledge bases:', err);
@@ -390,7 +432,9 @@
 		} finally {
 			loadingKnowledgeBases = false;
 			kbFetchAttempted = true; // Mark fetch as attempted
-			console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Count: ${accessibleKnowledgeBases.length})`);
+			console.log(
+				`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Count: ${accessibleKnowledgeBases.length})`
+			);
 		}
 	}
 
@@ -420,10 +464,10 @@
 			// Call the files/list endpoint
 			const endpointPath = '/creator/files/list';
 			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-			
+
 			const response = await fetch(apiUrl, {
 				headers: {
-					'Authorization': `Bearer ${token}`
+					Authorization: `Bearer ${token}`
 				}
 			});
 
@@ -434,20 +478,23 @@
 
 			const data = await response.json();
 			userFiles = data; // API returns array of {name, path} objects
-			
+
 			// Set selected file if it exists in metadata (fallback to api_callback)
 			const metadataStr = assistant?.metadata || assistant?.api_callback;
 			if (metadataStr) {
 				try {
 					const callbackData = JSON.parse(metadataStr);
-					if (callbackData.file_path && userFiles.some(file => file.path === callbackData.file_path)) {
+					if (
+						callbackData.file_path &&
+						userFiles.some((file) => file.path === callbackData.file_path)
+					) {
 						selectedFilePath = callbackData.file_path;
 					}
 				} catch (e) {
 					console.error('Error parsing metadata for file path:', e);
 				}
 			}
-			
+
 			console.log(`Fetched ${userFiles.length} files`);
 		} catch (err) {
 			console.error('Error fetching user files:', err);
@@ -459,13 +506,18 @@
 		}
 	}
 
-	/** Handles file upload to the server 
+	/** Handles file upload to the server
 	 * @param {Event} event - The change event
 	 */
 	async function handleFileUpload(event) {
 		// Extract the file from the input element
 		const input = event.target;
-		if (!input || !(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+		if (
+			!input ||
+			!(input instanceof HTMLInputElement) ||
+			!input.files ||
+			input.files.length === 0
+		) {
 			return;
 		}
 
@@ -496,11 +548,11 @@
 			// Call the files/upload endpoint
 			const endpointPath = '/creator/files/upload';
 			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-			
+
 			const response = await fetch(apiUrl, {
 				method: 'POST',
 				headers: {
-					'Authorization': `Bearer ${token}`
+					Authorization: `Bearer ${token}`
 				},
 				body: formData
 			});
@@ -512,15 +564,15 @@
 
 			const data = await response.json();
 			console.log('File uploaded successfully:', data);
-			
+
 			// Refresh the file list
 			await fetchUserFiles();
-			
+
 			// Auto-select the newly uploaded file
 			if (data.path) {
 				selectedFilePath = data.path;
 			}
-			
+
 			// Clear the file input
 			input.value = '';
 		} catch (err) {
@@ -541,10 +593,10 @@
 				return token;
 			}
 		}
-		
+
 		// Fallback to cookie if localStorage doesn't have the token
 		console.debug('Token not found in localStorage, checking cookie');
-		return document.cookie.replace(/(?:(?:^|.*;\\s*)token\\s*=\\s*([^;]*).*$)|^.*$/, "$1");
+		return document.cookie.replace(/(?:(?:^|.*;\\s*)token\\s*=\\s*([^;]*).*$)|^.*$/, '$1');
 	}
 
 	/**
@@ -553,24 +605,32 @@
 	async function handleGenerateDescription() {
 		// Validation check - require name at minimum
 		if (!name.trim()) {
-			alert($_('assistants.form.description.nameRequired', { default: 'Please provide an assistant name first' }));
+			alert(
+				$_('assistants.form.description.nameRequired', {
+					default: 'Please provide an assistant name first'
+				})
+			);
 			return;
 		}
 
 		// Check if auth token is available
 		const token = getAuthToken();
 		console.debug('Auth token found:', token ? 'Yes (length: ' + token.length + ')' : 'No');
-		
+
 		if (!token) {
 			console.error('Authentication token not found');
-			alert($_('assistants.form.description.authError', { default: 'Authentication error. Please try logging in again.' }));
+			alert(
+				$_('assistants.form.description.authError', {
+					default: 'Authentication error. Please try logging in again.'
+				})
+			);
 			return;
 		}
 
 		// Set loading state
 		generatingDescription = true;
 		let descriptionError = '';
-		
+
 		try {
 			// Get the lamb server URL from window.LAMB_CONFIG
 			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
@@ -590,11 +650,11 @@
 			// Prepare the request body in the format expected by the new endpoint
 			const requestBody = {
 				name: name,
-				instructions: system_prompt || "",
-				prompt_template: prompt_template || "",
-				connector: selectedConnector || "",
-				llm: selectedLlm || "",
-				rag_processor: selectedRagProcessor || ""
+				instructions: system_prompt || '',
+				prompt_template: prompt_template || '',
+				connector: selectedConnector || '',
+				llm: selectedLlm || '',
+				rag_processor: selectedRagProcessor || ''
 			};
 
 			// Call the description generation API
@@ -602,7 +662,7 @@
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
+					Authorization: `Bearer ${token}`
 				},
 				body: JSON.stringify(requestBody),
 				signal: controller.signal
@@ -614,22 +674,24 @@
 				const errorText = await response.text();
 				console.error('API error response:', errorText);
 				if (response.status === 403 || response.status === 401) {
-					throw new Error(`Authentication error (${response.status}): Please try logging in again.`);
+					throw new Error(
+						`Authentication error (${response.status}): Please try logging in again.`
+					);
 				}
 				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
 			}
 
 			const data = await response.json();
-			
+
 			if (data.description) {
 				// Process the response: trim, fix quotes, ensure reasonable length
 				let processedDescription = data.description.trim().replace(/^["']|["']$/g, '');
-				
+
 				// If too long, truncate to reasonable size
 				if (processedDescription.length > 500) {
 					processedDescription = processedDescription.substring(0, 497) + '...';
 				}
-				
+
 				description = processedDescription;
 				console.log('Description generated successfully');
 			} else {
@@ -638,9 +700,16 @@
 		} catch (err) {
 			console.error('Error generating description:', err);
 			if (err instanceof Error && err.name === 'AbortError') {
-				descriptionError = $_('assistants.form.description.timeout', { default: 'Request timed out. Please try again.' });
+				descriptionError = $_('assistants.form.description.timeout', {
+					default: 'Request timed out. Please try again.'
+				});
 			} else {
-				descriptionError = err instanceof Error ? err.message : $_('assistants.form.description.error', { default: 'Failed to generate description' });
+				descriptionError =
+					err instanceof Error
+						? err.message
+						: $_('assistants.form.description.error', {
+								default: 'Failed to generate description'
+							});
 			}
 			// Show error to user
 			alert(descriptionError);
@@ -660,8 +729,11 @@
 		if (selectedRagProcessor === 'simple_rag' && configInitialized) {
 			// Trigger fetch only if we land on simple_rag and haven't attempted the fetch yet
 			console.log(`Effect: Checking KB fetch need (Attempted: ${kbFetchAttempted})`);
-			if (!kbFetchAttempted && !loadingKnowledgeBases) { // Check attempted flag, ignore error here
-				console.log('Effect: Conditions met (simple_rag, not attempted), calling fetchKnowledgeBases()');
+			if (!kbFetchAttempted && !loadingKnowledgeBases) {
+				// Check attempted flag, ignore error here
+				console.log(
+					'Effect: Conditions met (simple_rag, not attempted), calling fetchKnowledgeBases()'
+				);
 				fetchKnowledgeBases();
 			} else {
 				console.log('Effect: Skipping KB fetch (already attempted or loading).');
@@ -669,23 +741,33 @@
 		} else if (selectedRagProcessor === 'single_file_rag' && configInitialized) {
 			// Fetch files when switching to single_file_rag
 			if (!filesFetchAttempted && !loadingFiles) {
-				console.log('Effect: Conditions met (single_file_rag, not attempted), calling fetchUserFiles()');
+				console.log(
+					'Effect: Conditions met (single_file_rag, not attempted), calling fetchUserFiles()'
+				);
 				fetchUserFiles();
 			} else {
 				console.log('Effect: Skipping files fetch (already attempted or loading).');
 			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
-			if (accessibleKnowledgeBases.length > 0 || selectedKnowledgeBases.length > 0 || knowledgeBaseError || kbFetchAttempted) {
+			if (
+				accessibleKnowledgeBases.length > 0 ||
+				selectedKnowledgeBases.length > 0 ||
+				knowledgeBaseError ||
+				kbFetchAttempted
+			) {
 				console.log('Effect: Clearing KB state and fetch attempt flag');
 				accessibleKnowledgeBases = [];
 				selectedKnowledgeBases = [];
 				knowledgeBaseError = '';
 				kbFetchAttempted = false; // Reset flag
 			}
-			
+
 			// Reset file selection if we moved away from single_file_rag
-			if (selectedRagProcessor !== 'single_file_rag' && (selectedFilePath || userFiles.length > 0)) {
+			if (
+				selectedRagProcessor !== 'single_file_rag' &&
+				(selectedFilePath || userFiles.length > 0)
+			) {
 				selectedFilePath = '';
 				// Note: We don't clear userFiles or filesFetchAttempted to avoid refetching if user switches back
 			}
@@ -706,7 +788,7 @@
 	 * // Add other expected fields from the createAssistant/updateAssistant response if known
 	 */
 
-	/** 
+	/**
 	 * Handles form submission (Create or Update).
 	 * @param {Event} event - The form submission event.
 	 */
@@ -725,8 +807,10 @@
 		// In non-advanced mode, ensure defaults are used
 		if (formState === 'create' && !isAdvancedMode) {
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
-			selectedPromptProcessor = defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
-			selectedConnector = defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
+			selectedPromptProcessor =
+				defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
+			selectedConnector =
+				defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 			// Update available models based on the default connector
 			await tick();
 			updateAvailableModels();
@@ -752,7 +836,8 @@
 			system_prompt: system_prompt,
 			prompt_template: prompt_template,
 			RAG_Top_k: Number(RAG_Top_k) || 3,
-			RAG_collections: selectedRagProcessor === 'simple_rag' ? selectedKnowledgeBases.join(',') : '',
+			RAG_collections:
+				selectedRagProcessor === 'simple_rag' ? selectedKnowledgeBases.join(',') : '',
 			// Add metadata with the stringified JSON
 			metadata: JSON.stringify(metadataObj),
 			pre_retrieval_endpoint: '',
@@ -763,9 +848,17 @@
 		try {
 			/** @type {AssistantResponse} */
 			let response;
-			if (formState === 'edit' && initialAssistantData?.id) { // Check formState and ID from initial data
-				console.log('Submitting UPDATE for assistant:', initialAssistantData.id, assistantDataPayload);
-				const updateResponse = await updateAssistant(initialAssistantData.id.toString(), assistantDataPayload); // Ensure ID is string
+			if (formState === 'edit' && initialAssistantData?.id) {
+				// Check formState and ID from initial data
+				console.log(
+					'Submitting UPDATE for assistant:',
+					initialAssistantData.id,
+					assistantDataPayload
+				);
+				const updateResponse = await updateAssistant(
+					initialAssistantData.id.toString(),
+					assistantDataPayload
+				); // Ensure ID is string
 				successMessage = 'Assistant updated successfully!';
 				// After update, store the updated data as the new initial state
 				// and stay in edit mode. The parent page handles list refresh via the event.
@@ -785,7 +878,10 @@
 			}
 		} catch (error) {
 			console.error(`Error ${formState === 'edit' ? 'updating' : 'creating'} assistant:`, error);
-			formError = error instanceof Error ? error.message : `Failed to ${formState === 'edit' ? 'update' : 'create'} assistant`;
+			formError =
+				error instanceof Error
+					? error.message
+					: `Failed to ${formState === 'edit' ? 'update' : 'create'} assistant`;
 			successMessage = ''; // Clear success on error
 		} finally {
 			formLoading = false;
@@ -817,7 +913,9 @@
 
 			// Basic validation
 			if (file.type !== 'application/json' && !file.name.toLowerCase().endsWith('.json')) {
-				importError = $_('assistants.form.import.invalidFile', { default: 'Invalid file type. Please select a .json file.' });
+				importError = $_('assistants.form.import.invalidFile', {
+					default: 'Invalid file type. Please select a .json file.'
+				});
 				console.error(importError);
 				inputElement.value = ''; // Clear the input
 				return;
@@ -837,7 +935,9 @@
 						parsedData = JSON.parse(content);
 						validationLog.push('✅ JSON parsed successfully.');
 					} catch (jsonError) {
-						validationLog.push(`❌ Invalid JSON format: ${jsonError instanceof Error ? jsonError.message : 'Unknown JSON error'}`);
+						validationLog.push(
+							`❌ Invalid JSON format: ${jsonError instanceof Error ? jsonError.message : 'Unknown JSON error'}`
+						);
 						parsedData = null;
 					}
 
@@ -849,7 +949,9 @@
 						const capabilities = storeState.systemCapabilities;
 
 						if (!capabilities) {
-							validationLog.push('⚠️ System capabilities not loaded. Skipping detailed validation.');
+							validationLog.push(
+								'⚠️ System capabilities not loaded. Skipping detailed validation.'
+							);
 						} else {
 							validationLog.push('ℹ️ System capabilities loaded. Performing detailed checks...');
 							// Validate required fields
@@ -868,35 +970,57 @@
 									validationLog.push('✅ Parsed metadata successfully.');
 
 									// Validate against capabilities
-									if (callbackData.prompt_processor && !capabilities.prompt_processors?.includes(callbackData.prompt_processor)) {
-										validationLog.push(`⚠️ Invalid prompt_processor: ${callbackData.prompt_processor}. Available: ${capabilities.prompt_processors?.join(', ')}`);
+									if (
+										callbackData.prompt_processor &&
+										!capabilities.prompt_processors?.includes(callbackData.prompt_processor)
+									) {
+										validationLog.push(
+											`⚠️ Invalid prompt_processor: ${callbackData.prompt_processor}. Available: ${capabilities.prompt_processors?.join(', ')}`
+										);
 									}
-									if (callbackData.connector && !capabilities.connectors?.[callbackData.connector]) {
-										validationLog.push(`⚠️ Invalid connector: ${callbackData.connector}. Available: ${Object.keys(capabilities.connectors || {}).join(', ')}`);
+									if (
+										callbackData.connector &&
+										!capabilities.connectors?.[callbackData.connector]
+									) {
+										validationLog.push(
+											`⚠️ Invalid connector: ${callbackData.connector}. Available: ${Object.keys(capabilities.connectors || {}).join(', ')}`
+										);
 									} else if (callbackData.connector && callbackData.llm) {
 										// Use optional chaining and check result
-										const connectorCaps = capabilities.connectors?.[callbackData.connector]; 
+										const connectorCaps = capabilities.connectors?.[callbackData.connector];
 										if (connectorCaps) {
 											const availableLLMs = extractModelsFromConnectorData(connectorCaps);
 											if (!availableLLMs.includes(callbackData.llm)) {
-												validationLog.push(`⚠️ Invalid llm for connector ${callbackData.connector}: ${callbackData.llm}. Available: ${availableLLMs.join(', ')}`);
+												validationLog.push(
+													`⚠️ Invalid llm for connector ${callbackData.connector}: ${callbackData.llm}. Available: ${availableLLMs.join(', ')}`
+												);
 											}
 										} else {
 											// Handle case where connector capabilities were not found (though connector name was valid)
-											validationLog.push(`⚠️ Could not retrieve capabilities for connector ${callbackData.connector}.`);
+											validationLog.push(
+												`⚠️ Could not retrieve capabilities for connector ${callbackData.connector}.`
+											);
 										}
 									}
-									if (callbackData.rag_processor && !capabilities.rag_processors?.includes(callbackData.rag_processor)) {
-										validationLog.push(`⚠️ Invalid rag_processor: ${callbackData.rag_processor}. Available: ${capabilities.rag_processors?.join(', ')}`);
+									if (
+										callbackData.rag_processor &&
+										!capabilities.rag_processors?.includes(callbackData.rag_processor)
+									) {
+										validationLog.push(
+											`⚠️ Invalid rag_processor: ${callbackData.rag_processor}. Available: ${capabilities.rag_processors?.join(', ')}`
+										);
 									}
 
 									// Specific checks based on rag_processor
 									if (callbackData.rag_processor === 'single_file_rag' && !callbackData.file_path) {
-										validationLog.push('❌ Missing file_path in metadata for single_file_rag processor.');
+										validationLog.push(
+											'❌ Missing file_path in metadata for single_file_rag processor.'
+										);
 									}
-
 								} catch (callbackError) {
-									validationLog.push(`❌ Error parsing metadata JSON: ${callbackError instanceof Error ? callbackError.message : 'Unknown error'}`);
+									validationLog.push(
+										`❌ Error parsing metadata JSON: ${callbackError instanceof Error ? callbackError.message : 'Unknown error'}`
+									);
 								}
 							} else {
 								validationLog.push('❌ metadata field is missing or not a string.');
@@ -904,11 +1028,21 @@
 
 							// Validate top-level RAG fields if processor requires them
 							if (callbackData?.rag_processor === 'simple_rag') {
-								if (parsedData.RAG_Top_k === undefined || typeof parsedData.RAG_Top_k !== 'number') {
-									validationLog.push(`⚠️ RAG_Top_k is missing or not a number (Required for simple_rag). Found: ${typeof parsedData.RAG_Top_k}`);
+								if (
+									parsedData.RAG_Top_k === undefined ||
+									typeof parsedData.RAG_Top_k !== 'number'
+								) {
+									validationLog.push(
+										`⚠️ RAG_Top_k is missing or not a number (Required for simple_rag). Found: ${typeof parsedData.RAG_Top_k}`
+									);
 								}
-								if (parsedData.RAG_collections === undefined || typeof parsedData.RAG_collections !== 'string') {
-									validationLog.push(`⚠️ RAG_collections is missing or not a string (Required for simple_rag). Found: ${typeof parsedData.RAG_collections}`);
+								if (
+									parsedData.RAG_collections === undefined ||
+									typeof parsedData.RAG_collections !== 'string'
+								) {
+									validationLog.push(
+										`⚠️ RAG_collections is missing or not a string (Required for simple_rag). Found: ${typeof parsedData.RAG_collections}`
+									);
 								}
 							}
 						}
@@ -918,10 +1052,10 @@
 
 					// --- Log Validation Summary ---
 					console.log('--- Assistant Import Validation Results ---');
-					validationLog.forEach(log => console.log(log));
+					validationLog.forEach((log) => console.log(log));
 					console.log('-------------------------------------------');
 
-					const hasErrors = validationLog.some(log => log.startsWith('❌'));
+					const hasErrors = validationLog.some((log) => log.startsWith('❌'));
 
 					if (!hasErrors && parsedData && callbackData) {
 						try {
@@ -935,9 +1069,13 @@
 							RAG_Top_k = parsedData.RAG_Top_k ?? 3;
 
 							// Populate selections from metadata
-							selectedPromptProcessor = callbackData.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
-							selectedConnector = callbackData.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
-							selectedRagProcessor = callbackData.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
+							selectedPromptProcessor =
+								callbackData.prompt_processor ||
+								(promptProcessors.length > 0 ? promptProcessors[0] : '');
+							selectedConnector =
+								callbackData.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
+							selectedRagProcessor =
+								callbackData.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 
 							// Update models based on connector, then set LLM
 							updateAvailableModels(); // Update the list first
@@ -946,46 +1084,62 @@
 								selectedLlm = callbackData.llm;
 							} else {
 								selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
-								validationLog.push(`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`);
+								validationLog.push(
+									`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`
+								);
 							}
 
 							// Populate RAG specific fields
 							if (selectedRagProcessor === 'simple_rag') {
-								selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
+								selectedKnowledgeBases =
+									parsedData.RAG_collections?.split(',').filter(Boolean) || [];
 								selectedFilePath = ''; // Clear file path if switching to simple RAG
 								if (!kbFetchAttempted) fetchKnowledgeBases(); // Fetch KBs if needed
 							} else if (selectedRagProcessor === 'single_file_rag') {
 								selectedFilePath = callbackData.file_path || '';
 								selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
 								if (!filesFetchAttempted) fetchUserFiles(); // Fetch user files if needed
-							} else { // No RAG
+							} else {
+								// No RAG
 								selectedKnowledgeBases = [];
 								selectedFilePath = '';
 							}
 							validationLog.push('✅ Form fields populated successfully.');
 							importError = ''; // Clear any previous error
 							// Show success message briefly
-							successMessage = $_('assistants.form.import.success', { default: 'Assistant data imported successfully! Please review and save.' });
-							setTimeout(() => { successMessage = ''; }, 5000); // Clear success after 5 seconds
-
+							successMessage = $_('assistants.form.import.success', {
+								default: 'Assistant data imported successfully! Please review and save.'
+							});
+							setTimeout(() => {
+								successMessage = '';
+							}, 5000); // Clear success after 5 seconds
 						} catch (populationError) {
-							validationLog.push(`❌ Error populating form: ${populationError instanceof Error ? populationError.message : 'Unknown population error'}`);
-							importError = $_('assistants.form.import.populationError', { default: 'Error populating form from imported data. Check console.' });
+							validationLog.push(
+								`❌ Error populating form: ${populationError instanceof Error ? populationError.message : 'Unknown population error'}`
+							);
+							importError = $_('assistants.form.import.populationError', {
+								default: 'Error populating form from imported data. Check console.'
+							});
 						}
 					} else {
-						importError = $_('assistants.form.import.validationFailed', { default: 'Import validation failed. Form not populated. Check console for details.' });
+						importError = $_('assistants.form.import.validationFailed', {
+							default: 'Import validation failed. Form not populated. Check console for details.'
+						});
 					}
-
 				} else {
 					console.error('Failed to read file content as string.');
-					importError = $_('assistants.form.import.readError', { default: 'Could not read file content.' });
+					importError = $_('assistants.form.import.readError', {
+						default: 'Could not read file content.'
+					});
 					validationLog.push(`❌ ${importError}`);
 				}
 			};
 
 			reader.onerror = (e) => {
 				console.error('Error reading file:', e);
-				importError = $_('assistants.form.import.fileReadError', { default: 'Error reading the selected file.' });
+				importError = $_('assistants.form.import.fileReadError', {
+					default: 'Error reading the selected file.'
+				});
 				validationLog.push(`❌ ${importError}`);
 			};
 
@@ -1011,46 +1165,55 @@
 			});
 		}
 	}
-
 </script>
 
-	<div class="p-4 md:p-6 border rounded-md shadow-sm bg-white">
+<div class="rounded-md border bg-white p-4 shadow-sm md:p-6">
 	<!-- Header Section (Title and Top Buttons) -->
-	<div class="mb-6 pb-4 border-b border-gray-200">
-		<div class="flex justify-between items-center">
-			<h2 class="text-2xl font-semibold text-brand">
+	<div class="mb-6 border-b border-gray-200 pb-4">
+		<div class="flex items-center justify-between">
+			<h2 class="text-brand text-2xl font-semibold">
 				{#if formState === 'create'}
 					{$_('assistants.form.titleCreate', { default: 'Create New Assistant' })}
 				{:else}
 					{$_('assistants.form.titleViewEdit', { default: 'Assistant Details' })}
-					{#if initialAssistantData?.id} (ID: {initialAssistantData.id}){/if}
+					{#if initialAssistantData?.id}
+						(ID: {initialAssistantData.id}){/if}
 				{/if}
 			</h2>
-			
+
 			<!-- Import Button - Only show in create mode -->
 			{#if formState === 'create'}
 				<div>
-					<button 
-						type="button" 
+					<button
+						type="button"
 						onclick={triggerFileInput}
-						class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
+						class="focus:ring-brand inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none"
 					>
-						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+						<svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+							></path>
 						</svg>
 						{$_('assistants.form.import.button', { default: 'Import from JSON' })}
 					</button>
 				</div>
 			{/if}
 		</div>
-		
+
 		<!-- Import Error Message -->
 		{#if importError}
-			<div class="mt-3 p-3 border border-red-200 bg-red-50 rounded-md">
+			<div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
 				<div class="flex">
 					<div class="flex-shrink-0">
 						<svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+							<path
+								fill-rule="evenodd"
+								d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+								clip-rule="evenodd"
+							></path>
 						</svg>
 					</div>
 					<div class="ml-3">
@@ -1065,95 +1228,145 @@
 	</div>
 
 	{#if $assistantConfigStore.loading && !configInitialized}
-		<p class="text-center text-gray-600 py-10">{$_('assistants.loadingConfig', { default: 'Loading configuration...' })}</p>
+		<p class="py-10 text-center text-gray-600">
+			{$_('assistants.loadingConfig', { default: 'Loading configuration...' })}
+		</p>
 	{:else if $assistantConfigStore.error}
-		<p class="text-center text-red-600 py-10">{$_('assistants.errorConfig', { default: 'Error loading configuration:' })} {$assistantConfigStore.error}</p>
+		<p class="py-10 text-center text-red-600">
+			{$_('assistants.errorConfig', { default: 'Error loading configuration:' })}
+			{$assistantConfigStore.error}
+		</p>
 	{:else if !configInitialized}
-		<p class="text-center text-gray-600 py-10">{$_('assistants.initializingForm', { default: 'Initializing form...' })}</p>
+		<p class="py-10 text-center text-gray-600">
+			{$_('assistants.initializingForm', { default: 'Initializing form...' })}
+		</p>
 	{:else}
 		<!-- Form starts here -->
-		<form 
-			onsubmit={handleSubmit} 
-			class="space-y-6"
-			id="assistant-form-main" 
-		>
+		<form onsubmit={handleSubmit} class="space-y-6" id="assistant-form-main">
 			<div class="flex flex-col md:flex-row md:space-x-6">
 				<!-- Left Column: Main Fields -->
-				<div class="md:w-2/3 space-y-6">
+				<div class="space-y-6 md:w-2/3">
 					<!-- Name -->
 					<div>
-						<label for="assistant-name" class="block text-sm font-medium text-gray-700">{$_('assistants.form.name.label')} <span class="text-red-600">*</span></label>
+						<label for="assistant-name" class="block text-sm font-medium text-gray-700"
+							>{$_('assistants.form.name.label')} <span class="text-red-600">*</span></label
+						>
 						{#if formState === 'edit'}
-							<input type="text" id="assistant-name" name="name" bind:value={name} 
-							disabled={true}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
-							placeholder={$_('assistants.form.name.placeholder')}>
+							<input
+								type="text"
+								id="assistant-name"
+								name="name"
+								bind:value={name}
+								disabled={true}
+								class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 shadow-sm focus:outline-none sm:text-sm"
+								placeholder={$_('assistants.form.name.placeholder')}
+							/>
 						{:else}
-							<input type="text" id="assistant-name" name="name" bind:value={name} 
-							disabled={false}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
-							placeholder={$_('assistants.form.name.placeholder')}>
+							<input
+								type="text"
+								id="assistant-name"
+								name="name"
+								bind:value={name}
+								disabled={false}
+								class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none sm:text-sm"
+								placeholder={$_('assistants.form.name.placeholder')}
+							/>
 						{/if}
 					</div>
 
 					<!-- Description -->
 					<div>
-						<label for="assistant-description" class="block text-sm font-medium text-gray-700">{$_('assistants.form.description.label', { default: 'Description' })}</label>
+						<label for="assistant-description" class="block text-sm font-medium text-gray-700"
+							>{$_('assistants.form.description.label', { default: 'Description' })}</label
+						>
 						<div class="mt-1 flex rounded-md shadow-sm">
 							<!-- Description is ALWAYS fully editable -->
-							<textarea 
-								id="assistant-description" 
+							<textarea
+								id="assistant-description"
 								name="description"
 								bind:value={description}
 								rows="3"
 								disabled={false}
-								class="flex-1 block w-full px-3 py-2 border border-blue-300 rounded-l-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
-								placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
-							<button type="button" onclick={handleGenerateDescription} disabled={generatingDescription}
-								class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed">
-								<span>{generatingDescription ? $_('assistants.form.description.generating', { default: 'Generating...' }) : $_('assistants.form.description.generateButton', { default: 'Generate' })}</span>
+								class="block w-full flex-1 rounded-l-md border border-blue-300 bg-white px-3 py-2 focus:border-indigo-500 focus:ring-indigo-500 focus:outline-none sm:text-sm"
+								placeholder={$_('assistants.form.description.placeholder', {
+									default: 'A brief summary of the assistant'
+								})}
+							></textarea>
+							<button
+								type="button"
+								onclick={handleGenerateDescription}
+								disabled={generatingDescription}
+								class="focus:ring-brand relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								<span
+									>{generatingDescription
+										? $_('assistants.form.description.generating', { default: 'Generating...' })
+										: $_('assistants.form.description.generateButton', {
+												default: 'Generate'
+											})}</span
+								>
 							</button>
 						</div>
-						<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.description.help', { default: 'Click Generate after filling in name and prompts.' })}</p>
+						<p class="mt-1 text-xs text-gray-500">
+							{$_('assistants.form.description.help', {
+								default: 'Click Generate after filling in name and prompts.'
+							})}
+						</p>
 					</div>
 
 					<!-- System Prompt -->
 					<div>
-						<label for="system-prompt" class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</label>
-						<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} rows="4"
-								  disabled={false}
-								  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
-								  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
+						<label for="system-prompt" class="block text-sm font-medium text-gray-700"
+							>{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</label
+						>
+						<textarea
+							id="system-prompt"
+							name="system_prompt"
+							bind:value={system_prompt}
+							rows="4"
+							disabled={false}
+							class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none sm:text-sm"
+							placeholder={$_('assistants.form.systemPrompt.placeholder', {
+								default: "Define the assistant's role and personality..."
+							})}
+						></textarea>
 					</div>
 
 					<!-- Prompt Template -->
 					<div>
-						<label for="prompt-template" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}</label>
+						<label for="prompt-template" class="block text-sm font-medium text-gray-700"
+							>{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}</label
+						>
 						<div class="mt-1 mb-2">
-							<span class="text-xs text-gray-600 dark:text-gray-400">{$_('insert_placeholder') || 'Insert placeholder:'}:</span>
+							<span class="text-xs text-gray-600 dark:text-gray-400"
+								>{$_('insert_placeholder') || 'Insert placeholder:'}:</span
+							>
 							{#each ragPlaceholders as placeholder}
-								<button type="button"
-									class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand-500"
+								<button
+									type="button"
+									class="focus:ring-brand-500 ml-1 rounded bg-gray-200 px-2 py-0.5 text-xs hover:bg-gray-300 focus:ring-2 focus:outline-none dark:bg-gray-700 dark:hover:bg-gray-600"
 									onclick={() => insertPlaceholder(placeholder)}
 								>
 									{placeholder}
 								</button>
 							{/each}
 						</div>
-						<textarea 
+						<textarea
 							bind:this={textareaRef}
-							bind:value={prompt_template} 
-							id="prompt_template" 
+							bind:value={prompt_template}
+							id="prompt_template"
 							rows="6"
-							class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+							class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
 							placeholder={promptPlaceholderText}
 							disabled={!isFieldEditable('prompt_template')}
 						></textarea>
 
 						<!-- Add preview box with highlighted placeholders -->
 						{#if prompt_template}
-							<div class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-								<div class="text-xs text-gray-500 mb-1">{$_('preview') || 'Preview with highlighted placeholders:'}</div>
+							<div class="mt-2 rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+								<div class="mb-1 text-xs text-gray-500">
+									{$_('preview') || 'Preview with highlighted placeholders:'}
+								</div>
 								<div class="whitespace-pre-wrap" data-testid="prompt-preview">
 									{@html highlightPlaceholders(prompt_template)}
 								</div>
@@ -1161,7 +1374,11 @@
 						{/if}
 
 						{#if selectedPromptProcessor === 'template_validator_processor'}
-							<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.promptTemplate.help', { default: 'This processor requires a valid prompt template.' })}</p>
+							<p class="mt-1 text-xs text-gray-500">
+								{$_('assistants.form.promptTemplate.help', {
+									default: 'This processor requires a valid prompt template.'
+								})}
+							</p>
 						{/if}
 					</div>
 				</div>
@@ -1171,13 +1388,11 @@
 					<!-- Advanced Mode Toggle -->
 					{#if formState === 'create'}
 						<div class="mb-3">
-							<label class="inline-flex items-center cursor-pointer">
-								<input 
-									type="checkbox" 
-									bind:checked={isAdvancedMode} 
-									class="sr-only peer"
-								/>
-								<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+							<label class="inline-flex cursor-pointer items-center">
+								<input type="checkbox" bind:checked={isAdvancedMode} class="peer sr-only" />
+								<div
+									class="peer relative h-6 w-11 rounded-full bg-gray-200 peer-checked:bg-blue-600 peer-focus:ring-4 peer-focus:ring-blue-300 peer-focus:outline-none after:absolute after:start-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white rtl:peer-checked:after:-translate-x-full dark:border-gray-600 dark:bg-gray-700 dark:peer-focus:ring-blue-800"
+								></div>
 								<span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">
 									{$_('assistants.form.advancedMode') || 'Advanced Mode'}
 								</span>
@@ -1186,16 +1401,26 @@
 					{/if}
 
 					<!-- Configuration Dropdowns -->
-					<fieldset class="border p-4 rounded-md space-y-4 h-full">
-						<legend class="text-lg font-medium text-brand px-1">{$_('assistants.form.configSection.title', { default: 'Configuration' })}</legend>
+					<fieldset class="h-full space-y-4 rounded-md border p-4">
+						<legend class="text-brand px-1 text-lg font-medium"
+							>{$_('assistants.form.configSection.title', { default: 'Configuration' })}</legend
+						>
 
 						<!-- Prompt Processor - Only show in advanced mode or edit mode -->
 						{#if isAdvancedMode || formState === 'edit'}
 							<div>
-								<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
-								<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} 
-										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
+								<label for="prompt-processor" class="block text-sm font-medium text-gray-700"
+									>{$_('assistants.form.promptProcessor.label', {
+										default: 'Prompt Processor'
+									})}</label
+								>
+								<select
+									id="prompt-processor"
+									name="prompt_processor"
+									bind:value={selectedPromptProcessor}
+									disabled={false}
+									class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 py-2 pr-10 pl-3 text-base shadow-sm focus:outline-none sm:text-sm"
+								>
 									{#each promptProcessors as processor}
 										<option value={processor}>{processor}</option>
 									{/each}
@@ -1206,10 +1431,17 @@
 						<!-- Connector - Only show in advanced mode or edit mode -->
 						{#if isAdvancedMode || formState === 'edit'}
 							<div>
-								<label for="connector" class="block text-sm font-medium text-gray-700">{$_('assistants.form.connector.label', { default: 'Connector' })}</label>
-								<select id="connector" name="connector" bind:value={selectedConnector} onchange={handleConnectorChange}
-										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
+								<label for="connector" class="block text-sm font-medium text-gray-700"
+									>{$_('assistants.form.connector.label', { default: 'Connector' })}</label
+								>
+								<select
+									id="connector"
+									name="connector"
+									bind:value={selectedConnector}
+									onchange={handleConnectorChange}
+									disabled={false}
+									class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 py-2 pr-10 pl-3 text-base shadow-sm focus:outline-none sm:text-sm"
+								>
 									{#each connectorsList as connectorName}
 										<option value={connectorName}>{connectorName}</option>
 									{/each}
@@ -1219,66 +1451,125 @@
 
 						<!-- LLM (Always visible) -->
 						<div>
-							<label for="llm" class="block text-sm font-medium text-gray-700">{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label>
-							<select id="llm" name="llm" bind:value={selectedLlm} 
-										  disabled={availableModels.length === 0}
-									  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md">
+							<label for="llm" class="block text-sm font-medium text-gray-700"
+								>{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label
+							>
+							<select
+								id="llm"
+								name="llm"
+								bind:value={selectedLlm}
+								disabled={availableModels.length === 0}
+								class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border-gray-300 py-2 pr-10 pl-3 text-base focus:outline-none sm:text-sm"
+							>
 								{#if availableModels.length > 0}
 									{#each availableModels as model}
 										<option value={model}>{model}</option>
 									{/each}
 								{:else}
-									<option value="" disabled>{$_('assistants.form.llm.noneAvailable', { default: 'No models available for selected connector' })}</option>
+									<option value="" disabled
+										>{$_('assistants.form.llm.noneAvailable', {
+											default: 'No models available for selected connector'
+										})}</option
+									>
 								{/if}
 							</select>
 						</div>
 
 						<!-- RAG Processor -->
 						<div>
-							<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
-							<select id="rag-processor" bind:value={selectedRagProcessor} 
-									disabled={formState === 'edit'}
-									class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed">
+							<label for="rag-processor" class="block text-sm font-medium text-gray-700"
+								>{$_('assistants.form.ragProcessor.label')}</label
+							>
+							<select
+								id="rag-processor"
+								bind:value={selectedRagProcessor}
+								disabled={formState === 'edit'}
+								class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border-gray-300 py-2 pr-10 pl-3 text-base focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100 sm:text-sm"
+							>
 								{#each ragProcessors as processor}
-									<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+									<option value={processor}
+										>{processor.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</option
+									>
 								{/each}
 							</select>
 						</div>
 
 						<!-- RAG Options (Conditional) -->
 						{#if showRagOptions}
-							<div class="pt-4 border-t border-gray-200 space-y-4">
-								<h4 class="text-md font-medium text-gray-700">{$_('assistants.form.ragOptions.title', { default: 'RAG Options' })}</h4>
-								
+							<div class="space-y-4 border-t border-gray-200 pt-4">
+								<h4 class="text-md font-medium text-gray-700">
+									{$_('assistants.form.ragOptions.title', { default: 'RAG Options' })}
+								</h4>
+
 								<!-- RAG Top K (Only for simple_rag) -->
 								{#if selectedRagProcessor === 'simple_rag'}
 									<div>
-										<label for="rag-top-k" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</label>
-										<input type="number" id="rag-top-k" name="RAG_Top_k" bind:value={RAG_Top_k} min="1" max="10" 
-											   disabled={false}
-											   class="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed">
-										<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.ragTopK.help', { default: 'Number of relevant documents to retrieve (1-10).' })}</p>
+										<label for="rag-top-k" class="block text-sm font-medium text-gray-700"
+											>{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</label
+										>
+										<input
+											type="number"
+											id="rag-top-k"
+											name="RAG_Top_k"
+											bind:value={RAG_Top_k}
+											min="1"
+											max="10"
+											disabled={false}
+											class="focus:ring-brand focus:border-brand mt-1 block w-24 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100 sm:text-sm"
+										/>
+										<p class="mt-1 text-xs text-gray-500">
+											{$_('assistants.form.ragTopK.help', {
+												default: 'Number of relevant documents to retrieve (1-10).'
+											})}
+										</p>
 									</div>
 								{/if}
 
 								<!-- Knowledge Base Selector (Conditional) -->
 								{#if showKnowledgeBaseSelector}
 									<div>
-										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</h4>
+										<h4 class="mb-1 block text-sm font-medium text-gray-700">
+											{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}
+										</h4>
 										{#if loadingKnowledgeBases}
-											<p class="text-sm text-gray-500">{$_('assistants.form.knowledgeBases.loading', { default: 'Loading knowledge bases...' })}</p>
+											<p class="text-sm text-gray-500">
+												{$_('assistants.form.knowledgeBases.loading', {
+													default: 'Loading knowledge bases...'
+												})}
+											</p>
 										{:else if knowledgeBaseError}
-											<p class="text-sm text-red-600">{$_('assistants.form.knowledgeBases.error', { default: 'Error loading knowledge bases:' })} {knowledgeBaseError}</p>
+											<p class="text-sm text-red-600">
+												{$_('assistants.form.knowledgeBases.error', {
+													default: 'Error loading knowledge bases:'
+												})}
+												{knowledgeBaseError}
+											</p>
 										{:else if accessibleKnowledgeBases.length === 0}
-											<p class="text-sm text-gray-500">{$_('assistants.form.knowledgeBases.noneFound', { default: 'No accessible knowledge bases found.' })}</p>
+											<p class="text-sm text-gray-500">
+												{$_('assistants.form.knowledgeBases.noneFound', {
+													default: 'No accessible knowledge bases found.'
+												})}
+											</p>
 										{:else}
-											<div class="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-group-label">
-												<span id="kb-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</span>
+											<div
+												class="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border p-2"
+												role="group"
+												aria-labelledby="kb-group-label"
+											>
+												<span id="kb-group-label" class="sr-only"
+													>{$_('assistants.form.knowledgeBases.label', {
+														default: 'Knowledge Bases'
+													})}</span
+												>
 												{#each accessibleKnowledgeBases as kb (kb.id)}
-													<label class="flex items-center space-x-2 cursor-pointer">
-														<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
-															   disabled={false}
-															   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
+													<label class="flex cursor-pointer items-center space-x-2">
+														<input
+															type="checkbox"
+															bind:group={selectedKnowledgeBases}
+															value={kb.id}
+															disabled={false}
+															class="text-brand focus:border-brand focus:ring-brand focus:ring-opacity-50 rounded border-gray-300 shadow-sm focus:ring focus:ring-offset-0"
+														/>
 														<span class="text-sm text-gray-700">{kb.name}</span>
 													</label>
 												{/each}
@@ -1290,27 +1581,37 @@
 								<!-- Single File Selector (Conditional) -->
 								{#if showSingleFileSelector}
 									<div>
-										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.singleFile.label', { default: 'Select File' })}</h4>
-										
+										<h4 class="mb-1 block text-sm font-medium text-gray-700">
+											{$_('assistants.form.singleFile.label', { default: 'Select File' })}
+										</h4>
+
 										<!-- File upload -->
 										<div class="mb-4">
-											<label for="file-upload" class="block text-sm text-gray-700">{$_('assistants.form.singleFile.upload', { default: 'Upload New File' })}</label>
+											<label for="file-upload" class="block text-sm text-gray-700"
+												>{$_('assistants.form.singleFile.upload', {
+													default: 'Upload New File'
+												})}</label
+											>
 											<div class="mt-1 flex items-center">
-												<input 
+												<input
 													id="file-upload"
-													type="file" 
-													accept=".txt,.json,.md,.pdf,.doc,.docx" 
+													type="file"
+													accept=".txt,.json,.md,.pdf,.doc,.docx"
 													class="block w-full text-sm text-gray-500
-														file:mr-4 file:py-2 file:px-4
-														file:rounded-md file:border-0
-														file:text-sm file:font-semibold
-														file:bg-gray-50 file:text-gray-700
+														file:mr-4 file:rounded-md file:border-0
+														file:bg-gray-50 file:px-4
+														file:py-2 file:text-sm
+														file:font-semibold file:text-gray-700
 														hover:file:bg-gray-100 disabled:cursor-not-allowed"
 													onchange={handleFileUpload}
 													disabled={fileUploadLoading}
 												/>
 												{#if fileUploadLoading}
-													<span class="ml-2 text-sm text-gray-500">{$_('assistants.form.singleFile.uploading', { default: 'Uploading...' })}</span>
+													<span class="ml-2 text-sm text-gray-500"
+														>{$_('assistants.form.singleFile.uploading', {
+															default: 'Uploading...'
+														})}</span
+													>
 												{/if}
 											</div>
 											{#if fileUploadError}
@@ -1319,47 +1620,69 @@
 										</div>
 										<!-- File selection -->
 										{#if loadingFiles}
-											<p class="text-sm text-gray-500">{$_('assistants.form.singleFile.loading', { default: 'Loading files...' })}</p>
+											<p class="text-sm text-gray-500">
+												{$_('assistants.form.singleFile.loading', { default: 'Loading files...' })}
+											</p>
 										{:else if fileError}
-											<p class="text-sm text-red-600">{$_('assistants.form.singleFile.error', { default: 'Error loading files:' })} {fileError}</p>
+											<p class="text-sm text-red-600">
+												{$_('assistants.form.singleFile.error', {
+													default: 'Error loading files:'
+												})}
+												{fileError}
+											</p>
 										{:else if userFiles.length === 0}
-											<p class="text-sm text-gray-500">{$_('assistants.form.singleFile.noneFound', { default: 'No files found. Please upload a file.' })}</p>
+											<p class="text-sm text-gray-500">
+												{$_('assistants.form.singleFile.noneFound', {
+													default: 'No files found. Please upload a file.'
+												})}
+											</p>
 										{:else}
-											<div class="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2">
+											<div class="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border p-2">
 												{#each userFiles as file (file.path)}
-													<label class="flex items-center space-x-2 p-1 cursor-pointer {selectedFilePath === file.path ? 'bg-blue-50' : 'hover:bg-gray-50'}">
-														<input 
-															type="radio" 
-															name="file-selector" 
-															value={file.path} 
+													<label
+														class="flex cursor-pointer items-center space-x-2 p-1 {selectedFilePath ===
+														file.path
+															? 'bg-blue-50'
+															: 'hover:bg-gray-50'}"
+													>
+														<input
+															type="radio"
+															name="file-selector"
+															value={file.path}
 															bind:group={selectedFilePath}
 															disabled={false}
-															class="h-4 w-4 text-brand rounded focus:ring-brand"
+															class="text-brand focus:ring-brand h-4 w-4 rounded"
 														/>
 														<span class="text-sm text-gray-700">{file.name}</span>
 													</label>
 												{/each}
 											</div>
 											{#if !selectedFilePath && formState === 'edit'}
-												<p class="mt-1 text-xs text-red-500">{$_('assistants.form.singleFile.required', { default: 'Please select a file' })}</p>
+												<p class="mt-1 text-xs text-red-500">
+													{$_('assistants.form.singleFile.required', {
+														default: 'Please select a file'
+													})}
+												</p>
 											{/if}
 										{/if}
 									</div>
 								{/if}
-								
 							</div>
 						{/if}
-
 					</fieldset>
 				</div>
-			</div> 
-			
+			</div>
+
 			<!-- Messages -->
 			{#if formError}
-				<p class="text-sm text-red-600 mt-4 p-2 border border-red-200 bg-red-50 rounded">Error: {formError}</p>
+				<p class="mt-4 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-600">
+					Error: {formError}
+				</p>
 			{/if}
 			{#if successMessage && formState !== 'edit'}
-				<p class="text-sm text-green-600 mt-4 p-2 border border-green-200 bg-green-50 rounded">{successMessage}</p>
+				<p class="mt-4 rounded border border-green-200 bg-green-50 p-2 text-sm text-green-600">
+					{successMessage}
+				</p>
 			{/if}
 
 			<!-- Bottom Action Button Area -->
@@ -1367,42 +1690,46 @@
 				<div class="flex justify-end space-x-3">
 					{#if formState === 'edit'}
 						<!-- Bottom Cancel Button (Edit Mode) -->
-						<button 
-							type="button" 
+						<button
+							type="button"
 							onclick={switchToViewMode}
 							disabled={formLoading}
-							class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+							class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							{$_('common.cancel', { default: 'Cancel' })}
 						</button>
 					{/if}
 					<!-- Bottom Save / Save Changes Button -->
-					<button 
-						type="submit" 
-						form="assistant-form-main" 
-						disabled={formLoading || (formState === 'create' && !$assistantConfigStore.systemCapabilities)} 
-						class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+					<button
+						type="submit"
+						form="assistant-form-main"
+						disabled={formLoading ||
+							(formState === 'create' && !$assistantConfigStore.systemCapabilities)}
+						class="bg-brand hover:bg-brand-hover focus:ring-brand inline-flex justify-center rounded-md border border-transparent px-4 py-2 text-sm font-medium text-white shadow-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 						style="background-color: #2271b3;"
 					>
 						{#if formState === 'create'}
-							{formLoading ? $_('common.saving', { default: 'Saving...' }) : $_('common.save', { default: 'Save' })}
-						{:else} <!-- formState === 'edit' -->
-							{formLoading ? $_('common.saving', { default: 'Saving...' }) : $_('common.saveChanges', { default: 'Save Changes' })}
+							{formLoading
+								? $_('common.saving', { default: 'Saving...' })
+								: $_('common.save', { default: 'Save' })}
+						{:else}
+							<!-- formState === 'edit' -->
+							{formLoading
+								? $_('common.saving', { default: 'Saving...' })
+								: $_('common.saveChanges', { default: 'Save Changes' })}
 						{/if}
 					</button>
 				</div>
 			</div>
-
 		</form>
-	{/if} 
+	{/if}
 
 	<!-- Hidden file input for import functionality -->
-	<input 
-		type="file" 
-		id="import-assistant-json" 
-		accept=".json" 
+	<input
+		type="file"
+		id="import-assistant-json"
+		accept=".json"
 		onchange={handleFileSelect}
 		style="display: none;"
 	/>
-
-</div> 
+</div>

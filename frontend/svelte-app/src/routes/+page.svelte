@@ -29,14 +29,14 @@
 				// In dev mode, it's served at /md/, in prod at /static/md/
 				const newsUrl = dev ? `${base}/md/lamb-news.md` : `${base}/static/md/lamb-news.md`;
 				console.log('Fetching news from:', newsUrl);
-				
+
 				const response = await fetch(newsUrl);
 				console.log('News fetch response status:', response.status);
-				
+
 				if (response.ok) {
 					const markdown = await response.text();
 					console.log('News markdown length:', markdown.length);
-					
+
 					if (markdown && markdown.trim()) {
 						newsContent = String(marked.parse(markdown));
 					} else {
@@ -81,16 +81,16 @@
 	// 			localeLoaded = true;
 	// 		}
 	// 	});
-	// 	
+	//
 	// 	return unsubscribe;
 	// });
-
 </script>
 
 <div class="container mx-auto px-4 py-8">
-	{#if $user.isLoggedIn} <!-- Reactive check of user store -->
+	{#if $user.isLoggedIn}
+		<!-- Reactive check of user store -->
 		<!-- Content for logged in users -->
-		<div class="bg-white shadow rounded-lg p-6">
+		<div class="rounded-lg bg-white p-6 shadow">
 			{#if isLoadingNews}
 				<p class="text-center">Loading news...</p>
 			{:else if newsContent}
@@ -98,13 +98,13 @@
 					{@html newsContent}
 				</div>
 			{:else}
-				<p class="text-center">No news to display.</p> 
+				<p class="text-center">No news to display.</p>
 			{/if}
 
 			<div class="mt-8 text-center">
 				<a
 					href="{base}/assistants"
-					class="inline-block px-4 py-2 bg-[#2271b3] text-white rounded hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]"
+					class="inline-block rounded bg-[#2271b3] px-4 py-2 text-white hover:bg-[#195a91] focus:ring-2 focus:ring-[#2271b3] focus:ring-offset-2 focus:outline-none"
 				>
 					View Learning Assistants
 				</a>
@@ -112,17 +112,17 @@
 		</div>
 	{:else}
 		<!-- Auth container for non-logged in users -->
-		<div class="max-w-md mx-auto bg-white shadow-md rounded-lg overflow-hidden">
+		<div class="mx-auto max-w-md overflow-hidden rounded-lg bg-white shadow-md">
 			{#if authMode === 'login'}
 				<Login on:show-signup={showSignup} />
 			{:else}
 				<Signup on:show-login={showLogin} />
 			{/if}
 		</div>
-		
+
 		<!-- Logo for non-logged in users -->
-		<div class="text-center mt-8">
-			<div class="mx-auto bg-[#e9ecef] p-4 rounded-lg" style="max-width: 400px;">
+		<div class="mt-8 text-center">
+			<div class="mx-auto rounded-lg bg-[#e9ecef] p-4" style="max-width: 400px;">
 				<h2 class="text-3xl font-bold text-[#2271b3]">LAMB</h2>
 				<p class="text-[#195a91]">Learning Assistants Manager and Builder</p>
 			</div>
