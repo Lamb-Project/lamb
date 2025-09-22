@@ -657,6 +657,7 @@ export async function deleteFileFromKnowledgeBase(kbId, fileId) {
 
 	const url = getApiUrl(`/knowledgebases/kb/${kbId}/files/${fileId}`);
 	console.log(`Deleting file ${fileId} from knowledge base ${kbId}`);
+	console.log(`Full delete URL: ${url}`);
 
 	try {
 		const response = await axios.delete(url, {
@@ -692,7 +693,7 @@ export async function deleteFileFromKnowledgeBase(kbId, fileId) {
 			if (error.response?.data?.kb_server_available === false) {
 				errorMessage = 'Knowledge Base server offline. Please try again later.';
 			} else if (error.response?.status === 404) {
-				errorMessage = 'File not found in knowledge base.';
+				errorMessage = `File not found in knowledge base. File ID: ${fileId}, KB ID: ${kbId}`;
 			} else if (error.response?.status === 403) {
 				errorMessage = "You don't have permission to delete files from this knowledge base.";
 			} else if (error.response) {

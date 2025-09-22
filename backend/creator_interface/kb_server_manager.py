@@ -333,6 +333,11 @@ class KBServerManager:
                         files_data = files_response.json()
                         logger.info(f"DEBUG: Raw files data from KB server: {files_data}")
                         for file in files_data:
+                            # Skip files that are marked as deleted
+                            if file.get('status') == 'deleted':
+                                logger.info(f"Skipping deleted file: {file.get('original_filename')} (ID: {file.get('id')})")
+                                continue
+                                
                             # Improved mapping with fallbacks for different field names
                             file_id = str(file.get('id'))
                             filename = file.get('original_filename', file.get('filename', ''))
@@ -997,23 +1002,23 @@ class KBServerManager:
                         detail="You don't have permission to delete files from this knowledge base"
                     )
                 
-                # Now delete the file from KB server
-                delete_url = f"{self.kb_server_url}/collections/{kb_id}/files/{file_id}"
-                logger.info(f"Deleting file from KB server at: {delete_url}")
+                # Now mark the file as deleted in KB server using the correct endpoint
+                status_url = f"{self.kb_server_url}/collections/files/{file_id}/status?status=deleted"
+                logger.info(f"Marking file as deleted in KB server at: {status_url}")
                 
-                delete_response = await client.delete(delete_url, headers=headers)
-                logger.info(f"KB server delete file response status: {delete_response.status_code}")
+                status_response = await client.put(status_url, headers=headers)
+                logger.info(f"KB server status update response status: {status_response.status_code}")
                 
-                if delete_response.status_code == 200 or delete_response.status_code == 204:
-                    # Successfully deleted file
-                    logger.info(f"Successfully deleted file {file_id} from knowledge base {kb_id}")
+                if status_response.status_code == 200:
+                    # Successfully marked file as deleted
+                    logger.info(f"Successfully marked file {file_id} as deleted in knowledge base {kb_id}")
                     
                     return {
                         "message": "File deleted successfully",
                         "knowledge_base_id": kb_id,
                         "file_id": file_id
                     }
-                elif delete_response.status_code == 404:
+                elif status_response.status_code == 404:
                     logger.error(f"File {file_id} not found in knowledge base {kb_id}")
                     raise HTTPException(
                         status_code=404,
@@ -1021,16 +1026,16 @@ class KBServerManager:
                     )
                 else:
                     # Handle other errors
-                    logger.error(f"KB server returned error status during file deletion: {delete_response.status_code}")
+                    logger.error(f"KB server returned error status during file deletion: {status_response.status_code}")
                     error_detail = "Unknown error"
                     try:
-                        error_data = delete_response.json()
+                        error_data = status_response.json()
                         error_detail = error_data.get('detail', str(error_data))
                     except Exception:
-                        error_detail = delete_response.text or "Unknown error"
+                        error_detail = status_response.text or "Unknown error"
                     
                     raise HTTPException(
-                        status_code=delete_response.status_code,
+                        status_code=status_response.status_code,
                         detail=f"KB server file deletion error: {error_detail}"
                     )
                 
