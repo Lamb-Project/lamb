@@ -373,7 +373,22 @@
 		"actions": "Acciones",
 		"debugInfo": "Información de Depuración",
 		"viewSourceFile": "Ver Archivo Fuente",
-		"relevance": "Relevancia"
+		"relevance": "Relevancia",
+		"detail": {
+			"filesTab": "Archivos",
+			"ingestTab": "Ingerir Contenido",
+			"queryTab": "Consultar",
+			"fileNameColumn": "Nombre del Archivo",
+			"fileSizeColumn": "Tamaño",
+			"fileTypeColumn": "Tipo",
+			"fileActionsColumn": "Acciones",
+			"fileDeleteButton": "Eliminar",
+			"fileDeleting": "Eliminando...",
+			"fileDeleteSuccess": "¡Archivo eliminado con éxito!",
+			"deleteConfirmation": "¿Estás seguro de que quieres eliminar \"{fileName}\"? Esta acción no se puede deshacer.",
+			"noFiles": "No se han subido archivos a esta base de conocimiento.",
+			"noData": "No hay datos de base de conocimiento disponibles."
+		}
 	},
 	"buttons": {
 		"createAssistant": "Crear Asistente",

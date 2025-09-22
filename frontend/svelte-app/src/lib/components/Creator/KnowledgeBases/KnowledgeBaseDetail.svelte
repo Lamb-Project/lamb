@@ -4,7 +4,8 @@
 		getKnowledgeBaseDetails,
 		getIngestionPlugins,
 		uploadFileWithPlugin,
-		runBaseIngestionPlugin
+		runBaseIngestionPlugin,
+		deleteFileFromKnowledgeBase
 	} from '$lib/services/knowledgeBaseService';
 	import { _ } from '$lib/i18n';
 	import { page } from '$app/stores';
@@ -69,6 +70,12 @@
 	let uploadError = $state('');
 	let uploadSuccess = $state(false);
 
+	// File delete state
+	let deletingFileId = $state('');
+	/** @type {string} */
+	let deleteError = $state('');
+	let deleteSuccess = $state(false);
+
 	// Initialization and cleanup
 	onMount(() => {
 		console.log('KnowledgeBaseDetail mounted, kbId:', kbId);
@@ -119,6 +126,8 @@
 		// Reset status messages when switching tabs
 		uploadError = '';
 		uploadSuccess = false;
+		deleteError = '';
+		deleteSuccess = false;
 
 		// Optionally reset file input when switching away from ingest tab
 		if (tabName !== 'ingest') {
@@ -181,13 +190,46 @@
 	 * Handle file delete
 	 * @param {string} fileId - ID of the file to delete
 	 */
-	function handleDeleteFile(fileId) {
-		console.log(`Delete file requested: ${fileId}`);
-		alert(
-			$_('knowledgeBases.detail.fileDeleteNotImplemented', {
-				default: 'File delete functionality not yet implemented'
+	async function handleDeleteFile(fileId) {
+		// Find the file to get its name for confirmation
+		const file = kb.files?.find((f) => f.id === fileId);
+		const fileName = file?.filename || 'this file';
+
+		const confirmed = confirm(
+			$_('knowledgeBases.detail.deleteConfirmation', {
+				values: { fileName },
+				default: `Are you sure you want to delete "${fileName}"? This action cannot be undone.`
 			})
 		);
+
+		if (!confirmed) {
+			return;
+		}
+
+		console.log(`Delete file requested: ${fileId}`);
+		deletingFileId = fileId;
+		deleteError = '';
+		deleteSuccess = false;
+
+		try {
+			await deleteFileFromKnowledgeBase(kbId, fileId);
+			console.log('File deleted successfully');
+
+			// Remove the file from the local state to update the UI immediately
+			if (kb.files) {
+				kb.files = kb.files.filter((f) => f.id !== fileId);
+			}
+
+			deleteSuccess = true;
+			setTimeout(() => {
+				deleteSuccess = false;
+			}, 5000); // Hide success message after 5 seconds
+		} catch (/** @type {any} */ err) {
+			console.error('Error deleting file:', err);
+			deleteError = err instanceof Error ? err.message : 'Failed to delete file';
+		} finally {
+			deletingFileId = '';
+		}
 	}
 
 	// --- Ingestion Functions ---
@@ -542,6 +584,21 @@
 					<!-- Files Panel -->
 					{#if activeTab === 'files'}
 						<div>
+							{#if deleteSuccess}
+								<div class="mb-4 rounded border border-green-100 bg-green-50 p-4">
+									<div class="text-sm text-green-700">
+										{$_('knowledgeBases.detail.fileDeleteSuccess', {
+											default: 'File deleted successfully!'
+										})}
+									</div>
+								</div>
+							{/if}
+							{#if deleteError}
+								<div class="mb-4 rounded border border-red-100 bg-red-50 p-4">
+									<div class="text-sm text-red-700">{deleteError}</div>
+								</div>
+							{/if}
+
 							{#if kb.files && kb.files.length > 0}
 								<div class="overflow-x-auto">
 									<table class="min-w-full divide-y divide-gray-200">
@@ -611,9 +668,38 @@
 													<td class="px-6 py-4 text-right text-sm font-medium whitespace-nowrap">
 														<button
 															onclick={() => handleDeleteFile(file.id)}
-															class="text-red-600 hover:text-red-900"
+															class="text-red-600 hover:text-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+															disabled={deletingFileId === file.id}
 														>
-															{$_('knowledgeBases.detail.fileDeleteButton', { default: 'Delete' })}
+															{#if deletingFileId === file.id}
+																<svg
+																	class="mr-1 inline h-4 w-4 animate-spin"
+																	xmlns="http://www.w3.org/2000/svg"
+																	fill="none"
+																	viewBox="0 0 24 24"
+																>
+																	<circle
+																		class="opacity-25"
+																		cx="12"
+																		cy="12"
+																		r="10"
+																		stroke="currentColor"
+																		stroke-width="4"
+																	></circle>
+																	<path
+																		class="opacity-75"
+																		fill="currentColor"
+																		d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+																	></path>
+																</svg>
+																{$_('knowledgeBases.detail.fileDeleting', {
+																	default: 'Deleting...'
+																})}
+															{:else}
+																{$_('knowledgeBases.detail.fileDeleteButton', {
+																	default: 'Delete'
+																})}
+															{/if}
 														</button>
 													</td>
 												</tr>

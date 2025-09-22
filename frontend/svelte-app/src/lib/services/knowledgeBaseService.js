@@ -631,3 +631,80 @@ export async function runBaseIngestionPlugin(kbId, pluginName, pluginParams = {}
 		throw new Error(errorMessage);
 	}
 }
+
+/**
+ * Deletes a file from a knowledge base.
+ *
+ * @typedef {Object} DeleteFileResponse
+ * @property {string} message - Success message
+ * @property {string} knowledge_base_id - The ID of the knowledge base
+ * @property {string} file_id - The ID of the deleted file
+ *
+ * @param {string} kbId - The ID of the knowledge base
+ * @param {string} fileId - The ID of the file to delete
+ * @returns {Promise<DeleteFileResponse>} A promise that resolves to the delete response
+ * @throws {Error} If the request fails or the user is not authenticated
+ */
+export async function deleteFileFromKnowledgeBase(kbId, fileId) {
+	if (!browser) {
+		throw new Error('Knowledge base operations are only available in the browser.');
+	}
+
+	const token = localStorage.getItem('userToken');
+	if (!token) {
+		throw new Error('User not authenticated.');
+	}
+
+	const url = getApiUrl(`/knowledgebases/kb/${kbId}/files/${fileId}`);
+	console.log(`Deleting file ${fileId} from knowledge base ${kbId}`);
+
+	try {
+		const response = await axios.delete(url, {
+			headers: {
+				Authorization: `Bearer ${token}`
+			}
+		});
+
+		console.log('File delete response:', response.data);
+
+		// Check for KB server offline response
+		if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
+			throw new Error('Knowledge Base server offline. Please try again later.');
+		}
+
+		// Validate the response structure
+		if (response.data && (response.data.message || response.data.status === 'success')) {
+			return response.data;
+		} else {
+			console.error('Unexpected response structure for file deletion:', response.data);
+			const detail =
+				response.data?.detail || response.data?.message || JSON.stringify(response.data);
+			throw new Error(`Failed to delete file: Invalid response format. Received: ${detail}`);
+		}
+	} catch (error) {
+		console.error('Error deleting file from knowledge base:', error);
+
+		let errorMessage = 'Failed to delete file.';
+		if (axios.isAxiosError(error)) {
+			console.error('Axios Error Response Data:', error.response?.data);
+
+			// Check for specific error cases
+			if (error.response?.data?.kb_server_available === false) {
+				errorMessage = 'Knowledge Base server offline. Please try again later.';
+			} else if (error.response?.status === 404) {
+				errorMessage = 'File not found in knowledge base.';
+			} else if (error.response?.status === 403) {
+				errorMessage = "You don't have permission to delete files from this knowledge base.";
+			} else if (error.response) {
+				errorMessage =
+					error.response.data?.detail ||
+					error.response.data?.message ||
+					`Request failed with status ${error.response.status}`;
+			}
+		} else if (error instanceof Error) {
+			errorMessage = error.message;
+		}
+
+		throw new Error(errorMessage);
+	}
+}

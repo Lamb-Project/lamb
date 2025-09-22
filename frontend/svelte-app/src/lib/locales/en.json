@@ -389,6 +389,21 @@
 			"viewButton": "View",
 			"editButton": "Edit",
 			"deleteButton": "Delete"
+		},
+		"detail": {
+			"filesTab": "Files",
+			"ingestTab": "Ingest Content",
+			"queryTab": "Query",
+			"fileNameColumn": "File Name",
+			"fileSizeColumn": "Size",
+			"fileTypeColumn": "Type",
+			"fileActionsColumn": "Actions",
+			"fileDeleteButton": "Delete",
+			"fileDeleting": "Deleting...",
+			"fileDeleteSuccess": "File deleted successfully!",
+			"deleteConfirmation": "Are you sure you want to delete \"{fileName}\"? This action cannot be undone.",
+			"noFiles": "No files have been uploaded to this knowledge base.",
+			"noData": "No knowledge base data available."
 		}
 	},
 	"buttons": {
