@@ -1,15 +1,16 @@
-### Docker Compose for the four terminal services
+### Docker Compose stack overview
 
 1. Make sure that the `.env` files have the proper API keys. Some variables will be overridden by Docker Compose.
 -   `./backend/.env` (you have a sample in `./backend/.env.example`)
 -   `./lamb-kb-server-stable/.env`
 
-The `docker-compose.yaml` file will set up 4 containers:
+The `docker-compose.yaml` file now sets up five containers:
 
 - Open WebUI API (port 8080)
 - LAMB KB server (port 9090)
 - LAMB Backend (port 9099)
 - Frontend Svelte dev server (port 5173)
+- Caddy reverse proxy terminating TLS on ports 80/443 and serving the built frontend
 
 The Docker setup uses bind mounts to the project directory at `/opt/lamb` with container-internal networking between services. You may adapt the file to your DNS configuration for production servers.
 
@@ -23,14 +24,20 @@ The Docker setup uses bind mounts to the project directory at `/opt/lamb` with c
   cp /opt/lamb/frontend/svelte-app/static/config.js
   ```
 
+- Build the frontend (runs automatically via the `frontend-build` one-shot service when you start the stack):
+  - If you need to trigger it manually: `docker compose run --rm frontend-build`
 - Start all services:
   - `docker compose up -d`
-- Open:
-
-  - Frontend: `http://localhost:5173`
-  - Backend docs: `http://localhost:9099/docs`
-  - KB docs: `http://localhost:9090/docs`
-  - Open WebUI health: `http://localhost:8080/health`
+- Open via the reverse proxy once DNS is configured:
+  - App: `https://lamb.ikasten.io`
+  - Backend docs: `https://lamb.ikasten.io/api/docs`
+  - KB docs: `https://lamb.ikasten.io/kb/docs`
+  - Open WebUI: `https://lamb.ikasten.io/openwebui`
+- Direct container ports remain published for debugging:
+  - Frontend dev server: `http://localhost:5173`
+  - Backend API: `http://localhost:9099/docs`
+  - KB server: `http://localhost:9090/docs`
+  - Open WebUI backend health: `http://localhost:8080/health`
 
 - Stop:
 

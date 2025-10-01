@@ -1,0 +1,29 @@
+{
+    email admin@ikasten.io
+}
+
+lamb.ikasten.io {
+    encode gzip
+
+    handle /creator/* {
+        reverse_proxy backend:9099
+    }
+
+    handle /api/* {
+        reverse_proxy backend:9099
+    }
+
+    handle /kb/* {
+        reverse_proxy kb:9090
+    }
+
+    handle /openwebui/* {
+        reverse_proxy openwebui:8080
+    }
+
+    handle {
+        root * /var/www/frontend
+        try_files {path} /index.html
+        file_server
+    }
+}

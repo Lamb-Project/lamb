@@ -108,6 +108,34 @@ services:
       npm install; \
       npm run dev -- --host 0.0.0.0"
 
+  caddy:
+    image: caddy:2.8
+    container_name: lamb-caddy
+    restart: unless-stopped
+    environment:
+      - LAMB_PROJECT_PATH=${LAMB_PROJECT_PATH}
+    volumes:
+      - ${LAMB_PROJECT_PATH}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${LAMB_PROJECT_PATH}/frontend/build:/var/www/frontend:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_started
+      kb:
+        condition: service_started
+      openwebui:
+        condition: service_started
+      frontend-build:
+        condition: service_completed_successfully
+
 networks:
   default:
     name: lamb
+
+volumes:
+  caddy_data:
+  caddy_config:
