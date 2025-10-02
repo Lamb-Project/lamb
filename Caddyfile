@@ -17,8 +17,10 @@ lamb.ikasten.io {
         reverse_proxy kb:9090
     }
 
-    handle /openwebui/* {
-        reverse_proxy openwebui:8080
+    # Legacy path redirect to new subdomain
+    @oldowi path /openwebui/*
+    handle @oldowi {
+        redir https://owi.lamb.ikasten.io{uri} 301
     }
 
     handle {
@@ -26,4 +28,9 @@ lamb.ikasten.io {
         try_files {path} /index.html
         file_server
     }
+}
+
+owi.lamb.ikasten.io {
+    encode gzip
+    reverse_proxy openwebui:8080
 }
