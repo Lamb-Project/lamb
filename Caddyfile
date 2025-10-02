@@ -13,6 +13,10 @@ lamb.ikasten.io {
         reverse_proxy backend:9099
     }
 
+    handle /lamb/* {
+        reverse_proxy backend:9099
+    }
+
     handle /kb/* {
         reverse_proxy kb:9090
     }
