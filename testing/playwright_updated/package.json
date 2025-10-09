@@ -1,0 +1,14 @@
+{
+  "name": "lamb-playwright-tests-updated",
+  "version": "1.0.0",
+  "description": "Updated Playwright tests for LAMB application with organization and LLM management",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "install-browsers": "playwright install"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
