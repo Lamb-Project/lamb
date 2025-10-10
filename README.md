@@ -83,6 +83,8 @@ For the easiest setup experience, we recommend using Docker Compose to run all L
 
 📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
 
+> **⚡ Performance Tip**: LAMB uses Docker BuildKit cache for faster builds. Docker 23.0+ enables this automatically. For older versions, see [Docker BuildKit Cache Guide](DOCKER_BUILDKIT_CACHE.md) for setup instructions and benefits.
+
 ### Alternative: Manual Installation
 
 For development or custom deployments:
