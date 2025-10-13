@@ -412,7 +412,43 @@ class LambDatabaseManager:
                     logging.info("Successfully added user_type column and index")
                 else:
                     logging.debug("user_type column already exists in Creator_users table")
-                    
+
+                # Migration 2: Create rubrics table if it doesn't exist
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}rubrics'")
+                rubrics_table_exists = cursor.fetchone()
+
+                if not rubrics_table_exists:
+                    logging.info("Creating rubrics table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}rubrics (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            rubric_id TEXT UNIQUE NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            owner_email TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            description TEXT,
+                            rubric_data JSON NOT NULL,
+                            is_public BOOLEAN DEFAULT FALSE,
+                            is_showcase BOOLEAN DEFAULT FALSE,
+                            parent_rubric_id TEXT,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                            FOREIGN KEY (parent_rubric_id) REFERENCES {self.table_prefix}rubrics(rubric_id) ON DELETE SET NULL
+                        )
+                    """)
+
+                    # Create indexes for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_owner ON {self.table_prefix}rubrics(owner_email)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_org ON {self.table_prefix}rubrics(organization_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_rubric_id ON {self.table_prefix}rubrics(rubric_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_public ON {self.table_prefix}rubrics(is_public)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_showcase ON {self.table_prefix}rubrics(is_showcase)")
+
+                    logging.info("Successfully created rubrics table and indexes")
+                else:
+                    logging.debug("rubrics table already exists")
+
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
         finally:

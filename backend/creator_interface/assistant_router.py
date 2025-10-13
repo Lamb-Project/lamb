@@ -10,6 +10,8 @@ from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.owi_bridge.owi_model import OWIModel
 from creator_interface.openai_connect import OpenAIConnector
 from lamb.database_manager import LambDatabaseManager
+from lamb.assistant_router import update_assistant as core_update_assistant, get_assistant_with_publication as core_get_assistant_with_publication, soft_delete_assistant as core_soft_delete_assistant
+from lamb.organization_router import get_organization_assistant_defaults as core_get_assistant_defaults, update_organization_assistant_defaults as core_update_assistant_defaults
 from typing import Optional, List, Dict, Any, Tuple, Union
 import logging
 import re
@@ -991,7 +993,7 @@ Example Error Response:
 })
 async def update_assistant_proxy(assistant_id: int, request: Request):
     """
-    Proxy endpoint that forwards assistant update requests to the lamb assistant router
+    Update assistant using direct function call to core assistant router
     """
     logger.info(f"Received update request for assistant ID: {assistant_id}")
     try:
@@ -1017,49 +1019,26 @@ async def update_assistant_proxy(assistant_id: int, request: Request):
             raise HTTPException(status_code=400, detail=error)
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 
+        # Create a mock request object with the prepared body
+        from fastapi import Request as FastAPIRequest
+        from unittest.mock import Mock
+        import json
 
-        # Prepare headers for the forwarded request
-        api_token = LAMB_BEARER_TOKEN
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
+        # Create a mock request with the JSON body
+        mock_request = Mock()
+        mock_request.json = Mock(return_value=new_body)
+
+        logger.info(f"Calling core_update_assistant for assistant {assistant_id}")
+        # Call the core update function directly
+        result = await core_update_assistant(assistant_id, mock_request, creator_user.get('email'))
+
+        logger.info(f"Successfully updated assistant {assistant_id} via direct call.")
+        # Construct the response according to the AssistantUpdateResponse model
+        return {
+            "assistant_id": assistant_id,
+            "message": result.get("message", "Assistant updated successfully")
         }
 
-        # Forward the request to update the assistant
-        async with httpx.AsyncClient() as client:
-            target_url = f"{LAMB_HOST}/lamb/v1/assistant/update_assistant/{assistant_id}"
-            logger.info(f"Forwarding update request for assistant {assistant_id} to {target_url}")
-            response = await client.put(
-                target_url,
-                json=new_body,
-                headers=headers
-            )
-
-            logger.info(f"Core API response status for update assistant {assistant_id}: {response.status_code}")
-            response_text = response.text # Read response text once
-            logger.debug(f"Core API response body for update assistant {assistant_id}: {response_text}")
-
-
-            if response.status_code != 200:
-                logger.error(f"Failed to update assistant {assistant_id} in core API. Status: {response.status_code}, Detail: {response_text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Failed to update assistant: {response_text}"
-                )
-
-            logger.info(f"Successfully updated assistant {assistant_id} in core API. Constructing response.")
-            # Parse the successful response from the core API
-            core_response_data = response.json()
-            # Construct the response according to the AssistantUpdateResponse model
-            return {
-                "assistant_id": assistant_id,
-                "message": core_response_data.get("message", "Assistant updated successfully") # Use message from core API
-            }
-
-    except httpx.RequestError as e:
-        logger.error(f"HTTPX error forwarding update request for assistant {assistant_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Error forwarding request: {str(e)}")
     except HTTPException as he:
         # Log specific HTTP exceptions raised within the proxy logic
         logger.error(f"HTTPException during update for assistant {assistant_id}: Status={he.status_code}, Detail={he.detail}")
@@ -1129,81 +1108,34 @@ async def delete_assistant_proxy(assistant_id: int, request: Request):
             )
         logger.info(f"User {creator_user.get('email')} attempting to soft delete assistant {assistant_id}.")
 
-        # Prepare headers for core API calls
-        api_token = LAMB_BEARER_TOKEN
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
-        }
-
-        # 1. Get assistant details to verify ownership
-        async with httpx.AsyncClient() as client:
-            get_url = f"{LAMB_HOST}/lamb/v1/assistant/get_assistant_with_publication/{assistant_id}"
-            logger.info(f"Fetching assistant {assistant_id} details from {get_url} for ownership check.")
-            get_response = await client.get(get_url, headers=headers)
-
-            if get_response.status_code == 404:
-                logger.warning(f"Assistant {assistant_id} not found during delete pre-check.")
-                raise HTTPException(
-                    status_code=404,
-                    detail="Assistant not found"
-                )
-            elif not get_response.is_success:
-                error_text = get_response.text
-                logger.error(f"Error fetching assistant {assistant_id} details: {get_response.status_code} - {error_text}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to verify assistant details: {error_text}"
-                )
-
-            response_data = get_response.json()
-            if 'assistant' not in response_data or not isinstance(response_data['assistant'], dict):
-                 logger.error(f"Core API response for assistant {assistant_id} missing 'assistant' key. Data: {response_data}")
-                 raise HTTPException(
-                    status_code=500,
-                    detail="Received unexpected data format from core assistant service during verification."
-                 )
-            assistant_data = response_data['assistant']
-
-            # 2. Verify ownership or admin role
-            is_owner = assistant_data.get('owner') == creator_user['email']
-            is_admin = is_admin_user(creator_user) # Check if the user is admin
-
-            if not is_owner and not is_admin:
-                logger.warning(f"Permission denied: User {creator_user['email']} (Admin: {is_admin}) attempted to delete assistant {assistant_id} owned by {assistant_data.get('owner')}")
-                raise HTTPException(
-                    status_code=403,
-                    detail="User does not have permission to delete this assistant"
-                )
-            logger.info(f"User {creator_user['email']} authorized to delete assistant {assistant_id} (Is Owner: {is_owner}, Is Admin: {is_admin}).")
-
-            # 3. Forward the soft delete request to the core API
-            delete_url = f"{LAMB_HOST}/lamb/v1/assistant/soft_delete_assistant/{assistant_id}"
-            logger.info(f"Forwarding soft delete request for assistant {assistant_id} to {delete_url}")
-            response = await client.delete(
-                delete_url,
-                headers=headers
+        # 1. Get assistant details to verify ownership using direct database call
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            logger.warning(f"Assistant {assistant_id} not found during delete pre-check.")
+            raise HTTPException(
+                status_code=404,
+                detail="Assistant not found"
             )
 
-            logger.info(f"Core API response status for soft delete assistant {assistant_id}: {response.status_code}")
-            response_text = response.text # Read response text once
-            logger.debug(f"Core API response body for soft delete assistant {assistant_id}: {response_text}")
+        # 2. Verify ownership or admin role
+        is_owner = assistant_data.get('owner') == creator_user['email']
+        is_admin = is_admin_user(creator_user) # Check if the user is admin
 
-            if not response.is_success:
-                logger.error(f"Failed to soft delete assistant {assistant_id} in core API. Status: {response.status_code}, Detail: {response_text}")
-                # Attempt to parse detail from JSON response
-                try:
-                    error_detail = response.json().get('detail', response_text)
-                except ValueError:
-                    error_detail = response_text
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Failed to soft delete assistant: {error_detail}"
-                )
+        if not is_owner and not is_admin:
+            logger.warning(f"Permission denied: User {creator_user['email']} (Admin: {is_admin}) attempted to delete assistant {assistant_id} owned by {assistant_data.get('owner')}")
+            raise HTTPException(
+                status_code=403,
+                detail="User does not have permission to delete this assistant"
+            )
+        logger.info(f"User {creator_user['email']} authorized to delete assistant {assistant_id} (Is Owner: {is_owner}, Is Admin: {is_admin}).")
 
-            logger.info(f"Successfully soft deleted assistant {assistant_id} in core API. Constructing response.")
-            # Return the success message from the core API
-            return response.json()
+        # 3. Call the core soft delete function directly
+        logger.info(f"Calling core_soft_delete_assistant for assistant {assistant_id}")
+        result = await core_soft_delete_assistant(assistant_id, creator_user.get('email'))
+
+        logger.info(f"Successfully soft deleted assistant {assistant_id} via direct call.")
+        # Return the success message
+        return result
 
     except httpx.RequestError as e:
         logger.error(f"HTTPX error forwarding delete request for assistant {assistant_id}: {str(e)}")
@@ -1496,53 +1428,38 @@ async def export_assistant_proxy(assistant_id: int, request: Request):
         if not creator_user:
             raise HTTPException(status_code=401, detail="Invalid authentication")
 
-        # 2. Prepare Headers for Core API
-        api_token = LAMB_BEARER_TOKEN
-        headers = {"Authorization": f"Bearer {api_token}"}
+        # 2. Fetch Assistant Data using direct function call
+        logger.info(f"Fetching assistant {assistant_id} details via direct call for export.")
+        result = await core_get_assistant_with_publication(assistant_id, creator_user.get('email'))
 
-        # 3. Fetch Assistant Data from Core API
-        async with httpx.AsyncClient() as client:
-            core_api_url = f"{LAMB_HOST}/lamb/v1/assistant/get_assistant_with_publication/{assistant_id}"
-            logger.info(f"Fetching assistant {assistant_id} details from {core_api_url} for export.")
-            response = await client.get(core_api_url, headers=headers)
+        # Handle core function errors
+        if not result or 'assistant' not in result:
+            logger.warning(f"Assistant {assistant_id} not found during export.")
+            raise HTTPException(status_code=404, detail="Assistant not found")
 
-            # Handle Core API Errors
-            if response.status_code == 404:
-                logger.warning(f"Assistant {assistant_id} not found in core API during export.")
-                raise HTTPException(status_code=404, detail="Assistant not found")
-            elif not response.is_success:
-                error_text = response.text
-                logger.error(f"Error fetching assistant {assistant_id} details: {response.status_code} - {error_text}")
-                raise HTTPException(status_code=500, detail=f"Failed to fetch assistant details: {error_text}")
+        assistant_data = result['assistant']
 
-            # Extract Assistant Data
-            response_data = response.json()
-            if 'assistant' not in response_data or not isinstance(response_data['assistant'], dict):
-                logger.error(f"Core API response for assistant {assistant_id} missing 'assistant' key. Data: {response_data}")
-                raise HTTPException(status_code=500, detail="Received unexpected data format from core service.")
-            assistant_data = response_data['assistant']
+        # 4. Verify Ownership
+        if assistant_data.get('owner') != creator_user['email']:
+            logger.warning(f"Access denied: User {creator_user['email']} attempted export for assistant {assistant_id} owned by {assistant_data.get('owner')}")
+            raise HTTPException(status_code=404, detail="Assistant not found") # Treat as not found for security
 
-            # 4. Verify Ownership
-            if assistant_data.get('owner') != creator_user['email']:
-                logger.warning(f"Access denied: User {creator_user['email']} attempted export for assistant {assistant_id} owned by {assistant_data.get('owner')}")
-                raise HTTPException(status_code=404, detail="Assistant not found") # Treat as not found for security
+        # 5. Prepare Filename
+        raw_name = assistant_data.get('name', 'export').replace(f"{creator_user['id']}_", "") # Remove prefix for filename
+        sanitized_name = sanitize_filename(raw_name)
+        filename = f"{sanitized_name}.json" if sanitized_name else "assistant_export.json"
 
-            # 5. Prepare Filename
-            raw_name = assistant_data.get('name', 'export').replace(f"{creator_user['id']}_", "") # Remove prefix for filename
-            sanitized_name = sanitize_filename(raw_name)
-            filename = f"{sanitized_name}.json" if sanitized_name else "assistant_export.json"
-
-            # 6. Return JSONResponse with Headers
-            logger.info(f"Exporting assistant {assistant_id} data as '{filename}'")
-            # Pretty print the JSON content
-            pretty_json_content = json.dumps(assistant_data, indent=4)
-            return JSONResponse(
-                content=json.loads(pretty_json_content), # Convert back to dict/list for JSONResponse
-                media_type="application/json",
-                headers={
-                    'Content-Disposition': f'attachment; filename="{filename}"'
-                }
-            )
+        # 6. Return JSONResponse with Headers
+        logger.info(f"Exporting assistant {assistant_id} data as '{filename}'")
+        # Pretty print the JSON content
+        pretty_json_content = json.dumps(assistant_data, indent=4)
+        return JSONResponse(
+            content=json.loads(pretty_json_content), # Convert back to dict/list for JSONResponse
+            media_type="application/json",
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
 
     except httpx.RequestError as e:
         logger.error(f"HTTPX error during export request for assistant {assistant_id}: {str(e)}")
@@ -1749,24 +1666,11 @@ async def get_assistant_defaults_for_current_user(request: Request):
                     org_slug = organizations[0]['slug']
                     logger.debug(f"Using first organization from roles: {org_slug}")
 
-        # Forward to the org-scoped defaults endpoint
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{org_slug}/assistant-defaults",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to get assistant defaults: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Failed to retrieve assistant defaults: {response.text}"
-                )
-            
-            return response.json()
+        # Call the core organization assistant defaults function directly
+        logger.info(f"Getting assistant defaults for organization {org_slug} via direct call")
+        result = await core_get_assistant_defaults(org_slug)
+
+        return result
 
     except HTTPException:
         raise
@@ -1784,28 +1688,11 @@ async def get_assistant_defaults_for_current_user(request: Request):
 )
 async def update_organization_assistant_defaults(slug: str, request: Request):
     try:
-        # Get request body
-        body = await request.json()
-        
-        # Forward to the org-scoped defaults endpoint
-        async with httpx.AsyncClient() as client:
-            response = await client.put(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/assistant-defaults",
-                json=body,
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to update assistant defaults: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Failed to update assistant defaults: {response.text}"
-                )
-            
-            return response.json()
+        # Call the core organization assistant defaults update function directly
+        logger.info(f"Updating assistant defaults for organization {slug} via direct call")
+        result = await core_update_assistant_defaults(slug, request)
+
+        return result
 
     except HTTPException:
         raise
