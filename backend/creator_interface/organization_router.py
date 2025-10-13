@@ -11,10 +11,23 @@ import httpx
 import logging
 import json
 import time
+from datetime import datetime
 from .assistant_router import get_creator_user_from_token, is_admin_user
 import config
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
+from lamb.organization_router import (
+    create_organization as core_create_organization,
+    list_organizations as core_list_organizations,
+    get_organization as core_get_organization,
+    update_organization as core_update_organization,
+    delete_organization as core_delete_organization,
+    get_organization_config as core_get_organization_config,
+    update_organization_config as core_update_organization_config,
+    get_organization_usage as core_get_organization_usage,
+    export_organization as core_export_organization,
+    sync_system_organization as core_sync_organizations
+)
 
 # Initialize router
 router = APIRouter()
@@ -362,30 +375,10 @@ async def list_organizations(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            url = f"{PIPELINES_HOST}/lamb/v1/organizations"
-            params = {}
-            if status:
-                params["status"] = status
-                
-            response = await client.get(
-                url,
-                params=params,
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to fetch organizations: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Failed to fetch organizations: {response.text}"
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Listing organizations with status filter: {status}")
+        organizations = db_manager.list_organizations(status=status)
+        return organizations
             
     except HTTPException:
         raise
@@ -454,25 +447,27 @@ async def create_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{PIPELINES_HOST}/lamb/v1/organizations",
-                json=org_data.dict(),
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code not in [200, 201]:
-                logger.error(f"Failed to create organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to create organization")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Creating organization: {org_data.slug}")
+
+        # Check if slug already exists
+        existing = db_manager.get_organization_by_slug(org_data.slug)
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Organization with slug '{org_data.slug}' already exists")
+
+        # Create organization
+        org_id = db_manager.create_organization(
+            slug=org_data.slug,
+            name=org_data.name,
+            config=org_data.config
+        )
+
+        if not org_id:
+            raise HTTPException(status_code=500, detail="Failed to create organization")
+
+        # Get created organization
+        org = db_manager.get_organization_by_id(org_id)
+        return org
             
     except HTTPException:
         raise
@@ -657,24 +652,13 @@ async def get_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to get organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", f"Organization '{slug}' not found")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Getting organization by slug: {slug}")
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        return org
             
     except HTTPException:
         raise
@@ -733,28 +717,33 @@ async def update_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            # Only send non-None fields
-            update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
-            
-            response = await client.put(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}",
-                json=update_dict,
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to update organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to update organization")
-                )
-            
-            return response.json()
+        # Call database manager directly (similar to core function)
+        logger.info(f"Updating organization: {slug}")
+
+        # Get organization
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        # Check if it's a system organization
+        if org['is_system'] and update_data.status:
+            raise HTTPException(status_code=400, detail="Cannot change status of system organization")
+
+        # Update organization (only send non-None fields)
+        update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
+        success = db_manager.update_organization(
+            org_id=org['id'],
+            name=update_dict.get('name'),
+            status=update_dict.get('status'),
+            config=update_dict.get('config')
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update organization")
+
+        # Get updated organization
+        updated_org = db_manager.get_organization_by_id(org['id'])
+        return updated_org
             
     except HTTPException:
         raise
@@ -799,24 +788,24 @@ async def delete_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to delete organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to delete organization")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Deleting organization: {slug}")
+
+        # Get organization
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        # Check if it's a system organization
+        if org['is_system']:
+            raise HTTPException(status_code=400, detail="Cannot delete system organization")
+
+        # Delete organization
+        success = db_manager.delete_organization(org['id'])
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete organization")
+
+        return {"message": f"Organization '{slug}' deleted successfully"}
             
     except HTTPException:
         raise
@@ -882,24 +871,13 @@ async def get_organization_config(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/config",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to get organization config: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to get organization configuration")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Getting organization config for: {slug}")
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        return org['config']
             
     except HTTPException:
         raise
@@ -963,25 +941,20 @@ async def update_organization_config(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.put(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/config",
-                json=config_data,
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to update organization config: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to update organization configuration")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Updating organization config for: {slug}")
+
+        # Get organization
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        # Update config
+        success = db_manager.update_organization_config(org['id'], config_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update configuration")
+
+        return {"message": "Configuration updated successfully", "config": config_data}
             
     except HTTPException:
         raise
@@ -1042,24 +1015,27 @@ async def get_organization_usage(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/usage",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to get organization usage: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to get organization usage")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Getting organization usage for: {slug}")
+
+        # Get organization
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        # Get usage from config
+        usage_limits = org['config'].get('limits', {}).get('usage', {})
+        current_usage = org['config'].get('limits', {}).get('current_usage', {})
+
+        return {
+            "limits": usage_limits,
+            "current": current_usage,
+            "organization": {
+                "id": org['id'],
+                "slug": org['slug'],
+                "name": org['name']
+            }
+        }
             
     except HTTPException:
         raise
@@ -1114,24 +1090,32 @@ async def export_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/export",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to export organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to export organization")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info(f"Exporting organization: {slug}")
+
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+
+        # Get user and assistant counts
+        # TODO: Implement counting logic
+
+        export_data = {
+            "export_version": "1.0",
+            "export_date": datetime.now().isoformat(),
+            "organization": {
+                "slug": org['slug'],
+                "name": org['name'],
+                "config": org['config']
+            },
+            "statistics": {
+                "users_count": 0,  # TODO: Get actual count
+                "assistants_count": 0,  # TODO: Get actual count
+                "collections_count": 0  # TODO: Get actual count
+            }
+        }
+
+        return export_data
             
     except HTTPException:
         raise
@@ -1180,24 +1164,24 @@ async def sync_system_organization(
     try:
         await verify_admin_access(request)
         
-        # Forward request to core organization router
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/system/sync",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Failed to sync system organization: {response.status_code} {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=response.json().get("detail", "Failed to sync system organization")
-                )
-            
-            return response.json()
+        # Call database manager directly (same as core function)
+        logger.info("Syncing system organization with environment variables")
+
+        # Get system organization
+        system_org = db_manager.get_organization_by_slug("lamb")
+        if not system_org:
+            raise HTTPException(status_code=404, detail="System organization not found")
+
+        # Sync with environment
+        db_manager.sync_system_org_with_env(system_org['id'])
+
+        # Get updated organization
+        updated_org = db_manager.get_organization_by_id(system_org['id'])
+
+        return {
+            "message": "System organization synced successfully",
+            "organization": updated_org
+        }
             
     except HTTPException:
         raise
