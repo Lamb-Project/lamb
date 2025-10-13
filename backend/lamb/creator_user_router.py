@@ -230,3 +230,24 @@ async def list_creator_users(
             detail=str(e)
         )
 
+
+class CreatorUserDeleteRequest(BaseModel):
+    user_id: int
+
+@router.delete("/delete/{user_id}")
+async def delete_creator_user(
+    user_id: int,
+    token: str = Depends(verify_api_key)
+):
+    """
+    Permanently delete a creator user by ID
+    """
+    try:
+        deleted = db_manager.delete_creator_user(user_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="User not found or could not be deleted")
+        return {"success": True, "message": f"User {user_id} deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting creator user: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

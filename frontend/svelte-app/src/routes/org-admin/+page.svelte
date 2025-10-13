@@ -6,6 +6,7 @@
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
     import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
+    import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -1423,6 +1424,16 @@
                                                         </svg>
                                                     {/if}
                                                 </button>
+                                                <button
+                                                    class="text-red-600 hover:text-red-800"
+                                                    title="Delete User"
+                                                    aria-label="Delete User"
+                                                    onclick={() => openDeleteUserModal(user)}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
                                             </td>
                                         </tr>
                                     {/each}
@@ -1911,17 +1922,6 @@
 
                         <!-- Assistant Defaults (Organization-Scoped) -->
                         <div class="bg-white overflow-hidden shadow rounded-lg mt-6">
-                            <div class="px-4 py-5 sm:p-6">
-                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Assistant Defaults</h3>
-                                <p class="text-sm text-gray-600 mb-4">These values seed the Create/Edit Assistant form for users in this organization. Edit as raw JSON to add or change fields dynamically.</p>
-
-                                {#if assistantDefaultsError}
-                                    <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                        <span class="block sm:inline">{assistantDefaultsError}</span>
-                                    </div>
-                                {/if}
-
-                                {#if assistantDefaultsSuccess}
                                     <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
                                         <span class="block sm:inline">Assistant defaults saved successfully.</span>
                                     </div>

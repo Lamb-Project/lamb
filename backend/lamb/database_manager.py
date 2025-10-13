@@ -2772,3 +2772,28 @@ class LambDatabaseManager:
             del config[key]
             return self.update_config(config)
         return False
+
+    def delete_creator_user(self, user_id: int) -> bool:
+        """
+        Permanently delete a creator user by ID
+        Args:
+            user_id (int): User ID to delete
+        Returns:
+            bool: True if deleted, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Could not establish database connection")
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}Creator_users WHERE id = ?", (user_id,))
+                deleted_count = cursor.rowcount
+                connection.commit()
+                return deleted_count > 0
+        except Exception as e:
+            logging.error(f"Error deleting creator user {user_id}: {e}")
+            return False
+        finally:
+            connection.close()
