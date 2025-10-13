@@ -3,6 +3,7 @@ import os
 from typing import Optional, Dict, Any
 import config
 from lamb.database_manager import LambDatabaseManager
+from lamb.creator_user_router import create_creator_user as core_create_creator_user, verify_creator_user as core_verify_creator_user, list_creator_users as core_list_creator_users
 
 
 class UserCreatorManager:

@@ -62,6 +62,10 @@ router.include_router(organization_router, prefix="/admin")
 from .learning_assistant_proxy import router as learning_assistant_proxy_router
 router.include_router(learning_assistant_proxy_router)
 
+# Include the evaluaitor router
+from .evaluaitor_router import router as evaluaitor_router
+router.include_router(evaluaitor_router, prefix="/evaluaitor")
+
 
 
 # Initialize security
@@ -358,23 +362,12 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
         users_with_roles = []
         
         for user in users:
-            # Get OWI role information for the user
+            # Get OWI role information for the user using direct OWI bridge call
             try:
-                import httpx
-                async with httpx.AsyncClient() as client:
-                    owi_response = await client.get(
-                        f"{user_creator.pipelines_host}/lamb/v1/OWI/users/email/{user['email']}",
-                        headers={
-                            "Authorization": f"Bearer {user_creator.pipelines_bearer_token}",
-                            "Content-Type": "application/json"
-                        }
-                    )
-                    
-                    owi_role = 'user'  # Default
-                    if owi_response.status_code == 200:
-                        owi_user = owi_response.json()
-                        owi_role = owi_user.get('role', 'user')
-            except:
+                owi_user = owi_manager.get_user_by_email(user['email'])
+                owi_role = owi_user.get('role', 'user') if owi_user else 'user'
+            except Exception as e:
+                logger.warning(f"Could not get OWI role for user {user['email']}: {e}")
                 owi_role = 'user'  # Default on error
             
             # Get enabled status from OWI auth system
