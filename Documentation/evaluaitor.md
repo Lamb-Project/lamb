@@ -435,21 +435,21 @@ The Creator Interface API acts as a proxy to the LAMB Core API, adding:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/creator/evaluaitor/rubrics` | Create rubric (proxied) |
-| GET | `/creator/evaluaitor/rubrics` | List user's rubrics (proxied) |
-| GET | `/creator/evaluaitor/rubrics/public` | List public rubrics (proxied) |
-| GET | `/creator/evaluaitor/rubrics/showcase` | List showcase templates (proxied) |
-| GET | `/creator/evaluaitor/rubrics/{rubric_id}` | Get rubric (proxied) |
-| PUT | `/creator/evaluaitor/rubrics/{rubric_id}` | Update rubric (proxied) |
-| PUT | `/creator/evaluaitor/rubrics/{rubric_id}/visibility` | Toggle visibility (proxied) |
-| PUT | `/creator/evaluaitor/rubrics/{rubric_id}/showcase` | Set showcase (admin only) |
-| DELETE | `/creator/evaluaitor/rubrics/{rubric_id}` | Delete rubric (proxied) |
-| POST | `/creator/evaluaitor/rubrics/{rubric_id}/duplicate` | Duplicate rubric (proxied) |
-| POST | `/creator/evaluaitor/rubrics/import` | Import JSON (with file upload) |
-| GET | `/creator/evaluaitor/rubrics/{rubric_id}/export/json` | Export JSON (download headers) |
-| GET | `/creator/evaluaitor/rubrics/{rubric_id}/export/markdown` | Export MD (download headers) |
-| POST | `/creator/evaluaitor/rubrics/ai-generate` | AI generate (proxied) |
-| POST | `/creator/evaluaitor/rubrics/{rubric_id}/ai-modify` | AI modify (proxied) |
+| POST | `/creator/rubrics` | Create rubric (proxied) |
+| GET | `/creator/rubrics` | List user's rubrics (proxied) |
+| GET | `/creator/rubrics/public` | List public rubrics (proxied) |
+| GET | `/creator/rubrics/showcase` | List showcase templates (proxied) |
+| GET | `/creator/rubrics/{rubric_id}` | Get rubric (proxied) |
+| PUT | `/creator/rubrics/{rubric_id}` | Update rubric (proxied) |
+| PUT | `/creator/rubrics/{rubric_id}/visibility` | Toggle visibility (proxied) |
+| PUT | `/creator/rubrics/{rubric_id}/showcase` | Set showcase (admin only) |
+| DELETE | `/creator/rubrics/{rubric_id}` | Delete rubric (proxied) |
+| POST | `/creator/rubrics/{rubric_id}/duplicate` | Duplicate rubric (proxied) |
+| POST | `/creator/rubrics/import` | Import JSON (with file upload) |
+| GET | `/creator/rubrics/{rubric_id}/export/json` | Export JSON (download headers) |
+| GET | `/creator/rubrics/{rubric_id}/export/markdown` | Export MD (download headers) |
+| POST | `/creator/rubrics/ai-generate` | AI generate (proxied) |
+| POST | `/creator/rubrics/{rubric_id}/ai-modify` | AI modify (proxied) |
 
 ### 6.3 API Request/Response Examples
 
@@ -457,7 +457,7 @@ The Creator Interface API acts as a proxy to the LAMB Core API, adding:
 
 **Request:**
 ```http
-POST /creator/evaluaitor/rubrics
+POST /creator/rubrics
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -524,7 +524,7 @@ Content-Type: application/json
 
 **Request:**
 ```http
-GET /creator/evaluaitor/rubrics?limit=10&offset=0&subject=English
+GET /creator/rubrics?limit=10&offset=0&subject=English
 Authorization: Bearer {token}
 ```
 
@@ -554,7 +554,7 @@ Authorization: Bearer {token}
 
 **Request:**
 ```http
-GET /creator/evaluaitor/rubrics/{rubric_id}/export/markdown
+GET /creator/rubrics/{rubric_id}/export/markdown
 Authorization: Bearer {token}
 ```
 
@@ -859,7 +859,7 @@ export const rubricStore = new RubricStore();
 
 **Endpoint:**
 ```http
-POST /creator/evaluaitor/rubrics/ai-generate
+POST /creator/rubrics/ai-generate
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -872,7 +872,7 @@ Content-Type: application/json
 
 **Endpoint:**
 ```http
-POST /creator/evaluaitor/rubrics/{rubric_id}/ai-modify
+POST /creator/rubrics/{rubric_id}/ai-modify
 Authorization: Bearer {token}
 Content-Type: application/json
 

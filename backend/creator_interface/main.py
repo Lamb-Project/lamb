@@ -64,7 +64,7 @@ router.include_router(learning_assistant_proxy_router)
 
 # Include the evaluaitor router
 from .evaluaitor_router import router as evaluaitor_router
-router.include_router(evaluaitor_router, prefix="/evaluaitor")
+router.include_router(evaluaitor_router, prefix="/rubrics")
 
 
 
