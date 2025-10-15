@@ -1,6 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { createEventDispatcher } from 'svelte';
+  import { _, locale } from '$lib/i18n';
+  import { getApiUrl } from '$lib/config';
   import {
     fetchRubrics,
     fetchPublicRubrics,
@@ -14,24 +17,22 @@
     toggleRubricVisibility
   } from '$lib/services/rubricService';
 
-  // State
-  let activeTab = $state('my-rubrics'); // 'my-rubrics' or 'templates'
-  let rubrics = $state([]);
-  let showcaseRubrics = $state([]);
-  let loading = $state(false);
-  let error = $state(null);
-  let searchQuery = $state('');
-  let subjectFilter = $state('');
-  let gradeLevelFilter = $state('');
-  let currentPage = $state(1);
-  let totalRubrics = $state(0);
-  let pageSize = $state(10);
+  // Default text for when i18n isn't loaded yet
+  let localeLoaded = $state(!!$locale);
 
-  // Computed filters
-  let filters = $derived({
-    subject: subjectFilter,
-    gradeLevel: gradeLevelFilter
-  });
+  // Create dispatcher for events
+  const dispatch = createEventDispatcher();
+
+  // State
+  let rubrics = $state([]);
+  let loading = $state(true);
+  let error = $state(null);
+  let currentPage = $state(1);
+  let totalItems = $state(0);
+  let itemsPerPage = $state(10);
+  let activeTab = $state('my-rubrics'); // 'my-rubrics' | 'templates'
+
+  let totalPages = $derived(Math.ceil(totalItems / itemsPerPage));
 
   // Load rubrics based on active tab
   async function loadRubrics() {
@@ -39,432 +40,421 @@
     error = null;
 
     try {
+      const offset = (currentPage - 1) * itemsPerPage;
+      let response;
+      
       if (activeTab === 'my-rubrics') {
-        const response = await fetchRubrics(pageSize, (currentPage - 1) * pageSize, filters);
-        rubrics = response.rubrics;
-        totalRubrics = response.total;
-      } else if (activeTab === 'templates') {
-        const response = await fetchPublicRubrics(pageSize, (currentPage - 1) * pageSize, filters);
-        rubrics = response.rubrics;
-        totalRubrics = response.total;
+        response = await fetchRubrics(itemsPerPage, offset, {});
+      } else {
+        response = await fetchPublicRubrics(itemsPerPage, offset, {});
       }
+      
+      rubrics = response.rubrics;
+      totalItems = response.total;
     } catch (err) {
-      error = err.message || 'Failed to load rubrics';
-      console.error('Error loading rubrics:', err);
+      error = err.message || `Failed to load ${activeTab === 'my-rubrics' ? 'rubrics' : 'templates'}`;
+      console.error(`Error loading ${activeTab}:`, err);
     } finally {
       loading = false;
     }
   }
 
-  // Load showcase rubrics (always visible)
-  async function loadShowcaseRubrics() {
-    try {
-      showcaseRubrics = await fetchShowcaseRubrics();
-    } catch (err) {
-      console.error('Error loading showcase rubrics:', err);
-    }
-  }
-
-  // Handle tab change
-  function changeTab(tab) {
-    activeTab = tab;
-    currentPage = 1; // Reset to first page
-    loadRubrics();
-  }
-
-  // Handle search
-  function handleSearch() {
-    currentPage = 1; // Reset to first page
-    loadRubrics();
-  }
-
-  // Clear filters
-  function clearFilters() {
-    searchQuery = '';
-    subjectFilter = '';
-    gradeLevelFilter = '';
-    currentPage = 1;
-    loadRubrics();
-  }
-
   // Handle rubric actions
-  async function handleCreateRubric() {
-    try {
-      // Create a basic rubric structure
-      const newRubric = {
-        title: 'New Rubric',
-        description: 'A new assessment rubric',
-        metadata: {
-          subject: 'General',
-          gradeLevel: 'K-12'
-        },
-        criteria: [
-          {
-            name: 'Content Knowledge',
-            description: 'Understanding of subject matter',
-            weight: 40,
-            levels: [
-              { score: 4, label: 'Exemplary', description: 'Demonstrates comprehensive understanding' },
-              { score: 3, label: 'Proficient', description: 'Demonstrates adequate understanding' },
-              { score: 2, label: 'Developing', description: 'Demonstrates partial understanding' },
-              { score: 1, label: 'Beginning', description: 'Demonstrates limited understanding' }
-            ]
-          }
-        ],
-        scoringType: 'points',
-        maxScore: 100
-      };
+  function handleView(rubric) {
+    goto(`/evaluaitor/${rubric.rubric_id}`);
+  }
 
-      const createdRubric = await createRubric(newRubric);
-      goto(`/evaluaitor/${createdRubric.rubricId}`);
-    } catch (err) {
-      error = err.message || 'Failed to create rubric';
+  function handleEdit(rubric) {
+    goto(`/evaluaitor/${rubric.rubric_id}?edit=true`);
+  }
+
+  function handleDelete(rubric) {
+    dispatch('delete', { id: rubric.rubric_id, title: rubric.title });
+  }
+
+  async function handleExport(rubric) {
+    try {
+      // Export both JSON and Markdown formats
+      await handleExportJSON(rubric);
+      await handleExportMarkdown(rubric);
+    } catch (error) {
+      console.error('Export failed:', error);
+      // You could show a toast notification here
     }
   }
 
-  async function handleDuplicateRubric(rubricId) {
+  async function handleExportJSON(rubric) {
     try {
-      await duplicateRubric(rubricId);
-      loadRubrics(); // Refresh the list
-    } catch (err) {
-      error = err.message || 'Failed to duplicate rubric';
+      const token = localStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const apiUrl = getApiUrl(`/rubrics/${rubric.rubric_id}/export/json`);
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export rubric as JSON');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Get filename from Content-Disposition header or create default
+      const disposition = response.headers.get('Content-Disposition');
+      const filename = disposition ?
+        disposition.split('filename=')[1]?.replace(/"/g, '') :
+        `rubric-${rubric.rubric_id}.json`;
+
+      // Trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('JSON export failed:', error);
+      throw error;
     }
   }
 
-  async function handleDeleteRubric(rubricId, title) {
-    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
-      return;
-    }
-
+  async function handleExportMarkdown(rubric) {
     try {
-      await deleteRubric(rubricId);
-      loadRubrics(); // Refresh the list
-    } catch (err) {
-      error = err.message || 'Failed to delete rubric';
+      const token = localStorage.getItem('userToken');
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const apiUrl = getApiUrl(`/rubrics/${rubric.rubric_id}/export/markdown`);
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export rubric as Markdown');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Get filename from Content-Disposition header or create default
+      const disposition = response.headers.get('Content-Disposition');
+      const filename = disposition ?
+        disposition.split('filename=')[1]?.replace(/"/g, '') :
+        `rubric-${rubric.rubric_id}.md`;
+
+      // Trigger download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('Markdown export failed:', error);
+      throw error;
     }
   }
 
-  async function handleToggleVisibility(rubricId, isPublic) {
+  async function handleToggleVisibility(rubric) {
     try {
-      await toggleRubricVisibility(rubricId, isPublic);
-      loadRubrics(); // Refresh the list
-    } catch (err) {
-      error = err.message || 'Failed to update visibility';
+      const newVisibility = !rubric.is_public;
+      console.log(`Toggling rubric ${rubric.rubric_id} visibility to ${newVisibility ? 'public' : 'private'}`);
+      
+      await toggleRubricVisibility(rubric.rubric_id, newVisibility);
+      
+      // Update local state
+      rubric.is_public = newVisibility;
+      
+      console.log(`Rubric visibility updated successfully to ${newVisibility ? 'public' : 'private'}`);
+      
+      // Refresh the list to ensure consistency
+      loadRubrics();
+    } catch (error) {
+      console.error('Error toggling visibility:', error);
+      // You could show a toast notification here
     }
   }
 
-  async function handleExportJSON(rubricId) {
+  async function handleCreateCopy(rubric) {
     try {
-      await exportRubricJSON(rubricId);
-    } catch (err) {
-      error = err.message || 'Failed to export rubric';
+      const newRubric = await duplicateRubric(rubric.rubric_id);
+      // Navigate to the new rubric for editing
+      goto(`/evaluaitor/${newRubric.rubric.rubricId}?edit=true`);
+    } catch (error) {
+      console.error('Error creating copy:', error);
+      // You could show a toast notification here
     }
   }
 
-  async function handleExportMarkdown(rubricId) {
-    try {
-      await exportRubricMarkdown(rubricId);
-    } catch (err) {
-      error = err.message || 'Failed to export rubric';
-    }
-  }
-
-  async function handleImportRubric(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      await importRubric(file);
-      loadRubrics(); // Refresh the list
-      event.target.value = ''; // Clear file input
-    } catch (err) {
-      error = err.message || 'Failed to import rubric';
-    }
-  }
-
-  // Pagination
-  function nextPage() {
-    if (currentPage * pageSize < totalRubrics) {
-      currentPage++;
+  function switchTab(tab) {
+    if (tab !== activeTab) {
+      activeTab = tab;
+      currentPage = 1; // Reset to first page
       loadRubrics();
     }
   }
 
-  function prevPage() {
+  // Pagination functions
+  function goToPreviousPage() {
     if (currentPage > 1) {
       currentPage--;
       loadRubrics();
     }
   }
 
+  function goToNextPage() {
+    if (currentPage < totalPages) {
+      currentPage++;
+      loadRubrics();
+    }
+  }
+
+  function handleRefresh() {
+    loadRubrics();
+  }
+
   // Initialize
   onMount(() => {
     loadRubrics();
-    loadShowcaseRubrics();
   });
 
-  // Reactive loading when filters change
-  $effect(() => {
-    // This will trigger when activeTab changes
-    loadRubrics();
-  });
+  // SVG Icons
+  const IconView = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`;
+  const IconEdit = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>`;
+  const IconClone = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75c-.621 0-1.125-.504-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>`;
+  const IconDelete = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>`;
+  const IconExport = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>`;
+  const IconRefresh = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
+  const IconPublic = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3s-4.5 4.03-4.5 9 2.015 9 4.5 9Z" /></svg>`;
+  const IconPrivate = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>`;
 </script>
 
-<div class="bg-white shadow rounded-lg">
-  <!-- Header -->
-  <div class="px-4 py-5 sm:p-6">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-medium text-gray-900">My Rubrics</h2>
-      <div class="flex space-x-3">
-        <button
-          onclick={handleCreateRubric}
-          disabled={loading}
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-        >
-          <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-          </svg>
-          Create New Rubric
-        </button>
-        <label class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-          <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-          </svg>
-          Import Rubric
-          <input
-            type="file"
-            accept=".json"
-            onchange={handleImportRubric}
-            class="hidden"
-          />
-        </label>
-      </div>
+<!-- Container for the list -->
+<div class="container mx-auto px-4 py-8">
+
+    <!-- Tab Navigation -->
+    <div class="border-b border-gray-200 mb-6">
+        <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+            <button
+                onclick={() => switchTab('my-rubrics')}
+                class={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'my-rubrics'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+                {localeLoaded ? $_('rubrics.tabs.myRubrics', { default: 'My Rubrics' }) : 'My Rubrics'}
+            </button>
+            <button
+                onclick={() => switchTab('templates')}
+                class={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'templates'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+                {localeLoaded ? $_('rubrics.tabs.templates', { default: 'Templates' }) : 'Templates'}
+            </button>
+        </nav>
     </div>
 
-    <!-- Tabs -->
-    <div class="border-b border-gray-200 mb-4">
-      <nav class="-mb-px flex space-x-8">
-        <button
-          onclick={() => changeTab('my-rubrics')}
-          class="py-2 px-1 border-b-2 font-medium text-sm {activeTab === 'my-rubrics' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-        >
-          My Rubrics
-        </button>
-        <button
-          onclick={() => changeTab('templates')}
-          class="py-2 px-1 border-b-2 font-medium text-sm {activeTab === 'templates' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-        >
-          Templates
-          {#if showcaseRubrics.length > 0}
-            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-              {showcaseRubrics.length} featured
-            </span>
-          {/if}
-        </button>
-      </nav>
-    </div>
-
-    <!-- Search and Filters -->
-    <div class="mb-4 flex flex-col sm:flex-row gap-4">
-      <div class="flex-1">
-        <input
-          type="text"
-          placeholder="Search rubrics..."
-          bind:value={searchQuery}
-          oninput={handleSearch}
-          class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-        />
-      </div>
-      <div class="flex gap-2">
-        <select
-          bind:value={subjectFilter}
-          onchange={handleSearch}
-          class="block border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">All Subjects</option>
-          <option value="English">English</option>
-          <option value="Math">Math</option>
-          <option value="Science">Science</option>
-          <option value="History">History</option>
-          <option value="Art">Art</option>
-          <option value="Other">Other</option>
-        </select>
-        <select
-          bind:value={gradeLevelFilter}
-          onchange={handleSearch}
-          class="block border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">All Grade Levels</option>
-          <option value="K-2">K-2</option>
-          <option value="3-5">3-5</option>
-          <option value="6-8">6-8</option>
-          <option value="9-12">9-12</option>
-          <option value="Higher Education">Higher Education</option>
-        </select>
-        <button
-          onclick={clearFilters}
-          class="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-        >
-          Clear
-        </button>
-      </div>
-    </div>
-
-    <!-- Error Message -->
-    {#if error}
-      <div class="mb-4 bg-red-50 border border-red-200 rounded-md p-4">
-        <div class="text-sm text-red-700">{error}</div>
-      </div>
-    {/if}
-
-    <!-- Loading State -->
     {#if loading}
-      <div class="text-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p class="mt-2 text-sm text-gray-600">Loading rubrics...</p>
-      </div>
+        <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('rubrics.loading', { default: 'Loading rubrics...' }) : 'Loading rubrics...'}</p>
+    {:else if error}
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">{localeLoaded ? $_('rubrics.errorTitle', { default: 'Error:' }) : 'Error:'}</strong>
+            <span class="block sm:inline">{error}</span>
+        </div>
+    {:else if rubrics.length === 0 && totalItems === 0}
+        <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('rubrics.noRubrics', { default: 'No rubrics found.' }) : 'No rubrics found.'}</p>
     {:else}
-      <!-- Rubrics Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {#each rubrics as rubric}
-          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-            <div class="flex justify-between items-start mb-2">
-              <h3 class="text-lg font-medium text-gray-900 truncate" title={rubric.title}>
-                {rubric.title}
-              </h3>
-              {#if rubric.isShowcase}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  Featured
-                </span>
-              {:else if rubric.isPublic}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Public
-                </span>
-              {/if}
-            </div>
+        <!-- Responsive Table Wrapper -->
+        <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
+                            {localeLoaded ? $_('rubrics.table.name', { default: 'Rubric Name' }) : 'Rubric Name'}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
+                            {localeLoaded ? $_('rubrics.table.description', { default: 'Description' }) : 'Description'}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
+                            {localeLoaded ? $_('rubrics.table.subject', { default: 'Subject' }) : 'Subject'}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
+                            {localeLoaded ? $_('rubrics.table.gradeLevel', { default: 'Grade Level' }) : 'Grade Level'}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
+                            {localeLoaded ? $_('rubrics.table.actions', { default: 'Actions' }) : 'Actions'}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {#each rubrics as rubric (rubric.id)}
+                        <!-- Main row with name, description, subject, grade level, actions -->
+                        <tr class="hover:bg-gray-50">
+                            <!-- Rubric Name -->
+                            <td class="px-6 py-4 whitespace-normal align-top">
+                                <button onclick={() => handleView(rubric)} class="text-sm font-medium text-brand hover:underline break-words text-left">
+                                    {rubric.title}
+                                </button>
+                                <!-- Status badge -->
+                                <div class="mt-1">
+                                    {#if rubric.is_showcase}
+                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5">
+                                            {localeLoaded ? $_('rubrics.status.showcase', { default: 'Showcase' }) : 'Showcase'}
+                                        </span>
+                                    {:else if rubric.is_public}
+                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 px-2 py-0.5">
+                                            {localeLoaded ? $_('rubrics.status.public', { default: 'Public' }) : 'Public'}
+                                        </span>
+                                    {:else}
+                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 px-2 py-0.5">
+                                            {localeLoaded ? $_('rubrics.status.private', { default: 'Private' }) : 'Private'}
+                                        </span>
+                                    {/if}
+                                </div>
+                            </td>
 
-            <p class="text-sm text-gray-600 mb-2 line-clamp-2" title={rubric.description}>
-              {rubric.description || 'No description'}
-            </p>
+                            <!-- Description with max width -->
+                            <td class="px-6 py-4 align-top">
+                                <div class="text-sm text-gray-500 break-words max-w-md">{rubric.description || (localeLoaded ? $_('rubrics.noDescription', { default: 'No description provided' }) : 'No description provided')}</div>
+                            </td>
 
-            <div class="text-xs text-gray-500 mb-3">
-              <span class="font-medium">Subject:</span> {rubric.subject || 'Not specified'} |
-              <span class="font-medium">Grade:</span> {rubric.gradeLevel || 'Not specified'}
-            </div>
+                            <!-- Subject -->
+                            <td class="px-6 py-4 align-top">
+                                <div class="text-sm text-gray-500">{rubric.subject || (localeLoaded ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}</div>
+                            </td>
 
-            <div class="text-xs text-gray-400 mb-4">
-              Modified: {new Date(rubric.updatedAt * 1000).toLocaleDateString()}
-            </div>
+                            <!-- Grade Level -->
+                            <td class="px-6 py-4 align-top">
+                                <div class="text-sm text-gray-500">{rubric.gradeLevel || (localeLoaded ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}</div>
+                            </td>
 
-            <!-- Actions -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                onclick={() => goto(`/evaluaitor/${rubric.rubricId}`)}
-                class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-              >
-                Edit
-              </button>
-
-              {#if activeTab === 'my-rubrics'}
-                <button
-                  onclick={() => handleDuplicateRubric(rubric.rubricId)}
-                  class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Duplicate
-                </button>
-
-                <button
-                  onclick={() => handleToggleVisibility(rubric.rubricId, !rubric.isPublic)}
-                  class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  {rubric.isPublic ? 'Make Private' : 'Make Public'}
-                </button>
-
-                <button
-                  onclick={() => handleExportJSON(rubric.rubricId)}
-                  class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Export JSON
-                </button>
-
-                <button
-                  onclick={() => handleExportMarkdown(rubric.rubricId)}
-                  class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Export MD
-                </button>
-
-                <button
-                  onclick={() => handleDeleteRubric(rubric.rubricId, rubric.title)}
-                  class="inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50"
-                >
-                  Delete
-                </button>
-              {:else}
-                <button
-                  onclick={() => handleDuplicateRubric(rubric.rubricId)}
-                  class="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Use as Template
-                </button>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
-
-      <!-- Empty State -->
-      {#if rubrics.length === 0}
-        <div class="text-center py-12">
-          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-          <h3 class="mt-2 text-sm font-medium text-gray-900">
-            {activeTab === 'my-rubrics' ? 'No rubrics yet' : 'No public rubrics available'}
-          </h3>
-          <p class="mt-1 text-sm text-gray-500">
-            {activeTab === 'my-rubrics' ? 'Get started by creating your first rubric.' : 'Check back later for public templates.'}
-          </p>
-          {#if activeTab === 'my-rubrics'}
-            <div class="mt-6">
-              <button
-                onclick={handleCreateRubric}
-                class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                </svg>
-                Create New Rubric
-              </button>
-            </div>
-          {/if}
+                            <!-- Actions -->
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium align-top">
+                                <div class="flex items-center space-x-1 sm:space-x-2">
+                                    <!-- View Button (always shown) -->
+                                    <button onclick={() => handleView(rubric)} title={localeLoaded ? $_('rubrics.actions.view', { default: 'View' }) : 'View'} class="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-100 transition-colors duration-150">
+                                        {@html IconView}
+                                    </button>
+                                    
+                                    {#if activeTab === 'my-rubrics'}
+                                        <!-- My Rubrics actions: Edit, Export, Toggle Visibility, Delete -->
+                                        <button onclick={() => handleEdit(rubric)} title={localeLoaded ? $_('rubrics.actions.edit', { default: 'Edit' }) : 'Edit'} class="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-100 transition-colors duration-150">
+                                            {@html IconEdit}
+                                        </button>
+                                        <button
+                                            onclick={() => handleExport(rubric)}
+                                            title={localeLoaded ? $_('rubrics.actions.export', { default: 'Export (JSON & Markdown)' }) : 'Export (JSON & Markdown)'}
+                                            class="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-100 transition-colors duration-150"
+                                        >
+                                            {@html IconExport}
+                                        </button>
+                                        <button
+                                            onclick={() => handleToggleVisibility(rubric)}
+                                            title={rubric.is_public ? (localeLoaded ? $_('rubrics.actions.makePrivate', { default: 'Make Private' }) : 'Make Private') : (localeLoaded ? $_('rubrics.actions.makePublic', { default: 'Make Public' }) : 'Make Public')}
+                                            class="text-yellow-600 hover:text-yellow-900 p-1 rounded hover:bg-yellow-100 transition-colors duration-150"
+                                        >
+                                            {#if rubric.is_public}
+                                                {@html IconPrivate}
+                                            {:else}
+                                                {@html IconPublic}
+                                            {/if}
+                                        </button>
+                                        <button
+                                            onclick={() => handleDelete(rubric)}
+                                            title={localeLoaded ? $_('rubrics.actions.delete', { default: 'Delete' }) : 'Delete'}
+                                            class="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-100 transition-colors duration-150"
+                                        >
+                                            {@html IconDelete}
+                                        </button>
+                                    {:else}
+                                        <!-- Templates actions: Export, Create Copy -->
+                                        <button
+                                            onclick={() => handleExport(rubric)}
+                                            title={localeLoaded ? $_('rubrics.actions.export', { default: 'Export (JSON & Markdown)' }) : 'Export (JSON & Markdown)'}
+                                            class="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-100 transition-colors duration-150"
+                                        >
+                                            {@html IconExport}
+                                        </button>
+                                        <button
+                                            onclick={() => handleCreateCopy(rubric)}
+                                            title={localeLoaded ? $_('rubrics.actions.createCopy', { default: 'Create Copy' }) : 'Create Copy'}
+                                            class="text-purple-600 hover:text-purple-900 p-1 rounded hover:bg-purple-100 transition-colors duration-150"
+                                        >
+                                            {@html IconClone}
+                                        </button>
+                                    {/if}
+                                </div>
+                                <div class="text-xs text-gray-400 mt-2">
+                                    {localeLoaded ? $_('rubrics.lastModified', { default: 'Modified' }) : 'Modified'}: {new Date(rubric.updated_at * 1000).toLocaleDateString()}
+                                </div>
+                                <div class="text-xs text-gray-400">ID: {rubric.rubric_id}</div>
+                            </td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
         </div>
-      {/if}
 
-      <!-- Pagination -->
-      {#if totalRubrics > pageSize}
-        <div class="mt-6 flex items-center justify-between">
-          <div class="text-sm text-gray-700">
-            Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalRubrics)} of {totalRubrics} results
-          </div>
-          <div class="flex space-x-2">
-            <button
-              onclick={prevPage}
-              disabled={currentPage === 1}
-              class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Previous
-            </button>
-            <button
-              onclick={nextPage}
-              disabled={currentPage * pageSize >= totalRubrics}
-              class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      {/if}
+        <!-- Pagination Controls -->
+        {#if totalPages > 1}
+            <!-- Centered container for all pagination elements -->
+            <div class="flex justify-center items-center mt-4 space-x-4 text-sm text-gray-700">
+                <!-- Refresh Button -->
+                <button
+                  onclick={handleRefresh}
+                  disabled={loading}
+                  title={localeLoaded ? $_('common.refresh', { default: 'Refresh' }) : 'Refresh'}
+                  class="p-1.5 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <span class:animate-spin={loading}>
+                      {@html IconRefresh}
+                    </span>
+                </button>
+
+                <!-- Page Info & Results Count -->
+                <span>
+                    {localeLoaded ? $_('pagination.page', { default: 'Page' }) : 'Page'} {currentPage} {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'} {totalPages}
+                    <span class="mx-2">|</span>
+                    {localeLoaded ? $_('pagination.resultsSimple', { default: 'Results' }) : 'Results'}
+                    <span class="font-medium text-brand">{(currentPage - 1) * itemsPerPage + 1}</span>
+                    {localeLoaded ? $_('pagination.to', { default: 'to' }) : 'to'}
+                    <span class="font-medium text-brand">{Math.min(currentPage * itemsPerPage, totalItems)}</span>
+                    {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'}
+                    <span class="font-medium text-brand">{totalItems}</span>
+                </span>
+
+                <!-- Previous Button -->
+                <button
+                  onclick={goToPreviousPage}
+                  disabled={currentPage === 1 || loading}
+                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {localeLoaded ? $_('pagination.previousShort', { default: '<' }) : '<'}
+                </button>
+
+                <!-- Next Button -->
+                <button
+                  onclick={goToNextPage}
+                  disabled={currentPage === totalPages || loading}
+                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {localeLoaded ? $_('pagination.nextShort', { default: '>' }) : '>'}
+                </button>
+            </div>
+        {/if}
     {/if}
-  </div>
 </div>

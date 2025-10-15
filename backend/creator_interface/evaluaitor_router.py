@@ -835,11 +835,11 @@ async def get_accessible_rubrics_for_assistant(
         user_email = creator_user.get('user_email')
         organization_id = creator_user.get('organization_id')
 
-        # Get database manager - we'll need direct database access for this
+        # Get rubric database manager - we'll need direct database access for this
         # Import here to avoid circular imports
-        from lamb.database_manager import LambDatabaseManager
+        from lamb.evaluaitor.rubric_database import RubricDatabaseManager
 
-        db_manager = LambDatabaseManager()
+        db_manager = RubricDatabaseManager()
 
         # Get user's own rubrics
         my_rubrics = db_manager.get_rubrics_by_owner(

@@ -44,9 +44,25 @@ class RubricStore {
    * @param {Object} rubric - The rubric data to load
    */
   loadRubric(rubric) {
-    console.log('Loading rubric into store:', rubric?.title);
     this.#rubric = JSON.parse(JSON.stringify(rubric)); // Deep copy
-    this.#history = [JSON.parse(JSON.stringify(rubric))];
+
+    // Ensure all criteria and levels have IDs
+    if (this.#rubric?.criteria) {
+      this.#rubric.criteria.forEach(criterion => {
+        if (!criterion.id) {
+          criterion.id = this.#generateId('criterion');
+        }
+        if (criterion.levels) {
+          criterion.levels.forEach(level => {
+            if (!level.id) {
+              level.id = this.#generateId('level');
+            }
+          });
+        }
+      });
+    }
+
+    this.#history = [JSON.parse(JSON.stringify(this.#rubric))];
     this.#historyIndex = 0;
     this.#error = null;
   }
@@ -218,7 +234,6 @@ class RubricStore {
    * @param {Object} newRubric - The new rubric data
    */
   replaceRubric(newRubric) {
-    console.log('Replacing rubric in store:', newRubric?.title);
     this.#rubric = JSON.parse(JSON.stringify(newRubric)); // Deep copy
     this.#history = [JSON.parse(JSON.stringify(newRubric))];
     this.#historyIndex = 0;
@@ -363,13 +378,7 @@ class RubricStore {
       errors.push('Description is required');
     }
 
-    if (!this.#rubric.metadata?.subject) {
-      errors.push('Subject is required');
-    }
-
-    if (!this.#rubric.metadata?.gradeLevel) {
-      errors.push('Grade level is required');
-    }
+    // Subject and grade level are optional - no validation needed
 
     const criteria = this.#rubric.criteria || [];
     if (criteria.length === 0) {
