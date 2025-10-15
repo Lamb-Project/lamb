@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Form, UploadFile, 
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 
-from .assistant_router import get_creator_user_from_token
+from creator_interface.assistant_router import get_creator_user_from_token
 from .user_creator import UserCreatorManager
 
 # Initialize security context for dependency injection
@@ -28,8 +28,9 @@ LAMB_BACKEND_URL = os.getenv("LAMB_BACKEND_HOST", "http://localhost:9099")
 
 
 # Dependency functions
-def get_current_creator_user(auth_header: str) -> Dict[str, Any]:
+async def get_current_creator_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
     """Get current authenticated creator user"""
+    auth_header = f"Bearer {credentials.credentials}"
     creator_user = get_creator_user_from_token(auth_header)
     if not creator_user:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -59,13 +60,14 @@ async def proxy_request(
         Response from backend
     """
     url = f"{LAMB_BACKEND_URL}{endpoint}"
+    logging.debug(f"Proxying {method} request to: {url}")
 
     # For lamb core API endpoints, pass auth_header as query parameter
     if endpoint.startswith("/lamb/"):
         if params is None:
             params = {}
         params["auth_header"] = auth_token
-        logging.error(f"Setting auth_header param: {auth_token}")
+        logging.debug(f"Setting auth_header param: {auth_token}")
         headers = {
             "Content-Type": "application/json" if not files else None
         }
@@ -75,13 +77,18 @@ async def proxy_request(
             "Content-Type": "application/json" if not files else None
         }
 
+    logging.debug(f"Final URL: {url}")
+    logging.debug(f"Headers: {headers}")
+    logging.debug(f"Params: {params}")
+    logging.debug(f"Data: {data}")
+
     # Remove None values from headers
     headers = {k: v for k, v in headers.items() if v is not None}
 
-    # Remove None values from params
+    # Remove None values from params and convert all values to strings
     if params:
-        params = {k: v for k, v in params.items() if v is not None}
-        logging.error(f"Filtered params: {params}")
+        params = {k: str(v) for k, v in params.items() if v is not None}
+        logging.debug(f"Filtered params: {params}")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -111,11 +118,17 @@ async def proxy_request(
 
         except aiohttp.ClientError as e:
             logging.error(f"Error proxying request to {url}: {e}")
-            raise HTTPException(status_code=502, detail="Backend service unavailable")
+            raise HTTPException(status_code=502, detail=f"Backend service unavailable: {str(e)}")
+        except Exception as e:
+            logging.error(f"Unexpected error proxying request to {url}: {e}")
+            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
 async def handle_response(response: aiohttp.ClientResponse) -> Any:
     """Handle response from backend"""
+    logging.debug(f"Response status: {response.status}")
+    logging.debug(f"Response headers: {response.headers}")
+    
     if response.status >= 400:
         try:
             error_data = await response.json()
@@ -123,7 +136,9 @@ async def handle_response(response: aiohttp.ClientResponse) -> Any:
             raise HTTPException(status_code=response.status, detail=error_data.get("detail", "Backend error"))
         except Exception as e:
             logging.error(f"Failed to parse backend error: {e}")
-            raise HTTPException(status_code=response.status, detail="Backend error")
+            error_text = await response.text()
+            logging.error(f"Raw error response: {error_text}")
+            raise HTTPException(status_code=response.status, detail=f"Backend error: {error_text}")
 
     content_type = response.headers.get('content-type', '')
 
@@ -143,10 +158,10 @@ async def create_rubric(
     request: Request,
     title: str = Form(...),
     description: str = Form(""),
-    subject: str = Form(...),
-    gradeLevel: str = Form(...),
+    subject: str = Form(""),
+    gradeLevel: str = Form(""),
     scoringType: str = Form("points"),
-    maxScore: float = Form(100.0),
+    maxScore: float = Form(10.0),
     criteria: str = Form(...)  # JSON string
 ):
     """
@@ -157,7 +172,7 @@ async def create_rubric(
     try:
         # Authenticate user
         auth_header = request.headers.get("Authorization")
-        logging.error(f"Auth header: {auth_header}")
+        logging.debug(f"Auth header: {auth_header}")
         creator_user = get_creator_user_from_token(auth_header)
         if not creator_user:
             raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
@@ -180,7 +195,7 @@ async def create_rubric(
 
         # Get auth token from request header
         auth_token = request.headers.get("Authorization")
-        logging.error(f"Auth token: {auth_token}")
+        logging.debug(f"Auth token: {auth_token}")
 
         # Proxy to backend
         result = await proxy_request(
@@ -316,7 +331,7 @@ async def list_public_rubrics(
 @router.get("/{rubric_id}")
 async def get_rubric(
     rubric_id: str,
-    creator_user: Dict[str, Any] = Depends(get_current_creator_user)
+    request: Request
 ):
     """
     Get a specific rubric
@@ -324,12 +339,16 @@ async def get_rubric(
     GET /creator/evaluaitor/rubrics/{rubric_id}
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        # Authenticate user
+        auth_header = request.headers.get("Authorization")
+        creator_user = get_creator_user_from_token(auth_header)
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
 
         result = await proxy_request(
             "GET",
             f"/lamb/v1/evaluaitor/rubrics/{rubric_id}",
-            auth_token
+            auth_header
         )
 
         return result
@@ -342,14 +361,14 @@ async def get_rubric(
 @router.put("/{rubric_id}")
 async def update_rubric(
     rubric_id: str,
+    request: Request,
     title: str = Form(...),
     description: str = Form(""),
-    subject: str = Form(...),
-    gradeLevel: str = Form(...),
+    subject: str = Form(""),
+    gradeLevel: str = Form(""),
     scoringType: str = Form("points"),
-    maxScore: float = Form(100.0),
-    criteria: str = Form(...),  # JSON string
-    creator_user: Dict[str, Any] = Depends(get_current_creator_user)
+    maxScore: float = Form(10.0),
+    criteria: str = Form(...)  # JSON string
 ):
     """
     Update an existing rubric
@@ -357,10 +376,31 @@ async def update_rubric(
     PUT /creator/evaluaitor/rubrics/{rubric_id}
     """
     try:
+        # Authenticate user
+        auth_header = request.headers.get("Authorization")
+        creator_user = get_creator_user_from_token(auth_header)
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+
         # Parse criteria JSON
         criteria_data = json.loads(criteria)
 
-        # Prepare request data
+        # First, get the existing rubric to preserve createdAt
+        existing_result = await proxy_request(
+            "GET",
+            f"/lamb/v1/evaluaitor/rubrics/{rubric_id}",
+            auth_header
+        )
+        
+        # Extract existing metadata
+        existing_metadata = {}
+        if existing_result and 'rubric_data' in existing_result:
+            rubric_data = existing_result['rubric_data']
+            if isinstance(rubric_data, str):
+                rubric_data = json.loads(rubric_data)
+            existing_metadata = rubric_data.get('metadata', {})
+
+        # Prepare request data, preserving createdAt
         request_data = {
             "rubricId": rubric_id,
             "title": title,
@@ -368,6 +408,7 @@ async def update_rubric(
             "metadata": {
                 "subject": subject,
                 "gradeLevel": gradeLevel,
+                "createdAt": existing_metadata.get("createdAt", datetime.now().isoformat()),
                 "modifiedAt": datetime.now().isoformat()
             },
             "scoringType": scoringType,
@@ -375,12 +416,10 @@ async def update_rubric(
             "criteria": criteria_data
         }
 
-        auth_token = request.headers.get("Authorization")
-
         result = await proxy_request(
             "PUT",
             f"/lamb/v1/evaluaitor/rubrics/{rubric_id}",
-            auth_token,
+            auth_header,
             data=request_data
         )
 
@@ -396,8 +435,8 @@ async def update_rubric(
 @router.put("/{rubric_id}/visibility")
 async def update_rubric_visibility(
     rubric_id: str,
-    is_public: bool = Form(...),
-    creator_user: Dict[str, Any] = Depends(get_current_creator_user)
+    request: Request,
+    is_public: bool = Form(...)
 ):
     """
     Update rubric visibility
@@ -405,12 +444,16 @@ async def update_rubric_visibility(
     PUT /creator/evaluaitor/rubrics/{rubric_id}/visibility
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        # Authenticate user and get original auth header
+        auth_header = request.headers.get("Authorization")
+        creator_user = get_creator_user_from_token(auth_header)
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
 
         result = await proxy_request(
             "PUT",
             f"/lamb/v1/evaluaitor/rubrics/{rubric_id}/visibility",
-            auth_token,
+            auth_header,
             data={"is_public": is_public}
         )
 
@@ -433,7 +476,7 @@ async def update_rubric_showcase(
     PUT /creator/evaluaitor/rubrics/{rubric_id}/showcase
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        auth_token = f"Bearer {creator_user.get('token', '')}"
 
         result = await proxy_request(
             "PUT",
@@ -460,7 +503,7 @@ async def delete_rubric(
     DELETE /creator/evaluaitor/rubrics/{rubric_id}
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        auth_token = f"Bearer {creator_user.get('token', '')}"
 
         result = await proxy_request(
             "DELETE",
@@ -486,7 +529,7 @@ async def duplicate_rubric(
     POST /creator/evaluaitor/rubrics/{rubric_id}/duplicate
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        auth_token = f"Bearer {creator_user.get('token', '')}"
 
         result = await proxy_request(
             "POST",
@@ -514,7 +557,7 @@ async def import_rubric(
     POST /creator/evaluaitor/rubrics/import
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        auth_token = f"Bearer {creator_user.get('token', '')}"
 
         # Read file content
         content = await file.read()
@@ -551,8 +594,7 @@ async def export_rubric_json(
     GET /creator/evaluaitor/rubrics/{rubric_id}/export/json
     """
     try:
-        auth_token = request.headers.get("Authorization")
-
+        auth_token = f"Bearer {creator_user.get('token', '')}"
         # Get the response from backend
         async with aiohttp.ClientSession() as session:
             url = f"{LAMB_BACKEND_URL}/lamb/v1/evaluaitor/rubrics/{rubric_id}/export/json"
@@ -597,8 +639,7 @@ async def export_rubric_markdown(
     GET /creator/evaluaitor/rubrics/{rubric_id}/export/markdown
     """
     try:
-        auth_token = request.headers.get("Authorization")
-
+        auth_token = f"Bearer {creator_user.get('token', '')}"
         # Get the response from backend
         async with aiohttp.ClientSession() as session:
             url = f"{LAMB_BACKEND_URL}/lamb/v1/evaluaitor/rubrics/{rubric_id}/export/markdown"
@@ -635,14 +676,31 @@ async def export_rubric_markdown(
 # AI Integration Endpoints
 
 @router.post("/ai-generate")
-async def ai_generate_rubric(
-    request: Request,
-    prompt: str = Form(..., min_length=10, max_length=2000)
-):
+async def ai_generate_rubric(request: Request):
     """
-    Generate a rubric using AI
+    Generate a rubric using AI (preview only, does not save)
 
-    POST /creator/evaluaitor/rubrics/ai-generate
+    POST /creator/rubrics/ai-generate
+    
+    Request body (JSON):
+        {
+            "prompt": "User's natural language request",
+            "language": "en" (optional: en, es, eu, ca),
+            "model": "gpt-4o-mini" (optional override)
+        }
+    
+    Response:
+        {
+            "success": true/false,
+            "rubric": { ... complete rubric JSON ... },
+            "markdown": "# Rubric Title\n\n...",
+            "explanation": "AI's explanation",
+            "prompt_used": "Complete prompt (for debugging)",
+            // OR if failed:
+            "error": "Error message",
+            "raw_response": "...",
+            "allow_manual_edit": true/false
+        }
     """
     try:
         # Authenticate user
@@ -650,20 +708,36 @@ async def ai_generate_rubric(
         if not creator_user:
             raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
 
+        # Parse JSON body
+        body = await request.json()
+        prompt = body.get('prompt')
+        language = body.get('language', 'en')
+        model = body.get('model')
+        
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+
         auth_token = request.headers.get("Authorization")
 
+        # Proxy to backend
         result = await proxy_request(
             "POST",
             "/lamb/v1/evaluaitor/rubrics/ai-generate",
             auth_token,
-            data={"prompt": prompt}
+            data={
+                "prompt": prompt,
+                "language": language,
+                "model": model
+            }
         )
 
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error generating rubric with AI: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate rubric with AI")
+        raise HTTPException(status_code=500, detail=f"Failed to generate rubric with AI: {str(e)}")
 
 
 @router.post("/{rubric_id}/ai-modify")
@@ -678,7 +752,7 @@ async def ai_modify_rubric(
     POST /creator/evaluaitor/rubrics/{rubric_id}/ai-modify
     """
     try:
-        auth_token = request.headers.get("Authorization")
+        auth_token = f"Bearer {creator_user.get('token', '')}"
 
         result = await proxy_request(
             "POST",
@@ -724,3 +798,107 @@ async def list_showcase_rubrics(
     except Exception as e:
         logging.error(f"Error listing showcase rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list showcase rubrics")
+
+
+@router.get("/rubrics/accessible",
+    dependencies=[Depends(security)])
+async def get_accessible_rubrics_for_assistant(
+    request: Request
+):
+    """
+    Get list of rubrics accessible to user for assistant attachment
+    Returns user's own rubrics + public rubrics in organization
+
+    Response format optimized for dropdown selector:
+    {
+      "rubrics": [
+        {
+          "rubric_id": "rubric-123",
+          "title": "Essay Writing Rubric",
+          "description": "...",
+          "is_mine": true,
+          "is_showcase": false
+        }
+      ]
+    }
+
+    GET /creator/rubrics/accessible
+    """
+    try:
+        # Get user from token
+        auth_header = request.headers.get("Authorization")
+        creator_user = get_creator_user_from_token(auth_header)
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        user_email = creator_user.get('user_email')
+        organization_id = creator_user.get('organization_id')
+
+        # Get database manager - we'll need direct database access for this
+        # Import here to avoid circular imports
+        from lamb.database_manager import LambDatabaseManager
+
+        db_manager = LambDatabaseManager()
+
+        # Get user's own rubrics
+        my_rubrics = db_manager.get_rubrics_by_owner(
+            owner_email=user_email,
+            limit=1000,  # Get all
+            offset=0,
+            filters={}
+        )
+
+        # Get public rubrics in organization
+        public_rubrics = db_manager.get_public_rubrics(
+            organization_id=organization_id,
+            limit=1000,
+            offset=0,
+            filters={}
+        )
+
+        # Format for dropdown
+        accessible = []
+
+        # Add user's rubrics (marked as mine)
+        for rubric in my_rubrics:
+            accessible.append({
+                "rubric_id": rubric['rubric_id'],
+                "title": rubric['title'],
+                "description": rubric.get('description', ''),
+                "is_mine": True,
+                "is_showcase": rubric.get('is_showcase', False),
+                "is_public": rubric.get('is_public', False)
+            })
+
+        # Add public rubrics (not already in list)
+        my_rubric_ids = {r['rubric_id'] for r in my_rubrics}
+        for rubric in public_rubrics:
+            if rubric['rubric_id'] not in my_rubric_ids:
+                accessible.append({
+                    "rubric_id": rubric['rubric_id'],
+                    "title": rubric['title'],
+                    "description": rubric.get('description', ''),
+                    "is_mine": False,
+                    "is_showcase": rubric.get('is_showcase', False),
+                    "is_public": True
+                })
+
+        # Sort: showcase first, then user's rubrics, then others
+        accessible.sort(key=lambda r: (
+            not r['is_showcase'],  # Showcase first (False < True)
+            not r['is_mine'],      # Then user's rubrics
+            r['title'].lower()     # Then alphabetical
+        ))
+
+        return {
+            "success": True,
+            "rubrics": accessible,
+            "total": len(accessible)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting accessible rubrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
