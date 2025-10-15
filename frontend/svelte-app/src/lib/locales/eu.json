@@ -36,7 +36,10 @@
     "help": "Laguntza",
     "logout": "Saioa amaitu",
     "openWebUI": "OpenWebUI",
-    "admin": "Administrazioa"
+    "admin": "Administrazioa",
+    "orgAdmin": "Erakunde Admin",
+    "tools": "Tresnak",
+    "rubrics": "Ebaluazio-eskalak"
   },
   "assistants": {
     "mcpTestingTab": "MCP Probak",
@@ -394,5 +397,61 @@
     "of": "/ ",
     "resultsSimple": "Emaitzak",
     "to": "-"
+  },
+  "rubrics": {
+    "title": "Ebaluatzailea",
+    "subtitle": "Hezkuntza Errubrikak",
+    "myRubrics": "Nire Errubrikak",
+    "templates": "Txantiloiak",
+    "createRubric": "Sortu Errubirka",
+    "form": {
+      "createTitle": "Sortu Errubrika Berria",
+      "editTitle": "Editatu Errubirka",
+      "description": "Definitu zure ebaluazio-irizpideak eta errendimendu-mailak",
+      "title": "Izenburua",
+      "titlePlaceholder": "adib., Saiakeren Idazketa Errubirka",
+      "subject": "Gaia",
+      "subjectPlaceholder": "adib., Matematika, Ingelesa, Zientziak",
+      "gradeLevel": "Maila",
+      "gradeUndefined": "Zehaztu gabe",
+      "scoringType": "Puntuazio Mota",
+      "maxScore": "Gehienezko Puntuazioa",
+      "scoringExplanation": "Puntuazio Moten Buruz:",
+      "pointsHint": "Guztira lortzen ahal diren puntuak (adib., 10, 20, 100)",
+      "percentageHint": "Beti 100 ehuneko puntuaziorako",
+      "holisticHint": "Errendimenduaren maila altuena (adib., 4, 5, 6)",
+      "singlePointHint": "Irizpide kopurua (normalean 3-6)",
+      "checklistHint": "Zerrenda elementuen kopurua",
+      "pointsExplanation": "Irizpide bakoitzeko puntuekin puntuazio analitikoa",
+      "percentageExplanation": "Ehuneko gisa adierazitako puntuazioak (0-100%)",
+      "holisticExplanation": "Puntuazio orokor bakarra (adib., 1-4 eskala)",
+      "singlePointExplanation": "Itxaropenak bete/ez bete fokua",
+      "checklistExplanation": "Presente/ez presente edo bai/ez formato sinplea",
+      "descriptionLabel": "Deskribapena",
+      "descriptionPlaceholder": "Deskribatu zer ebaluatzen duen errubrika honek...",
+      "criteria": "Ebaluazio Irizpideak",
+      "addCriterion": "Gehitu Irizpidea",
+      "criterion": "Irizpidea",
+      "criterionName": "Izena",
+      "criterionNamePlaceholder": "adib., Edukiaren Ezagutza",
+      "weight": "Pisua (%)",
+      "criterionDescription": "Deskribapena",
+      "criterionDescriptionPlaceholder": "Deskribatu zer ebaluatzen duen irizpide honek...",
+      "performanceLevels": "Errendimendu Mailak",
+      "addLevel": "Gehitu Maila",
+      "levelLabel": "Etiketa",
+      "levelDescription": "Deskribapena",
+      "successMessage": "Errubirka ondo gorde da!",
+      "errorMessage": "Errorea errubirka gordetzean"
+    },
+    "ai": {
+      "generateButton": "Sortu AA-rekin",
+      "title": "AA Errubrika Sorkuntza",
+      "description": "Deskribatu sortu nahi duzun errubirka eta AA-k sortuko du zuretzat.",
+      "placeholder": "adib., Sortu 8. mailako ingeleseko 5 paragrafoko saiakerako errubirka bat",
+      "generating": "Sortzen...",
+      "generate": "Sortu",
+      "errorMessage": "Errorea errubirka AA-rekin sortzean"
+    }
   }
 }

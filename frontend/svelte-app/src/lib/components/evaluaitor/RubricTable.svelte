@@ -1,41 +1,63 @@
 <script>
   import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
 
+  // Props
+  let { isEditMode = false } = $props();
+
   // Local state for inline editing
   let editingCell = $state(null); // {criterionId, levelId, field}
   let editValue = $state('');
+  let ignoreNextBlur = $state(false); // Flag to prevent immediate blur on focus
 
   // Start editing a cell
   function startEditing(criterionId, levelId, field, currentValue) {
     editingCell = { criterionId, levelId, field };
     editValue = currentValue || '';
+    ignoreNextBlur = true; // Set flag to ignore the first blur event
   }
 
   // Focus input helper
   function focusInput(node) {
-    node.focus();
-    node.select();
+    // Use setTimeout to ensure the element is fully rendered before focusing
+    setTimeout(() => {
+      node.focus();
+      node.select();
+      // Reset the ignore blur flag after a short delay
+      setTimeout(() => {
+        ignoreNextBlur = false;
+      }, 100);
+    }, 10);
   }
 
   // Save cell edit
   function saveCellEdit() {
     if (!editingCell) return;
+    
+    // Ignore the first blur event after opening the editor
+    if (ignoreNextBlur) {
+      return;
+    }
 
     const { criterionId, levelId, field } = editingCell;
 
-    if (field === 'name' || field === 'description') {
-      rubricStore.updateCriterion(criterionId, { [field]: editValue });
-    } else if (field === 'weight') {
-      const weight = parseFloat(editValue);
-      if (!isNaN(weight) && weight >= 0) {
-        rubricStore.updateCriterion(criterionId, { weight });
-      }
-    } else {
+    // If levelId is present, we're editing a level cell, not a criterion field
+    if (levelId) {
       rubricStore.updateCell(criterionId, levelId, field, editValue);
+    } else {
+      // Editing criterion fields (name, description, weight)
+      if (field === 'name' || field === 'description') {
+        rubricStore.updateCriterion(criterionId, { [field]: editValue });
+      } else if (field === 'weight') {
+        const weight = parseFloat(editValue);
+        if (!isNaN(weight) && weight >= 0) {
+          rubricStore.updateCriterion(criterionId, { weight });
+        }
+      }
     }
 
     editingCell = null;
     editValue = '';
+    ignoreNextBlur = false;
   }
 
   // Cancel cell edit
@@ -44,9 +66,21 @@
     editValue = '';
   }
 
-  // Handle keyboard events
+  // Handle keyboard events for input fields
   function handleKeydown(event) {
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      saveCellEdit();
+    } else if (event.key === 'Escape') {
+      cancelEdit();
+    }
+  }
+
+  // Handle keyboard events for textarea fields
+  function handleTextareaKeydown(event) {
+    // Allow Enter for new lines, save only on Ctrl+Enter or Escape to cancel
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
       saveCellEdit();
     } else if (event.key === 'Escape') {
       cancelEdit();
@@ -108,27 +142,18 @@
     }
   }
 
-  // Get all unique level IDs across criteria
-  function getLevelIds() {
+  // Get common level structure based on first criterion
+  function getCommonLevels() {
     if (!rubricStore.rubric?.criteria?.length) return [];
-
-    const levelIds = new Set();
-    rubricStore.rubric.criteria.forEach(criterion => {
-      criterion.levels?.forEach(level => {
-        levelIds.add(level.id);
-      });
-    });
-
-    return Array.from(levelIds);
+    
+    // Use the first criterion as the template for level structure
+    const firstCriterion = rubricStore.rubric.criteria[0];
+    return firstCriterion.levels || [];
   }
 
-  // Get level data for a specific level ID
-  function getLevelData(levelId) {
-    if (!rubricStore.rubric?.criteria?.length) return null;
-
-    // Find the level in the first criterion (they should all have the same levels)
-    const firstCriterion = rubricStore.rubric.criteria[0];
-    return firstCriterion.levels?.find(level => level.id === levelId) || null;
+  // Get level for a specific criterion by score matching (more reliable than ID)
+  function getCriterionLevel(criterion, targetScore) {
+    return criterion.levels?.find(level => level.score === targetScore) || null;
   }
 </script>
 
@@ -138,8 +163,9 @@
       <h3 class="text-lg font-medium text-gray-900">Rubric Criteria</h3>
       <div class="flex space-x-2">
         <button
-          onclick={addCriterion}
-          class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          onclick={isEditMode ? addCriterion : null}
+          disabled={!isEditMode}
+          class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg class="-ml-1 mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -147,8 +173,9 @@
           Add Criterion
         </button>
         <button
-          onclick={addLevel}
-          class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          onclick={isEditMode ? addLevel : null}
+          disabled={!isEditMode}
+          class="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg class="-ml-1 mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -169,15 +196,15 @@
           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
             Weight
           </th>
-          {#each getLevelIds() as levelId}
-            {@const levelData = getLevelData(levelId)}
+          {#each getCommonLevels() as levelTemplate}
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               <div class="flex items-center justify-between">
-                <span>{levelData?.label || 'Level'} ({levelData?.score || '?'})</span>
-                {#if getLevelIds().length > 2}
+                <span>{levelTemplate.label || 'Level'} ({levelTemplate.score || '?'})</span>
+                {#if getCommonLevels().length > 2}
                   <button
-                    onclick={() => removeLevel(levelId)}
-                    class="ml-2 text-red-400 hover:text-red-600"
+                    onclick={() => isEditMode && removeLevel(levelTemplate.id)}
+                    disabled={!isEditMode}
+                    class="ml-2 text-red-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Remove this level"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -199,43 +226,45 @@
             <!-- Criterion Name and Description -->
             <td class="px-6 py-4">
               <div class="space-y-2">
-                {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'name'}
+                {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'name' && !editingCell?.levelId}
                   <input
                     type="text"
                     bind:value={editValue}
                     onkeydown={handleKeydown}
                     onblur={saveCellEdit}
-                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                    class="w-full px-2 py-1 border-2 border-blue-500 rounded text-sm focus:ring-blue-500 focus:border-blue-600 shadow-lg"
                     use:focusInput
+                    placeholder="Enter criterion name (Enter to save, Esc to cancel)"
                   />
                 {:else}
                   <div
-                    onclick={() => startEditing(criterion.id, null, 'name', criterion.name)}
-                    onkeydown={(e) => e.key === 'Enter' && startEditing(criterion.id, null, 'name', criterion.name)}
+                    onclick={() => isEditMode && startEditing(criterion.id, null, 'name', criterion.name)}
+                    onkeydown={(e) => e.key === 'Enter' && isEditMode && startEditing(criterion.id, null, 'name', criterion.name)}
                     role="button"
                     tabindex="0"
-                    class="cursor-pointer hover:bg-gray-100 p-1 rounded text-sm font-medium text-gray-900"
+                    class="{isEditMode ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent' : 'cursor-default'} p-1 rounded text-sm font-medium text-gray-900"
                   >
                     {criterion.name || 'Unnamed Criterion'}
                   </div>
                 {/if}
 
-                {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'description'}
+                {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'description' && !editingCell?.levelId}
                   <textarea
                     bind:value={editValue}
-                    onkeydown={handleKeydown}
+                    onkeydown={handleTextareaKeydown}
                     onblur={saveCellEdit}
                     rows="2"
-                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                    class="w-full px-2 py-1 border-2 border-blue-500 rounded text-sm focus:ring-blue-500 focus:border-blue-600 shadow-lg"
                     use:focusInput
+                    placeholder="Enter criterion description (Ctrl+Enter to save, Esc to cancel)"
                   ></textarea>
                 {:else}
                   <div
-                    onclick={() => startEditing(criterion.id, null, 'description', criterion.description)}
-                    onkeydown={(e) => e.key === 'Enter' && startEditing(criterion.id, null, 'description', criterion.description)}
+                    onclick={() => isEditMode && startEditing(criterion.id, null, 'description', criterion.description)}
+                    onkeydown={(e) => e.key === 'Enter' && isEditMode && startEditing(criterion.id, null, 'description', criterion.description)}
                     role="button"
                     tabindex="0"
-                    class="cursor-pointer hover:bg-gray-100 p-1 rounded text-sm text-gray-600"
+                    class="{isEditMode ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent' : 'cursor-default'} p-1 rounded text-sm text-gray-600"
                   >
                     {criterion.description || 'No description'}
                   </div>
@@ -245,7 +274,7 @@
 
             <!-- Weight -->
             <td class="px-6 py-4 whitespace-nowrap">
-              {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'weight'}
+              {#if editingCell?.criterionId === criterion.id && editingCell?.field === 'weight' && !editingCell?.levelId}
                 <input
                   type="number"
                   min="0"
@@ -253,16 +282,17 @@
                   bind:value={editValue}
                   onkeydown={handleKeydown}
                   onblur={saveCellEdit}
-                  class="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  class="w-16 px-2 py-1 border-2 border-blue-500 rounded text-sm focus:ring-blue-500 focus:border-blue-600 shadow-lg"
                   use:focusInput
+                  placeholder="%"
                 />
               {:else}
                 <div
-                  onclick={() => startEditing(criterion.id, null, 'weight', criterion.weight?.toString())}
-                  onkeydown={(e) => e.key === 'Enter' && startEditing(criterion.id, null, 'weight', criterion.weight?.toString())}
+                  onclick={() => isEditMode && startEditing(criterion.id, null, 'weight', criterion.weight?.toString())}
+                  onkeydown={(e) => e.key === 'Enter' && isEditMode && startEditing(criterion.id, null, 'weight', criterion.weight?.toString())}
                   role="button"
                   tabindex="0"
-                  class="cursor-pointer hover:bg-gray-100 p-1 rounded text-sm text-center font-medium"
+                  class="{isEditMode ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent' : 'cursor-default'} p-1 rounded text-sm text-center font-medium"
                 >
                   {criterion.weight || 0}%
                 </div>
@@ -270,25 +300,26 @@
             </td>
 
             <!-- Performance Levels -->
-            {#each getLevelIds() as levelId}
-              {@const level = criterion.levels?.find(l => l.id === levelId)}
+            {#each getCommonLevels() as levelTemplate}
+              {@const level = getCriterionLevel(criterion, levelTemplate.score)}
               <td class="px-6 py-4">
-                {#if editingCell?.criterionId === criterion.id && editingCell?.levelId === levelId && editingCell?.field === 'description'}
+                {#if editingCell?.criterionId === criterion.id && editingCell?.levelId === level?.id && editingCell?.field === 'description'}
                   <textarea
                     bind:value={editValue}
-                    onkeydown={handleKeydown}
+                    onkeydown={handleTextareaKeydown}
                     onblur={saveCellEdit}
                     rows="3"
-                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                    class="w-full px-2 py-1 border-2 border-blue-500 rounded text-sm focus:ring-blue-500 focus:border-blue-600 shadow-lg"
                     use:focusInput
+                    placeholder="Enter level description (Ctrl+Enter to save, Esc to cancel)"
                   ></textarea>
                 {:else}
                   <div
-                    onclick={() => startEditing(criterion.id, levelId, 'description', level?.description)}
-                    onkeydown={(e) => e.key === 'Enter' && startEditing(criterion.id, levelId, 'description', level?.description)}
+                    onclick={() => isEditMode && level && startEditing(criterion.id, level.id, 'description', level?.description)}
+                    onkeydown={(e) => e.key === 'Enter' && isEditMode && level && startEditing(criterion.id, level.id, 'description', level?.description)}
                     role="button"
                     tabindex="0"
-                    class="cursor-pointer hover:bg-gray-100 p-2 rounded text-sm text-gray-600 min-h-[60px]"
+                    class="{isEditMode ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent' : 'cursor-default'} p-2 rounded text-sm text-gray-700 min-h-[60px]"
                   >
                     {level?.description || 'No description'}
                   </div>
@@ -300,8 +331,9 @@
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
               {#if rubricStore.rubric?.criteria?.length > 1}
                 <button
-                  onclick={() => removeCriterion(criterion.id)}
-                  class="text-red-600 hover:text-red-900"
+                  onclick={() => isEditMode && removeCriterion(criterion.id)}
+                  disabled={!isEditMode}
+                  class="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Remove criterion"
                 >
                   <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

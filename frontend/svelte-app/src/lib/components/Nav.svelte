@@ -2,7 +2,7 @@
   import { user } from '$lib/stores/userStore'; // Restore user store import
   // import LanguageSelector from './LanguageSelector.svelte'; // Migrated in Internationalization module
   // import { _, locale } from 'svelte-i18n'; // Migrated in Internationalization module
-  import { /* onMount, */ createEventDispatcher } from 'svelte'; // onMount needed for i18n
+  import { /* onMount, */ createEventDispatcher, onMount } from 'svelte'; // onMount needed for i18n
   // import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import { base } from '$app/paths'; // Import base path helper
@@ -17,12 +17,28 @@
   let localeLoaded = $state(false);
   
   // Navigation state
-  
+  let toolsMenuOpen = $state(false);
+
   // Logout function
   function logout() { // Restore logout function
     user.logout();
     // Redirect to the base path after logout
-    window.location.href = base + '/'; 
+    window.location.href = base + '/';
+  }
+
+  // Close dropdown when clicking outside
+  function handleClickOutside(event) {
+    const toolsMenu = event.target.closest('.tools-menu');
+    if (!toolsMenu) {
+      toolsMenuOpen = false;
+    }
+  }
+
+  // Handle keyboard navigation
+  function handleKeydown(event) {
+    if (toolsMenuOpen && event.key === 'Escape') {
+      toolsMenuOpen = false;
+    }
   }
   
   // Get help from input
@@ -38,12 +54,23 @@
   // Use $effect to react to locale changes
   $effect(() => {
     // Directly read the locale store value
-    const currentLocale = $locale; 
+    const currentLocale = $locale;
     if (currentLocale) {
       localeLoaded = true;
       console.log("Locale loaded via $effect:", currentLocale); // Optional: for debugging
     }
     // No cleanup function needed here as we're just reading the store
+  });
+
+  // Set up event listeners for dropdown
+  onMount(() => {
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKeydown);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeydown);
+    };
   });
 </script>
 
@@ -56,12 +83,9 @@
           <div class="flex items-center space-x-2">
             <!-- Image path updated to be relative to static dir -->
             <img src="{base}/img/lamb_1.png" alt="LAMB Logo" class="h-14">
-            <div>
-              <div class="text-lg font-bold">
-                <a href="{base}/">{localeLoaded ? $_('app.logoText', { default: 'LAMB' }) : 'LAMB'}</a> 
-                <span class="text-xs bg-gray-200 px-1 py-0.5 rounded">v0.1</span>
-              </div>
-              <span class="text-xs text-gray-600">{localeLoaded ? $_('app.tagline', { default: 'Learning Assistants Manager and Builder' }) : 'Learning Assistants Manager and Builder'}</span>
+            <div class="text-lg font-bold">
+              <a href="{base}/">{localeLoaded ? $_('app.logoText', { default: 'LAMB' }) : 'LAMB'}</a> 
+              <span class="text-xs bg-gray-200 px-1 py-0.5 rounded">v0.1</span>
             </div>
           </div>
         </div>
@@ -97,24 +121,42 @@
           </a>
           {/if}
           
-          <!-- Restore dynamic class based on $page.url.pathname and $user -->
-          <!-- Restore: aria-disabled={!$user.isLoggedIn} -->
-          <a
-            href="{base}/knowledgebases"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname.startsWith(base + '/knowledgebases') ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
-            aria-disabled={!$user.isLoggedIn}
-          >
-            {localeLoaded ? $_('knowledgeBases.title') : 'Knowledge Bases'}
-          </a>
+          <!-- Tools dropdown menu -->
+          <div class="relative tools-menu h-full flex items-center">
+            <button
+              onclick={() => toolsMenuOpen = !toolsMenuOpen}
+              class="inline-flex items-center h-full px-1 border-b-2 text-sm font-medium focus:outline-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              aria-disabled={!$user.isLoggedIn}
+              aria-expanded={toolsMenuOpen}
+              aria-haspopup="true"
+            >
+              {localeLoaded ? $_('nav.tools', { default: 'Tools' }) : 'Tools'}
+              <svg class="ml-1 h-4 w-4 transition-transform duration-200 {toolsMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
 
-          <!-- Evaluaitor link -->
-          <a
-            href="{base}/evaluaitor"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname.startsWith(base + '/evaluaitor') ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
-            aria-disabled={!$user.isLoggedIn}
-          >
-            {localeLoaded ? $_('evaluaitor.title', { default: 'Evaluaitor' }) : 'Evaluaitor'}
-          </a>
+            {#if toolsMenuOpen}
+              <div class="absolute z-50 left-0 top-full w-52 bg-white border border-gray-200 rounded-b-md shadow-lg">
+                <div class="py-2">
+                  <a
+                    href="{base}/knowledgebases"
+                    onclick={() => toolsMenuOpen = false}
+                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/knowledgebases') ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                  >
+                    {localeLoaded ? $_('knowledgeBases.title') : 'Knowledge Bases'}
+                  </a>
+                  <a
+                    href="{base}/evaluaitor"
+                    onclick={() => toolsMenuOpen = false}
+                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/evaluaitor') ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                  >
+                    {localeLoaded ? $_('nav.rubrics', { default: 'Rubrics' }) : 'Rubrics'}
+                  </a>
+                </div>
+              </div>
+            {/if}
+          </div>
 
         </div>
       </div>

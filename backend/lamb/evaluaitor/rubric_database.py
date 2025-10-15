@@ -219,18 +219,19 @@ class RubricDatabaseManager:
             if connection:
                 connection.close()
 
-    def get_public_rubrics(self, organization_id: int, limit: int = 10, offset: int = 0, filters: dict = None) -> list[dict]:
+    def get_public_rubrics(self, organization_id: int, limit: int = 10, offset: int = 0, filters: dict = None, include_system_org: bool = True) -> list[dict]:
         """
-        Get public rubrics in an organization
+        Get public rubrics in an organization, optionally including system organization
 
         Args:
-            organization_id: Organization ID
+            organization_id: User's organization ID
             limit: Maximum number of results
             offset: Pagination offset
             filters: Optional filters
+            include_system_org: Whether to include system organization rubrics
 
         Returns:
-            List of public rubric records
+            List of public rubric records from user's org and system org
         """
         if filters is None:
             filters = {}
@@ -243,9 +244,28 @@ class RubricDatabaseManager:
             with connection:
                 cursor = connection.cursor()
 
-                # Build query
-                where_conditions = ["r.organization_id = ?", "r.is_public = 1"]
-                params = [organization_id]
+                # Build organization filter - include user's org and optionally system org
+                params = []
+                
+                if include_system_org:
+                    # First get system organization ID in a separate query
+                    system_cursor = connection.cursor()
+                    system_cursor.execute(f"""
+                        SELECT id FROM {self.db_manager.table_prefix}organizations 
+                        WHERE slug = 'lamb' AND is_system = 1
+                    """)
+                    system_org_result = system_cursor.fetchone()
+                    system_org_id = system_org_result[0] if system_org_result else None
+                    
+                    if system_org_id and system_org_id != organization_id:
+                        where_conditions = ["(r.organization_id = ? OR r.organization_id = ?)", "r.is_public = 1"]
+                        params = [organization_id, system_org_id]
+                    else:
+                        where_conditions = ["r.organization_id = ?", "r.is_public = 1"]
+                        params = [organization_id]
+                else:
+                    where_conditions = ["r.organization_id = ?", "r.is_public = 1"]
+                    params = [organization_id]
 
                 if filters.get('subject'):
                     where_conditions.append("JSON_EXTRACT(r.rubric_data, '$.metadata.subject') LIKE ?")

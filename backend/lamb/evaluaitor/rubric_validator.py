@@ -12,12 +12,13 @@ class RubricValidator:
     """Validator for rubric data structures"""
 
     @staticmethod
-    def validate_rubric_structure(rubric_data: dict) -> Tuple[bool, str]:
+    def validate_rubric_structure(rubric_data: dict, require_rubric_id: bool = True) -> Tuple[bool, str]:
         """
         Validate complete rubric structure
 
         Args:
             rubric_data: Rubric JSON data
+            require_rubric_id: If False, rubricId is optional (for AI-generated rubrics)
 
         Returns:
             Tuple of (is_valid, error_message)
@@ -26,7 +27,10 @@ class RubricValidator:
             return False, "Rubric data must be a JSON object"
 
         # Required fields
-        required_fields = ['rubricId', 'title', 'description', 'metadata', 'criteria', 'scoringType', 'maxScore']
+        required_fields = ['title', 'description', 'metadata', 'criteria', 'scoringType', 'maxScore']
+        if require_rubric_id:
+            required_fields.insert(0, 'rubricId')
+            
         for field in required_fields:
             if field not in rubric_data:
                 return False, f"Missing required field: {field}"
@@ -56,10 +60,11 @@ class RubricValidator:
         if not isinstance(max_score, (int, float)) or max_score <= 0:
             return False, "maxScore must be a positive number"
 
-        # Validate rubricId format (should be UUID-like)
-        rubric_id = rubric_data.get('rubricId', '')
-        if not isinstance(rubric_id, str) or len(rubric_id) < 10:
-            return False, "rubricId must be a valid unique identifier"
+        # Validate rubricId format (should be UUID-like) - only if required
+        if require_rubric_id:
+            rubric_id = rubric_data.get('rubricId', '')
+            if not isinstance(rubric_id, str) or len(rubric_id) < 10:
+                return False, "rubricId must be a valid unique identifier"
 
         return True, ""
 
@@ -77,21 +82,23 @@ class RubricValidator:
         if not isinstance(metadata, dict):
             return False, "Metadata must be a JSON object"
 
-        # Required fields
-        required_fields = ['subject', 'gradeLevel', 'createdAt', 'modifiedAt']
+        # Required timestamp fields
+        required_fields = ['createdAt', 'modifiedAt']
         for field in required_fields:
             if field not in metadata:
                 return False, f"Missing required metadata field: {field}"
 
-        # Validate subject
-        subject = metadata.get('subject', '')
-        if not isinstance(subject, str) or len(subject.strip()) == 0:
-            return False, "Subject must be a non-empty string"
+        # Validate subject (optional, but if present must be a string)
+        if 'subject' in metadata:
+            subject = metadata.get('subject')
+            if subject is not None and not isinstance(subject, str):
+                return False, "Subject must be a string"
 
-        # Validate grade level
-        grade_level = metadata.get('gradeLevel', '')
-        if not isinstance(grade_level, str) or len(grade_level.strip()) == 0:
-            return False, "Grade level must be a non-empty string"
+        # Validate grade level (optional, but if present must be a string)
+        if 'gradeLevel' in metadata:
+            grade_level = metadata.get('gradeLevel')
+            if grade_level is not None and not isinstance(grade_level, str):
+                return False, "Grade level must be a string"
 
         # Optional fields validation
         if 'author' in metadata and not isinstance(metadata['author'], str):
@@ -272,7 +279,7 @@ class RubricValidator:
             try:
                 sanitized['maxScore'] = float(sanitized['maxScore'])
             except (ValueError, TypeError):
-                sanitized['maxScore'] = 100.0
+                sanitized['maxScore'] = 10.0
 
         # Ensure weights are numbers
         if 'criteria' in sanitized:
@@ -396,5 +403,5 @@ class RubricValidator:
                 }
             ],
             "scoringType": "points",
-            "maxScore": 100
+            "maxScore": 10
         }

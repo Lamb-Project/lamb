@@ -41,7 +41,10 @@
     "help": "Ajuda",
     "logout": "Tancar sessió",
     "openWebUI": "OpenWebUI",
-    "admin": "Administració"
+    "admin": "Administració",
+    "orgAdmin": "Admin Org",
+    "tools": "Eines",
+    "rubrics": "Rúbriques"
   },
   "assistants": {
     "mcpTestingTab": "Proves MCP",
@@ -389,5 +392,61 @@
     "of": "de",
     "resultsSimple": "Resultats",
     "to": "a"
+  },
+  "rubrics": {
+    "title": "Avaluador",
+    "subtitle": "Rúbriques Educatives",
+    "myRubrics": "Les Meves Rúbriques",
+    "templates": "Plantilles",
+    "createRubric": "Crear Rúbrica",
+    "form": {
+      "createTitle": "Crear Nova Rúbrica",
+      "editTitle": "Editar Rúbrica",
+      "description": "Defineix els teus criteris d'avaluació i nivells de rendiment",
+      "title": "Títol",
+      "titlePlaceholder": "ex., Rúbrica d'Escriptura d'Assaigs",
+      "subject": "Assignatura",
+      "subjectPlaceholder": "ex., Matemàtiques, Anglès, Ciències",
+      "gradeLevel": "Nivell de Curs",
+      "gradeUndefined": "Indefinit",
+      "scoringType": "Tipus de Puntuació",
+      "maxScore": "Puntuació Màxima",
+      "scoringExplanation": "Sobre els Tipus de Puntuació:",
+      "pointsHint": "Punts totals possibles (ex., 10, 20, 100)",
+      "percentageHint": "Sempre 100 per a puntuació per percentatge",
+      "holisticHint": "Nivell de rendiment més alt (ex., 4, 5, 6)",
+      "singlePointHint": "Nombre de criteris (típicament 3-6)",
+      "checklistHint": "Nombre d'elements de la llista",
+      "pointsExplanation": "Puntuació analítica amb punts per cada criteri",
+      "percentageExplanation": "Puntuacions expressades com a percentatges (0-100%)",
+      "holisticExplanation": "Puntuació general única (ex., escala 1-4)",
+      "singlePointExplanation": "Enfocament en complir/no complir expectatives",
+      "checklistExplanation": "Format simple present/absent o sí/no",
+      "descriptionLabel": "Descripció",
+      "descriptionPlaceholder": "Descriu què avalua aquesta rúbrica...",
+      "criteria": "Criteris d'Avaluació",
+      "addCriterion": "Afegir Criteri",
+      "criterion": "Criteri",
+      "criterionName": "Nom",
+      "criterionNamePlaceholder": "ex., Coneixement del Contingut",
+      "weight": "Pes (%)",
+      "criterionDescription": "Descripció",
+      "criterionDescriptionPlaceholder": "Descriu què avalua aquest criteri...",
+      "performanceLevels": "Nivells de Rendiment",
+      "addLevel": "Afegir Nivell",
+      "levelLabel": "Etiqueta",
+      "levelDescription": "Descripció",
+      "successMessage": "Rúbrica desada correctament!",
+      "errorMessage": "Error en desar la rúbrica"
+    },
+    "ai": {
+      "generateButton": "Generar amb IA",
+      "title": "Generació de Rúbrica amb IA",
+      "description": "Descriu la rúbrica que vols crear i la IA la generarà per tu.",
+      "placeholder": "ex., Crear una rúbrica per avaluar assaigs de 5 paràgrafs en anglès de 8è curs",
+      "generating": "Generant...",
+      "generate": "Generar",
+      "errorMessage": "Error en generar la rúbrica amb IA"
+    }
   }
 }

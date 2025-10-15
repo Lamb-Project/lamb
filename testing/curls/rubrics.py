@@ -638,7 +638,7 @@ class RubricsTester:
         response = self.run_curl(
             "POST",
             f"{BASE_URL}/creator/rubrics/ai-generate",
-            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"Content-Type": "application/x-www-form-urlencoded", "Authorization": f"Bearer {self.token}"},
             urllib.parse.urlencode({"prompt": prompt})
         )
 
@@ -670,7 +670,7 @@ class RubricsTester:
         response = self.run_curl(
             "POST",
             f"{BASE_URL}/creator/rubrics/{self.created_rubric_id}/ai-modify",
-            {"Content-Type": "application/x-www-form-urlencoded"},
+            {"Content-Type": "application/x-www-form-urlencoded", "Authorization": f"Bearer {self.token}"},
             urllib.parse.urlencode({"prompt": prompt})
         )
 
