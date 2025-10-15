@@ -41,7 +41,10 @@
     "help": "Ayuda",
     "logout": "Cerrar sesión",
     "openWebUI": "OpenWebUI",
-    "admin": "Administración"
+    "admin": "Administración",
+    "orgAdmin": "Admin Org",
+    "tools": "Herramientas",
+    "rubrics": "Rúbricas"
   },
   "assistants": {
     "mcpTestingTab": "Pruebas MCP",
@@ -399,5 +402,61 @@
     "of": "de",
     "resultsSimple": "Resultados",
     "to": "a"
+  },
+  "rubrics": {
+    "title": "Evaluador",
+    "subtitle": "Rúbricas Educativas",
+    "myRubrics": "Mis Rúbricas",
+    "templates": "Plantillas",
+    "createRubric": "Crear Rúbrica",
+    "form": {
+      "createTitle": "Crear Nueva Rúbrica",
+      "editTitle": "Editar Rúbrica",
+      "description": "Define tus criterios de evaluación y niveles de desempeño",
+      "title": "Título",
+      "titlePlaceholder": "ej., Rúbrica de Escritura de Ensayos",
+      "subject": "Asignatura",
+      "subjectPlaceholder": "ej., Matemáticas, Inglés, Ciencias",
+      "gradeLevel": "Nivel de Grado",
+      "gradeUndefined": "Indefinido",
+      "scoringType": "Tipo de Puntuación",
+      "maxScore": "Puntuación Máxima",
+      "scoringExplanation": "Acerca de los Tipos de Puntuación:",
+      "pointsHint": "Puntos totales posibles (ej., 10, 20, 100)",
+      "percentageHint": "Siempre 100 para puntuación por porcentaje",
+      "holisticHint": "Nivel de rendimiento más alto (ej., 4, 5, 6)",
+      "singlePointHint": "Número de criterios (típicamente 3-6)",
+      "checklistHint": "Número de elementos de la lista",
+      "pointsExplanation": "Puntuación analítica con puntos por cada criterio",
+      "percentageExplanation": "Puntuaciones expresadas como porcentajes (0-100%)",
+      "holisticExplanation": "Puntuación general única (ej., escala 1-4)",
+      "singlePointExplanation": "Enfoque en cumplir/no cumplir expectativas",
+      "checklistExplanation": "Formato simple presente/ausente o sí/no",
+      "descriptionLabel": "Descripción",
+      "descriptionPlaceholder": "Describe qué evalúa esta rúbrica...",
+      "criteria": "Criterios de Evaluación",
+      "addCriterion": "Añadir Criterio",
+      "criterion": "Criterio",
+      "criterionName": "Nombre",
+      "criterionNamePlaceholder": "ej., Conocimiento del Contenido",
+      "weight": "Peso (%)",
+      "criterionDescription": "Descripción",
+      "criterionDescriptionPlaceholder": "Describe qué evalúa este criterio...",
+      "performanceLevels": "Niveles de Desempeño",
+      "addLevel": "Añadir Nivel",
+      "levelLabel": "Etiqueta",
+      "levelDescription": "Descripción",
+      "successMessage": "¡Rúbrica guardada con éxito!",
+      "errorMessage": "Error al guardar la rúbrica"
+    },
+    "ai": {
+      "generateButton": "Generar con IA",
+      "title": "Generación de Rúbrica con IA",
+      "description": "Describe la rúbrica que quieres crear y la IA la generará por ti.",
+      "placeholder": "ej., Crear una rúbrica para evaluar ensayos de 5 párrafos en inglés de 8º grado",
+      "generating": "Generando...",
+      "generate": "Generar",
+      "errorMessage": "Error al generar la rúbrica con IA"
+    }
   }
 }

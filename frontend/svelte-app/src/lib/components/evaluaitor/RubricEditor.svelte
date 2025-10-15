@@ -1,9 +1,11 @@
 <script>
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
   import {
     fetchRubric,
+    createRubric,
     updateRubric,
     aiGenerateRubric,
     aiModifyRubric
@@ -25,6 +27,30 @@
   // Check if this is a new rubric (generated from template)
   let isNewRubric = $state(false);
 
+  // Check if we're in edit mode - default to false (view mode)
+  let isEditMode = $state(false);
+
+  // Check URL params for edit mode
+  $effect(() => {
+    const urlParams = new URLSearchParams($page.url.search);
+    if (urlParams.has('edit')) {
+      isEditMode = urlParams.get('edit') === 'true';
+    }
+  });
+
+  // Enter edit mode
+  function enterEditMode() {
+    isEditMode = true;
+  }
+
+  // Cancel edit mode (reload rubric to discard changes)
+  function cancelEdit() {
+    if (confirm('Discard all changes and exit edit mode?')) {
+      loadRubric(); // Reload from backend to discard changes
+      isEditMode = false;
+    }
+  }
+
   // Load rubric data
   async function loadRubric() {
     if (!rubricId) {
@@ -36,7 +62,7 @@
     try {
       loading = true;
       const rubricData = await fetchRubric(rubricId);
-      rubricStore.loadRubric(rubricData.rubricData);
+      rubricStore.loadRubric(rubricData.rubric_data);
     } catch (err) {
       error = err.message || 'Failed to load rubric';
       console.error('Error loading rubric:', err);
@@ -136,7 +162,7 @@
       const response = await aiGenerateRubric(prompt);
 
       // Load the generated rubric into the store
-      rubricStore.loadRubric(response.rubric);
+      rubricStore.loadRubric(response.rubric_data);
 
       // Mark as new rubric (not saved yet)
       isNewRubric = true;
@@ -167,10 +193,10 @@
       const response = await aiModifyRubric(rubricId, prompt);
 
       // Show changes preview (you could add a modal here)
-      const changes = rubricStore.getChanges(response.rubric);
+      const changes = rubricStore.getChanges(response.rubric_data);
 
       // For now, just apply the changes directly
-      rubricStore.replaceRubric(response.rubric);
+      rubricStore.replaceRubric(response.rubric_data);
 
       console.log('AI modification completed:', response.explanation);
       console.log('Changes:', changes);
@@ -236,74 +262,116 @@
         </div>
 
         <div class="flex items-center space-x-3">
-          <!-- Undo/Redo buttons -->
-          <button
-            onclick={handleUndo}
-            disabled={!rubricStore.canUndo}
-            class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Undo"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
-            </svg>
-          </button>
-          <button
-            onclick={handleRedo}
-            disabled={!rubricStore.canRedo}
-            class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Redo"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/>
-            </svg>
-          </button>
-
-          <!-- AI Chat Toggle -->
-          <button
-            onclick={() => showAIChat = !showAIChat}
-            class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4-4-4z"/>
-            </svg>
-            AI Assistant
-          </button>
-
-          <!-- Save Button -->
-          <button
-            onclick={saveRubric}
-            disabled={saving || loading}
-            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-          >
-            {#if saving}
-              <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          {#if isEditMode || isNewRubric}
+            <!-- EDIT MODE: Show action buttons -->
+            
+            <!-- Undo/Redo buttons -->
+            <button
+              onclick={handleUndo}
+              disabled={!rubricStore.canUndo}
+              class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Undo"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
               </svg>
-              Saving...
-            {:else}
+            </button>
+            <button
+              onclick={handleRedo}
+              disabled={!rubricStore.canRedo}
+              class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Redo"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/>
+              </svg>
+            </button>
+
+            <!-- AI Chat Toggle -->
+            <button
+              onclick={() => showAIChat = !showAIChat}
+              class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4-4-4z"/>
+              </svg>
+              AI Assistant
+            </button>
+
+            {#if !isNewRubric}
+            <!-- Cancel Edit Button -->
+            <button
+              onclick={cancelEdit}
+              disabled={saving || loading}
+              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
-              Save
+              Cancel Edit
+            </button>
             {/if}
-          </button>
 
-          <!-- Save as New Version -->
-          <button
-            onclick={saveAsNewVersion}
-            disabled={saving || loading}
-            class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
-            Save as New Version
-          </button>
+            <!-- Update/Save Button -->
+            <button
+              onclick={saveRubric}
+              disabled={saving || loading}
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {#if saving}
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {isNewRubric ? 'Saving...' : 'Updating...'}
+              {:else}
+                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                {isNewRubric ? 'Save' : 'Update Rubric'}
+              {/if}
+            </button>
+
+            <!-- Save as New Version -->
+            {#if !isNewRubric}
+            <button
+              onclick={saveAsNewVersion}
+              disabled={saving || loading}
+              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Save as New Version
+            </button>
+            {/if}
+          {:else}
+            <!-- VIEW MODE: Show view label and edit button -->
+            
+            <!-- View Only Label/Badge -->
+            <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300">
+              <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              View Only
+            </span>
+
+            <!-- Edit Button -->
+            <button
+              onclick={enterEditMode}
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+            >
+              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+              Edit
+            </button>
+          {/if}
         </div>
       </div>
     </div>
   </div>
 
   <!-- Main Content -->
-  <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-none mx-auto py-6 px-6 lg:px-12">
     {#if loading}
       <div class="text-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -332,19 +400,19 @@
         </div>
       </div>
     {:else}
-      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div class="grid grid-cols-1 {showAIChat ? 'xl:grid-cols-4' : ''} gap-8">
         <!-- Main Editor Area -->
-        <div class="lg:col-span-3 space-y-6">
+        <div class="{showAIChat ? 'xl:col-span-3' : ''} space-y-8">
           <!-- Rubric Metadata -->
-          <RubricMetadataForm />
+          <RubricMetadataForm {isEditMode} />
 
           <!-- Rubric Table -->
-          <RubricTable />
+          <RubricTable {isEditMode} />
         </div>
 
         <!-- AI Chat Panel -->
         {#if showAIChat}
-          <div class="lg:col-span-1">
+          <div class="xl:col-span-1">
             <RubricAIChat
               {rubricId}
               {aiGenerating}
