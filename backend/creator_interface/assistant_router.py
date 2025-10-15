@@ -1025,8 +1025,13 @@ async def update_assistant_proxy(assistant_id: int, request: Request):
         import json
 
         # Create a mock request with the JSON body
+        # The json() method must be async since core function does await request.json()
         mock_request = Mock()
-        mock_request.json = Mock(return_value=new_body)
+        
+        async def async_json():
+            return new_body
+        
+        mock_request.json = async_json
 
         logger.info(f"Calling core_update_assistant for assistant {assistant_id}")
         # Call the core update function directly

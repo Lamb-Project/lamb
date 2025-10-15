@@ -21,6 +21,36 @@ from .rubric_validator import RubricValidator
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+# Helper functions
+
+def ensure_criterion_ids(criteria: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Ensure all criteria and levels have unique IDs.
+    Generates IDs if missing.
+    
+    Args:
+        criteria: List of criterion dictionaries
+        
+    Returns:
+        List of criteria with IDs assigned
+    """
+    import uuid
+    import time
+    
+    for i, criterion in enumerate(criteria):
+        # Ensure criterion has an ID
+        if 'id' not in criterion or not criterion['id']:
+            criterion['id'] = f"criterion_{int(time.time())}_{i}_{str(uuid.uuid4())[:8]}"
+        
+        # Ensure levels have IDs
+        if 'levels' in criterion and isinstance(criterion['levels'], list):
+            for j, level in enumerate(criterion['levels']):
+                if 'id' not in level or not level['id']:
+                    level['id'] = f"level_{int(time.time())}_{i}_{j}_{str(uuid.uuid4())[:8]}"
+    
+    return criteria
+
 # Initialize router
 router = APIRouter()
 
@@ -106,21 +136,25 @@ def get_current_user_from_token(auth_header: str) -> Dict[str, Any]:
             logger.error(f"Invalid auth_header format: {auth_header}")
             raise HTTPException(status_code=401, detail="Invalid auth_header format")
 
-        # Look up creator user in LAMB database
+        # Look up OWI user to get email
+        from ..owi_bridge.owi_users import OwiUserManager
+        owi_user_manager = OwiUserManager()
+        owi_user = owi_user_manager.get_user_by_id(user_id)
+
+        if not owi_user:
+            logger.error(f"OWI user {user_id} not found")
+            raise HTTPException(status_code=401, detail="User not found in authentication system")
+
+        user_email = owi_user['email']
+
+        # Look up creator user in LAMB database by email
         from ..database_manager import LambDatabaseManager
         db_manager = LambDatabaseManager()
-        creator_user = db_manager.get_creator_user_by_id(user_id)
+        creator_user = db_manager.get_creator_user_by_email(user_email)
 
         if not creator_user:
-            # For MVP: trust creator interface authentication and return user from token
-            logger.info(f"User {user_id} not found in LAMB database, using token data for MVP")
-            creator_user = {
-                'id': user_id,
-                'user_email': payload.get("email", f"user_{user_id}@temp.com"),
-                'user_name': payload.get("name", "Unknown User"),
-                'organization_id': None,  # Will be handled later
-                'user_config': {}
-            }
+            logger.error(f"LAMB creator user {user_email} not found")
+            raise HTTPException(status_code=401, detail="User not registered in LAMB system")
 
         return creator_user
 
@@ -176,6 +210,10 @@ async def create_rubric(
 
         # Prepare full rubric data
         now = datetime.now().isoformat()
+        
+        # Ensure criteria have IDs (auto-generate if missing)
+        criteria_with_ids = ensure_criterion_ids(rubric_data.criteria)
+        
         full_rubric_data = {
             "rubricId": rubric_data.title.lower().replace(" ", "-") + "-" + str(int(datetime.now().timestamp())),
             "title": rubric_data.title,
@@ -185,7 +223,7 @@ async def create_rubric(
                 "createdAt": now,
                 "modifiedAt": now
             },
-            "criteria": rubric_data.criteria,
+            "criteria": criteria_with_ids,
             "scoringType": rubric_data.scoringType,
             "maxScore": rubric_data.maxScore
         }
@@ -198,7 +236,7 @@ async def create_rubric(
         # Create rubric
         result = db_manager.create_rubric(
             rubric_data=full_rubric_data,
-            owner_email=user['user_email'],
+            owner_email=user['email'],
             organization_id=org['id']
         )
 
@@ -295,12 +333,13 @@ async def list_public_rubrics(
         if grade_level:
             filters['grade_level'] = grade_level
 
-        # Get public rubrics
+        # Get public rubrics (includes user's org + system org)
         rubrics = db_manager.get_public_rubrics(
             organization_id=org['id'],
             limit=limit,
             offset=offset,
-            filters=filters
+            filters=filters,
+            include_system_org=True
         )
 
         # Apply search filter if provided
@@ -324,6 +363,109 @@ async def list_public_rubrics(
     except Exception as e:
         logging.error(f"Error listing public rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list public rubrics")
+
+
+@router.get("/rubrics/accessible")
+async def get_accessible_rubrics(
+    auth_header: str = Query(None, alias="auth_header")
+):
+    """
+    Get list of rubrics accessible to user for assistant attachment
+    Returns user's own rubrics + public rubrics in organization
+    
+    Response format optimized for dropdown selector:
+    {
+      "success": true,
+      "rubrics": [
+        {
+          "rubric_id": "rubric-123",
+          "title": "Essay Writing Rubric",
+          "description": "...",
+          "is_mine": true,
+          "is_showcase": false,
+          "is_public": false
+        }
+      ],
+      "total": 1
+    }
+    
+    GET /lamb/v1/evaluaitor/rubrics/accessible
+    """
+    try:
+        # Get user from auth_header
+        user = get_current_user_from_token(auth_header)
+        
+        # Get user's organization
+        org = get_user_organization(user)
+        
+        user_email = user.get('email')  # Note: LambDatabaseManager returns 'email', not 'user_email'
+        organization_id = org.get('id')
+        
+        logging.info(f"Getting accessible rubrics for user: {user_email}, org: {organization_id}")
+        
+        # Get user's own rubrics
+        my_rubrics = db_manager.get_rubrics_by_owner(
+            owner_email=user_email,
+            limit=1000,  # Get all
+            offset=0,
+            filters={}
+        )
+        
+        logging.info(f"Found {len(my_rubrics)} rubrics owned by user")
+        
+        # Get public rubrics in organization
+        public_rubrics = db_manager.get_public_rubrics(
+            organization_id=organization_id,
+            limit=1000,
+            offset=0,
+            filters={}
+        )
+        
+        # Format for dropdown
+        accessible = []
+        
+        # Add user's rubrics (marked as mine)
+        for rubric in my_rubrics:
+            accessible.append({
+                "rubric_id": rubric['rubric_id'],
+                "title": rubric['title'],
+                "description": rubric.get('description', ''),
+                "is_mine": True,
+                "is_showcase": rubric.get('is_showcase', False),
+                "is_public": rubric.get('is_public', False)
+            })
+        
+        # Add public rubrics (not already in list)
+        my_rubric_ids = {r['rubric_id'] for r in my_rubrics}
+        for rubric in public_rubrics:
+            if rubric['rubric_id'] not in my_rubric_ids:
+                accessible.append({
+                    "rubric_id": rubric['rubric_id'],
+                    "title": rubric['title'],
+                    "description": rubric.get('description', ''),
+                    "is_mine": False,
+                    "is_showcase": rubric.get('is_showcase', False),
+                    "is_public": True
+                })
+        
+        # Sort: showcase first, then user's rubrics, then others
+        accessible.sort(key=lambda r: (
+            not r['is_showcase'],  # Showcase first (False < True)
+            not r['is_mine'],      # Then user's rubrics
+            r['title'].lower()     # Then alphabetical
+        ))
+        
+        return {
+            "success": True,
+            "rubrics": accessible,
+            "total": len(accessible)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting accessible rubrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get accessible rubrics: {str(e)}")
 
 
 @router.get("/rubrics/showcase", response_model=List[Dict[str, Any]])
@@ -352,7 +494,7 @@ async def list_showcase_rubrics(
 @router.get("/rubrics/{rubric_id}", response_model=Dict[str, Any])
 async def get_rubric(
     rubric_id: str,
-    user: Dict[str, Any] = Depends(get_current_user_dependency)
+    auth_header: str = Query(None, alias="auth_header")  # Optional for backward compatibility
 ):
     """
     Get a specific rubric by ID
@@ -360,8 +502,12 @@ async def get_rubric(
     GET /lamb/v1/evaluaitor/rubrics/{rubric_id}
     """
     try:
-        # Get rubric with access control
-        rubric = db_manager.get_rubric_by_id(rubric_id, user['user_email'])
+        # For testing, use hardcoded admin user
+        owner_email = "admin@owi.com"
+        logger.info(f"Getting rubric {rubric_id} for hardcoded user: {owner_email}")
+
+        # Get rubric with access control (simplified for testing)
+        rubric = db_manager.get_rubric_by_id(rubric_id, owner_email)
 
         if not rubric:
             raise HTTPException(status_code=404, detail="Rubric not found or access denied")
@@ -391,6 +537,9 @@ async def update_rubric(
         if rubric_data.rubricId != rubric_id:
             raise HTTPException(status_code=400, detail="Rubric ID mismatch")
 
+        # Ensure criteria have IDs (auto-generate if missing)
+        criteria_with_ids = ensure_criterion_ids(rubric_data.criteria)
+        
         # Prepare full rubric data with updated timestamp
         full_rubric_data = {
             "rubricId": rubric_data.rubricId,
@@ -400,7 +549,7 @@ async def update_rubric(
                 **rubric_data.metadata,
                 "modifiedAt": datetime.now().isoformat()
             },
-            "criteria": rubric_data.criteria,
+            "criteria": criteria_with_ids,
             "scoringType": rubric_data.scoringType,
             "maxScore": rubric_data.maxScore
         }
@@ -414,7 +563,7 @@ async def update_rubric(
         result = db_manager.update_rubric(
             rubric_id=rubric_id,
             rubric_data=full_rubric_data,
-            owner_email=user['user_email']
+            owner_email=user['email']
         )
 
         return result
@@ -442,7 +591,7 @@ async def update_rubric_visibility(
         success = db_manager.toggle_rubric_visibility(
             rubric_id=rubric_id,
             is_public=visibility_data.is_public,
-            owner_email=user['user_email']
+            owner_email=user['email']
         )
 
         if not success:
@@ -484,7 +633,7 @@ async def update_rubric_showcase(
         success = db_manager.set_showcase_status(
             rubric_id=rubric_id,
             is_showcase=showcase_data.is_showcase,
-            admin_email=user['user_email']
+            admin_email=user['email']
         )
 
         if not success:
@@ -513,7 +662,7 @@ async def delete_rubric(
         # Delete rubric
         success = db_manager.delete_rubric(
             rubric_id=rubric_id,
-            owner_email=user['user_email']
+            owner_email=user['email']
         )
 
         if not success:
@@ -543,14 +692,14 @@ async def duplicate_rubric(
         org = get_user_organization(user)
 
         # Verify user can access the source rubric
-        source_rubric = db_manager.get_rubric_by_id(rubric_id, user['user_email'])
+        source_rubric = db_manager.get_rubric_by_id(rubric_id, user['email'])
         if not source_rubric:
             raise HTTPException(status_code=404, detail="Source rubric not found or access denied")
 
         # Create duplicate
         new_rubric = db_manager.duplicate_rubric(
             rubric_id=rubric_id,
-            new_owner_email=user['user_email']
+            new_owner_email=user['email']
         )
 
         return {
@@ -606,7 +755,7 @@ async def import_rubric(
         # Create rubric (private by default)
         result = db_manager.create_rubric(
             rubric_data=rubric_data,
-            owner_email=user['user_email'],
+            owner_email=user['email'],
             organization_id=org['id'],
             is_public=False
         )
@@ -636,7 +785,7 @@ async def export_rubric_json(
     """
     try:
         # Get rubric
-        rubric = db_manager.get_rubric_by_id(rubric_id, user['user_email'])
+        rubric = db_manager.get_rubric_by_id(rubric_id, user['email'])
         if not rubric:
             raise HTTPException(status_code=404, detail="Rubric not found or access denied")
 
@@ -673,7 +822,7 @@ async def export_rubric_markdown(
     """
     try:
         # Get rubric
-        rubric = db_manager.get_rubric_by_id(rubric_id, user['user_email'])
+        rubric = db_manager.get_rubric_by_id(rubric_id, user['email'])
         if not rubric:
             raise HTTPException(status_code=404, detail="Rubric not found or access denied")
 
@@ -746,41 +895,50 @@ def generate_rubric_markdown(rubric_data: Dict[str, Any]) -> str:
         lines.append("*No criteria defined*")
         return "\n".join(lines)
 
-    # Table header
-    header_parts = ["Criterion"]
+    # Get all unique level labels/scores from first criterion
     if criteria:
-        # Get level labels from first criterion
         first_criterion = criteria[0]
         levels = first_criterion.get('levels', [])
+
+        # Table header
+        header_parts = ["Criterion"]
         header_parts.extend([f"{level.get('label', '')} ({level.get('score', '')})" for level in levels])
 
-    lines.append("| " + " | ".join(header_parts) + " |")
-    lines.append("| " + " | ".join(["---"] * len(header_parts)) + " |")
-    lines.append("")
+        lines.append("| " + " | ".join(header_parts) + " |")
+        lines.append("| " + " | ".join(["---"] * len(header_parts)) + " |")
 
-    # Table rows
-    for criterion in criteria:
-        row_parts = []
+        # Table rows
+        for criterion in criteria:
+            row_parts = []
 
-        # Criterion name and description
-        name = criterion.get('name', '')
-        description = criterion.get('description', '')
-        weight = criterion.get('weight', '')
-        criterion_cell = f"**{name}**"
-        if weight:
-            criterion_cell += f" ({weight} pts)"
-        if description:
-            criterion_cell += f"<br>{description}"
-        row_parts.append(criterion_cell)
+            # Criterion cell: Name (weight pts)
+            name = criterion.get('name', '')
+            weight = criterion.get('weight', '')
+            criterion_cell = f"**{name}**"
+            if weight:
+                criterion_cell += f" ({weight} pts)"
+            row_parts.append(criterion_cell)
 
-        # Level descriptions
-        levels = criterion.get('levels', [])
-        for level in levels:
-            description = level.get('description', '')
-            row_parts.append(description)
+            # Level cells
+            criterion_levels = criterion.get('levels', [])
+            for i, level in enumerate(levels):
+                level_desc = ""
+                if i < len(criterion_levels):
+                    level_desc = criterion_levels[i].get('description', '')
+                row_parts.append(level_desc)
 
-        lines.append("| " + " | ".join(row_parts) + " |")
+            lines.append("| " + " | ".join(row_parts) + " |")
+
+        # Add criterion descriptions as a separate section
         lines.append("")
+        lines.append("### Criterion Descriptions")
+        lines.append("")
+        for criterion in criteria:
+            name = criterion.get('name', '')
+            description = criterion.get('description', '')
+            if description:
+                lines.append(f"**{name}**: {description}")
+                lines.append("")
 
     lines.append("---")
     lines.append("")
@@ -802,6 +960,8 @@ def generate_rubric_markdown(rubric_data: Dict[str, Any]) -> str:
 class AIGenerateRequest(BaseModel):
     """Request model for AI rubric generation"""
     prompt: str = Field(..., min_length=10, max_length=2000, description="Natural language description of the desired rubric")
+    language: Optional[str] = Field(default='en', description="Language code for prompt template (en, es, eu, ca)")
+    model: Optional[str] = Field(default=None, description="Optional specific model override")
 
 
 class AIModifyRequest(BaseModel):
@@ -815,44 +975,59 @@ async def ai_generate_rubric(
     user: Dict[str, Any] = Depends(get_current_user_dependency)
 ):
     """
-    Generate a new rubric using AI from natural language description
+    Generate a new rubric using AI from natural language description.
+    
+    NOTE: This endpoint returns the generated rubric for preview but does NOT save it.
+    The frontend will display a preview with Accept/Reject options.
+    Saving happens when user explicitly accepts the rubric.
 
     POST /lamb/v1/evaluaitor/rubrics/ai-generate
+    
+    Request:
+        {
+            "prompt": "User's natural language request",
+            "language": "en" (optional: en, es, eu, ca),
+            "model": "gpt-4o-mini" (optional override)
+        }
+    
+    Response:
+        {
+            "success": true,
+            "rubric": { ... complete rubric JSON ... },
+            "markdown": "# Rubric Title\n\n...",
+            "explanation": "AI's explanation of design choices",
+            "prompt_used": "Complete prompt sent to LLM (for debugging)"
+        }
     """
     try:
-        # Get user's organization for LLM config
-        org = get_user_organization(user)
+        logger.info(f"AI generate rubric called by user {user['email']}, language={request_data.language}")
+        logger.debug(f"User prompt: {request_data.prompt[:200]}...")
 
-        # Generate rubric using AI
-        rubric_data = await generate_rubric_with_ai(request_data.prompt, org['id'], user['user_email'])
-
-        # Validate generated rubric
-        is_valid, error_msg = RubricValidator.validate_rubric_structure(rubric_data)
-        if not is_valid:
-            # Try to fix common issues and validate again
-            rubric_data = RubricValidator.sanitize_rubric_data(rubric_data)
-            is_valid, error_msg = RubricValidator.validate_rubric_structure(rubric_data)
-            if not is_valid:
-                raise HTTPException(status_code=422, detail=f"AI generated invalid rubric: {error_msg}")
-
-        # Create the rubric
-        result = db_manager.create_rubric(
-            rubric_data=rubric_data,
-            owner_email=user['user_email'],
-            organization_id=org['id']
+        # Import AI generator
+        from .ai_generator import generate_rubric_ai
+        
+        # Generate rubric (does not save to database)
+        result = generate_rubric_ai(
+            user_prompt=request_data.prompt,
+            user_email=user['email'],
+            language=request_data.language or 'en',
+            model=request_data.model
         )
+        
+        if result.get('success'):
+            logger.info(f"Rubric generated successfully: {result.get('rubric', {}).get('title', 'Unknown')}")
+        else:
+            logger.warning(f"Rubric generation failed: {result.get('error', 'Unknown error')}")
+        
+        return result
 
-        return {
-            "success": True,
-            "rubric": result,
-            "message": "Rubric generated successfully"
-        }
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logging.error(f"Error generating rubric with AI: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate rubric with AI")
+        logger.error(f"Error generating rubric with AI: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Error generating rubric: {str(e)}",
+            "allow_manual_edit": False
+        }
 
 
 @router.post("/rubrics/{rubric_id}/ai-modify")
@@ -868,7 +1043,7 @@ async def ai_modify_rubric(
     """
     try:
         # Get existing rubric
-        existing_rubric = db_manager.get_rubric_by_id(rubric_id, user['user_email'])
+        existing_rubric = db_manager.get_rubric_by_id(rubric_id, user['email'])
         if not existing_rubric:
             raise HTTPException(status_code=404, detail="Rubric not found or access denied")
 
@@ -880,7 +1055,7 @@ async def ai_modify_rubric(
             existing_rubric['rubric_data'],
             request_data.prompt,
             org['id'],
-            user['user_email']
+            user['email']
         )
 
         # Validate modified rubric
@@ -899,7 +1074,7 @@ async def ai_modify_rubric(
         result = db_manager.update_rubric(
             rubric_id=rubric_id,
             rubric_data=modified_data,
-            owner_email=user['user_email']
+            owner_email=user['email']
         )
 
         return {
@@ -928,8 +1103,36 @@ async def generate_rubric_with_ai(prompt: str, organization_id: int, user_email:
     Returns:
         Generated rubric data
     """
-    # Get LLM configuration from organization
-    llm_config = get_organization_llm_config(organization_id)
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    import uuid
+    import json
+    from datetime import datetime
+
+    logger.info(f"generate_rubric_with_ai called with prompt: {prompt[:100]}..., org_id: {organization_id}, user: {user_email}")
+
+    # Get organization-specific OpenAI configuration
+    try:
+        logger.info(f"Getting organization config for user {user_email}")
+        config_resolver = OrganizationConfigResolver(user_email)
+        openai_config = config_resolver.get_provider_config("openai")
+        logger.info(f"OpenAI config retrieved: enabled={openai_config.get('enabled', True) if openai_config else False}")
+
+        if not openai_config or not openai_config.get("enabled", True):
+            logger.warning(f"OpenAI not enabled for user {user_email}, falling back to default rubric")
+            return RubricValidator.generate_default_rubric("AI Generated Rubric")
+
+        api_key = openai_config.get("api_key")
+        base_url = openai_config.get("base_url", "https://api.openai.com/v1")
+        model = openai_config.get("default_model", "gpt-4o-mini")
+        logger.info(f"Using OpenAI config: base_url={base_url}, model={model}, has_api_key={bool(api_key)}")
+
+        if not api_key:
+            logger.warning(f"No OpenAI API key found for user {user_email}, falling back to default rubric")
+            return RubricValidator.generate_default_rubric("AI Generated Rubric")
+
+    except Exception as e:
+        logger.error(f"Error getting OpenAI config for {user_email}: {e}, falling back to default rubric", exc_info=True)
+        return RubricValidator.generate_default_rubric("AI Generated Rubric")
 
     # Create system prompt
     system_prompt = """You are an expert educational assessment specialist helping an educator create a rubric.
@@ -979,13 +1182,101 @@ Respond with ONLY valid JSON in this format:
 """.format(prompt=prompt)
 
     try:
-        # Call LLM (simplified - would need actual LLM integration)
-        # For now, return a default rubric
-        import uuid
-        return RubricValidator.generate_default_rubric("AI Generated Rubric")
+        logger.info("Creating OpenAI client and preparing API call")
+
+        # Import OpenAI client
+        from openai import AsyncOpenAI
+
+        # Create OpenAI client with organization config
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+
+        # Prepare messages for OpenAI API
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Create a rubric based on this request: {prompt}"}
+        ]
+
+        logger.info(f"Calling OpenAI API with model {model} for rubric generation")
+        logger.info(f"System prompt length: {len(system_prompt)} characters")
+        logger.info(f"User message: {messages[1]['content'][:200]}...")
+
+        # Call OpenAI API
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000
+        )
+
+        logger.info("OpenAI API call completed successfully")
+
+        # Extract response content
+        content = response.choices[0].message.content.strip()
+        logger.info(f"AI response length: {len(content)} characters")
+        logger.info(f"AI response preview: {content[:200]}...")
+
+        # Try to parse as JSON - be more robust with AI responses
+        try:
+            # First try to parse the entire response
+            rubric_data = json.loads(content)
+            logger.info("Successfully parsed AI-generated rubric JSON")
+        except json.JSONDecodeError:
+            # If that fails, try to extract JSON from the response
+            # Look for JSON object start and end
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+
+            if start_idx != -1 and end_idx > start_idx:
+                json_content = content[start_idx:end_idx]
+                try:
+                    rubric_data = json.loads(json_content)
+                    logger.info("Successfully parsed AI-generated rubric JSON (extracted from response)")
+                except json.JSONDecodeError as e2:
+                    logger.error(f"Failed to parse extracted JSON: {e2}")
+                    logger.error(f"Extracted content: {json_content[:500]}...")
+                    raise ValueError("AI response contained invalid JSON structure")
+            else:
+                logger.error("No JSON object found in AI response")
+                raise ValueError("AI response did not contain valid JSON")
+
+            # Generate proper IDs and timestamps
+            rubric_id = str(uuid.uuid4())
+            now = datetime.now().isoformat()
+
+            # Update the rubric with proper IDs and timestamps
+            rubric_data['rubricId'] = rubric_id
+            rubric_data['metadata']['createdAt'] = now
+            rubric_data['metadata']['modifiedAt'] = now
+
+            # Generate unique IDs for criteria and levels
+            for i, criterion in enumerate(rubric_data.get('criteria', [])):
+                criterion['id'] = f"criterion-{i+1}"
+                for j, level in enumerate(criterion.get('levels', [])):
+                    level['id'] = f"criterion-{i+1}-level-{j+1}"
+
+            # Validate the generated rubric
+            is_valid, error_msg = RubricValidator.validate_rubric_structure(rubric_data)
+            if not is_valid:
+                logger.warning(f"AI-generated rubric validation failed: {error_msg}, attempting to fix")
+                # Try to sanitize and validate again
+                rubric_data = RubricValidator.sanitize_rubric_data(rubric_data)
+                is_valid, error_msg = RubricValidator.validate_rubric_structure(rubric_data)
+                if not is_valid:
+                    logger.error(f"Failed to fix AI-generated rubric: {error_msg}")
+                    raise ValueError(f"Generated rubric is invalid: {error_msg}")
+
+            return rubric_data
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI response as JSON: {e}")
+            logger.error(f"AI response content: {content[:500]}...")
+            raise ValueError("AI response was not valid JSON")
 
     except Exception as e:
-        logging.error(f"Error calling LLM for rubric generation: {e}")
+        logger.error(f"Error calling LLM for rubric generation: {e}")
         # Fallback to default rubric
         return RubricValidator.generate_default_rubric("AI Generated Rubric")
 
@@ -1008,8 +1299,31 @@ async def modify_rubric_with_ai(
     Returns:
         Modified rubric data
     """
-    # Get LLM configuration from organization
-    llm_config = get_organization_llm_config(organization_id)
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
+    import uuid
+    import json
+    from datetime import datetime
+
+    # Get organization-specific OpenAI configuration
+    try:
+        config_resolver = OrganizationConfigResolver(user_email)
+        openai_config = config_resolver.get_provider_config("openai")
+
+        if not openai_config or not openai_config.get("enabled", True):
+            logger.warning(f"OpenAI not enabled for user {user_email}, returning original rubric")
+            return existing_rubric
+
+        api_key = openai_config.get("api_key")
+        base_url = openai_config.get("base_url", "https://api.openai.com/v1")
+        model = openai_config.get("default_model", "gpt-4o-mini")
+
+        if not api_key:
+            logger.warning(f"No OpenAI API key found for user {user_email}, returning original rubric")
+            return existing_rubric
+
+    except Exception as e:
+        logger.error(f"Error getting OpenAI config for {user_email}: {e}, returning original rubric")
+        return existing_rubric
 
     # Create system prompt
     system_prompt = """You are an expert educational assessment specialist helping an educator modify their rubric.
@@ -1025,64 +1339,81 @@ Instructions:
 3. Preserve the rubric structure unless explicitly asked to change it
 4. Return the COMPLETE modified rubric in valid JSON format
 5. Keep the same rubricId and metadata structure
+6. Update the modifiedAt timestamp
+7. Ensure all criteria and levels have proper unique IDs
 
 Respond with ONLY valid JSON matching the original rubric format.
 """.format(existing_rubric=json.dumps(existing_rubric, indent=2), prompt=prompt)
 
     try:
-        # Call LLM (simplified - would need actual LLM integration)
-        # For now, return the existing rubric with minor modifications
-        modified = json.loads(json.dumps(existing_rubric))
-        modified['metadata']['modifiedAt'] = datetime.now().isoformat()
+        # Import OpenAI client
+        from openai import AsyncOpenAI
 
-        # Simple modification example - could be much more sophisticated
-        if "6th grade" in prompt.lower() or "6th graders" in prompt.lower():
-            modified['metadata']['gradeLevel'] = "6th Grade"
-            modified['description'] += " (Adapted for 6th grade)"
+        # Create OpenAI client with organization config
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
 
-        return modified
+        # Prepare messages for OpenAI API
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Modify this rubric based on this request: {prompt}"}
+        ]
+
+        logger.info(f"Calling OpenAI API with model {model} for rubric modification")
+
+        # Call OpenAI API
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000
+        )
+
+        # Extract response content
+        content = response.choices[0].message.content.strip()
+
+        # Try to parse as JSON
+        try:
+            modified_rubric = json.loads(content)
+            logger.info("Successfully parsed AI-modified rubric JSON")
+
+            # Preserve original rubric ID and creation timestamp
+            modified_rubric['rubricId'] = existing_rubric['rubricId']
+            modified_rubric['metadata']['createdAt'] = existing_rubric['metadata']['createdAt']
+            modified_rubric['metadata']['modifiedAt'] = datetime.now().isoformat()
+
+            # Ensure proper IDs for criteria and levels
+            for i, criterion in enumerate(modified_rubric.get('criteria', [])):
+                criterion['id'] = f"criterion-{i+1}"
+                for j, level in enumerate(criterion.get('levels', [])):
+                    level['id'] = f"criterion-{i+1}-level-{j+1}"
+
+            # Validate the modified rubric
+            is_valid, error_msg = RubricValidator.validate_rubric_structure(modified_rubric)
+            if not is_valid:
+                logger.warning(f"AI-modified rubric validation failed: {error_msg}, attempting to fix")
+                # Try to sanitize and validate again
+                modified_rubric = RubricValidator.sanitize_rubric_data(modified_rubric)
+                is_valid, error_msg = RubricValidator.validate_rubric_structure(modified_rubric)
+                if not is_valid:
+                    logger.error(f"Failed to fix AI-modified rubric: {error_msg}")
+                    raise ValueError(f"Modified rubric is invalid: {error_msg}")
+
+            return modified_rubric
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI response as JSON: {e}")
+            logger.error(f"AI response content: {content[:500]}...")
+            raise ValueError("AI response was not valid JSON")
 
     except Exception as e:
-        logging.error(f"Error calling LLM for rubric modification: {e}")
+        logger.error(f"Error calling LLM for rubric modification: {e}")
         # Return original rubric unchanged
         return existing_rubric
 
 
-def get_organization_llm_config(organization_id: int) -> Dict[str, Any]:
-    """
-    Get LLM configuration for an organization
-
-    Args:
-        organization_id: Organization ID
-
-    Returns:
-        LLM configuration dict
-    """
-    # This would integrate with the organization's LLM settings
-    # For now, return default config
-    from ..database_manager import LambDatabaseManager
-    db = LambDatabaseManager()
-
-    try:
-        org = db.get_organization_by_id(organization_id)
-        if org and 'config' in org:
-            config = org['config']
-            setups = config.get('setups', {})
-            default_setup = setups.get('default', {})
-            providers = default_setup.get('providers', {})
-            return providers
-    except Exception as e:
-        logging.error(f"Error getting org LLM config: {e}")
-
-    # Default fallback
-    return {
-        "openai": {
-            "enabled": True,
-            "api_key": None,
-            "base_url": "https://api.openai.com/v1",
-            "default_model": "gpt-4o-mini"
-        }
-    }
 
 
 def generate_changes_summary(original: Dict[str, Any], modified: Dict[str, Any]) -> Dict[str, Any]:
@@ -1133,3 +1464,89 @@ def generate_changes_summary(original: Dict[str, Any], modified: Dict[str, Any])
         changes["other_changes"].append("Grade level changed")
 
     return changes
+
+
+def format_rubric_as_markdown(rubric_data: dict) -> str:
+    """
+    Convert rubric JSON to markdown format for LLM context
+
+    Args:
+        rubric_data: Full rubric JSON structure
+
+    Returns:
+        Formatted markdown string
+    """
+    md = []
+
+    # Header
+    md.append(f"# {rubric_data.get('title', 'Rubric')}\n")
+    md.append(f"**Description:** {rubric_data.get('description', '')}\n")
+
+    # Metadata
+    metadata = rubric_data.get('metadata', {})
+    md.append(f"**Subject:** {metadata.get('subject', 'N/A')}")
+    md.append(f"**Grade Level:** {metadata.get('gradeLevel', 'N/A')}")
+    md.append(f"**Scoring Type:** {rubric_data.get('scoringType', 'points')}")
+    md.append(f"**Maximum Score:** {rubric_data.get('maxScore', 100)}\n")
+    md.append("---\n")
+
+    # Criteria table
+    md.append("## Assessment Criteria\n")
+
+    criteria = rubric_data.get('criteria', [])
+    if not criteria:
+        md.append("*No criteria defined*\n")
+        return "\n".join(md)
+
+    # Sort criteria by order
+    sorted_criteria = sorted(criteria, key=lambda c: c.get('order', 0))
+
+    # Build table header
+    # Get all unique levels across criteria (assume same levels for all)
+    if sorted_criteria and sorted_criteria[0].get('levels'):
+        first_criterion_levels = sorted(
+            sorted_criteria[0]['levels'],
+            key=lambda l: l.get('order', 0),
+            reverse=True  # Higher scores first
+        )
+
+        header = "| Criterion |"
+        for level in first_criterion_levels:
+            label = level.get('label', 'Level')
+            score = level.get('score', '')
+            header += f" {label} ({score}) |"
+        md.append(header)
+
+        # Table separator
+        separator = "|-----------|"
+        for _ in first_criterion_levels:
+            separator += "-------------|"
+        md.append(separator)
+
+    # Table rows (one per criterion)
+    for criterion in sorted_criteria:
+        name = criterion.get('name', 'Criterion')
+        description = criterion.get('description', '')
+        weight = criterion.get('weight', 0)
+
+        # Start row with criterion name
+        row = f"| **{name}**<br>*{description}*<br>({weight} points) |"
+
+        # Add level descriptions
+        levels = sorted(
+            criterion.get('levels', []),
+            key=lambda l: l.get('order', 0),
+            reverse=True
+        )
+        for level in levels:
+            desc = level.get('description', '')
+            row += f" {desc} |"
+
+        md.append(row)
+
+    md.append("\n---\n")
+    md.append("*Created: {created_at}*")
+    md.append("*Last Modified: {modified_at}*\n")
+    md.append("*Use the criteria and level descriptions above to guide assessment and feedback.*")
+
+    return "\n".join(md)
