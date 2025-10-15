@@ -2,6 +2,37 @@ import { getApiUrl } from '$lib/config';
 import { browser } from '$app/environment';
 
 /**
+ * Get authentication token from localStorage
+ * @returns {string} The token
+ */
+function getAuthToken() {
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('Not authenticated');
+    }
+    return token;
+}
+
+/**
+ * Make authenticated fetch request
+ * @param {string} url - The URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} The fetch response
+ */
+async function authenticatedFetch(url, options = {}) {
+    const token = getAuthToken();
+
+    const defaultOptions = {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    };
+
+    return fetch(url, { ...defaultOptions, ...options });
+}
+
+/**
  * @typedef {Object} Rubric - Defines the structure of a rubric object
  * @property {number} id - Internal database ID
  * @property {string} rubricId - External UUID identifier
@@ -59,7 +90,7 @@ export async function fetchRubrics(limit = 10, offset = 0, filters = {}) {
         }
     });
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics?${params}`);
+    const apiUrl = getApiUrl(`/rubrics?${params}`);
     console.log('Fetching rubrics from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -118,7 +149,7 @@ export async function fetchPublicRubrics(limit = 10, offset = 0, filters = {}) {
         }
     });
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/public?${params}`);
+    const apiUrl = getApiUrl(`/rubrics/public?${params}`);
     console.log('Fetching public rubrics from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -161,7 +192,7 @@ export async function fetchShowcaseRubrics() {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl('/rubrics/rubrics/showcase');
+    const apiUrl = getApiUrl('/rubrics/showcase');
     console.log('Fetching showcase rubrics from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -202,7 +233,7 @@ export async function fetchRubric(rubricId) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Fetching rubric from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -252,7 +283,7 @@ export async function createRubric(rubricData) {
     formData.append('maxScore', (rubricData.maxScore || 100).toString());
     formData.append('criteria', JSON.stringify(rubricData.criteria || []));
 
-    const apiUrl = getApiUrl('/rubrics/rubrics');
+    const apiUrl = getApiUrl('/rubrics');
     console.log('Creating rubric at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -303,9 +334,11 @@ export async function updateRubric(rubricId, rubricData) {
     formData.append('gradeLevel', rubricData.metadata?.gradeLevel || '');
     formData.append('scoringType', rubricData.scoringType || 'points');
     formData.append('maxScore', (rubricData.maxScore || 100).toString());
+
+    // Keep IDs in criteria (backend validator requires them)
     formData.append('criteria', JSON.stringify(rubricData.criteria || []));
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Updating rubric at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -346,7 +379,7 @@ export async function deleteRubric(rubricId) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Deleting rubric at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -386,7 +419,7 @@ export async function duplicateRubric(rubricId) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/duplicate`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/duplicate`);
     console.log('Duplicating rubric at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -427,16 +460,20 @@ export async function toggleRubricVisibility(rubricId, isPublic) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/visibility`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/visibility`);
     console.log('Toggling rubric visibility at:', apiUrl);
+
+    // Use form data as expected by Creator Interface
+    const formData = new FormData();
+    formData.append('is_public', isPublic.toString());
 
     const response = await fetch(apiUrl, {
         method: 'PUT',
         headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Authorization': `Bearer ${token}`
+            // Don't set Content-Type - let browser set it for FormData
         },
-        body: JSON.stringify({ isPublic })
+        body: formData
     });
 
     if (!response.ok) {
@@ -470,7 +507,7 @@ export async function setShowcaseStatus(rubricId, isShowcase) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/showcase`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/showcase`);
     console.log('Setting showcase status at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -512,7 +549,7 @@ export async function exportRubricJSON(rubricId) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/export/json`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/json`);
     console.log('Exporting rubric JSON from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -569,7 +606,7 @@ export async function exportRubricMarkdown(rubricId) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/export/markdown`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
     console.log('Exporting rubric Markdown from:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -630,7 +667,7 @@ export async function importRubric(file) {
     const formData = new FormData();
     formData.append('file', file);
 
-    const apiUrl = getApiUrl('/rubrics/rubrics/import');
+    const apiUrl = getApiUrl('/rubrics/import');
     console.log('Importing rubric at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -662,7 +699,15 @@ export async function importRubric(file) {
  * @returns {Promise<{rubric: RubricData, explanation: string}>}
  * @throws {Error} If not authenticated or generation fails
  */
-export async function aiGenerateRubric(prompt) {
+/**
+ * Generate a new rubric using AI (returns preview, does not save)
+ * @param {string} prompt - Natural language description of desired rubric
+ * @param {string} language - Language code (en, es, eu, ca) - defaults to 'en'
+ * @param {string} model - Optional specific model override
+ * @returns {Promise<{success: boolean, rubric: Object, markdown: string, explanation: string, prompt_used: string}>}
+ * @throws {Error} If not authenticated or generation fails
+ */
+export async function aiGenerateRubric(prompt, language = 'en', model = null) {
     if (!browser) {
         throw new Error('aiGenerateRubric called outside browser context');
     }
@@ -671,8 +716,13 @@ export async function aiGenerateRubric(prompt) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl('/rubrics/rubrics/ai-generate');
-    console.log('Generating rubric with AI at:', apiUrl);
+    const apiUrl = getApiUrl('/rubrics/ai-generate');
+    console.log('Generating rubric with AI at:', apiUrl, 'language:', language);
+
+    const requestBody = { prompt, language };
+    if (model) {
+        requestBody.model = model;
+    }
 
     const response = await fetch(apiUrl, {
         method: 'POST',
@@ -680,22 +730,29 @@ export async function aiGenerateRubric(prompt) {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
         let errorDetail = 'Failed to generate rubric with AI';
         try {
             const error = await response.json();
-            errorDetail = error?.detail || errorDetail;
+            errorDetail = error?.detail || error?.error || errorDetail;
         } catch (e) {
-            // Ignore
+            // Ignore JSON parse error
         }
         console.error('API error response status:', response.status, 'Detail:', errorDetail);
         throw new Error(errorDetail);
     }
 
-    return await response.json();
+    const result = await response.json();
+    
+    // Handle both success and failure responses
+    if (!result.success && result.error) {
+        console.warn('AI generation failed:', result.error);
+    }
+    
+    return result;
 }
 
 /**
@@ -714,7 +771,7 @@ export async function aiModifyRubric(rubricId, prompt) {
         throw new Error('Not authenticated');
     }
 
-    const apiUrl = getApiUrl(`/rubrics/rubrics/${rubricId}/ai-modify`);
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/ai-modify`);
     console.log('Modifying rubric with AI at:', apiUrl);
 
     const response = await fetch(apiUrl, {
@@ -735,6 +792,28 @@ export async function aiModifyRubric(rubricId, prompt) {
             // Ignore
         }
         console.error('API error response status:', response.status, 'Detail:', errorDetail);
+        throw new Error(errorDetail);
+    }
+
+    return await response.json();
+}
+
+/**
+ * Fetch accessible rubrics for assistant attachment
+ * @returns {Promise<{rubrics: Array, total: number}>}
+ */
+export async function fetchAccessibleRubrics() {
+    const response = await authenticatedFetch(`${getApiUrl('/rubrics/accessible')}`);
+
+    if (!response.ok) {
+        let errorDetail = "Failed to fetch accessible rubrics";
+        try {
+            const errorData = await response.json();
+            errorDetail = errorData.detail || errorDetail;
+        } catch (e) {
+            // Ignore
+        }
+        console.error("API error response status:", response.status, "Detail:", errorDetail);
         throw new Error(errorDetail);
     }
 

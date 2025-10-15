@@ -7,6 +7,7 @@
 	import { get } from 'svelte/store'; // Import get
 	import { getKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
+	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { goto } from '$app/navigation'; // Import for redirect
 	import { base } from '$app/paths'; // Import base path
 	import { createEventDispatcher } from 'svelte'; // Import event dispatcher
@@ -77,6 +78,17 @@
 	let fileUploadLoading = $state(false);
 	let fileUploadError = $state('');
 	let filesFetchAttempted = $state(false);
+
+	// Rubric State
+	/** @type {Array<{rubric_id: string, title: string, description: string, is_mine: boolean, is_showcase: boolean, is_public: boolean}>} */
+	let accessibleRubrics = $state([]);
+	/** @type {string} */
+	let selectedRubricId = $state('');
+	/** @type {'markdown' | 'json'} */
+	let rubricFormat = $state('markdown');
+	let loadingRubrics = $state(false);
+	let rubricError = $state('');
+	let rubricsFetchAttempted = $state(false);
 
 	// Loading/error/success state
 	let formError = $state('');
@@ -254,6 +266,9 @@
 		if (selectedRagProcessor === 'single_file_rag') {
 			tick().then(fetchUserFiles);
 		}
+		if (selectedRagProcessor === 'rubric_rag') {
+			tick().then(fetchRubricsList);
+		}
 	}
 
 	// --- Mode Switching Functions ---
@@ -320,6 +335,31 @@
 				console.log('Populate: Triggering KB fetch');
 				tick().then(fetchKnowledgeBases);
 			}
+
+			// Handle rubric fields if rubric_rag is selected
+			if (selectedRagProcessor === 'rubric_rag') {
+				try {
+					// Parse metadata if it's a string
+					let metadata = data.metadata;
+					if (typeof metadata === 'string') {
+						metadata = JSON.parse(metadata);
+					}
+
+					selectedRubricId = metadata?.rubric_id || '';
+					rubricFormat = metadata?.rubric_format || 'markdown';
+
+					// Fetch rubrics if needed
+					if (!rubricsFetchAttempted && !loadingRubrics) {
+						console.log('Populate: Triggering rubrics fetch');
+						tick().then(fetchRubricsList);
+					}
+				} catch (e) {
+					console.warn('Failed to parse rubric metadata:', e);
+					selectedRubricId = '';
+					rubricFormat = 'markdown';
+				}
+			}
+
 			// TODO: Handle file selection for single_file_rag if needed
 			// selectedFilePath = data.file_path || '';
 		}
@@ -391,6 +431,38 @@
 			loadingKnowledgeBases = false;
 			kbFetchAttempted = true; // Mark fetch as attempted
 			console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Count: ${accessibleKnowledgeBases.length})`);
+		}
+	}
+
+	async function fetchRubricsList() {
+		// Prevent fetch if already loading OR if already attempted for this selection
+		if (loadingRubrics || rubricsFetchAttempted) {
+			console.log(`Skipping rubrics fetch (Loading: ${loadingRubrics}, Attempted: ${rubricsFetchAttempted})`);
+			return;
+		}
+		// Ensure we actually need rubrics
+		if (selectedRagProcessor !== 'rubric_rag') {
+			console.log('Skipping rubrics fetch (RAG processor is not rubric_rag)');
+			return;
+		}
+
+		console.log('Fetching accessible rubrics...');
+		loadingRubrics = true;
+		rubricError = '';
+
+		try {
+			const response = await fetchAccessibleRubrics();
+			const rubrics = response.rubrics || [];
+			accessibleRubrics = rubrics;
+			console.log(`Loaded ${rubrics.length} accessible rubrics`);
+		} catch (err) {
+			console.error('Error fetching accessible rubrics:', err);
+			rubricError = err instanceof Error ? err.message : 'Failed to load rubrics';
+			accessibleRubrics = []; // Ensure list is empty on error
+		} finally {
+			loadingRubrics = false;
+			rubricsFetchAttempted = true; // Mark fetch as attempted
+			console.log(`Rubrics Fetch complete (Attempted: ${rubricsFetchAttempted}, Error: '${rubricError}', Count: ${accessibleRubrics.length})`);
 		}
 	}
 
@@ -653,6 +725,7 @@
 	const showRagOptions = $derived(selectedRagProcessor && selectedRagProcessor !== 'no_rag');
 	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag');
 	const showSingleFileSelector = $derived(selectedRagProcessor === 'single_file_rag');
+	const showRubricSelector = $derived(selectedRagProcessor === 'rubric_rag');
 
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
 	$effect(() => {
@@ -674,6 +747,14 @@
 			} else {
 				console.log('Effect: Skipping files fetch (already attempted or loading).');
 			}
+		} else if (selectedRagProcessor === 'rubric_rag' && configInitialized) {
+			// Fetch rubrics when switching to rubric_rag
+			if (!rubricsFetchAttempted && !loadingRubrics) {
+				console.log('Effect: Conditions met (rubric_rag, not attempted), calling fetchRubricsList()');
+				tick().then(fetchRubricsList);
+			} else {
+				console.log('Effect: Skipping rubrics fetch (already attempted or loading).');
+			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			if (accessibleKnowledgeBases.length > 0 || selectedKnowledgeBases.length > 0 || knowledgeBaseError || kbFetchAttempted) {
@@ -688,6 +769,13 @@
 			if (selectedRagProcessor !== 'single_file_rag' && (selectedFilePath || userFiles.length > 0)) {
 				selectedFilePath = '';
 				// Note: We don't clear userFiles or filesFetchAttempted to avoid refetching if user switches back
+			}
+
+			// Reset rubric selection if we moved away from rubric_rag
+			if (selectedRagProcessor !== 'rubric_rag' && (selectedRubricId || accessibleRubrics.length > 0)) {
+				selectedRubricId = '';
+				rubricFormat = 'markdown'; // Reset to default
+				// Note: We don't clear accessibleRubrics or rubricsFetchAttempted to avoid refetching if user switches back
 			}
 		}
 	});
@@ -722,6 +810,13 @@
 			return;
 		}
 
+		// Validate rubric selection if rubric_rag is selected
+		if (selectedRagProcessor === 'rubric_rag' && !selectedRubricId) {
+			formError = 'Please select a rubric when using Rubric RAG.';
+			formLoading = false;
+			return;
+		}
+
 		// In non-advanced mode, ensure defaults are used
 		if (formState === 'create' && !isAdvancedMode) {
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
@@ -744,6 +839,12 @@
 			rag_processor: selectedRagProcessor,
 			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : ''
 		};
+
+		// Add rubric fields if rubric_rag is selected
+		if (selectedRagProcessor === 'rubric_rag') {
+			metadataObj.rubric_id = selectedRubricId;
+			metadataObj.rubric_format = rubricFormat;
+		}
 
 		// Construct payload according to the expected API structure
 		const assistantDataPayload = {
@@ -1346,7 +1447,93 @@
 										{/if}
 									</div>
 								{/if}
-								
+
+								<!-- Rubric Selector (Conditional) -->
+								{#if showRubricSelector}
+									<div>
+										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.rubric.label', { default: 'Select Rubric' })}</h4>
+
+										{#if loadingRubrics}
+											<p class="text-sm text-gray-500">{$_('assistants.form.rubric.loading', { default: 'Loading rubrics...' })}</p>
+										{:else if rubricError}
+											<p class="text-sm text-red-600">{$_('assistants.form.rubric.error', { default: 'Error loading rubrics:' })} {rubricError}</p>
+										{:else if accessibleRubrics.length === 0}
+											<p class="text-sm text-gray-500">
+												{$_('assistants.form.rubric.noneFound', { default: 'No rubrics available.' })}
+												<a href="/evaluaitor" class="text-blue-600 hover:underline" target="_blank">
+													{$_('assistants.form.rubric.createLink', { default: 'Create a rubric' })} →
+												</a>
+											</p>
+										{:else}
+											<!-- Rubric Cards -->
+											<div class="mt-2 space-y-2 max-h-96 overflow-y-auto border rounded p-3" role="group" aria-labelledby="rubric-group-label">
+												<span id="rubric-group-label" class="sr-only">{$_('assistants.form.rubric.label', { default: 'Select Rubric' })}</span>
+												{#each accessibleRubrics as rubric (rubric.rubric_id)}
+													<label class="flex items-start space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all
+														{selectedRubricId === rubric.rubric_id ? 'border-brand bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}">
+														<input 
+															type="radio" 
+															name="rubric-selector" 
+															value={rubric.rubric_id}
+															bind:group={selectedRubricId}
+															class="mt-1 h-4 w-4 text-brand focus:ring-brand"
+														/>
+														<div class="flex-1 min-w-0">
+															<div class="flex items-center gap-2">
+																<span class="text-sm font-medium text-gray-900 truncate">{rubric.title}</span>
+																{#if rubric.is_showcase}
+																	<span class="text-xs">🌟</span>
+																{/if}
+																{#if rubric.is_mine}
+																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+																		{$_('assistants.form.rubric.mine', { default: 'Mine' })}
+																	</span>
+																{:else}
+																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+																		{$_('assistants.form.rubric.public', { default: 'Public' })}
+																	</span>
+																{/if}
+															</div>
+															{#if rubric.description}
+																<p class="mt-1 text-xs text-gray-600 line-clamp-2">{rubric.description}</p>
+															{/if}
+														</div>
+													</label>
+												{/each}
+											</div>
+											{#if !selectedRubricId && formState === 'edit'}
+												<p class="mt-1 text-xs text-red-500">{$_('assistants.form.rubric.required', { default: 'Please select a rubric' })}</p>
+											{/if}
+										{/if}
+
+										<!-- Format selector -->
+										<div class="mt-4">
+											<div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.format.label', { default: 'Rubric Format for LLM' })}</div>
+											<div class="flex gap-4">
+												<label class="flex items-center">
+													<input
+														type="radio"
+														bind:group={rubricFormat}
+														value="markdown"
+														class="mr-2"
+													/>
+													<span class="text-sm">{$_('assistants.form.rubric.format.markdown', { default: 'Markdown (table format)' })}</span>
+												</label>
+												<label class="flex items-center">
+													<input
+														type="radio"
+														bind:group={rubricFormat}
+														value="json"
+														class="mr-2"
+													/>
+													<span class="text-sm">{$_('assistants.form.rubric.format.json', { default: 'JSON (structured data)' })}</span>
+												</label>
+											</div>
+											<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.rubric.format.help', { default: 'Choose the format that works best with your selected LLM. You can test both to see which produces better results.' })}</p>
+										</div>
+									</div>
+								{/if}
+
 							</div>
 						{/if}
 
