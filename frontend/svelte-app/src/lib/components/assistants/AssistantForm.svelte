@@ -89,6 +89,7 @@
 	let loadingRubrics = $state(false);
 	let rubricError = $state('');
 	let rubricsFetchAttempted = $state(false);
+	let rubricSearchQuery = $state(''); // Search filter for rubrics
 
 	// Loading/error/success state
 	let formError = $state('');
@@ -726,6 +727,18 @@
 	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag');
 	const showSingleFileSelector = $derived(selectedRagProcessor === 'single_file_rag');
 	const showRubricSelector = $derived(selectedRagProcessor === 'rubric_rag');
+	
+	// Filtered rubrics based on search query
+	const filteredRubrics = $derived(() => {
+		if (!rubricSearchQuery.trim()) {
+			return accessibleRubrics;
+		}
+		const query = rubricSearchQuery.toLowerCase();
+		return accessibleRubrics.filter(rubric => 
+			rubric.title.toLowerCase().includes(query) || 
+			(rubric.description && rubric.description.toLowerCase().includes(query))
+		);
+	});
 
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
 	$effect(() => {
@@ -1265,6 +1278,183 @@
 							<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.promptTemplate.help', { default: 'This processor requires a valid prompt template.' })}</p>
 						{/if}
 					</div>
+
+					<!-- Rubric Selector (Moved below prompt template) -->
+					{#if showRubricSelector}
+						<div class="mt-6 pt-6 border-t border-gray-200">
+							<h4 class="text-lg font-medium text-gray-900 mb-4">
+								{$_('assistants.form.rubric.label', { default: 'Select Rubric' })}
+							</h4>
+
+							{#if loadingRubrics}
+								<p class="text-sm text-gray-500">{$_('assistants.form.rubric.loading', { default: 'Loading rubrics...' })}</p>
+							{:else if rubricError}
+								<p class="text-sm text-red-600">{$_('assistants.form.rubric.error', { default: 'Error loading rubrics:' })} {rubricError}</p>
+							{:else if accessibleRubrics.length === 0}
+								<p class="text-sm text-gray-500">
+									{$_('assistants.form.rubric.noneFound', { default: 'No rubrics available.' })}
+									<a href="/evaluaitor" class="text-blue-600 hover:underline" target="_blank">
+										{$_('assistants.form.rubric.createLink', { default: 'Create a rubric' })} →
+									</a>
+								</p>
+							{:else}
+								<!-- Search Bar -->
+								<div class="mb-4">
+									<label for="rubric-search" class="sr-only">{$_('assistants.form.rubric.search.label', { default: 'Search rubrics' })}</label>
+									<input
+										type="text"
+										id="rubric-search"
+										bind:value={rubricSearchQuery}
+										placeholder={$_('assistants.form.rubric.search.placeholder', { default: 'Search rubrics by title or description...' })}
+										class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-brand focus:border-brand sm:text-sm"
+									/>
+								</div>
+
+								<!-- Display selected rubric if one is chosen -->
+								{#if selectedRubricId}
+									{@const selectedRubric = accessibleRubrics.find(r => r.rubric_id === selectedRubricId)}
+									{#if selectedRubric}
+										<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+											<div class="flex items-start justify-between">
+												<div class="flex-1">
+													<div class="flex items-center gap-2">
+														<span class="text-sm font-semibold text-blue-900">{$_('assistants.form.rubric.selected', { default: 'Selected:' })}</span>
+														<span class="text-sm font-medium text-blue-800">{selectedRubric.title}</span>
+														{#if selectedRubric.is_showcase}
+															<span class="text-xs">🌟</span>
+														{/if}
+													</div>
+													{#if selectedRubric.description}
+														<p class="mt-1 text-xs text-blue-700">{selectedRubric.description}</p>
+													{/if}
+												</div>
+												<a 
+													href="/evaluaitor/{selectedRubric.rubric_id}" 
+													target="_blank"
+													rel="noopener noreferrer"
+													class="ml-2 text-sm text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+												>
+													{$_('assistants.form.rubric.view', { default: 'View' })} →
+												</a>
+											</div>
+										</div>
+									{/if}
+								{/if}
+
+								<!-- Rubric List/Table -->
+								<div class="border rounded-md overflow-hidden">
+									<div class="max-h-96 overflow-y-auto">
+										<table class="min-w-full divide-y divide-gray-200">
+											<thead class="bg-gray-50 sticky top-0">
+												<tr>
+													<th scope="col" class="w-12 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+														{$_('assistants.form.rubric.table.select', { default: 'Select' })}
+													</th>
+													<th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+														{$_('assistants.form.rubric.table.title', { default: 'Title' })}
+													</th>
+													<th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+														{$_('assistants.form.rubric.table.description', { default: 'Description' })}
+													</th>
+													<th scope="col" class="w-24 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+														{$_('assistants.form.rubric.table.type', { default: 'Type' })}
+													</th>
+													<th scope="col" class="w-20 px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+														{$_('assistants.form.rubric.table.actions', { default: 'Actions' })}
+													</th>
+												</tr>
+											</thead>
+											<tbody class="bg-white divide-y divide-gray-200">
+												{#if filteredRubrics().length === 0}
+													<tr>
+														<td colspan="5" class="px-3 py-4 text-sm text-gray-500 text-center">
+															{$_('assistants.form.rubric.noMatches', { default: 'No rubrics match your search.' })}
+														</td>
+													</tr>
+												{:else}
+													{#each filteredRubrics() as rubric (rubric.rubric_id)}
+														<tr class="hover:bg-gray-50 {selectedRubricId === rubric.rubric_id ? 'bg-blue-50' : ''}">
+															<td class="px-3 py-3 whitespace-nowrap text-center">
+																<input
+																	type="radio"
+																	name="rubric-selector"
+																	value={rubric.rubric_id}
+																	bind:group={selectedRubricId}
+																	class="h-4 w-4 text-brand focus:ring-brand"
+																/>
+															</td>
+															<td class="px-3 py-3">
+																<div class="flex items-center gap-2">
+																	<span class="text-sm font-medium text-gray-900">{rubric.title}</span>
+																	{#if rubric.is_showcase}
+																		<span class="text-xs" title="Showcase rubric">🌟</span>
+																	{/if}
+																</div>
+															</td>
+															<td class="px-3 py-3">
+																<p class="text-sm text-gray-600 line-clamp-2">{rubric.description || ''}</p>
+															</td>
+															<td class="px-3 py-3 whitespace-nowrap">
+																{#if rubric.is_mine}
+																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+																		{$_('assistants.form.rubric.mine', { default: 'Mine' })}
+																	</span>
+																{:else}
+																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+																		{$_('assistants.form.rubric.public', { default: 'Public' })}
+																	</span>
+																{/if}
+															</td>
+															<td class="px-3 py-3 whitespace-nowrap text-center">
+																<a
+																	href="/evaluaitor/{rubric.rubric_id}"
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	class="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+																>
+																	{$_('assistants.form.rubric.view', { default: 'View' })} →
+																</a>
+															</td>
+														</tr>
+													{/each}
+												{/if}
+											</tbody>
+										</table>
+									</div>
+								</div>
+
+								{#if !selectedRubricId}
+									<p class="mt-2 text-xs text-red-500">{$_('assistants.form.rubric.required', { default: 'Please select a rubric' })}</p>
+								{/if}
+
+								<!-- Format selector -->
+								<div class="mt-6 pt-4 border-t border-gray-200">
+									<div class="block text-sm font-medium text-gray-700 mb-3">{$_('assistants.form.rubric.format.label', { default: 'Rubric Format for LLM' })}</div>
+									<div class="flex gap-6">
+										<label class="flex items-center cursor-pointer">
+											<input
+												type="radio"
+												bind:group={rubricFormat}
+												value="markdown"
+												class="h-4 w-4 text-brand focus:ring-brand mr-2"
+											/>
+											<span class="text-sm">{$_('assistants.form.rubric.format.markdown', { default: 'Markdown (table format)' })}</span>
+										</label>
+										<label class="flex items-center cursor-pointer">
+											<input
+												type="radio"
+												bind:group={rubricFormat}
+												value="json"
+												class="h-4 w-4 text-brand focus:ring-brand mr-2"
+											/>
+											<span class="text-sm">{$_('assistants.form.rubric.format.json', { default: 'JSON (structured data)' })}</span>
+										</label>
+									</div>
+									<p class="mt-2 text-xs text-gray-500">{$_('assistants.form.rubric.format.help', { default: 'Choose the format that works best with your selected LLM. You can test both to see which produces better results.' })}</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 
 				<!-- Right Column: Configuration -->
@@ -1350,6 +1540,15 @@
 						{#if showRagOptions}
 							<div class="pt-4 border-t border-gray-200 space-y-4">
 								<h4 class="text-md font-medium text-gray-700">{$_('assistants.form.ragOptions.title', { default: 'RAG Options' })}</h4>
+								
+								<!-- Rubric RAG Info Message -->
+								{#if selectedRagProcessor === 'rubric_rag'}
+									<div class="p-3 bg-blue-50 border border-blue-200 rounded-md">
+										<p class="text-sm text-blue-800">
+											📋 {$_('assistants.form.rubric.configLocation', { default: 'See rubric options below the Prompt Template section' })}
+										</p>
+									</div>
+								{/if}
 								
 								<!-- RAG Top K (Only for simple_rag) -->
 								{#if selectedRagProcessor === 'simple_rag'}
@@ -1448,91 +1647,6 @@
 									</div>
 								{/if}
 
-								<!-- Rubric Selector (Conditional) -->
-								{#if showRubricSelector}
-									<div>
-										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.rubric.label', { default: 'Select Rubric' })}</h4>
-
-										{#if loadingRubrics}
-											<p class="text-sm text-gray-500">{$_('assistants.form.rubric.loading', { default: 'Loading rubrics...' })}</p>
-										{:else if rubricError}
-											<p class="text-sm text-red-600">{$_('assistants.form.rubric.error', { default: 'Error loading rubrics:' })} {rubricError}</p>
-										{:else if accessibleRubrics.length === 0}
-											<p class="text-sm text-gray-500">
-												{$_('assistants.form.rubric.noneFound', { default: 'No rubrics available.' })}
-												<a href="/evaluaitor" class="text-blue-600 hover:underline" target="_blank">
-													{$_('assistants.form.rubric.createLink', { default: 'Create a rubric' })} →
-												</a>
-											</p>
-										{:else}
-											<!-- Rubric Cards -->
-											<div class="mt-2 space-y-2 max-h-96 overflow-y-auto border rounded p-3" role="group" aria-labelledby="rubric-group-label">
-												<span id="rubric-group-label" class="sr-only">{$_('assistants.form.rubric.label', { default: 'Select Rubric' })}</span>
-												{#each accessibleRubrics as rubric (rubric.rubric_id)}
-													<label class="flex items-start space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all
-														{selectedRubricId === rubric.rubric_id ? 'border-brand bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}">
-														<input 
-															type="radio" 
-															name="rubric-selector" 
-															value={rubric.rubric_id}
-															bind:group={selectedRubricId}
-															class="mt-1 h-4 w-4 text-brand focus:ring-brand"
-														/>
-														<div class="flex-1 min-w-0">
-															<div class="flex items-center gap-2">
-																<span class="text-sm font-medium text-gray-900 truncate">{rubric.title}</span>
-																{#if rubric.is_showcase}
-																	<span class="text-xs">🌟</span>
-																{/if}
-																{#if rubric.is_mine}
-																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-																		{$_('assistants.form.rubric.mine', { default: 'Mine' })}
-																	</span>
-																{:else}
-																	<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-																		{$_('assistants.form.rubric.public', { default: 'Public' })}
-																	</span>
-																{/if}
-															</div>
-															{#if rubric.description}
-																<p class="mt-1 text-xs text-gray-600 line-clamp-2">{rubric.description}</p>
-															{/if}
-														</div>
-													</label>
-												{/each}
-											</div>
-											{#if !selectedRubricId && formState === 'edit'}
-												<p class="mt-1 text-xs text-red-500">{$_('assistants.form.rubric.required', { default: 'Please select a rubric' })}</p>
-											{/if}
-										{/if}
-
-										<!-- Format selector -->
-										<div class="mt-4">
-											<div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.format.label', { default: 'Rubric Format for LLM' })}</div>
-											<div class="flex gap-4">
-												<label class="flex items-center">
-													<input
-														type="radio"
-														bind:group={rubricFormat}
-														value="markdown"
-														class="mr-2"
-													/>
-													<span class="text-sm">{$_('assistants.form.rubric.format.markdown', { default: 'Markdown (table format)' })}</span>
-												</label>
-												<label class="flex items-center">
-													<input
-														type="radio"
-														bind:group={rubricFormat}
-														value="json"
-														class="mr-2"
-													/>
-													<span class="text-sm">{$_('assistants.form.rubric.format.json', { default: 'JSON (structured data)' })}</span>
-												</label>
-											</div>
-											<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.rubric.format.help', { default: 'Choose the format that works best with your selected LLM. You can test both to see which produces better results.' })}</p>
-										</div>
-									</div>
-								{/if}
 
 							</div>
 						{/if}

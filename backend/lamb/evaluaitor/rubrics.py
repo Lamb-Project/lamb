@@ -8,7 +8,7 @@ import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Form, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Form, UploadFile, File, Request, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -102,10 +102,12 @@ class RubricListResponse(BaseModel):
 
 
 # FastAPI dependency wrapper
-async def get_current_user_dependency(auth_header: str = Query(..., alias="auth_header")) -> Dict[str, Any]:
+async def get_current_user_dependency(authorization: str = Header(None)) -> Dict[str, Any]:
     """FastAPI dependency for getting current user"""
-    logger.info(f"get_current_user_dependency called with auth_header: {auth_header[:50] if auth_header else None}")
-    result = get_current_user_from_token(auth_header)
+    logger.info(f"get_current_user_dependency called with authorization header: {authorization[:50] if authorization else None}")
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    result = get_current_user_from_token(authorization)
     logger.info(f"get_current_user_dependency returning: {result}")
     return result
 
