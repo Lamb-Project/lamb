@@ -586,7 +586,7 @@ async def import_rubric(
 @router.get("/{rubric_id}/export/json")
 async def export_rubric_json(
     rubric_id: str,
-    creator_user: Dict[str, Any] = Depends(get_current_creator_user)
+    credentials: HTTPAuthorizationCredentials = Security(security)
 ):
     """
     Export rubric as JSON file download
@@ -594,7 +594,7 @@ async def export_rubric_json(
     GET /creator/evaluaitor/rubrics/{rubric_id}/export/json
     """
     try:
-        auth_token = f"Bearer {creator_user.get('token', '')}"
+        auth_token = f"Bearer {credentials.credentials}"
         # Get the response from backend
         async with aiohttp.ClientSession() as session:
             url = f"{LAMB_BACKEND_URL}/lamb/v1/evaluaitor/rubrics/{rubric_id}/export/json"
@@ -609,15 +609,18 @@ async def export_rubric_json(
                         raise HTTPException(status_code=response.status, detail="Backend error")
 
                 # Return file download response
-                content = await response.read()
+                # Read as bytes to avoid encoding issues, let FastAPI handle encoding
+                content_bytes = await response.read()
                 filename = response.headers.get("Content-Disposition", "").split("filename=")[-1].strip('"')
-
+                
+                # FastAPI Response handles bytes directly
+                from fastapi.responses import Response
                 return Response(
-                    content=content,
-                    media_type="application/json",
+                    content=content_bytes,
+                    media_type="application/json; charset=utf-8",
                     headers={
                         "Content-Disposition": f"attachment; filename={filename}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json; charset=utf-8"
                     }
                 )
 
@@ -631,7 +634,7 @@ async def export_rubric_json(
 @router.get("/{rubric_id}/export/markdown")
 async def export_rubric_markdown(
     rubric_id: str,
-    creator_user: Dict[str, Any] = Depends(get_current_creator_user)
+    credentials: HTTPAuthorizationCredentials = Security(security)
 ):
     """
     Export rubric as Markdown file download
@@ -639,7 +642,7 @@ async def export_rubric_markdown(
     GET /creator/evaluaitor/rubrics/{rubric_id}/export/markdown
     """
     try:
-        auth_token = f"Bearer {creator_user.get('token', '')}"
+        auth_token = f"Bearer {credentials.credentials}"
         # Get the response from backend
         async with aiohttp.ClientSession() as session:
             url = f"{LAMB_BACKEND_URL}/lamb/v1/evaluaitor/rubrics/{rubric_id}/export/markdown"
@@ -654,23 +657,40 @@ async def export_rubric_markdown(
                         raise HTTPException(status_code=response.status, detail="Backend error")
 
                 # Return file download response
-                content = await response.read()
-                filename = response.headers.get("Content-Disposition", "").split("filename=")[-1].strip('"')
-
+                # Read as bytes to avoid encoding issues
+                content_bytes = await response.read()
+                
+                # Extract filename, handling encoding in filename
+                content_disposition = response.headers.get("Content-Disposition", "")
+                filename = "rubric.md"
+                if content_disposition:
+                    try:
+                        # More robust filename extraction
+                        if "filename=" in content_disposition:
+                            filename = content_disposition.split("filename=")[-1].strip('"').strip("'")
+                            # Sanitize filename to ASCII to avoid encoding issues in headers
+                            filename = filename.encode('ascii', 'ignore').decode('ascii')
+                            if not filename:
+                                filename = f"rubric-{rubric_id}.md"
+                    except:
+                        filename = f"rubric-{rubric_id}.md"
+                
+                # Use StreamingResponse with iter to pass bytes directly
+                from fastapi.responses import Response
                 return Response(
-                    content=content,
-                    media_type="text/markdown",
+                    content=content_bytes,
+                    media_type="text/markdown; charset=utf-8",
                     headers={
-                        "Content-Disposition": f"attachment; filename={filename}",
-                        "Content-Type": "text/markdown"
+                        "Content-Disposition": f'attachment; filename="{filename}"',
+                        "Content-Type": "text/markdown; charset=utf-8"
                     }
                 )
 
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting rubric {rubric_id} as Markdown: {e}")
-        raise HTTPException(status_code=500, detail="Failed to export rubric")
+        logging.error(f"Error exporting rubric {rubric_id} as Markdown: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to export rubric: {str(e)}")
 
 
 # AI Integration Endpoints

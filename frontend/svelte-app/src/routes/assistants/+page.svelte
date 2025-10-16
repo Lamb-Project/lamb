@@ -10,6 +10,7 @@
     import { page } from '$app/stores'; // Import page store to read URL params
     import { getAssistantById, createAssistant, deleteAssistant, setAssistantPublishStatus } from '$lib/services/assistantService'; // Import service
     import { getKnowledgeBases } from '$lib/services/knowledgeBaseService'; // <<< Import KB service
+    import { fetchRubricMarkdown } from '$lib/services/rubricService'; // <<< Import rubric service
     import { goto } from '$app/navigation'; // <<< Add import for goto
     import { base } from '$app/paths'; // <<< Add import for base path
     import { writable } from 'svelte/store'; // Import from svelte/store instead of type import
@@ -81,6 +82,12 @@
 	let loadingKnowledgeBases = $state(false);
 	let knowledgeBaseError = $state('');
 	let kbFetchTriggered = $state(false); // Flag to ensure fetch runs only once per applicable assistant load
+
+    // --- Rubric State (for detail view) ---
+    let rubricMarkdown = $state('');
+    let loadingRubric = $state(false);
+    let rubricError = $state('');
+    let rubricFetchTriggered = $state(false);
 
     // --- Functions --- 
     /** Sets the view to the assistant creation form */
@@ -642,7 +649,51 @@
 		}
 	}
 
-    // Effect to trigger KB fetch when detail view is shown and assistant data is available
+    /** Fetches rubric markdown if needed for the detail view */
+    async function fetchRubricForDetail() {
+        if (loadingRubric || rubricFetchTriggered) return; // Don't refetch if loading or already triggered
+
+        // Check if the currently displayed assistant uses rubric_rag
+        let ragProcessor = '';
+        let rubricId = '';
+        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
+        if (metadataStr) {
+            try {
+                const callbackData = JSON.parse(metadataStr);
+                ragProcessor = callbackData.rag_processor;
+                rubricId = callbackData.rubric_id;
+            } catch(e) {
+                console.error("Error parsing metadata for rubric fetch check:", e);
+            }
+        }
+
+        if (ragProcessor !== 'rubric_rag' || !rubricId) {
+            console.log('Skipping rubric fetch for detail view (not rubric_rag or no rubric_id)');
+            rubricMarkdown = ''; // Clear if not needed
+            rubricError = '';
+            rubricFetchTriggered = true; // Mark as checked for this load
+            return;
+        }
+
+        console.log('Fetching rubric markdown for detail view...');
+        loadingRubric = true;
+        rubricError = '';
+        rubricMarkdown = ''; // Clear previous content
+
+        try {
+            const markdown = await fetchRubricMarkdown(rubricId);
+            rubricMarkdown = markdown;
+            console.log('Fetched rubric markdown for detail view');
+        } catch (err) {
+            console.error('Error fetching rubric markdown for detail view:', err);
+            rubricError = err instanceof Error ? err.message : 'Failed to load rubric';
+        } finally {
+            loadingRubric = false;
+            rubricFetchTriggered = true; // Mark fetch as completed/attempted for this assistant load
+        }
+    }
+
+    // Effect to trigger KB and Rubric fetch when detail view is shown and assistant data is available
     $effect(() => {
         // Only run in browser
         if (!browser) return; 
@@ -657,6 +708,10 @@
                  console.log(`$effect triggering KB fetch for detail view (ID: ${assistantIdStr})`);
                  fetchKnowledgeBasesForDetail(); // This sets kbFetchTriggered = true
             }
+            if (assistantIdStr === lastAttemptedIdStr && !rubricFetchTriggered) {
+                 console.log(`$effect triggering Rubric fetch for detail view (ID: ${assistantIdStr})`);
+                 fetchRubricForDetail(); // This sets rubricFetchTriggered = true
+            }
         } 
         
         // Reset trigger ONLY if the relevant ID changes OR we navigate away from detail
@@ -667,6 +722,12 @@
                  kbFetchTriggered = false;
                  accessibleKnowledgeBases = []; // Clear KBs
                  knowledgeBaseError = ''; // Clear any previous errors
+             }
+             if (rubricFetchTriggered) { // Reset rubric fetch trigger as well
+                 console.log(`$effect resetting Rubric fetch trigger`);
+                 rubricFetchTriggered = false;
+                 rubricMarkdown = ''; // Clear rubric markdown
+                 rubricError = ''; // Clear any previous errors
              }
         }
     });
@@ -864,24 +925,84 @@
                     <!-- Description -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.description.label', { default: 'Description' })}</div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed sm:text-sm min-h-[6em] whitespace-pre-wrap">
+                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[6em] whitespace-pre-wrap select-text cursor-text">
                             {selectedAssistantData.description || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>
                      <!-- System Prompt -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed sm:text-sm min-h-[8em] whitespace-pre-wrap">
+                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[8em] whitespace-pre-wrap select-text cursor-text">
                             {selectedAssistantData.system_prompt || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>
                     <!-- Prompt Template -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}</div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed sm:text-sm min-h-[8em] whitespace-pre-wrap">
+                        <div class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm max-h-96 overflow-y-auto whitespace-pre-wrap select-text cursor-text">
                             {selectedAssistantData.prompt_template || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>
+
+                    <!-- Selected Rubric (if rubric_rag) - Moved here below prompt template -->
+                    {#if selectedAssistantData}
+                        {@const apiCallback = (() => {
+                            try {
+                                const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
+                                return typeof metadataStr === 'string' 
+                                    ? JSON.parse(metadataStr) 
+                                    : metadataStr || {};
+                            } catch (e) {
+                                console.error("Error parsing metadata:", e);
+                                return {};
+                            }
+                        })()}
+                        {#if apiCallback.rag_processor === 'rubric_rag'}
+                            <div class="mt-6 pt-6 border-t border-gray-200">
+                                <div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.selectedLabel', { default: 'Selected Rubric' })}</div>
+                                {#if loadingRubric}
+                                    <div class="bg-white border border-gray-200 p-3 rounded-md text-gray-500 italic text-sm">
+                                        {$_('assistants.form.rubric.loading', { default: 'Loading rubric...' })}
+                                    </div>
+                                {:else if rubricError}
+                                    <div class="bg-red-50 border border-red-200 p-3 rounded-md text-red-600 text-sm">
+                                        <strong>{$_('assistants.form.rubric.error', { default: 'Error loading rubric:' })}</strong> {rubricError}
+                                    </div>
+                                {:else if rubricMarkdown}
+                                    <div class="bg-white border border-gray-300 rounded-md p-4">
+                                        <!-- Rubric metadata -->
+                                        <div class="mb-3 pb-3 border-b border-gray-200">
+                                            <div class="text-xs text-gray-600 space-y-1">
+                                                <div>
+                                                    <span class="font-medium">{$_('assistants.form.rubric.id', { default: 'Rubric ID:' })}</span> 
+                                                    <code class="ml-1 text-xs bg-gray-100 px-1 py-0.5 rounded">{apiCallback.rubric_id || 'N/A'}</code>
+                                                </div>
+                                                <div>
+                                                    <span class="font-medium">{$_('assistants.form.rubric.format.label', { default: 'Format:' })}</span> 
+                                                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                        {apiCallback.rubric_format || 'markdown'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Rubric Markdown Content in collapsible -->
+                                        <details open>
+                                            <summary class="cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800 mb-2">
+                                                {$_('assistants.form.rubric.viewRubric', { default: 'View Rubric Content' })}
+                                            </summary>
+                                            <div class="mt-3 p-4 bg-gray-50 border border-gray-200 rounded max-h-96 overflow-y-auto">
+                                                <pre class="text-xs whitespace-pre-wrap font-mono text-gray-800">{rubricMarkdown}</pre>
+                                            </div>
+                                        </details>
+                                    </div>
+                                {:else}
+                                    <div class="bg-white border border-gray-200 p-3 rounded-md text-gray-500 italic text-sm">
+                                        {apiCallback.rubric_id || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+                    {/if}
                 </div>
 
                 <!-- Right Column: LTI and Configuration -->
@@ -977,8 +1098,8 @@
                                         <div class="pt-3 mt-3 border-t border-gray-300 space-y-3">
                                             <h4 class="text-md font-medium text-gray-700">{$_('assistants.form.ragOptions.title', { default: 'RAG Options' })}</h4>
                                             
-                                            <!-- RAG Top K (Hide if single_file_rag) -->
-                                            {#if apiCallback.rag_processor !== 'single_file_rag'}
+                                            <!-- RAG Top K (Hide if single_file_rag or rubric_rag) -->
+                                            {#if apiCallback.rag_processor !== 'single_file_rag' && apiCallback.rag_processor !== 'rubric_rag'}
                                                 <div>
                                                     <div class="font-medium text-gray-700 mb-1">{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</div>
                                                     <div class="bg-white border border-gray-200 p-2 rounded w-24 text-center">

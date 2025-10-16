@@ -592,6 +592,46 @@ export async function exportRubricJSON(rubricId) {
 }
 
 /**
+ * Fetch rubric markdown content as text (for display, not download)
+ * @param {string} rubricId - The rubric ID to fetch
+ * @returns {Promise<string>} The markdown content
+ * @throws {Error} If not authenticated or fetch fails
+ */
+export async function fetchRubricMarkdown(rubricId) {
+    if (!browser) {
+        throw new Error('fetchRubricMarkdown called outside browser context');
+    }
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('Not authenticated');
+    }
+
+    const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
+    console.log('Fetching rubric Markdown from:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        let errorDetail = 'Failed to fetch rubric as Markdown';
+        try {
+            const error = await response.json();
+            errorDetail = error?.detail || errorDetail;
+        } catch (e) {
+            // Ignore
+        }
+        console.error('API error response status:', response.status, 'Detail:', errorDetail);
+        throw new Error(errorDetail);
+    }
+
+    const text = await response.text();
+    return text;
+}
+
+/**
  * Export rubric as Markdown
  * @param {string} rubricId - The rubric ID to export
  * @returns {Promise<void>} Triggers download
