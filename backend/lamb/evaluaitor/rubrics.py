@@ -974,7 +974,7 @@ class AIModifyRequest(BaseModel):
 @router.post("/rubrics/ai-generate")
 async def ai_generate_rubric(
     request_data: AIGenerateRequest,
-    user: Dict[str, Any] = Depends(get_current_user_dependency)
+    auth_header: str = Query(None, alias="auth_header")
 ):
     """
     Generate a new rubric using AI from natural language description.
@@ -1002,6 +1002,14 @@ async def ai_generate_rubric(
         }
     """
     try:
+        # Authenticate user
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Authorization header required")
+        
+        user = get_current_user_from_token(auth_header)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        
         logger.info(f"AI generate rubric called by user {user['email']}, language={request_data.language}")
         logger.debug(f"User prompt: {request_data.prompt[:200]}...")
 
@@ -1036,7 +1044,7 @@ async def ai_generate_rubric(
 async def ai_modify_rubric(
     rubric_id: str,
     request_data: AIModifyRequest,
-    user: Dict[str, Any] = Depends(get_current_user_dependency)
+    auth_header: str = Query(None, alias="auth_header")
 ):
     """
     Modify an existing rubric using AI
@@ -1044,6 +1052,14 @@ async def ai_modify_rubric(
     POST /lamb/v1/evaluaitor/rubrics/{rubric_id}/ai-modify
     """
     try:
+        # Authenticate user
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Authorization header required")
+        
+        user = get_current_user_from_token(auth_header)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        
         # Get existing rubric
         existing_rubric = db_manager.get_rubric_by_id(rubric_id, user['email'])
         if not existing_rubric:
