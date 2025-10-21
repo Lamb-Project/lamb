@@ -24,8 +24,8 @@
 	onMount(async () => {
 		if ($user.isLoggedIn) {
 			try {
-				// Build the fetch URL - the news file is always at /md/lamb-news.md
-				const newsUrl = `${base}/md/lamb-news.md`;
+				// Build the fetch URL - the news file is always at /static/md/lamb-news.md
+				const newsUrl = `${base}/static/md/lamb-news.md`;
 				console.log('Fetching news from:', newsUrl);
 				
 				const response = await fetch(newsUrl);
