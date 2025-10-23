@@ -872,7 +872,12 @@ class LambDatabaseManager:
         return self.update_organization(org_id, config=config)
     
     def delete_organization(self, org_id: int) -> bool:
-        """Delete an organization (cannot delete system organization)"""
+        """
+        Delete an organization (cannot delete system organization)
+        
+        Before deleting the organization, moves all users to the system organization
+        to prevent orphaned users with invalid organization references.
+        """
         connection = self.get_connection()
         if not connection:
             return False
@@ -891,7 +896,44 @@ class LambDatabaseManager:
                     logging.error("Cannot delete system organization")
                     return False
                 
-                # Delete organization (cascade will handle related records)
+                # Get system organization ID
+                system_org = self.get_organization_by_slug("lamb")
+                if not system_org:
+                    logging.error("System organization not found - cannot safely delete organization")
+                    return False
+                
+                system_org_id = system_org['id']
+                now = int(time.time())
+                
+                # Get list of users in the organization before moving them
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}Creator_users
+                    WHERE organization_id = ?
+                """, (org_id,))
+                user_ids = [row[0] for row in cursor.fetchall()]
+                
+                # Move all users from this organization to the system organization
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (system_org_id, now, org_id))
+                
+                moved_users = cursor.rowcount
+                if moved_users > 0:
+                    logging.info(f"Moved {moved_users} users from organization {org_id} to system organization {system_org_id}")
+                    
+                    # Assign member role to moved users in the system organization
+                    # (their roles in the deleted org will be removed by CASCADE)
+                    for user_id in user_ids:
+                        cursor.execute(f"""
+                            INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                            (organization_id, user_id, role, created_at, updated_at)
+                            VALUES (?, ?, 'member', ?, ?)
+                        """, (system_org_id, user_id, now, now))
+                    logging.info(f"Assigned member roles to {len(user_ids)} users in system organization")
+                
+                # Delete organization (cascade will handle organization_roles and other related records)
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
