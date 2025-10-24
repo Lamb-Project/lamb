@@ -86,7 +86,6 @@
             },
             features: {
                 rag_enabled: true,
-                mcp_enabled: true,
                 lti_publishing: true,
                 signup_enabled: false
             },
@@ -276,7 +275,6 @@
                 },
                 features: {
                     rag_enabled: true,
-                    mcp_enabled: true,
                     lti_publishing: true,
                     signup_enabled: false
                 },
@@ -1682,10 +1680,6 @@
                                 <label class="flex items-center">
                                     <input type="checkbox" bind:checked={newOrg.config.features.rag_enabled} class="mr-2">
                                     <span class="text-sm">RAG Enabled</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="checkbox" bind:checked={newOrg.config.features.mcp_enabled} class="mr-2">
-                                    <span class="text-sm">MCP Enabled</span>
                                 </label>
                                 <label class="flex items-center">
                                     <input type="checkbox" bind:checked={newOrg.config.features.lti_publishing} class="mr-2">
