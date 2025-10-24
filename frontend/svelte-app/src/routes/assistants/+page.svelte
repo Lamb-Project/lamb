@@ -2,7 +2,6 @@
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import ChatInterface from '$lib/components/ChatInterface.svelte';
-    import MCPTesting from '$lib/components/MCPTesting.svelte';
     import { _, locale } from '$lib/i18n';
     import DuplicateAssistantModal from '$lib/components/modals/DuplicateAssistantModal.svelte'; // Placeholder for modal
     import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
@@ -18,7 +17,7 @@
     import { browser } from '$app/environment'; // <<< Import browser
 
     // --- State Management --- 
-    /** @type {'list' | 'create' | 'detail' | 'mcp'} */
+    /** @type {'list' | 'create' | 'detail'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
@@ -98,17 +97,6 @@
         startEditMode = false; // Ensure not starting in edit for create
         // Navigate to assistants path with query param
         goto(`${base}/assistants?view=create`, { replaceState: true });
-    }
-
-    /** Sets the view to MCP Testing */
-    function showMCPTesting() {
-        console.log("Navigating to MCP Testing");
-        selectedAssistantData = null; // Clear any selected data
-        currentView = 'mcp';
-        startEditMode = false; // Reset edit mode flag
-        detailSubView = 'properties'; // Reset detail sub-view
-        // Navigate to assistants path with query param
-        goto(`${base}/assistants?view=mcp`, { replaceState: true });
     }
 
     /** Sets the view back to the list */
@@ -214,11 +202,6 @@
                 if (currentView !== 'create') {
                     console.log("URL indicates 'create' view.");
                     showCreateForm();
-                }
-            } else if (viewParam === 'mcp') {
-                if (currentView !== 'mcp') {
-                    console.log("URL indicates 'mcp' view.");
-                    currentView = 'mcp';
                 }
             } else if (viewParam === 'detail' && idParam) { 
                 const assistantId = parseInt(idParam, 10);
@@ -755,14 +738,6 @@
         >
             {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
         </button>
-        <!-- MCP Testing View Button -->
-        <button
-            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md {currentView === 'mcp' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
-            style={currentView === 'mcp' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
-            onclick={showMCPTesting}
-        >
-            {currentLocale ? $_('assistants.mcpTestingTab', { default: 'MCP Testing' }) : 'MCP Testing'}
-        </button>
         <!-- Detail View Tab (Only visible when active) -->
         {#if currentView === 'detail' && (selectedAssistantData || loadingDetail)}
              <div class="relative">
@@ -794,13 +769,6 @@
 {:else if currentView === 'create'}
     <!-- Pass null to indicate creation mode -->
     <AssistantForm assistant={null} on:formSuccess={handleAssistantCreated} />
-{:else if currentView === 'mcp'}
-    <!-- MCP Testing Interface -->
-    <div class="mt-6">
-        <div class="bg-white shadow rounded-lg p-6 border border-gray-200">
-            <MCPTesting />
-        </div>
-    </div> 
 {:else if currentView === 'detail'}
     <!-- Detail View Sub-Tabs -->
     <div class="mb-4 border-b border-gray-300 flex space-x-4">
