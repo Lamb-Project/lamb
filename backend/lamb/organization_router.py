@@ -206,12 +206,38 @@ async def update_organization(
         logging.error(f"Error updating organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/organizations/{slug}/users/count")
+async def get_organization_user_count(
+    slug: str,
+    admin_email: str = Depends(verify_system_admin)
+):
+    """Get user count for an organization (for deletion warning)"""
+    try:
+        org = db_manager.get_organization_by_slug(slug)
+        if not org:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+        
+        user_count = db_manager.get_organization_user_count(org['id'])
+        return {"user_count": user_count}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting user count: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/organizations/{slug}")
 async def delete_organization(
     slug: str,
     admin_email: str = Depends(verify_system_admin)
 ):
-    """Delete organization (system admin only, cannot delete system org)"""
+    """
+    Delete organization (system admin only, cannot delete system org)
+    
+    WARNING: This will delete all users belonging to the organization.
+    The frontend should call GET /organizations/{slug}/users/count first
+    to get the user count and display an appropriate warning.
+    """
     try:
         # Get organization
         org = db_manager.get_organization_by_slug(slug)
@@ -222,12 +248,19 @@ async def delete_organization(
         if org['is_system']:
             raise HTTPException(status_code=400, detail="Cannot delete system organization")
         
-        # Delete organization
+        # Get user count for logging
+        user_count = db_manager.get_organization_user_count(org['id'])
+        
+        # Delete organization (CASCADE will delete users)
         success = db_manager.delete_organization(org['id'])
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete organization")
         
-        return {"message": f"Organization '{slug}' deleted successfully"}
+        message = f"Organization '{slug}' deleted successfully"
+        if user_count > 0:
+            message += f" (including {user_count} user{'s' if user_count != 1 else ''})"
+        
+        return {"message": message, "deleted_users": user_count}
         
     except HTTPException:
         raise

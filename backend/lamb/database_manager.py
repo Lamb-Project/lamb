@@ -412,6 +412,61 @@ class LambDatabaseManager:
                     logging.info("Successfully added user_type column and index")
                 else:
                     logging.debug("user_type column already exists in Creator_users table")
+                
+                # Migration 2: Add CASCADE to Creator_users organization foreign key
+                # Check if the table needs migration by inspecting foreign keys
+                cursor.execute(f"PRAGMA foreign_key_list({self.table_prefix}Creator_users)")
+                fks = cursor.fetchall()
+                needs_cascade_migration = False
+                
+                for fk in fks:
+                    # fk format: (id, seq, table, from, to, on_update, on_delete, match)
+                    if fk[2] == f"{self.table_prefix}organizations" and fk[6] != 'CASCADE':
+                        needs_cascade_migration = True
+                        break
+                
+                if needs_cascade_migration:
+                    logging.info("Adding CASCADE to Creator_users organization foreign key")
+                    
+                    # SQLite doesn't support modifying foreign keys, so we need to recreate the table
+                    # Step 1: Create new table with CASCADE
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}Creator_users_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id INTEGER,
+                            user_email TEXT NOT NULL,
+                            user_name TEXT NOT NULL,
+                            user_type TEXT NOT NULL DEFAULT 'creator' CHECK(user_type IN ('creator', 'end_user')),
+                            user_config JSON,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                            UNIQUE(user_email)
+                        )
+                    """)
+                    
+                    # Step 2: Copy data from old table to new table
+                    cursor.execute(f"""
+                        INSERT INTO {self.table_prefix}Creator_users_new
+                        SELECT * FROM {self.table_prefix}Creator_users
+                    """)
+                    
+                    # Step 3: Drop old table
+                    cursor.execute(f"DROP TABLE {self.table_prefix}Creator_users")
+                    
+                    # Step 4: Rename new table to original name
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users_new 
+                        RENAME TO {self.table_prefix}Creator_users
+                    """)
+                    
+                    # Step 5: Recreate indexes
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org ON {self.table_prefix}Creator_users(organization_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
+                    
+                    logging.info("Successfully added CASCADE to Creator_users foreign key")
+                else:
+                    logging.debug("Creator_users foreign key already has CASCADE")
                     
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
@@ -871,12 +926,44 @@ class LambDatabaseManager:
         """Update organization configuration"""
         return self.update_organization(org_id, config=config)
     
+    def get_organization_user_count(self, org_id: int) -> int:
+        """
+        Get the count of users in an organization
+        
+        Args:
+            org_id: Organization ID
+            
+        Returns:
+            Number of users in the organization
+        """
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}Creator_users
+                    WHERE organization_id = ?
+                """, (org_id,))
+                
+                result = cursor.fetchone()
+                return result[0] if result else 0
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error counting organization users: {e}")
+            return 0
+        finally:
+            connection.close()
+    
     def delete_organization(self, org_id: int) -> bool:
         """
         Delete an organization (cannot delete system organization)
         
-        Before deleting the organization, moves all users to the system organization
-        to prevent orphaned users with invalid organization references.
+        WARNING: With CASCADE enabled, this will also delete all users 
+        belonging to this organization. Use get_organization_user_count() 
+        to check for users before deletion and warn the user appropriately.
         """
         connection = self.get_connection()
         if not connection:
@@ -896,49 +983,16 @@ class LambDatabaseManager:
                     logging.error("Cannot delete system organization")
                     return False
                 
-                # Get system organization ID
-                system_org = self.get_organization_by_slug("lamb")
-                if not system_org:
-                    logging.error("System organization not found - cannot safely delete organization")
-                    return False
-                
-                system_org_id = system_org['id']
-                now = int(time.time())
-                
-                # Get list of users in the organization before moving them
-                cursor.execute(f"""
-                    SELECT id FROM {self.table_prefix}Creator_users
-                    WHERE organization_id = ?
-                """, (org_id,))
-                user_ids = [row[0] for row in cursor.fetchall()]
-                
-                # Move all users from this organization to the system organization
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}Creator_users
-                    SET organization_id = ?, updated_at = ?
-                    WHERE organization_id = ?
-                """, (system_org_id, now, org_id))
-                
-                moved_users = cursor.rowcount
-                if moved_users > 0:
-                    logging.info(f"Moved {moved_users} users from organization {org_id} to system organization {system_org_id}")
-                    
-                    # Assign member role to moved users in the system organization
-                    # (their roles in the deleted org will be removed by CASCADE)
-                    for user_id in user_ids:
-                        cursor.execute(f"""
-                            INSERT OR REPLACE INTO {self.table_prefix}organization_roles
-                            (organization_id, user_id, role, created_at, updated_at)
-                            VALUES (?, ?, 'member', ?, ?)
-                        """, (system_org_id, user_id, now, now))
-                    logging.info(f"Assigned member roles to {len(user_ids)} users in system organization")
-                
-                # Delete organization (cascade will handle organization_roles and other related records)
+                # Delete organization (CASCADE will delete users and related records)
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
                 
-                return cursor.rowcount > 0
+                deleted = cursor.rowcount > 0
+                if deleted:
+                    logging.info(f"Deleted organization {org_id} (CASCADE deleted associated users)")
+                
+                return deleted
                 
         except sqlite3.Error as e:
             logging.error(f"Error deleting organization: {e}")

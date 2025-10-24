@@ -965,14 +965,32 @@
      * @param {string} slug - Organization slug
      */
     async function deleteOrganization(slug) {
-        if (!confirm(`Are you sure you want to delete organization '${slug}'? This action cannot be undone.`)) {
-            return;
-        }
-        
         try {
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // First, get the user count for this organization
+            const countUrl = getApiUrl(`/admin/organizations/${slug}/users/count`);
+            const countResponse = await axios.get(countUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const userCount = countResponse.data.user_count || 0;
+            
+            // Show appropriate confirmation message based on user count
+            let confirmMessage = `Are you sure you want to delete organization '${slug}'?`;
+            if (userCount > 0) {
+                confirmMessage += `\n\nWARNING: This organization has ${userCount} user${userCount !== 1 ? 's' : ''} inside.\nDeleting this organization will also permanently delete all these users.\n\nThis action cannot be undone.`;
+            } else {
+                confirmMessage += '\n\nThis action cannot be undone.';
+            }
+
+            if (!confirm(confirmMessage)) {
+                return;
             }
 
             const apiUrl = getApiUrl(`/admin/organizations/${slug}`);
@@ -990,7 +1008,11 @@
             fetchOrganizations();
             
             // Show success message
-            alert(`Organization '${slug}' deleted successfully!`);
+            let successMessage = `Organization '${slug}' deleted successfully!`;
+            if (response.data.deleted_users > 0) {
+                successMessage += ` (${response.data.deleted_users} user${response.data.deleted_users !== 1 ? 's' : ''} were also deleted)`;
+            }
+            alert(successMessage);
         } catch (err) {
             console.error('Error deleting organization:', err);
             let errorMessage = 'Failed to delete organization.';
