@@ -2137,13 +2137,138 @@ Comprehensive Playwright test suite in `/testing/playwright/end_user_tests/`:
 
 ---
 
-## 16. API Reference
+## 16. Frontend UX Patterns & Best Practices
+
+### 16.1 Form Dirty State Tracking
+
+**Problem:** Svelte 5's reactivity system can cause component props to change references frequently, even when the underlying data hasn't changed. In forms that react to prop changes by repopulating fields, this creates a critical UX issue where user edits are lost.
+
+**Symptom:** Users edit a form field (dropdown, text input, etc.) and their change is immediately reverted to the original value.
+
+**Root Cause:**
+1. Svelte 5 wraps reactive objects with proxies
+2. Parent component updates can trigger child prop reference changes
+3. Effects watching props trigger on reference changes, not just value changes
+4. Form repopulation logic overwrites user input with prop data
+
+**Standard Solution: Form Dirty State Tracking**
+
+This is the **recommended pattern** for all LAMB forms that display and edit data:
+
+```javascript
+// Add dirty state tracking
+let formDirty = $state(false);
+
+// Mark form as dirty when user makes any change
+function handleFieldChange() {
+    formDirty = true;
+}
+
+// Modify reactive effect to respect dirty state
+$effect(() => {
+    // Only repopulate if form is clean (no unsaved changes)
+    if (assistant && !formDirty) {
+        // Check for meaningful changes (ID change, null status change)
+        if (assistant?.id !== previousId) {
+            populateFormFields(assistant);
+        }
+    }
+});
+
+// Reset dirty state on explicit actions
+async function handleSave() {
+    await saveChanges();
+    formDirty = false; // Changes committed
+}
+
+function handleCancel() {
+    populateFormFields(initialData); // Revert
+    formDirty = false; // Reset to clean state
+}
+
+// Reset when loading different entity
+$effect(() => {
+    if (assistant?.id !== previousId) {
+        formDirty = false; // New entity, start clean
+        previousId = assistant?.id;
+    }
+});
+```
+
+**Key Principles:**
+
+1. **Dirty State:** Track whether user has made any changes
+2. **Preserve User Intent:** Never overwrite user edits unless explicitly requested
+3. **Explicit Resets:** Only reset form on:
+   - User clicks Cancel (intentional revert)
+   - Save succeeds (changes committed)
+   - Loading different entity (clear ID change)
+4. **All Fields Protected:** Dirty state protects ALL fields, not selective preservation
+
+**When to Use:**
+
+- ✅ Any form editing existing data
+- ✅ Forms with reactive prop updates
+- ✅ Multi-field configuration forms
+- ✅ Forms in modal dialogs
+- ✅ Forms with auto-save functionality
+
+**When NOT to Use:**
+
+- ❌ Read-only display components
+- ❌ Single-field inline editors (handle differently)
+- ❌ Forms that don't receive props
+
+**Implementation Checklist:**
+
+- [ ] Add `formDirty = $state(false)` state variable
+- [ ] Add `handleFieldChange()` to all input events
+- [ ] Modify `$effect()` to check `formDirty` before repopulating
+- [ ] Reset `formDirty = false` on save success
+- [ ] Reset `formDirty = false` on cancel
+- [ ] Reset `formDirty = false` on entity ID change
+
+**Example Implementation:**
+
+See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for the reference implementation.
+
+**Related Issues:**
+
+- GitHub Issue #62: Language Model selection bug (fixed with this pattern)
+
+### 16.2 Other Frontend Best Practices
+
+#### 16.2.1 Svelte 5 Reactivity Guidelines
+
+- Use `$state()` for component-local reactive values
+- Use `$derived()` for computed values
+- Use `$effect()` sparingly and only for side effects
+- Prefer event handlers over reactive effects when possible
+- Always check if effect should run (guard conditions)
+
+#### 16.2.2 API Service Patterns
+
+- Centralize API calls in service modules (`lib/services/`)
+- Include authorization headers in all authenticated requests
+- Handle loading/error states consistently
+- Return structured responses: `{success, data?, error?}`
+
+#### 16.2.3 Store Management
+
+- Use stores for shared state across components
+- Keep stores minimal and focused
+- Provide clear update methods, don't expose raw state
+- Document store contracts and update patterns
+
+---
+
+## 17. API Reference
 
 See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 17. File Structure Summary
+## 18. File Structure Summary
 
 ```
 /backend/
@@ -2173,4 +2298,4 @@ This document provides comprehensive technical documentation for the LAMB platfo
 
 **Maintainers:** LAMB Development Team  
 **Last Updated:** October 2025  
-**Version:** 2.1 (Added end_user feature)
+**Version:** 2.2 (Added end_user feature, Frontend UX patterns)

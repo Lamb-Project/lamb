@@ -105,6 +105,11 @@
 	let importError = $state(''); // State for import errors
 	let localeLoaded = $state(false);
 
+	// Form dirty state tracking to prevent overwriting user edits
+	// See: Documentation/lamb_architecture.md Section 16.1
+	let formDirty = $state(false);
+	let previousAssistantId = $state(null);
+
 	/** @type {HTMLTextAreaElement | null} */
 	let textareaRef = $state(null);
 	/** @type {string[]} */
@@ -125,6 +130,17 @@
 		// Add specific field restrictions here if needed
 		// For now, make all fields editable
 		return true;
+	}
+
+	/**
+	 * Mark form as dirty when user makes changes
+	 * This prevents automatic repopulation from overwriting user edits
+	 */
+	function handleFieldChange() {
+		if (!formDirty) {
+			console.log('[AssistantForm] Form marked as dirty - user made changes');
+		}
+		formDirty = true;
 	}
 
 	/**
@@ -175,6 +191,13 @@
 				// Always set to edit mode when assistant changes
 				formState = 'edit'; 
 				console.log(`Initial formState set to: ${formState}`);
+				
+				// Track assistant ID for dirty state management
+				previousAssistantId = assistant.id;
+				// Reset dirty state when loading a different assistant
+				formDirty = false;
+				console.log('[AssistantForm] Loading new assistant, formDirty reset to false');
+				
 				populateFormFields(assistant);
 				formError = '';
 				successMessage = '';
@@ -182,16 +205,21 @@
 				console.log('No assistant prop, setting create mode.');
 				formState = 'create';
 				initialAssistantData = null;
+				previousAssistantId = null;
+				formDirty = false;
 				if (configInitialized) {
 					resetFormFieldsToDefaults();
 				}
 			}
 		} else {
-			// Always repopulate form fields when assistant changes, but preserve description edits
-			if (assistant) {
-				console.log('Assistant reference changed, repopulating fields (preserving description).');
+			// Only repopulate if form is NOT dirty (user hasn't made changes)
+			// This prevents overwriting user edits due to Svelte 5 reference changes
+			if (assistant && !formDirty) {
+				console.log('Assistant reference changed, but form is clean - repopulating fields (preserving description).');
 				// Pass true to preserve current description value during repopulation
 				populateFormFields(assistant, true);
+			} else if (assistant && formDirty) {
+				console.log('[AssistantForm] Skipping repopulation - form is dirty (user has unsaved changes)');
 			}
 		}
 	});
@@ -285,6 +313,9 @@
 		if (initialAssistantData) {
 			populateFormFields(initialAssistantData);
 		}
+		// Reset dirty state when canceling (user discarded changes)
+		formDirty = false;
+		console.log('[AssistantForm] User canceled changes, formDirty reset to false');
 		// Keep form in edit mode
 		formError = '';
 		successMessage = '';
@@ -881,6 +912,9 @@
 				console.log('Submitting UPDATE for assistant:', initialAssistantData.id, assistantDataPayload);
 				const updateResponse = await updateAssistant(initialAssistantData.id.toString(), assistantDataPayload); // Ensure ID is string
 				successMessage = 'Assistant updated successfully!';
+				// Reset dirty state after successful save
+				formDirty = false;
+				console.log('[AssistantForm] Changes saved successfully, formDirty reset to false');
 				// After update, store the updated data as the new initial state
 				// and stay in edit mode. The parent page handles list refresh via the event.
 				initialAssistantData = { ...initialAssistantData, ...assistantDataPayload }; // Use payload data for consistency, ID doesn't change
@@ -893,6 +927,9 @@
 					throw new Error('Create assistant response did not include an assistant_id.');
 				}
 				successMessage = 'Assistant created successfully!';
+				// Reset dirty state after successful create
+				formDirty = false;
+				console.log('[AssistantForm] Assistant created successfully, formDirty reset to false');
 				dispatch('formSuccess', { assistantId: createResponse.assistant_id });
 			} else {
 				throw new Error('Invalid form state for submission.');
@@ -1214,15 +1251,16 @@
 					<div>
 						<label for="assistant-description" class="block text-sm font-medium text-gray-700">{$_('assistants.form.description.label', { default: 'Description' })}</label>
 						<div class="mt-1 flex rounded-md shadow-sm">
-							<!-- Description is ALWAYS fully editable -->
-							<textarea 
-								id="assistant-description" 
-								name="description"
-								bind:value={description}
-								rows="3"
-								disabled={false}
-								class="flex-1 block w-full px-3 py-2 border border-blue-300 rounded-l-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
-								placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
+						<!-- Description is ALWAYS fully editable -->
+						<textarea 
+							id="assistant-description" 
+							name="description"
+							bind:value={description}
+							oninput={handleFieldChange}
+							rows="3"
+							disabled={false}
+							class="flex-1 block w-full px-3 py-2 border border-blue-300 rounded-l-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
+							placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
 							<button type="button" onclick={handleGenerateDescription} disabled={generatingDescription}
 								class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed">
 								<span>{generatingDescription ? $_('assistants.form.description.generating', { default: 'Generating...' }) : $_('assistants.form.description.generateButton', { default: 'Generate' })}</span>
@@ -1234,7 +1272,7 @@
 					<!-- System Prompt -->
 					<div>
 						<label for="system-prompt" class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</label>
-						<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} rows="4"
+						<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
 								  disabled={false}
 								  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
 								  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
@@ -1254,15 +1292,16 @@
 								</button>
 							{/each}
 						</div>
-						<textarea 
-							bind:this={textareaRef}
-							bind:value={prompt_template} 
-							id="prompt_template" 
-							rows="6"
-							class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-							placeholder={promptPlaceholderText}
-							disabled={!isFieldEditable('prompt_template')}
-						></textarea>
+					<textarea 
+						bind:this={textareaRef}
+						bind:value={prompt_template}
+						oninput={handleFieldChange}
+						id="prompt_template" 
+						rows="6"
+						class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+						placeholder={promptPlaceholderText}
+						disabled={!isFieldEditable('prompt_template')}
+					></textarea>
 
 						<!-- Add preview box with highlighted placeholders -->
 						{#if prompt_template}
@@ -1484,7 +1523,7 @@
 						{#if isAdvancedMode || formState === 'edit'}
 							<div>
 								<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
-								<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} 
+								<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} onchange={handleFieldChange}
 										disabled={false}
 										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
 									{#each promptProcessors as processor}
@@ -1498,7 +1537,7 @@
 						{#if isAdvancedMode || formState === 'edit'}
 							<div>
 								<label for="connector" class="block text-sm font-medium text-gray-700">{$_('assistants.form.connector.label', { default: 'Connector' })}</label>
-								<select id="connector" name="connector" bind:value={selectedConnector} onchange={handleConnectorChange}
+								<select id="connector" name="connector" bind:value={selectedConnector} onchange={(e) => { handleFieldChange(); handleConnectorChange(e); }}
 										disabled={false}
 										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
 									{#each connectorsList as connectorName}
@@ -1508,33 +1547,33 @@
 							</div>
 						{/if}
 
-						<!-- LLM (Always visible) -->
-						<div>
-							<label for="llm" class="block text-sm font-medium text-gray-700">{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label>
-							<select id="llm" name="llm" bind:value={selectedLlm} 
-										  disabled={availableModels.length === 0}
-									  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md">
-								{#if availableModels.length > 0}
-									{#each availableModels as model}
-										<option value={model}>{model}</option>
-									{/each}
-								{:else}
-									<option value="" disabled>{$_('assistants.form.llm.noneAvailable', { default: 'No models available for selected connector' })}</option>
-								{/if}
-							</select>
-						</div>
-
-						<!-- RAG Processor -->
-						<div>
-							<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
-							<select id="rag-processor" bind:value={selectedRagProcessor} 
-									disabled={formState === 'edit'}
-									class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed">
-								{#each ragProcessors as processor}
-									<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+					<!-- LLM (Always visible) -->
+					<div>
+						<label for="llm" class="block text-sm font-medium text-gray-700">{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label>
+						<select id="llm" name="llm" bind:value={selectedLlm} onchange={handleFieldChange}
+									  disabled={availableModels.length === 0}
+								  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md">
+							{#if availableModels.length > 0}
+								{#each availableModels as model}
+									<option value={model}>{model}</option>
 								{/each}
-							</select>
-						</div>
+							{:else}
+								<option value="" disabled>{$_('assistants.form.llm.noneAvailable', { default: 'No models available for selected connector' })}</option>
+							{/if}
+						</select>
+					</div>
+
+					<!-- RAG Processor -->
+					<div>
+						<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
+						<select id="rag-processor" bind:value={selectedRagProcessor} onchange={handleFieldChange}
+								disabled={formState === 'edit'}
+								class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed">
+							{#each ragProcessors as processor}
+								<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+							{/each}
+						</select>
+					</div>
 
 						<!-- RAG Options (Conditional) -->
 						{#if showRagOptions}
