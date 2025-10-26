@@ -257,6 +257,13 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
 
 
 def generate_signature(params, http_method, base_url, consumer_secret, token_secret=""):
+
+    # logging.info(f"params: {params}")
+    # logging.info(f"http_method: {http_method}")
+    # logging.info(f"consumer_secret: {consumer_secret}")
+    # logging.info(f"token_secret: {token_secret}")
+    # logging.info(f"Base URL for signature: {base_url}")
+
     # Remove oauth_signature if present
     params_copy = params.copy()
     if "oauth_signature" in params_copy:
@@ -279,12 +286,15 @@ def generate_signature(params, http_method, base_url, consumer_secret, token_sec
     # Create signing key (consumer_secret&token_secret)
     signing_key = f"{consumer_secret}&"
 
+    # logging.info(f"Base string: {base_string}")
+    # logging.info(f"Signing key: {consumer_secret}&")
+
+
     # Calculate signature
     hashed = hmac.new(signing_key.encode(), base_string.encode(), hashlib.sha1)
     computed_signature = base64.b64encode(hashed.digest()).decode()
 
     return computed_signature, base_string, encoded_params
-
 
 @router.post("/lti")
 async def process_lti_connection(request: Request):
@@ -298,33 +308,32 @@ async def process_lti_connection(request: Request):
     So we avoid using the email from the LTI request, adding a layer of privacy
     """
     try:
-        # Get form data from the request
         form_data = await request.form()
-
-        # Convert form data to dictionary
         post_data = dict(form_data)
 
-        # Get LTI secret from environment
         lti_secret = os.getenv("LTI_SECRET")
         if not lti_secret:
             logging.error("LTI_SECRET environment variable not set")
             raise HTTPException(
-                status_code=500, detail="LTI secret not configured")
+                status_code=500, detail="LTI secret not configured"
+            )
 
-        # Get the base URL from the request
-        base_url = str(request.url)
-        # Remove query parameters if any
-        base_url = base_url.split('?')[0]
-        # Force HTTPS
-        base_url = base_url.replace('http://', 'https://')
+        proto = request.headers.get("X-Forwarded-Proto", "https")
+        host = request.headers.get("Host", request.url.hostname)
+        url_prefix = os.getenv("LTI_URL_PREFIX", "/lamb")
+        base_url = f"{proto}://{host}{url_prefix}{request.url.path}"
 
-        # Generate and validate signature
+        logging.info(f"Reconstructed base URL: {base_url}")
+
         computed_signature, base_string, encoded_params = generate_signature(
             post_data,
             "POST",
             base_url,
             lti_secret
         )
+
+        # logging.info(f"computed signature: {computed_signature}")
+        # logging.info(f"post data get oauth signature: {post_data.get('oauth_signature')}")
 
         # Compare computed signature with provided signature
         if computed_signature != post_data.get("oauth_signature"):
