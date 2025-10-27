@@ -66,6 +66,9 @@ router.include_router(learning_assistant_proxy_router)
 from .evaluaitor_router import router as evaluaitor_router
 router.include_router(evaluaitor_router, prefix="/rubrics")
 
+# Include the prompt templates router
+from .prompt_templates_router import router as prompt_templates_router
+router.include_router(prompt_templates_router, prefix="/prompt-templates")
 
 
 # Initialize security

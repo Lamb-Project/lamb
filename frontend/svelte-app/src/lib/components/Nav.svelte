@@ -125,7 +125,7 @@
           <div class="relative tools-menu h-full flex items-center">
             <button
               onclick={() => toolsMenuOpen = !toolsMenuOpen}
-              class="inline-flex items-center h-full px-1 border-b-2 text-sm font-medium focus:outline-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              class="inline-flex items-center h-full px-1 border-b-2 text-sm font-medium focus:outline-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/prompt-templates') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
               aria-disabled={!$user.isLoggedIn}
               aria-expanded={toolsMenuOpen}
               aria-haspopup="true"
@@ -145,6 +145,13 @@
                     class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/knowledgebases') ? 'bg-blue-50 text-[#2271b3]' : ''}"
                   >
                     {localeLoaded ? $_('knowledgeBases.title') : 'Knowledge Bases'}
+                  </a>
+                  <a
+                    href="{base}/prompt-templates"
+                    onclick={() => toolsMenuOpen = false}
+                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/prompt-templates') ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                  >
+                    {localeLoaded ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
                   </a>
                   <a
                     href="{base}/evaluaitor"

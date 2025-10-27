@@ -103,4 +103,24 @@ class LTIUser(BaseModel):
     user_display_name: str
     lti_context_id: str
     lti_app_id: str
+
+class PromptTemplate(BaseModel):
+    id: int = Field(default=0)
+    organization_id: int
+    owner_email: str
+    name: str
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    prompt_template: Optional[str] = None
+    is_shared: bool = Field(default=False)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    created_at: int = Field(default_factory=lambda: int(datetime.now().timestamp()))
+    updated_at: int = Field(default_factory=lambda: int(datetime.now().timestamp()))
+    
+    # Additional fields for display purposes (populated from joins)
+    owner_name: Optional[str] = None
+    is_owner: Optional[bool] = None
+    
+    class Config:
+        from_attributes = True
    

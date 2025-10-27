@@ -14,6 +14,8 @@
 	import { onMount } from 'svelte';
 	import { getSystemCapabilities } from '$lib/services/assistantService'; // Import service
 	import { locale } from '$lib/i18n';
+	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
+	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
 
@@ -96,7 +98,21 @@
 	let formLoading = $state(false); 
 	let generatingDescription = $state(false);
 	let configInitialized = $state(false); 
-	let successMessage = $state(''); 
+	let successMessage = $state('');
+	
+	// Handler for template selection
+	function handleTemplateSelected(/** @type {any} */ template) {
+		// Only populate system_prompt and prompt_template
+		system_prompt = template.system_prompt || '';
+		prompt_template = template.prompt_template || '';
+		// Mark form as dirty since we're making changes
+		formDirty = true;
+	}
+	
+	// Handler to open template selection modal
+	function handleLoadTemplate() {
+		openTemplateSelectModal(handleTemplateSelected);
+	} 
 
 	// Initialize with default, will be set correctly by populate/reset functions later
 	let ragProcessor = $state('simple_rag'); 
@@ -316,10 +332,12 @@
 		// Reset dirty state when canceling (user discarded changes)
 		formDirty = false;
 		console.log('[AssistantForm] User canceled changes, formDirty reset to false');
-		// Keep form in edit mode
 		formError = '';
 		successMessage = '';
 		console.log('Switched back to VIEW mode');
+		
+		// Dispatch cancel event to parent to handle navigation
+		dispatch('cancel');
 	}
 
 	// --- Helper Functions ---
@@ -1269,14 +1287,28 @@
 						<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.description.help', { default: 'Click Generate after filling in name and prompts.' })}</p>
 					</div>
 
-					<!-- System Prompt -->
-					<div>
+				<!-- System Prompt -->
+				<div>
+					<div class="flex items-center justify-between mb-2">
 						<label for="system-prompt" class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</label>
-						<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
-								  disabled={false}
-								  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
-								  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
+						{#if formState === 'create'}
+							<button
+								type="button"
+								onclick={handleLoadTemplate}
+								class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+							>
+								<svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+								</svg>
+								{$_('promptTemplates.loadTemplate', { default: 'Load Template' })}
+							</button>
+						{/if}
 					</div>
+					<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
+							  disabled={false}
+							  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+							  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
+				</div>
 
 					<!-- Prompt Template -->
 					<div>
@@ -1744,5 +1776,8 @@
 		onchange={handleFileSelect}
 		style="display: none;"
 	/>
+
+	<!-- Template Selection Modal -->
+	<TemplateSelectModal onSelect={handleTemplateSelected} />
 
 </div> 

@@ -449,6 +449,40 @@ class LambDatabaseManager:
                 else:
                     logging.debug("rubrics table already exists")
 
+                # Migration 3: Create prompt_templates table if it doesn't exist
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}prompt_templates'")
+                prompt_templates_table_exists = cursor.fetchone()
+
+                if not prompt_templates_table_exists:
+                    logging.info("Creating prompt_templates table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}prompt_templates (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id INTEGER NOT NULL,
+                            owner_email TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            description TEXT,
+                            system_prompt TEXT,
+                            prompt_template TEXT,
+                            is_shared BOOLEAN DEFAULT FALSE,
+                            metadata JSON,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                            FOREIGN KEY (owner_email) REFERENCES {self.table_prefix}Creator_users(user_email) ON DELETE CASCADE,
+                            UNIQUE(organization_id, owner_email, name)
+                        )
+                    """)
+
+                    # Create indexes for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_org_shared ON {self.table_prefix}prompt_templates(organization_id, is_shared)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_owner ON {self.table_prefix}prompt_templates(owner_email)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_name ON {self.table_prefix}prompt_templates(name)")
+
+                    logging.info("Successfully created prompt_templates table and indexes")
+                else:
+                    logging.debug("prompt_templates table already exists")
+
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
         finally:
@@ -2845,3 +2879,454 @@ class LambDatabaseManager:
             del config[key]
             return self.update_config(config)
         return False
+
+    # ========== Prompt Templates Methods ==========
+
+    def create_prompt_template(self, template_data: Dict[str, Any]) -> Optional[int]:
+        """
+        Create a new prompt template.
+        
+        Args:
+            template_data: Dictionary containing:
+                - organization_id: int
+                - owner_email: str
+                - name: str
+                - description: str (optional)
+                - system_prompt: str (optional)
+                - prompt_template: str (optional)
+                - is_shared: bool (default False)
+                - metadata: dict (optional)
+        
+        Returns:
+            Template ID if successful, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Could not establish database connection")
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                metadata_json = json.dumps(template_data.get('metadata', {}))
+                
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}prompt_templates 
+                    (organization_id, owner_email, name, description, system_prompt, 
+                     prompt_template, is_shared, metadata, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    template_data['organization_id'],
+                    template_data['owner_email'],
+                    template_data['name'],
+                    template_data.get('description', ''),
+                    template_data.get('system_prompt', ''),
+                    template_data.get('prompt_template', ''),
+                    template_data.get('is_shared', False),
+                    metadata_json,
+                    current_time,
+                    current_time
+                ))
+                
+                template_id = cursor.lastrowid
+                logging.info(f"Created prompt template '{template_data['name']}' with id: {template_id}")
+                return template_id
+                
+        except sqlite3.IntegrityError as e:
+            logging.error(f"Integrity error creating prompt template: {e}")
+            return None
+        except sqlite3.Error as e:
+            logging.error(f"Database error creating prompt template: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_prompt_template_by_id(self, template_id: int, requester_email: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Get a prompt template by ID.
+        
+        Args:
+            template_id: Template ID
+            requester_email: Email of user requesting (to check ownership)
+        
+        Returns:
+            Dictionary with template data and owner info, or None if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        pt.id, pt.organization_id, pt.owner_email, pt.name, pt.description,
+                        pt.system_prompt, pt.prompt_template, pt.is_shared, pt.metadata,
+                        pt.created_at, pt.updated_at,
+                        cu.user_name as owner_name
+                    FROM {self.table_prefix}prompt_templates pt
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON pt.owner_email = cu.user_email
+                    WHERE pt.id = ?
+                """, (template_id,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                
+                template = {
+                    'id': row[0],
+                    'organization_id': row[1],
+                    'owner_email': row[2],
+                    'name': row[3],
+                    'description': row[4],
+                    'system_prompt': row[5],
+                    'prompt_template': row[6],
+                    'is_shared': bool(row[7]),
+                    'metadata': json.loads(row[8]) if row[8] else {},
+                    'created_at': row[9],
+                    'updated_at': row[10],
+                    'owner_name': row[11],
+                    'is_owner': requester_email == row[2] if requester_email else None
+                }
+                
+                return template
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting prompt template: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_user_prompt_templates(self, owner_email: str, organization_id: int, 
+                                   limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        Get prompt templates owned by a user.
+        
+        Args:
+            owner_email: Owner email
+            organization_id: Organization ID
+            limit: Number of results to return
+            offset: Offset for pagination
+        
+        Returns:
+            Tuple of (list of templates, total count)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return [], 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get total count
+                cursor.execute(f"""
+                    SELECT COUNT(*) 
+                    FROM {self.table_prefix}prompt_templates
+                    WHERE owner_email = ? AND organization_id = ?
+                """, (owner_email, organization_id))
+                total = cursor.fetchone()[0]
+                
+                # Get templates
+                cursor.execute(f"""
+                    SELECT 
+                        pt.id, pt.organization_id, pt.owner_email, pt.name, pt.description,
+                        pt.system_prompt, pt.prompt_template, pt.is_shared, pt.metadata,
+                        pt.created_at, pt.updated_at,
+                        cu.user_name as owner_name
+                    FROM {self.table_prefix}prompt_templates pt
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON pt.owner_email = cu.user_email
+                    WHERE pt.owner_email = ? AND pt.organization_id = ?
+                    ORDER BY pt.updated_at DESC
+                    LIMIT ? OFFSET ?
+                """, (owner_email, organization_id, limit, offset))
+                
+                templates = []
+                for row in cursor.fetchall():
+                    templates.append({
+                        'id': row[0],
+                        'organization_id': row[1],
+                        'owner_email': row[2],
+                        'name': row[3],
+                        'description': row[4],
+                        'system_prompt': row[5],
+                        'prompt_template': row[6],
+                        'is_shared': bool(row[7]),
+                        'metadata': json.loads(row[8]) if row[8] else {},
+                        'created_at': row[9],
+                        'updated_at': row[10],
+                        'owner_name': row[11],
+                        'is_owner': True
+                    })
+                
+                return templates, total
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting user prompt templates: {e}")
+            return [], 0
+        finally:
+            connection.close()
+
+    def get_organization_shared_templates(self, organization_id: int, requester_email: str,
+                                         limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        Get shared prompt templates within an organization (excluding requester's own).
+        
+        Args:
+            organization_id: Organization ID
+            requester_email: Email of user requesting (to exclude their templates)
+            limit: Number of results to return
+            offset: Offset for pagination
+        
+        Returns:
+            Tuple of (list of templates, total count)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return [], 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get total count
+                cursor.execute(f"""
+                    SELECT COUNT(*) 
+                    FROM {self.table_prefix}prompt_templates
+                    WHERE organization_id = ? AND is_shared = 1 AND owner_email != ?
+                """, (organization_id, requester_email))
+                total = cursor.fetchone()[0]
+                
+                # Get templates
+                cursor.execute(f"""
+                    SELECT 
+                        pt.id, pt.organization_id, pt.owner_email, pt.name, pt.description,
+                        pt.system_prompt, pt.prompt_template, pt.is_shared, pt.metadata,
+                        pt.created_at, pt.updated_at,
+                        cu.user_name as owner_name
+                    FROM {self.table_prefix}prompt_templates pt
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON pt.owner_email = cu.user_email
+                    WHERE pt.organization_id = ? AND pt.is_shared = 1 AND pt.owner_email != ?
+                    ORDER BY pt.updated_at DESC
+                    LIMIT ? OFFSET ?
+                """, (organization_id, requester_email, limit, offset))
+                
+                templates = []
+                for row in cursor.fetchall():
+                    templates.append({
+                        'id': row[0],
+                        'organization_id': row[1],
+                        'owner_email': row[2],
+                        'name': row[3],
+                        'description': row[4],
+                        'system_prompt': row[5],
+                        'prompt_template': row[6],
+                        'is_shared': bool(row[7]),
+                        'metadata': json.loads(row[8]) if row[8] else {},
+                        'created_at': row[9],
+                        'updated_at': row[10],
+                        'owner_name': row[11],
+                        'is_owner': False
+                    })
+                
+                return templates, total
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting shared templates: {e}")
+            return [], 0
+        finally:
+            connection.close()
+
+    def update_prompt_template(self, template_id: int, updates: Dict[str, Any], owner_email: str) -> bool:
+        """
+        Update a prompt template (only owner can update).
+        
+        Args:
+            template_id: Template ID
+            updates: Dictionary of fields to update
+            owner_email: Email of owner (for authorization check)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check ownership
+                cursor.execute(f"""
+                    SELECT owner_email FROM {self.table_prefix}prompt_templates WHERE id = ?
+                """, (template_id,))
+                row = cursor.fetchone()
+                
+                if not row or row[0] != owner_email:
+                    logging.warning(f"User {owner_email} attempted to update template {template_id} without ownership")
+                    return False
+                
+                # Build update query
+                allowed_fields = ['name', 'description', 'system_prompt', 'prompt_template', 'is_shared', 'metadata']
+                update_fields = []
+                values = []
+                
+                for field in allowed_fields:
+                    if field in updates:
+                        update_fields.append(f"{field} = ?")
+                        if field == 'metadata':
+                            values.append(json.dumps(updates[field]))
+                        else:
+                            values.append(updates[field])
+                
+                if not update_fields:
+                    logging.warning("No valid fields to update")
+                    return False
+                
+                # Add updated_at
+                update_fields.append("updated_at = ?")
+                values.append(int(time.time()))
+                values.append(template_id)
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}prompt_templates 
+                    SET {', '.join(update_fields)}
+                    WHERE id = ?
+                """, values)
+                
+                logging.info(f"Updated prompt template {template_id}")
+                return cursor.rowcount > 0
+                
+        except sqlite3.IntegrityError as e:
+            logging.error(f"Integrity error updating prompt template: {e}")
+            return False
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating prompt template: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_prompt_template(self, template_id: int, owner_email: str) -> bool:
+        """
+        Delete a prompt template (only owner can delete).
+        
+        Args:
+            template_id: Template ID
+            owner_email: Email of owner (for authorization check)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}prompt_templates 
+                    WHERE id = ? AND owner_email = ?
+                """, (template_id, owner_email))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Deleted prompt template {template_id}")
+                else:
+                    logging.warning(f"User {owner_email} attempted to delete template {template_id} without ownership")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error deleting prompt template: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def duplicate_prompt_template(self, template_id: int, new_owner_email: str, 
+                                  new_organization_id: int, new_name: str = None) -> Optional[int]:
+        """
+        Duplicate a prompt template (create a copy for another user).
+        
+        Args:
+            template_id: Original template ID
+            new_owner_email: Email of new owner
+            new_organization_id: Organization ID for new template
+            new_name: Optional new name (if None, adds "Copy of " prefix)
+        
+        Returns:
+            New template ID if successful, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get original template
+                cursor.execute(f"""
+                    SELECT name, description, system_prompt, prompt_template, metadata
+                    FROM {self.table_prefix}prompt_templates
+                    WHERE id = ?
+                """, (template_id,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    logging.error(f"Template {template_id} not found for duplication")
+                    return None
+                
+                # Create new template
+                current_time = int(time.time())
+                duplicate_name = new_name if new_name else f"Copy of {row[0]}"
+                
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}prompt_templates 
+                    (organization_id, owner_email, name, description, system_prompt, 
+                     prompt_template, is_shared, metadata, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    new_organization_id,
+                    new_owner_email,
+                    duplicate_name,
+                    row[1],  # description
+                    row[2],  # system_prompt
+                    row[3],  # prompt_template
+                    False,   # is_shared (always false for duplicates)
+                    row[4],  # metadata
+                    current_time,
+                    current_time
+                ))
+                
+                new_id = cursor.lastrowid
+                logging.info(f"Duplicated template {template_id} to new template {new_id}")
+                return new_id
+                
+        except sqlite3.IntegrityError as e:
+            logging.error(f"Integrity error duplicating template (likely duplicate name): {e}")
+            return None
+        except sqlite3.Error as e:
+            logging.error(f"Database error duplicating template: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def toggle_template_sharing(self, template_id: int, owner_email: str, is_shared: bool) -> bool:
+        """
+        Toggle sharing status of a template.
+        
+        Args:
+            template_id: Template ID
+            owner_email: Email of owner (for authorization check)
+            is_shared: New sharing status
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.update_prompt_template(template_id, {'is_shared': is_shared}, owner_email)

@@ -499,5 +499,29 @@
       "tryAgain": "Try Again",
       "saveError": "Failed to save rubric"
     }
+  },
+  "promptTemplates": {
+    "title": "Prompt Templates",
+    "description": "Create and manage reusable prompt templates for your assistants",
+    "myTemplates": "My Templates",
+    "sharedTemplates": "Shared Templates",
+    "createNew": "New Template",
+    "createTemplate": "Create Template",
+    "editTemplate": "Edit Template",
+    "loadTemplate": "Load Template",
+    "selectTemplate": "Select Prompt Template",
+    "applyTemplate": "Apply Template",
+    "name": "Name",
+    "systemPrompt": "System Prompt",
+    "promptTemplate": "Prompt Template",
+    "templateHint": "Use {user_message} as placeholder for user input",
+    "shareWithOrg": "Share with organization",
+    "noTemplates": "No templates yet. Create your first template!",
+    "noShared": "No shared templates available",
+    "noResults": "No templates found",
+    "confirmDelete": "Delete Template?",
+    "deleteWarning": "This action cannot be undone. The template will be permanently deleted.",
+    "export": "Export",
+    "search": "Search templates..."
   }
 }
