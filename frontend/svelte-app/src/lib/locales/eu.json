@@ -27,7 +27,8 @@
     "signupButton": "Erregistratu",
     "haveAccount": "Baduzu kontua?",
     "signupLink": "Erregistratu",
-    "loginLink": "Hasi saioa"
+    "loginLink": "Hasi saioa",
+    "loading": "Kargatzen..."
   },
   "nav": {
     "home": "Hasiera",
@@ -182,6 +183,8 @@
       "title": "Argitaratu Laguntzailea",
       "groupName": "Talde Izena",
       "oauthConsumer": "OAuth Kontsumitzaile Izena",
+      "publish": "Argitaratu",
+      "cancel": "Utzi",
       "groupNamePlaceholder": "adib., laguntzaile_123",
       "oauthConsumerPlaceholder": "adib., 123_consumer",
       "publishing": "Argitaratzen...",
@@ -195,6 +198,7 @@
     "unpublishAssistant": "Desargitaratu Laguntzailea",
     "detailProperties": "Laguntzailearen xehetasun propietateak",
     "loadingDetail": "Laguntzailearen xehetasunak kargatzen...",
+    "notSet": "Ez ezarrita",
     "form": {
       "advancedMode": "Modu Aurreratua",
       "insert_placeholder": "Txertatu markatzailea",
@@ -299,11 +303,14 @@
     "selectOption": "-- Hautatu --",
     "notSet": "Ez ezarrita",
     "refresh": "Eguneratu",
-    "publicate": "Argitaratu"
+    "publicate": "Argitaratu",
+    "export": "Esportatu",
+    "exporting": "Esportatzen..."
   },
   "knowledgeBases": {
     "title": "Ezagutza Baseak",
     "pageTitle": "Ezagutza Baseak",
+    "pageDescription": "Kudeatu zure ezagutza baseak ikaskuntza laguntzaileekin erabiltzeko.",
     "myKnowledgeBases": "Nire Ezagutza Baseak",
     "createNew": "Ezagutza Base Berria Sortu",
     "createFirst": "Sortu Zure Lehen Ezagutza Basea",
@@ -333,6 +340,7 @@
     "public": "Publikoa",
     "cancel": "Ezeztatu",
     "creating": "Sortzen...",
+    "createSuccess": "Ezagutza basea \"{name}\" ongi sortu da!",
     "create": "Ezagutza Basea Sortu",
     "detailPageTitle": "Ezagutza Basearen Xehetasunak",
     "files": "Fitxategiak",
@@ -370,7 +378,29 @@
     "getStartedUploading": "Hasi fitxategi bat igoz.",
     "debugInfo": "Arazketa Informazioa",
     "viewSourceFile": "Ikusi Jatorrizko Fitxategia",
-    "relevance": "Garrantzia"
+    "relevance": "Garrantzia",
+    "createModal": {
+      "description": "Sortu ezagutza base berri bat dokumentuak biltegiratzeko eta berreskuratzeko.",
+      "nameRequired": "Izena derrigorrezkoa da",
+      "nameTooLong": "Izenak 50 karaktere baino gutxiago eduki behar ditu"
+    },
+    "list": {
+      "title": "Ezagutza Baseak",
+      "createButton": "Ezagutza Basea Sortu",
+      "loading": "Ezagutza baseak kargatzen...",
+      "empty": "Ez da ezagutza baserik aurkitu.",
+      "serverOffline": "Ezagutza Base Zerbitzaria Lineaz Kanpo",
+      "tryAgainLater": "Mesedez saiatu berriro geroago edo jarri harremanetan administratzaile batekin.",
+      "retry": "Saiatu berriro",
+      "nameColumn": "Izena",
+      "descriptionColumn": "Deskribapena",
+      "createdColumn": "Sortua",
+      "accessColumn": "Sarbidea",
+      "actionsColumn": "Ekintzak",
+      "viewButton": "Ikusi",
+      "editButton": "Editatu",
+      "deleteButton": "Ezabatu"
+    }
   },
   "buttons": {
     "createAssistant": "Sortu Laguntzailea",
@@ -450,7 +480,58 @@
       "placeholder": "adib., Sortu 8. mailako ingeleseko 5 paragrafoko saiakerako errubirka bat",
       "generating": "Sortzen...",
       "generate": "Sortu",
-      "errorMessage": "Errorea errubirka AA-rekin sortzean"
+      "errorMessage": "Errorea errubirka AA-rekin sortzean",
+      "previewTitle": "AA-k Sortutako Errubrika Aurrebista",
+      "explanation": "AA Azalpena:",
+      "markdownTab": "Markdown Aurrebista",
+      "rawMarkdownTab": "Markdown Gordina",
+      "jsonTab": "JSON (Editagarria)",
+      "editJsonLabel": "Editatu JSON (aldaketak onartzean erabiliko dira)",
+      "validateJson": "Balidatu JSON",
+      "jsonValid": "JSON baliozkoa da",
+      "manualEditRequired": "Eskuzko Edizioa Beharrezkoa",
+      "manualEditHelp": "AA-ren erantzuna ezin izan da automatikoki parseatu. Mesedez berrikusi eta editatu JSON JSON fitxan.",
+      "showRawResponse": "Erakutsi AA-ren Gordina Erantzuna",
+      "showPrompt": "Erakutsi LLM-ra Bidalitako Prompt (Aurreratua)",
+      "regenerate": "Berrsortu",
+      "acceptAndSave": "Onartu eta Gorde Errubirka",
+      "generateTitle": "Sortu Errubirka AA-rekin",
+      "generateDescription": "Deskribatu sortu nahi duzun errubirka eta AA-k sortuko du zuretzat.",
+      "promptLabel": "Deskribatu zure errubirka",
+      "promptPlaceholder": "adib., Sortu 9. mailako ingeleseko 5 paragrafoko saiakera argumentatiboetarako errubirka bat",
+      "languageNote": "Hizkuntza",
+      "advancedOptions": "Aukera Aurreratuak",
+      "advancedHelp": "Erabiltzaile aurreratuek LLM-ra bidaliko den prompt txantiloi osoa ikus eta editatu dezakete.",
+      "advancedWarning": "Oharra: Prompt editatzeak sorpen kalitatea eragin dezake. Aldatu bakarrik errubirka JSON egitura ulertzen baduzu.",
+      "promptRequired": "Mesedez sartu prompt bat",
+      "generationError": "Errorea errubirka sortzean",
+      "errorTitle": "Sorkuntza Hutsegin",
+      "tryAgain": "Saiatu Berriro",
+      "saveError": "Errorea errubirka gordetzean"
     }
+  },
+  "promptTemplates": {
+    "title": "Prompt Txantiloiak",
+    "description": "Sortu eta kudeatu zure laguntzaileentzako prompt txantiloi berrerabilgarriak",
+    "myTemplates": "Nire Txantiloiak",
+    "sharedTemplates": "Partekatutako Txantiloiak",
+    "createNew": "Txantiloi Berria",
+    "createTemplate": "Sortu Txantiloia",
+    "editTemplate": "Editatu Txantiloia",
+    "loadTemplate": "Kargatu Txantiloia",
+    "selectTemplate": "Hautatu Prompt Txantiloia",
+    "applyTemplate": "Aplikatu Txantiloia",
+    "name": "Izena",
+    "systemPrompt": "Sistema Prompt-a",
+    "promptTemplate": "Prompt Txantiloia",
+    "templateHint": "Erabili {user_message} erabiltzailearen sarrera gisa",
+    "shareWithOrg": "Partekatu erakundearekin",
+    "noTemplates": "Oraindik ez dago txantiloirik. Sortu zure lehen txantiloia!",
+    "noShared": "Ez dago partekatutako txantiloirik erabilgarri",
+    "noResults": "Ez da txantiloirik aurkitu",
+    "confirmDelete": "Ezabatu Txantiloia?",
+    "deleteWarning": "Ekintza hau ezin da desegin. Txantiloia betirako ezabatuko da.",
+    "export": "Esportatu",
+    "search": "Bilatu txantiloiak..."
   }
 }

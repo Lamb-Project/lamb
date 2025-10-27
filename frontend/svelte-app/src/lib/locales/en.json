@@ -514,7 +514,7 @@
     "name": "Name",
     "systemPrompt": "System Prompt",
     "promptTemplate": "Prompt Template",
-    "templateHint": "Use {user_message} as placeholder for user input",
+    "templateHint": "Use {context} and {user_input} as placeholders",
     "shareWithOrg": "Share with organization",
     "noTemplates": "No templates yet. Create your first template!",
     "noShared": "No shared templates available",

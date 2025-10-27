@@ -268,7 +268,8 @@
     "publishAssistant": "Publicar Assistent",
     "unpublishAssistant": "Despublicar Assistent",
     "detailProperties": "Propietats de detall de l'assistent",
-    "loadingDetail": "Carregant detalls de l'assistent..."
+    "loadingDetail": "Carregant detalls de l'assistent...",
+    "notSet": "No establert"
   },
   "help": {
     "title": "Ajuda",
@@ -295,11 +296,14 @@
     "selectOption": "-- Seleccionar --",
     "notSet": "No establert",
     "refresh": "Actualitzar",
-    "publicate": "Publicar"
+    "publicate": "Publicar",
+    "export": "Exportar",
+    "exporting": "Exportant..."
   },
   "knowledgeBases": {
     "title": "Bases de Coneixement",
     "pageTitle": "Bases de Coneixement",
+    "pageDescription": "Gestiona les teves bases de coneixement per utilitzar amb assistents d'aprenentatge.",
     "myKnowledgeBases": "Les Meves Bases de Coneixement",
     "createNew": "Crear Nova Base de Coneixement",
     "createFirst": "Crea la Teva Primera Base de Coneixement",
@@ -327,7 +331,9 @@
     "accessControlHelp": "Les bases de coneixement privades només són accessibles per tu, mentre que les públiques poden ser accedides per altres usuaris.",
     "private": "Privada",
     "public": "Pública",
+    "cancel": "Cancel·lar",
     "creating": "Creant...",
+    "createSuccess": "Base de coneixement \"{name}\" creada correctament!",
     "create": "Crear Base de Coneixement",
     "detailPageTitle": "Detalls de la Base de Coneixement",
     "files": "Arxius",
@@ -365,7 +371,29 @@
     "getStartedUploading": "Comença pujant un arxiu.",
     "debugInfo": "Informació de Depuració",
     "viewSourceFile": "Veure Arxiu Font",
-    "relevance": "Rellevància"
+    "relevance": "Rellevància",
+    "createModal": {
+      "description": "Crea una nova base de coneixement per emmagatzemar i recuperar documents.",
+      "nameRequired": "El nom és obligatori",
+      "nameTooLong": "El nom ha de tenir menys de 50 caràcters"
+    },
+    "list": {
+      "title": "Bases de Coneixement",
+      "createButton": "Crear Base de Coneixement",
+      "loading": "Carregant bases de coneixement...",
+      "empty": "No s'han trobat bases de coneixement.",
+      "serverOffline": "Servidor de Base de Coneixement Fora de Línia",
+      "tryAgainLater": "Si us plau torna-ho a provar més tard o contacta amb un administrador.",
+      "retry": "Reintentar",
+      "nameColumn": "Nom",
+      "descriptionColumn": "Descripció",
+      "createdColumn": "Creat",
+      "accessColumn": "Accés",
+      "actionsColumn": "Accions",
+      "viewButton": "Veure",
+      "editButton": "Editar",
+      "deleteButton": "Eliminar"
+    }
   },
   "buttons": {
     "createAssistant": "Crear Assistent",
@@ -445,7 +473,58 @@
       "placeholder": "ex., Crear una rúbrica per avaluar assaigs de 5 paràgrafs en anglès de 8è curs",
       "generating": "Generant...",
       "generate": "Generar",
-      "errorMessage": "Error en generar la rúbrica amb IA"
+      "errorMessage": "Error en generar la rúbrica amb IA",
+      "previewTitle": "Vista Prèvia de Rúbrica Generada per IA",
+      "explanation": "Explicació de IA:",
+      "markdownTab": "Vista Prèvia Markdown",
+      "rawMarkdownTab": "Markdown Cru",
+      "jsonTab": "JSON (Editable)",
+      "editJsonLabel": "Editar JSON (els canvis s'utilitzaran en acceptar)",
+      "validateJson": "Validar JSON",
+      "jsonValid": "JSON és vàlid",
+      "manualEditRequired": "Edició Manual Requerida",
+      "manualEditHelp": "La resposta de IA no s'ha pogut parsejar automàticament. Si us plau revisa i edita el JSON a la pestanya JSON.",
+      "showRawResponse": "Mostrar Resposta Crua de IA",
+      "showPrompt": "Mostrar Prompt Enviat al LLM (Avançat)",
+      "regenerate": "Regenerar",
+      "acceptAndSave": "Acceptar i Desar Rúbrica",
+      "generateTitle": "Generar Rúbrica amb IA",
+      "generateDescription": "Descriu la rúbrica que vols crear i la IA la generarà per tu.",
+      "promptLabel": "Descriu la teva rúbrica",
+      "promptPlaceholder": "ex., Crear una rúbrica per avaluar assaigs argumentatius de 5 paràgrafs per a estudiants d'anglès de 9è curs",
+      "languageNote": "Idioma",
+      "advancedOptions": "Opcions Avançades",
+      "advancedHelp": "Els usuaris avançats poden veure i editar la plantilla completa de prompt que s'enviarà al LLM.",
+      "advancedWarning": "Nota: Editar el prompt pot afectar la qualitat de generació. Només modifica si entens l'estructura del JSON de rúbrica.",
+      "promptRequired": "Si us plau introdueix un prompt",
+      "generationError": "Error en generar rúbrica",
+      "errorTitle": "Generació Fallida",
+      "tryAgain": "Tornar-ho a provar",
+      "saveError": "Error en desar rúbrica"
     }
+  },
+  "promptTemplates": {
+    "title": "Plantilles de Prompt",
+    "description": "Crea i gestiona plantilles de prompt reutilitzables per als teus assistents",
+    "myTemplates": "Les Meves Plantilles",
+    "sharedTemplates": "Plantilles Compartides",
+    "createNew": "Nova Plantilla",
+    "createTemplate": "Crear Plantilla",
+    "editTemplate": "Editar Plantilla",
+    "loadTemplate": "Carregar Plantilla",
+    "selectTemplate": "Seleccionar Plantilla de Prompt",
+    "applyTemplate": "Aplicar Plantilla",
+    "name": "Nom",
+    "systemPrompt": "Prompt del Sistema",
+    "promptTemplate": "Plantilla de Prompt",
+    "templateHint": "Utilitza {user_message} com a placeholder per a l'entrada de l'usuari",
+    "shareWithOrg": "Compartir amb l'organització",
+    "noTemplates": "Encara no hi ha plantilles. Crea la teva primera plantilla!",
+    "noShared": "No hi ha plantilles compartides disponibles",
+    "noResults": "No s'han trobat plantilles",
+    "confirmDelete": "Eliminar Plantilla?",
+    "deleteWarning": "Aquesta acció no es pot desfer. La plantilla s'eliminarà permanentment.",
+    "export": "Exportar",
+    "search": "Cercar plantilles..."
   }
 }
