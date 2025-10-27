@@ -240,7 +240,7 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 py-8">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="w-full mx-auto px-12">
     
     <!-- Header -->
     <div class="mb-8">
@@ -406,139 +406,139 @@
       </div>
 
     {:else if view === 'create' || view === 'edit' || view === 'view'}
-      <!-- Create/Edit/View Form -->
-      <div class="bg-white shadow rounded-lg px-8 py-8 max-w-5xl mx-auto">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="text-2xl font-bold">
-            {view === 'view' 
-              ? ($locale ? $_('promptTemplates.viewTemplate', { default: 'View Template' }) : 'View Template')
-              : editingTemplate 
-                ? ($locale ? $_('promptTemplates.editTemplate', { default: 'Edit Template' }) : 'Edit Template')
-                : ($locale ? $_('promptTemplates.createTemplate', { default: 'Create Template' }) : 'Create Template')}
+      <!-- Create/Edit/View Form - SIMPLIFIED WIDE LAYOUT -->
+      <div class="bg-white shadow rounded-lg p-12" style="max-width: 1200px; width: 100%;">
+        
+        
+        <!-- Header -->
+        <div class="mb-6 pb-4 border-b border-gray-200 flex justify-between items-center">
+          <h2 class="text-2xl font-bold text-gray-900">
+            {view === 'view' ? 'View Template' : editingTemplate ? 'Edit Template' : 'Create Template'}
           </h2>
           {#if view === 'create'}
             <button
               onclick={handleImportFromAssistant}
-              class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              class="px-4 py-2 border border-gray-300 text-sm rounded-md text-gray-700 bg-white hover:bg-gray-50"
             >
-              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-              </svg>
-              {$locale ? $_('promptTemplates.importFromAssistant', { default: 'Import from Assistant' }) : 'Import from Assistant'}
+              Import from Assistant
             </button>
           {/if}
         </div>
         
-        <form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="space-y-6">
+        <!-- Form -->
+        <form onsubmit={(e) => { e.preventDefault(); handleSave(); }}>
+          
           <!-- Name -->
-          <div>
-            <label for="name" class="block text-sm font-medium text-gray-700">
-              {$locale ? $_('promptTemplates.name', { default: 'Name' }) : 'Name'} *
+          <div class="mb-6">
+            <label for="name" class="block text-sm font-semibold text-gray-700 mb-2">
+              Name *
             </label>
             <input
               type="text"
               id="name"
               bind:value={formData.name}
               required
-              class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              disabled={view === 'view'}
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 {view === 'view' ? 'bg-gray-50' : ''}"
             />
           </div>
 
           <!-- Description -->
-          <div>
-            <label for="description" class="block text-sm font-medium text-gray-700">
-              {$locale ? $_('promptTemplates.description', { default: 'Description' }) : 'Description'}
+          <div class="mb-6">
+            <label for="description" class="block text-sm font-semibold text-gray-700 mb-2">
+              Description
             </label>
             <textarea
               id="description"
               bind:value={formData.description}
-              rows="4"
+              rows="3"
               disabled={view === 'view'}
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Brief description of this template's purpose"
             ></textarea>
           </div>
 
           <!-- System Prompt -->
-          <div>
-            <label for="system_prompt" class="block text-sm font-medium text-gray-700">
-              {$locale ? $_('promptTemplates.systemPrompt', { default: 'System Prompt' }) : 'System Prompt'}
+          <div class="mb-6">
+            <label for="system_prompt" class="block text-sm font-semibold text-gray-700 mb-2">
+              System Prompt
             </label>
             <textarea
               id="system_prompt"
               bind:value={formData.system_prompt}
-              rows="12"
+              rows="10"
               disabled={view === 'view'}
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Define the assistant's role and personality..."
             ></textarea>
           </div>
 
           <!-- Prompt Template -->
-          <div>
-            <label for="prompt_template" class="block text-sm font-medium text-gray-700">
-              {$locale ? $_('promptTemplates.promptTemplate', { default: 'Prompt Template' }) : 'Prompt Template'}
+          <div class="mb-6">
+            <label for="prompt_template" class="block text-sm font-semibold text-gray-700 mb-2">
+              Prompt Template
             </label>
             <textarea
               id="prompt_template"
               bind:value={formData.prompt_template}
-              rows="12"
+              rows="10"
               disabled={view === 'view'}
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="e.g. Use the context to answer the question: user_input"
             ></textarea>
-            <p class="mt-1 text-xs text-gray-500">
+            <p class="mt-2 text-xs text-gray-500">
               Use &#123;context&#125; and &#123;user_input&#125; as placeholders
             </p>
           </div>
 
           <!-- Share Toggle -->
           {#if !editingTemplate || editingTemplate.is_owner}
-            <div class="flex items-center">
+            <div class="mb-8 flex items-center">
               <input
                 type="checkbox"
                 id="is_shared"
                 bind:checked={formData.is_shared}
-                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                disabled={view === 'view'}
+                class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
-              <label for="is_shared" class="ml-2 block text-sm text-gray-900">
-                {$locale ? $_('promptTemplates.shareWithOrg', { default: 'Share with organization' }) : 'Share with organization'}
+              <label for="is_shared" class="ml-3 text-sm text-gray-700">
+                Share with organization
               </label>
             </div>
           {/if}
 
-          <!-- Actions -->
-          <div class="flex justify-end space-x-3">
+          <!-- Action Buttons -->
+          <div class="pt-6 border-t border-gray-200 flex justify-end gap-3">
             {#if view === 'view'}
               <button
                 type="button"
                 onclick={handleCancel}
-                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
               >
-                {$locale ? $_('common.back', { default: 'Back' }) : 'Back'}
+                Back
               </button>
               {#if editingTemplate && editingTemplate.is_owner}
                 <button
                   type="button"
                   onclick={() => { view = 'edit'; }}
-                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                  class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
                 >
-                  {$locale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
+                  Edit
                 </button>
               {/if}
             {:else}
               <button
                 type="button"
                 onclick={handleCancel}
-                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
               >
-                {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
+                Cancel
               </button>
               <button
                 type="submit"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
               >
-                {$locale ? $_('common.save', { default: 'Save' }) : 'Save'}
+                Save
               </button>
             {/if}
           </div>

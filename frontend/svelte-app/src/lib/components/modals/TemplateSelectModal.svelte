@@ -102,7 +102,7 @@
     role="button"
     tabindex="-1"
   >
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[80vh] flex flex-col">
       <!-- Header -->
       <div class="px-6 py-4 border-b border-gray-200">
         <div class="flex items-center justify-between">
