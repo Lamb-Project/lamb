@@ -73,6 +73,24 @@
       handleClose();
     }
   }
+  
+  // Tab handlers
+  function handleMyTabClick() {
+    currentTab.set('my');
+  }
+  
+  function handleSharedTabClick() {
+    currentTab.set('shared');
+  }
+  
+  // Template selection handler
+  function handleTemplateClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = [...filteredUserTemplates, ...filteredSharedTemplates].find(t => t.id === templateId);
+    if (template) {
+      selectedTemplate = template;
+    }
+  }
 </script>
 
 {#if $templateSelectModalOpen}
@@ -116,14 +134,14 @@
       <!-- Tabs -->
       <div class="flex border-b border-gray-200 px-6">
         <button
-          onclick={() => currentTab.set('my')}
+          onclick={handleMyTabClick}
           class="px-4 py-3 text-sm font-medium border-b-2 {$currentTab === 'my' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
         >
           {$locale ? $_('promptTemplates.myTemplates', { default: 'My Templates' }) : 'My Templates'}
           <span class="ml-2 text-xs">({filteredUserTemplates.length})</span>
         </button>
         <button
-          onclick={() => currentTab.set('shared')}
+          onclick={handleSharedTabClick}
           class="px-4 py-3 text-sm font-medium border-b-2 {$currentTab === 'shared' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
         >
           {$locale ? $_('promptTemplates.sharedTemplates', { default: 'Shared Templates' }) : 'Shared Templates'}
@@ -149,7 +167,8 @@
               <div class="space-y-2">
                 {#each filteredUserTemplates as template (template.id)}
                   <button
-                    onclick={() => selectedTemplate = template}
+                    onclick={handleTemplateClick}
+                    data-template-id={template.id}
                     class="w-full text-left px-4 py-3 rounded-lg border-2 transition-colors {selectedTemplate?.id === template.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
                   >
                     <div class="flex items-start justify-between">
@@ -188,7 +207,8 @@
               <div class="space-y-2">
                 {#each filteredSharedTemplates as template (template.id)}
                   <button
-                    onclick={() => selectedTemplate = template}
+                    onclick={handleTemplateClick}
+                    data-template-id={template.id}
                     class="w-full text-left px-4 py-3 rounded-lg border-2 transition-colors {selectedTemplate?.id === template.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
                   >
                     <div class="flex items-start justify-between">

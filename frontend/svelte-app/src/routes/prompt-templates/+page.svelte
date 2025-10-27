@@ -57,6 +57,19 @@
     await switchTab(tab);
   }
   
+  function handleMyTabClick() {
+    handleTabSwitch('my');
+  }
+  
+  function handleSharedTabClick() {
+    handleTabSwitch('shared');
+  }
+  
+  function handleCancelDeleteModal() {
+    showDeleteModal = false;
+    templateToDelete = null;
+  }
+  
   // Handle create new template
   function handleCreate() {
     formData = {
@@ -211,7 +224,7 @@
           <div class="flex justify-between items-center px-6 py-4">
             <div class="flex space-x-4">
               <button
-                onclick={() => handleTabSwitch('my')}
+                onclick={handleMyTabClick}
                 class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'my' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'}"
               >
                 {$locale ? $_('promptTemplates.myTemplates', { default: 'My Templates' }) : 'My Templates'}
@@ -222,7 +235,7 @@
                 {/if}
               </button>
               <button
-                onclick={() => handleTabSwitch('shared')}
+                onclick={handleSharedTabClick}
                 class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'shared' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'}"
               >
                 {$locale ? $_('promptTemplates.sharedTemplates', { default: 'Shared Templates' }) : 'Shared Templates'}
@@ -461,7 +474,7 @@
           </p>
           <div class="flex justify-end space-x-3">
             <button
-              onclick={() => { showDeleteModal = false; templateToDelete = null; }}
+              onclick={handleCancelDeleteModal}
               class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
             >
               {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
