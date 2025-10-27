@@ -27,10 +27,12 @@
   } from '$lib/stores/templateStore';
   
   // View state
-  let view = $state('list'); // 'list' | 'create' | 'edit'
+  let view = $state('list'); // 'list' | 'create' | 'edit' | 'view'
   let editingTemplate = $state(null);
   let showDeleteModal = $state(false);
   let templateToDelete = $state(null);
+  let showImportModal = $state(false);
+  let userAssistants = $state([]);
   
   // Form state
   let formData = $state({
@@ -83,6 +85,19 @@
     view = 'create';
   }
   
+  // Handle view template (clicking on template in list)
+  function handleView(template) {
+    editingTemplate = template;
+    formData = {
+      name: template.name,
+      description: template.description || '',
+      system_prompt: template.system_prompt || '',
+      prompt_template: template.prompt_template || '',
+      is_shared: template.is_shared
+    };
+    view = 'view';
+  }
+  
   // Handle edit template
   function handleEdit(template) {
     editingTemplate = template;
@@ -124,6 +139,34 @@
   function handleSelectionChange(event) {
     const templateId = parseInt(event.currentTarget.dataset.templateId);
     toggleTemplateSelection(templateId);
+  }
+  
+  function handleViewClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = $currentTemplates.find(t => t.id === templateId);
+    if (template) handleView(template);
+  }
+  
+  // Import from assistant
+  async function handleImportFromAssistant() {
+    // Load user's assistants
+    const { getAssistants } = await import('$lib/services/assistantService');
+    try {
+      const response = await getAssistants(100, 0);
+      userAssistants = response.assistants || [];
+      showImportModal = true;
+    } catch (error) {
+      console.error('Error loading assistants:', error);
+    }
+  }
+  
+  function handleSelectAssistant(assistant) {
+    formData.system_prompt = assistant.system_prompt || '';
+    formData.prompt_template = assistant.prompt_template || '';
+    if (!formData.name) {
+      formData.name = `Template from ${assistant.name}`;
+    }
+    showImportModal = false;
   }
   
   // Handle save (create or update)
@@ -300,8 +343,12 @@
                       data-template-id={template.id}
                       class="mt-1 h-4 w-4 text-blue-600 rounded"
                     />
-                    <div class="flex-1">
-                      <h3 class="text-lg font-medium text-gray-900">{template.name}</h3>
+                    <button
+                      onclick={handleViewClick}
+                      data-template-id={template.id}
+                      class="flex-1 text-left hover:bg-gray-50 rounded p-2 -m-2"
+                    >
+                      <h3 class="text-lg font-medium text-gray-900 hover:text-blue-600">{template.name}</h3>
                       {#if template.description}
                         <p class="mt-1 text-sm text-gray-600">{template.description}</p>
                       {/if}
@@ -316,7 +363,7 @@
                         {/if}
                         <span>Updated: {new Date(template.updated_at * 1000).toLocaleDateString()}</span>
                       </div>
-                    </div>
+                    </button>
                   </div>
                   
                   <div class="flex space-x-2 ml-4">
@@ -358,14 +405,29 @@
         </div>
       </div>
 
-    {:else if view === 'create' || view === 'edit'}
-      <!-- Create/Edit Form -->
-      <div class="bg-white shadow rounded-lg px-6 py-6">
-        <h2 class="text-2xl font-bold mb-6">
-          {editingTemplate 
-            ? ($locale ? $_('promptTemplates.editTemplate', { default: 'Edit Template' }) : 'Edit Template')
-            : ($locale ? $_('promptTemplates.createTemplate', { default: 'Create Template' }) : 'Create Template')}
-        </h2>
+    {:else if view === 'create' || view === 'edit' || view === 'view'}
+      <!-- Create/Edit/View Form -->
+      <div class="bg-white shadow rounded-lg px-8 py-8 max-w-5xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold">
+            {view === 'view' 
+              ? ($locale ? $_('promptTemplates.viewTemplate', { default: 'View Template' }) : 'View Template')
+              : editingTemplate 
+                ? ($locale ? $_('promptTemplates.editTemplate', { default: 'Edit Template' }) : 'Edit Template')
+                : ($locale ? $_('promptTemplates.createTemplate', { default: 'Create Template' }) : 'Create Template')}
+          </h2>
+          {#if view === 'create'}
+            <button
+              onclick={handleImportFromAssistant}
+              class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+              </svg>
+              {$locale ? $_('promptTemplates.importFromAssistant', { default: 'Import from Assistant' }) : 'Import from Assistant'}
+            </button>
+          {/if}
+        </div>
         
         <form onsubmit={(e) => { e.preventDefault(); handleSave(); }} class="space-y-6">
           <!-- Name -->
@@ -390,8 +452,9 @@
             <textarea
               id="description"
               bind:value={formData.description}
-              rows="3"
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              rows="4"
+              disabled={view === 'view'}
+              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Brief description of this template's purpose"
             ></textarea>
           </div>
@@ -404,8 +467,9 @@
             <textarea
               id="system_prompt"
               bind:value={formData.system_prompt}
-              rows="8"
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono"
+              rows="12"
+              disabled={view === 'view'}
+              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Define the assistant's role and personality..."
             ></textarea>
           </div>
@@ -418,8 +482,9 @@
             <textarea
               id="prompt_template"
               bind:value={formData.prompt_template}
-              rows="8"
-              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono"
+              rows="12"
+              disabled={view === 'view'}
+              class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="e.g. Use the context to answer the question: user_input"
             ></textarea>
             <p class="mt-1 text-xs text-gray-500">
@@ -444,19 +509,38 @@
 
           <!-- Actions -->
           <div class="flex justify-end space-x-3">
-            <button
-              type="button"
-              onclick={handleCancel}
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
-            >
-              {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
-            >
-              {$locale ? $_('common.save', { default: 'Save' }) : 'Save'}
-            </button>
+            {#if view === 'view'}
+              <button
+                type="button"
+                onclick={handleCancel}
+                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+              >
+                {$locale ? $_('common.back', { default: 'Back' }) : 'Back'}
+              </button>
+              {#if editingTemplate && editingTemplate.is_owner}
+                <button
+                  type="button"
+                  onclick={() => { view = 'edit'; }}
+                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                >
+                  {$locale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
+                </button>
+              {/if}
+            {:else}
+              <button
+                type="button"
+                onclick={handleCancel}
+                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+              >
+                {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+              >
+                {$locale ? $_('common.save', { default: 'Save' }) : 'Save'}
+              </button>
+            {/if}
           </div>
         </form>
       </div>
@@ -484,6 +568,55 @@
               class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
             >
               {$locale ? $_('common.delete', { default: 'Delete' }) : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Import from Assistant Modal -->
+    {#if showImportModal}
+      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] flex flex-col">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">
+              {$locale ? $_('promptTemplates.selectAssistant', { default: 'Select Assistant to Import' }) : 'Select Assistant to Import'}
+            </h3>
+            <button
+              onclick={() => showImportModal = false}
+              class="text-gray-400 hover:text-gray-500"
+              aria-label="Close modal"
+            >
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            {#if userAssistants.length === 0}
+              <p class="text-center text-gray-500 py-8">No assistants found</p>
+            {:else}
+              <div class="space-y-2">
+                {#each userAssistants as assistant (assistant.id)}
+                  <button
+                    onclick={() => handleSelectAssistant(assistant)}
+                    class="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    <h4 class="font-medium text-gray-900">{assistant.name}</h4>
+                    {#if assistant.description}
+                      <p class="text-sm text-gray-600 mt-1">{assistant.description}</p>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          <div class="mt-4 flex justify-end">
+            <button
+              onclick={() => showImportModal = false}
+              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+            >
+              {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
             </button>
           </div>
         </div>
