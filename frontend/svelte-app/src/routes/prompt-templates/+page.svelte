@@ -420,10 +420,10 @@
               bind:value={formData.prompt_template}
               rows="8"
               class="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono"
-              placeholder="e.g. Use the {context} to answer the question: {user_input}"
+              placeholder="e.g. Use the context to answer the question: user_input"
             ></textarea>
             <p class="mt-1 text-xs text-gray-500">
-              {$locale ? $_('promptTemplates.templateHint', { default: 'Use {context} and {user_input} as placeholders' }) : 'Use {context} and {user_input} as placeholders'}
+              Use &#123;context&#125; and &#123;user_input&#125; as placeholders
             </p>
           </div>
 
