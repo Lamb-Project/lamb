@@ -83,6 +83,36 @@
     view = 'edit';
   }
   
+  // Event handler that finds template by ID from event
+  function handleEditClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = $currentTemplates.find(t => t.id === templateId);
+    if (template) handleEdit(template);
+  }
+  
+  function handleToggleSharingClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = $currentTemplates.find(t => t.id === templateId);
+    if (template) handleToggleSharing(template);
+  }
+  
+  function handleDeleteRequestClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = $currentTemplates.find(t => t.id === templateId);
+    if (template) handleDeleteRequest(template);
+  }
+  
+  function handleDuplicateClick(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    const template = $currentTemplates.find(t => t.id === templateId);
+    if (template) handleDuplicate(template);
+  }
+  
+  function handleSelectionChange(event) {
+    const templateId = parseInt(event.currentTarget.dataset.templateId);
+    toggleTemplateSelection(templateId);
+  }
+  
   // Handle save (create or update)
   async function handleSave() {
     try {
@@ -253,7 +283,8 @@
                     <input
                       type="checkbox"
                       checked={$selectedTemplateIds.includes(template.id)}
-                      onchange={() => toggleTemplateSelection(template.id)}
+                      onchange={handleSelectionChange}
+                      data-template-id={template.id}
                       class="mt-1 h-4 w-4 text-blue-600 rounded"
                     />
                     <div class="flex-1">
@@ -278,26 +309,30 @@
                   <div class="flex space-x-2 ml-4">
                     {#if template.is_owner}
                       <button
-                        onclick={() => handleEdit(template)}
+                        onclick={handleEditClick}
+                        data-template-id={template.id}
                         class="px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
                       >
                         {$locale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
                       </button>
                       <button
-                        onclick={() => handleToggleSharing(template)}
+                        onclick={handleToggleSharingClick}
+                        data-template-id={template.id}
                         class="px-3 py-1 text-sm text-gray-600 hover:text-gray-700"
                       >
                         {template.is_shared ? 'Unshare' : 'Share'}
                       </button>
                       <button
-                        onclick={() => handleDeleteRequest(template)}
+                        onclick={handleDeleteRequestClick}
+                        data-template-id={template.id}
                         class="px-3 py-1 text-sm text-red-600 hover:text-red-700"
                       >
                         {$locale ? $_('common.delete', { default: 'Delete' }) : 'Delete'}
                       </button>
                     {/if}
                     <button
-                      onclick={() => handleDuplicate(template)}
+                      onclick={handleDuplicateClick}
+                      data-template-id={template.id}
                       class="px-3 py-1 text-sm text-gray-600 hover:text-gray-700"
                     >
                       {$locale ? $_('common.duplicate', { default: 'Duplicate' }) : 'Duplicate'}
