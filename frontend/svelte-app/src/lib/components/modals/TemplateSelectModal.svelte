@@ -80,7 +80,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50"
-    on:click={handleBackdropClick}
+    onclick={handleBackdropClick}
     role="button"
     tabindex="-1"
   >
@@ -92,7 +92,7 @@
             {$locale ? $_('promptTemplates.selectTemplate', { default: 'Select Prompt Template' }) : 'Select Prompt Template'}
           </h2>
           <button
-            on:click={handleClose}
+            onclick={handleClose}
             class="text-gray-400 hover:text-gray-500"
             aria-label="Close modal"
           >
@@ -116,14 +116,14 @@
       <!-- Tabs -->
       <div class="flex border-b border-gray-200 px-6">
         <button
-          on:click={() => currentTab.set('my')}
+          onclick={() => currentTab.set('my')}
           class="px-4 py-3 text-sm font-medium border-b-2 {$currentTab === 'my' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
         >
           {$locale ? $_('promptTemplates.myTemplates', { default: 'My Templates' }) : 'My Templates'}
           <span class="ml-2 text-xs">({filteredUserTemplates.length})</span>
         </button>
         <button
-          on:click={() => currentTab.set('shared')}
+          onclick={() => currentTab.set('shared')}
           class="px-4 py-3 text-sm font-medium border-b-2 {$currentTab === 'shared' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
         >
           {$locale ? $_('promptTemplates.sharedTemplates', { default: 'Shared Templates' }) : 'Shared Templates'}
@@ -149,7 +149,7 @@
               <div class="space-y-2">
                 {#each filteredUserTemplates as template (template.id)}
                   <button
-                    on:click={() => selectedTemplate = template}
+                    onclick={() => selectedTemplate = template}
                     class="w-full text-left px-4 py-3 rounded-lg border-2 transition-colors {selectedTemplate?.id === template.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
                   >
                     <div class="flex items-start justify-between">
@@ -188,7 +188,7 @@
               <div class="space-y-2">
                 {#each filteredSharedTemplates as template (template.id)}
                   <button
-                    on:click={() => selectedTemplate = template}
+                    onclick={() => selectedTemplate = template}
                     class="w-full text-left px-4 py-3 rounded-lg border-2 transition-colors {selectedTemplate?.id === template.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
                   >
                     <div class="flex items-start justify-between">
@@ -221,13 +221,13 @@
       <!-- Footer Actions -->
       <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
         <button
-          on:click={handleClose}
+          onclick={handleClose}
           class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
         >
           {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
         </button>
         <button
-          on:click={handleApply}
+          onclick={handleApply}
           disabled={!selectedTemplate}
           class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-md"
         >

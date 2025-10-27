@@ -253,7 +253,7 @@
                     <input
                       type="checkbox"
                       checked={$selectedTemplateIds.includes(template.id)}
-                      on:change={() => toggleTemplateSelection(template.id)}
+                      onchange={() => toggleTemplateSelection(template.id)}
                       class="mt-1 h-4 w-4 text-blue-600 rounded"
                     />
                     <div class="flex-1">
