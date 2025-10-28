@@ -209,7 +209,7 @@
                                     type="radio"
                                     bind:group={accessControl}
                                     value="private"
-                                    class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300"
+                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300"
                                 />
                                 <label for="private" class="ml-2 block text-sm text-gray-700">
                                     {$_('knowledgeBases.private', { default: 'Private' })}
@@ -222,7 +222,7 @@
                                     type="radio"
                                     bind:group={accessControl}
                                     value="public"
-                                    class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300"
+                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300"
                                 />
                                 <label for="public" class="ml-2 block text-sm text-gray-700">
                                     {$_('knowledgeBases.public', { default: 'Public' })}
@@ -239,8 +239,7 @@
                 <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
                     <button
                         type="submit"
-                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-[#2271b3] text-base font-medium text-white hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] sm:col-start-2 sm:text-sm"
-                        style="background-color: #2271b3;"
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-brand text-base font-medium text-white hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand sm:col-start-2 sm:text-sm"
                         disabled={isSubmitting}
                     >
                         {#if isSubmitting}

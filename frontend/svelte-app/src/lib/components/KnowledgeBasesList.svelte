@@ -150,8 +150,7 @@
         <div class="mt-3 sm:mt-0 sm:ml-4">
             <button
                 onclick={showCreateModal}
-                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]"
-                style="background-color: #2271b3;"
+                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
             >
                 {$_('knowledgeBases.list.createButton', { default: 'Create Knowledge Base' })}
             </button>
@@ -190,8 +189,7 @@
             </div>
             <button
                 onclick={() => loadKnowledgeBases()}
-                class="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]"
-                style="background-color: #2271b3;"
+                class="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
             >
                 {$_('knowledgeBases.list.retry', { default: 'Retry' })}
             </button>
@@ -232,8 +230,7 @@
                                     <button 
                                       type="button"
                                       onclick={() => viewKnowledgeBase(kb.id)}
-                                      class="text-[#2271b3] hover:text-[#195a91] hover:underline text-left font-medium p-0 bg-transparent border-0 cursor-pointer" 
-                                      style="color: #2271b3;"
+                                      class="text-brand hover:text-brand-hover hover:underline text-left font-medium p-0 bg-transparent border-0 cursor-pointer"
                                     >
                                       {kb.name}
                                     </button>
@@ -254,16 +251,14 @@
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <button 
                                     onclick={() => viewKnowledgeBase(kb.id)}
-                                    class="text-[#2271b3] hover:text-[#195a91] mr-2" 
-                                    style="color: #2271b3;"
+                                    class="text-brand hover:text-brand-hover mr-2"
                                 >
                                     {$_('knowledgeBases.list.viewButton', { default: 'View' })}
                                 </button>
                                 <button 
                                     type="button"
                                     onclick={() => viewKnowledgeBase(kb.id)}
-                                    class="text-[#2271b3] hover:text-[#195a91] mr-2" 
-                                    style="color: #2271b3;"
+                                    class="text-brand hover:text-brand-hover mr-2"
                                 >
                                     {$_('knowledgeBases.list.editButton', { default: 'Edit' })}
                                 </button>

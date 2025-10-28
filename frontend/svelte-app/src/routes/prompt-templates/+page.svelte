@@ -240,10 +240,11 @@
 </script>
 
 <div class="min-h-screen bg-gray-50 py-8">
-  <div class="w-full mx-auto px-12">
+  <div class="w-full mx-auto">
     
+    {#if view === 'list'}
     <!-- Header -->
-    <div class="mb-8">
+    <div class="mb-8 px-6">
       <h1 class="text-3xl font-bold text-gray-900">
         {$locale ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
       </h1>
@@ -254,12 +255,10 @@
 
     <!-- Error Message -->
     {#if $templateError}
-      <div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
+      <div class="mb-4 mx-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
         <span class="block sm:inline">{$templateError}</span>
       </div>
     {/if}
-
-    {#if view === 'list'}
       <!-- List View -->
       <div class="bg-white shadow rounded-lg">
         <!-- Tabs and Actions -->
@@ -268,22 +267,22 @@
             <div class="flex space-x-4">
               <button
                 onclick={handleMyTabClick}
-                class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'my' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'}"
+                class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'my' ? 'bg-brand text-white' : 'text-gray-600 hover:text-gray-900'}"
               >
                 {$locale ? $_('promptTemplates.myTemplates', { default: 'My Templates' }) : 'My Templates'}
                 {#if $currentTab === 'my'}
-                  <span class="ml-2 bg-blue-200 text-blue-800 py-0.5 px-2 rounded-full text-xs">
+                  <span class="ml-2 bg-white bg-opacity-30 text-white py-0.5 px-2 rounded-full text-xs">
                     {$currentTotal}
                   </span>
                 {/if}
               </button>
               <button
                 onclick={handleSharedTabClick}
-                class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'shared' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'}"
+                class="px-4 py-2 text-sm font-medium rounded-md {$currentTab === 'shared' ? 'bg-brand text-white' : 'text-gray-600 hover:text-gray-900'}"
               >
                 {$locale ? $_('promptTemplates.sharedTemplates', { default: 'Shared Templates' }) : 'Shared Templates'}
                 {#if $currentTab === 'shared'}
-                  <span class="ml-2 bg-blue-200 text-blue-800 py-0.5 px-2 rounded-full text-xs">
+                  <span class="ml-2 bg-white bg-opacity-30 text-white py-0.5 px-2 rounded-full text-xs">
                     {$currentTotal}
                   </span>
                 {/if}
@@ -308,7 +307,7 @@
               {#if $currentTab === 'my'}
                 <button
                   onclick={handleCreate}
-                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                  class="px-4 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-hover rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
                 >
                   + {$locale ? $_('promptTemplates.createNew', { default: 'New Template' }) : 'New Template'}
                 </button>
@@ -341,14 +340,14 @@
                       checked={$selectedTemplateIds.includes(template.id)}
                       onchange={handleSelectionChange}
                       data-template-id={template.id}
-                      class="mt-1 h-4 w-4 text-blue-600 rounded"
+                      class="mt-1 h-4 w-4 text-brand rounded"
                     />
                     <button
                       onclick={handleViewClick}
                       data-template-id={template.id}
                       class="flex-1 text-left hover:bg-gray-50 rounded p-2 -m-2"
                     >
-                      <h3 class="text-lg font-medium text-gray-900 hover:text-blue-600">{template.name}</h3>
+                      <h3 class="text-lg font-medium text-gray-900 hover:text-brand-hover">{template.name}</h3>
                       {#if template.description}
                         <p class="mt-1 text-sm text-gray-600">{template.description}</p>
                       {/if}
@@ -371,7 +370,7 @@
                       <button
                         onclick={handleEditClick}
                         data-template-id={template.id}
-                        class="px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
+                        class="px-3 py-1 text-sm text-brand hover:text-brand-hover"
                       >
                         {$locale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
                       </button>
@@ -406,8 +405,8 @@
       </div>
 
     {:else if view === 'create' || view === 'edit' || view === 'view'}
-      <!-- Create/Edit/View Form - SIMPLIFIED WIDE LAYOUT -->
-      <div class="bg-white shadow rounded-lg p-12" style="max-width: 1200px; width: 100%;">
+      <!-- Create/Edit/View Form - WIDE LAYOUT -->
+      <div class="bg-white shadow rounded-lg p-8 w-full mx-auto" style="max-width: 900px;">
         
         
         <!-- Header -->
@@ -439,7 +438,7 @@
               bind:value={formData.name}
               required
               disabled={view === 'view'}
-              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 shadow-sm focus:border-brand focus:ring-brand sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
             />
           </div>
 
@@ -453,7 +452,7 @@
               bind:value={formData.description}
               rows="3"
               disabled={view === 'view'}
-              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 shadow-sm focus:border-brand focus:ring-brand sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Brief description of this template's purpose"
             ></textarea>
           </div>
@@ -468,7 +467,7 @@
               bind:value={formData.system_prompt}
               rows="10"
               disabled={view === 'view'}
-              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono text-sm {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 shadow-sm focus:border-brand focus:ring-brand font-mono sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="Define the assistant's role and personality..."
             ></textarea>
           </div>
@@ -483,7 +482,7 @@
               bind:value={formData.prompt_template}
               rows="10"
               disabled={view === 'view'}
-              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono text-sm {view === 'view' ? 'bg-gray-50' : ''}"
+              class="w-full px-4 py-3 text-base rounded-md border border-gray-300 shadow-sm focus:border-brand focus:ring-brand font-mono sm:text-sm {view === 'view' ? 'bg-gray-50' : ''}"
               placeholder="e.g. Use the context to answer the question: user_input"
             ></textarea>
             <p class="mt-2 text-xs text-gray-500">
@@ -499,7 +498,7 @@
                 id="is_shared"
                 bind:checked={formData.is_shared}
                 disabled={view === 'view'}
-                class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                class="h-4 w-4 text-brand border-gray-300 rounded focus:ring-brand"
               />
               <label for="is_shared" class="ml-3 text-sm text-gray-700">
                 Share with organization
@@ -513,7 +512,7 @@
               <button
                 type="button"
                 onclick={handleCancel}
-                class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
               >
                 Back
               </button>
@@ -521,7 +520,7 @@
                 <button
                   type="button"
                   onclick={() => { view = 'edit'; }}
-                  class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                  class="px-6 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-hover rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
                 >
                   Edit
                 </button>
@@ -530,13 +529,13 @@
               <button
                 type="button"
                 onclick={handleCancel}
-                class="px-6 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                class="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                class="px-6 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-hover rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
               >
                 Save
               </button>
@@ -600,7 +599,7 @@
                 {#each userAssistants as assistant (assistant.id)}
                   <button
                     onclick={() => handleSelectAssistant(assistant)}
-                    class="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    class="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-brand hover:bg-gray-50"
                   >
                     <h4 class="font-medium text-gray-900">{assistant.name}</h4>
                     {#if assistant.description}

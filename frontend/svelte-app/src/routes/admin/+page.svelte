@@ -1012,7 +1012,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'dashboard' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'dashboard' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showDashboard}
                     aria-label={localeLoaded ? $_('admin.tabs.dashboard', { default: 'Dashboard' }) : 'Dashboard'}
                 >
@@ -1022,7 +1021,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'users' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'users' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showUsers}
                     aria-label={localeLoaded ? $_('admin.tabs.users', { default: 'User Management' }) : 'User Management'}
                 >
@@ -1032,7 +1030,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'organizations' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'organizations' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showOrganizations}
                     aria-label={localeLoaded ? $_('admin.tabs.organizations', { default: 'Organizations' }) : 'Organizations'}
                 >
@@ -1052,10 +1049,9 @@
         <!-- Users Management View -->
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-semibold text-gray-800">{localeLoaded ? $_('admin.users.title', { default: 'User Management' }) : 'User Management'}</h1>
-            <button 
+            <button
                 onclick={openCreateUserModal}
                 class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                style="background-color: #2271b3; color: white;"
                 aria-label={localeLoaded ? $_('admin.users.actions.create', { default: 'Create User' }) : 'Create User'}
             >
                 {localeLoaded ? $_('admin.users.actions.create', { default: 'Create User' }) : 'Create User'}
@@ -1074,7 +1070,6 @@
                 <button
                     onclick={fetchUsers}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                 >
                     {localeLoaded ? $_('admin.users.retry', { default: 'Retry' }) : 'Retry'}
                 </button>
@@ -1087,19 +1082,19 @@
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.name', { default: 'Name' }) : 'Name'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.email', { default: 'Email' }) : 'Email'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
                                 {localeLoaded ? $_('admin.users.table.role', { default: 'Role' }) : 'Role'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
                                 Organization
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
                                 Status
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
@@ -1199,10 +1194,9 @@
                 >
                     Sync System
                 </button>
-                <button 
+                <button
                     onclick={openCreateOrgModal}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                     aria-label={localeLoaded ? $_('admin.organizations.actions.create', { default: 'Create Organization' }) : 'Create Organization'}
                 >
                     {localeLoaded ? $_('admin.organizations.actions.create', { default: 'Create Organization' }) : 'Create Organization'}
@@ -1222,7 +1216,6 @@
                 <button
                     onclick={fetchOrganizations}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                 >
                     {localeLoaded ? $_('admin.organizations.retry', { default: 'Retry' }) : 'Retry'}
                 </button>
@@ -1235,16 +1228,16 @@
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.organizations.table.name', { default: 'Name' }) : 'Name'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.organizations.table.slug', { default: 'Slug' }) : 'Slug'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
                                 {localeLoaded ? $_('admin.organizations.table.status', { default: 'Status' }) : 'Status'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
                                 {localeLoaded ? $_('admin.organizations.table.type', { default: 'Type' }) : 'Type'}
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
@@ -1384,10 +1377,9 @@
                             >
                                 {localeLoaded ? $_('admin.users.password.cancel', { default: 'Cancel' }) : 'Cancel'}
                             </button>
-                            <button 
-                                type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                            <button
+                                type="submit"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isChangingPassword}
                             >
                                 {isChangingPassword 
@@ -1530,8 +1522,7 @@
                             </button>
                             <button 
                                 type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isCreatingUser}
                             >
                                 {isCreatingUser 
@@ -1741,8 +1732,7 @@
                             </button>
                             <button 
                                 type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isCreatingOrg}
                             >
                                 {isCreatingOrg 

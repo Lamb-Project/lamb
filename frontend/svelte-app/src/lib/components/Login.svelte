@@ -92,7 +92,7 @@
           id="email" 
           bind:value={email} 
           required
-          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#2271b3] focus:border-[#2271b3]"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
         />
       </div>
       
@@ -103,7 +103,7 @@
           id="password" 
           bind:value={password} 
           required
-          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#2271b3] focus:border-[#2271b3]"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
         />
       </div>
       
@@ -116,7 +116,7 @@
       <button 
         type="submit" 
         disabled={loading}
-        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] disabled:opacity-50"
+        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50"
       >
         {#if loading}
           <span>{localeLoaded ? $_('auth.loading') : 'Loading...'}</span>
@@ -131,7 +131,7 @@
           <button 
             type="button" 
             onclick={showSignup} 
-            class="text-[#2271b3] hover:text-[#195a91] font-medium"
+            class="text-brand hover:text-brand-hover font-medium"
           >
             {localeLoaded ? $_('auth.signupLink') : 'Sign up'}
           </button>

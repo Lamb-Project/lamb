@@ -1145,10 +1145,9 @@
                                                     {showSignupKey ? signupKey : '••••••••••••••••'}
                                                 </div>
                                             </div>
-                                            <button 
+                                            <button
                                                 type="button"
-                                                class="ml-4 px-3 py-1 text-white text-sm rounded-md transition-colors hover:opacity-90"
-                                                style="background-color: #2271b3;"
+                                                class="ml-4 px-3 py-1 bg-brand hover:bg-brand-hover text-white text-sm rounded-md transition-colors"
                                                 onclick={toggleSignupKeyVisibility}
                                             >
                                                 {showSignupKey ? 'Hide' : 'Show'}
@@ -1391,8 +1390,7 @@
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-2xl font-semibold text-gray-800">Manage Users</h2>
                         <button
-                            class="text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:opacity-90"
-                            style="background-color: #2271b3;"
+                            class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                             onclick={openCreateUserModal}
                         >
                             Create User
@@ -1416,19 +1414,19 @@
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead class="bg-gray-50">
                                     <tr>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: #2271b3;">
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Name
                                         </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: #2271b3;">
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Email
                                         </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: #2271b3;">
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Role
                                         </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: #2271b3;">
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Status
                                         </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: #2271b3;">
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Actions
                                         </th>
                                     </tr>
@@ -1464,10 +1462,9 @@
                                                     </svg>
                                                 </button>
                                                 <button
-                                                    class={userData && userData.email === user.email && user.enabled 
-                                                        ? "text-gray-400 cursor-not-allowed mr-3" 
-                                                        : "hover:opacity-80 mr-3"}
-                                                    style={userData && userData.email === user.email && user.enabled ? "" : "color: #2271b3;"}
+                                                    class={userData && userData.email === user.email && user.enabled
+                                                        ? "text-gray-400 cursor-not-allowed mr-3"
+                                                        : "text-brand hover:text-brand-hover hover:opacity-80 mr-3"}
                                                     title={userData && userData.email === user.email && user.enabled 
                                                         ? "You cannot disable your own account" 
                                                         : (user.enabled ? 'Disable User' : 'Enable User')}
@@ -1553,8 +1550,7 @@
                             <button
                                 onclick={fetchAssistants}
                                 disabled={isLoadingAssistants}
-                                class="px-4 py-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                                style="background-color: #2271b3;"
+                                class="bg-brand hover:bg-brand-hover px-4 py-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isLoadingAssistants ? 'Loading...' : 'Refresh'}
                             </button>
@@ -1654,8 +1650,7 @@
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button
                                                         onclick={() => manageAssistantAccess(assistant)}
-                                                        class="px-3 py-1 text-white rounded-md text-xs hover:opacity-90"
-                                                        style="background-color: #2271b3;"
+                                                        class="bg-brand hover:bg-brand-hover px-3 py-1 text-white rounded-md text-xs"
                                                     >
                                                         Manage Access
                                                     </button>
@@ -1748,8 +1743,7 @@
 
                                     <button
                                         onclick={updateSignupSettings}
-                                        class="text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:opacity-90"
-                                        style="background-color: #2271b3;"
+                                        class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                                     >
                                         Update Signup Settings
                                     </button>
@@ -1893,8 +1887,7 @@
                                                         <h4 class="font-medium text-gray-900 capitalize">{providerName}</h4>
                                                         <button
                                                             type="button"
-                                                            class="px-3 py-1 text-sm text-white rounded hover:opacity-90"
-                                                            style="background-color: #2271b3;"
+                                                            class="bg-brand hover:bg-brand-hover px-3 py-1 text-sm text-white rounded"
                                                             onclick={() => openModelModal(providerName, models)}
                                                         >
                                                             Manage Models
@@ -2019,8 +2012,7 @@
 
                                     <div class="flex items-center gap-3">
                                         <button
-                                            class="text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 hover:opacity-90"
-                                            style="background-color: #2271b3;"
+                                            class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                             onclick={updateAssistantDefaults}
                                             disabled={isLoadingAssistantDefaults}
                                         >
@@ -2140,10 +2132,9 @@
                             >
                                 Cancel
                             </button>
-                            <button 
-                                type="submit" 
-                                class="text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 hover:opacity-90" 
-                                style="background-color: #2271b3;"
+                            <button
+                                type="submit"
+                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isCreatingUser}
                             >
                                 {#if isCreatingUser}
@@ -2210,10 +2201,9 @@
                             >
                                 Cancel
                             </button>
-                            <button 
-                                type="submit" 
-                                class="text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 hover:opacity-90" 
-                                style="background-color: #2271b3;"
+                            <button
+                                type="submit"
+                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isChangingPassword}
                             >
                                 {isChangingPassword ? 'Changing...' : 'Change Password'}
@@ -2361,8 +2351,7 @@
                     <div class="flex flex-col justify-center items-center space-y-2">
                         <button
                             type="button"
-                            class="px-3 py-2 text-white rounded disabled:opacity-50 hover:opacity-90"
-                            style="background-color: #2271b3;"
+                            class="bg-brand hover:bg-brand-hover px-3 py-2 text-white rounded disabled:opacity-50"
                             onclick={moveAllToEnabled}
                             disabled={modalDisabledModels.length === 0}
                             title="Move all models to enabled"
@@ -2371,8 +2360,7 @@
                         </button>
                         <button
                             type="button"
-                            class="px-3 py-2 text-white rounded disabled:opacity-50 hover:opacity-90"
-                            style="background-color: #2271b3;"
+                            class="bg-brand hover:bg-brand-hover px-3 py-2 text-white rounded disabled:opacity-50"
                             onclick={moveSelectedToEnabled}
                             disabled={selectedDisabledModels.length === 0}
                             title="Move selected models to enabled"
@@ -2453,8 +2441,7 @@
                     </button>
                         <button
                             type="button"
-                            class="px-4 py-2 text-white rounded hover:opacity-90"
-                            style="background-color: #2271b3;"
+                            class="bg-brand hover:bg-brand-hover px-4 py-2 text-white rounded"
                             onclick={saveModelSelection}
                         >
                             Save Changes
