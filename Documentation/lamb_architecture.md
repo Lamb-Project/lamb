@@ -1,6 +1,6 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.0  
+**Version:** 2.3  
 **Last Updated:** January 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
@@ -22,8 +22,11 @@
 12. [Frontend Architecture](#12-frontend-architecture)
 13. [Deployment Architecture](#13-deployment-architecture)
 14. [Development Workflow](#14-development-workflow)
-15. [API Reference](#15-api-reference)
-16. [File Structure](#16-file-structure)
+15. [End User Feature](#15-end-user-feature)
+16. [User Blocking Feature](#16-user-blocking-feature)
+17. [Frontend UX Patterns & Best Practices](#17-frontend-ux-patterns--best-practices)
+18. [API Reference](#18-api-reference)
+19. [File Structure](#19-file-structure)
 
 ---
 
@@ -2137,9 +2140,473 @@ Comprehensive Playwright test suite in `/testing/playwright/end_user_tests/`:
 
 ---
 
-## 16. Frontend UX Patterns & Best Practices
+## 16. User Blocking Feature
 
-### 16.1 Form Dirty State Tracking
+### 16.1 Overview
+
+The user blocking feature allows system administrators and organization administrators to disable user accounts, preventing login while preserving all user-created resources. This feature is essential for:
+- Handling security incidents
+- Managing inactive accounts
+- Enforcing organizational policies
+- Temporary suspensions
+
+**Key Principle:** Disabled users cannot login, but their published assistants, shared Knowledge Bases, templates, and rubrics remain fully functional and accessible to others.
+
+### 16.2 Database Schema
+
+#### 16.2.1 Enabled Column
+
+Added to `Creator_users` table:
+
+```sql
+ALTER TABLE Creator_users 
+ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;
+
+CREATE INDEX idx_creator_users_enabled ON Creator_users(enabled);
+```
+
+**Field Details:**
+- **Type:** BOOLEAN (SQLite: INTEGER 0/1)
+- **Default:** 1 (enabled/TRUE)
+- **Indexed:** Yes, for performance
+- **Migration:** Automatic on backend startup
+- **Backward Compatible:** All existing users default to enabled
+
+### 16.3 Database Manager Methods
+
+**File:** `backend/lamb/database_manager.py`
+
+#### Single User Operations
+
+```python
+def disable_user(self, user_id: int) -> bool:
+    """
+    Disable a user account
+    
+    Returns:
+        bool: True if successful, False if already disabled or not found
+    """
+    
+def enable_user(self, user_id: int) -> bool:
+    """
+    Enable a user account
+    
+    Returns:
+        bool: True if successful, False if already enabled or not found
+    """
+    
+def is_user_enabled(self, user_id: int) -> bool:
+    """
+    Check if user account is enabled
+    
+    Returns:
+        bool: True if enabled, False if disabled or not found
+    """
+```
+
+#### Bulk Operations
+
+```python
+def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+    """
+    Disable multiple user accounts in a single transaction
+    
+    Returns:
+        Dict with keys: success, failed, already_disabled (lists of user IDs)
+    """
+    
+def enable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+    """
+    Enable multiple user accounts in a single transaction
+    
+    Returns:
+        Dict with keys: success, failed, already_enabled (lists of user IDs)
+    """
+```
+
+**Transaction Safety:** Bulk operations use database transactions to ensure all-or-nothing semantics within the loop.
+
+### 16.4 Authentication & Login Flow
+
+**File:** `backend/lamb/creator_user_router.py`
+
+Login check added in `verify_creator_user()`:
+
+```python
+# Check if user account is enabled
+if not user.get('enabled', True):
+    logger.warning(f"Disabled user {user_data.email} attempted login")
+    raise HTTPException(
+        status_code=403,
+        detail="Account has been disabled. Please contact your administrator."
+    )
+```
+
+**Behavior:**
+- Disabled users receive HTTP 403 (Forbidden)
+- Clear error message displayed to user
+- Login attempt logged for audit trail
+- Credential verification happens before enabled check (prevents information leakage)
+
+### 16.5 Admin API Endpoints
+
+**File:** `backend/creator_interface/main.py`
+
+#### Individual Operations
+
+**Disable User:**
+```http
+PUT /creator/admin/users/{user_id}/disable
+Authorization: Bearer {admin_token}
+
+Response 200:
+{
+  "success": true,
+  "message": "User user@example.com has been disabled"
+}
+```
+
+**Enable User:**
+```http
+PUT /creator/admin/users/{user_id}/enable
+Authorization: Bearer {admin_token}
+
+Response 200:
+{
+  "success": true,
+  "message": "User user@example.com has been enabled"
+}
+```
+
+#### Bulk Operations
+
+**Bulk Disable:**
+```http
+POST /creator/admin/users/disable-bulk
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "user_ids": [1, 2, 3]
+}
+
+Response 200:
+{
+  "success": true,
+  "disabled": 3,
+  "failed": 0,
+  "already_disabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_disabled": []
+  }
+}
+```
+
+**Bulk Enable:**
+```http
+POST /creator/admin/users/enable-bulk
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "user_ids": [1, 2, 3]
+}
+
+Response 200:
+{
+  "success": true,
+  "enabled": 3,
+  "failed": 0,
+  "already_enabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_enabled": []
+  }
+}
+```
+
+### 16.6 Security Features
+
+**Authorization:**
+- ✅ Only system admins can disable/enable users
+- ✅ Organization admins can manage users in their organization
+- ✅ Checked via `is_admin_user()` helper
+
+**Self-Protection:**
+- ✅ Users cannot disable themselves
+- ✅ Bulk operations automatically remove current user from list
+- ✅ Clear error message if self-disable attempted
+
+**Audit Trail:**
+- ✅ All enable/disable operations logged with admin email
+- ✅ Includes user ID, action, and timestamp
+- ✅ Failed attempts logged with reason
+
+**Example Log Entries:**
+```
+INFO: Admin admin@example.com disabled user 123
+WARNING: Removed self (1) from bulk disable list
+INFO: Bulk disable: 3 successful, 0 failed
+```
+
+### 16.7 User List Updates
+
+**File:** `backend/lamb/database_manager.py`
+
+Updated `get_creator_users()` to include enabled status:
+
+```sql
+SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
+       o.name as org_name, o.slug as org_slug, o.is_system,
+       COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
+FROM Creator_users u
+LEFT JOIN organizations o ON u.organization_id = o.id
+LEFT JOIN organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
+ORDER BY u.id
+```
+
+**API Response Structure:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "email": "user@example.com",
+      "name": "Test User",
+      "role": "user",
+      "enabled": true,
+      "user_type": "creator",
+      "organization": {
+        "name": "Engineering",
+        "slug": "engineering",
+        "is_system": false
+      },
+      "organization_role": "member"
+    }
+  ]
+}
+```
+
+### 16.8 Frontend Service Layer
+
+**File:** `frontend/svelte-app/src/lib/services/adminService.js` (NEW)
+
+```javascript
+/**
+ * Disable a user account
+ */
+export async function disableUser(token, userId) {
+  const response = await fetch(getApiUrl(`/admin/users/${userId}/disable`), {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  return await response.json();
+}
+
+/**
+ * Enable a user account
+ */
+export async function enableUser(token, userId) { /* ... */ }
+
+/**
+ * Disable multiple user accounts
+ */
+export async function disableUsersBulk(token, userIds) { /* ... */ }
+
+/**
+ * Enable multiple user accounts
+ */
+export async function enableUsersBulk(token, userIds) { /* ... */ }
+```
+
+### 16.9 Frontend UI Patterns
+
+**Status Display:**
+
+```svelte
+<td>
+  {#if user.enabled}
+    <span class="badge badge-success">Active</span>
+  {:else}
+    <span class="badge badge-error">Disabled</span>
+  {/if}
+</td>
+```
+
+**Action Buttons:**
+
+```svelte
+<td>
+  {#if user.enabled}
+    <button class="btn btn-sm btn-warning" onclick={() => showDisableDialog(user)}>
+      Disable
+    </button>
+  {:else}
+    <button class="btn btn-sm btn-success" onclick={() => showEnableDialog(user)}>
+      Enable
+    </button>
+  {/if}
+</td>
+```
+
+**Bulk Selection:**
+
+```svelte
+{#if selectedUsers.length > 0}
+  <div class="bulk-actions-toolbar bg-base-200 p-4 rounded-lg mb-4">
+    <span>{selectedUsers.length} user(s) selected</span>
+    <button class="btn btn-sm btn-warning" onclick={handleBulkDisable}>
+      Disable Selected
+    </button>
+    <button class="btn btn-sm btn-success" onclick={handleBulkEnable}>
+      Enable Selected
+    </button>
+  </div>
+{/if}
+```
+
+### 16.10 Resource Preservation
+
+**What Continues Working:**
+- ✅ Published assistants remain accessible via LTI
+- ✅ Shared Knowledge Bases remain accessible
+- ✅ Templates remain available to other users
+- ✅ Rubrics remain accessible
+- ✅ All data preserved in database
+- ✅ Organization membership maintained
+
+**What Stops Working:**
+- ❌ User cannot login to creator interface
+- ❌ User cannot login as end_user to Open WebUI
+- ❌ User cannot create new resources
+- ❌ User cannot modify existing resources
+- ❌ User cannot access any LAMB features
+
+**Technical Reason:** The `enabled` check only affects authentication. All database relationships and foreign keys remain intact, allowing other users to continue using shared resources.
+
+### 16.11 Testing Strategy
+
+**Unit Tests:**
+```python
+def test_disable_user():
+    """Test disabling a user"""
+    db = LambDatabaseManager()
+    user_id = create_test_user()
+    
+    result = db.disable_user(user_id)
+    assert result is True
+    assert db.is_user_enabled(user_id) is False
+
+def test_disabled_user_login():
+    """Test that disabled users cannot login"""
+    # Create and disable user
+    user = create_test_user(email="test@example.com")
+    db.disable_user(user['id'])
+    
+    # Attempt login
+    response = client.post("/creator/login", data={
+        "email": "test@example.com",
+        "password": "testpass"
+    })
+    
+    assert response.status_code == 403
+    assert "disabled" in response.json()['detail'].lower()
+```
+
+**Integration Tests:**
+- Verify admin can disable users
+- Verify non-admin cannot disable users
+- Verify self-disable prevention
+- Verify published assistants work with disabled owner
+- Verify bulk operations
+
+**E2E Tests (Playwright):**
+- Admin UI workflow for disabling users
+- Disabled user login attempt
+- Bulk selection and disable
+- Status badges display correctly
+
+### 16.12 Migration Process
+
+**Automatic Migration:**
+1. Backend starts up
+2. `run_migrations()` checks for `enabled` column
+3. If not exists:
+   - Add column with DEFAULT 1
+   - Create index
+   - Log success
+4. All existing users remain enabled
+
+**Rollback Plan:**
+```sql
+-- Remove feature without data loss
+ALTER TABLE Creator_users DROP COLUMN enabled;
+DROP INDEX idx_creator_users_enabled;
+```
+
+### 16.13 Performance Considerations
+
+**Index Usage:**
+- `idx_creator_users_enabled` allows fast filtering of disabled users
+- Login check uses indexed column (minimal overhead)
+- Bulk operations use transactions (consistent performance)
+
+**Query Performance:**
+```sql
+-- Fast query using index
+SELECT * FROM Creator_users WHERE enabled = 1;
+
+-- Login check (indexed)
+SELECT enabled FROM Creator_users WHERE id = ?;
+```
+
+**Load Impact:**
+- Negligible impact on login (one additional WHERE clause)
+- Bulk operations scale linearly with user count
+- No impact on completions or assistant operations
+
+### 16.14 Future Enhancements
+
+**Audit Log Table:**
+```sql
+CREATE TABLE user_status_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL, -- 'disable' or 'enable'
+    admin_email TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES Creator_users(id)
+);
+```
+
+**Scheduled Re-enablement:**
+- Add `disabled_until` timestamp column
+- Background job to auto-enable after timeout
+- Useful for temporary suspensions
+
+**Email Notifications:**
+- Notify users when disabled
+- Notify users when re-enabled
+- Configurable templates
+
+**Grace Period:**
+- Warning before disable
+- Read-only mode for X days
+- Full disable after grace period
+
+---
+
+## 17. Frontend UX Patterns & Best Practices
+
+### 17.1 Form Dirty State Tracking
 
 **Problem:** Svelte 5's reactivity system can cause component props to change references frequently, even when the underlying data hasn't changed. In forms that react to prop changes by repopulating fields, this creates a critical UX issue where user edits are lost.
 
@@ -2236,9 +2703,9 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 
 - GitHub Issue #62: Language Model selection bug (fixed with this pattern)
 
-### 16.2 Other Frontend Best Practices
+### 17.2 Other Frontend Best Practices
 
-#### 16.2.1 Svelte 5 Reactivity Guidelines
+#### 17.2.1 Svelte 5 Reactivity Guidelines
 
 - Use `$state()` for component-local reactive values
 - Use `$derived()` for computed values
@@ -2246,14 +2713,14 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 - Prefer event handlers over reactive effects when possible
 - Always check if effect should run (guard conditions)
 
-#### 16.2.2 API Service Patterns
+#### 17.2.2 API Service Patterns
 
 - Centralize API calls in service modules (`lib/services/`)
 - Include authorization headers in all authenticated requests
 - Handle loading/error states consistently
 - Return structured responses: `{success, data?, error?}`
 
-#### 16.2.3 Store Management
+#### 17.2.3 Store Management
 
 - Use stores for shared state across components
 - Keep stores minimal and focused
@@ -2262,13 +2729,13 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 
 ---
 
-## 17. API Reference
+## 18. API Reference
 
 See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 18. File Structure Summary
+## 19. File Structure Summary
 
 ```
 /backend/
@@ -2297,5 +2764,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team  
-**Last Updated:** October 2025  
-**Version:** 2.2 (Added end_user feature, Frontend UX patterns)
+**Last Updated:** January 2025  
+**Version:** 2.3 (Added end_user feature, user blocking feature, Frontend UX patterns)

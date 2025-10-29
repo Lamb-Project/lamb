@@ -373,11 +373,8 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 logger.warning(f"Could not get OWI role for user {user['email']}: {e}")
                 owi_role = 'user'  # Default on error
             
-            # Get enabled status from OWI auth system
-            enabled_status = owi_manager.get_user_status(user['email'])
-            if enabled_status is None:
-                enabled_status = True  # Default to enabled if status can't be determined
-                logger.warning(f"Could not determine enabled status for user {user['email']}, defaulting to enabled")
+            # Get enabled status from user data (LAMB database stores this)
+            enabled_status = user.get('enabled', True)
             
             user_data = {
                 "id": user.get("id"),
@@ -385,6 +382,7 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 "name": user.get("name"),
                 "role": owi_role,
                 "enabled": enabled_status,
+                "user_type": user.get("user_type", "creator"),
                 "user_config": user.get("user_config", {}),
                 "organization": user.get("organization"),
                 "organization_role": user.get("organization_role")
@@ -715,6 +713,348 @@ async def update_user_password_admin(
                 "error": "Server error"
             }
         )
+
+
+@router.put(
+    "/admin/users/{user_id}/disable",
+    tags=["Admin - User Management"],
+    summary="Disable User Account (Admin Only)",
+    description="""Disables a user account preventing login. The user's published assistants and shared resources remain available.
+
+Example Request (Admin):
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/users/123/disable' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "message": "User user@example.com has been disabled"
+}
+```
+    """,
+    dependencies=[Depends(security)],
+)
+async def disable_user(
+    user_id: int,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Disable a user account (admin only)"""
+    auth_header = f"Bearer {credentials.credentials}"
+    
+    # Check if the user has admin privileges
+    if not is_admin_user(auth_header):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "error": "Access denied. Admin privileges required."
+            }
+        )
+    
+    # Get current user to prevent self-disable
+    creator_user = get_creator_user_from_token(auth_header)
+    if creator_user and creator_user['id'] == user_id:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Cannot disable your own account"
+            }
+        )
+    
+    # Check if user exists
+    db_manager = LambDatabaseManager()
+    target_user = db_manager.get_creator_user_by_id(user_id)
+    
+    if not target_user:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "error": "User not found"
+            }
+        )
+    
+    # Disable user
+    success = db_manager.disable_user(user_id)
+    
+    if not success:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Unable to disable user (may already be disabled)"
+            }
+        )
+    
+    logger.info(f"Admin {creator_user['email']} disabled user {user_id}")
+    
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "message": f"User {target_user['user_email']} has been disabled"
+        }
+    )
+
+
+@router.put(
+    "/admin/users/{user_id}/enable",
+    tags=["Admin - User Management"],
+    summary="Enable User Account (Admin Only)",
+    description="""Enables a previously disabled user account allowing them to login again.
+
+Example Request (Admin):
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/users/123/enable' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "message": "User user@example.com has been enabled"
+}
+```
+    """,
+    dependencies=[Depends(security)],
+)
+async def enable_user(
+    user_id: int,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Enable a user account (admin only)"""
+    auth_header = f"Bearer {credentials.credentials}"
+    
+    # Check if the user has admin privileges
+    if not is_admin_user(auth_header):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "error": "Access denied. Admin privileges required."
+            }
+        )
+    
+    # Check if user exists
+    db_manager = LambDatabaseManager()
+    target_user = db_manager.get_creator_user_by_id(user_id)
+    
+    if not target_user:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "error": "User not found"
+            }
+        )
+    
+    # Enable user
+    success = db_manager.enable_user(user_id)
+    
+    if not success:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Unable to enable user (may already be enabled)"
+            }
+        )
+    
+    creator_user = get_creator_user_from_token(auth_header)
+    logger.info(f"Admin {creator_user['email']} enabled user {user_id}")
+    
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "message": f"User {target_user['user_email']} has been enabled"
+        }
+    )
+
+
+@router.post(
+    "/admin/users/disable-bulk",
+    tags=["Admin - User Management"],
+    summary="Disable Multiple Users (Admin Only)",
+    description="""Disable multiple user accounts in a single operation.
+
+Example Request (Admin):
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/users/disable-bulk' \\
+-H 'Authorization: Bearer <admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"user_ids": [1, 2, 3]}'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "disabled": 3,
+  "failed": 0,
+  "already_disabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_disabled": []
+  }
+}
+```
+    """,
+    dependencies=[Depends(security)],
+)
+async def disable_users_bulk(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Disable multiple users (admin only)"""
+    auth_header = f"Bearer {credentials.credentials}"
+    
+    # Check if the user has admin privileges
+    if not is_admin_user(auth_header):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "error": "Access denied. Admin privileges required."
+            }
+        )
+    
+    # Get user IDs from request body
+    body = await request.json()
+    user_ids = body.get('user_ids', [])
+    
+    if not user_ids:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "No users specified"
+            }
+        )
+    
+    # Remove current user from list to prevent self-disable
+    creator_user = get_creator_user_from_token(auth_header)
+    if creator_user and creator_user['id'] in user_ids:
+        user_ids.remove(creator_user['id'])
+        logger.warning(f"Removed self ({creator_user['id']}) from bulk disable list")
+    
+    if not user_ids:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "No valid users to disable"
+            }
+        )
+    
+    # Bulk disable
+    db_manager = LambDatabaseManager()
+    results = db_manager.disable_users_bulk(user_ids)
+    
+    logger.info(
+        f"Admin {creator_user['email']} bulk disabled users: "
+        f"{len(results['success'])} successful, {len(results['failed'])} failed"
+    )
+    
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "disabled": len(results["success"]),
+            "failed": len(results["failed"]),
+            "already_disabled": len(results.get("already_disabled", [])),
+            "details": results
+        }
+    )
+
+
+@router.post(
+    "/admin/users/enable-bulk",
+    tags=["Admin - User Management"],
+    summary="Enable Multiple Users (Admin Only)",
+    description="""Enable multiple user accounts in a single operation.
+
+Example Request (Admin):
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/users/enable-bulk' \\
+-H 'Authorization: Bearer <admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"user_ids": [1, 2, 3]}'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "enabled": 3,
+  "failed": 0,
+  "already_enabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_enabled": []
+  }
+}
+```
+    """,
+    dependencies=[Depends(security)],
+)
+async def enable_users_bulk(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Enable multiple users (admin only)"""
+    auth_header = f"Bearer {credentials.credentials}"
+    
+    # Check if the user has admin privileges
+    if not is_admin_user(auth_header):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "error": "Access denied. Admin privileges required."
+            }
+        )
+    
+    # Get user IDs from request body
+    body = await request.json()
+    user_ids = body.get('user_ids', [])
+    
+    if not user_ids:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "No users specified"
+            }
+        )
+    
+    # Bulk enable
+    db_manager = LambDatabaseManager()
+    results = db_manager.enable_users_bulk(user_ids)
+    
+    creator_user = get_creator_user_from_token(auth_header)
+    logger.info(
+        f"Admin {creator_user['email']} bulk enabled users: "
+        f"{len(results['success'])} successful, {len(results['failed'])} failed"
+    )
+    
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "enabled": len(results["success"]),
+            "failed": len(results["failed"]),
+            "already_enabled": len(results.get("already_enabled", [])),
+            "details": results
+        }
+    )
 
 
 @router.get(

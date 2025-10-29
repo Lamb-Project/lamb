@@ -8,6 +8,7 @@
     import axios from 'axios';
     import { getApiUrl } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
+    import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -24,6 +25,23 @@
     let isLoadingUsers = $state(false);
     /** @type {string | null} */
     let usersError = $state(null);
+    
+    // --- Bulk Selection State ---
+    let selectedUsers = $state(/** @type {number[]} */ ([]));
+    
+    // Sync selectedUsers with user.selected checkboxes
+    $effect(() => {
+        if (users.length > 0) {
+            selectedUsers = users.filter(u => u.selected).map(u => u.id);
+        }
+    });
+    
+    // --- Enable/Disable Confirmation Modals ---
+    let showDisableConfirm = $state(false);
+    let showEnableConfirm = $state(false);
+    let actionType = $state(''); // 'single' or 'bulk'
+    /** @type {any | null} */
+    let targetUser = $state(null);
 
     // --- Create User Modal State ---
     let isCreateUserModalOpen = $state(false);
@@ -197,61 +215,121 @@
     }
 
     // User enable/disable functions for system admin  
-    async function toggleUserStatusAdmin(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
-        // Prevent users from disabling themselves
-        if (currentUserData && currentUserData.email === user.email && !newStatus) {
-            alert("You cannot disable your own account. Please ask another administrator to disable your account if needed.");
-            return;
+    // --- Bulk Selection Functions ---
+    function handleSelectAll() {
+        const selectAllCheckbox = /** @type {HTMLInputElement|null} */ (document.querySelector('input[aria-label="Select all users"]'));
+        if (selectAllCheckbox?.checked) {
+            // Select all users except current user
+            users.forEach(u => {
+                if (!(currentUserData && currentUserData.email === u.email)) {
+                    u.selected = true;
+                }
+            });
+        } else {
+            users.forEach(u => u.selected = false);
         }
-        
-        if (!confirm(`Are you sure you want to ${action} ${user.name} (${user.email})?`)) {
-            return;
-        }
+    }
 
+    function clearSelection() {
+        users.forEach(u => u.selected = false);
+    }
+
+    // --- Enable/Disable Dialog Functions ---
+    /**
+     * @param {any} user
+     */
+    function showDisableDialog(user) {
+        targetUser = user;
+        actionType = 'single';
+        showDisableConfirm = true;
+    }
+
+    /**
+     * @param {any} user
+     */
+    function showEnableDialog(user) {
+        targetUser = user;
+        actionType = 'single';
+        showEnableConfirm = true;
+    }
+
+    function handleBulkDisable() {
+        if (selectedUsers.length === 0) return;
+        actionType = 'bulk';
+        showDisableConfirm = true;
+    }
+
+    function handleBulkEnable() {
+        if (selectedUsers.length === 0) return;
+        actionType = 'bulk';
+        showEnableConfirm = true;
+    }
+
+    async function confirmDisable() {
         try {
             const token = getAuthToken();
             if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
+                throw new Error('Authentication token not found');
             }
 
-            const apiUrl = getApiUrl(`/admin/users/${user.id}/status`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
-
-            const response = await axios.put(apiUrl, {
-                enabled: newStatus
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            console.log(`User ${action} response:`, response.data);
-
-            // Update the user in the local list
-            const userIndex = users.findIndex(u => u.id === user.id);
-            if (userIndex !== -1) {
-                users[userIndex].enabled = newStatus;
-                users = [...users]; // Trigger reactivity
-            }
-
-            // Show success message (you could use a toast library here)
-            alert(`User ${user.name} has been ${newStatus ? 'enabled' : 'disabled'} successfully.`);
-
-        } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
-            
-            let errorMessage = `Failed to ${action} user.`;
-            if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                errorMessage = err.response.data.detail;
-            } else if (err instanceof Error) {
-                errorMessage = err.message;
+            if (actionType === 'single') {
+                await adminService.disableUser(token, targetUser.id);
+                console.log(`User ${targetUser.email} disabled`);
+                alert(`User ${targetUser.name} has been disabled successfully.`);
+            } else {
+                const result = await adminService.disableUsersBulk(token, selectedUsers);
+                console.log(`Disabled ${result.disabled} user(s)`);
+                alert(`Successfully disabled ${result.disabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
             }
             
-            alert(`Error: ${errorMessage}`);
+            clearSelection();
+            await fetchUsers(); // Refresh list
+        } catch (error) {
+            console.error('Failed to disable user(s):', error);
+            alert(`Error: ${error.message || 'Failed to disable user(s)'}`);
+        } finally {
+            showDisableConfirm = false;
+            targetUser = null;
+        }
+    }
+
+    async function confirmEnable() {
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            if (actionType === 'single') {
+                await adminService.enableUser(token, targetUser.id);
+                console.log(`User ${targetUser.email} enabled`);
+                alert(`User ${targetUser.name} has been enabled successfully.`);
+            } else {
+                const result = await adminService.enableUsersBulk(token, selectedUsers);
+                console.log(`Enabled ${result.enabled} user(s)`);
+                alert(`Successfully enabled ${result.enabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
+            }
+            
+            clearSelection();
+            await fetchUsers(); // Refresh list
+        } catch (error) {
+            console.error('Failed to enable user(s):', error);
+            alert(`Error: ${error.message || 'Failed to enable user(s)'}`);
+        } finally {
+            showEnableConfirm = false;
+            targetUser = null;
+        }
+    }
+
+    /**
+     * @param {any} user
+     */
+    async function toggleUserStatusAdmin(user) {
+        // Use the new modal-based approach
+        if (user.enabled) {
+            showDisableDialog(user);
+        } else {
+            showEnableDialog(user);
         }
     }
 
@@ -710,7 +788,7 @@
             console.log('API Response:', response.data);
 
             if (response.data && response.data.success) {
-                users = response.data.data || [];
+                users = (response.data.data || []).map(u => ({...u, selected: false}));
                 console.log(`Fetched ${users.length} users`);
             } else {
                 throw new Error(response.data.error || 'Failed to fetch users.');
@@ -1077,11 +1155,52 @@
         {:else if users.length === 0}
             <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('admin.users.noUsers', { default: 'No users found.' }) : 'No users found.'}</p>
         {:else}
+            <!-- Bulk Actions Toolbar -->
+            {#if selectedUsers.length > 0}
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">
+                            {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+                        </span>
+                        <div class="flex gap-2">
+                            <button 
+                                class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={handleBulkDisable}
+                            >
+                                Disable Selected
+                            </button>
+                            <button 
+                                class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={handleBulkEnable}
+                            >
+                                Enable Selected
+                            </button>
+                            <button 
+                                class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={clearSelection}
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
             <!-- Responsive Table Wrapper -->
             <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
+                            <th scope="col" class="px-6 py-3 text-left">
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedUsers.length > 0 && selectedUsers.length === users.filter(u => !(currentUserData && currentUserData.email === u.email)).length}
+                                    onchange={handleSelectAll}
+                                    class="w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded cursor-pointer focus:ring-2 focus:ring-blue-500 checked:bg-blue-600 checked:border-blue-600"
+                                    style="accent-color: #2563eb;"
+                                    aria-label="Select all users"
+                                />
+                            </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.name', { default: 'Name' }) : 'Name'}
                             </th>
@@ -1104,7 +1223,17 @@
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                         {#each users as user (user.id)}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50" class:opacity-60={!user.enabled}>
+                                <td class="px-6 py-4 whitespace-nowrap align-top">
+                                    <input 
+                                        type="checkbox" 
+                                        bind:checked={user.selected}
+                                        disabled={currentUserData && currentUserData.email === user.email}
+                                        class="w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded cursor-pointer focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed checked:bg-blue-600 checked:border-blue-600"
+                                        style="accent-color: #2563eb;"
+                                        aria-label={`Select ${user.name}`}
+                                    />
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
                                     <div class="text-sm font-medium text-gray-900">{user.name || '-'}</div>
                                 </td>
@@ -1841,6 +1970,90 @@
                         class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                     >
                         Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Disable User Confirmation Modal -->
+{#if showDisableConfirm}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900">Confirm Disable</h3>
+                </div>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-700">
+                        {#if actionType === 'single'}
+                            Are you sure you want to disable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
+                        {:else}
+                            Are you sure you want to disable <strong>{selectedUsers.length}</strong> user(s)?
+                        {/if}
+                    </p>
+                    <p class="text-sm text-gray-600 mt-3">
+                        Disabled users will not be able to login, but their published assistants and shared resources will remain available.
+                    </p>
+                </div>
+                <div class="flex items-center justify-end gap-3 px-4 py-3">
+                    <button 
+                        onclick={() => showDisableConfirm = false}
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onclick={confirmDisable}
+                        class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Disable
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Enable User Confirmation Modal -->
+{#if showEnableConfirm}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900">Confirm Enable</h3>
+                </div>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-700">
+                        {#if actionType === 'single'}
+                            Are you sure you want to enable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
+                        {:else}
+                            Are you sure you want to enable <strong>{selectedUsers.length}</strong> user(s)?
+                        {/if}
+                    </p>
+                    <p class="text-sm text-gray-600 mt-3">
+                        Enabled users will be able to login and access the system.
+                    </p>
+                </div>
+                <div class="flex items-center justify-end gap-3 px-4 py-3">
+                    <button 
+                        onclick={() => showEnableConfirm = false}
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onclick={confirmEnable}
+                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Enable
                     </button>
                 </div>
             </div>

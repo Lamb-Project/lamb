@@ -483,6 +483,22 @@ class LambDatabaseManager:
                 else:
                     logging.debug("prompt_templates table already exists")
 
+                # Migration 4: Add enabled column to Creator_users if it doesn't exist
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'enabled' not in columns:
+                    logging.info("Adding enabled column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1
+                    """)
+                    # Create index for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
+                    logging.info("Successfully added enabled column and index")
+                else:
+                    logging.debug("enabled column already exists in Creator_users table")
+
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
         finally:
@@ -1503,7 +1519,7 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled 
                     FROM {self.table_prefix}Creator_users 
                     WHERE user_email = ?
                 """, (user_email,))
@@ -1518,7 +1534,8 @@ class LambDatabaseManager:
                     'email': result[2],
                     'name': result[3],
                     'user_type': result[4],
-                    'user_config': json.loads(result[5]) if result[5] else {}
+                    'user_config': json.loads(result[5]) if result[5] else {},
+                    'enabled': bool(result[6]) if len(result) > 6 else True
                 }
 
         except sqlite3.Error as e:
@@ -1654,6 +1671,265 @@ class LambDatabaseManager:
         finally:
             if connection:
                 connection.close()
+
+    def disable_user(self, user_id: int) -> bool:
+        """
+        Disable a user account
+        
+        Args:
+            user_id: User ID to disable
+            
+        Returns:
+            bool: True if successful, False if user not found or already disabled
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check current status
+                cursor.execute(
+                    f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                row = cursor.fetchone()
+                
+                if not row:
+                    logging.warning(f"User {user_id} not found")
+                    return False
+                
+                if row[0] == 0:  # Already disabled
+                    logging.info(f"User {user_id} already disabled")
+                    return False
+                
+                # Disable user
+                cursor.execute(
+                    f"""UPDATE {self.table_prefix}Creator_users 
+                        SET enabled = 0, updated_at = ? 
+                        WHERE id = ?""",
+                    (int(time.time()), user_id)
+                )
+                logging.info(f"Successfully disabled user {user_id}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Error disabling user {user_id}: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def enable_user(self, user_id: int) -> bool:
+        """
+        Enable a user account
+        
+        Args:
+            user_id: User ID to enable
+            
+        Returns:
+            bool: True if successful, False if user not found or already enabled
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check current status
+                cursor.execute(
+                    f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                row = cursor.fetchone()
+                
+                if not row:
+                    logging.warning(f"User {user_id} not found")
+                    return False
+                
+                if row[0] == 1:  # Already enabled
+                    logging.info(f"User {user_id} already enabled")
+                    return False
+                
+                # Enable user
+                cursor.execute(
+                    f"""UPDATE {self.table_prefix}Creator_users 
+                        SET enabled = 1, updated_at = ? 
+                        WHERE id = ?""",
+                    (int(time.time()), user_id)
+                )
+                logging.info(f"Successfully enabled user {user_id}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Error enabling user {user_id}: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def is_user_enabled(self, user_id: int) -> bool:
+        """
+        Check if user account is enabled
+        
+        Args:
+            user_id: User ID to check
+            
+        Returns:
+            bool: True if enabled, False if disabled or not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            return row and row[0] == 1
+            
+        except Exception as e:
+            logging.error(f"Error checking user enabled status: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+        """
+        Disable multiple user accounts in a single transaction
+        
+        Args:
+            user_ids: List of user IDs to disable
+            
+        Returns:
+            Dict with success/failed lists and counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return {"success": [], "failed": user_ids, "already_disabled": []}
+        
+        results = {"success": [], "failed": [], "already_disabled": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                for user_id in user_ids:
+                    try:
+                        # Check if user exists and current status
+                        cursor.execute(
+                            f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                            (user_id,)
+                        )
+                        row = cursor.fetchone()
+                        
+                        if not row:
+                            results["failed"].append(user_id)
+                            continue
+                        
+                        if row[0] == 0:  # Already disabled
+                            results["already_disabled"].append(user_id)
+                            continue
+                        
+                        # Disable user
+                        cursor.execute(
+                            f"""UPDATE {self.table_prefix}Creator_users 
+                                SET enabled = 0, updated_at = ? 
+                                WHERE id = ?""",
+                            (current_time, user_id)
+                        )
+                        results["success"].append(user_id)
+                    except Exception as e:
+                        logging.error(f"Error disabling user {user_id}: {e}")
+                        results["failed"].append(user_id)
+                
+                logging.info(f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                
+        except Exception as e:
+            logging.error(f"Error in bulk disable: {e}")
+            # Mark all as failed
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_disabled"] and uid not in results["failed"]])
+        finally:
+            if connection:
+                connection.close()
+        
+        return results
+
+    def enable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+        """
+        Enable multiple user accounts in a single transaction
+        
+        Args:
+            user_ids: List of user IDs to enable
+            
+        Returns:
+            Dict with success/failed lists and counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return {"success": [], "failed": user_ids, "already_enabled": []}
+        
+        results = {"success": [], "failed": [], "already_enabled": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                for user_id in user_ids:
+                    try:
+                        # Check if user exists and current status
+                        cursor.execute(
+                            f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                            (user_id,)
+                        )
+                        row = cursor.fetchone()
+                        
+                        if not row:
+                            results["failed"].append(user_id)
+                            continue
+                        
+                        if row[0] == 1:  # Already enabled
+                            results["already_enabled"].append(user_id)
+                            continue
+                        
+                        # Enable user
+                        cursor.execute(
+                            f"""UPDATE {self.table_prefix}Creator_users 
+                                SET enabled = 1, updated_at = ? 
+                                WHERE id = ?""",
+                            (current_time, user_id)
+                        )
+                        results["success"].append(user_id)
+                    except Exception as e:
+                        logging.error(f"Error enabling user {user_id}: {e}")
+                        results["failed"].append(user_id)
+                
+                logging.info(f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                
+        except Exception as e:
+            logging.error(f"Error in bulk enable: {e}")
+            # Mark all as failed
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_enabled"] and uid not in results["failed"]])
+        finally:
+            if connection:
+                connection.close()
+        
+        return results
 
     def create_lti_user(self, lti_user: LTIUser):
         connection = self.get_connection()
@@ -2529,7 +2805,7 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
                            o.name as org_name, o.slug as org_slug, o.is_system,
-                           COALESCE(r.role, 'member') as org_role
+                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
@@ -2551,7 +2827,9 @@ class LambDatabaseManager:
                             'slug': row[6],
                             'is_system': bool(row[7]) if row[7] is not None else False
                         },
-                        'organization_role': row[8]
+                        'organization_role': row[8],
+                        'user_type': row[9] if len(row) > 9 else 'creator',
+                        'enabled': bool(row[10]) if len(row) > 10 else True
                     })
                 return users
 
