@@ -188,6 +188,9 @@
     "notSet": "Not set",
     "detailProperties": "Assistant detail properties",
     "loadingDetail": "Loading assistant details...",
+    "assistant_not_found": "Assistant with ID {id} not found.",
+    "error_fetching_assistant": "Error fetching assistant details",
+    "errorTitle": "Error:",
     "form": {
       "advancedMode": "Advanced Mode",
       "insert_placeholder": "Insert placeholder",
@@ -526,5 +529,176 @@
     "deleteWarning": "This action cannot be undone. The template will be permanently deleted.",
     "export": "Export",
     "search": "Search templates..."
+  },
+  "admin": {
+    "tabs": {
+      "dashboard": "Dashboard",
+      "users": "User Management",
+      "organizations": "Organizations"
+    },
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "welcome": "Welcome to the administration area. Use the tabs above to navigate."
+    },
+    "users": {
+      "title": "User Management",
+      "loading": "Loading users...",
+      "errorTitle": "Error:",
+      "retry": "Retry",
+      "noUsers": "No users found.",
+      "searchPlaceholder": "Search users by name, email, organization...",
+      "filters": {
+        "type": "User Type",
+        "status": "Status"
+      },
+      "filtersOptions": {
+        "admin": "Admin",
+        "creator": "Creator",
+        "endUser": "End User",
+        "active": "Active",
+        "disabled": "Disabled"
+      },
+      "table": {
+        "name": "Name",
+        "email": "Email",
+        "userType": "User Type",
+        "organization": "Organization",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "tableValues": {
+        "system": "System",
+        "noOrganization": "No Organization"
+      },
+      "actions": {
+        "create": "Create User",
+        "changePassword": "Change Password",
+        "disable": "Disable User",
+        "enable": "Enable User",
+        "cannotDisableSelf": "You cannot disable your own account"
+      },
+      "bulkActions": {
+        "selected": "{count} user selected",
+        "selectedPlural": "{count} users selected",
+        "disableSelected": "Disable Selected",
+        "enableSelected": "Enable Selected",
+        "clear": "Clear"
+      },
+      "resultsCount": {
+        "showing": "Showing {filtered} of {total} users",
+        "total": "{count} users",
+        "noMatch": "No users match your filters",
+        "clearFilters": "Clear filters"
+      },
+      "sortOptions": {
+        "name": "Name",
+        "email": "Email",
+        "userId": "User ID"
+      },
+      "password": {
+        "title": "Change Password",
+        "subtitle": "Set a new password for",
+        "email": "Email",
+        "newPassword": "New Password",
+        "hint": "At least 8 characters recommended",
+        "cancel": "Cancel",
+        "changing": "Changing...",
+        "change": "Change Password",
+        "success": "Password changed successfully!"
+      },
+      "create": {
+        "title": "Create New User",
+        "email": "Email",
+        "name": "Name",
+        "password": "Password",
+        "role": "Role",
+        "roleUser": "User",
+        "roleAdmin": "Admin",
+        "userType": "User Type",
+        "userTypeCreator": "Creator",
+        "userTypeEndUser": "End User",
+        "organization": "Organization",
+        "cancel": "Cancel",
+        "creating": "Creating...",
+        "create": "Create User",
+        "success": "User created successfully!"
+      },
+      "errors": {
+        "fillRequired": "Please fill in all required fields.",
+        "invalidEmail": "Please enter a valid email address.",
+        "authTokenNotFound": "Authentication token not found. Please log in again.",
+        "createFailed": "Failed to create user.",
+        "unknownError": "An unknown error occurred while creating the user.",
+        "passwordRequired": "Please enter a new password.",
+        "passwordMinLength": "Password should be at least 8 characters.",
+        "passwordChangeFailed": "Failed to change password.",
+        "passwordChangeUnknownError": "An unknown error occurred while changing the password."
+      }
+    },
+    "organizations": {
+      "title": "Organization Management",
+      "loading": "Loading organizations...",
+      "errorTitle": "Error:",
+      "retry": "Retry",
+      "noOrganizations": "No organizations found.",
+      "actions": {
+        "create": "Create Organization",
+        "viewConfig": "View Configuration",
+        "migrate": "Migrate Organization",
+        "delete": "Delete Organization",
+        "syncSystem": "Sync System"
+      },
+      "migration": {
+        "title": "Migrate Organization",
+        "description": "Migrate all resources from",
+        "targetOrg": "Target Organization",
+        "selectTarget": "Select target organization...",
+        "validate": "Validate Migration",
+        "validating": "Validating...",
+        "resources": "Resources to Migrate",
+        "conflicts": "Conflicts Detected",
+        "options": "Migration Options",
+        "conflictStrategy": "Conflict Resolution Strategy",
+        "rename": "Rename conflicting resources",
+        "skip": "Skip conflicting resources",
+        "fail": "Fail on conflicts",
+        "preserveAdminRoles": "Preserve admin roles from source organization",
+        "preserveAdminRolesHint": "If unchecked, admins from the source organization will be migrated as regular members. If checked, they will keep their admin privileges in the target organization.",
+        "deleteSource": "Delete source organization after migration",
+        "deleteSourceHint": "If checked, the source organization will be permanently deleted after successful migration. This action cannot be undone.",
+        "cancel": "Cancel",
+        "execute": "Execute Migration",
+        "migrating": "Migrating...",
+        "success": "Migration completed successfully!"
+      },
+      "table": {
+        "name": "Name",
+        "slug": "Slug",
+        "status": "Status",
+        "type": "Type",
+        "actions": "Actions"
+      },
+      "create": {
+        "title": "Create New Organization",
+        "slug": "Slug",
+        "name": "Name",
+        "features": "Features",
+        "limits": "Usage Limits",
+        "cancel": "Cancel",
+        "creating": "Creating...",
+        "create": "Create Organization",
+        "success": "Organization created successfully!"
+      },
+      "errors": {
+        "fillRequired": "Please fill in all required fields.",
+        "selectAdmin": "Please select an admin user for the organization.",
+        "slugInvalid": "Slug must contain only lowercase letters, numbers, and hyphens.",
+        "signupKeyLength": "Signup key must be at least 8 characters long when signup is enabled.",
+        "signupKeyInvalid": "Signup key can only contain letters, numbers, hyphens, and underscores.",
+        "authTokenNotFound": "Authentication token not found. Please log in again.",
+        "createFailed": "Failed to create organization.",
+        "unknownError": "An unknown error occurred while creating the organization."
+      }
+    }
   }
 }

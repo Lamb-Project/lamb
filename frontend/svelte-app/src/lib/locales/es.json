@@ -280,7 +280,10 @@
     "unpublishAssistant": "Despublicar Asistente",
     "notSet": "No establecido",
     "detailProperties": "Propiedades de detalle del asistente",
-    "loadingDetail": "Cargando detalles del asistente..."
+    "loadingDetail": "Cargando detalles del asistente...",
+    "assistant_not_found": "Asistente con ID {id} no encontrado.",
+    "error_fetching_assistant": "Error al obtener los detalles del asistente",
+    "errorTitle": "Error:"
   },
   "help": {
     "title": "Ayuda",
@@ -525,6 +528,9 @@
     "loadTemplate": "Cargar Plantilla",
     "selectTemplate": "Seleccionar Plantilla de Prompt",
     "applyTemplate": "Aplicar Plantilla",
+    "importFromAssistant": "Importar desde Asistente",
+    "selectAssistant": "Seleccionar Asistente para Importar",
+    "viewTemplate": "Ver Plantilla",
     "name": "Nombre",
     "systemPrompt": "Prompt del Sistema",
     "promptTemplate": "Plantilla de Prompt",
@@ -537,5 +543,176 @@
     "deleteWarning": "Esta acción no se puede deshacer. La plantilla se eliminará permanentemente.",
     "export": "Exportar",
     "search": "Buscar plantillas..."
+  },
+  "admin": {
+    "tabs": {
+      "dashboard": "Panel de Control",
+      "users": "Gestión de Usuarios",
+      "organizations": "Organizaciones"
+    },
+    "dashboard": {
+      "title": "Panel de Administración",
+      "welcome": "Bienvenido al área de administración. Usa las pestañas de arriba para navegar."
+    },
+    "users": {
+      "title": "Gestión de Usuarios",
+      "loading": "Cargando usuarios...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noUsers": "No se encontraron usuarios.",
+      "searchPlaceholder": "Buscar usuarios por nombre, email, organización...",
+      "filters": {
+        "type": "Tipo de Usuario",
+        "status": "Estado"
+      },
+      "filtersOptions": {
+        "admin": "Administrador",
+        "creator": "Creador",
+        "endUser": "Usuario Final",
+        "active": "Activo",
+        "disabled": "Deshabilitado"
+      },
+      "table": {
+        "name": "Nombre",
+        "email": "Correo Electrónico",
+        "userType": "Tipo de Usuario",
+        "organization": "Organización",
+        "status": "Estado",
+        "actions": "Acciones"
+      },
+      "tableValues": {
+        "system": "Sistema",
+        "noOrganization": "Sin Organización"
+      },
+      "actions": {
+        "create": "Crear Usuario",
+        "changePassword": "Cambiar Contraseña",
+        "disable": "Deshabilitar Usuario",
+        "enable": "Habilitar Usuario",
+        "cannotDisableSelf": "No puedes deshabilitar tu propia cuenta"
+      },
+      "bulkActions": {
+        "selected": "{count} usuario seleccionado",
+        "selectedPlural": "{count} usuarios seleccionados",
+        "disableSelected": "Deshabilitar Seleccionados",
+        "enableSelected": "Habilitar Seleccionados",
+        "clear": "Limpiar"
+      },
+      "resultsCount": {
+        "showing": "Mostrando {filtered} de {total} usuarios",
+        "total": "{count} usuarios",
+        "noMatch": "No hay usuarios que coincidan con tus filtros",
+        "clearFilters": "Limpiar filtros"
+      },
+      "sortOptions": {
+        "name": "Nombre",
+        "email": "Correo Electrónico",
+        "userId": "ID de Usuario"
+      },
+      "password": {
+        "title": "Cambiar Contraseña",
+        "subtitle": "Establecer una nueva contraseña para",
+        "email": "Correo Electrónico",
+        "newPassword": "Nueva Contraseña",
+        "hint": "Se recomienda al menos 8 caracteres",
+        "cancel": "Cancelar",
+        "changing": "Cambiando...",
+        "change": "Cambiar Contraseña",
+        "success": "¡Contraseña cambiada exitosamente!"
+      },
+      "create": {
+        "title": "Crear Nuevo Usuario",
+        "email": "Correo Electrónico",
+        "name": "Nombre",
+        "password": "Contraseña",
+        "role": "Rol",
+        "roleUser": "Usuario",
+        "roleAdmin": "Administrador",
+        "userType": "Tipo de Usuario",
+        "userTypeCreator": "Creador",
+        "userTypeEndUser": "Usuario Final",
+        "organization": "Organización",
+        "cancel": "Cancelar",
+        "creating": "Creando...",
+        "create": "Crear Usuario",
+        "success": "¡Usuario creado exitosamente!"
+      },
+      "errors": {
+        "fillRequired": "Por favor completa todos los campos requeridos.",
+        "invalidEmail": "Por favor ingresa una dirección de correo electrónico válida.",
+        "authTokenNotFound": "Token de autenticación no encontrado. Por favor inicia sesión nuevamente.",
+        "createFailed": "Error al crear usuario.",
+        "unknownError": "Ocurrió un error desconocido al crear el usuario.",
+        "passwordRequired": "Por favor ingresa una nueva contraseña.",
+        "passwordMinLength": "La contraseña debe tener al menos 8 caracteres.",
+        "passwordChangeFailed": "Error al cambiar la contraseña.",
+        "passwordChangeUnknownError": "Ocurrió un error desconocido al cambiar la contraseña."
+      }
+    },
+    "organizations": {
+      "title": "Gestión de Organizaciones",
+      "loading": "Cargando organizaciones...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noOrganizations": "No se encontraron organizaciones.",
+      "actions": {
+        "create": "Crear Organización",
+        "viewConfig": "Ver Configuración",
+        "migrate": "Migrar Organización",
+        "delete": "Eliminar Organización",
+        "syncSystem": "Sincronizar Sistema"
+      },
+      "migration": {
+        "title": "Migrar Organización",
+        "description": "Migrar todos los recursos de",
+        "targetOrg": "Organización Destino",
+        "selectTarget": "Selecciona organización destino...",
+        "validate": "Validar Migración",
+        "validating": "Validando...",
+        "resources": "Recursos a Migrar",
+        "conflicts": "Conflictos Detectados",
+        "options": "Opciones de Migración",
+        "conflictStrategy": "Estrategia de Resolución de Conflictos",
+        "rename": "Renombrar recursos conflictivos",
+        "skip": "Omitir recursos conflictivos",
+        "fail": "Fallar en conflictos",
+        "preserveAdminRoles": "Preservar roles de administrador de la organización origen",
+        "preserveAdminRolesHint": "Si no está marcado, los administradores de la organización origen serán migrados como miembros regulares. Si está marcado, mantendrán sus privilegios de administrador en la organización destino.",
+        "deleteSource": "Eliminar organización origen después de la migración",
+        "deleteSourceHint": "Si está marcado, la organización origen será eliminada permanentemente después de una migración exitosa. Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "execute": "Ejecutar Migración",
+        "migrating": "Migrando...",
+        "success": "¡Migración completada exitosamente!"
+      },
+      "table": {
+        "name": "Nombre",
+        "slug": "Slug",
+        "status": "Estado",
+        "type": "Tipo",
+        "actions": "Acciones"
+      },
+      "create": {
+        "title": "Crear Nueva Organización",
+        "slug": "Slug",
+        "name": "Nombre",
+        "features": "Características",
+        "limits": "Límites de Uso",
+        "cancel": "Cancelar",
+        "creating": "Creando...",
+        "create": "Crear Organización",
+        "success": "¡Organización creada exitosamente!"
+      },
+      "errors": {
+        "fillRequired": "Por favor completa todos los campos requeridos.",
+        "selectAdmin": "Por favor selecciona un usuario administrador para la organización.",
+        "slugInvalid": "El slug solo puede contener letras minúsculas, números y guiones.",
+        "signupKeyLength": "La clave de registro debe tener al menos 8 caracteres cuando el registro está habilitado.",
+        "signupKeyInvalid": "La clave de registro solo puede contener letras, números, guiones y guiones bajos.",
+        "authTokenNotFound": "Token de autenticación no encontrado. Por favor inicia sesión nuevamente.",
+        "createFailed": "Error al crear organización.",
+        "unknownError": "Ocurrió un error desconocido al crear la organización."
+      }
+    }
   }
 }

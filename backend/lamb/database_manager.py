@@ -1021,6 +1021,629 @@ class LambDatabaseManager:
         finally:
             connection.close()
     
+    # Organization Migration Methods
+    
+    def validate_migration(self, source_org_id: int, target_org_id: int) -> Dict[str, Any]:
+        """
+        Validate migration feasibility before execution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            
+        Returns:
+            Dict with validation results, conflicts, and resource counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {
+                "can_migrate": False,
+                "error": "Database connection failed",
+                "conflicts": {"assistants": [], "templates": []},
+                "resources": {}
+            }
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check if organizations exist
+                cursor.execute(f"""
+                    SELECT id, slug, is_system FROM {self.table_prefix}organizations WHERE id = ?
+                """, (source_org_id,))
+                source_org = cursor.fetchone()
+                if not source_org:
+                    return {
+                        "can_migrate": False,
+                        "error": "Source organization not found",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                if source_org[2]:  # is_system
+                    return {
+                        "can_migrate": False,
+                        "error": "Cannot migrate system organization",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                cursor.execute(f"""
+                    SELECT id, slug FROM {self.table_prefix}organizations WHERE id = ?
+                """, (target_org_id,))
+                target_org = cursor.fetchone()
+                if not target_org:
+                    return {
+                        "can_migrate": False,
+                        "error": "Target organization not found",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                source_org_slug = source_org[1]
+                
+                # Count resources
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}Creator_users WHERE organization_id = ?
+                """, (source_org_id,))
+                user_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}assistants WHERE organization_id = ?
+                """, (source_org_id,))
+                assistant_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}prompt_templates WHERE organization_id = ?
+                """, (source_org_id,))
+                template_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}kb_registry WHERE organization_id = ?
+                """, (source_org_id,))
+                kb_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}usage_logs WHERE organization_id = ?
+                """, (source_org_id,))
+                log_count = cursor.fetchone()[0]
+                
+                # Detect assistant conflicts
+                cursor.execute(f"""
+                    SELECT a.id, a.name, a.owner
+                    FROM {self.table_prefix}assistants a
+                    WHERE a.organization_id = ?
+                    AND EXISTS (
+                        SELECT 1 FROM {self.table_prefix}assistants t
+                        WHERE t.organization_id = ?
+                        AND t.name = a.name
+                        AND t.owner = a.owner
+                    )
+                """, (source_org_id, target_org_id))
+                assistant_conflicts = []
+                for row in cursor.fetchall():
+                    assistant_conflicts.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner": row[2],
+                        "conflict_reason": "Target org already has assistant with same name and owner"
+                    })
+                
+                # Detect template conflicts
+                cursor.execute(f"""
+                    SELECT pt.id, pt.name, pt.owner_email
+                    FROM {self.table_prefix}prompt_templates pt
+                    WHERE pt.organization_id = ?
+                    AND EXISTS (
+                        SELECT 1 FROM {self.table_prefix}prompt_templates t
+                        WHERE t.organization_id = ?
+                        AND t.name = pt.name
+                        AND t.owner_email = pt.owner_email
+                    )
+                """, (source_org_id, target_org_id))
+                template_conflicts = []
+                for row in cursor.fetchall():
+                    template_conflicts.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner_email": row[2],
+                        "conflict_reason": "Target org already has template with same name and owner"
+                    })
+                
+                return {
+                    "can_migrate": True,
+                    "conflicts": {
+                        "assistants": assistant_conflicts,
+                        "templates": template_conflicts
+                    },
+                    "resources": {
+                        "users": user_count,
+                        "assistants": assistant_count,
+                        "templates": template_count,
+                        "kbs": kb_count,
+                        "usage_logs": log_count
+                    },
+                    "source_org_slug": source_org_slug,
+                    "estimated_time_seconds": max(10, (user_count + assistant_count + template_count) // 10)
+                }
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error validating migration: {e}")
+            return {
+                "can_migrate": False,
+                "error": str(e),
+                "conflicts": {"assistants": [], "templates": []},
+                "resources": {}
+            }
+        finally:
+            connection.close()
+    
+    def migrate_users(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate users from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating users: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_roles(self, source_org_id: int, target_org_id: int, preserve_admin_roles: bool = False) -> int:
+        """
+        Migrate organization roles from source to target organization.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            preserve_admin_roles: If True, keep admin/owner roles. If False, downgrade to 'member'
+        
+        Returns:
+            Number of roles migrated
+        """
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all roles from source org
+                cursor.execute(f"""
+                    SELECT user_id, role FROM {self.table_prefix}organization_roles
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                roles = cursor.fetchall()
+                migrated = 0
+                
+                for user_id, role in roles:
+                    # Determine target role
+                    if preserve_admin_roles:
+                        target_role = role  # Keep same role
+                    else:
+                        # Downgrade admins/owners to members
+                        if role in ['admin', 'owner']:
+                            target_role = 'member'
+                        else:
+                            target_role = role  # Keep member as member
+                    
+                    # Assign role in target organization
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (target_org_id, user_id, target_role, now, now))
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating roles: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_assistants(self, source_org_id: int, target_org_id: int, source_org_slug: str, 
+                          conflict_strategy: str = "rename") -> Dict[str, Any]:
+        """
+        Migrate assistants from source to target organization with conflict resolution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug (for renaming)
+            conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
+        
+        Returns:
+            Dict with count and renamed list
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {"count": 0, "renamed": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all assistants from source org
+                cursor.execute(f"""
+                    SELECT id, name, owner FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                assistants = cursor.fetchall()
+                migrated = 0
+                renamed = []
+                
+                for assistant_id, name, owner in assistants:
+                    # Check for conflict
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}assistants
+                        WHERE organization_id = ? AND name = ? AND owner = ?
+                    """, (target_org_id, name, owner))
+                    
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            logging.warning(f"Skipping assistant {name} (conflict detected)")
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}assistants
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, assistant_id))
+                            renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}assistants
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, assistant_id))
+                    
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                return {"count": migrated, "renamed": renamed}
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating assistants: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_templates(self, source_org_id: int, target_org_id: int, source_org_slug: str,
+                         conflict_strategy: str = "rename") -> Dict[str, Any]:
+        """
+        Migrate prompt templates from source to target organization with conflict resolution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug (for renaming)
+            conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
+        
+        Returns:
+            Dict with count and renamed list
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {"count": 0, "renamed": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all templates from source org
+                cursor.execute(f"""
+                    SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                templates = cursor.fetchall()
+                migrated = 0
+                renamed = []
+                
+                for template_id, name, owner_email in templates:
+                    # Check for conflict
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}prompt_templates
+                        WHERE organization_id = ? AND name = ? AND owner_email = ?
+                    """, (target_org_id, name, owner_email))
+                    
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            logging.warning(f"Skipping template {name} (conflict detected)")
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}prompt_templates
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, template_id))
+                            renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}prompt_templates
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, template_id))
+                    
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                return {"count": migrated, "renamed": renamed}
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating templates: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_kb_registry(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate KB registry entries from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating KB registry: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_usage_logs(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate usage logs from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}usage_logs
+                    SET organization_id = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating usage logs: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_organization_comprehensive(self, source_org_id: int, target_org_id: int,
+                                           source_org_slug: str, conflict_strategy: str = "rename",
+                                           preserve_admin_roles: bool = False) -> Dict[str, Any]:
+        """
+        Comprehensive organization migration with transaction safety.
+        All operations use the same connection for atomicity.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug
+            conflict_strategy: "rename", "skip", or "fail"
+            preserve_admin_roles: Whether to preserve admin roles
+        
+        Returns:
+            Migration report dict
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {
+                "success": False,
+                "error": "Database connection failed",
+                "resources_migrated": {},
+                "conflicts_resolved": {}
+            }
+        
+        migration_report = {
+            "success": False,
+            "resources_migrated": {},
+            "conflicts_resolved": {},
+            "errors": []
+        }
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # 1. Migrate users
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                users_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["users"] = users_migrated
+                logging.info(f"Migrated {users_migrated} users")
+                
+                # 2. Migrate roles
+                cursor.execute(f"""
+                    SELECT user_id, role FROM {self.table_prefix}organization_roles
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                roles = cursor.fetchall()
+                roles_migrated = 0
+                for user_id, role in roles:
+                    target_role = role if preserve_admin_roles else ('member' if role in ['admin', 'owner'] else role)
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (target_org_id, user_id, target_role, now, now))
+                    roles_migrated += 1
+                migration_report["resources_migrated"]["roles"] = roles_migrated
+                logging.info(f"Migrated {roles_migrated} roles")
+                
+                # 3. Migrate assistants
+                cursor.execute(f"""
+                    SELECT id, name, owner FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                assistants = cursor.fetchall()
+                assistants_migrated = 0
+                assistants_renamed = []
+                for assistant_id, name, owner in assistants:
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}assistants
+                        WHERE organization_id = ? AND name = ? AND owner = ?
+                    """, (target_org_id, name, owner))
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}assistants
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, assistant_id))
+                            assistants_renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}assistants
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, assistant_id))
+                    assistants_migrated += 1
+                migration_report["resources_migrated"]["assistants"] = assistants_migrated
+                migration_report["conflicts_resolved"]["assistants_renamed"] = len(assistants_renamed)
+                logging.info(f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
+                
+                # 4. Migrate templates
+                cursor.execute(f"""
+                    SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                templates = cursor.fetchall()
+                templates_migrated = 0
+                templates_renamed = []
+                for template_id, name, owner_email in templates:
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}prompt_templates
+                        WHERE organization_id = ? AND name = ? AND owner_email = ?
+                    """, (target_org_id, name, owner_email))
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}prompt_templates
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, template_id))
+                            templates_renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}prompt_templates
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, template_id))
+                    templates_migrated += 1
+                migration_report["resources_migrated"]["templates"] = templates_migrated
+                migration_report["conflicts_resolved"]["templates_renamed"] = len(templates_renamed)
+                logging.info(f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
+                
+                # 5. Migrate KB registry
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                kbs_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["kbs"] = kbs_migrated
+                logging.info(f"Migrated {kbs_migrated} KB registry entries")
+                
+                # 6. Migrate usage logs
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}usage_logs
+                    SET organization_id = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, source_org_id))
+                logs_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["usage_logs"] = logs_migrated
+                logging.info(f"Migrated {logs_migrated} usage logs")
+                
+                # All migrations successful
+                migration_report["success"] = True
+                logging.info(f"Successfully migrated organization {source_org_id} to {target_org_id}")
+                
+                return migration_report
+                
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f"Error during migration: {error_msg}")
+            migration_report["success"] = False
+            migration_report["errors"].append(error_msg)
+            # Transaction will rollback automatically on exception
+            raise
+        finally:
+            connection.close()
+    
     def list_organizations(self, status: str = None) -> List[Dict[str, Any]]:
         """List all organizations, optionally filtered by status"""
         connection = self.get_connection()
