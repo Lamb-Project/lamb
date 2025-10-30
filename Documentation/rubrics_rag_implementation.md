@@ -10,7 +10,7 @@
 ## 🎯 Design Decisions (Confirmed)
 
 1. **Storage:** ✅ Use metadata field (api_callback) - No DB migration needed
-2. **Format:** ✅ User chooses markdown OR JSON - Test what works best per LLM
+2. **Format:** ✅ User chooses markdown OR JSON - 
 3. **Versioning:** ✅ Always use latest rubric version - Simpler, more practical
 4. **Quantity:** ✅ One rubric per assistant - User can edit/change anytime
 5. **Access:** ✅ User's own rubrics + public rubrics in organization
