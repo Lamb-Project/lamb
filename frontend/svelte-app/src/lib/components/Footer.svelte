@@ -1,5 +1,9 @@
 <script>
   import { base } from '$app/paths';
+  import { VERSION_INFO } from '$lib/version.js';
+  
+  // Format version display: v0.1 (commit_hash)
+  let versionDisplay = `v${VERSION_INFO.version} (${VERSION_INFO.commit})`;
 </script>
 
 <footer class="bg-white border-t border-gray-200 mt-auto">
@@ -12,7 +16,7 @@
       <div class="flex flex-wrap items-center justify-center gap-x-2">
         <span class="font-semibold text-gray-900">LAMB</span>
         <span>Learning Assistants Manager and Builder</span>
-        <span class="text-gray-400">v0.1</span>
+        <span class="text-gray-400" title="Version: {VERSION_INFO.version}, Commit: {VERSION_INFO.commit}, Branch: {VERSION_INFO.branch}, Build Date: {VERSION_INFO.buildDate}">{versionDisplay}</span>
         <span class="text-gray-400">•</span>
         <a 
           href="https://lamb-project.org" 

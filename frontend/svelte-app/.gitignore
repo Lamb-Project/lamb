@@ -19,6 +19,9 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Auto-generated version file
+src/lib/version.js
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

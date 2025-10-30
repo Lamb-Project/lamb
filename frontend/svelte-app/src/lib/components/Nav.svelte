@@ -8,7 +8,11 @@
   import { base } from '$app/paths'; // Import base path helper
   import { locale, _ } from '$lib/i18n'; // Import i18n tools
   import LanguageSelector from '$lib/components/LanguageSelector.svelte'; // Import selector
+  import { VERSION_INFO } from '$lib/version.js'; // Import version info
   // import { onMount } from 'svelte';
+  
+  // Format version display
+  let versionDisplay = `v${VERSION_INFO.version}`;
   
   // Event dispatcher for component events
   const dispatch = createEventDispatcher();
@@ -85,7 +89,7 @@
             <img src="{base}/img/lamb_1.png" alt="LAMB Logo" class="h-14">
             <div class="text-lg font-bold">
               <a href="{base}/">{localeLoaded ? $_('app.logoText', { default: 'LAMB' }) : 'LAMB'}</a> 
-              <span class="text-xs bg-gray-200 px-1 py-0.5 rounded">v0.1</span>
+              <span class="text-xs bg-gray-200 px-1 py-0.5 rounded" title="Version: {VERSION_INFO.version}, Commit: {VERSION_INFO.commit}, Branch: {VERSION_INFO.branch}">{versionDisplay}</span>
             </div>
           </div>
         </div>
