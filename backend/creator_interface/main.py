@@ -603,6 +603,10 @@ async def create_user_admin(
             }
         )
     
+    # Ensure admin users have user_type='creator' (admins are always creators)
+    if role == "admin":
+        user_type = "creator"
+    
     # User is admin, proceed with creating a new user
     try:
         user_creator = UserCreatorManager()

@@ -35,7 +35,6 @@
     
     // Users filtering state
     let usersSearch = $state('');
-    let usersFilterRole = $state('');
     let usersFilterType = $state('');
     let usersFilterEnabled = $state('');
     let usersFilterOrg = $state('');
@@ -468,7 +467,9 @@
             formData.append('name', newUser.name);
             formData.append('password', newUser.password);
             formData.append('role', newUser.role);
-            formData.append('user_type', newUser.user_type);
+            // Ensure admin users have user_type='creator'
+            const userType = newUser.role === 'admin' ? 'creator' : newUser.user_type;
+            formData.append('user_type', userType);
             
             // Add organization_id if selected
             if (newUser.organization_id) {
@@ -841,22 +842,44 @@
     
     // Apply filters, sorting, and pagination to users
     function applyUsersFilters() {
-        const result = processListData(allUsers, {
+        // Build filters object with custom logic for merged user_type filter
+        /** @type {Record<string, any>} */
+        const filters = {
+            enabled: usersFilterEnabled === '' ? null : usersFilterEnabled,
+            'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
+        };
+        
+        // Handle merged user_type filter (can be 'admin', 'creator', or 'end_user')
+        if (usersFilterType === 'admin') {
+            // Admin users: filter by role === 'admin'
+            filters.role = 'admin';
+        } else if (usersFilterType === 'end_user') {
+            // End users: filter by user_type === 'end_user'
+            filters.user_type = 'end_user';
+        }
+        
+        /** @type {any} */
+        let result = processListData(allUsers, {
             search: usersSearch,
             searchFields: ['name', 'email', 'organization.name'],
-            filters: {
-                role: usersFilterRole,
-                user_type: usersFilterType,
-                enabled: usersFilterEnabled === '' ? null : usersFilterEnabled,
-                'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
-            },
+            filters: filters,
             sortBy: usersSortBy,
             sortOrder: usersSortOrder,
             page: usersPage,
             itemsPerPage: usersPerPage
         });
         
-        displayUsers = result.items.map(u => ({...u, selected: u.selected || false}));
+        // Additional filtering for 'creator' type (non-admin creators)
+        if (usersFilterType === 'creator') {
+            result.items = result.items.filter((/** @type {any} */ u) => u.role !== 'admin' && u.user_type === 'creator');
+            result.filteredCount = result.items.length;
+            result.totalPages = Math.ceil(result.filteredCount / usersPerPage) || 1;
+            const safePage = Math.max(1, Math.min(usersPage, result.totalPages));
+            result.currentPage = safePage;
+            result.items = result.items.slice((safePage - 1) * usersPerPage, safePage * usersPerPage);
+        }
+        
+        displayUsers = result.items.map((/** @type {any} */ u) => ({...u, selected: u.selected || false}));
         usersTotalItems = result.filteredCount;
         usersTotalPages = result.totalPages;
         usersPage = result.currentPage;
@@ -871,8 +894,7 @@
     
     function handleUsersFilterChange(event) {
         const { key, value } = event.detail;
-        if (key === 'role') usersFilterRole = value;
-        else if (key === 'user_type') usersFilterType = value;
+        if (key === 'user_type') usersFilterType = value;
         else if (key === 'enabled') usersFilterEnabled = value;
         else if (key === 'organization') usersFilterOrg = value;
         usersPage = 1;
@@ -898,7 +920,6 @@
     
     function handleUsersClearFilters() {
         usersSearch = '';
-        usersFilterRole = '';
         usersFilterType = '';
         usersFilterEnabled = '';
         usersFilterOrg = '';
@@ -1257,17 +1278,10 @@
                 searchValue={usersSearch}
                 filters={[
                     {
-                        key: 'role',
-                        label: localeLoaded ? $_('admin.users.filters.role', { default: 'Role' }) : 'Role',
-                        options: [
-                            { value: 'admin', label: 'Admin' },
-                            { value: 'user', label: 'User' }
-                        ]
-                    },
-                    {
                         key: 'user_type',
                         label: localeLoaded ? $_('admin.users.filters.type', { default: 'User Type' }) : 'User Type',
                         options: [
+                            { value: 'admin', label: 'Admin' },
                             { value: 'creator', label: 'Creator' },
                             { value: 'end_user', label: 'End User' }
                         ]
@@ -1290,7 +1304,6 @@
                     }] : [])
                 ]}
                 filterValues={{ 
-                    role: usersFilterRole, 
                     user_type: usersFilterType, 
                     enabled: usersFilterEnabled,
                     organization: usersFilterOrg
@@ -1311,7 +1324,7 @@
             <!-- Results count -->
             <div class="flex justify-between items-center mb-4 px-4">
                 <div class="text-sm text-gray-600">
-                    {#if usersSearch || usersFilterRole || usersFilterType || usersFilterEnabled || usersFilterOrg}
+                    {#if usersSearch || usersFilterType || usersFilterEnabled || usersFilterOrg}
                         Showing <span class="font-medium">{usersTotalItems}</span> of <span class="font-medium">{allUsers.length}</span> users
                     {:else}
                         <span class="font-medium">{usersTotalItems}</span> users
@@ -1391,7 +1404,7 @@
                                 {localeLoaded ? $_('admin.users.table.email', { default: 'Email' }) : 'Email'}
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
-                                {localeLoaded ? $_('admin.users.table.role', { default: 'Role' }) : 'Role'}
+                                User Type
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
                                 Organization
@@ -1424,9 +1437,19 @@
                                     <div class="text-sm text-gray-800">{user.email}</div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}">
-                                        {user.role}
-                                    </span>
+                                    {#if user.role === 'admin'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                            Admin
+                                        </span>
+                                    {:else if user.user_type === 'end_user'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                            End User
+                                        </span>
+                                    {:else}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                            Creator
+                                        </span>
+                                    {/if}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden lg:table-cell">
                                     {#if user.organization}
@@ -1788,6 +1811,13 @@
                                 id="role" 
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.role}
+                                onchange={(e) => {
+                                    // If admin is selected, automatically set user_type to 'creator'
+                                    const target = /** @type {HTMLSelectElement} */ (e.target);
+                                    if (target.value === 'admin') {
+                                        newUser.user_type = 'creator';
+                                    }
+                                }}
                             >
                                 <option value="user">{localeLoaded ? $_('admin.users.create.roleUser', { default: 'User' }) : 'User'}</option>
                                 <option value="admin">{localeLoaded ? $_('admin.users.create.roleAdmin', { default: 'Admin' }) : 'Admin'}</option>
@@ -1802,10 +1832,14 @@
                                 id="user_type" 
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.user_type}
+                                disabled={newUser.role === 'admin'}
                             >
                                 <option value="creator">Creator (Can create assistants)</option>
                                 <option value="end_user">End User (Redirects to Open WebUI)</option>
                             </select>
+                            {#if newUser.role === 'admin'}
+                                <p class="text-xs text-gray-500 mt-1">Admin users are automatically creators</p>
+                            {/if}
                         </div>
 
                         <div class="mb-6 text-left">
