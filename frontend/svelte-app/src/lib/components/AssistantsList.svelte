@@ -96,14 +96,14 @@
     error = null;
     try {
       console.log('Fetching all assistants...');
-      const response = await getAssistants(1000, 0); // Fetch up to 1000 items
+      const response = await getAssistants(100, 0); // Backend max is 100 items
       console.log('Received assistants:', response);
       
       allAssistants = response.assistants || [];
       applyFiltersAndPagination();
     } catch (err) {
       console.error('Error loading assistants:', err);
-      error = err instanceof Error ? err.message : 'Failed to load assistants';
+      error = err instanceof Error ? err.message : String(err);
       allAssistants = [];
       displayAssistants = [];
       totalItems = 0;
