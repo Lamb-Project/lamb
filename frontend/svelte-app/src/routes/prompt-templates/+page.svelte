@@ -9,10 +9,10 @@
     currentTemplates,
     currentLoading,
     currentTotal,
-    userTemplatesPage,
-    sharedTemplatesPage,
-    loadUserTemplates,
-    loadSharedTemplates,
+    userTemplates,
+    sharedTemplates,
+    loadAllUserTemplates,
+    loadAllSharedTemplates,
     switchTab,
     createTemplate,
     updateTemplate,
@@ -25,6 +25,11 @@
     exportSelected,
     templateError
   } from '$lib/stores/templateStore';
+  
+  // Import filtering/pagination components
+  import Pagination from '$lib/components/common/Pagination.svelte';
+  import FilterBar from '$lib/components/common/FilterBar.svelte';
+  import { processListData } from '$lib/utils/listHelpers';
   
   // View state
   let view = $state('list'); // 'list' | 'create' | 'edit' | 'view'
@@ -43,6 +48,16 @@
     is_shared: false
   });
   
+  // Client-side filtering/sorting/pagination state
+  let displayTemplates = $state([]);
+  let searchTerm = $state('');
+  let sortBy = $state('updated_at');
+  let sortOrder = $state('desc');
+  let currentPage = $state(1);
+  let itemsPerPage = $state(10);
+  let totalPages = $state(1);
+  let totalItems = $state(0);
+  
   // Check authentication
   onMount(() => {
     if (!$user.isLoggedIn) {
@@ -50,13 +65,54 @@
       return;
     }
     
-    // Load initial templates
-    loadUserTemplates();
+    // Load all templates for client-side filtering
+    loadAllUserTemplates();
+  });
+  
+  // Apply client-side filtering/sorting/pagination
+  function applyFiltersAndPagination() {
+    const allTemplates = $currentTab === 'my' ? $userTemplates : $sharedTemplates;
+    
+    const result = processListData(allTemplates, {
+      search: searchTerm,
+      searchFields: ['name', 'description', 'system_prompt', 'prompt_template'],
+      filters: {},
+      sortBy,
+      sortOrder,
+      page: currentPage,
+      itemsPerPage
+    });
+    
+    displayTemplates = result.items;
+    totalItems = result.filteredCount;
+    totalPages = result.totalPages;
+    currentPage = result.currentPage;
+  }
+  
+  // Watch for template store changes and reapply filters
+  $effect(() => {
+    // Trigger when templates or tab changes
+    $userTemplates;
+    $sharedTemplates;
+    $currentTab;
+    if (view === 'list') {
+      applyFiltersAndPagination();
+    }
   });
   
   // Handle tab switch
   async function handleTabSwitch(tab) {
-    await switchTab(tab);
+    currentTab.set(tab);
+    clearSelection();
+    searchTerm = ''; // Reset search on tab switch
+    currentPage = 1;
+    
+    // Load all templates for the new tab
+    if (tab === 'my') {
+      await loadAllUserTemplates();
+    } else {
+      await loadAllSharedTemplates();
+    }
   }
   
   function handleMyTabClick() {
@@ -65,6 +121,38 @@
   
   function handleSharedTabClick() {
     handleTabSwitch('shared');
+  }
+  
+  // Filter/Sort/Pagination event handlers
+  function handleSearchChange(event) {
+    searchTerm = event.detail.value;
+    currentPage = 1;
+    applyFiltersAndPagination();
+  }
+  
+  function handleSortChange(event) {
+    sortBy = event.detail.sortBy;
+    sortOrder = event.detail.sortOrder;
+    applyFiltersAndPagination();
+  }
+  
+  function handlePageChange(event) {
+    currentPage = event.detail.page;
+    applyFiltersAndPagination();
+  }
+  
+  function handleItemsPerPageChange(event) {
+    itemsPerPage = event.detail.itemsPerPage;
+    currentPage = 1;
+    applyFiltersAndPagination();
+  }
+  
+  function handleClearFilters() {
+    searchTerm = '';
+    sortBy = 'updated_at';
+    sortOrder = 'desc';
+    currentPage = 1;
+    applyFiltersAndPagination();
   }
   
   function handleCancelDeleteModal() {
@@ -316,22 +404,65 @@
           </div>
         </div>
 
+        <!-- Filter Bar -->
+        <FilterBar
+          searchPlaceholder={$locale ? $_('promptTemplates.searchPlaceholder', { default: 'Search templates...' }) : 'Search templates...'}
+          searchValue={searchTerm}
+          filters={[]}
+          filterValues={{}}
+          sortOptions={[
+            { value: 'name', label: $locale ? $_('common.sortByName', { default: 'Name' }) : 'Name' },
+            { value: 'updated_at', label: $locale ? $_('common.sortByUpdated', { default: 'Last Modified' }) : 'Last Modified' },
+            { value: 'created_at', label: $locale ? $_('common.sortByCreated', { default: 'Created Date' }) : 'Created Date' }
+          ]}
+          {sortBy}
+          {sortOrder}
+          on:searchChange={handleSearchChange}
+          on:sortChange={handleSortChange}
+          on:clearFilters={handleClearFilters}
+        />
+        
+        <!-- Results count -->
+        <div class="flex justify-between items-center mb-4 px-6">
+          <div class="text-sm text-gray-600">
+            {#if searchTerm}
+              Showing <span class="font-medium">{totalItems}</span> of <span class="font-medium">{$currentTab === 'my' ? $userTemplates.length : $sharedTemplates.length}</span> templates
+            {:else}
+              <span class="font-medium">{totalItems}</span> templates
+            {/if}
+          </div>
+        </div>
+
         <!-- Templates List -->
         <div class="divide-y divide-gray-200">
           {#if $currentLoading}
             <div class="px-6 py-12 text-center text-gray-500">
               {$locale ? $_('common.loading', { default: 'Loading...' }) : 'Loading...'}
             </div>
-          {:else if $currentTemplates.length === 0}
-            <div class="px-6 py-12 text-center">
-              <p class="text-gray-500">
-                {$currentTab === 'my' 
-                  ? ($locale ? $_('promptTemplates.noTemplates', { default: 'No templates yet. Create your first template!' }) : 'No templates yet. Create your first template!')
-                  : ($locale ? $_('promptTemplates.noShared', { default: 'No shared templates available' }) : 'No shared templates available')}
-              </p>
-            </div>
+          {:else if displayTemplates.length === 0}
+            {#if ($currentTab === 'my' ? $userTemplates.length : $sharedTemplates.length) === 0}
+              <!-- No templates at all -->
+              <div class="px-6 py-12 text-center">
+                <p class="text-gray-500">
+                  {$currentTab === 'my' 
+                    ? ($locale ? $_('promptTemplates.noTemplates', { default: 'No templates yet. Create your first template!' }) : 'No templates yet. Create your first template!')
+                    : ($locale ? $_('promptTemplates.noShared', { default: 'No shared templates available' }) : 'No shared templates available')}
+                </p>
+              </div>
+            {:else}
+              <!-- No results match filters -->
+              <div class="px-6 py-12 text-center">
+                <p class="text-gray-500 mb-4">No templates match your search</p>
+                <button 
+                  onclick={handleClearFilters}
+                  class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                >
+                  Clear search
+                </button>
+              </div>
+            {/if}
           {:else}
-            {#each $currentTemplates as template (template.id)}
+            {#each displayTemplates as template (template.id)}
               <div class="px-6 py-4 hover:bg-gray-50">
                 <div class="flex items-start justify-between">
                   <div class="flex items-start space-x-3 flex-1">
@@ -402,6 +533,19 @@
             {/each}
           {/if}
         </div>
+        
+        <!-- Pagination -->
+        {#if totalPages > 1}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={itemsPerPage}
+            itemsPerPageOptions={[5, 10, 25, 50, 100]}
+            on:pageChange={handlePageChange}
+            on:itemsPerPageChange={handleItemsPerPageChange}
+          />
+        {/if}
       </div>
 
     {:else if view === 'create' || view === 'edit' || view === 'view'}

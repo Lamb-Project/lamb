@@ -9,6 +9,11 @@
     import { getApiUrl } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
+    
+    // Import filtering/pagination components
+    import Pagination from '$lib/components/common/Pagination.svelte';
+    import FilterBar from '$lib/components/common/FilterBar.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -21,10 +26,32 @@
 
     // --- Users Management State ---
     /** @type {Array<any>} */
-    let users = $state([]);
+    let allUsers = $state([]); // All users (fetched once)
+    /** @type {Array<any>} */
+    let displayUsers = $state([]); // Filtered/paginated users (for display)
     let isLoadingUsers = $state(false);
     /** @type {string | null} */
     let usersError = $state(null);
+    
+    // Users filtering state
+    let usersSearch = $state('');
+    let usersFilterRole = $state('');
+    let usersFilterType = $state('');
+    let usersFilterEnabled = $state('');
+    let usersFilterOrg = $state('');
+    
+    // Users sorting state
+    let usersSortBy = $state('id');
+    let usersSortOrder = $state('asc');
+    
+    // Users pagination state
+    let usersPage = $state(1);
+    let usersPerPage = $state(10);
+    let usersTotalPages = $state(1);
+    let usersTotalItems = $state(0);
+    
+    // Keep reference to users for table (will point to displayUsers)
+    let users = $derived(displayUsers);
     
     // --- Bulk Selection State ---
     let selectedUsers = $state(/** @type {number[]} */ ([]));
@@ -766,7 +793,7 @@
             return;
         }
         
-        console.log("Fetching users...");
+        console.log("Fetching all users...");
         isLoadingUsers = true;
         usersError = null;
         
@@ -788,8 +815,9 @@
             console.log('API Response:', response.data);
 
             if (response.data && response.data.success) {
-                users = (response.data.data || []).map(u => ({...u, selected: false}));
-                console.log(`Fetched ${users.length} users`);
+                allUsers = (response.data.data || []).map(u => ({...u, selected: false}));
+                console.log(`Fetched ${allUsers.length} users`);
+                applyUsersFilters();
             } else {
                 throw new Error(response.data.error || 'Failed to fetch users.');
             }
@@ -804,10 +832,80 @@
             } else {
                 usersError = 'An unknown error occurred while fetching users.';
             }
-            users = [];
+            allUsers = [];
+            displayUsers = [];
         } finally {
             isLoadingUsers = false;
         }
+    }
+    
+    // Apply filters, sorting, and pagination to users
+    function applyUsersFilters() {
+        const result = processListData(allUsers, {
+            search: usersSearch,
+            searchFields: ['name', 'email', 'organization.name'],
+            filters: {
+                role: usersFilterRole,
+                user_type: usersFilterType,
+                enabled: usersFilterEnabled === '' ? null : usersFilterEnabled,
+                'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
+            },
+            sortBy: usersSortBy,
+            sortOrder: usersSortOrder,
+            page: usersPage,
+            itemsPerPage: usersPerPage
+        });
+        
+        displayUsers = result.items.map(u => ({...u, selected: u.selected || false}));
+        usersTotalItems = result.filteredCount;
+        usersTotalPages = result.totalPages;
+        usersPage = result.currentPage;
+    }
+    
+    // Users filter/sort/pagination event handlers
+    function handleUsersSearchChange(event) {
+        usersSearch = event.detail.value;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersFilterChange(event) {
+        const { key, value } = event.detail;
+        if (key === 'role') usersFilterRole = value;
+        else if (key === 'user_type') usersFilterType = value;
+        else if (key === 'enabled') usersFilterEnabled = value;
+        else if (key === 'organization') usersFilterOrg = value;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersSortChange(event) {
+        usersSortBy = event.detail.sortBy;
+        usersSortOrder = event.detail.sortOrder;
+        applyUsersFilters();
+    }
+    
+    function handleUsersPageChange(event) {
+        usersPage = event.detail.page;
+        applyUsersFilters();
+    }
+    
+    function handleUsersPerPageChange(event) {
+        usersPerPage = event.detail.itemsPerPage;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersClearFilters() {
+        usersSearch = '';
+        usersFilterRole = '';
+        usersFilterType = '';
+        usersFilterEnabled = '';
+        usersFilterOrg = '';
+        usersSortBy = 'id';
+        usersSortOrder = 'asc';
+        usersPage = 1;
+        applyUsersFilters();
     }
 
     async function fetchOrganizations() {
@@ -1152,9 +1250,94 @@
                     {localeLoaded ? $_('admin.users.retry', { default: 'Retry' }) : 'Retry'}
                 </button>
             </div>
-        {:else if users.length === 0}
-            <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('admin.users.noUsers', { default: 'No users found.' }) : 'No users found.'}</p>
         {:else}
+            <!-- Filter Bar -->
+            <FilterBar
+                searchPlaceholder={localeLoaded ? $_('admin.users.searchPlaceholder', { default: 'Search users by name, email, organization...' }) : 'Search users by name, email, organization...'}
+                searchValue={usersSearch}
+                filters={[
+                    {
+                        key: 'role',
+                        label: localeLoaded ? $_('admin.users.filters.role', { default: 'Role' }) : 'Role',
+                        options: [
+                            { value: 'admin', label: 'Admin' },
+                            { value: 'user', label: 'User' }
+                        ]
+                    },
+                    {
+                        key: 'user_type',
+                        label: localeLoaded ? $_('admin.users.filters.type', { default: 'User Type' }) : 'User Type',
+                        options: [
+                            { value: 'creator', label: 'Creator' },
+                            { value: 'end_user', label: 'End User' }
+                        ]
+                    },
+                    {
+                        key: 'enabled',
+                        label: localeLoaded ? $_('admin.users.filters.status', { default: 'Status' }) : 'Status',
+                        options: [
+                            { value: 'true', label: 'Active' },
+                            { value: 'false', label: 'Disabled' }
+                        ]
+                    },
+                    ...(organizationsForUsers.length > 0 ? [{
+                        key: 'organization',
+                        label: 'Organization',
+                        options: organizationsForUsers.map(org => ({
+                            value: String(org.id),
+                            label: org.name
+                        }))
+                    }] : [])
+                ]}
+                filterValues={{ 
+                    role: usersFilterRole, 
+                    user_type: usersFilterType, 
+                    enabled: usersFilterEnabled,
+                    organization: usersFilterOrg
+                }}
+                sortOptions={[
+                    { value: 'name', label: 'Name' },
+                    { value: 'email', label: 'Email' },
+                    { value: 'id', label: 'User ID' }
+                ]}
+                sortBy={usersSortBy}
+                sortOrder={usersSortOrder}
+                on:searchChange={handleUsersSearchChange}
+                on:filterChange={handleUsersFilterChange}
+                on:sortChange={handleUsersSortChange}
+                on:clearFilters={handleUsersClearFilters}
+            />
+            
+            <!-- Results count -->
+            <div class="flex justify-between items-center mb-4 px-4">
+                <div class="text-sm text-gray-600">
+                    {#if usersSearch || usersFilterRole || usersFilterType || usersFilterEnabled || usersFilterOrg}
+                        Showing <span class="font-medium">{usersTotalItems}</span> of <span class="font-medium">{allUsers.length}</span> users
+                    {:else}
+                        <span class="font-medium">{usersTotalItems}</span> users
+                    {/if}
+                </div>
+            </div>
+
+            {#if displayUsers.length === 0}
+                {#if allUsers.length === 0}
+                    <!-- No users at all -->
+                    <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                        <p class="text-gray-500">{localeLoaded ? $_('admin.users.noUsers', { default: 'No users found.' }) : 'No users found.'}</p>
+                    </div>
+                {:else}
+                    <!-- No results match filters -->
+                    <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                        <p class="text-gray-500 mb-4">No users match your filters</p>
+                        <button 
+                            onclick={handleUsersClearFilters}
+                            class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                        >
+                            Clear filters
+                        </button>
+                    </div>
+                {/if}
+            {:else}
             <!-- Bulk Actions Toolbar -->
             {#if selectedUsers.length > 0}
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 shadow-sm">
@@ -1310,6 +1493,20 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Pagination -->
+            {#if usersTotalPages > 1}
+                <Pagination
+                    currentPage={usersPage}
+                    totalPages={usersTotalPages}
+                    totalItems={usersTotalItems}
+                    itemsPerPage={usersPerPage}
+                    itemsPerPageOptions={[10, 25, 50, 100]}
+                    on:pageChange={handleUsersPageChange}
+                    on:itemsPerPageChange={handleUsersPerPageChange}
+                />
+            {/if}
+            {/if}
         {/if}
     {:else if currentView === 'organizations'}
         <!-- Organizations Management View -->

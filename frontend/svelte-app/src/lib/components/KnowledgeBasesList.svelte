@@ -7,6 +7,11 @@
     import CreateKnowledgeBaseModal from '$lib/components/modals/CreateKnowledgeBaseModal.svelte';
     import { createEventDispatcher } from 'svelte';
     
+    // Import filtering/pagination components
+    import Pagination from './common/Pagination.svelte';
+    import FilterBar from './common/FilterBar.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
+    
     /**
      * @typedef {Object} KnowledgeBase
      * @property {string} id
@@ -20,15 +25,24 @@
     
     // State management
     /** @type {KnowledgeBase[]} */
-    let knowledgeBases = $state([]);
+    let allKnowledgeBases = $state([]);
+    /** @type {KnowledgeBase[]} */
+    let displayKnowledgeBases = $state([]);
     let loading = $state(true);
     let error = $state('');
     let serverOffline = $state(false);
     let successMessage = $state('');
     
-    // Pagination (for future implementation)
+    // Filter/sort state
+    let searchTerm = $state('');
+    let sortBy = $state('created_at');
+    let sortOrder = $state('desc');
+    
+    // Pagination state
     let currentPage = $state(1);
+    let itemsPerPage = $state(10);
     let totalPages = $state(1);
+    let totalItems = $state(0);
     
     // Component references
     /** @type {CreateKnowledgeBaseModal} */
@@ -59,8 +73,9 @@
             
             // Fetch knowledge bases
             const data = await getKnowledgeBases();
-            knowledgeBases = data || [];
-            console.log('Knowledge bases loaded:', knowledgeBases.length);
+            allKnowledgeBases = data || [];
+            console.log('Knowledge bases loaded:', allKnowledgeBases.length);
+            applyFiltersAndPagination();
             
         } catch (/** @type {unknown} */ err) {
             console.error('Error loading knowledge bases:', err);
@@ -70,9 +85,61 @@
             if (err instanceof Error && err.message.includes('server offline')) {
                 serverOffline = true;
             }
+            allKnowledgeBases = [];
+            displayKnowledgeBases = [];
         } finally {
             loading = false;
         }
+    }
+    
+    // Apply filters, sorting, and pagination
+    function applyFiltersAndPagination() {
+        const result = processListData(allKnowledgeBases, {
+            search: searchTerm,
+            searchFields: ['name', 'description', 'id'],
+            filters: {},
+            sortBy,
+            sortOrder,
+            page: currentPage,
+            itemsPerPage
+        });
+        
+        displayKnowledgeBases = result.items;
+        totalItems = result.filteredCount;
+        totalPages = result.totalPages;
+        currentPage = result.currentPage;
+    }
+    
+    // Filter/Sort/Pagination event handlers
+    function handleSearchChange(event) {
+        searchTerm = event.detail.value;
+        currentPage = 1;
+        applyFiltersAndPagination();
+    }
+    
+    function handleSortChange(event) {
+        sortBy = event.detail.sortBy;
+        sortOrder = event.detail.sortOrder;
+        applyFiltersAndPagination();
+    }
+    
+    function handlePageChange(event) {
+        currentPage = event.detail.page;
+        applyFiltersAndPagination();
+    }
+    
+    function handleItemsPerPageChange(event) {
+        itemsPerPage = event.detail.itemsPerPage;
+        currentPage = 1;
+        applyFiltersAndPagination();
+    }
+    
+    function handleClearFilters() {
+        searchTerm = '';
+        sortBy = 'created_at';
+        sortOrder = 'desc';
+        currentPage = 1;
+        applyFiltersAndPagination();
     }
     
     /**
@@ -111,7 +178,8 @@
         try {
             await deleteKnowledgeBase(kb.id);
             // Optimistic removal
-            knowledgeBases = knowledgeBases.filter(k => k.id !== kb.id);
+            allKnowledgeBases = allKnowledgeBases.filter(k => k.id !== kb.id);
+            applyFiltersAndPagination();
             successMessage = $_('knowledgeBases.list.deleteSuccess', { default: 'Knowledge base deleted.' });
             setTimeout(() => { successMessage = ''; }, 4000);
         } catch (e) {
@@ -194,13 +262,56 @@
                 {$_('knowledgeBases.list.retry', { default: 'Retry' })}
             </button>
         </div>
-    {:else if knowledgeBases.length === 0}
-        <div class="p-6 text-center">
-            <div class="text-gray-500">
-                {$_('knowledgeBases.list.empty', { default: 'No knowledge bases found.' })}
+    {:else}
+        <!-- Filter Bar -->
+        <FilterBar
+            searchPlaceholder={$_('knowledgeBases.searchPlaceholder', { default: 'Search knowledge bases...' })}
+            searchValue={searchTerm}
+            filters={[]}
+            filterValues={{}}
+            sortOptions={[
+                { value: 'name', label: $_('common.sortByName', { default: 'Name' }) },
+                { value: 'created_at', label: $_('common.sortByCreated', { default: 'Created Date' }) }
+            ]}
+            {sortBy}
+            {sortOrder}
+            on:searchChange={handleSearchChange}
+            on:sortChange={handleSortChange}
+            on:clearFilters={handleClearFilters}
+        />
+        
+        <!-- Results count -->
+        <div class="flex justify-between items-center mb-4 px-6">
+            <div class="text-sm text-gray-600">
+                {#if searchTerm}
+                    Showing <span class="font-medium">{totalItems}</span> of <span class="font-medium">{allKnowledgeBases.length}</span> knowledge bases
+                {:else}
+                    <span class="font-medium">{totalItems}</span> knowledge bases
+                {/if}
             </div>
         </div>
-    {:else}
+        
+        {#if displayKnowledgeBases.length === 0}
+            {#if allKnowledgeBases.length === 0}
+                <!-- No knowledge bases at all -->
+                <div class="p-6 text-center">
+                    <div class="text-gray-500">
+                        {$_('knowledgeBases.list.empty', { default: 'No knowledge bases found.' })}
+                    </div>
+                </div>
+            {:else}
+                <!-- No results match filters -->
+                <div class="p-6 text-center">
+                    <p class="text-gray-500 mb-4">No knowledge bases match your search</p>
+                    <button 
+                        onclick={handleClearFilters}
+                        class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                    >
+                        Clear search
+                    </button>
+                </div>
+            {/if}
+        {:else}
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
@@ -223,7 +334,7 @@
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    {#each knowledgeBases as kb (kb.id)}
+                    {#each displayKnowledgeBases as kb (kb.id)}
                         <tr>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900">
@@ -274,6 +385,20 @@
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination -->
+        {#if totalPages > 1}
+            <Pagination
+                {currentPage}
+                {totalPages}
+                {totalItems}
+                {itemsPerPage}
+                itemsPerPageOptions={[5, 10, 25, 50]}
+                on:pageChange={handlePageChange}
+                on:itemsPerPageChange={handleItemsPerPageChange}
+            />
+        {/if}
+        {/if}
     {/if}
     
     <!-- Create Knowledge Base Modal -->

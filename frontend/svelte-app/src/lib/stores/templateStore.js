@@ -327,3 +327,47 @@ export const currentTotal = derived(
     ([$tab, $userTotal, $sharedTotal]) => $tab === 'my' ? $userTotal : $sharedTotal
 );
 
+/**
+ * Load all user templates (for client-side filtering)
+ */
+export async function loadAllUserTemplates() {
+    try {
+        userTemplatesLoading.set(true);
+        templateError.set(null);
+        
+        // Fetch with high limit for client-side processing
+        const result = await templateService.listUserTemplates(1000, 0);
+        
+        userTemplates.set(result.templates);
+        userTemplatesTotal.set(result.total);
+        
+    } catch (error) {
+        console.error('Error loading user templates:', error);
+        templateError.set(error.message || 'Failed to load templates');
+    } finally {
+        userTemplatesLoading.set(false);
+    }
+}
+
+/**
+ * Load all shared templates (for client-side filtering)
+ */
+export async function loadAllSharedTemplates() {
+    try {
+        sharedTemplatesLoading.set(true);
+        templateError.set(null);
+        
+        // Fetch with high limit for client-side processing
+        const result = await templateService.listSharedTemplates(1000, 0);
+        
+        sharedTemplates.set(result.templates);
+        sharedTemplatesTotal.set(result.total);
+        
+    } catch (error) {
+        console.error('Error loading shared templates:', error);
+        templateError.set(error.message || 'Failed to load shared templates');
+    } finally {
+        sharedTemplatesLoading.set(false);
+    }
+}
+
