@@ -2,39 +2,55 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
-  import PublishModal from './PublishModal.svelte'; // Restore PublishModal import
-  import { createEventDispatcher } from 'svelte'; // Import createEventDispatcher
-  import { publishModalOpen, selectedAssistant } from '$lib/stores/assistantPublish'; // Restore store imports
+  import PublishModal from './PublishModal.svelte';
+  import { createEventDispatcher } from 'svelte';
+  import { publishModalOpen, selectedAssistant } from '$lib/stores/assistantPublish';
   import { user } from '$lib/stores/userStore';
   import { getAssistants, deleteAssistant, downloadAssistant, unpublishAssistant } from '$lib/services/assistantService';
   import { base } from '$app/paths';
   import { browser } from '$app/environment';
-  import { _, locale } from '$lib/i18n'; // Import i18n
+  import { _, locale } from '$lib/i18n';
+  
+  // Import new components and utilities
+  import Pagination from './common/Pagination.svelte';
+  import FilterBar from './common/FilterBar.svelte';
+  import { processListData } from '$lib/utils/listHelpers';
   
   // Default text for when i18n isn't loaded yet
-  let localeLoaded = $state(!!get(locale)); // Initialize based on current store value
-  const dispatch = createEventDispatcher(); // Create dispatcher instance
+  let localeLoaded = $state(!!get(locale));
+  const dispatch = createEventDispatcher();
   
-  // Assistants data from global store
+  // All assistants (fetched once)
   /** @type {Array<any>} */
-  let assistants = $state([]); // Local state for the current page's assistants
+  let allAssistants = $state([]);
+  
+  // Filtered and paginated assistants (for display)
+  /** @type {Array<any>} */
+  let displayAssistants = $state([]);
+  
+  // Loading and error states
   let loading = $state(true);
   /** @type {string | null} */
   let error = $state(null);
+  let isRefreshing = $state(false);
   
-  // Pagination
-  let ITEMS_PER_PAGE = $state(5); // Use $state for binding
+  // Filter state
+  let searchTerm = $state('');
+  let filterStatus = $state(''); // '', 'published', 'unpublished'
+  
+  // Sort state
+  let sortBy = $state('updated_at');
+  let sortOrder = $state('desc');
+  
+  // Pagination state
   let currentPage = $state(1);
+  let itemsPerPage = $state(10);
+  let totalPages = $state(1);
   let totalItems = $state(0);
-  let totalPages = $derived(Math.ceil(totalItems / ITEMS_PER_PAGE));
   
-  // API Key (you should get this from your auth store or environment)
-  // let apiKey = ''; // Restore if needed, seems unused currently
-  
-  // --- Lifecycle and Data Loading --- 
+  // Lifecycle and Data Loading
   let localeUnsubscribe = () => {};
-  let userUnsubscribe = () => {}; // Ensure declaration is here
-  // Removed assistantsStore unsubscribe variable
+  let userUnsubscribe = () => {};
 
   onMount(() => {
     localeUnsubscribe = locale.subscribe(value => {
@@ -46,14 +62,14 @@
     if (browser) {
       userUnsubscribe = user.subscribe(userData => {
         if (userData.isLoggedIn) {
-          // Simplified logic: load if logged in and list is empty
-          if (assistants.length === 0 && !loading) {
-             console.log('User logged in, loading initial assistants...');
-             loadPaginatedAssistants(1, ITEMS_PER_PAGE);
+          if (allAssistants.length === 0 && !loading) {
+             console.log('User logged in, loading assistants...');
+             loadAllAssistants();
           }
         } else {
           console.log('User logged out, clearing assistants.');
-          assistants = []; 
+          allAssistants = [];
+          displayAssistants = [];
           totalItems = 0;
           currentPage = 1;
           error = null;
@@ -63,20 +79,9 @@
 
       const initialUserData = $user;
       if(initialUserData.isLoggedIn) {
-        console.log('User already logged in on mount, loading initial assistants...');
-        loadPaginatedAssistants(currentPage, ITEMS_PER_PAGE);
+        console.log('User already logged in on mount, loading assistants...');
+        loadAllAssistants();
       }
-
-      // apiKey = localStorage.getItem('apiKey') || '';
-      
-      // Restore event listener for publish event
-      // const handleAssistantPublished = () => {
-      //     console.log('Assistant published event received, reloading list.');
-      //     loadPaginatedAssistants(currentPage, ITEMS_PER_PAGE);
-      // };
-      // Note: Svelte component events don't use window.addEventListener
-      // The event is handled directly on the component tag: <PublishModal on:assistantPublished={...} />
-      
     }
     
     return () => {
@@ -84,59 +89,109 @@
       if (userUnsubscribe) userUnsubscribe();
     };
   });
-  
-  // --- Refresh State ---
-  let isRefreshing = $state(false);
 
-  // Function to load assistants for a specific page
-  /**
-   * @param {number} page
-   * @param {number} limit
-   */
-  async function loadPaginatedAssistants(page, limit) {
+  // Load all assistants (with high limit for client-side processing)
+  async function loadAllAssistants() {
     loading = true;
     error = null;
     try {
-      const offset = (page - 1) * limit;
-      console.log(`Calling getAssistants with limit=${limit}, offset=${offset}`);
-      const response = await getAssistants(limit, offset);
-      console.log('Received data from getAssistants:', response);
+      console.log('Fetching all assistants...');
+      const response = await getAssistants(100, 0); // Backend max is 100 items
+      console.log('Received assistants:', response);
       
-      assistants = response.assistants;
-      totalItems = response.total_count; 
-      currentPage = page; // Ensure currentPage state is updated
-        
+      allAssistants = response.assistants || [];
+      applyFiltersAndPagination();
     } catch (err) {
       console.error('Error loading assistants:', err);
-      error = err instanceof Error ? err.message : 'Failed to load assistants';
-      assistants = []; 
+      error = err instanceof Error ? err.message : String(err);
+      allAssistants = [];
+      displayAssistants = [];
       totalItems = 0;
     } finally {
       loading = false;
     }
-    await new Promise(resolve => setTimeout(resolve, 500)); 
-    loading = false;
   }
   
-  // --- Refresh Function ---
+  // Apply filters, sorting, and pagination
+  function applyFiltersAndPagination() {
+    const result = processListData(allAssistants, {
+      search: searchTerm,
+      searchFields: ['name', 'description', 'owner'],
+      filters: {
+        published: filterStatus === '' ? null : (filterStatus === 'published')
+      },
+      sortBy,
+      sortOrder,
+      page: currentPage,
+      itemsPerPage
+    });
+    
+    displayAssistants = result.items;
+    totalItems = result.filteredCount;
+    totalPages = result.totalPages;
+    currentPage = result.currentPage; // Use safe page from result
+  }
+  
+  // Refresh function
   async function handleRefresh() {
-    if (isRefreshing) return; // Prevent multiple refreshes
+    if (isRefreshing) return;
     console.log('Manual refresh triggered...');
     isRefreshing = true;
-    await loadPaginatedAssistants(currentPage, ITEMS_PER_PAGE); // Reload current page
+    await loadAllAssistants();
     isRefreshing = false;
+  }
+  
+  // --- Filter and Pagination Event Handlers ---
+  
+  function handleSearchChange(event) {
+    searchTerm = event.detail.value;
+    currentPage = 1; // Reset to first page
+    applyFiltersAndPagination();
+  }
+  
+  function handleFilterChange(event) {
+    const { key, value } = event.detail;
+    if (key === 'status') {
+      filterStatus = value;
+    }
+    currentPage = 1; // Reset to first page
+    applyFiltersAndPagination();
+  }
+  
+  function handleSortChange(event) {
+    sortBy = event.detail.sortBy;
+    sortOrder = event.detail.sortOrder;
+    applyFiltersAndPagination();
+  }
+  
+  function handlePageChange(event) {
+    currentPage = event.detail.page;
+    applyFiltersAndPagination();
+  }
+  
+  function handleItemsPerPageChange(event) {
+    itemsPerPage = event.detail.itemsPerPage;
+    currentPage = 1; // Reset to first page
+    applyFiltersAndPagination();
+  }
+  
+  function handleClearFilters() {
+    searchTerm = '';
+    filterStatus = '';
+    sortBy = 'updated_at';
+    sortOrder = 'desc';
+    currentPage = 1;
+    applyFiltersAndPagination();
   }
   
   // --- Action Handlers --- 
 
-  /** @param {{ detail: { id: number } }} event */
   /**
    * Handle view button click
    * @param {number} id - The ID of the assistant to view
    */
   function handleView(id) { 
     console.log(`View assistant (navigate to detail view): ${id}`);
-    // Navigate to the detail view without edit mode
     const targetUrl = `${base}/assistants?view=detail&id=${id}`;
     console.log('[AssistantsList] Navigating to view:', targetUrl);
     goto(targetUrl); 
@@ -148,7 +203,6 @@
    */
   function handleEdit(id) { 
     console.log(`Edit assistant (navigate to detail view in edit mode): ${id}`);
-    // Navigate to the detail view and add startInEdit=true query param
     const targetUrl = `${base}/assistants?view=detail&id=${id}&startInEdit=true`;
     console.log('[AssistantsList] Navigating to edit:', targetUrl);
     goto(targetUrl); 
@@ -169,12 +223,12 @@
           alert(localeLoaded ? $_('assistants.unpublishErrorMissingData') : 'Cannot unpublish: Missing group ID or owner email.');
           return;
       }
-      const assistantToUnpublish = assistants.find(a => a.id === assistantId);
+      const assistantToUnpublish = allAssistants.find(a => a.id === assistantId);
       const confirmMessage = localeLoaded ? $_('assistants.unpublishConfirm', { values: { name: assistantToUnpublish?.name || assistantId } }) : `Are you sure you want to unpublish assistant ${assistantId}?`;
       if (confirm(confirmMessage)) {
           try {
               await unpublishAssistant(assistantId.toString(), groupId, ownerEmail);
-              await loadPaginatedAssistants(currentPage, ITEMS_PER_PAGE);
+              await loadAllAssistants();
               alert(localeLoaded ? $_('assistants.unpublishSuccess') : 'Assistant unpublished successfully!');
           } catch (err) {
               console.error('Error unpublishing assistant:', err);
@@ -183,20 +237,6 @@
               alert(localeLoaded ? $_('assistants.unpublishError', { values: { error: errorMsg } }) : `Error: ${errorMsg}`);
           }
       }
-  }
-
-  // --- Pagination Navigation (Define functions) --- 
-
-  function goToPreviousPage() {
-    if (currentPage > 1) {
-      loadPaginatedAssistants(currentPage - 1, ITEMS_PER_PAGE);
-    }
-  }
-
-  function goToNextPage() {
-    if (currentPage < totalPages) {
-      loadPaginatedAssistants(currentPage + 1, ITEMS_PER_PAGE);
-    }
   }
   
   // --- Helper Functions ---
@@ -222,7 +262,7 @@
 </script>
 
 <!-- Container for the list -->
-<div class="container mx-auto px-4 py-8">
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
 
     {#if loading}
         <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('assistants.loading', { default: 'Loading assistants...' }) : 'Loading assistants...'}</p>
@@ -231,9 +271,77 @@
             <strong class="font-bold">{localeLoaded ? $_('assistants.errorTitle') : 'Error:'}</strong>
             <span class="block sm:inline">{error}</span>
         </div>
-    {:else if assistants.length === 0 && totalItems === 0}
-        <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('assistants.noAssistants', { default: 'No assistants found.' }) : 'No assistants found.'}</p>
     {:else}
+        <!-- Filter Bar -->
+        <FilterBar
+            searchPlaceholder={localeLoaded ? $_('assistants.searchPlaceholder', { default: 'Search assistants by name, description...' }) : 'Search assistants by name, description...'}
+            searchValue={searchTerm}
+            filters={[
+                {
+                    key: 'status',
+                    label: localeLoaded ? $_('assistants.filters.status', { default: 'Status' }) : 'Status',
+                    options: [
+                        { value: 'published', label: localeLoaded ? $_('assistants.status.published', { default: 'Published' }) : 'Published' },
+                        { value: 'unpublished', label: localeLoaded ? $_('assistants.status.unpublished', { default: 'Not Published' }) : 'Not Published' }
+                    ]
+                }
+            ]}
+            filterValues={{ status: filterStatus }}
+            sortOptions={[
+                { value: 'name', label: localeLoaded ? $_('assistants.sort.name', { default: 'Name' }) : 'Name' },
+                { value: 'updated_at', label: localeLoaded ? $_('assistants.sort.updated', { default: 'Last Modified' }) : 'Last Modified' },
+                { value: 'created_at', label: localeLoaded ? $_('assistants.sort.created', { default: 'Created Date' }) : 'Created Date' }
+            ]}
+            {sortBy}
+            {sortOrder}
+            on:searchChange={handleSearchChange}
+            on:filterChange={handleFilterChange}
+            on:sortChange={handleSortChange}
+            on:clearFilters={handleClearFilters}
+        />
+        
+        <!-- Results count and refresh button -->
+        <div class="flex justify-between items-center mb-4 px-4">
+            <div class="text-sm text-gray-600">
+                {#if searchTerm || filterStatus}
+                    {localeLoaded ? $_('assistants.showingFiltered', { default: 'Showing' }) : 'Showing'} <span class="font-medium">{totalItems}</span> {localeLoaded ? $_('assistants.of', { default: 'of' }) : 'of'} <span class="font-medium">{allAssistants.length}</span> {localeLoaded ? $_('assistants.items', { default: 'assistants' }) : 'assistants'}
+                {:else}
+                    <span class="font-medium">{totalItems}</span> {localeLoaded ? $_('assistants.totalItems', { default: 'assistants' }) : 'assistants'}
+                {/if}
+            </div>
+            
+            <!-- Refresh button -->
+            <button 
+                onclick={handleRefresh} 
+                disabled={loading || isRefreshing} 
+                title={localeLoaded ? $_('common.refresh', { default: 'Refresh' }) : 'Refresh'}
+                class="p-2 text-sm font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <span class:animate-spin={isRefreshing}>
+                    {@html IconRefresh}
+                </span>
+            </button>
+        </div>
+
+        {#if displayAssistants.length === 0}
+            {#if allAssistants.length === 0}
+                <!-- No assistants at all -->
+                <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                    <p class="text-gray-500">{localeLoaded ? $_('assistants.noAssistants', { default: 'No assistants found.' }) : 'No assistants found.'}</p>
+                </div>
+            {:else}
+                <!-- No results match filters -->
+                <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                    <p class="text-gray-500 mb-4">{localeLoaded ? $_('assistants.noMatches', { default: 'No assistants match your filters' }) : 'No assistants match your filters'}</p>
+                    <button 
+                        onclick={handleClearFilters}
+                        class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                    >
+                        {localeLoaded ? $_('common.clearFilters', { default: 'Clear filters' }) : 'Clear filters'}
+                    </button>
+                </div>
+            {/if}
+        {:else}
         <!-- Responsive Table Wrapper -->
         <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
             <table class="min-w-full divide-y divide-gray-200">
@@ -251,7 +359,7 @@
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    {#each assistants as assistant (assistant.id)}
+                    {#each displayAssistants as assistant (assistant.id)}
                         <!-- Main row with name, description, actions -->
                         <tr class="hover:bg-gray-50">
                             <!-- Assistant Name -->
@@ -375,48 +483,16 @@
 
         <!-- Pagination Controls -->
         {#if totalPages > 1}
-            <!-- Centered container for all pagination elements -->
-            <div class="flex justify-center items-center mt-4 space-x-4 text-sm text-gray-700">
-                <!-- Refresh Button -->
-                <button 
-                  onclick={handleRefresh} 
-                  disabled={loading || isRefreshing} 
-                  title={localeLoaded ? $_('common.refresh', { default: 'Refresh' }) : 'Refresh'}
-                  class="p-1.5 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <span class:animate-spin={isRefreshing}>
-                      {@html IconRefresh}
-                    </span>
-                </button>
-
-                <!-- Previous Button -->
-                <button 
-                  onclick={goToPreviousPage} 
-                  disabled={currentPage === 1 || loading}
-                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {localeLoaded ? $_('pagination.previousShort', { default: '<' }) : '<'}
-                </button>
-
-                <!-- Page Info & Results Count -->
-                <span>
-                    {localeLoaded ? $_('pagination.page', { default: 'Page' }) : 'Page'} {currentPage} {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'} {totalPages}
-                    <span class="mx-2">|</span>
-                    {localeLoaded ? $_('pagination.resultsSimple', { default: 'Results' }) : 'Results'} 
-                    <span class="font-medium text-brand">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span>
-                    {localeLoaded ? $_('pagination.to', { default: 'to' }) : 'to'}
-                    <span class="font-medium text-brand">{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)}</span>
-                    {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'}
-                    <span class="font-medium text-brand">{totalItems}</span>
-                </span>
-
-                <!-- Next Button -->
-                <button 
-                  onclick={goToNextPage} 
-                  disabled={currentPage === totalPages || loading}
-                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {localeLoaded ? $_('pagination.nextShort', { default: '>' }) : '>'}
-                </button>
-            </div>
+            <Pagination
+                {currentPage}
+                {totalPages}
+                {totalItems}
+                {itemsPerPage}
+                itemsPerPageOptions={[5, 10, 25, 50, 100]}
+                on:pageChange={handlePageChange}
+                on:itemsPerPageChange={handleItemsPerPageChange}
+            />
+        {/if}
         {/if}
     {/if}
 </div>

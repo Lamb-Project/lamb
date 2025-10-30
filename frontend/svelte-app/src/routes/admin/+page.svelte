@@ -8,6 +8,12 @@
     import axios from 'axios';
     import { getApiUrl } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
+    import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
+    
+    // Import filtering/pagination components
+    import Pagination from '$lib/components/common/Pagination.svelte';
+    import FilterBar from '$lib/components/common/FilterBar.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -20,10 +26,48 @@
 
     // --- Users Management State ---
     /** @type {Array<any>} */
-    let users = $state([]);
+    let allUsers = $state([]); // All users (fetched once)
+    /** @type {Array<any>} */
+    let displayUsers = $state([]); // Filtered/paginated users (for display)
     let isLoadingUsers = $state(false);
     /** @type {string | null} */
     let usersError = $state(null);
+    
+    // Users filtering state
+    let usersSearch = $state('');
+    let usersFilterType = $state('');
+    let usersFilterEnabled = $state('');
+    let usersFilterOrg = $state('');
+    
+    // Users sorting state
+    let usersSortBy = $state('id');
+    let usersSortOrder = $state('asc');
+    
+    // Users pagination state
+    let usersPage = $state(1);
+    let usersPerPage = $state(10);
+    let usersTotalPages = $state(1);
+    let usersTotalItems = $state(0);
+    
+    // Keep reference to users for table (will point to displayUsers)
+    let users = $derived(displayUsers);
+    
+    // --- Bulk Selection State ---
+    let selectedUsers = $state(/** @type {number[]} */ ([]));
+    
+    // Sync selectedUsers with user.selected checkboxes
+    $effect(() => {
+        if (users.length > 0) {
+            selectedUsers = users.filter(u => u.selected).map(u => u.id);
+        }
+    });
+    
+    // --- Enable/Disable Confirmation Modals ---
+    let showDisableConfirm = $state(false);
+    let showEnableConfirm = $state(false);
+    let actionType = $state(''); // 'single' or 'bulk'
+    /** @type {any | null} */
+    let targetUser = $state(null);
 
     // --- Create User Modal State ---
     let isCreateUserModalOpen = $state(false);
@@ -197,61 +241,121 @@
     }
 
     // User enable/disable functions for system admin  
-    async function toggleUserStatusAdmin(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
-        // Prevent users from disabling themselves
-        if (currentUserData && currentUserData.email === user.email && !newStatus) {
-            alert("You cannot disable your own account. Please ask another administrator to disable your account if needed.");
-            return;
+    // --- Bulk Selection Functions ---
+    function handleSelectAll() {
+        const selectAllCheckbox = /** @type {HTMLInputElement|null} */ (document.querySelector('input[aria-label="Select all users"]'));
+        if (selectAllCheckbox?.checked) {
+            // Select all users except current user
+            users.forEach(u => {
+                if (!(currentUserData && currentUserData.email === u.email)) {
+                    u.selected = true;
+                }
+            });
+        } else {
+            users.forEach(u => u.selected = false);
         }
-        
-        if (!confirm(`Are you sure you want to ${action} ${user.name} (${user.email})?`)) {
-            return;
-        }
+    }
 
+    function clearSelection() {
+        users.forEach(u => u.selected = false);
+    }
+
+    // --- Enable/Disable Dialog Functions ---
+    /**
+     * @param {any} user
+     */
+    function showDisableDialog(user) {
+        targetUser = user;
+        actionType = 'single';
+        showDisableConfirm = true;
+    }
+
+    /**
+     * @param {any} user
+     */
+    function showEnableDialog(user) {
+        targetUser = user;
+        actionType = 'single';
+        showEnableConfirm = true;
+    }
+
+    function handleBulkDisable() {
+        if (selectedUsers.length === 0) return;
+        actionType = 'bulk';
+        showDisableConfirm = true;
+    }
+
+    function handleBulkEnable() {
+        if (selectedUsers.length === 0) return;
+        actionType = 'bulk';
+        showEnableConfirm = true;
+    }
+
+    async function confirmDisable() {
         try {
             const token = getAuthToken();
             if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
+                throw new Error('Authentication token not found');
             }
 
-            const apiUrl = getApiUrl(`/admin/users/${user.id}/status`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
-
-            const response = await axios.put(apiUrl, {
-                enabled: newStatus
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            console.log(`User ${action} response:`, response.data);
-
-            // Update the user in the local list
-            const userIndex = users.findIndex(u => u.id === user.id);
-            if (userIndex !== -1) {
-                users[userIndex].enabled = newStatus;
-                users = [...users]; // Trigger reactivity
-            }
-
-            // Show success message (you could use a toast library here)
-            alert(`User ${user.name} has been ${newStatus ? 'enabled' : 'disabled'} successfully.`);
-
-        } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
-            
-            let errorMessage = `Failed to ${action} user.`;
-            if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                errorMessage = err.response.data.detail;
-            } else if (err instanceof Error) {
-                errorMessage = err.message;
+            if (actionType === 'single') {
+                await adminService.disableUser(token, targetUser.id);
+                console.log(`User ${targetUser.email} disabled`);
+                alert(`User ${targetUser.name} has been disabled successfully.`);
+            } else {
+                const result = await adminService.disableUsersBulk(token, selectedUsers);
+                console.log(`Disabled ${result.disabled} user(s)`);
+                alert(`Successfully disabled ${result.disabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
             }
             
-            alert(`Error: ${errorMessage}`);
+            clearSelection();
+            await fetchUsers(); // Refresh list
+        } catch (error) {
+            console.error('Failed to disable user(s):', error);
+            alert(`Error: ${error.message || 'Failed to disable user(s)'}`);
+        } finally {
+            showDisableConfirm = false;
+            targetUser = null;
+        }
+    }
+
+    async function confirmEnable() {
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            if (actionType === 'single') {
+                await adminService.enableUser(token, targetUser.id);
+                console.log(`User ${targetUser.email} enabled`);
+                alert(`User ${targetUser.name} has been enabled successfully.`);
+            } else {
+                const result = await adminService.enableUsersBulk(token, selectedUsers);
+                console.log(`Enabled ${result.enabled} user(s)`);
+                alert(`Successfully enabled ${result.enabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
+            }
+            
+            clearSelection();
+            await fetchUsers(); // Refresh list
+        } catch (error) {
+            console.error('Failed to enable user(s):', error);
+            alert(`Error: ${error.message || 'Failed to enable user(s)'}`);
+        } finally {
+            showEnableConfirm = false;
+            targetUser = null;
+        }
+    }
+
+    /**
+     * @param {any} user
+     */
+    async function toggleUserStatusAdmin(user) {
+        // Use the new modal-based approach
+        if (user.enabled) {
+            showDisableDialog(user);
+        } else {
+            showEnableDialog(user);
         }
     }
 
@@ -339,12 +443,12 @@
         
         // Basic form validation
         if (!newUser.email || !newUser.name || !newUser.password) {
-            createUserError = 'Please fill in all required fields.';
+            createUserError = localeLoaded ? $_('admin.users.errors.fillRequired', { default: 'Please fill in all required fields.' }) : 'Please fill in all required fields.';
             return;
         }
         
         if (!newUser.email.includes('@')) {
-            createUserError = 'Please enter a valid email address.';
+            createUserError = localeLoaded ? $_('admin.users.errors.invalidEmail', { default: 'Please enter a valid email address.' }) : 'Please enter a valid email address.';
             return;
         }
         
@@ -354,7 +458,7 @@
         try {
             const token = getAuthToken();
             if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
+                throw new Error(localeLoaded ? $_('admin.users.errors.authTokenNotFound', { default: 'Authentication token not found. Please log in again.' }) : 'Authentication token not found. Please log in again.');
             }
             
             // Construct form data in URL-encoded format
@@ -363,7 +467,9 @@
             formData.append('name', newUser.name);
             formData.append('password', newUser.password);
             formData.append('role', newUser.role);
-            formData.append('user_type', newUser.user_type);
+            // Ensure admin users have user_type='creator'
+            const userType = newUser.role === 'admin' ? 'creator' : newUser.user_type;
+            formData.append('user_type', userType);
             
             // Add organization_id if selected
             if (newUser.organization_id) {
@@ -390,7 +496,7 @@
                     fetchUsers(); // Refresh the users list
                 }, 1500);
             } else {
-                throw new Error(response.data.error || 'Failed to create user.');
+                throw new Error(response.data.error || (localeLoaded ? $_('admin.users.errors.createFailed', { default: 'Failed to create user.' }) : 'Failed to create user.'));
             }
         } catch (err) {
             console.error('Error creating user:', err);
@@ -408,7 +514,7 @@
             } else if (err instanceof Error) {
                 createUserError = err.message;
             } else {
-                createUserError = 'An unknown error occurred while creating the user.';
+                createUserError = localeLoaded ? $_('admin.users.errors.unknownError', { default: 'An unknown error occurred while creating the user.' }) : 'An unknown error occurred while creating the user.';
             }
         } finally {
             isCreatingUser = false;
@@ -424,12 +530,12 @@
         
         // Basic form validation
         if (!passwordChangeData.new_password) {
-            changePasswordError = 'Please enter a new password.';
+            changePasswordError = localeLoaded ? $_('admin.users.errors.passwordRequired', { default: 'Please enter a new password.' }) : 'Please enter a new password.';
             return;
         }
         
         if (passwordChangeData.new_password.length < 8) {
-            changePasswordError = 'Password should be at least 8 characters.';
+            changePasswordError = localeLoaded ? $_('admin.users.errors.passwordMinLength', { default: 'Password should be at least 8 characters.' }) : 'Password should be at least 8 characters.';
             return;
         }
         
@@ -439,7 +545,7 @@
         try {
             const token = getAuthToken();
             if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
+                throw new Error(localeLoaded ? $_('admin.users.errors.authTokenNotFound', { default: 'Authentication token not found. Please log in again.' }) : 'Authentication token not found. Please log in again.');
             }
             
             // Construct form data in URL-encoded format
@@ -466,7 +572,7 @@
                     closeChangePasswordModal();
                 }, 1500);
             } else {
-                throw new Error(response.data.error || response.data.message || 'Failed to change password.');
+                throw new Error(response.data.error || response.data.message || (localeLoaded ? $_('admin.users.errors.passwordChangeFailed', { default: 'Failed to change password.' }) : 'Failed to change password.'));
             }
         } catch (err) {
             console.error('Error changing password:', err);
@@ -484,7 +590,7 @@
             } else if (err instanceof Error) {
                 changePasswordError = err.message;
             } else {
-                changePasswordError = 'An unknown error occurred while changing the password.';
+                changePasswordError = localeLoaded ? $_('admin.users.errors.passwordChangeUnknownError', { default: 'An unknown error occurred while changing the password.' }) : 'An unknown error occurred while changing the password.';
             }
         } finally {
             isChangingPassword = false;
@@ -500,31 +606,31 @@
         
         // Basic form validation
         if (!newOrg.slug || !newOrg.name) {
-            createOrgError = 'Please fill in all required fields.';
+            createOrgError = localeLoaded ? $_('admin.organizations.errors.fillRequired', { default: 'Please fill in all required fields.' }) : 'Please fill in all required fields.';
             return;
         }
         
         // Validate admin user selection
         if (!newOrg.admin_user_id) {
-            createOrgError = 'Please select an admin user for the organization.';
+            createOrgError = localeLoaded ? $_('admin.organizations.errors.selectAdmin', { default: 'Please select an admin user for the organization.' }) : 'Please select an admin user for the organization.';
             return;
         }
         
         // Validate slug format (URL-friendly)
         if (!/^[a-z0-9-]+$/.test(newOrg.slug)) {
-            createOrgError = 'Slug must contain only lowercase letters, numbers, and hyphens.';
+            createOrgError = localeLoaded ? $_('admin.organizations.errors.slugInvalid', { default: 'Slug must contain only lowercase letters, numbers, and hyphens.' }) : 'Slug must contain only lowercase letters, numbers, and hyphens.';
             return;
         }
         
         // Validate signup key if signup is enabled
         if (newOrg.signup_enabled && (!newOrg.signup_key || newOrg.signup_key.trim().length < 8)) {
-            createOrgError = 'Signup key must be at least 8 characters long when signup is enabled.';
+            createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyLength', { default: 'Signup key must be at least 8 characters long when signup is enabled.' }) : 'Signup key must be at least 8 characters long when signup is enabled.';
             return;
         }
         
         // Validate signup key format if provided
         if (newOrg.signup_key && !/^[a-zA-Z0-9_-]+$/.test(newOrg.signup_key)) {
-            createOrgError = 'Signup key can only contain letters, numbers, hyphens, and underscores.';
+            createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyInvalid', { default: 'Signup key can only contain letters, numbers, hyphens, and underscores.' }) : 'Signup key can only contain letters, numbers, hyphens, and underscores.';
             return;
         }
         
@@ -534,7 +640,7 @@
         try {
             const token = getAuthToken();
             if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
+                throw new Error(localeLoaded ? $_('admin.organizations.errors.authTokenNotFound', { default: 'Authentication token not found. Please log in again.' }) : 'Authentication token not found. Please log in again.');
             }
             
             // Use the enhanced endpoint with admin assignment
@@ -570,7 +676,7 @@
                     fetchOrganizations(); // Refresh the organizations list
                 }, 1500);
             } else {
-                throw new Error('Failed to create organization.');
+                throw new Error(localeLoaded ? $_('admin.organizations.errors.createFailed', { default: 'Failed to create organization.' }) : 'Failed to create organization.');
             }
         } catch (err) {
             console.error('Error creating organization:', err);
@@ -579,7 +685,7 @@
             } else if (err instanceof Error) {
                 createOrgError = err.message;
             } else {
-                createOrgError = 'An unknown error occurred while creating the organization.';
+                createOrgError = localeLoaded ? $_('admin.organizations.errors.unknownError', { default: 'An unknown error occurred while creating the organization.' }) : 'An unknown error occurred while creating the organization.';
             }
         } finally {
             isCreatingOrg = false;
@@ -688,7 +794,7 @@
             return;
         }
         
-        console.log("Fetching users...");
+        console.log("Fetching all users...");
         isLoadingUsers = true;
         usersError = null;
         
@@ -710,8 +816,9 @@
             console.log('API Response:', response.data);
 
             if (response.data && response.data.success) {
-                users = response.data.data || [];
-                console.log(`Fetched ${users.length} users`);
+                allUsers = (response.data.data || []).map(u => ({...u, selected: false}));
+                console.log(`Fetched ${allUsers.length} users`);
+                applyUsersFilters();
             } else {
                 throw new Error(response.data.error || 'Failed to fetch users.');
             }
@@ -726,10 +833,100 @@
             } else {
                 usersError = 'An unknown error occurred while fetching users.';
             }
-            users = [];
+            allUsers = [];
+            displayUsers = [];
         } finally {
             isLoadingUsers = false;
         }
+    }
+    
+    // Apply filters, sorting, and pagination to users
+    function applyUsersFilters() {
+        // Build filters object with custom logic for merged user_type filter
+        /** @type {Record<string, any>} */
+        const filters = {
+            enabled: usersFilterEnabled === '' ? null : usersFilterEnabled,
+            'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
+        };
+        
+        // Handle merged user_type filter (can be 'admin', 'creator', or 'end_user')
+        if (usersFilterType === 'admin') {
+            // Admin users: filter by role === 'admin'
+            filters.role = 'admin';
+        } else if (usersFilterType === 'end_user') {
+            // End users: filter by user_type === 'end_user'
+            filters.user_type = 'end_user';
+        }
+        
+        /** @type {any} */
+        let result = processListData(allUsers, {
+            search: usersSearch,
+            searchFields: ['name', 'email', 'organization.name'],
+            filters: filters,
+            sortBy: usersSortBy,
+            sortOrder: usersSortOrder,
+            page: usersPage,
+            itemsPerPage: usersPerPage
+        });
+        
+        // Additional filtering for 'creator' type (non-admin creators)
+        if (usersFilterType === 'creator') {
+            result.items = result.items.filter((/** @type {any} */ u) => u.role !== 'admin' && u.user_type === 'creator');
+            result.filteredCount = result.items.length;
+            result.totalPages = Math.ceil(result.filteredCount / usersPerPage) || 1;
+            const safePage = Math.max(1, Math.min(usersPage, result.totalPages));
+            result.currentPage = safePage;
+            result.items = result.items.slice((safePage - 1) * usersPerPage, safePage * usersPerPage);
+        }
+        
+        displayUsers = result.items.map((/** @type {any} */ u) => ({...u, selected: u.selected || false}));
+        usersTotalItems = result.filteredCount;
+        usersTotalPages = result.totalPages;
+        usersPage = result.currentPage;
+    }
+    
+    // Users filter/sort/pagination event handlers
+    function handleUsersSearchChange(event) {
+        usersSearch = event.detail.value;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersFilterChange(event) {
+        const { key, value } = event.detail;
+        if (key === 'user_type') usersFilterType = value;
+        else if (key === 'enabled') usersFilterEnabled = value;
+        else if (key === 'organization') usersFilterOrg = value;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersSortChange(event) {
+        usersSortBy = event.detail.sortBy;
+        usersSortOrder = event.detail.sortOrder;
+        applyUsersFilters();
+    }
+    
+    function handleUsersPageChange(event) {
+        usersPage = event.detail.page;
+        applyUsersFilters();
+    }
+    
+    function handleUsersPerPageChange(event) {
+        usersPerPage = event.detail.itemsPerPage;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersClearFilters() {
+        usersSearch = '';
+        usersFilterType = '';
+        usersFilterEnabled = '';
+        usersFilterOrg = '';
+        usersSortBy = 'id';
+        usersSortOrder = 'asc';
+        usersPage = 1;
+        applyUsersFilters();
     }
 
     async function fetchOrganizations() {
@@ -1003,6 +1200,158 @@
         }
     }
 
+    // --- Migration Modal State ---
+    let isMigrationModalOpen = $state(false);
+    let migrationSourceOrg = $state(null);
+    let migrationTargetOrgSlug = $state('');
+    let migrationValidationResult = $state(null);
+    let isValidatingMigration = $state(false);
+    let migrationValidationError = $state(null);
+    let isMigrating = $state(false);
+    let migrationPreserveAdminRoles = $state(false);
+    let migrationDeleteSource = $state(false);
+    let migrationConflictStrategy = $state('rename');
+    let migrationError = $state(null);
+    let migrationSuccess = $state(false);
+    let migrationReport = $state(null);
+
+    /**
+     * Open migration modal and validate migration
+     * @param {any} org - Source organization
+     */
+    async function openMigrationModal(org) {
+        migrationSourceOrg = org;
+        migrationTargetOrgSlug = '';
+        migrationValidationResult = null;
+        migrationValidationError = null;
+        migrationPreserveAdminRoles = false;
+        migrationDeleteSource = false;
+        migrationConflictStrategy = 'rename';
+        migrationError = null;
+        migrationSuccess = false;
+        migrationReport = null;
+        isMigrationModalOpen = true;
+    }
+
+    function closeMigrationModal() {
+        isMigrationModalOpen = false;
+        migrationSourceOrg = null;
+        migrationTargetOrgSlug = '';
+        migrationValidationResult = null;
+        migrationValidationError = null;
+        migrationError = null;
+        migrationSuccess = false;
+        migrationReport = null;
+    }
+
+    /**
+     * Validate migration before execution
+     */
+    async function validateMigration() {
+        if (!migrationTargetOrgSlug || !migrationSourceOrg) {
+            migrationValidationError = 'Please select a target organization';
+            return;
+        }
+
+        isValidatingMigration = true;
+        migrationValidationError = null;
+
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/admin/organizations/${migrationSourceOrg.slug}/migration/validate`);
+            const response = await axios.post(apiUrl, {
+                target_organization_slug: migrationTargetOrgSlug
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            migrationValidationResult = response.data;
+            
+            if (!migrationValidationResult.can_migrate) {
+                migrationValidationError = migrationValidationResult.error || 'Migration validation failed';
+            }
+        } catch (err) {
+            console.error('Error validating migration:', err);
+            migrationValidationError = 'Failed to validate migration';
+            
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                migrationValidationError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                migrationValidationError = err.message;
+            }
+        } finally {
+            isValidatingMigration = false;
+        }
+    }
+
+    /**
+     * Execute organization migration
+     */
+    async function executeMigration() {
+        if (!migrationTargetOrgSlug || !migrationSourceOrg) {
+            migrationError = 'Please select a target organization';
+            return;
+        }
+
+        if (!migrationValidationResult || !migrationValidationResult.can_migrate) {
+            migrationError = 'Please validate migration first';
+            return;
+        }
+
+        isMigrating = true;
+        migrationError = null;
+        migrationSuccess = false;
+
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/admin/organizations/${migrationSourceOrg.slug}/migrate`);
+            const response = await axios.post(apiUrl, {
+                target_organization_slug: migrationTargetOrgSlug,
+                conflict_strategy: migrationConflictStrategy,
+                preserve_admin_roles: migrationPreserveAdminRoles,
+                delete_source: migrationDeleteSource
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            migrationReport = response.data;
+            migrationSuccess = true;
+            
+            // Refresh organizations list
+            fetchOrganizations();
+            
+            // Close modal after 3 seconds if successful
+            if (migrationSuccess) {
+                setTimeout(() => {
+                    closeMigrationModal();
+                }, 3000);
+            }
+        } catch (err) {
+            console.error('Error executing migration:', err);
+            migrationError = 'Failed to migrate organization';
+            
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                migrationError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                migrationError = err.message;
+            }
+        } finally {
+            isMigrating = false;
+        }
+    }
+
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -1012,7 +1361,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'dashboard' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'dashboard' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showDashboard}
                     aria-label={localeLoaded ? $_('admin.tabs.dashboard', { default: 'Dashboard' }) : 'Dashboard'}
                 >
@@ -1022,7 +1370,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'users' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'users' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showUsers}
                     aria-label={localeLoaded ? $_('admin.tabs.users', { default: 'User Management' }) : 'User Management'}
                 >
@@ -1032,7 +1379,6 @@
             <li class="mr-2">
                 <button
                     class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'organizations' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
-                    style={currentView === 'organizations' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
                     onclick={showOrganizations}
                     aria-label={localeLoaded ? $_('admin.tabs.organizations', { default: 'Organizations' }) : 'Organizations'}
                 >
@@ -1052,10 +1398,9 @@
         <!-- Users Management View -->
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-semibold text-gray-800">{localeLoaded ? $_('admin.users.title', { default: 'User Management' }) : 'User Management'}</h1>
-            <button 
+            <button
                 onclick={openCreateUserModal}
                 class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                style="background-color: #2271b3; color: white;"
                 aria-label={localeLoaded ? $_('admin.users.actions.create', { default: 'Create User' }) : 'Create User'}
             >
                 {localeLoaded ? $_('admin.users.actions.create', { default: 'Create User' }) : 'Create User'}
@@ -1074,33 +1419,153 @@
                 <button
                     onclick={fetchUsers}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                 >
                     {localeLoaded ? $_('admin.users.retry', { default: 'Retry' }) : 'Retry'}
                 </button>
             </div>
-        {:else if users.length === 0}
-            <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('admin.users.noUsers', { default: 'No users found.' }) : 'No users found.'}</p>
         {:else}
+            <!-- Filter Bar -->
+            <FilterBar
+                searchPlaceholder={localeLoaded ? $_('admin.users.searchPlaceholder', { default: 'Search users by name, email, organization...' }) : 'Search users by name, email, organization...'}
+                searchValue={usersSearch}
+                filters={[
+                    {
+                        key: 'user_type',
+                        label: localeLoaded ? $_('admin.users.filters.type', { default: 'User Type' }) : 'User Type',
+                        options: [
+                            { value: 'admin', label: localeLoaded ? $_('admin.users.filtersOptions.admin', { default: 'Admin' }) : 'Admin' },
+                            { value: 'creator', label: localeLoaded ? $_('admin.users.filtersOptions.creator', { default: 'Creator' }) : 'Creator' },
+                            { value: 'end_user', label: localeLoaded ? $_('admin.users.filtersOptions.endUser', { default: 'End User' }) : 'End User' }
+                        ]
+                    },
+                    {
+                        key: 'enabled',
+                        label: localeLoaded ? $_('admin.users.filters.status', { default: 'Status' }) : 'Status',
+                        options: [
+                            { value: 'true', label: localeLoaded ? $_('admin.users.filtersOptions.active', { default: 'Active' }) : 'Active' },
+                            { value: 'false', label: localeLoaded ? $_('admin.users.filtersOptions.disabled', { default: 'Disabled' }) : 'Disabled' }
+                        ]
+                    },
+                    ...(organizationsForUsers.length > 0 ? [{
+                        key: 'organization',
+                        label: localeLoaded ? $_('admin.users.table.organization', { default: 'Organization' }) : 'Organization',
+                        options: organizationsForUsers.map(org => ({
+                            value: String(org.id),
+                            label: org.name
+                        }))
+                    }] : [])
+                ]}
+                filterValues={{ 
+                    user_type: usersFilterType, 
+                    enabled: usersFilterEnabled,
+                    organization: usersFilterOrg
+                }}
+                sortOptions={[
+                    { value: 'name', label: localeLoaded ? $_('admin.users.sortOptions.name', { default: 'Name' }) : 'Name' },
+                    { value: 'email', label: localeLoaded ? $_('admin.users.sortOptions.email', { default: 'Email' }) : 'Email' },
+                    { value: 'id', label: localeLoaded ? $_('admin.users.sortOptions.userId', { default: 'User ID' }) : 'User ID' }
+                ]}
+                sortBy={usersSortBy}
+                sortOrder={usersSortOrder}
+                on:searchChange={handleUsersSearchChange}
+                on:filterChange={handleUsersFilterChange}
+                on:sortChange={handleUsersSortChange}
+                on:clearFilters={handleUsersClearFilters}
+            />
+            
+            <!-- Results count -->
+            <div class="flex justify-between items-center mb-4 px-4">
+                <div class="text-sm text-gray-600">
+                    {#if usersSearch || usersFilterType || usersFilterEnabled || usersFilterOrg}
+                        {localeLoaded ? $_('admin.users.resultsCount.showing', { default: 'Showing {filtered} of {total} users', values: { filtered: usersTotalItems, total: allUsers.length } }) : `Showing ${usersTotalItems} of ${allUsers.length} users`}
+                    {:else}
+                        {localeLoaded ? $_('admin.users.resultsCount.total', { default: '{count} users', values: { count: usersTotalItems } }) : `${usersTotalItems} users`}
+                    {/if}
+                </div>
+            </div>
+
+            {#if displayUsers.length === 0}
+                {#if allUsers.length === 0}
+                    <!-- No users at all -->
+                    <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                        <p class="text-gray-500">{localeLoaded ? $_('admin.users.noUsers', { default: 'No users found.' }) : 'No users found.'}</p>
+                    </div>
+                {:else}
+                    <!-- No results match filters -->
+                    <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                        <p class="text-gray-500 mb-4">{localeLoaded ? $_('admin.users.resultsCount.noMatch', { default: 'No users match your filters' }) : 'No users match your filters'}</p>
+                        <button 
+                            onclick={handleUsersClearFilters}
+                            class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                        >
+                            {localeLoaded ? $_('admin.users.resultsCount.clearFilters', { default: 'Clear filters' }) : 'Clear filters'}
+                        </button>
+                    </div>
+                {/if}
+            {:else}
+            <!-- Bulk Actions Toolbar -->
+            {#if selectedUsers.length > 0}
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">
+                            {selectedUsers.length === 1 
+                                ? (localeLoaded ? $_('admin.users.bulkActions.selected', { default: '{count} user selected', values: { count: selectedUsers.length } }) : `${selectedUsers.length} user selected`)
+                                : (localeLoaded ? $_('admin.users.bulkActions.selectedPlural', { default: '{count} users selected', values: { count: selectedUsers.length } }) : `${selectedUsers.length} users selected`)
+                            }
+                        </span>
+                        <div class="flex gap-2">
+                            <button 
+                                class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={handleBulkDisable}
+                            >
+                                {localeLoaded ? $_('admin.users.bulkActions.disableSelected', { default: 'Disable Selected' }) : 'Disable Selected'}
+                            </button>
+                            <button 
+                                class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={handleBulkEnable}
+                            >
+                                {localeLoaded ? $_('admin.users.bulkActions.enableSelected', { default: 'Enable Selected' }) : 'Enable Selected'}
+                            </button>
+                            <button 
+                                class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
+                                onclick={clearSelection}
+                            >
+                                {localeLoaded ? $_('admin.users.bulkActions.clear', { default: 'Clear' }) : 'Clear'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
             <!-- Responsive Table Wrapper -->
             <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left">
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedUsers.length > 0 && selectedUsers.length === users.filter(u => !(currentUserData && currentUserData.email === u.email)).length}
+                                    onchange={handleSelectAll}
+                                    class="w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded cursor-pointer focus:ring-2 focus:ring-blue-500 checked:bg-blue-600 checked:border-blue-600"
+                                    style="accent-color: #2563eb;"
+                                    aria-label="Select all users"
+                                />
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.name', { default: 'Name' }) : 'Name'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.email', { default: 'Email' }) : 'Email'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
-                                {localeLoaded ? $_('admin.users.table.role', { default: 'Role' }) : 'Role'}
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
+                                {localeLoaded ? $_('admin.users.table.userType', { default: 'User Type' }) : 'User Type'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell" style="color: #2271b3;">
-                                Organization
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
+                                {localeLoaded ? $_('admin.users.table.organization', { default: 'Organization' }) : 'Organization'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
-                                Status
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
+                                {localeLoaded ? $_('admin.users.table.status', { default: 'Status' }) : 'Status'}
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.users.table.actions', { default: 'Actions' }) : 'Actions'}
@@ -1109,7 +1574,17 @@
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                         {#each users as user (user.id)}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-gray-50" class:opacity-60={!user.enabled}>
+                                <td class="px-6 py-4 whitespace-nowrap align-top">
+                                    <input 
+                                        type="checkbox" 
+                                        bind:checked={user.selected}
+                                        disabled={currentUserData && currentUserData.email === user.email}
+                                        class="w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded cursor-pointer focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed checked:bg-blue-600 checked:border-blue-600"
+                                        style="accent-color: #2563eb;"
+                                        aria-label={`Select ${user.name}`}
+                                    />
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
                                     <div class="text-sm font-medium text-gray-900">{user.name || '-'}</div>
                                 </td>
@@ -1117,9 +1592,19 @@
                                     <div class="text-sm text-gray-800">{user.email}</div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}">
-                                        {user.role}
-                                    </span>
+                                    {#if user.role === 'admin'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                            {localeLoaded ? $_('admin.users.filtersOptions.admin', { default: 'Admin' }) : 'Admin'}
+                                        </span>
+                                    {:else if user.user_type === 'end_user'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                            {localeLoaded ? $_('admin.users.filtersOptions.endUser', { default: 'End User' }) : 'End User'}
+                                        </span>
+                                    {:else}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                            {localeLoaded ? $_('admin.users.filtersOptions.creator', { default: 'Creator' }) : 'Creator'}
+                                        </span>
+                                    {/if}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden lg:table-cell">
                                     {#if user.organization}
@@ -1127,7 +1612,7 @@
                                             <span class="text-sm font-medium text-gray-900">{user.organization.name || '-'}</span>
                                             {#if user.organization.is_system}
                                                 <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                                    System
+                                                    {localeLoaded ? $_('admin.users.tableValues.system', { default: 'System' }) : 'System'}
                                                 </span>
                                             {/if}
                                         </div>
@@ -1137,12 +1622,15 @@
                                             </div>
                                         {/if}
                                     {:else}
-                                        <span class="text-gray-400">No Organization</span>
+                                        <span class="text-gray-400">{localeLoaded ? $_('admin.users.tableValues.noOrganization', { default: 'No Organization' }) : 'No Organization'}</span>
                                     {/if}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm hidden md:table-cell">
                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                                        {user.enabled ? 'Active' : 'Disabled'}
+                                        {user.enabled 
+                                            ? (localeLoaded ? $_('admin.users.filtersOptions.active', { default: 'Active' }) : 'Active')
+                                            : (localeLoaded ? $_('admin.users.filtersOptions.disabled', { default: 'Disabled' }) : 'Disabled')
+                                        }
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -1162,11 +1650,17 @@
                                             ? "text-gray-400 cursor-not-allowed" 
                                             : "text-blue-600 hover:text-blue-800"}
                                         title={currentUserData && currentUserData.email === user.email && user.enabled 
-                                            ? "You cannot disable your own account" 
-                                            : (user.enabled ? 'Disable User' : 'Enable User')}
+                                            ? (localeLoaded ? $_('admin.users.actions.cannotDisableSelf', { default: 'You cannot disable your own account' }) : 'You cannot disable your own account')
+                                            : (user.enabled 
+                                                ? (localeLoaded ? $_('admin.users.actions.disable', { default: 'Disable User' }) : 'Disable User')
+                                                : (localeLoaded ? $_('admin.users.actions.enable', { default: 'Enable User' }) : 'Enable User')
+                                            )}
                                         aria-label={currentUserData && currentUserData.email === user.email && user.enabled 
-                                            ? "You cannot disable your own account" 
-                                            : (user.enabled ? 'Disable User' : 'Enable User')}
+                                            ? (localeLoaded ? $_('admin.users.actions.cannotDisableSelf', { default: 'You cannot disable your own account' }) : 'You cannot disable your own account')
+                                            : (user.enabled 
+                                                ? (localeLoaded ? $_('admin.users.actions.disable', { default: 'Disable User' }) : 'Disable User')
+                                                : (localeLoaded ? $_('admin.users.actions.enable', { default: 'Enable User' }) : 'Enable User')
+                                            )}
                                         onclick={() => toggleUserStatusAdmin(user)}
                                         disabled={currentUserData && currentUserData.email === user.email && user.enabled}
                                     >
@@ -1186,6 +1680,20 @@
                     </tbody>
                 </table>
             </div>
+            
+            <!-- Pagination -->
+            {#if usersTotalPages > 1}
+                <Pagination
+                    currentPage={usersPage}
+                    totalPages={usersTotalPages}
+                    totalItems={usersTotalItems}
+                    itemsPerPage={usersPerPage}
+                    itemsPerPageOptions={[10, 25, 50, 100]}
+                    on:pageChange={handleUsersPageChange}
+                    on:itemsPerPageChange={handleUsersPerPageChange}
+                />
+            {/if}
+            {/if}
         {/if}
     {:else if currentView === 'organizations'}
         <!-- Organizations Management View -->
@@ -1195,14 +1703,13 @@
                 <button 
                     onclick={syncSystemOrganization}
                     class="bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-opacity-50"
-                    aria-label="Sync System Organization"
+                    aria-label={localeLoaded ? $_('admin.organizations.actions.syncSystem', { default: 'Sync System Organization' }) : 'Sync System Organization'}
                 >
-                    Sync System
+                    {localeLoaded ? $_('admin.organizations.actions.syncSystem', { default: 'Sync System' }) : 'Sync System'}
                 </button>
-                <button 
+                <button
                     onclick={openCreateOrgModal}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                     aria-label={localeLoaded ? $_('admin.organizations.actions.create', { default: 'Create Organization' }) : 'Create Organization'}
                 >
                     {localeLoaded ? $_('admin.organizations.actions.create', { default: 'Create Organization' }) : 'Create Organization'}
@@ -1222,7 +1729,6 @@
                 <button
                     onclick={fetchOrganizations}
                     class="bg-brand text-white py-2 px-4 rounded hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-opacity-50"
-                    style="background-color: #2271b3; color: white;"
                 >
                     {localeLoaded ? $_('admin.organizations.retry', { default: 'Retry' }) : 'Retry'}
                 </button>
@@ -1235,16 +1741,16 @@
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.organizations.table.name', { default: 'Name' }) : 'Name'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                 {localeLoaded ? $_('admin.organizations.table.slug', { default: 'Slug' }) : 'Slug'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
                                 {localeLoaded ? $_('admin.organizations.table.status', { default: 'Status' }) : 'Status'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell" style="color: #2271b3;">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
                                 {localeLoaded ? $_('admin.organizations.table.type', { default: 'Type' }) : 'Type'}
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
@@ -1296,6 +1802,16 @@
                                             </svg>
                                         </button>
                                         {#if !org.is_system}
+                                            <button 
+                                                class="text-purple-600 hover:text-purple-800" 
+                                                title={localeLoaded ? $_('admin.organizations.actions.migrate', { default: 'Migrate Organization' }) : 'Migrate Organization'}
+                                                aria-label={localeLoaded ? $_('admin.organizations.actions.migrate', { default: 'Migrate Organization' }) : 'Migrate Organization'}
+                                                onclick={() => openMigrationModal(org)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                                                </svg>
+                                            </button>
                                             <button 
                                                 class="text-red-600 hover:text-red-800" 
                                                 title={localeLoaded ? $_('admin.organizations.actions.delete', { default: 'Delete Organization' }) : 'Delete Organization'}
@@ -1384,10 +1900,9 @@
                             >
                                 {localeLoaded ? $_('admin.users.password.cancel', { default: 'Cancel' }) : 'Cancel'}
                             </button>
-                            <button 
-                                type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                            <button
+                                type="submit"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isChangingPassword}
                             >
                                 {isChangingPassword 
@@ -1470,6 +1985,13 @@
                                 id="role" 
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.role}
+                                onchange={(e) => {
+                                    // If admin is selected, automatically set user_type to 'creator'
+                                    const target = /** @type {HTMLSelectElement} */ (e.target);
+                                    if (target.value === 'admin') {
+                                        newUser.user_type = 'creator';
+                                    }
+                                }}
                             >
                                 <option value="user">{localeLoaded ? $_('admin.users.create.roleUser', { default: 'User' }) : 'User'}</option>
                                 <option value="admin">{localeLoaded ? $_('admin.users.create.roleAdmin', { default: 'Admin' }) : 'Admin'}</option>
@@ -1484,10 +2006,14 @@
                                 id="user_type" 
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.user_type}
+                                disabled={newUser.role === 'admin'}
                             >
                                 <option value="creator">Creator (Can create assistants)</option>
                                 <option value="end_user">End User (Redirects to Open WebUI)</option>
                             </select>
+                            {#if newUser.role === 'admin'}
+                                <p class="text-xs text-gray-500 mt-1">Admin users are automatically creators</p>
+                            {/if}
                         </div>
 
                         <div class="mb-6 text-left">
@@ -1530,8 +2056,7 @@
                             </button>
                             <button 
                                 type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isCreatingUser}
                             >
                                 {isCreatingUser 
@@ -1741,8 +2266,7 @@
                             </button>
                             <button 
                                 type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                                style="background-color: #2271b3; color: white;"
+                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
                                 disabled={isCreatingOrg}
                             >
                                 {isCreatingOrg 
@@ -1853,6 +2377,328 @@
                         Close
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Disable User Confirmation Modal -->
+{#if showDisableConfirm}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900">Confirm Disable</h3>
+                </div>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-700">
+                        {#if actionType === 'single'}
+                            Are you sure you want to disable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
+                        {:else}
+                            Are you sure you want to disable <strong>{selectedUsers.length}</strong> user(s)?
+                        {/if}
+                    </p>
+                    <p class="text-sm text-gray-600 mt-3">
+                        Disabled users will not be able to login, but their published assistants and shared resources will remain available.
+                    </p>
+                </div>
+                <div class="flex items-center justify-end gap-3 px-4 py-3">
+                    <button 
+                        onclick={() => showDisableConfirm = false}
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onclick={confirmDisable}
+                        class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Disable
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Enable User Confirmation Modal -->
+{#if showEnableConfirm}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900">Confirm Enable</h3>
+                </div>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-700">
+                        {#if actionType === 'single'}
+                            Are you sure you want to enable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
+                        {:else}
+                            Are you sure you want to enable <strong>{selectedUsers.length}</strong> user(s)?
+                        {/if}
+                    </p>
+                    <p class="text-sm text-gray-600 mt-3">
+                        Enabled users will be able to login and access the system.
+                    </p>
+                </div>
+                <div class="flex items-center justify-end gap-3 px-4 py-3">
+                    <button 
+                        onclick={() => showEnableConfirm = false}
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onclick={confirmEnable}
+                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Enable
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Organization Migration Modal -->
+{#if isMigrationModalOpen && migrationSourceOrg}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">
+                        {localeLoaded ? $_('admin.organizations.migration.title', { default: 'Migrate Organization' }) : 'Migrate Organization'}
+                    </h3>
+                    <button 
+                        onclick={closeMigrationModal}
+                        class="text-gray-400 hover:text-gray-600"
+                        aria-label="Close"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <p class="text-sm text-gray-600 mb-4">
+                    {localeLoaded 
+                        ? $_('admin.organizations.migration.description', { default: 'Migrate all resources from' }) 
+                        : 'Migrate all resources from'} <strong>{migrationSourceOrg.name}</strong> to another organization.
+                </p>
+
+                {#if migrationSuccess && migrationReport}
+                    <!-- Success State -->
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
+                        <strong class="font-bold">{localeLoaded ? $_('admin.organizations.migration.success', { default: 'Migration completed successfully!' }) : 'Migration completed successfully!'}</strong>
+                        <div class="mt-2 text-sm">
+                            <p><strong>Resources migrated:</strong></p>
+                            <ul class="list-disc list-inside mt-1">
+                                <li>{migrationReport.resources_migrated?.users || 0} users</li>
+                                <li>{migrationReport.resources_migrated?.assistants || 0} assistants</li>
+                                <li>{migrationReport.resources_migrated?.templates || 0} templates</li>
+                                <li>{migrationReport.resources_migrated?.kbs || 0} knowledge bases</li>
+                            </ul>
+                            {#if migrationReport.warnings && migrationReport.warnings.length > 0}
+                                <div class="mt-2">
+                                    <p class="font-semibold">Warnings:</p>
+                                    <ul class="list-disc list-inside">
+                                        {#each migrationReport.warnings as warning}
+                                            <li>{warning}</li>
+                                        {/each}
+                                    </ul>
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                {:else}
+                    <!-- Migration Form -->
+                    <div class="space-y-4">
+                        <!-- Step 1: Target Organization Selection -->
+                        <div>
+                            <label for="target_org_slug" class="block text-sm font-medium text-gray-700 mb-2">
+                                {localeLoaded ? $_('admin.organizations.migration.targetOrg', { default: 'Target Organization' }) : 'Target Organization'} *
+                            </label>
+                            <select
+                                id="target_org_slug"
+                                bind:value={migrationTargetOrgSlug}
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                disabled={isValidatingMigration || isMigrating}
+                            >
+                                <option value="">{localeLoaded ? $_('admin.organizations.migration.selectTarget', { default: 'Select target organization...' }) : 'Select target organization...'}</option>
+                                {#each organizations.filter(o => !o.is_system && o.slug !== migrationSourceOrg.slug) as org}
+                                    <option value={org.slug}>{org.name} ({org.slug})</option>
+                                {/each}
+                            </select>
+                            <button
+                                type="button"
+                                onclick={validateMigration}
+                                disabled={!migrationTargetOrgSlug || isValidatingMigration || isMigrating}
+                                class="mt-2 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isValidatingMigration 
+                                    ? (localeLoaded ? $_('admin.organizations.migration.validating', { default: 'Validating...' }) : 'Validating...') 
+                                    : (localeLoaded ? $_('admin.organizations.migration.validate', { default: 'Validate Migration' }) : 'Validate Migration')}
+                            </button>
+                        </div>
+
+                        <!-- Validation Results -->
+                        {#if migrationValidationError}
+                            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                <span class="block sm:inline">{migrationValidationError}</span>
+                            </div>
+                        {/if}
+
+                        {#if migrationValidationResult && migrationValidationResult.can_migrate}
+                            <!-- Step 2: Validation Results Display -->
+                            <div class="bg-blue-50 border border-blue-200 rounded p-4">
+                                <h4 class="font-semibold text-gray-800 mb-2">
+                                    {localeLoaded ? $_('admin.organizations.migration.resources', { default: 'Resources to Migrate' }) : 'Resources to Migrate'}
+                                </h4>
+                                <ul class="text-sm text-gray-700 space-y-1">
+                                    <li>• {migrationValidationResult.resources?.users || 0} users</li>
+                                    <li>• {migrationValidationResult.resources?.assistants || 0} assistants</li>
+                                    <li>• {migrationValidationResult.resources?.templates || 0} templates</li>
+                                    <li>• {migrationValidationResult.resources?.kbs || 0} knowledge bases</li>
+                                    <li>• {migrationValidationResult.resources?.usage_logs || 0} usage logs</li>
+                                </ul>
+
+                                {#if migrationValidationResult.conflicts.assistants.length > 0 || migrationValidationResult.conflicts.templates.length > 0}
+                                    <div class="mt-3 pt-3 border-t border-blue-300">
+                                        <h5 class="font-semibold text-orange-700 mb-2">
+                                            {localeLoaded ? $_('admin.organizations.migration.conflicts', { default: 'Conflicts Detected' }) : 'Conflicts Detected'}
+                                        </h5>
+                                        {#if migrationValidationResult.conflicts.assistants.length > 0}
+                                            <p class="text-sm text-gray-700 mb-1">
+                                                {migrationValidationResult.conflicts.assistants.length} assistant(s) will be renamed:
+                                            </p>
+                                            <ul class="text-xs text-gray-600 list-disc list-inside ml-2">
+                                                {#each migrationValidationResult.conflicts.assistants.slice(0, 3) as conflict}
+                                                    <li>{conflict.name} (by {conflict.owner})</li>
+                                                {/each}
+                                                {#if migrationValidationResult.conflicts.assistants.length > 3}
+                                                    <li>... and {migrationValidationResult.conflicts.assistants.length - 3} more</li>
+                                                {/if}
+                                            </ul>
+                                        {/if}
+                                        {#if migrationValidationResult.conflicts.templates.length > 0}
+                                            <p class="text-sm text-gray-700 mb-1 mt-2">
+                                                {migrationValidationResult.conflicts.templates.length} template(s) will be renamed:
+                                            </p>
+                                            <ul class="text-xs text-gray-600 list-disc list-inside ml-2">
+                                                {#each migrationValidationResult.conflicts.templates.slice(0, 3) as conflict}
+                                                    <li>{conflict.name} (by {conflict.owner_email})</li>
+                                                {/each}
+                                                {#if migrationValidationResult.conflicts.templates.length > 3}
+                                                    <li>... and {migrationValidationResult.conflicts.templates.length - 3} more</li>
+                                                {/if}
+                                            </ul>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+
+                            <!-- Step 3: Migration Options -->
+                            <div class="space-y-4 border-t pt-4">
+                                <h4 class="font-semibold text-gray-800">
+                                    {localeLoaded ? $_('admin.organizations.migration.options', { default: 'Migration Options' }) : 'Migration Options'}
+                                </h4>
+
+                                <!-- Conflict Strategy -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        {localeLoaded ? $_('admin.organizations.migration.conflictStrategy', { default: 'Conflict Resolution Strategy' }) : 'Conflict Resolution Strategy'}
+                                    </label>
+                                    <select
+                                        bind:value={migrationConflictStrategy}
+                                        disabled={isMigrating}
+                                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                    >
+                                        <option value="rename">{localeLoaded ? $_('admin.organizations.migration.rename', { default: 'Rename conflicting resources' }) : 'Rename conflicting resources'}</option>
+                                        <option value="skip">{localeLoaded ? $_('admin.organizations.migration.skip', { default: 'Skip conflicting resources' }) : 'Skip conflicting resources'}</option>
+                                        <option value="fail">{localeLoaded ? $_('admin.organizations.migration.fail', { default: 'Fail on conflicts' }) : 'Fail on conflicts'}</option>
+                                    </select>
+                                </div>
+
+                                <!-- Preserve Admin Roles - CRITICAL -->
+                                <div class="flex items-start">
+                                    <input
+                                        type="checkbox"
+                                        id="preserve_admin_roles"
+                                        bind:checked={migrationPreserveAdminRoles}
+                                        disabled={isMigrating}
+                                        class="mt-1 mr-3 h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                    />
+                                    <div class="flex-1">
+                                        <label for="preserve_admin_roles" class="block text-sm font-medium text-gray-700 cursor-pointer">
+                                            {localeLoaded ? $_('admin.organizations.migration.preserveAdminRoles', { default: 'Preserve admin roles from source organization' }) : 'Preserve admin roles from source organization'}
+                                        </label>
+                                        <p class="text-xs text-gray-500 mt-1">
+                                            {localeLoaded 
+                                                ? $_('admin.organizations.migration.preserveAdminRolesHint', { default: 'If unchecked, admins from the source organization will be migrated as regular members. If checked, they will keep their admin privileges in the target organization.' }) 
+                                                : 'If unchecked, admins from the source organization will be migrated as regular members. If checked, they will keep their admin privileges in the target organization.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Delete Source Organization -->
+                                <div class="flex items-start">
+                                    <input
+                                        type="checkbox"
+                                        id="delete_source"
+                                        bind:checked={migrationDeleteSource}
+                                        disabled={isMigrating}
+                                        class="mt-1 mr-3 h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                    />
+                                    <div class="flex-1">
+                                        <label for="delete_source" class="block text-sm font-medium text-gray-700 cursor-pointer">
+                                            {localeLoaded ? $_('admin.organizations.migration.deleteSource', { default: 'Delete source organization after migration' }) : 'Delete source organization after migration'}
+                                        </label>
+                                        <p class="text-xs text-gray-500 mt-1">
+                                            {localeLoaded 
+                                                ? $_('admin.organizations.migration.deleteSourceHint', { default: 'If checked, the source organization will be permanently deleted after successful migration. This action cannot be undone.' }) 
+                                                : 'If checked, the source organization will be permanently deleted after successful migration. This action cannot be undone.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Migration Error -->
+                            {#if migrationError}
+                                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                    <span class="block sm:inline">{migrationError}</span>
+                                </div>
+                            {/if}
+
+                            <!-- Action Buttons -->
+                            <div class="flex items-center justify-end gap-3 mt-6 pt-4 border-t">
+                                <button 
+                                    type="button"
+                                    onclick={closeMigrationModal}
+                                    disabled={isMigrating}
+                                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                                >
+                                    {localeLoaded ? $_('admin.organizations.migration.cancel', { default: 'Cancel' }) : 'Cancel'}
+                                </button>
+                                <button 
+                                    type="button"
+                                    onclick={executeMigration}
+                                    disabled={isMigrating || !migrationValidationResult?.can_migrate}
+                                    class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isMigrating 
+                                        ? (localeLoaded ? $_('admin.organizations.migration.migrating', { default: 'Migrating...' }) : 'Migrating...') 
+                                        : (localeLoaded ? $_('admin.organizations.migration.execute', { default: 'Execute Migration' }) : 'Execute Migration')}
+                                </button>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
             </div>
         </div>
     </div>

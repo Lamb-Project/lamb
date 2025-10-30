@@ -813,6 +813,228 @@ async def delete_organization(
         logger.error(f"Error deleting organization: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Organization Migration Endpoints
+
+class MigrationValidateRequest(BaseModel):
+    target_organization_slug: str = Field(..., description="Target organization slug")
+
+class MigrationRequest(BaseModel):
+    target_organization_slug: str = Field(..., description="Target organization slug")
+    conflict_strategy: str = Field(default="rename", description="Conflict resolution strategy: 'rename', 'skip', or 'fail'")
+    preserve_admin_roles: bool = Field(default=False, description="Keep old organization admins as admins in target organization")
+    delete_source: bool = Field(default=False, description="Delete source organization after successful migration")
+
+@router.post(
+    "/organizations/{slug}/migration/validate",
+    tags=["Organization Management"],
+    summary="Validate Organization Migration",
+    description="""Validate migration feasibility before execution. Checks for conflicts and returns resource counts.
+
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/organizations/engineering/migration/validate' \\
+-H 'Authorization: Bearer <admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "target_organization_slug": "main-org"
+}'
+```
+
+Example Success Response:
+```json
+{
+  "can_migrate": true,
+  "conflicts": {
+    "assistants": [
+      {
+        "id": 123,
+        "name": "Math_Tutor",
+        "owner": "teacher@school.edu",
+        "conflict_reason": "Target org already has assistant with same name and owner"
+      }
+    ],
+    "templates": []
+  },
+  "resources": {
+    "users": 10,
+    "assistants": 25,
+    "templates": 5,
+    "kbs": 8,
+    "usage_logs": 1500
+  },
+  "source_org_slug": "engineering",
+  "estimated_time_seconds": 45
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Migration validation completed"},
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "Admin privileges required"},
+        404: {"model": ErrorResponse, "description": "Organization not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def validate_organization_migration(
+    request: Request,
+    slug: str,
+    validation_data: MigrationValidateRequest
+):
+    """Validate organization migration feasibility"""
+    try:
+        await verify_admin_access(request)
+        
+        # Get source organization
+        source_org = db_manager.get_organization_by_slug(slug)
+        if not source_org:
+            raise HTTPException(status_code=404, detail=f"Source organization '{slug}' not found")
+        
+        if source_org['is_system']:
+            raise HTTPException(status_code=400, detail="Cannot migrate system organization")
+        
+        # Get target organization
+        target_org = db_manager.get_organization_by_slug(validation_data.target_organization_slug)
+        if not target_org:
+            raise HTTPException(status_code=404, detail=f"Target organization '{validation_data.target_organization_slug}' not found")
+        
+        # Validate migration
+        validation_result = db_manager.validate_migration(source_org['id'], target_org['id'])
+        
+        return validation_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating migration: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post(
+    "/organizations/{slug}/migrate",
+    tags=["Organization Management"],
+    summary="Migrate Organization",
+    description="""Migrate all resources from source organization to target organization.
+
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/organizations/engineering/migrate' \\
+-H 'Authorization: Bearer <admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "target_organization_slug": "main-org",
+  "conflict_strategy": "rename",
+  "preserve_admin_roles": false,
+  "delete_source": false
+}'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "resources_migrated": {
+    "users": 10,
+    "roles": 10,
+    "assistants": 25,
+    "templates": 5,
+    "kbs": 8,
+    "usage_logs": 1500
+  },
+  "conflicts_resolved": {
+    "assistants_renamed": 2,
+    "templates_renamed": 0
+  },
+  "warnings": [
+    "2 assistants were renamed due to conflicts"
+  ]
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Migration completed successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid request or validation failed"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "Admin privileges required"},
+        404: {"model": ErrorResponse, "description": "Organization not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def migrate_organization(
+    request: Request,
+    slug: str,
+    migration_data: MigrationRequest
+):
+    """Migrate organization to target organization"""
+    try:
+        await verify_admin_access(request)
+        
+        # Get source organization
+        source_org = db_manager.get_organization_by_slug(slug)
+        if not source_org:
+            raise HTTPException(status_code=404, detail=f"Source organization '{slug}' not found")
+        
+        if source_org['is_system']:
+            raise HTTPException(status_code=400, detail="Cannot migrate system organization")
+        
+        # Get target organization
+        target_org = db_manager.get_organization_by_slug(migration_data.target_organization_slug)
+        if not target_org:
+            raise HTTPException(status_code=404, detail=f"Target organization '{migration_data.target_organization_slug}' not found")
+        
+        # Validate before migration
+        validation_result = db_manager.validate_migration(source_org['id'], target_org['id'])
+        if not validation_result.get('can_migrate'):
+            raise HTTPException(
+                status_code=400,
+                detail=validation_result.get('error', 'Migration validation failed')
+            )
+        
+        # Execute migration
+        migration_report = db_manager.migrate_organization_comprehensive(
+            source_org_id=source_org['id'],
+            target_org_id=target_org['id'],
+            source_org_slug=source_org['slug'],
+            conflict_strategy=migration_data.conflict_strategy,
+            preserve_admin_roles=migration_data.preserve_admin_roles
+        )
+        
+        if not migration_report.get('success'):
+            raise HTTPException(
+                status_code=500,
+                detail=migration_report.get('error', 'Migration failed')
+            )
+        
+        # Add warnings for renamed resources
+        warnings = []
+        assistants_renamed = migration_report.get('conflicts_resolved', {}).get('assistants_renamed', 0)
+        templates_renamed = migration_report.get('conflicts_resolved', {}).get('templates_renamed', 0)
+        
+        if assistants_renamed > 0:
+            warnings.append(f"{assistants_renamed} assistant(s) were renamed due to conflicts")
+        if templates_renamed > 0:
+            warnings.append(f"{templates_renamed} template(s) were renamed due to conflicts")
+        
+        migration_report['warnings'] = warnings
+        
+        # Optionally delete source organization
+        if migration_data.delete_source:
+            delete_success = db_manager.delete_organization(source_org['id'])
+            if not delete_success:
+                warnings.append(f"Migration succeeded but failed to delete source organization '{slug}'")
+                migration_report['warnings'] = warnings
+            else:
+                logger.info(f"Source organization '{slug}' deleted after successful migration")
+        
+        return migration_report
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during migration: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Configuration management endpoints
 
 @router.get(

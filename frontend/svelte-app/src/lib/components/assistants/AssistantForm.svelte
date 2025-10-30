@@ -5,7 +5,7 @@
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore'; // Import the store
 	import { tick } from 'svelte'; // Import tick for $effect timing
 	import { get } from 'svelte/store'; // Import get
-	import { getKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
+	import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { goto } from '$app/navigation'; // Import for redirect
@@ -62,14 +62,19 @@
 	let selectedLlm = $state('');
 	let selectedRagProcessor = $state('');
 
-	// Knowledge Base State
+	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
-	let accessibleKnowledgeBases = $state([]);
+	let ownedKnowledgeBases = $state([]);
+	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
+	let sharedKnowledgeBases = $state([]);
 	/** @type {string[]} */
 	let selectedKnowledgeBases = $state([]); // Array of selected KB IDs
 	let loadingKnowledgeBases = $state(false);
 	let knowledgeBaseError = $state('');
-	let kbFetchAttempted = $state(false); // Track if fetch was tried
+	let kbFetchAttempted = $state(false); // Track if fetch was attempted
+	
+	// Computed: combined list for backward compatibility
+	let accessibleKnowledgeBases = $derived([...ownedKnowledgeBases, ...sharedKnowledgeBases]);
 
 	// File State for single_file_rag
 	/** @type {Array<{name: string, path: string}>} */
@@ -470,17 +475,33 @@
 		// selectedKnowledgeBases = []; 
 
 		try {
-			const kbs = await getKnowledgeBases();
-			kbs.sort((a, b) => a.name.localeCompare(b.name)); 
-			accessibleKnowledgeBases = kbs;
+			// Fetch owned and shared KBs separately
+			const [owned, shared] = await Promise.all([
+				getUserKnowledgeBases().catch(err => {
+					console.warn('Error fetching owned KBs:', err);
+					return [];
+				}),
+				getSharedKnowledgeBases().catch(err => {
+					console.warn('Error fetching shared KBs:', err);
+					return [];
+				})
+			]);
+			
+			// Sort each separately
+			owned.sort((a, b) => a.name.localeCompare(b.name));
+			shared.sort((a, b) => a.name.localeCompare(b.name));
+			
+			ownedKnowledgeBases = owned;
+			sharedKnowledgeBases = shared;
 		} catch (err) {
 			console.error('Error fetching knowledge bases:', err);
 			knowledgeBaseError = err instanceof Error ? err.message : 'Failed to load knowledge bases';
-			accessibleKnowledgeBases = []; // Ensure list is empty on error
+			ownedKnowledgeBases = [];
+			sharedKnowledgeBases = [];
 		} finally {
 			loadingKnowledgeBases = false;
 			kbFetchAttempted = true; // Mark fetch as attempted
-			console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Count: ${accessibleKnowledgeBases.length})`);
+			console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`);
 		}
 	}
 
@@ -821,7 +842,8 @@
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			if (accessibleKnowledgeBases.length > 0 || selectedKnowledgeBases.length > 0 || knowledgeBaseError || kbFetchAttempted) {
 				console.log('Effect: Clearing KB state and fetch attempt flag');
-				accessibleKnowledgeBases = [];
+				ownedKnowledgeBases = [];
+				sharedKnowledgeBases = [];
 				selectedKnowledgeBases = [];
 				knowledgeBaseError = '';
 				kbFetchAttempted = false; // Reset flag
@@ -1277,7 +1299,7 @@
 							oninput={handleFieldChange}
 							rows="3"
 							disabled={false}
-							class="flex-1 block w-full px-3 py-2 border border-blue-300 rounded-l-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
+							class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white"
 							placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
 							<button type="button" onclick={handleGenerateDescription} disabled={generatingDescription}
 								class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed">
@@ -1295,7 +1317,7 @@
 							<button
 								type="button"
 								onclick={handleLoadTemplate}
-								class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+								class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
 							>
 								<svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
@@ -1317,7 +1339,7 @@
 							<span class="text-xs text-gray-600 dark:text-gray-400">{$_('insert_placeholder') || 'Insert placeholder:'}:</span>
 							{#each ragPlaceholders as placeholder}
 								<button type="button"
-									class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand-500"
+									class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand"
 									onclick={() => insertPlaceholder(placeholder)}
 								>
 									{placeholder}
@@ -1643,16 +1665,47 @@
 										{:else if accessibleKnowledgeBases.length === 0}
 											<p class="text-sm text-gray-500">{$_('assistants.form.knowledgeBases.noneFound', { default: 'No accessible knowledge bases found.' })}</p>
 										{:else}
-											<div class="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-group-label">
-												<span id="kb-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</span>
-												{#each accessibleKnowledgeBases as kb (kb.id)}
-													<label class="flex items-center space-x-2 cursor-pointer">
-														<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
-															   disabled={false}
-															   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
-														<span class="text-sm text-gray-700">{kb.name}</span>
-													</label>
-												{/each}
+											<div class="mt-2 space-y-4">
+												<!-- Owned Knowledge Bases Section -->
+												{#if ownedKnowledgeBases.length > 0}
+													<div>
+														<h5 class="text-sm font-semibold text-gray-700 mb-2">{$_('assistants.form.knowledgeBases.myKB', { default: 'My Knowledge Bases' })}</h5>
+														<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-owned-group-label">
+															<span id="kb-owned-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.myKB', { default: 'My Knowledge Bases' })}</span>
+															{#each ownedKnowledgeBases as kb (kb.id)}
+																<label class="flex items-center space-x-2 cursor-pointer">
+																	<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
+																		   disabled={false}
+																		   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
+																	<span class="text-sm text-gray-700">{kb.name}</span>
+																</label>
+															{/each}
+														</div>
+													</div>
+												{/if}
+												
+												<!-- Shared Knowledge Bases Section -->
+												{#if sharedKnowledgeBases.length > 0}
+													<div>
+														<h5 class="text-sm font-semibold text-gray-700 mb-2">{$_('assistants.form.knowledgeBases.sharedKB', { default: 'Shared Knowledge Bases' })}</h5>
+														<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-shared-group-label">
+															<span id="kb-shared-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.sharedKB', { default: 'Shared Knowledge Bases' })}</span>
+															{#each sharedKnowledgeBases as kb (kb.id)}
+																<label class="flex items-center space-x-2 cursor-pointer">
+																	<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
+																		   disabled={false}
+																		   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
+																	<span class="text-sm text-gray-700">
+																		{kb.name}
+																		<span class="ml-2 text-xs text-gray-500">
+																			({$_('assistants.form.knowledgeBases.shared', { values: { owner: kb.shared_by || 'Unknown' }, default: `Shared by ${kb.shared_by || 'Unknown'}` })})
+																		</span>
+																	</span>
+																</label>
+															{/each}
+														</div>
+													</div>
+												{/if}
 											</div>
 										{/if}
 									</div>
@@ -1743,7 +1796,7 @@
 							type="button" 
 							onclick={switchToViewMode}
 							disabled={formLoading}
-							class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+							class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{$_('common.cancel', { default: 'Cancel' })}
 						</button>
@@ -1754,7 +1807,6 @@
 						form="assistant-form-main" 
 						disabled={formLoading || (formState === 'create' && !$assistantConfigStore.systemCapabilities)} 
 						class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-						style="background-color: #2271b3;"
 					>
 						{#if formState === 'create'}
 							{formLoading ? $_('common.saving', { default: 'Saving...' }) : $_('common.save', { default: 'Save' })}

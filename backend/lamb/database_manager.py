@@ -483,6 +483,53 @@ class LambDatabaseManager:
                 else:
                     logging.debug("prompt_templates table already exists")
 
+                # Migration 4: Add enabled column to Creator_users if it doesn't exist
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if 'enabled' not in columns:
+                    logging.info("Adding enabled column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1
+                    """)
+                    # Create index for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
+                    logging.info("Successfully added enabled column and index")
+                else:
+                    logging.debug("enabled column already exists in Creator_users table")
+
+                # Migration 5: Create kb_registry table if it doesn't exist
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
+                kb_registry_table_exists = cursor.fetchone()
+
+                if not kb_registry_table_exists:
+                    logging.info("Creating kb_registry table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}kb_registry (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            kb_id TEXT NOT NULL UNIQUE,
+                            kb_name TEXT NOT NULL,
+                            owner_user_id INTEGER NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            is_shared BOOLEAN DEFAULT FALSE,
+                            metadata JSON,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                        )
+                    """)
+
+                    # Create indexes for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_owner ON {self.table_prefix}kb_registry(owner_user_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
+
+                    logging.info("Successfully created kb_registry table and indexes")
+                else:
+                    logging.debug("kb_registry table already exists")
+
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
         finally:
@@ -971,6 +1018,629 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logging.error(f"Error deleting organization: {e}")
             return False
+        finally:
+            connection.close()
+    
+    # Organization Migration Methods
+    
+    def validate_migration(self, source_org_id: int, target_org_id: int) -> Dict[str, Any]:
+        """
+        Validate migration feasibility before execution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            
+        Returns:
+            Dict with validation results, conflicts, and resource counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {
+                "can_migrate": False,
+                "error": "Database connection failed",
+                "conflicts": {"assistants": [], "templates": []},
+                "resources": {}
+            }
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check if organizations exist
+                cursor.execute(f"""
+                    SELECT id, slug, is_system FROM {self.table_prefix}organizations WHERE id = ?
+                """, (source_org_id,))
+                source_org = cursor.fetchone()
+                if not source_org:
+                    return {
+                        "can_migrate": False,
+                        "error": "Source organization not found",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                if source_org[2]:  # is_system
+                    return {
+                        "can_migrate": False,
+                        "error": "Cannot migrate system organization",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                cursor.execute(f"""
+                    SELECT id, slug FROM {self.table_prefix}organizations WHERE id = ?
+                """, (target_org_id,))
+                target_org = cursor.fetchone()
+                if not target_org:
+                    return {
+                        "can_migrate": False,
+                        "error": "Target organization not found",
+                        "conflicts": {"assistants": [], "templates": []},
+                        "resources": {}
+                    }
+                
+                source_org_slug = source_org[1]
+                
+                # Count resources
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}Creator_users WHERE organization_id = ?
+                """, (source_org_id,))
+                user_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}assistants WHERE organization_id = ?
+                """, (source_org_id,))
+                assistant_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}prompt_templates WHERE organization_id = ?
+                """, (source_org_id,))
+                template_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}kb_registry WHERE organization_id = ?
+                """, (source_org_id,))
+                kb_count = cursor.fetchone()[0]
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}usage_logs WHERE organization_id = ?
+                """, (source_org_id,))
+                log_count = cursor.fetchone()[0]
+                
+                # Detect assistant conflicts
+                cursor.execute(f"""
+                    SELECT a.id, a.name, a.owner
+                    FROM {self.table_prefix}assistants a
+                    WHERE a.organization_id = ?
+                    AND EXISTS (
+                        SELECT 1 FROM {self.table_prefix}assistants t
+                        WHERE t.organization_id = ?
+                        AND t.name = a.name
+                        AND t.owner = a.owner
+                    )
+                """, (source_org_id, target_org_id))
+                assistant_conflicts = []
+                for row in cursor.fetchall():
+                    assistant_conflicts.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner": row[2],
+                        "conflict_reason": "Target org already has assistant with same name and owner"
+                    })
+                
+                # Detect template conflicts
+                cursor.execute(f"""
+                    SELECT pt.id, pt.name, pt.owner_email
+                    FROM {self.table_prefix}prompt_templates pt
+                    WHERE pt.organization_id = ?
+                    AND EXISTS (
+                        SELECT 1 FROM {self.table_prefix}prompt_templates t
+                        WHERE t.organization_id = ?
+                        AND t.name = pt.name
+                        AND t.owner_email = pt.owner_email
+                    )
+                """, (source_org_id, target_org_id))
+                template_conflicts = []
+                for row in cursor.fetchall():
+                    template_conflicts.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner_email": row[2],
+                        "conflict_reason": "Target org already has template with same name and owner"
+                    })
+                
+                return {
+                    "can_migrate": True,
+                    "conflicts": {
+                        "assistants": assistant_conflicts,
+                        "templates": template_conflicts
+                    },
+                    "resources": {
+                        "users": user_count,
+                        "assistants": assistant_count,
+                        "templates": template_count,
+                        "kbs": kb_count,
+                        "usage_logs": log_count
+                    },
+                    "source_org_slug": source_org_slug,
+                    "estimated_time_seconds": max(10, (user_count + assistant_count + template_count) // 10)
+                }
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error validating migration: {e}")
+            return {
+                "can_migrate": False,
+                "error": str(e),
+                "conflicts": {"assistants": [], "templates": []},
+                "resources": {}
+            }
+        finally:
+            connection.close()
+    
+    def migrate_users(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate users from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating users: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_roles(self, source_org_id: int, target_org_id: int, preserve_admin_roles: bool = False) -> int:
+        """
+        Migrate organization roles from source to target organization.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            preserve_admin_roles: If True, keep admin/owner roles. If False, downgrade to 'member'
+        
+        Returns:
+            Number of roles migrated
+        """
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all roles from source org
+                cursor.execute(f"""
+                    SELECT user_id, role FROM {self.table_prefix}organization_roles
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                roles = cursor.fetchall()
+                migrated = 0
+                
+                for user_id, role in roles:
+                    # Determine target role
+                    if preserve_admin_roles:
+                        target_role = role  # Keep same role
+                    else:
+                        # Downgrade admins/owners to members
+                        if role in ['admin', 'owner']:
+                            target_role = 'member'
+                        else:
+                            target_role = role  # Keep member as member
+                    
+                    # Assign role in target organization
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (target_org_id, user_id, target_role, now, now))
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating roles: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_assistants(self, source_org_id: int, target_org_id: int, source_org_slug: str, 
+                          conflict_strategy: str = "rename") -> Dict[str, Any]:
+        """
+        Migrate assistants from source to target organization with conflict resolution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug (for renaming)
+            conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
+        
+        Returns:
+            Dict with count and renamed list
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {"count": 0, "renamed": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all assistants from source org
+                cursor.execute(f"""
+                    SELECT id, name, owner FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                assistants = cursor.fetchall()
+                migrated = 0
+                renamed = []
+                
+                for assistant_id, name, owner in assistants:
+                    # Check for conflict
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}assistants
+                        WHERE organization_id = ? AND name = ? AND owner = ?
+                    """, (target_org_id, name, owner))
+                    
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            logging.warning(f"Skipping assistant {name} (conflict detected)")
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}assistants
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, assistant_id))
+                            renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}assistants
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, assistant_id))
+                    
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                return {"count": migrated, "renamed": renamed}
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating assistants: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_templates(self, source_org_id: int, target_org_id: int, source_org_slug: str,
+                         conflict_strategy: str = "rename") -> Dict[str, Any]:
+        """
+        Migrate prompt templates from source to target organization with conflict resolution.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug (for renaming)
+            conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
+        
+        Returns:
+            Dict with count and renamed list
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {"count": 0, "renamed": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Get all templates from source org
+                cursor.execute(f"""
+                    SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                
+                templates = cursor.fetchall()
+                migrated = 0
+                renamed = []
+                
+                for template_id, name, owner_email in templates:
+                    # Check for conflict
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}prompt_templates
+                        WHERE organization_id = ? AND name = ? AND owner_email = ?
+                    """, (target_org_id, name, owner_email))
+                    
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            logging.warning(f"Skipping template {name} (conflict detected)")
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}prompt_templates
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, template_id))
+                            renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}prompt_templates
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, template_id))
+                    
+                    migrated += 1
+                
+                logging.info(f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                return {"count": migrated, "renamed": renamed}
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating templates: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_kb_registry(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate KB registry entries from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating KB registry: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_usage_logs(self, source_org_id: int, target_org_id: int) -> int:
+        """Migrate usage logs from source to target organization"""
+        connection = self.get_connection()
+        if not connection:
+            return 0
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}usage_logs
+                    SET organization_id = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, source_org_id))
+                
+                migrated = cursor.rowcount
+                logging.info(f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
+                return migrated
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error migrating usage logs: {e}")
+            raise
+        finally:
+            connection.close()
+    
+    def migrate_organization_comprehensive(self, source_org_id: int, target_org_id: int,
+                                           source_org_slug: str, conflict_strategy: str = "rename",
+                                           preserve_admin_roles: bool = False) -> Dict[str, Any]:
+        """
+        Comprehensive organization migration with transaction safety.
+        All operations use the same connection for atomicity.
+        
+        Args:
+            source_org_id: Source organization ID
+            target_org_id: Target organization ID
+            source_org_slug: Source organization slug
+            conflict_strategy: "rename", "skip", or "fail"
+            preserve_admin_roles: Whether to preserve admin roles
+        
+        Returns:
+            Migration report dict
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {
+                "success": False,
+                "error": "Database connection failed",
+                "resources_migrated": {},
+                "conflicts_resolved": {}
+            }
+        
+        migration_report = {
+            "success": False,
+            "resources_migrated": {},
+            "conflicts_resolved": {},
+            "errors": []
+        }
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # 1. Migrate users
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                users_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["users"] = users_migrated
+                logging.info(f"Migrated {users_migrated} users")
+                
+                # 2. Migrate roles
+                cursor.execute(f"""
+                    SELECT user_id, role FROM {self.table_prefix}organization_roles
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                roles = cursor.fetchall()
+                roles_migrated = 0
+                for user_id, role in roles:
+                    target_role = role if preserve_admin_roles else ('member' if role in ['admin', 'owner'] else role)
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (target_org_id, user_id, target_role, now, now))
+                    roles_migrated += 1
+                migration_report["resources_migrated"]["roles"] = roles_migrated
+                logging.info(f"Migrated {roles_migrated} roles")
+                
+                # 3. Migrate assistants
+                cursor.execute(f"""
+                    SELECT id, name, owner FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                assistants = cursor.fetchall()
+                assistants_migrated = 0
+                assistants_renamed = []
+                for assistant_id, name, owner in assistants:
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}assistants
+                        WHERE organization_id = ? AND name = ? AND owner = ?
+                    """, (target_org_id, name, owner))
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}assistants
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, assistant_id))
+                            assistants_renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}assistants
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, assistant_id))
+                    assistants_migrated += 1
+                migration_report["resources_migrated"]["assistants"] = assistants_migrated
+                migration_report["conflicts_resolved"]["assistants_renamed"] = len(assistants_renamed)
+                logging.info(f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
+                
+                # 4. Migrate templates
+                cursor.execute(f"""
+                    SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
+                    WHERE organization_id = ?
+                """, (source_org_id,))
+                templates = cursor.fetchall()
+                templates_migrated = 0
+                templates_renamed = []
+                for template_id, name, owner_email in templates:
+                    cursor.execute(f"""
+                        SELECT COUNT(*) FROM {self.table_prefix}prompt_templates
+                        WHERE organization_id = ? AND name = ? AND owner_email = ?
+                    """, (target_org_id, name, owner_email))
+                    conflict_exists = cursor.fetchone()[0] > 0
+                    
+                    if conflict_exists:
+                        if conflict_strategy == "skip":
+                            continue
+                        elif conflict_strategy == "fail":
+                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                        else:  # rename
+                            new_name = f"{source_org_slug}_{name}"
+                            cursor.execute(f"""
+                                UPDATE {self.table_prefix}prompt_templates
+                                SET organization_id = ?, name = ?, updated_at = ?
+                                WHERE id = ?
+                            """, (target_org_id, new_name, now, template_id))
+                            templates_renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                    else:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}prompt_templates
+                            SET organization_id = ?, updated_at = ?
+                            WHERE id = ?
+                        """, (target_org_id, now, template_id))
+                    templates_migrated += 1
+                migration_report["resources_migrated"]["templates"] = templates_migrated
+                migration_report["conflicts_resolved"]["templates_renamed"] = len(templates_renamed)
+                logging.info(f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
+                
+                # 5. Migrate KB registry
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET organization_id = ?, updated_at = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, now, source_org_id))
+                kbs_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["kbs"] = kbs_migrated
+                logging.info(f"Migrated {kbs_migrated} KB registry entries")
+                
+                # 6. Migrate usage logs
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}usage_logs
+                    SET organization_id = ?
+                    WHERE organization_id = ?
+                """, (target_org_id, source_org_id))
+                logs_migrated = cursor.rowcount
+                migration_report["resources_migrated"]["usage_logs"] = logs_migrated
+                logging.info(f"Migrated {logs_migrated} usage logs")
+                
+                # All migrations successful
+                migration_report["success"] = True
+                logging.info(f"Successfully migrated organization {source_org_id} to {target_org_id}")
+                
+                return migration_report
+                
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f"Error during migration: {error_msg}")
+            migration_report["success"] = False
+            migration_report["errors"].append(error_msg)
+            # Transaction will rollback automatically on exception
+            raise
         finally:
             connection.close()
     
@@ -1503,7 +2173,7 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled 
                     FROM {self.table_prefix}Creator_users 
                     WHERE user_email = ?
                 """, (user_email,))
@@ -1518,7 +2188,8 @@ class LambDatabaseManager:
                     'email': result[2],
                     'name': result[3],
                     'user_type': result[4],
-                    'user_config': json.loads(result[5]) if result[5] else {}
+                    'user_config': json.loads(result[5]) if result[5] else {},
+                    'enabled': bool(result[6]) if len(result) > 6 else True
                 }
 
         except sqlite3.Error as e:
@@ -1654,6 +2325,265 @@ class LambDatabaseManager:
         finally:
             if connection:
                 connection.close()
+
+    def disable_user(self, user_id: int) -> bool:
+        """
+        Disable a user account
+        
+        Args:
+            user_id: User ID to disable
+            
+        Returns:
+            bool: True if successful, False if user not found or already disabled
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check current status
+                cursor.execute(
+                    f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                row = cursor.fetchone()
+                
+                if not row:
+                    logging.warning(f"User {user_id} not found")
+                    return False
+                
+                if row[0] == 0:  # Already disabled
+                    logging.info(f"User {user_id} already disabled")
+                    return False
+                
+                # Disable user
+                cursor.execute(
+                    f"""UPDATE {self.table_prefix}Creator_users 
+                        SET enabled = 0, updated_at = ? 
+                        WHERE id = ?""",
+                    (int(time.time()), user_id)
+                )
+                logging.info(f"Successfully disabled user {user_id}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Error disabling user {user_id}: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def enable_user(self, user_id: int) -> bool:
+        """
+        Enable a user account
+        
+        Args:
+            user_id: User ID to enable
+            
+        Returns:
+            bool: True if successful, False if user not found or already enabled
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check current status
+                cursor.execute(
+                    f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                row = cursor.fetchone()
+                
+                if not row:
+                    logging.warning(f"User {user_id} not found")
+                    return False
+                
+                if row[0] == 1:  # Already enabled
+                    logging.info(f"User {user_id} already enabled")
+                    return False
+                
+                # Enable user
+                cursor.execute(
+                    f"""UPDATE {self.table_prefix}Creator_users 
+                        SET enabled = 1, updated_at = ? 
+                        WHERE id = ?""",
+                    (int(time.time()), user_id)
+                )
+                logging.info(f"Successfully enabled user {user_id}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Error enabling user {user_id}: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def is_user_enabled(self, user_id: int) -> bool:
+        """
+        Check if user account is enabled
+        
+        Args:
+            user_id: User ID to check
+            
+        Returns:
+            bool: True if enabled, False if disabled or not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return False
+        
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            return row and row[0] == 1
+            
+        except Exception as e:
+            logging.error(f"Error checking user enabled status: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+        """
+        Disable multiple user accounts in a single transaction
+        
+        Args:
+            user_ids: List of user IDs to disable
+            
+        Returns:
+            Dict with success/failed lists and counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return {"success": [], "failed": user_ids, "already_disabled": []}
+        
+        results = {"success": [], "failed": [], "already_disabled": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                for user_id in user_ids:
+                    try:
+                        # Check if user exists and current status
+                        cursor.execute(
+                            f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                            (user_id,)
+                        )
+                        row = cursor.fetchone()
+                        
+                        if not row:
+                            results["failed"].append(user_id)
+                            continue
+                        
+                        if row[0] == 0:  # Already disabled
+                            results["already_disabled"].append(user_id)
+                            continue
+                        
+                        # Disable user
+                        cursor.execute(
+                            f"""UPDATE {self.table_prefix}Creator_users 
+                                SET enabled = 0, updated_at = ? 
+                                WHERE id = ?""",
+                            (current_time, user_id)
+                        )
+                        results["success"].append(user_id)
+                    except Exception as e:
+                        logging.error(f"Error disabling user {user_id}: {e}")
+                        results["failed"].append(user_id)
+                
+                logging.info(f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                
+        except Exception as e:
+            logging.error(f"Error in bulk disable: {e}")
+            # Mark all as failed
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_disabled"] and uid not in results["failed"]])
+        finally:
+            if connection:
+                connection.close()
+        
+        return results
+
+    def enable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+        """
+        Enable multiple user accounts in a single transaction
+        
+        Args:
+            user_ids: List of user IDs to enable
+            
+        Returns:
+            Dict with success/failed lists and counts
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return {"success": [], "failed": user_ids, "already_enabled": []}
+        
+        results = {"success": [], "failed": [], "already_enabled": []}
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                for user_id in user_ids:
+                    try:
+                        # Check if user exists and current status
+                        cursor.execute(
+                            f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
+                            (user_id,)
+                        )
+                        row = cursor.fetchone()
+                        
+                        if not row:
+                            results["failed"].append(user_id)
+                            continue
+                        
+                        if row[0] == 1:  # Already enabled
+                            results["already_enabled"].append(user_id)
+                            continue
+                        
+                        # Enable user
+                        cursor.execute(
+                            f"""UPDATE {self.table_prefix}Creator_users 
+                                SET enabled = 1, updated_at = ? 
+                                WHERE id = ?""",
+                            (current_time, user_id)
+                        )
+                        results["success"].append(user_id)
+                    except Exception as e:
+                        logging.error(f"Error enabling user {user_id}: {e}")
+                        results["failed"].append(user_id)
+                
+                logging.info(f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                
+        except Exception as e:
+            logging.error(f"Error in bulk enable: {e}")
+            # Mark all as failed
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_enabled"] and uid not in results["failed"]])
+        finally:
+            if connection:
+                connection.close()
+        
+        return results
 
     def create_lti_user(self, lti_user: LTIUser):
         connection = self.get_connection()
@@ -2529,7 +3459,7 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
                            o.name as org_name, o.slug as org_slug, o.is_system,
-                           COALESCE(r.role, 'member') as org_role
+                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
@@ -2551,7 +3481,9 @@ class LambDatabaseManager:
                             'slug': row[6],
                             'is_system': bool(row[7]) if row[7] is not None else False
                         },
-                        'organization_role': row[8]
+                        'organization_role': row[8],
+                        'user_type': row[9] if len(row) > 9 else 'creator',
+                        'enabled': bool(row[10]) if len(row) > 10 else True
                     })
                 return users
 
@@ -3330,3 +4262,519 @@ class LambDatabaseManager:
             True if successful, False otherwise
         """
         return self.update_prompt_template(template_id, {'is_shared': is_shared}, owner_email)
+
+    # ========== KB Registry Methods ==========
+
+    def register_kb(self, kb_id: str, kb_name: str, owner_user_id: int, organization_id: int,
+                    is_shared: bool = False, metadata: Dict[str, Any] = None) -> Optional[int]:
+        """
+        Register a KB in LAMB's registry.
+        Called when KB is created or auto-registered on first access.
+        
+        Args:
+            kb_id: UUID from KB Server
+            kb_name: Display name
+            owner_user_id: Creator user ID
+            organization_id: Organization ID
+            is_shared: Whether KB is shared with org (default: False)
+            metadata: Optional metadata dict
+        
+        Returns:
+            Registry entry ID if successful, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Could not establish database connection")
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                metadata_json = json.dumps(metadata or {})
+                
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}kb_registry 
+                    (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata_json, current_time, current_time))
+                
+                registry_id = cursor.lastrowid
+                logging.info(f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
+                return registry_id
+                
+        except sqlite3.IntegrityError as e:
+            logging.error(f"Integrity error registering KB: {e}")
+            return None
+        except sqlite3.Error as e:
+            logging.error(f"Database error registering KB: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_kb_registry_entry(self, kb_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get KB registry entry with owner info.
+        
+        Args:
+            kb_id: KB UUID
+        
+        Returns:
+            Registry entry dict or None
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.kb_id = ?
+                """, (kb_id,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                
+                return {
+                    'id': row[0],
+                    'kb_id': row[1],
+                    'kb_name': row[2],
+                    'owner_user_id': row[3],
+                    'organization_id': row[4],
+                    'is_shared': bool(row[5]),
+                    'metadata': json.loads(row[6]) if row[6] else {},
+                    'created_at': row[7],
+                    'updated_at': row[8],
+                    'owner_name': row[9],
+                    'owner_email': row[10]
+                }
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting KB registry entry: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_owned_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs owned by user.
+        
+        Args:
+            user_id: User ID
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries owned by user
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? AND kr.owner_user_id = ?
+                    ORDER BY kr.updated_at DESC
+                """, (organization_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting owned KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_shared_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs shared in organization (excluding user's own).
+        
+        Args:
+            user_id: User ID (to exclude own KBs)
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries shared in org (not owned by user)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? 
+                    AND kr.is_shared = TRUE
+                    AND kr.owner_user_id != ?
+                    ORDER BY kr.updated_at DESC
+                """, (organization_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting shared KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_accessible_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs accessible to user (owned OR shared in org).
+        Mirrors template access pattern.
+        NOTE: Consider using get_owned_kbs() and get_shared_kbs() separately for better UX.
+        
+        Args:
+            user_id: User ID
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries with owner info, ordered by ownership (owned first)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? 
+                    AND (kr.owner_user_id = ? OR kr.is_shared = TRUE)
+                    ORDER BY kr.owner_user_id = ? DESC, kr.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting accessible KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_kb(self, kb_id: str, user_id: int) -> Tuple[bool, str]:
+        """
+        Check if user can access KB and return access level.
+        Mirrors template access checking.
+        
+        Args:
+            kb_id: KB UUID
+            user_id: User ID
+        
+        Returns:
+            (can_access, access_type) where access_type is 'owner', 'shared', or 'none'
+        """
+        entry = self.get_kb_registry_entry(kb_id)
+        
+        if not entry:
+            return (False, 'none')
+        
+        # User is owner
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        
+        # KB is shared in user's organization
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        
+        return (False, 'none')
+
+    def check_kb_used_by_other_users(self, kb_id: str, kb_owner_user_id: int) -> List[Dict[str, Any]]:
+        """
+        Check if a KB is used by assistants owned by other users.
+        
+        Args:
+            kb_id: KB UUID to check
+            kb_owner_user_id: User ID of the KB owner
+        
+        Returns:
+            List of assistants using this KB (owned by other users).
+            Empty list if KB is not used by other users or can be safely unshared.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get KB owner's email
+                kb_owner = self.get_creator_user_by_id(kb_owner_user_id)
+                if not kb_owner:
+                    return []
+                
+                kb_owner_email = kb_owner['user_email']
+                
+                # Find assistants that reference this KB in RAG_collections
+                # RAG_collections is comma-separated, so we need to check if kb_id appears in the string
+                # Only check assistants owned by users OTHER than the KB owner
+                query = f"""
+                    SELECT a.id, a.name, a.owner, u.user_name as owner_name
+                    FROM {self.table_prefix}assistants a
+                    JOIN {self.table_prefix}Creator_users u ON a.owner = u.user_email
+                    WHERE a.RAG_collections LIKE ? 
+                    AND a.owner != ?
+                    AND u.id != ?
+                """
+                
+                # Use LIKE with wildcards to match KB ID in comma-separated list
+                # Match patterns: "kb_id", "kb_id,", ",kb_id", ",kb_id,"
+                kb_pattern = f"%{kb_id}%"
+                cursor.execute(query, (kb_pattern, kb_owner_email, kb_owner_user_id))
+                rows = cursor.fetchall()
+                
+                # Additional check: verify KB ID is actually in the list (not just substring match)
+                matching_assistants = []
+                for row in rows:
+                    assistant_id, assistant_name, owner_email, owner_name = row
+                    # Get full RAG_collections string to verify exact match
+                    cursor.execute(f"""
+                        SELECT RAG_collections 
+                        FROM {self.table_prefix}assistants 
+                        WHERE id = ?
+                    """, (assistant_id,))
+                    rag_result = cursor.fetchone()
+                    
+                    if rag_result and rag_result[0]:
+                        collections = [c.strip() for c in rag_result[0].split(',') if c.strip()]
+                        if kb_id in collections:
+                            matching_assistants.append({
+                                'id': assistant_id,
+                                'name': assistant_name,
+                                'owner_email': owner_email,
+                                'owner_name': owner_name
+                            })
+                
+                return matching_assistants
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error checking KB usage: {e}")
+            return []
+
+    def toggle_kb_sharing(self, kb_id: str, is_shared: bool) -> bool:
+        """
+        Toggle KB sharing status.
+        Only owner can call this.
+        
+        Args:
+            kb_id: KB UUID
+            is_shared: New sharing state
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry 
+                    SET is_shared = ?, updated_at = ?
+                    WHERE kb_id = ?
+                """, (is_shared, current_time, kb_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Toggled KB {kb_id} sharing to {is_shared}")
+                else:
+                    logging.warning(f"KB {kb_id} not found for sharing toggle")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error toggling KB sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_kb_registry_created_at(self, kb_id: str, created_at: int) -> bool:
+        """
+        Update KB registry created_at timestamp.
+        Used when auto-registering KBs to preserve original creation date.
+        
+        Args:
+            kb_id: KB UUID
+            created_at: Unix timestamp (seconds since epoch)
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET created_at = ?
+                    WHERE kb_id = ?
+                """, (created_at, kb_id))
+                
+                if cursor.rowcount > 0:
+                    logging.info(f"Updated created_at for KB {kb_id} to {created_at}")
+                    return True
+                else:
+                    logging.warning(f"KB {kb_id} not found in registry for created_at update")
+                    return False
+                    
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating KB created_at: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_kb_registry_name(self, kb_id: str, kb_name: str) -> bool:
+        """
+        Update cached KB name.
+        Called when KB is renamed.
+        
+        Args:
+            kb_id: KB UUID
+            kb_name: New KB name
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry 
+                    SET kb_name = ?, updated_at = ?
+                    WHERE kb_id = ?
+                """, (kb_name, current_time, kb_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Updated KB {kb_id} name to '{kb_name}'")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating KB registry name: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_kb_registry_entry(self, kb_id: str) -> bool:
+        """
+        Delete KB registry entry.
+        Called when KB is deleted.
+        
+        Args:
+            kb_id: KB UUID
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}kb_registry 
+                    WHERE kb_id = ?
+                """, (kb_id,))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Deleted KB registry entry for {kb_id}")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error deleting KB registry entry: {e}")
+            return False
+        finally:
+            connection.close()

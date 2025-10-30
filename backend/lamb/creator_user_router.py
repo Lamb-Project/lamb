@@ -138,6 +138,14 @@ async def verify_creator_user(
                 detail="Invalid email or password"
             )
 
+        # Check if user account is enabled
+        if not user.get('enabled', True):
+            logger.warning(f"Disabled user {user_data.email} attempted login")
+            raise HTTPException(
+                status_code=403,
+                detail="Account has been disabled. Please contact your administrator."
+            )
+
         # Initialize OWI user manager
         from .owi_bridge.owi_users import OwiUserManager
         owi_manager = OwiUserManager()

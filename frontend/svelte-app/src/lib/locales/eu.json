@@ -198,6 +198,9 @@
     "unpublishAssistant": "Desargitaratu Laguntzailea",
     "detailProperties": "Laguntzailearen xehetasun propietateak",
     "loadingDetail": "Laguntzailearen xehetasunak kargatzen...",
+    "assistant_not_found": "ID {id} duen laguntzailea ez da aurkitu.",
+    "error_fetching_assistant": "Errorea laguntzailearen xehetasunak eskuratzean",
+    "errorTitle": "Errorea:",
     "notSet": "Ez ezarrita",
     "form": {
       "advancedMode": "Modu Aurreratua",
@@ -521,6 +524,9 @@
     "loadTemplate": "Kargatu Txantiloia",
     "selectTemplate": "Hautatu Prompt Txantiloia",
     "applyTemplate": "Aplikatu Txantiloia",
+    "importFromAssistant": "Laguntzailetik Inportatu",
+    "selectAssistant": "Inportatzeko Laguntzailea Hautatu",
+    "viewTemplate": "Txantiloia Ikusi",
     "name": "Izena",
     "systemPrompt": "Sistema Prompt-a",
     "promptTemplate": "Prompt Txantiloia",
@@ -533,5 +539,176 @@
     "deleteWarning": "Ekintza hau ezin da desegin. Txantiloia betirako ezabatuko da.",
     "export": "Esportatu",
     "search": "Bilatu txantiloiak..."
+  },
+  "admin": {
+    "tabs": {
+      "dashboard": "Kontrol Panela",
+      "users": "Erabiltzaile Kudeaketa",
+      "organizations": "Erakundeak"
+    },
+    "dashboard": {
+      "title": "Administrazio Panela",
+      "welcome": "Ongi etorri administrazio eremura. Erabili goiko fitxak nabigatzeko."
+    },
+    "users": {
+      "title": "Erabiltzaile Kudeaketa",
+      "loading": "Erabiltzaileak kargatzen...",
+      "errorTitle": "Errorea:",
+      "retry": "Saiatu berriro",
+      "noUsers": "Ez da erabiltzailerik aurkitu.",
+      "searchPlaceholder": "Bilatu erabiltzaileak izenaz, posta elektronikoz, erakundez...",
+      "filters": {
+        "type": "Erabiltzaile Mota",
+        "status": "Egoera"
+      },
+      "filtersOptions": {
+        "admin": "Administratzailea",
+        "creator": "Sortzailea",
+        "endUser": "Amaierako Erabiltzailea",
+        "active": "Aktibo",
+        "disabled": "Desgaituta"
+      },
+      "table": {
+        "name": "Izena",
+        "email": "Posta Elektronikoa",
+        "userType": "Erabiltzaile Mota",
+        "organization": "Erakundea",
+        "status": "Egoera",
+        "actions": "Ekintzak"
+      },
+      "tableValues": {
+        "system": "Sistema",
+        "noOrganization": "Erakunderik Gabe"
+      },
+      "actions": {
+        "create": "Sortu Erabiltzailea",
+        "changePassword": "Aldatu Pasahitza",
+        "disable": "Desgaitu Erabiltzailea",
+        "enable": "Gaitu Erabiltzailea",
+        "cannotDisableSelf": "Ezin duzu zure kontua desgaitu"
+      },
+      "bulkActions": {
+        "selected": "{count} erabiltzaile hautatuta",
+        "selectedPlural": "{count} erabiltzaile hautatuta",
+        "disableSelected": "Desgaitu Hautatuak",
+        "enableSelected": "Gaitu Hautatuak",
+        "clear": "Garbitu"
+      },
+      "resultsCount": {
+        "showing": "{total} erabiltzailetatik {filtered} erakusten",
+        "total": "{count} erabiltzaile",
+        "noMatch": "Ez da zure filtroekin bat datorren erabiltzailerik",
+        "clearFilters": "Garbitu filtroak"
+      },
+      "sortOptions": {
+        "name": "Izena",
+        "email": "Posta Elektronikoa",
+        "userId": "Erabiltzaile ID"
+      },
+      "password": {
+        "title": "Aldatu Pasahitza",
+        "subtitle": "Ezarri pasahitz berria honentzat",
+        "email": "Posta Elektronikoa",
+        "newPassword": "Pasahitz Berria",
+        "hint": "Gutxienez 8 karaktere gomendatua",
+        "cancel": "Utzi",
+        "changing": "Aldatzen...",
+        "change": "Aldatu Pasahitza",
+        "success": "Pasahitza behar bezala aldatu da!"
+      },
+      "create": {
+        "title": "Sortu Erabiltzaile Berria",
+        "email": "Posta Elektronikoa",
+        "name": "Izena",
+        "password": "Pasahitza",
+        "role": "Rola",
+        "roleUser": "Erabiltzailea",
+        "roleAdmin": "Administratzailea",
+        "userType": "Erabiltzaile Mota",
+        "userTypeCreator": "Sortzailea",
+        "userTypeEndUser": "Amaierako Erabiltzailea",
+        "organization": "Erakundea",
+        "cancel": "Utzi",
+        "creating": "Sortzen...",
+        "create": "Sortu Erabiltzailea",
+        "success": "Erabiltzailea behar bezala sortu da!"
+      },
+      "errors": {
+        "fillRequired": "Mesedez bete beharrezko eremu guztiak.",
+        "invalidEmail": "Mesedez sartu posta elektroniko baliozko bat.",
+        "authTokenNotFound": "Autentifikazio tokena ez da aurkitu. Mesedez hasi saioa berriro.",
+        "createFailed": "Errorea erabiltzailea sortzean.",
+        "unknownError": "Errore ezezaguna gertatu da erabiltzailea sortzean.",
+        "passwordRequired": "Mesedez sartu pasahitz berri bat.",
+        "passwordMinLength": "Pasahitzak gutxienez 8 karaktere eduki behar ditu.",
+        "passwordChangeFailed": "Errorea pasahitza aldatzean.",
+        "passwordChangeUnknownError": "Errore ezezaguna gertatu da pasahitza aldatzean."
+      }
+    },
+    "organizations": {
+      "title": "Erakunde Kudeaketa",
+      "loading": "Erakundeak kargatzen...",
+      "errorTitle": "Errorea:",
+      "retry": "Saiatu berriro",
+      "noOrganizations": "Ez da erakunderik aurkitu.",
+      "actions": {
+        "create": "Sortu Erakundea",
+        "viewConfig": "Ikusi Konfigurazioa",
+        "migrate": "Migratu Erakundea",
+        "delete": "Ezabatu Erakundea",
+        "syncSystem": "Sinkronizatu Sistema"
+      },
+      "migration": {
+        "title": "Migratu Erakundea",
+        "description": "Migratu baliabide guztiak",
+        "targetOrg": "Helburuko Erakundea",
+        "selectTarget": "Hautatu helburuko erakundea...",
+        "validate": "Balidatu Migrazioa",
+        "validating": "Balidatzen...",
+        "resources": "Migratzeko Baliabideak",
+        "conflicts": "Konfliktoak Detektatuta",
+        "options": "Migrazio Aukerak",
+        "conflictStrategy": "Konfliktoak Ebatze Estrategia",
+        "rename": "Konfliktoak dituzten baliabideei izena aldatu",
+        "skip": "Konfliktoak dituzten baliabideak ezikusi",
+        "fail": "Konfliktoak daudenean huts egin",
+        "preserveAdminRoles": "Jatorrizko erakundeko administratzaile rolak mantendu",
+        "preserveAdminRolesHint": "Markatuta ez badago, jatorrizko erakundeko administratzaileak kide arrunt gisa migratuko dira. Markatuta badago, helburuko erakundean administratzaile pribilegioak mantenduko dituzte.",
+        "deleteSource": "Jatorrizko erakundea ezabatu migrazioa egin ondoren",
+        "deleteSourceHint": "Markatuta badago, jatorrizko erakundea behin betiko ezabatuko da migrazioa arrakastatsua izan ondoren. Ekintza hau ezin da desegin.",
+        "cancel": "Utzi",
+        "execute": "Exekutatu Migrazioa",
+        "migrating": "Migratzen...",
+        "success": "Migrazioa behar bezala burutu da!"
+      },
+      "table": {
+        "name": "Izena",
+        "slug": "Slug",
+        "status": "Egoera",
+        "type": "Mota",
+        "actions": "Ekintzak"
+      },
+      "create": {
+        "title": "Sortu Erakunde Berria",
+        "slug": "Slug",
+        "name": "Izena",
+        "features": "Ezaugarriak",
+        "limits": "Erabilera Mugak",
+        "cancel": "Utzi",
+        "creating": "Sortzen...",
+        "create": "Sortu Erakundea",
+        "success": "Erakundea behar bezala sortu da!"
+      },
+      "errors": {
+        "fillRequired": "Mesedez bete beharrezko eremu guztiak.",
+        "selectAdmin": "Mesedez aukeratu erakundearentzat administratzaile erabiltzaile bat.",
+        "slugInvalid": "Slug-ak bakarrik letra xeheak, zenbakiak eta gidoiak eduki ditzake.",
+        "signupKeyLength": "Izen-emate gakoak gutxienez 8 karaktere eduki behar ditu izen-ematea gaituta dagoenean.",
+        "signupKeyInvalid": "Izen-emate gakoak bakarrik letrak, zenbakiak, gidoiak eta azpimarrak eduki ditzake.",
+        "authTokenNotFound": "Autentifikazio tokena ez da aurkitu. Mesedez hasi saioa berriro.",
+        "createFailed": "Errorea erakundea sortzean.",
+        "unknownError": "Errore ezezaguna gertatu da erakundea sortzean."
+      }
+    }
   }
 }

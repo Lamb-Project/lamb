@@ -1,3 +1,9 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+/* LAMB Brand Colors */
+@theme {
+  --color-brand: #2271b3;
+  --color-brand-hover: #195a91;
+}

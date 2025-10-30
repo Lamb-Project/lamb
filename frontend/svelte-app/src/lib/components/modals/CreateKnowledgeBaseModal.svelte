@@ -13,7 +13,6 @@
     // Form data
     let name = $state('');
     let description = $state('');
-    let accessControl = $state('private'); // Default to private
     
     // Error states
     let nameError = $state('');
@@ -35,7 +34,6 @@
     function resetForm() {
         name = '';
         description = '';
-        accessControl = 'private';
         error = '';
         nameError = '';
         isSubmitting = false;
@@ -79,7 +77,7 @@
             const result = await createKnowledgeBase({
                 name: name.trim(),
                 description: description.trim() || undefined, // Don't send empty string
-                access_control: accessControl
+                access_control: 'private' // Default to private, not shown in UI
             });
             
             console.log('Knowledge base created:', result);
@@ -195,52 +193,11 @@
                     ></textarea>
                 </div>
                 
-                <!-- Access Control -->
-                <div>
-                    <fieldset>
-                        <legend class="block text-sm font-medium text-gray-700">
-                            {$_('knowledgeBases.accessControl', { default: 'Access Control' })}
-                        </legend>
-                        <div class="mt-2 space-y-2">
-                            <div class="flex items-center">
-                                <input
-                                    id="private"
-                                    name="accessControl"
-                                    type="radio"
-                                    bind:group={accessControl}
-                                    value="private"
-                                    class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300"
-                                />
-                                <label for="private" class="ml-2 block text-sm text-gray-700">
-                                    {$_('knowledgeBases.private', { default: 'Private' })}
-                                </label>
-                            </div>
-                            <div class="flex items-center">
-                                <input
-                                    id="public"
-                                    name="accessControl"
-                                    type="radio"
-                                    bind:group={accessControl}
-                                    value="public"
-                                    class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300"
-                                />
-                                <label for="public" class="ml-2 block text-sm text-gray-700">
-                                    {$_('knowledgeBases.public', { default: 'Public' })}
-                                </label>
-                            </div>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-500">
-                            {$_('knowledgeBases.accessControlHelp', { default: 'Private knowledge bases are only accessible by you, while public ones can be accessed by other users.' })}
-                        </p>
-                    </fieldset>
-                </div>
-                
                 <!-- Form actions -->
                 <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
                     <button
                         type="submit"
-                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-[#2271b3] text-base font-medium text-white hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] sm:col-start-2 sm:text-sm"
-                        style="background-color: #2271b3;"
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-brand text-base font-medium text-white hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand sm:col-start-2 sm:text-sm"
                         disabled={isSubmitting}
                     >
                         {#if isSubmitting}

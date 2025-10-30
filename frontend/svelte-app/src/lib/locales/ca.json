@@ -269,6 +269,9 @@
     "unpublishAssistant": "Despublicar Assistent",
     "detailProperties": "Propietats de detall de l'assistent",
     "loadingDetail": "Carregant detalls de l'assistent...",
+    "assistant_not_found": "Assistent amb ID {id} no trobat.",
+    "error_fetching_assistant": "Error en obtenir els detalls de l'assistent",
+    "errorTitle": "Error:",
     "notSet": "No establert"
   },
   "help": {
@@ -514,6 +517,9 @@
     "loadTemplate": "Carregar Plantilla",
     "selectTemplate": "Seleccionar Plantilla de Prompt",
     "applyTemplate": "Aplicar Plantilla",
+    "importFromAssistant": "Importar des de l'Assistent",
+    "selectAssistant": "Seleccionar Assistent per Importar",
+    "viewTemplate": "Veure Plantilla",
     "name": "Nom",
     "systemPrompt": "Prompt del Sistema",
     "promptTemplate": "Plantilla de Prompt",
@@ -526,5 +532,176 @@
     "deleteWarning": "Aquesta acció no es pot desfer. La plantilla s'eliminarà permanentment.",
     "export": "Exportar",
     "search": "Cercar plantilles..."
+  },
+  "admin": {
+    "tabs": {
+      "dashboard": "Panell de Control",
+      "users": "Gestió d'Usuaris",
+      "organizations": "Organitzacions"
+    },
+    "dashboard": {
+      "title": "Panell d'Administració",
+      "welcome": "Benvingut a l'àrea d'administració. Utilitza les pestanyes de dalt per navegar."
+    },
+    "users": {
+      "title": "Gestió d'Usuaris",
+      "loading": "Carregant usuaris...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noUsers": "No s'han trobat usuaris.",
+      "searchPlaceholder": "Cercar usuaris per nom, correu electrònic, organització...",
+      "filters": {
+        "type": "Tipus d'Usuari",
+        "status": "Estat"
+      },
+      "filtersOptions": {
+        "admin": "Administrador",
+        "creator": "Creador",
+        "endUser": "Usuari Final",
+        "active": "Actiu",
+        "disabled": "Deshabilitat"
+      },
+      "table": {
+        "name": "Nom",
+        "email": "Correu Electrònic",
+        "userType": "Tipus d'Usuari",
+        "organization": "Organització",
+        "status": "Estat",
+        "actions": "Accions"
+      },
+      "tableValues": {
+        "system": "Sistema",
+        "noOrganization": "Sense Organització"
+      },
+      "actions": {
+        "create": "Crear Usuari",
+        "changePassword": "Canviar Contrasenya",
+        "disable": "Deshabilitar Usuari",
+        "enable": "Habilitar Usuari",
+        "cannotDisableSelf": "No pots deshabilitar el teu propi compte"
+      },
+      "bulkActions": {
+        "selected": "{count} usuari seleccionat",
+        "selectedPlural": "{count} usuaris seleccionats",
+        "disableSelected": "Deshabilitar Seleccionats",
+        "enableSelected": "Habilitar Seleccionats",
+        "clear": "Netejar"
+      },
+      "resultsCount": {
+        "showing": "Mostrant {filtered} de {total} usuaris",
+        "total": "{count} usuaris",
+        "noMatch": "No hi ha usuaris que coincideixin amb els teus filtres",
+        "clearFilters": "Netejar filtres"
+      },
+      "sortOptions": {
+        "name": "Nom",
+        "email": "Correu Electrònic",
+        "userId": "ID d'Usuari"
+      },
+      "password": {
+        "title": "Canviar Contrasenya",
+        "subtitle": "Establir una nova contrasenya per",
+        "email": "Correu Electrònic",
+        "newPassword": "Nova Contrasenya",
+        "hint": "Es recomana almenys 8 caràcters",
+        "cancel": "Cancel·lar",
+        "changing": "Canviant...",
+        "change": "Canviar Contrasenya",
+        "success": "Contrasenya canviada correctament!"
+      },
+      "create": {
+        "title": "Crear Nou Usuari",
+        "email": "Correu Electrònic",
+        "name": "Nom",
+        "password": "Contrasenya",
+        "role": "Rol",
+        "roleUser": "Usuari",
+        "roleAdmin": "Administrador",
+        "userType": "Tipus d'Usuari",
+        "userTypeCreator": "Creador",
+        "userTypeEndUser": "Usuari Final",
+        "organization": "Organització",
+        "cancel": "Cancel·lar",
+        "creating": "Creant...",
+        "create": "Crear Usuari",
+        "success": "Usuari creat correctament!"
+      },
+      "errors": {
+        "fillRequired": "Si us plau completa tots els camps requerits.",
+        "invalidEmail": "Si us plau introdueix una adreça de correu electrònic vàlida.",
+        "authTokenNotFound": "Token d'autenticació no trobat. Si us plau inicia sessió novament.",
+        "createFailed": "Error al crear usuari.",
+        "unknownError": "S'ha produït un error desconegut al crear l'usuari.",
+        "passwordRequired": "Si us plau introdueix una nova contrasenya.",
+        "passwordMinLength": "La contrasenya ha de tenir almenys 8 caràcters.",
+        "passwordChangeFailed": "Error al canviar la contrasenya.",
+        "passwordChangeUnknownError": "S'ha produït un error desconegut al canviar la contrasenya."
+      }
+    },
+    "organizations": {
+      "title": "Gestió d'Organitzacions",
+      "loading": "Carregant organitzacions...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noOrganizations": "No s'han trobat organitzacions.",
+      "actions": {
+        "create": "Crear Organització",
+        "viewConfig": "Veure Configuració",
+        "migrate": "Migrar Organització",
+        "delete": "Eliminar Organització",
+        "syncSystem": "Sincronitzar Sistema"
+      },
+      "migration": {
+        "title": "Migrar Organització",
+        "description": "Migrar tots els recursos de",
+        "targetOrg": "Organització Destí",
+        "selectTarget": "Selecciona organització destí...",
+        "validate": "Validar Migració",
+        "validating": "Validant...",
+        "resources": "Recursos a Migrar",
+        "conflicts": "Conflictes Detectats",
+        "options": "Opcions de Migració",
+        "conflictStrategy": "Estratègia de Resolució de Conflictes",
+        "rename": "Canviar nom als recursos conflictius",
+        "skip": "Ometre recursos conflictius",
+        "fail": "Fallar en conflictes",
+        "preserveAdminRoles": "Preservar rols d'administrador de l'organització origen",
+        "preserveAdminRolesHint": "Si no està marcat, els administradors de l'organització origen seran migrats com a membres regulars. Si està marcat, mantindran els seus privilegis d'administrador a l'organització destí.",
+        "deleteSource": "Eliminar organització origen després de la migració",
+        "deleteSourceHint": "Si està marcat, l'organització origen serà eliminada permanentment després d'una migració exitosa. Aquesta acció no es pot desfer.",
+        "cancel": "Cancel·lar",
+        "execute": "Executar Migració",
+        "migrating": "Migrant...",
+        "success": "Migració completada correctament!"
+      },
+      "table": {
+        "name": "Nom",
+        "slug": "Slug",
+        "status": "Estat",
+        "type": "Tipus",
+        "actions": "Accions"
+      },
+      "create": {
+        "title": "Crear Nova Organització",
+        "slug": "Slug",
+        "name": "Nom",
+        "features": "Característiques",
+        "limits": "Límits d'Ús",
+        "cancel": "Cancel·lar",
+        "creating": "Creant...",
+        "create": "Crear Organització",
+        "success": "Organització creada correctament!"
+      },
+      "errors": {
+        "fillRequired": "Si us plau completa tots els camps requerits.",
+        "selectAdmin": "Si us plau selecciona un usuari administrador per a l'organització.",
+        "slugInvalid": "El slug només pot contenir lletres minúscules, números i guions.",
+        "signupKeyLength": "La clau de registre ha de tenir almenys 8 caràcters quan el registre està habilitat.",
+        "signupKeyInvalid": "La clau de registre només pot contenir lletres, números, guions i guions baixos.",
+        "authTokenNotFound": "Token d'autenticació no trobat. Si us plau inicia sessió novament.",
+        "createFailed": "Error al crear organització.",
+        "unknownError": "S'ha produït un error desconegut al crear l'organització."
+      }
+    }
   }
 }

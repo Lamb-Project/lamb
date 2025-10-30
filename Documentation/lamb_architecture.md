@@ -1,6 +1,6 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.0  
+**Version:** 2.3  
 **Last Updated:** January 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
@@ -22,8 +22,11 @@
 12. [Frontend Architecture](#12-frontend-architecture)
 13. [Deployment Architecture](#13-deployment-architecture)
 14. [Development Workflow](#14-development-workflow)
-15. [API Reference](#15-api-reference)
-16. [File Structure](#16-file-structure)
+15. [End User Feature](#15-end-user-feature)
+16. [User Blocking Feature](#16-user-blocking-feature)
+17. [Frontend UX Patterns & Best Practices](#17-frontend-ux-patterns--best-practices)
+18. [API Reference](#18-api-reference)
+19. [File Structure](#19-file-structure)
 
 ---
 
@@ -1635,6 +1638,293 @@ During completion request:
 4. Context injected into system prompt
 5. Citations provided in response (if supported by frontend)
 
+### 9.6 Knowledge Base Sharing
+
+LAMB supports organization-level Knowledge Base sharing, allowing users within the same organization to share KBs with each other. This feature follows the same pattern as Prompt Templates sharing.
+
+#### 9.6.1 Overview
+
+**Key Features:**
+- KBs can be shared within an organization
+- Shared KBs are visible to all organization members
+- Users can use shared KBs in their assistants (read-only access)
+- KB owners maintain full control (edit, delete, share/unshare)
+- Protection mechanism prevents unsharing when KB is in use by other users' assistants
+
+#### 9.6.2 Database Schema
+
+**KB Registry Table (`kb_registry`):**
+
+```sql
+CREATE TABLE kb_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kb_id TEXT NOT NULL UNIQUE,
+    kb_name TEXT NOT NULL,
+    owner_user_id INTEGER NOT NULL,
+    organization_id INTEGER NOT NULL,
+    is_shared BOOLEAN DEFAULT FALSE,
+    metadata JSON,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (owner_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+)
+
+-- Indexes for performance
+CREATE INDEX idx_kb_registry_owner ON kb_registry(owner_user_id)
+CREATE INDEX idx_kb_registry_org_shared ON kb_registry(organization_id, is_shared)
+CREATE INDEX idx_kb_registry_kb_id ON kb_registry(kb_id)
+```
+
+**Purpose:**
+- Tracks KB metadata in LAMB database (KB Server only stores documents)
+- Enables organization-scoped sharing
+- Maintains ownership and access control
+- Stores creation timestamps for sorting
+
+#### 9.6.3 Auto-Registration & Lazy Cleanup
+
+**Auto-Registration:**
+- When a user accesses their KBs, LAMB checks the KB Server
+- KBs found in KB Server but not in `kb_registry` are automatically registered
+- `created_at` is preserved from KB Server if available
+- Ensures registry stays in sync with KB Server
+
+**Lazy Cleanup (Self-Healing):**
+- When fetching KB details, if KB Server returns 404, the registry entry is automatically removed
+- Prevents stale registry entries from out-of-band deletions
+- No manual cleanup required
+
+#### 9.6.4 API Endpoints
+
+**Get Owned KBs:**
+```http
+GET /creator/knowledgebases/user
+Authorization: Bearer {token}
+
+Response:
+{
+  "knowledge_bases": [
+    {
+      "id": "kb_uuid_1",
+      "name": "CS101 Lectures",
+      "is_owner": true,
+      "is_shared": false,
+      "created_at": 1761815586,
+      ...
+    }
+  ]
+}
+```
+
+**Get Shared KBs:**
+```http
+GET /creator/knowledgebases/shared
+Authorization: Bearer {token}
+
+Response:
+{
+  "knowledge_bases": [
+    {
+      "id": "kb_uuid_2",
+      "name": "Shared Research Papers",
+      "is_owner": false,
+      "is_shared": true,
+      "shared_by": "John Doe",
+      "created_at": 1761816138,
+      ...
+    }
+  ]
+}
+```
+
+**Toggle Sharing:**
+```http
+PUT /creator/knowledgebases/kb/{kb_id}/share
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "is_shared": true
+}
+
+Response:
+{
+  "kb_id": "kb_uuid_1",
+  "is_shared": true,
+  "message": "KB is now shared with organization"
+}
+```
+
+**Error Response (KB in use):**
+```http
+Status: 409 Conflict
+
+{
+  "detail": "Cannot unshare KB: It is currently used by 2 assistant(s): Assistant A (by User 1), Assistant B (by User 2). Please ask users to remove this KB from their assistants first."
+}
+```
+
+#### 9.6.5 Access Control
+
+**Access Levels:**
+
+| Action | Owner | Shared User |
+|--------|-------|-------------|
+| View KB | ✅ | ✅ |
+| Query KB | ✅ | ✅ |
+| Use in Assistant | ✅ | ✅ |
+| Edit KB Name | ✅ | ❌ |
+| Upload Documents | ✅ | ❌ |
+| Delete Documents | ✅ | ❌ |
+| Delete KB | ✅ | ❌ |
+| Toggle Sharing | ✅ | ❌ |
+
+**Implementation:**
+
+```python
+def user_can_access_kb(kb_id: str, user_id: int) -> Tuple[bool, str]:
+    """
+    Check if user can access KB and return access level.
+    
+    Returns:
+        (can_access: bool, access_type: 'owner' | 'shared' | 'none')
+    """
+    entry = get_kb_registry_entry(kb_id)
+    if not entry:
+        return (False, 'none')
+    
+    # Owner has full access
+    if entry['owner_user_id'] == user_id:
+        return (True, 'owner')
+    
+    # Shared KBs accessible to organization members
+    user = get_creator_user_by_id(user_id)
+    if user and entry['is_shared'] and entry['organization_id'] == user['organization_id']:
+        return (True, 'shared')
+    
+    return (False, 'none')
+```
+
+#### 9.6.6 Protection Against Unsharing
+
+**Prevention Logic:**
+
+When a KB owner attempts to unshare (`is_shared = false`), the system checks if any assistants owned by other users reference this KB:
+
+```python
+def check_kb_used_by_other_users(kb_id: str, kb_owner_user_id: int) -> List[Dict]:
+    """
+    Check if KB is used by assistants owned by other users.
+    
+    Returns:
+        List of assistants using this KB (owned by other users).
+        Empty list if KB can be safely unshared.
+    """
+    # Query assistants table for RAG_collections containing kb_id
+    # Filter out assistants owned by the KB owner
+    # Return list of matching assistants with owner info
+```
+
+**Behavior:**
+- ✅ **Can Share:** No restrictions, owner can share at any time
+- ❌ **Cannot Unshare:** If KB is used by other users' assistants, unshare is blocked
+- 📋 **Error Message:** Lists assistants using the KB (up to 3, then "and X more")
+- 🔒 **Protection:** Prevents breaking other users' assistants
+
+**SQL Query Pattern:**
+
+```sql
+SELECT a.id, a.name, a.owner, u.user_name as owner_name
+FROM assistants a
+JOIN Creator_users u ON a.owner = u.user_email
+WHERE a.RAG_collections LIKE '%kb_id%'
+  AND a.owner != kb_owner_email
+  AND u.id != kb_owner_user_id
+```
+
+The query uses `LIKE '%kb_id%'` for initial matching, then verifies exact match by parsing comma-separated `RAG_collections` values.
+
+#### 9.6.7 Frontend Implementation
+
+**Tabbed Interface:**
+
+The frontend displays KBs in separate tabs:
+- **"My Knowledge Bases"**: Shows owned KBs from `/creator/knowledgebases/user`
+- **"Shared Knowledge Bases"**: Shows shared KBs from `/creator/knowledgebases/shared`
+
+**Sharing Toggle UI:**
+
+```svelte
+<!-- Owner can toggle sharing -->
+{#if kb.is_owner}
+  <button onclick={() => handleToggleSharing(kb)}>
+    {kb.is_shared ? '🔓 Unshare' : '🔒 Share'}
+  </button>
+{/if}
+
+<!-- Status badge -->
+{#if kb.is_owner && kb.is_shared}
+  <span class="badge">Shared</span>
+{:else if kb.is_owner}
+  <span class="badge">Private</span>
+{:else}
+  <span class="badge">Read-Only</span>
+  <span class="text-sm text-gray-500">Shared by {kb.shared_by}</span>
+{/if}
+```
+
+**Assistant Form Integration:**
+
+When selecting KBs for an assistant, shared KBs are displayed in a separate section:
+
+```svelte
+{#if ownedKnowledgeBases.length > 0}
+  <h5>My Knowledge Bases</h5>
+  {#each ownedKnowledgeBases as kb}
+    <!-- Checkbox for KB selection -->
+  {/each}
+{/if}
+
+{#if sharedKnowledgeBases.length > 0}
+  <h5>Shared Knowledge Bases</h5>
+  {#each sharedKnowledgeBases as kb}
+    <!-- Checkbox with owner indicator -->
+    <span>{kb.name} (Shared by {kb.shared_by})</span>
+  {/each}
+{/if}
+```
+
+#### 9.6.8 Usage Flow
+
+**Sharing a KB:**
+
+1. KB owner creates KB (registered in `kb_registry` with `is_shared = false`)
+2. Owner clicks "Share" button in KB list
+3. Frontend calls `PUT /creator/knowledgebases/kb/{kb_id}/share` with `is_shared: true`
+4. Backend updates `kb_registry.is_shared = true`
+5. KB appears in "Shared Knowledge Bases" for all organization members
+
+**Using a Shared KB:**
+
+1. User views "Shared Knowledge Bases" tab
+2. User selects shared KB when creating/editing assistant
+3. KB ID added to assistant's `RAG_collections`
+4. Assistant can query shared KB during completions
+
+**Unsharing Attempt (Protected):**
+
+1. KB owner clicks "Unshare" button
+2. Backend checks `check_kb_used_by_other_users()`
+3. If KB is in use:
+   - Returns HTTP 409 with error message listing blocking assistants
+   - Frontend displays error message
+   - KB remains shared
+4. If KB is not in use:
+   - Updates `is_shared = false`
+   - KB removed from shared list
+   - KB remains accessible to owner
+
 ---
 
 ## 10. LTI Integration
@@ -2137,9 +2427,473 @@ Comprehensive Playwright test suite in `/testing/playwright/end_user_tests/`:
 
 ---
 
-## 16. Frontend UX Patterns & Best Practices
+## 16. User Blocking Feature
 
-### 16.1 Form Dirty State Tracking
+### 16.1 Overview
+
+The user blocking feature allows system administrators and organization administrators to disable user accounts, preventing login while preserving all user-created resources. This feature is essential for:
+- Handling security incidents
+- Managing inactive accounts
+- Enforcing organizational policies
+- Temporary suspensions
+
+**Key Principle:** Disabled users cannot login, but their published assistants, shared Knowledge Bases, templates, and rubrics remain fully functional and accessible to others.
+
+### 16.2 Database Schema
+
+#### 16.2.1 Enabled Column
+
+Added to `Creator_users` table:
+
+```sql
+ALTER TABLE Creator_users 
+ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;
+
+CREATE INDEX idx_creator_users_enabled ON Creator_users(enabled);
+```
+
+**Field Details:**
+- **Type:** BOOLEAN (SQLite: INTEGER 0/1)
+- **Default:** 1 (enabled/TRUE)
+- **Indexed:** Yes, for performance
+- **Migration:** Automatic on backend startup
+- **Backward Compatible:** All existing users default to enabled
+
+### 16.3 Database Manager Methods
+
+**File:** `backend/lamb/database_manager.py`
+
+#### Single User Operations
+
+```python
+def disable_user(self, user_id: int) -> bool:
+    """
+    Disable a user account
+    
+    Returns:
+        bool: True if successful, False if already disabled or not found
+    """
+    
+def enable_user(self, user_id: int) -> bool:
+    """
+    Enable a user account
+    
+    Returns:
+        bool: True if successful, False if already enabled or not found
+    """
+    
+def is_user_enabled(self, user_id: int) -> bool:
+    """
+    Check if user account is enabled
+    
+    Returns:
+        bool: True if enabled, False if disabled or not found
+    """
+```
+
+#### Bulk Operations
+
+```python
+def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+    """
+    Disable multiple user accounts in a single transaction
+    
+    Returns:
+        Dict with keys: success, failed, already_disabled (lists of user IDs)
+    """
+    
+def enable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
+    """
+    Enable multiple user accounts in a single transaction
+    
+    Returns:
+        Dict with keys: success, failed, already_enabled (lists of user IDs)
+    """
+```
+
+**Transaction Safety:** Bulk operations use database transactions to ensure all-or-nothing semantics within the loop.
+
+### 16.4 Authentication & Login Flow
+
+**File:** `backend/lamb/creator_user_router.py`
+
+Login check added in `verify_creator_user()`:
+
+```python
+# Check if user account is enabled
+if not user.get('enabled', True):
+    logger.warning(f"Disabled user {user_data.email} attempted login")
+    raise HTTPException(
+        status_code=403,
+        detail="Account has been disabled. Please contact your administrator."
+    )
+```
+
+**Behavior:**
+- Disabled users receive HTTP 403 (Forbidden)
+- Clear error message displayed to user
+- Login attempt logged for audit trail
+- Credential verification happens before enabled check (prevents information leakage)
+
+### 16.5 Admin API Endpoints
+
+**File:** `backend/creator_interface/main.py`
+
+#### Individual Operations
+
+**Disable User:**
+```http
+PUT /creator/admin/users/{user_id}/disable
+Authorization: Bearer {admin_token}
+
+Response 200:
+{
+  "success": true,
+  "message": "User user@example.com has been disabled"
+}
+```
+
+**Enable User:**
+```http
+PUT /creator/admin/users/{user_id}/enable
+Authorization: Bearer {admin_token}
+
+Response 200:
+{
+  "success": true,
+  "message": "User user@example.com has been enabled"
+}
+```
+
+#### Bulk Operations
+
+**Bulk Disable:**
+```http
+POST /creator/admin/users/disable-bulk
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "user_ids": [1, 2, 3]
+}
+
+Response 200:
+{
+  "success": true,
+  "disabled": 3,
+  "failed": 0,
+  "already_disabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_disabled": []
+  }
+}
+```
+
+**Bulk Enable:**
+```http
+POST /creator/admin/users/enable-bulk
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{
+  "user_ids": [1, 2, 3]
+}
+
+Response 200:
+{
+  "success": true,
+  "enabled": 3,
+  "failed": 0,
+  "already_enabled": 0,
+  "details": {
+    "success": [1, 2, 3],
+    "failed": [],
+    "already_enabled": []
+  }
+}
+```
+
+### 16.6 Security Features
+
+**Authorization:**
+- ✅ Only system admins can disable/enable users
+- ✅ Organization admins can manage users in their organization
+- ✅ Checked via `is_admin_user()` helper
+
+**Self-Protection:**
+- ✅ Users cannot disable themselves
+- ✅ Bulk operations automatically remove current user from list
+- ✅ Clear error message if self-disable attempted
+
+**Audit Trail:**
+- ✅ All enable/disable operations logged with admin email
+- ✅ Includes user ID, action, and timestamp
+- ✅ Failed attempts logged with reason
+
+**Example Log Entries:**
+```
+INFO: Admin admin@example.com disabled user 123
+WARNING: Removed self (1) from bulk disable list
+INFO: Bulk disable: 3 successful, 0 failed
+```
+
+### 16.7 User List Updates
+
+**File:** `backend/lamb/database_manager.py`
+
+Updated `get_creator_users()` to include enabled status:
+
+```sql
+SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
+       o.name as org_name, o.slug as org_slug, o.is_system,
+       COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
+FROM Creator_users u
+LEFT JOIN organizations o ON u.organization_id = o.id
+LEFT JOIN organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
+ORDER BY u.id
+```
+
+**API Response Structure:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "email": "user@example.com",
+      "name": "Test User",
+      "role": "user",
+      "enabled": true,
+      "user_type": "creator",
+      "organization": {
+        "name": "Engineering",
+        "slug": "engineering",
+        "is_system": false
+      },
+      "organization_role": "member"
+    }
+  ]
+}
+```
+
+### 16.8 Frontend Service Layer
+
+**File:** `frontend/svelte-app/src/lib/services/adminService.js` (NEW)
+
+```javascript
+/**
+ * Disable a user account
+ */
+export async function disableUser(token, userId) {
+  const response = await fetch(getApiUrl(`/admin/users/${userId}/disable`), {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  return await response.json();
+}
+
+/**
+ * Enable a user account
+ */
+export async function enableUser(token, userId) { /* ... */ }
+
+/**
+ * Disable multiple user accounts
+ */
+export async function disableUsersBulk(token, userIds) { /* ... */ }
+
+/**
+ * Enable multiple user accounts
+ */
+export async function enableUsersBulk(token, userIds) { /* ... */ }
+```
+
+### 16.9 Frontend UI Patterns
+
+**Status Display:**
+
+```svelte
+<td>
+  {#if user.enabled}
+    <span class="badge badge-success">Active</span>
+  {:else}
+    <span class="badge badge-error">Disabled</span>
+  {/if}
+</td>
+```
+
+**Action Buttons:**
+
+```svelte
+<td>
+  {#if user.enabled}
+    <button class="btn btn-sm btn-warning" onclick={() => showDisableDialog(user)}>
+      Disable
+    </button>
+  {:else}
+    <button class="btn btn-sm btn-success" onclick={() => showEnableDialog(user)}>
+      Enable
+    </button>
+  {/if}
+</td>
+```
+
+**Bulk Selection:**
+
+```svelte
+{#if selectedUsers.length > 0}
+  <div class="bulk-actions-toolbar bg-base-200 p-4 rounded-lg mb-4">
+    <span>{selectedUsers.length} user(s) selected</span>
+    <button class="btn btn-sm btn-warning" onclick={handleBulkDisable}>
+      Disable Selected
+    </button>
+    <button class="btn btn-sm btn-success" onclick={handleBulkEnable}>
+      Enable Selected
+    </button>
+  </div>
+{/if}
+```
+
+### 16.10 Resource Preservation
+
+**What Continues Working:**
+- ✅ Published assistants remain accessible via LTI
+- ✅ Shared Knowledge Bases remain accessible
+- ✅ Templates remain available to other users
+- ✅ Rubrics remain accessible
+- ✅ All data preserved in database
+- ✅ Organization membership maintained
+
+**What Stops Working:**
+- ❌ User cannot login to creator interface
+- ❌ User cannot login as end_user to Open WebUI
+- ❌ User cannot create new resources
+- ❌ User cannot modify existing resources
+- ❌ User cannot access any LAMB features
+
+**Technical Reason:** The `enabled` check only affects authentication. All database relationships and foreign keys remain intact, allowing other users to continue using shared resources.
+
+### 16.11 Testing Strategy
+
+**Unit Tests:**
+```python
+def test_disable_user():
+    """Test disabling a user"""
+    db = LambDatabaseManager()
+    user_id = create_test_user()
+    
+    result = db.disable_user(user_id)
+    assert result is True
+    assert db.is_user_enabled(user_id) is False
+
+def test_disabled_user_login():
+    """Test that disabled users cannot login"""
+    # Create and disable user
+    user = create_test_user(email="test@example.com")
+    db.disable_user(user['id'])
+    
+    # Attempt login
+    response = client.post("/creator/login", data={
+        "email": "test@example.com",
+        "password": "testpass"
+    })
+    
+    assert response.status_code == 403
+    assert "disabled" in response.json()['detail'].lower()
+```
+
+**Integration Tests:**
+- Verify admin can disable users
+- Verify non-admin cannot disable users
+- Verify self-disable prevention
+- Verify published assistants work with disabled owner
+- Verify bulk operations
+
+**E2E Tests (Playwright):**
+- Admin UI workflow for disabling users
+- Disabled user login attempt
+- Bulk selection and disable
+- Status badges display correctly
+
+### 16.12 Migration Process
+
+**Automatic Migration:**
+1. Backend starts up
+2. `run_migrations()` checks for `enabled` column
+3. If not exists:
+   - Add column with DEFAULT 1
+   - Create index
+   - Log success
+4. All existing users remain enabled
+
+**Rollback Plan:**
+```sql
+-- Remove feature without data loss
+ALTER TABLE Creator_users DROP COLUMN enabled;
+DROP INDEX idx_creator_users_enabled;
+```
+
+### 16.13 Performance Considerations
+
+**Index Usage:**
+- `idx_creator_users_enabled` allows fast filtering of disabled users
+- Login check uses indexed column (minimal overhead)
+- Bulk operations use transactions (consistent performance)
+
+**Query Performance:**
+```sql
+-- Fast query using index
+SELECT * FROM Creator_users WHERE enabled = 1;
+
+-- Login check (indexed)
+SELECT enabled FROM Creator_users WHERE id = ?;
+```
+
+**Load Impact:**
+- Negligible impact on login (one additional WHERE clause)
+- Bulk operations scale linearly with user count
+- No impact on completions or assistant operations
+
+### 16.14 Future Enhancements
+
+**Audit Log Table:**
+```sql
+CREATE TABLE user_status_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL, -- 'disable' or 'enable'
+    admin_email TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES Creator_users(id)
+);
+```
+
+**Scheduled Re-enablement:**
+- Add `disabled_until` timestamp column
+- Background job to auto-enable after timeout
+- Useful for temporary suspensions
+
+**Email Notifications:**
+- Notify users when disabled
+- Notify users when re-enabled
+- Configurable templates
+
+**Grace Period:**
+- Warning before disable
+- Read-only mode for X days
+- Full disable after grace period
+
+---
+
+## 17. Frontend UX Patterns & Best Practices
+
+### 17.1 Form Dirty State Tracking
 
 **Problem:** Svelte 5's reactivity system can cause component props to change references frequently, even when the underlying data hasn't changed. In forms that react to prop changes by repopulating fields, this creates a critical UX issue where user edits are lost.
 
@@ -2236,9 +2990,9 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 
 - GitHub Issue #62: Language Model selection bug (fixed with this pattern)
 
-### 16.2 Other Frontend Best Practices
+### 17.2 Other Frontend Best Practices
 
-#### 16.2.1 Svelte 5 Reactivity Guidelines
+#### 17.2.1 Svelte 5 Reactivity Guidelines
 
 - Use `$state()` for component-local reactive values
 - Use `$derived()` for computed values
@@ -2246,14 +3000,14 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 - Prefer event handlers over reactive effects when possible
 - Always check if effect should run (guard conditions)
 
-#### 16.2.2 API Service Patterns
+#### 17.2.2 API Service Patterns
 
 - Centralize API calls in service modules (`lib/services/`)
 - Include authorization headers in all authenticated requests
 - Handle loading/error states consistently
 - Return structured responses: `{success, data?, error?}`
 
-#### 16.2.3 Store Management
+#### 17.2.3 Store Management
 
 - Use stores for shared state across components
 - Keep stores minimal and focused
@@ -2262,13 +3016,13 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 
 ---
 
-## 17. API Reference
+## 18. API Reference
 
 See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 18. File Structure Summary
+## 19. File Structure Summary
 
 ```
 /backend/
@@ -2297,5 +3051,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team  
-**Last Updated:** October 2025  
-**Version:** 2.2 (Added end_user feature, Frontend UX patterns)
+**Last Updated:** January 2025  
+**Version:** 2.3 (Added end_user feature, user blocking feature, Frontend UX patterns)

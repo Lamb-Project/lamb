@@ -16,6 +16,11 @@
     importRubric,
     toggleRubricVisibility
   } from '$lib/services/rubricService';
+  
+  // Import filtering/pagination components
+  import Pagination from '../common/Pagination.svelte';
+  import FilterBar from '../common/FilterBar.svelte';
+  import { processListData } from '$lib/utils/listHelpers';
 
   // Default text for when i18n isn't loaded yet
   let localeLoaded = $state(!!$locale);
@@ -24,39 +29,98 @@
   const dispatch = createEventDispatcher();
 
   // State
-  let rubrics = $state([]);
+  let allRubrics = $state([]);
+  let displayRubrics = $state([]);
   let loading = $state(true);
   let error = $state(null);
-  let currentPage = $state(1);
-  let totalItems = $state(0);
-  let itemsPerPage = $state(10);
   let activeTab = $state('my-rubrics'); // 'my-rubrics' | 'templates'
+  
+  // Filter/sort state
+  let searchTerm = $state('');
+  let sortBy = $state('updated_at');
+  let sortOrder = $state('desc');
+  
+  // Pagination state
+  let currentPage = $state(1);
+  let itemsPerPage = $state(10);
+  let totalPages = $state(1);
+  let totalItems = $state(0);
 
-  let totalPages = $derived(Math.ceil(totalItems / itemsPerPage));
-
-  // Load rubrics based on active tab
+  // Load all rubrics based on active tab
   async function loadRubrics() {
     loading = true;
     error = null;
 
     try {
-      const offset = (currentPage - 1) * itemsPerPage;
+      // Fetch all rubrics (high limit for client-side processing)
       let response;
       
       if (activeTab === 'my-rubrics') {
-        response = await fetchRubrics(itemsPerPage, offset, {});
+        response = await fetchRubrics(1000, 0, {});
       } else {
-        response = await fetchPublicRubrics(itemsPerPage, offset, {});
+        response = await fetchPublicRubrics(1000, 0, {});
       }
       
-      rubrics = response.rubrics;
-      totalItems = response.total;
+      allRubrics = response.rubrics || [];
+      applyFiltersAndPagination();
     } catch (err) {
       error = err.message || `Failed to load ${activeTab === 'my-rubrics' ? 'rubrics' : 'templates'}`;
       console.error(`Error loading ${activeTab}:`, err);
+      allRubrics = [];
+      displayRubrics = [];
     } finally {
       loading = false;
     }
+  }
+  
+  // Apply filters, sorting, and pagination
+  function applyFiltersAndPagination() {
+    const result = processListData(allRubrics, {
+      search: searchTerm,
+      searchFields: ['title', 'description'],
+      filters: {},
+      sortBy,
+      sortOrder,
+      page: currentPage,
+      itemsPerPage
+    });
+    
+    displayRubrics = result.items;
+    totalItems = result.filteredCount;
+    totalPages = result.totalPages;
+    currentPage = result.currentPage;
+  }
+  
+  // Filter/Sort/Pagination event handlers
+  function handleSearchChange(event) {
+    searchTerm = event.detail.value;
+    currentPage = 1;
+    applyFiltersAndPagination();
+  }
+  
+  function handleSortChange(event) {
+    sortBy = event.detail.sortBy;
+    sortOrder = event.detail.sortOrder;
+    applyFiltersAndPagination();
+  }
+  
+  function handlePageChange(event) {
+    currentPage = event.detail.page;
+    applyFiltersAndPagination();
+  }
+  
+  function handleItemsPerPageChange(event) {
+    itemsPerPage = event.detail.itemsPerPage;
+    currentPage = 1;
+    applyFiltersAndPagination();
+  }
+  
+  function handleClearFilters() {
+    searchTerm = '';
+    sortBy = 'updated_at';
+    sortOrder = 'desc';
+    currentPage = 1;
+    applyFiltersAndPagination();
   }
 
   // Handle rubric actions
@@ -201,22 +265,8 @@
   function switchTab(tab) {
     if (tab !== activeTab) {
       activeTab = tab;
-      currentPage = 1; // Reset to first page
-      loadRubrics();
-    }
-  }
-
-  // Pagination functions
-  function goToPreviousPage() {
-    if (currentPage > 1) {
-      currentPage--;
-      loadRubrics();
-    }
-  }
-
-  function goToNextPage() {
-    if (currentPage < totalPages) {
-      currentPage++;
+      searchTerm = ''; // Reset search on tab switch
+      currentPage = 1;
       loadRubrics();
     }
   }
@@ -277,9 +327,65 @@
             <strong class="font-bold">{localeLoaded ? $_('rubrics.errorTitle', { default: 'Error:' }) : 'Error:'}</strong>
             <span class="block sm:inline">{error}</span>
         </div>
-    {:else if rubrics.length === 0 && totalItems === 0}
-        <p class="text-center text-gray-500 py-4">{localeLoaded ? $_('rubrics.noRubrics', { default: 'No rubrics found.' }) : 'No rubrics found.'}</p>
     {:else}
+        <!-- Filter Bar -->
+        <FilterBar
+            searchPlaceholder={localeLoaded ? $_('rubrics.searchPlaceholder', { default: 'Search rubrics by title, description...' }) : 'Search rubrics by title, description...'}
+            searchValue={searchTerm}
+            filters={[]}
+            filterValues={{}}
+            sortOptions={[
+                { value: 'title', label: localeLoaded ? $_('common.sortByName', { default: 'Title' }) : 'Title' },
+                { value: 'updated_at', label: localeLoaded ? $_('common.sortByUpdated', { default: 'Last Modified' }) : 'Last Modified' },
+                { value: 'created_at', label: localeLoaded ? $_('common.sortByCreated', { default: 'Created Date' }) : 'Created Date' }
+            ]}
+            {sortBy}
+            {sortOrder}
+            on:searchChange={handleSearchChange}
+            on:sortChange={handleSortChange}
+            on:clearFilters={handleClearFilters}
+        />
+        
+        <!-- Results count and refresh button -->
+        <div class="flex justify-between items-center mb-4 px-4">
+            <div class="text-sm text-gray-600">
+                {#if searchTerm}
+                    Showing <span class="font-medium">{totalItems}</span> of <span class="font-medium">{allRubrics.length}</span> rubrics
+                {:else}
+                    <span class="font-medium">{totalItems}</span> rubrics
+                {/if}
+            </div>
+            
+            <!-- Refresh button -->
+            <button 
+                onclick={handleRefresh} 
+                disabled={loading} 
+                title={localeLoaded ? $_('common.refresh', { default: 'Refresh' }) : 'Refresh'}
+                class="p-2 text-sm font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {@html IconRefresh}
+            </button>
+        </div>
+
+        {#if displayRubrics.length === 0}
+            {#if allRubrics.length === 0}
+                <!-- No rubrics at all -->
+                <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                    <p class="text-gray-500">{localeLoaded ? $_('rubrics.noRubrics', { default: 'No rubrics found.' }) : 'No rubrics found.'}</p>
+                </div>
+            {:else}
+                <!-- No results match filters -->
+                <div class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+                    <p class="text-gray-500 mb-4">{localeLoaded ? $_('rubrics.noMatches', { default: 'No rubrics match your search' }) : 'No rubrics match your search'}</p>
+                    <button 
+                        onclick={handleClearFilters}
+                        class="text-brand hover:text-brand-hover hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand rounded-md px-3 py-1"
+                    >
+                        {localeLoaded ? $_('common.clearFilters', { default: 'Clear search' }) : 'Clear search'}
+                    </button>
+                </div>
+            {/if}
+        {:else}
         <!-- Responsive Table Wrapper -->
         <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
             <table class="min-w-full divide-y divide-gray-200">
@@ -303,7 +409,7 @@
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    {#each rubrics as rubric (rubric.id)}
+                    {#each displayRubrics as rubric (rubric.id)}
                         <!-- Main row with name, description, subject, grade level, actions -->
                         <tr class="hover:bg-gray-50">
                             <!-- Rubric Name -->
@@ -413,48 +519,16 @@
 
         <!-- Pagination Controls -->
         {#if totalPages > 1}
-            <!-- Centered container for all pagination elements -->
-            <div class="flex justify-center items-center mt-4 space-x-4 text-sm text-gray-700">
-                <!-- Refresh Button -->
-                <button
-                  onclick={handleRefresh}
-                  disabled={loading}
-                  title={localeLoaded ? $_('common.refresh', { default: 'Refresh' }) : 'Refresh'}
-                  class="p-1.5 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <span class:animate-spin={loading}>
-                      {@html IconRefresh}
-                    </span>
-                </button>
-
-                <!-- Page Info & Results Count -->
-                <span>
-                    {localeLoaded ? $_('pagination.page', { default: 'Page' }) : 'Page'} {currentPage} {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'} {totalPages}
-                    <span class="mx-2">|</span>
-                    {localeLoaded ? $_('pagination.resultsSimple', { default: 'Results' }) : 'Results'}
-                    <span class="font-medium text-brand">{(currentPage - 1) * itemsPerPage + 1}</span>
-                    {localeLoaded ? $_('pagination.to', { default: 'to' }) : 'to'}
-                    <span class="font-medium text-brand">{Math.min(currentPage * itemsPerPage, totalItems)}</span>
-                    {localeLoaded ? $_('pagination.of', { default: 'of' }) : 'of'}
-                    <span class="font-medium text-brand">{totalItems}</span>
-                </span>
-
-                <!-- Previous Button -->
-                <button
-                  onclick={goToPreviousPage}
-                  disabled={currentPage === 1 || loading}
-                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {localeLoaded ? $_('pagination.previousShort', { default: '<' }) : '<'}
-                </button>
-
-                <!-- Next Button -->
-                <button
-                  onclick={goToNextPage}
-                  disabled={currentPage === totalPages || loading}
-                  class="px-3 py-1 font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {localeLoaded ? $_('pagination.nextShort', { default: '>' }) : '>'}
-                </button>
-            </div>
+            <Pagination
+                {currentPage}
+                {totalPages}
+                {totalItems}
+                {itemsPerPage}
+                itemsPerPageOptions={[5, 10, 25, 50]}
+                on:pageChange={handlePageChange}
+                on:itemsPerPageChange={handleItemsPerPageChange}
+            />
+        {/if}
         {/if}
     {/if}
 </div>
