@@ -52,13 +52,13 @@
     error = null;
 
     try {
-      // Fetch all rubrics (high limit for client-side processing)
+      // Fetch all rubrics (backend max is 100 items)
       let response;
       
       if (activeTab === 'my-rubrics') {
-        response = await fetchRubrics(1000, 0, {});
+        response = await fetchRubrics(100, 0, {});
       } else {
-        response = await fetchPublicRubrics(1000, 0, {});
+        response = await fetchPublicRubrics(100, 0, {});
       }
       
       allRubrics = response.rubrics || [];
