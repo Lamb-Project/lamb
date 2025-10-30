@@ -127,6 +127,16 @@ class PluginIngestFileResponse(BaseModel):
     # Assuming response from kb_server_manager.plugin_ingest_file
     status: str
 
+class KBShareToggle(BaseModel):
+    """Request model for toggling KB sharing"""
+    is_shared: bool = Field(..., description="New sharing status")
+
+class KBShareToggleResponse(BaseModel):
+    """Response model for KB sharing toggle"""
+    kb_id: str
+    is_shared: bool
+    message: str
+
 class BasePluginIngestRequest(BaseModel):
     """Request body for plugin base ingestion (no direct file upload from client).
 
@@ -215,16 +225,19 @@ async def authenticate_creator_user(request: Request) -> Dict[str, Any]:
 
 
 @router.get(
-    "",
+    "/user",
     response_model=Union[KnowledgeBaseListResponse, KnowledgeBaseServerOfflineResponse],
     tags=["Knowledge Base Management", "kb-server-connection"],
-    summary="Get Knowledge Bases",
-    description="""Get all knowledge bases for the authenticated user by connecting to the configured KB server.
-    If the KB server is unavailable or not configured, it returns an error status.
+    summary="Get User's Owned Knowledge Bases",
+    description="""Get all knowledge bases owned by the authenticated user.
+    Includes auto-registration of missing KBs and lazy cleanup of stale entries.
+    Returns only KBs owned by the user (not shared ones).
+    
+    If the KB server is unavailable, returns a status message instead of throwing an error.
 
 Example Request:
 ```bash
-curl -X GET 'http://localhost:8000/creator/knowledgebases' \\
+curl -X GET 'http://localhost:8000/creator/knowledgebases/user' \\
 -H 'Authorization: Bearer <user_token>'
 ```
 
@@ -234,23 +247,11 @@ Example Success Response:
   "knowledge_bases": [
     {
       "id": "kb_uuid_1",
-      "name": "CS101 Readings",
-      "description": "Required readings for the course.",
-      "owner": "creator@example.com",
-      "created_at": 1678886400,
-      "metadata": {
-        "access_control": "private"
-      }
-    },
-    {
-      "id": "kb_uuid_2",
-      "name": "Project Docs",
-      "description": "Internal project documentation.",
-      "owner": "creator@example.com",
-      "created_at": 1678887000,
-      "metadata": {
-        "access_control": "private"
-      }
+      "name": "My KB",
+      "description": "My knowledge base",
+      "is_owner": true,
+      "is_shared": false,
+      "can_modify": true
     }
   ]
 }
@@ -267,16 +268,17 @@ Example Response (KB Server Offline):
     """,
     dependencies=[Depends(security)],
     responses={
-        200: {"description": "Successfully retrieved knowledge bases or KB server status"},
+        200: {"description": "Knowledge bases retrieved successfully or KB server status"},
         401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
-        500: {"model": ErrorResponseDetail, "description": "Internal server error"}
+        500: {"model": ErrorResponseDetail, "description": "Internal server error or KB server communication failure"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "Knowledge Base server is offline or not configured"}
     },
     openapi_extra={
         "x-codeSamples": [
             {
                 "lang": "curl",
                 "source": """
-curl -X GET 'http://localhost:8000/creator/knowledgebases' \\
+curl -X GET 'http://localhost:8000/creator/knowledgebases/user' \\
 -H 'Authorization: Bearer <user_token>'
                 """,
                 "description": "Example cURL request"
@@ -284,12 +286,12 @@ curl -X GET 'http://localhost:8000/creator/knowledgebases' \\
         ]
     }
 )
-async def get_knowledges(request: Request):
+async def get_user_knowledge_bases(request: Request):
     """
-    Get all knowledge bases for the authenticated user by connecting to the KB server.
+    Get user's OWNED knowledge bases only.
     If the KB server is unavailable, returns a status message instead of throwing an error.
     """
-    logger.info("Retrieving knowledge bases from KB server")
+    logger.info("Retrieving user's owned knowledge bases from KB server")
     try:
         # Check if KB server is available
         kb_available = await kb_server_manager.is_kb_server_available()
@@ -304,17 +306,114 @@ async def get_knowledges(request: Request):
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
         
-        # Get knowledge bases from the KB server
+        # Get owned knowledge bases from the KB server
         knowledge_bases = await kb_server_manager.get_user_knowledge_bases(creator_user)
         
         # Return knowledge bases to the client
-        logger.info(f"Returning {len(knowledge_bases)} knowledge bases to client")
+        logger.info(f"Returning {len(knowledge_bases)} owned knowledge bases to client")
         return {"knowledge_bases": knowledge_bases}
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Error retrieving knowledge bases: {str(e)}")
+        logger.error(f"Error retrieving user's knowledge bases: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/shared",
+    response_model=Union[KnowledgeBaseListResponse, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "kb-server-connection"],
+    summary="Get Organization Shared Knowledge Bases",
+    description="""Get all knowledge bases shared in the user's organization (excluding user's own).
+    Includes lazy cleanup of stale entries.
+    Returns only KBs shared by other users in the organization.
+    
+    If the KB server is unavailable, returns a status message instead of throwing an error.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/knowledgebases/shared' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Success Response:
+```json
+{
+  "knowledge_bases": [
+    {
+      "id": "kb_uuid_2",
+      "name": "Shared KB",
+      "description": "Shared knowledge base",
+      "is_owner": false,
+      "is_shared": true,
+      "can_modify": false,
+      "shared_by": "John Doe"
+    }
+  ]
+}
+```
+
+Example Response (KB Server Offline):
+```json
+{
+  "status": "error",
+  "message": "Knowledge Base server offline",
+  "kb_server_available": false
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Shared knowledge bases retrieved successfully or KB server status"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        500: {"model": ErrorResponseDetail, "description": "Internal server error or KB server communication failure"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "Knowledge Base server is offline or not configured"}
+    },
+    openapi_extra={
+        "x-codeSamples": [
+            {
+                "lang": "curl",
+                "source": """
+curl -X GET 'http://localhost:8000/creator/knowledgebases/shared' \\
+-H 'Authorization: Bearer <user_token>'
+                """,
+                "description": "Example cURL request"
+            }
+        ]
+    }
+)
+async def get_shared_knowledge_bases(request: Request):
+    """
+    Get organization shared knowledge bases (excluding user's own).
+    If the KB server is unavailable, returns a status message instead of throwing an error.
+    """
+    logger.info("Retrieving shared knowledge bases from KB server")
+    try:
+        # Check if KB server is available
+        kb_available = await kb_server_manager.is_kb_server_available()
+        if not kb_available:
+            logger.warning("Knowledge Base server is offline or not configured")
+            return {
+                "status": "error",
+                "message": "Knowledge Base server offline",
+                "kb_server_available": False
+            }
+            
+        # Authenticate creator user
+        creator_user = await authenticate_creator_user(request)
+        
+        # Get shared knowledge bases from the KB server
+        knowledge_bases = await kb_server_manager.get_org_shared_knowledge_bases(creator_user)
+        
+        # Return knowledge bases to the client
+        logger.info(f"Returning {len(knowledge_bases)} shared knowledge bases to client")
+        return {"knowledge_bases": knowledge_bases}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error retrieving shared knowledge bases: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -525,9 +624,32 @@ async def get_knowledge_base(kb_id: str, request: Request):
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access (owner OR shared can view)
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(
+                status_code=404, 
+                detail="Knowledge base not found or not accessible"
+            )
+        
+        logger.info(f"User {creator_user['id']} accessing KB {kb_id} with access type: {access_type}")
 
         # Get knowledge base details from KB server
         result = await kb_server_manager.get_knowledge_base_details(kb_id, creator_user)
+        
+        # Enhance with LAMB metadata
+        if isinstance(result, dict):
+            entry = db_manager.get_kb_registry_entry(kb_id)
+            if entry:
+                result['is_owner'] = (access_type == 'owner')
+                result['is_shared'] = entry.get('is_shared', False)
+                result['can_modify'] = (access_type == 'owner')
+                if access_type == 'shared':
+                    result['shared_by'] = entry.get('owner_name') or entry.get('owner_email', 'Unknown')
+        
         return result
 
     except HTTPException as he:
@@ -635,6 +757,19 @@ async def update_knowledge_base(
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access (owner only)
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can update KB settings"
+            )
         
         # Update the knowledge base using the KB server manager
         result = await kb_server_manager.update_knowledge_base(
@@ -642,6 +777,10 @@ async def update_knowledge_base(
             kb_data=kb_data,
             creator_user=creator_user
         )
+        
+        # Update cached name in registry if changed
+        if kb_data.name is not None and isinstance(result, dict):
+            db_manager.update_kb_registry_name(kb_id, kb_data.name)
         
         return result
 
@@ -653,6 +792,92 @@ async def update_knowledge_base(
             status_code=500,
             detail=f"Error updating knowledge base: {str(e)}"
         )
+
+
+@router.put(
+    "/kb/{kb_id}/share",
+    response_model=KBShareToggleResponse,
+    tags=["Knowledge Base Management"],
+    summary="Toggle KB Sharing",
+    description="""Toggle knowledge base sharing within organization.
+    Only the KB owner can change sharing settings.
+    
+    Example Request:
+```bash
+    curl -X PUT 'http://localhost:9099/creator/knowledgebases/kb/kb_uuid_1/share' \\
+    -H 'Authorization: Bearer <user_token>' \\
+    -H 'Content-Type: application/json' \\
+    -d '{"is_shared": true}'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def toggle_kb_sharing(
+    kb_id: str,
+    share_data: KBShareToggle,
+    request: Request
+):
+    """
+    Toggle KB sharing status (exactly like prompt templates).
+    Only owner can change sharing settings.
+    """
+    logger.info(f"Toggling KB {kb_id} sharing to {share_data.is_shared}")
+    
+    try:
+        # Authenticate creator user
+        creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Get registry entry
+        entry = db_manager.get_kb_registry_entry(kb_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, 
+                detail="Knowledge base not found"
+            )
+        
+        # Verify ownership
+        if entry['owner_user_id'] != creator_user['id']:
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can change sharing settings"
+            )
+        
+        # If trying to unshare, check if KB is used by other users' assistants
+        if not share_data.is_shared:
+            using_assistants = db_manager.check_kb_used_by_other_users(kb_id, creator_user['id'])
+            if using_assistants:
+                # Build list of assistant names for error message
+                assistant_names = [f"{a['name']} (by {a['owner_name']})" for a in using_assistants]
+                assistant_list = ", ".join(assistant_names[:3])  # Show first 3
+                if len(using_assistants) > 3:
+                    assistant_list += f" and {len(using_assistants) - 3} more"
+                
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot unshare KB: It is currently used by {len(using_assistants)} assistant(s): {assistant_list}. Please ask users to remove this KB from their assistants first."
+                )
+        
+        # Toggle sharing
+        success = db_manager.toggle_kb_sharing(kb_id, share_data.is_shared)
+        
+        if not success:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to update sharing status"
+            )
+        
+        return {
+            "kb_id": kb_id,
+            "is_shared": share_data.is_shared,
+            "message": f"KB is now {'shared with organization' if share_data.is_shared else 'private'}"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error toggling KB sharing: {e}")
+        raise HTTPException(status_code=500, detail=f"Error toggling sharing: {str(e)}")
 
 
 @router.delete(
@@ -732,12 +957,28 @@ async def delete_knowledge_base(kb_id: str, request: Request):
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access (owner only)
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can delete KB"
+            )
         
         # Delete the knowledge base using the KB server manager
         result = await kb_server_manager.delete_knowledge_base(
             kb_id=kb_id,
             creator_user=creator_user
         )
+        
+        # Delete from registry
+        db_manager.delete_kb_registry_entry(kb_id)
         
         return result
 
@@ -863,8 +1104,20 @@ async def query_knowledge_base(
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
         
-        # Query the knowledge base using the KB server manager
+        # Check access (owner OR shared can query)
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(
+                status_code=404, 
+                detail="KB not found or not accessible"
+            )
+        
+        logger.info(f"User {creator_user['id']} querying KB {kb_id} with access type: {access_type}")
+        
+        # Both owner and shared users can query
         result = await kb_server_manager.query_knowledge_base(
             kb_id=kb_id,
             query_data=query_data.dict(),
@@ -1010,6 +1263,20 @@ async def upload_files_to_kb(
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        # Only owner can upload
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can upload files. You have read-only access to this shared KB."
+            )
         
         # Upload files to the knowledge base using the KB server manager
         result = await kb_server_manager.upload_files_to_kb(
@@ -1108,6 +1375,20 @@ async def delete_file_from_kb(kb_id: str, file_id: str, request: Request):
             
         # Authenticate creator user
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        # Only owner can delete files
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can delete files. You have read-only access to this shared KB."
+            )
         
         # Delete the file using the KB server manager
         result = await kb_server_manager.delete_file_from_kb(
@@ -1349,6 +1630,20 @@ async def plugin_ingest_file(
             
         # Get creator user from the request
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        # Only owner can ingest
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can ingest files. You have read-only access to this shared KB."
+            )
         
         # Verify plugin name is not an index but a valid plugin name
         plugins = await kb_server_manager.get_ingestion_plugins()
@@ -1438,6 +1733,20 @@ async def plugin_ingest_base(
             raise HTTPException(status_code=503, detail="KB server is not available")
 
         creator_user = await authenticate_creator_user(request)
+        db_manager = LambDatabaseManager()
+        
+        # Check access
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        
+        if not can_access:
+            raise HTTPException(status_code=404, detail="KB not found")
+        
+        # Only owner can ingest
+        if access_type != 'owner':
+            raise HTTPException(
+                status_code=403,
+                detail="Only KB owner can ingest files. You have read-only access to this shared KB."
+            )
 
         # Build placeholder file content (embed video_url if present so plugin can fallback to file parsing)
         content_bytes = b""

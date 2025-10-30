@@ -1638,6 +1638,293 @@ During completion request:
 4. Context injected into system prompt
 5. Citations provided in response (if supported by frontend)
 
+### 9.6 Knowledge Base Sharing
+
+LAMB supports organization-level Knowledge Base sharing, allowing users within the same organization to share KBs with each other. This feature follows the same pattern as Prompt Templates sharing.
+
+#### 9.6.1 Overview
+
+**Key Features:**
+- KBs can be shared within an organization
+- Shared KBs are visible to all organization members
+- Users can use shared KBs in their assistants (read-only access)
+- KB owners maintain full control (edit, delete, share/unshare)
+- Protection mechanism prevents unsharing when KB is in use by other users' assistants
+
+#### 9.6.2 Database Schema
+
+**KB Registry Table (`kb_registry`):**
+
+```sql
+CREATE TABLE kb_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kb_id TEXT NOT NULL UNIQUE,
+    kb_name TEXT NOT NULL,
+    owner_user_id INTEGER NOT NULL,
+    organization_id INTEGER NOT NULL,
+    is_shared BOOLEAN DEFAULT FALSE,
+    metadata JSON,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (owner_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+)
+
+-- Indexes for performance
+CREATE INDEX idx_kb_registry_owner ON kb_registry(owner_user_id)
+CREATE INDEX idx_kb_registry_org_shared ON kb_registry(organization_id, is_shared)
+CREATE INDEX idx_kb_registry_kb_id ON kb_registry(kb_id)
+```
+
+**Purpose:**
+- Tracks KB metadata in LAMB database (KB Server only stores documents)
+- Enables organization-scoped sharing
+- Maintains ownership and access control
+- Stores creation timestamps for sorting
+
+#### 9.6.3 Auto-Registration & Lazy Cleanup
+
+**Auto-Registration:**
+- When a user accesses their KBs, LAMB checks the KB Server
+- KBs found in KB Server but not in `kb_registry` are automatically registered
+- `created_at` is preserved from KB Server if available
+- Ensures registry stays in sync with KB Server
+
+**Lazy Cleanup (Self-Healing):**
+- When fetching KB details, if KB Server returns 404, the registry entry is automatically removed
+- Prevents stale registry entries from out-of-band deletions
+- No manual cleanup required
+
+#### 9.6.4 API Endpoints
+
+**Get Owned KBs:**
+```http
+GET /creator/knowledgebases/user
+Authorization: Bearer {token}
+
+Response:
+{
+  "knowledge_bases": [
+    {
+      "id": "kb_uuid_1",
+      "name": "CS101 Lectures",
+      "is_owner": true,
+      "is_shared": false,
+      "created_at": 1761815586,
+      ...
+    }
+  ]
+}
+```
+
+**Get Shared KBs:**
+```http
+GET /creator/knowledgebases/shared
+Authorization: Bearer {token}
+
+Response:
+{
+  "knowledge_bases": [
+    {
+      "id": "kb_uuid_2",
+      "name": "Shared Research Papers",
+      "is_owner": false,
+      "is_shared": true,
+      "shared_by": "John Doe",
+      "created_at": 1761816138,
+      ...
+    }
+  ]
+}
+```
+
+**Toggle Sharing:**
+```http
+PUT /creator/knowledgebases/kb/{kb_id}/share
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "is_shared": true
+}
+
+Response:
+{
+  "kb_id": "kb_uuid_1",
+  "is_shared": true,
+  "message": "KB is now shared with organization"
+}
+```
+
+**Error Response (KB in use):**
+```http
+Status: 409 Conflict
+
+{
+  "detail": "Cannot unshare KB: It is currently used by 2 assistant(s): Assistant A (by User 1), Assistant B (by User 2). Please ask users to remove this KB from their assistants first."
+}
+```
+
+#### 9.6.5 Access Control
+
+**Access Levels:**
+
+| Action | Owner | Shared User |
+|--------|-------|-------------|
+| View KB | ✅ | ✅ |
+| Query KB | ✅ | ✅ |
+| Use in Assistant | ✅ | ✅ |
+| Edit KB Name | ✅ | ❌ |
+| Upload Documents | ✅ | ❌ |
+| Delete Documents | ✅ | ❌ |
+| Delete KB | ✅ | ❌ |
+| Toggle Sharing | ✅ | ❌ |
+
+**Implementation:**
+
+```python
+def user_can_access_kb(kb_id: str, user_id: int) -> Tuple[bool, str]:
+    """
+    Check if user can access KB and return access level.
+    
+    Returns:
+        (can_access: bool, access_type: 'owner' | 'shared' | 'none')
+    """
+    entry = get_kb_registry_entry(kb_id)
+    if not entry:
+        return (False, 'none')
+    
+    # Owner has full access
+    if entry['owner_user_id'] == user_id:
+        return (True, 'owner')
+    
+    # Shared KBs accessible to organization members
+    user = get_creator_user_by_id(user_id)
+    if user and entry['is_shared'] and entry['organization_id'] == user['organization_id']:
+        return (True, 'shared')
+    
+    return (False, 'none')
+```
+
+#### 9.6.6 Protection Against Unsharing
+
+**Prevention Logic:**
+
+When a KB owner attempts to unshare (`is_shared = false`), the system checks if any assistants owned by other users reference this KB:
+
+```python
+def check_kb_used_by_other_users(kb_id: str, kb_owner_user_id: int) -> List[Dict]:
+    """
+    Check if KB is used by assistants owned by other users.
+    
+    Returns:
+        List of assistants using this KB (owned by other users).
+        Empty list if KB can be safely unshared.
+    """
+    # Query assistants table for RAG_collections containing kb_id
+    # Filter out assistants owned by the KB owner
+    # Return list of matching assistants with owner info
+```
+
+**Behavior:**
+- ✅ **Can Share:** No restrictions, owner can share at any time
+- ❌ **Cannot Unshare:** If KB is used by other users' assistants, unshare is blocked
+- 📋 **Error Message:** Lists assistants using the KB (up to 3, then "and X more")
+- 🔒 **Protection:** Prevents breaking other users' assistants
+
+**SQL Query Pattern:**
+
+```sql
+SELECT a.id, a.name, a.owner, u.user_name as owner_name
+FROM assistants a
+JOIN Creator_users u ON a.owner = u.user_email
+WHERE a.RAG_collections LIKE '%kb_id%'
+  AND a.owner != kb_owner_email
+  AND u.id != kb_owner_user_id
+```
+
+The query uses `LIKE '%kb_id%'` for initial matching, then verifies exact match by parsing comma-separated `RAG_collections` values.
+
+#### 9.6.7 Frontend Implementation
+
+**Tabbed Interface:**
+
+The frontend displays KBs in separate tabs:
+- **"My Knowledge Bases"**: Shows owned KBs from `/creator/knowledgebases/user`
+- **"Shared Knowledge Bases"**: Shows shared KBs from `/creator/knowledgebases/shared`
+
+**Sharing Toggle UI:**
+
+```svelte
+<!-- Owner can toggle sharing -->
+{#if kb.is_owner}
+  <button onclick={() => handleToggleSharing(kb)}>
+    {kb.is_shared ? '🔓 Unshare' : '🔒 Share'}
+  </button>
+{/if}
+
+<!-- Status badge -->
+{#if kb.is_owner && kb.is_shared}
+  <span class="badge">Shared</span>
+{:else if kb.is_owner}
+  <span class="badge">Private</span>
+{:else}
+  <span class="badge">Read-Only</span>
+  <span class="text-sm text-gray-500">Shared by {kb.shared_by}</span>
+{/if}
+```
+
+**Assistant Form Integration:**
+
+When selecting KBs for an assistant, shared KBs are displayed in a separate section:
+
+```svelte
+{#if ownedKnowledgeBases.length > 0}
+  <h5>My Knowledge Bases</h5>
+  {#each ownedKnowledgeBases as kb}
+    <!-- Checkbox for KB selection -->
+  {/each}
+{/if}
+
+{#if sharedKnowledgeBases.length > 0}
+  <h5>Shared Knowledge Bases</h5>
+  {#each sharedKnowledgeBases as kb}
+    <!-- Checkbox with owner indicator -->
+    <span>{kb.name} (Shared by {kb.shared_by})</span>
+  {/each}
+{/if}
+```
+
+#### 9.6.8 Usage Flow
+
+**Sharing a KB:**
+
+1. KB owner creates KB (registered in `kb_registry` with `is_shared = false`)
+2. Owner clicks "Share" button in KB list
+3. Frontend calls `PUT /creator/knowledgebases/kb/{kb_id}/share` with `is_shared: true`
+4. Backend updates `kb_registry.is_shared = true`
+5. KB appears in "Shared Knowledge Bases" for all organization members
+
+**Using a Shared KB:**
+
+1. User views "Shared Knowledge Bases" tab
+2. User selects shared KB when creating/editing assistant
+3. KB ID added to assistant's `RAG_collections`
+4. Assistant can query shared KB during completions
+
+**Unsharing Attempt (Protected):**
+
+1. KB owner clicks "Unshare" button
+2. Backend checks `check_kb_used_by_other_users()`
+3. If KB is in use:
+   - Returns HTTP 409 with error message listing blocking assistants
+   - Frontend displays error message
+   - KB remains shared
+4. If KB is not in use:
+   - Updates `is_shared = false`
+   - KB removed from shared list
+   - KB remains accessible to owner
+
 ---
 
 ## 10. LTI Integration

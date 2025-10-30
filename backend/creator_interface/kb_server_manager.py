@@ -64,21 +64,241 @@ class KBServerManager:
         
     async def get_user_knowledge_bases(self, creator_user: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Get all knowledge bases for a user from the KB server
+        Get user's OWNED knowledge bases only.
+        Includes auto-registration of missing KBs and lazy cleanup of stale entries.
         
         Args:
             creator_user: Authenticated user information
             
         Returns:
-            List of knowledge base objects
+            List of owned knowledge base objects with LAMB metadata (is_owner=true, is_shared, can_modify=true)
         """
-        # Filter collections by owner (user ID instead of email for privacy)
+        from lamb.database_manager import LambDatabaseManager
+        
+        db_manager = LambDatabaseManager()
+        user_id = creator_user.get('id')
+        org_id = creator_user.get('organization_id')
+        
+        # Step 1: Fetch user's owned KBs from KB Server (for auto-registration)
+        owned_kbs = await self._fetch_owned_kbs_from_kb_server(creator_user)
+        
+        # Step 2: Auto-register missing KBs
+        for kb in owned_kbs:
+            kb_id = str(kb.get('id', ''))
+            kb_name = kb.get('name', '')
+            if kb_id and kb_name:
+                if not db_manager.get_kb_registry_entry(kb_id):
+                    logger.info(f"Auto-registering KB {kb_id} ('{kb_name}') on first access")
+                    # Try to preserve original creation date from KB server if available
+                    creation_date = None
+                    if 'creation_date' in kb:
+                        # KB server might return ISO format date string
+                        try:
+                            from datetime import datetime
+                            if isinstance(kb['creation_date'], str):
+                                # Parse ISO format: "2025-10-20T14:07:40.163492"
+                                dt = datetime.fromisoformat(kb['creation_date'].replace('Z', '+00:00'))
+                                creation_date = int(dt.timestamp())
+                            elif isinstance(kb['creation_date'], (int, float)):
+                                # Already a timestamp
+                                creation_date = int(kb['creation_date'])
+                        except Exception as e:
+                            logger.warning(f"Could not parse creation_date from KB server: {e}")
+                            creation_date = None
+                    
+                    db_manager.register_kb(
+                        kb_id=kb_id,
+                        kb_name=kb_name,
+                        owner_user_id=user_id,
+                        organization_id=org_id,
+                        is_shared=False,
+                        metadata={'original_creation_date': creation_date} if creation_date else None
+                    )
+                    # If we have a creation date from KB server, update the registry entry
+                    if creation_date:
+                        # Update the created_at timestamp to match KB server's creation date
+                        db_manager.update_kb_registry_created_at(kb_id, creation_date)
+                        logger.info(f"Updated created_at for KB {kb_id} to match KB server creation date")
+        
+        # Step 3: Get owned KB registry entries only
+        kb_registry_entries = db_manager.get_owned_kbs(user_id, org_id)
+        
+        logger.info(f"Found {len(kb_registry_entries)} owned KB registry entries for user {user_id}")
+        
+        # Step 4: Fetch KB details from KB Server for each registry entry
+        # Handle stale entries gracefully (lazy cleanup)
+        owned_kbs_list = []
+        async with httpx.AsyncClient() as client:
+            for entry in kb_registry_entries:
+                kb_id = entry.get('kb_id')
+                if not kb_id:
+                    continue
+                    
+                try:
+                    response = await client.get(
+                        f"{self.kb_server_url}/collections/{kb_id}",
+                        headers=self.get_auth_headers()
+                    )
+                    
+                    if response.status_code == 200:
+                        kb_data = response.json()
+                        
+                        # Enhance with LAMB metadata - all owned KBs
+                        kb_data['is_owner'] = True
+                        kb_data['is_shared'] = entry.get('is_shared', False)
+                        kb_data['can_modify'] = True
+                        kb_data['shared_by'] = None
+                        # Use created_at from registry (LAMB database) instead of KB server
+                        # If not in registry, fallback to current time
+                        registry_created_at = entry.get('created_at')
+                        if registry_created_at:
+                            kb_data['created_at'] = registry_created_at
+                        elif 'creation_date' in kb_data:
+                            # Fallback: try to parse KB server's creation_date
+                            try:
+                                from datetime import datetime as dt
+                                creation_date = kb_data.get('creation_date')
+                                if isinstance(creation_date, str):
+                                    dt_obj = dt.fromisoformat(creation_date.replace('Z', '+00:00'))
+                                    kb_data['created_at'] = int(dt_obj.timestamp())
+                                else:
+                                    kb_data['created_at'] = int(time.time())
+                            except:
+                                kb_data['created_at'] = int(time.time())
+                        else:
+                            kb_data['created_at'] = int(time.time())
+                        kb_data['updated_at'] = entry.get('updated_at', int(time.time()))
+                        
+                        owned_kbs_list.append(kb_data)
+                        logger.info(f"Fetched owned KB {kb_id}: is_shared={kb_data['is_shared']}")
+                        
+                    elif response.status_code == 404:
+                        # Stale entry - KB deleted from KB Server
+                        logger.warning(f"Stale registry entry: KB {kb_id} not found in KB Server, removing from registry")
+                        db_manager.delete_kb_registry_entry(kb_id)
+                    else:
+                        logger.warning(f"KB Server returned {response.status_code} for KB {kb_id}, skipping")
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        # Stale entry cleanup
+                        logger.warning(f"Stale registry entry detected: KB {kb_id} not found")
+                        db_manager.delete_kb_registry_entry(kb_id)
+                    else:
+                        logger.warning(f"HTTP error fetching KB {kb_id}: {e}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch KB {kb_id} from KB Server: {e}")
+                    continue
+        
+        logger.info(f"Returning {len(owned_kbs_list)} owned KBs to user {user_id}")
+        return owned_kbs_list
+    
+    async def get_org_shared_knowledge_bases(self, creator_user: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Get knowledge bases SHARED in organization (excluding user's own).
+        Includes lazy cleanup of stale entries.
+        
+        Args:
+            creator_user: Authenticated user information
+            
+        Returns:
+            List of shared knowledge base objects with LAMB metadata (is_owner=false, is_shared=true, can_modify=false, shared_by)
+        """
+        from lamb.database_manager import LambDatabaseManager
+        
+        db_manager = LambDatabaseManager()
+        user_id = creator_user.get('id')
+        org_id = creator_user.get('organization_id')
+        
+        # Get shared KB registry entries (excluding user's own)
+        kb_registry_entries = db_manager.get_shared_kbs(user_id, org_id)
+        
+        logger.info(f"Found {len(kb_registry_entries)} shared KB registry entries for user {user_id}")
+        
+        # Fetch KB details from KB Server for each registry entry
+        # Handle stale entries gracefully (lazy cleanup)
+        shared_kbs_list = []
+        async with httpx.AsyncClient() as client:
+            for entry in kb_registry_entries:
+                kb_id = entry.get('kb_id')
+                if not kb_id:
+                    continue
+                    
+                try:
+                    response = await client.get(
+                        f"{self.kb_server_url}/collections/{kb_id}",
+                        headers=self.get_auth_headers()
+                    )
+                    
+                    if response.status_code == 200:
+                        kb_data = response.json()
+                        
+                        # Enhance with LAMB metadata - all shared KBs
+                        kb_data['is_owner'] = False
+                        kb_data['is_shared'] = True
+                        kb_data['can_modify'] = False
+                        kb_data['shared_by'] = entry.get('owner_name') or entry.get('owner_email', 'Unknown')
+                        # Use created_at from registry (LAMB database) instead of KB server
+                        # If not in registry, fallback to current time
+                        registry_created_at = entry.get('created_at')
+                        if registry_created_at:
+                            kb_data['created_at'] = registry_created_at
+                        elif 'creation_date' in kb_data:
+                            # Fallback: try to parse KB server's creation_date
+                            try:
+                                from datetime import datetime as dt
+                                creation_date = kb_data.get('creation_date')
+                                if isinstance(creation_date, str):
+                                    dt_obj = dt.fromisoformat(creation_date.replace('Z', '+00:00'))
+                                    kb_data['created_at'] = int(dt_obj.timestamp())
+                                else:
+                                    kb_data['created_at'] = int(time.time())
+                            except:
+                                kb_data['created_at'] = int(time.time())
+                        else:
+                            kb_data['created_at'] = int(time.time())
+                        kb_data['updated_at'] = entry.get('updated_at', int(time.time()))
+                        
+                        shared_kbs_list.append(kb_data)
+                        logger.info(f"Fetched shared KB {kb_id}: shared_by={kb_data['shared_by']}")
+                        
+                    elif response.status_code == 404:
+                        # Stale entry - KB deleted from KB Server
+                        logger.warning(f"Stale registry entry: KB {kb_id} not found in KB Server, removing from registry")
+                        db_manager.delete_kb_registry_entry(kb_id)
+                    else:
+                        logger.warning(f"KB Server returned {response.status_code} for KB {kb_id}, skipping")
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        # Stale entry cleanup
+                        logger.warning(f"Stale registry entry detected: KB {kb_id} not found")
+                        db_manager.delete_kb_registry_entry(kb_id)
+                    else:
+                        logger.warning(f"HTTP error fetching KB {kb_id}: {e}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch KB {kb_id} from KB Server: {e}")
+                    continue
+        
+        logger.info(f"Returning {len(shared_kbs_list)} shared KBs to user {user_id}")
+        return shared_kbs_list
+    
+    async def _fetch_owned_kbs_from_kb_server(self, creator_user: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Helper: Fetch user's owned KBs from KB Server using owner parameter.
+        
+        Args:
+            creator_user: Authenticated user information
+            
+        Returns:
+            List of KB dictionaries from KB Server
+        """
         params = {
             "owner": str(creator_user.get('id'))  # Convert to string as KB server expects string
         }
         
         kb_server_url = f"{self.kb_server_url}/collections"
-        logger.info(f"Requesting collections from KB server at {kb_server_url}")
+        logger.info(f"Requesting user's owned collections from KB server at {kb_server_url}")
         
         async with httpx.AsyncClient() as client:
             try:
@@ -90,9 +310,7 @@ class KBServerManager:
                 logger.info(f"KB server response status: {response.status_code}")
                 
                 if response.status_code == 200:
-                    # Get the response data
                     response_data = response.json()
-                    logger.info(f"Retrieved response from KB server: {type(response_data)}")
                     
                     # Handle different response formats
                     collections_data = []
@@ -104,78 +322,26 @@ class KBServerManager:
                         collections_data = response_data['items']
                     else:
                         logger.warning(f"Unexpected response format from KB server: {type(response_data)}")
-                        # Try to extract collections if response is a dict
                         if isinstance(response_data, dict):
-                            # Log the keys to help debugging
-                            logger.info(f"Response keys: {list(response_data.keys())}")
-                            # Try to find a key that might contain collections
                             for key, value in response_data.items():
                                 if isinstance(value, list):
                                     collections_data = value
                                     logger.info(f"Using key '{key}' which contains a list of {len(collections_data)} items")
                                     break
                     
-                    logger.info(f"Processing {len(collections_data)} collections")
-                    
-                    # Format the collections properly for frontend
-                    knowledge_bases = []
-                    
-                    for collection in collections_data:
-                        # Skip if collection is not a dict
-                        if not isinstance(collection, dict):
-                            logger.warning(f"Skipping non-dict collection: {collection}")
-                            continue
-                            
-                        # Extract collection data
-                        collection_id = str(collection.get('id', ''))
-                        collection_name = collection.get('name', '')
-                        
-                        if not collection_id or not collection_name:
-                            logger.warning(f"Skipping collection with missing ID or name: {collection}")
-                            continue
-                        
-                        logger.info(f"Processing collection ID={collection_id}, Name={collection_name}")
-                        
-                        # Create metadata structure
-                        metadata = {
-                            'description': collection.get('description', ''),
-                            'access_control': collection.get('visibility', 'private')
-                        }
-                        
-                        # Create a properly formatted entry for the frontend
-                        kb_entry = {
-                            'id': collection_id,
-                            'name': collection_name,
-                            'owner': collection.get('owner', str(creator_user.get('id', 'unknown'))),
-                            'created_at': collection.get('created_at', int(time.time())),
-                            'metadata': metadata
-                        }
-                        knowledge_bases.append(kb_entry)
-                        logger.info(f"Successfully processed collection: {collection_name}")
-                    
-                    logger.info(f"Found {len(knowledge_bases)} knowledge bases for user")
-                    return knowledge_bases
+                    logger.info(f"Found {len(collections_data)} owned KBs from KB Server")
+                    return collections_data
                     
                 else:
                     logger.error(f"KB server returned non-200 status: {response.status_code}")
-                    error_detail = "Unknown error"
-                    try:
-                        error_data = response.json()
-                        error_detail = error_data.get('detail', str(error_data))
-                    except Exception:
-                        error_detail = response.text or "Unknown error"
-                    
-                    raise HTTPException(
-                        status_code=response.status_code,
-                        detail=f"KB server error: {error_detail}"
-                    )
+                    return []
             
             except httpx.RequestError as req_err:
                 logger.error(f"Error connecting to KB server: {str(req_err)}")
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Unable to connect to KB server: {str(req_err)}"
-                )
+                return []
+            except Exception as e:
+                logger.error(f"Unexpected error fetching owned KBs: {e}")
+                return []
                 
     async def create_knowledge_base(self, kb_data: KnowledgeBaseCreate, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -248,11 +414,29 @@ class KBServerManager:
                     # Successfully created
                     
                     collection_response = response.json()
-                    logger.info(f"KB server created collection with ID: {collection_response.get('id')}")
+                    kb_id = collection_response.get('id')
+                    logger.info(f"KB server created collection with ID: {kb_id}")
+                    
+                    # Register in LAMB registry for sharing
+                    try:
+                        from lamb.database_manager import LambDatabaseManager
+                        db_manager = LambDatabaseManager()
+                        db_manager.register_kb(
+                            kb_id=kb_id,
+                            kb_name=kb_data.name,
+                            owner_user_id=creator_user.get('id'),
+                            organization_id=creator_user.get('organization_id'),
+                            is_shared=False  # Default to private
+                        )
+                        logger.info(f"KB registered in LAMB registry: {kb_id}")
+                    except Exception as reg_err:
+                        # Log but don't fail - KB exists in KB Server even if registry fails
+                        logger.error(f"Failed to register KB in LAMB registry: {reg_err}")
                     
                     return {
                         "message": "Knowledge base created successfully",
-                        "id": collection_response.get('id'),
+                        "id": kb_id,
+                        "kb_id": kb_id,  # Include both for compatibility
                         "name": kb_data.name
                     }
                 else:

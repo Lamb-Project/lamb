@@ -1,6 +1,6 @@
 <script>
     import { onMount } from 'svelte';
-    import { getKnowledgeBases, deleteKnowledgeBase } from '$lib/services/knowledgeBaseService';
+    import { getUserKnowledgeBases, getSharedKnowledgeBases, deleteKnowledgeBase, toggleKBSharing } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
     import { base } from '$app/paths';
@@ -21,11 +21,22 @@
      * @property {number} created_at
      * @property {Object} [metadata]
      * @property {string} [metadata.access_control]
+     * @property {boolean} [is_owner] - Whether user owns this KB
+     * @property {boolean} [is_shared] - Whether KB is shared
+     * @property {boolean} [can_modify] - Whether user can modify KB
+     * @property {string} [shared_by] - Name of user who shared this KB
      */
+    
+    // Tab state
+    let currentTab = $state('my'); // 'my' | 'shared'
     
     // State management
     /** @type {KnowledgeBase[]} */
     let allKnowledgeBases = $state([]);
+    /** @type {KnowledgeBase[]} */
+    let ownedKnowledgeBases = $state([]);
+    /** @type {KnowledgeBase[]} */
+    let sharedKnowledgeBases = $state([]);
     /** @type {KnowledgeBase[]} */
     let displayKnowledgeBases = $state([]);
     let loading = $state(true);
@@ -71,10 +82,27 @@
                 return;
             }
             
-            // Fetch knowledge bases
-            const data = await getKnowledgeBases();
-            allKnowledgeBases = data || [];
-            console.log('Knowledge bases loaded:', allKnowledgeBases.length);
+            // Fetch owned and shared KBs separately
+            const [ownedData, sharedData] = await Promise.all([
+                getUserKnowledgeBases().catch(err => {
+                    console.warn('Error fetching owned KBs:', err);
+                    return [];
+                }),
+                getSharedKnowledgeBases().catch(err => {
+                    console.warn('Error fetching shared KBs:', err);
+                    return [];
+                })
+            ]);
+            
+            ownedKnowledgeBases = ownedData || [];
+            sharedKnowledgeBases = sharedData || [];
+            
+            // Combine for allKnowledgeBases (for backward compatibility if needed)
+            allKnowledgeBases = [...ownedKnowledgeBases, ...sharedKnowledgeBases];
+            
+            console.log(`Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length}`);
+            
+            // Apply filters and pagination after data is loaded
             applyFiltersAndPagination();
             
         } catch (/** @type {unknown} */ err) {
@@ -86,15 +114,24 @@
                 serverOffline = true;
             }
             allKnowledgeBases = [];
+            ownedKnowledgeBases = [];
+            sharedKnowledgeBases = [];
             displayKnowledgeBases = [];
         } finally {
             loading = false;
         }
     }
     
+    // Get current tab's KBs
+    let currentTabKBs = $derived(
+        currentTab === 'my' ? ownedKnowledgeBases : sharedKnowledgeBases
+    );
+    
     // Apply filters, sorting, and pagination
     function applyFiltersAndPagination() {
-        const result = processListData(allKnowledgeBases, {
+        // Get the current tab's KBs array (derived value is reactive)
+        const kbList = currentTab === 'my' ? ownedKnowledgeBases : sharedKnowledgeBases;
+        const result = processListData(kbList, {
             search: searchTerm,
             searchFields: ['name', 'description', 'id'],
             filters: {},
@@ -108,6 +145,21 @@
         totalItems = result.filteredCount;
         totalPages = result.totalPages;
         currentPage = result.currentPage;
+    }
+    
+    // Watch for tab changes
+    $effect(() => {
+        currentTab; // Trigger on tab change
+        currentPage = 1;
+        applyFiltersAndPagination();
+    });
+    
+    // Handle tab switch
+    function handleTabSwitch(tab) {
+        currentTab = tab;
+        searchTerm = '';
+        currentPage = 1;
+        applyFiltersAndPagination();
     }
     
     // Filter/Sort/Pagination event handlers
@@ -179,11 +231,50 @@
             await deleteKnowledgeBase(kb.id);
             // Optimistic removal
             allKnowledgeBases = allKnowledgeBases.filter(k => k.id !== kb.id);
+            ownedKnowledgeBases = ownedKnowledgeBases.filter(k => k.id !== kb.id);
+            sharedKnowledgeBases = sharedKnowledgeBases.filter(k => k.id !== kb.id);
             applyFiltersAndPagination();
             successMessage = $_('knowledgeBases.list.deleteSuccess', { default: 'Knowledge base deleted.' });
             setTimeout(() => { successMessage = ''; }, 4000);
         } catch (e) {
             alert(e instanceof Error ? e.message : 'Deletion failed');
+        }
+    }
+    
+    async function handleToggleSharing(kb) {
+        if (!kb || !kb.is_owner) return;
+        
+        const newSharingState = !kb.is_shared;
+        
+        try {
+            await toggleKBSharing(kb.id, newSharingState);
+            
+            // Optimistic update
+            kb.is_shared = newSharingState;
+            
+            // Update local arrays
+            const index = allKnowledgeBases.findIndex(k => k.id === kb.id);
+            if (index !== -1) {
+                allKnowledgeBases[index].is_shared = newSharingState;
+            }
+            
+            // Re-split arrays
+            ownedKnowledgeBases = allKnowledgeBases.filter(k => k.is_owner === true);
+            sharedKnowledgeBases = allKnowledgeBases.filter(k => k.is_owner === false && k.is_shared === true);
+            
+            // Update display
+            applyFiltersAndPagination();
+            
+            successMessage = newSharingState 
+                ? $_('knowledgeBases.list.shareSuccess', { default: `"${kb.name}" is now shared with your organization.` })
+                : $_('knowledgeBases.list.unshareSuccess', { default: `"${kb.name}" is now private.` });
+            setTimeout(() => { successMessage = ''; }, 4000);
+        } catch (e) {
+            // Extract error message from response
+            const errorMsg = e instanceof Error ? e.message : 
+                (e.response?.data?.detail || e.response?.data?.message || 'Failed to toggle sharing');
+            error = errorMsg;
+            setTimeout(() => { error = ''; }, 8000);
         }
     }
     
@@ -263,6 +354,34 @@
             </button>
         </div>
     {:else}
+        <!-- Tabs -->
+        <div class="border-b border-gray-200">
+            <div class="flex space-x-4 px-6 pt-4">
+                <button
+                    onclick={() => handleTabSwitch('my')}
+                    class="px-4 py-2 text-sm font-medium rounded-md {currentTab === 'my' ? 'bg-brand text-white' : 'text-gray-600 hover:text-gray-900'}"
+                >
+                    {$_('knowledgeBases.list.myKBs', { default: 'My Knowledge Bases' })}
+                    {#if currentTab === 'my'}
+                        <span class="ml-2 bg-white bg-opacity-30 text-white py-0.5 px-2 rounded-full text-xs">
+                            {ownedKnowledgeBases.length}
+                        </span>
+                    {/if}
+                </button>
+                <button
+                    onclick={() => handleTabSwitch('shared')}
+                    class="px-4 py-2 text-sm font-medium rounded-md {currentTab === 'shared' ? 'bg-brand text-white' : 'text-gray-600 hover:text-gray-900'}"
+                >
+                    {$_('knowledgeBases.list.sharedKBs', { default: 'Shared Knowledge Bases' })}
+                    {#if currentTab === 'shared'}
+                        <span class="ml-2 bg-white bg-opacity-30 text-white py-0.5 px-2 rounded-full text-xs">
+                            {sharedKnowledgeBases.length}
+                        </span>
+                    {/if}
+                </button>
+            </div>
+        </div>
+        
         <!-- Filter Bar -->
         <FilterBar
             searchPlaceholder={$_('knowledgeBases.searchPlaceholder', { default: 'Search knowledge bases...' })}
@@ -284,19 +403,22 @@
         <div class="flex justify-between items-center mb-4 px-6">
             <div class="text-sm text-gray-600">
                 {#if searchTerm}
-                    Showing <span class="font-medium">{totalItems}</span> of <span class="font-medium">{allKnowledgeBases.length}</span> knowledge bases
+                    Showing <span class="font-medium">{totalItems}</span> of <span class="font-medium">{currentTabKBs.length}</span> {currentTab === 'my' ? 'owned' : 'shared'} knowledge bases
                 {:else}
-                    <span class="font-medium">{totalItems}</span> knowledge bases
+                    <span class="font-medium">{totalItems}</span> {currentTab === 'my' ? 'owned' : 'shared'} knowledge {totalItems === 1 ? 'base' : 'bases'}
                 {/if}
             </div>
         </div>
         
         {#if displayKnowledgeBases.length === 0}
-            {#if allKnowledgeBases.length === 0}
-                <!-- No knowledge bases at all -->
+            {#if currentTabKBs.length === 0}
+                <!-- No knowledge bases in this tab -->
                 <div class="p-6 text-center">
                     <div class="text-gray-500">
-                        {$_('knowledgeBases.list.empty', { default: 'No knowledge bases found.' })}
+                        {currentTab === 'my' 
+                            ? $_('knowledgeBases.list.noOwned', { default: 'You have no knowledge bases yet. Create one to get started!' })
+                            : $_('knowledgeBases.list.noShared', { default: 'No shared knowledge bases available.' })
+                        }
                     </div>
                 </div>
             {:else}
@@ -326,7 +448,7 @@
                             {$_('knowledgeBases.list.createdColumn', { default: 'Created' })}
                         </th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            {$_('knowledgeBases.list.accessColumn', { default: 'Access' })}
+                            {$_('knowledgeBases.list.statusColumn', { default: 'Status' })}
                         </th>
                         <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                             {$_('knowledgeBases.list.actionsColumn', { default: 'Actions' })}
@@ -347,6 +469,11 @@
                                     </button>
                                 </div>
                                 <div class="text-sm text-gray-500">{kb.id}</div>
+                                {#if kb.shared_by && !kb.is_owner}
+                                    <div class="text-xs text-gray-400 mt-1">
+                                        {$_('knowledgeBases.list.sharedBy', { values: { name: kb.shared_by }, default: `Shared by ${kb.shared_by}` })}
+                                    </div>
+                                {/if}
                             </td>
                             <td class="px-6 py-4 whitespace-normal">
                                 <div class="text-sm text-gray-900">{kb.description || '-'}</div>
@@ -355,30 +482,50 @@
                                 <div class="text-sm text-gray-900">{formatDate(kb.created_at)}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {kb.metadata?.access_control === 'private' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}">
-                                    {kb.metadata?.access_control || 'public'}
-                                </span>
+                                {#if kb.is_owner}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {kb.is_shared ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                                        {kb.is_shared ? $_('knowledgeBases.list.shared', { default: 'Shared' }) : $_('knowledgeBases.list.private', { default: 'Private' })}
+                                    </span>
+                                {:else}
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                        {$_('knowledgeBases.list.readOnly', { default: 'Read-Only' })}
+                                    </span>
+                                {/if}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button 
-                                    onclick={() => viewKnowledgeBase(kb.id)}
-                                    class="text-brand hover:text-brand-hover mr-2"
-                                >
-                                    {$_('knowledgeBases.list.viewButton', { default: 'View' })}
-                                </button>
-                                <button 
-                                    type="button"
-                                    onclick={() => viewKnowledgeBase(kb.id)}
-                                    class="text-brand hover:text-brand-hover mr-2"
-                                >
-                                    {$_('knowledgeBases.list.editButton', { default: 'Edit' })}
-                                </button>
-                                <button 
-                                    type="button"
-                                    class="text-red-600 hover:text-red-900" 
-                                    onclick={() => handleDeleteKnowledgeBase(kb)}>
-                                    {$_('knowledgeBases.list.deleteButton', { default: 'Delete' })}
-                                </button>
+                                <div class="flex items-center justify-end gap-2">
+                                    {#if kb.is_owner}
+                                        <!-- Sharing toggle for owners -->
+                                        <button
+                                            onclick={() => handleToggleSharing(kb)}
+                                            class="text-sm px-2 py-1 rounded border {kb.is_shared ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100' : 'border-gray-300 text-gray-700 bg-gray-50 hover:bg-gray-100'}"
+                                            title={kb.is_shared ? $_('knowledgeBases.list.makePrivate', { default: 'Make private' }) : $_('knowledgeBases.list.shareWithOrg', { default: 'Share with organization' })}
+                                        >
+                                            {kb.is_shared ? '🔒 Unshare' : '🔓 Share'}
+                                        </button>
+                                    {/if}
+                                    <button 
+                                        onclick={() => viewKnowledgeBase(kb.id)}
+                                        class="text-brand hover:text-brand-hover"
+                                    >
+                                        {$_('knowledgeBases.list.viewButton', { default: 'View' })}
+                                    </button>
+                                    {#if kb.is_owner}
+                                        <button 
+                                            type="button"
+                                            onclick={() => viewKnowledgeBase(kb.id)}
+                                            class="text-brand hover:text-brand-hover"
+                                        >
+                                            {$_('knowledgeBases.list.editButton', { default: 'Edit' })}
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            class="text-red-600 hover:text-red-900" 
+                                            onclick={() => handleDeleteKnowledgeBase(kb)}>
+                                            {$_('knowledgeBases.list.deleteButton', { default: 'Delete' })}
+                                        </button>
+                                    {/if}
+                                </div>
                             </td>
                         </tr>
                     {/each}

@@ -499,6 +499,37 @@ class LambDatabaseManager:
                 else:
                     logging.debug("enabled column already exists in Creator_users table")
 
+                # Migration 5: Create kb_registry table if it doesn't exist
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
+                kb_registry_table_exists = cursor.fetchone()
+
+                if not kb_registry_table_exists:
+                    logging.info("Creating kb_registry table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}kb_registry (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            kb_id TEXT NOT NULL UNIQUE,
+                            kb_name TEXT NOT NULL,
+                            owner_user_id INTEGER NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            is_shared BOOLEAN DEFAULT FALSE,
+                            metadata JSON,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                        )
+                    """)
+
+                    # Create indexes for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_owner ON {self.table_prefix}kb_registry(owner_user_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
+
+                    logging.info("Successfully created kb_registry table and indexes")
+                else:
+                    logging.debug("kb_registry table already exists")
+
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
         finally:
@@ -3608,3 +3639,519 @@ class LambDatabaseManager:
             True if successful, False otherwise
         """
         return self.update_prompt_template(template_id, {'is_shared': is_shared}, owner_email)
+
+    # ========== KB Registry Methods ==========
+
+    def register_kb(self, kb_id: str, kb_name: str, owner_user_id: int, organization_id: int,
+                    is_shared: bool = False, metadata: Dict[str, Any] = None) -> Optional[int]:
+        """
+        Register a KB in LAMB's registry.
+        Called when KB is created or auto-registered on first access.
+        
+        Args:
+            kb_id: UUID from KB Server
+            kb_name: Display name
+            owner_user_id: Creator user ID
+            organization_id: Organization ID
+            is_shared: Whether KB is shared with org (default: False)
+            metadata: Optional metadata dict
+        
+        Returns:
+            Registry entry ID if successful, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Could not establish database connection")
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                metadata_json = json.dumps(metadata or {})
+                
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}kb_registry 
+                    (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata_json, current_time, current_time))
+                
+                registry_id = cursor.lastrowid
+                logging.info(f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
+                return registry_id
+                
+        except sqlite3.IntegrityError as e:
+            logging.error(f"Integrity error registering KB: {e}")
+            return None
+        except sqlite3.Error as e:
+            logging.error(f"Database error registering KB: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_kb_registry_entry(self, kb_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get KB registry entry with owner info.
+        
+        Args:
+            kb_id: KB UUID
+        
+        Returns:
+            Registry entry dict or None
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.kb_id = ?
+                """, (kb_id,))
+                
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                
+                return {
+                    'id': row[0],
+                    'kb_id': row[1],
+                    'kb_name': row[2],
+                    'owner_user_id': row[3],
+                    'organization_id': row[4],
+                    'is_shared': bool(row[5]),
+                    'metadata': json.loads(row[6]) if row[6] else {},
+                    'created_at': row[7],
+                    'updated_at': row[8],
+                    'owner_name': row[9],
+                    'owner_email': row[10]
+                }
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting KB registry entry: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_owned_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs owned by user.
+        
+        Args:
+            user_id: User ID
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries owned by user
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? AND kr.owner_user_id = ?
+                    ORDER BY kr.updated_at DESC
+                """, (organization_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting owned KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_shared_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs shared in organization (excluding user's own).
+        
+        Args:
+            user_id: User ID (to exclude own KBs)
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries shared in org (not owned by user)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? 
+                    AND kr.is_shared = TRUE
+                    AND kr.owner_user_id != ?
+                    ORDER BY kr.updated_at DESC
+                """, (organization_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting shared KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_accessible_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """
+        Get KBs accessible to user (owned OR shared in org).
+        Mirrors template access pattern.
+        NOTE: Consider using get_owned_kbs() and get_shared_kbs() separately for better UX.
+        
+        Args:
+            user_id: User ID
+            organization_id: Organization ID
+        
+        Returns:
+            List of KB registry entries with owner info, ordered by ownership (owned first)
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT 
+                        kr.id, kr.kb_id, kr.kb_name, kr.owner_user_id, kr.organization_id,
+                        kr.is_shared, kr.metadata, kr.created_at, kr.updated_at,
+                        cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}kb_registry kr
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                    WHERE kr.organization_id = ? 
+                    AND (kr.owner_user_id = ? OR kr.is_shared = TRUE)
+                    ORDER BY kr.owner_user_id = ? DESC, kr.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    # Convert is_shared boolean
+                    if isinstance(result_dict.get('is_shared'), int):
+                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                    # Parse metadata JSON
+                    if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
+                        try:
+                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                        except:
+                            result_dict['metadata'] = {}
+                    results.append(result_dict)
+                
+                return results
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting accessible KBs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_kb(self, kb_id: str, user_id: int) -> Tuple[bool, str]:
+        """
+        Check if user can access KB and return access level.
+        Mirrors template access checking.
+        
+        Args:
+            kb_id: KB UUID
+            user_id: User ID
+        
+        Returns:
+            (can_access, access_type) where access_type is 'owner', 'shared', or 'none'
+        """
+        entry = self.get_kb_registry_entry(kb_id)
+        
+        if not entry:
+            return (False, 'none')
+        
+        # User is owner
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        
+        # KB is shared in user's organization
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        
+        return (False, 'none')
+
+    def check_kb_used_by_other_users(self, kb_id: str, kb_owner_user_id: int) -> List[Dict[str, Any]]:
+        """
+        Check if a KB is used by assistants owned by other users.
+        
+        Args:
+            kb_id: KB UUID to check
+            kb_owner_user_id: User ID of the KB owner
+        
+        Returns:
+            List of assistants using this KB (owned by other users).
+            Empty list if KB is not used by other users or can be safely unshared.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get KB owner's email
+                kb_owner = self.get_creator_user_by_id(kb_owner_user_id)
+                if not kb_owner:
+                    return []
+                
+                kb_owner_email = kb_owner['user_email']
+                
+                # Find assistants that reference this KB in RAG_collections
+                # RAG_collections is comma-separated, so we need to check if kb_id appears in the string
+                # Only check assistants owned by users OTHER than the KB owner
+                query = f"""
+                    SELECT a.id, a.name, a.owner, u.user_name as owner_name
+                    FROM {self.table_prefix}assistants a
+                    JOIN {self.table_prefix}Creator_users u ON a.owner = u.user_email
+                    WHERE a.RAG_collections LIKE ? 
+                    AND a.owner != ?
+                    AND u.id != ?
+                """
+                
+                # Use LIKE with wildcards to match KB ID in comma-separated list
+                # Match patterns: "kb_id", "kb_id,", ",kb_id", ",kb_id,"
+                kb_pattern = f"%{kb_id}%"
+                cursor.execute(query, (kb_pattern, kb_owner_email, kb_owner_user_id))
+                rows = cursor.fetchall()
+                
+                # Additional check: verify KB ID is actually in the list (not just substring match)
+                matching_assistants = []
+                for row in rows:
+                    assistant_id, assistant_name, owner_email, owner_name = row
+                    # Get full RAG_collections string to verify exact match
+                    cursor.execute(f"""
+                        SELECT RAG_collections 
+                        FROM {self.table_prefix}assistants 
+                        WHERE id = ?
+                    """, (assistant_id,))
+                    rag_result = cursor.fetchone()
+                    
+                    if rag_result and rag_result[0]:
+                        collections = [c.strip() for c in rag_result[0].split(',') if c.strip()]
+                        if kb_id in collections:
+                            matching_assistants.append({
+                                'id': assistant_id,
+                                'name': assistant_name,
+                                'owner_email': owner_email,
+                                'owner_name': owner_name
+                            })
+                
+                return matching_assistants
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error checking KB usage: {e}")
+            return []
+
+    def toggle_kb_sharing(self, kb_id: str, is_shared: bool) -> bool:
+        """
+        Toggle KB sharing status.
+        Only owner can call this.
+        
+        Args:
+            kb_id: KB UUID
+            is_shared: New sharing state
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry 
+                    SET is_shared = ?, updated_at = ?
+                    WHERE kb_id = ?
+                """, (is_shared, current_time, kb_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Toggled KB {kb_id} sharing to {is_shared}")
+                else:
+                    logging.warning(f"KB {kb_id} not found for sharing toggle")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error toggling KB sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_kb_registry_created_at(self, kb_id: str, created_at: int) -> bool:
+        """
+        Update KB registry created_at timestamp.
+        Used when auto-registering KBs to preserve original creation date.
+        
+        Args:
+            kb_id: KB UUID
+            created_at: Unix timestamp (seconds since epoch)
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry
+                    SET created_at = ?
+                    WHERE kb_id = ?
+                """, (created_at, kb_id))
+                
+                if cursor.rowcount > 0:
+                    logging.info(f"Updated created_at for KB {kb_id} to {created_at}")
+                    return True
+                else:
+                    logging.warning(f"KB {kb_id} not found in registry for created_at update")
+                    return False
+                    
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating KB created_at: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_kb_registry_name(self, kb_id: str, kb_name: str) -> bool:
+        """
+        Update cached KB name.
+        Called when KB is renamed.
+        
+        Args:
+            kb_id: KB UUID
+            kb_name: New KB name
+        
+        Returns:
+            True if updated, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_registry 
+                    SET kb_name = ?, updated_at = ?
+                    WHERE kb_id = ?
+                """, (kb_name, current_time, kb_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Updated KB {kb_id} name to '{kb_name}'")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating KB registry name: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_kb_registry_entry(self, kb_id: str) -> bool:
+        """
+        Delete KB registry entry.
+        Called when KB is deleted.
+        
+        Args:
+            kb_id: KB UUID
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}kb_registry 
+                    WHERE kb_id = ?
+                """, (kb_id,))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Deleted KB registry entry for {kb_id}")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error deleting KB registry entry: {e}")
+            return False
+        finally:
+            connection.close()

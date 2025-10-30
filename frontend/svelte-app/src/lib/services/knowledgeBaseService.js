@@ -13,23 +13,22 @@ import { browser } from '$app/environment';
  */
 
 /**
- * Fetches all knowledge bases accessible by the authenticated user.
- * @returns {Promise<KnowledgeBase[]>} A promise that resolves to an array of knowledge bases.
+ * Fetches user's owned knowledge bases.
+ * @returns {Promise<KnowledgeBase[]>} A promise that resolves to an array of owned knowledge bases.
  * @throws {Error} If the request fails or the user is not authenticated.
  */
-export async function getKnowledgeBases() {
+export async function getUserKnowledgeBases() {
     if (!browser) {
         throw new Error('Knowledge base fetching is only available in the browser.');
     }
 
     const token = localStorage.getItem('userToken');
     if (!token) {
-        // Re-throw or handle appropriately, maybe redirect to login
         throw new Error('User not authenticated.'); 
     }
 
-    const url = getApiUrl('/knowledgebases');
-    console.log(`Fetching knowledge bases from: ${url}`);
+    const url = getApiUrl('/knowledgebases/user');
+    console.log(`Fetching owned knowledge bases from: ${url}`);
 
     try {
         const response = await axios.get(url, {
@@ -38,27 +37,22 @@ export async function getKnowledgeBases() {
             }
         });
 
-        // *** Log the raw response data for debugging ***
-        console.log('Raw KB Response Data:', response.data);
+        console.log('Raw Owned KB Response Data:', response.data);
 
-        // Validate the response structure based on the example
+        // Validate the response structure
         if (response.data && Array.isArray(response.data.knowledge_bases)) {
-            console.log('Successfully fetched knowledge bases:', response.data.knowledge_bases.length);
+            console.log('Successfully fetched owned knowledge bases:', response.data.knowledge_bases.length);
             return response.data.knowledge_bases;
         } else {
-            // If structure is wrong, throw an error including the unexpected data
-            console.error('Unexpected response structure for KBs:', response.data);
-            // Try to extract a message if available, otherwise use a generic error
+            console.error('Unexpected response structure for owned KBs:', response.data);
             const detail = response.data?.detail || response.data?.message || JSON.stringify(response.data);
-            throw new Error(`Failed to fetch knowledge bases: Invalid response format. Received: ${detail}`);
+            throw new Error(`Failed to fetch owned knowledge bases: Invalid response format. Received: ${detail}`);
         }
     } catch (error) {       
-        // *** Log the raw error object for debugging ***
-        console.error('Raw Error fetching knowledge bases:', error);
+        console.error('Raw Error fetching owned knowledge bases:', error);
         
-        let errorMessage = 'Failed to fetch knowledge bases.';
+        let errorMessage = 'Failed to fetch owned knowledge bases.';
         if (axios.isAxiosError(error)) {
-             // Log response data even in case of Axios error status
             console.error('Axios Error Response Data:', error.response?.data);
             if (error.response) {
                 errorMessage = error.response.data?.detail || error.response.data?.message || `Request failed with status ${error.response.status}`;
@@ -66,9 +60,75 @@ export async function getKnowledgeBases() {
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        // Ensure we throw the potentially extracted message
         throw new Error(errorMessage);
     }
+}
+
+/**
+ * Fetches organization shared knowledge bases (excluding user's own).
+ * @returns {Promise<KnowledgeBase[]>} A promise that resolves to an array of shared knowledge bases.
+ * @throws {Error} If the request fails or the user is not authenticated.
+ */
+export async function getSharedKnowledgeBases() {
+    if (!browser) {
+        throw new Error('Knowledge base fetching is only available in the browser.');
+    }
+
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('User not authenticated.'); 
+    }
+
+    const url = getApiUrl('/knowledgebases/shared');
+    console.log(`Fetching shared knowledge bases from: ${url}`);
+
+    try {
+        const response = await axios.get(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        console.log('Raw Shared KB Response Data:', response.data);
+
+        // Validate the response structure
+        if (response.data && Array.isArray(response.data.knowledge_bases)) {
+            console.log('Successfully fetched shared knowledge bases:', response.data.knowledge_bases.length);
+            return response.data.knowledge_bases;
+        } else {
+            console.error('Unexpected response structure for shared KBs:', response.data);
+            const detail = response.data?.detail || response.data?.message || JSON.stringify(response.data);
+            throw new Error(`Failed to fetch shared knowledge bases: Invalid response format. Received: ${detail}`);
+        }
+    } catch (error) {       
+        console.error('Raw Error fetching shared knowledge bases:', error);
+        
+        let errorMessage = 'Failed to fetch shared knowledge bases.';
+        if (axios.isAxiosError(error)) {
+            console.error('Axios Error Response Data:', error.response?.data);
+            if (error.response) {
+                errorMessage = error.response.data?.detail || error.response.data?.message || `Request failed with status ${error.response.status}`;
+            }
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * @deprecated Use getUserKnowledgeBases() and getSharedKnowledgeBases() separately instead.
+ * Fetches all knowledge bases accessible by the authenticated user.
+ * @returns {Promise<KnowledgeBase[]>} A promise that resolves to an array of knowledge bases.
+ * @throws {Error} If the request fails or the user is not authenticated.
+ */
+export async function getKnowledgeBases() {
+    // For backward compatibility, fetch both and combine
+    const [owned, shared] = await Promise.all([
+        getUserKnowledgeBases().catch(() => []),
+        getSharedKnowledgeBases().catch(() => [])
+    ]);
+    return [...owned, ...shared];
 } 
 
 /**
@@ -645,5 +705,56 @@ export async function deleteKnowledgeBase(kbId) {
             msg = error.message;
         }
         throw new Error(msg);
+    }
+}
+
+/**
+ * Toggle KB sharing status
+ * @param {string} kbId - The KB ID
+ * @param {boolean} isShared - New sharing status
+ * @returns {Promise<Object>} Response with updated KB info
+ */
+export async function toggleKBSharing(kbId, isShared) {
+    if (!browser) {
+        throw new Error('Knowledge base operations are only available in the browser.');
+    }
+
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('User not authenticated.');
+    }
+
+    const url = getApiUrl(`/knowledgebases/kb/${kbId}/share`);
+    console.log(`Toggling KB ${kbId} sharing to ${isShared}`);
+
+    try {
+        const response = await axios.put(
+            url,
+            { is_shared: isShared },
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        console.log('KB sharing toggle response:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Error toggling KB sharing:', error);
+        
+        let errorMessage = 'Failed to toggle sharing status.';
+        if (axios.isAxiosError(error)) {
+            console.error('Axios Error Response Data:', error.response?.data);
+            if (error.response) {
+                errorMessage = error.response.data?.detail || error.response.data?.message || 
+                             `Request failed with status ${error.response.status}`;
+            }
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        
+        throw new Error(errorMessage);
     }
 }
