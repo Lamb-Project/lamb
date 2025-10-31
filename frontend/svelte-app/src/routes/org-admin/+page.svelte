@@ -127,6 +127,11 @@
     /** @type {string | null} */
     let settingsError = $state(null);
     
+    // Signup settings specific errors and success
+    /** @type {string | null} */
+    let signupSettingsError = $state(null);
+    let signupSettingsSuccess = $state(false);
+    
     // Assistant defaults (org-scoped)
     /** @type {any} */
     let assistantDefaults = $state(null);
@@ -949,6 +954,43 @@
     }
 
     // Settings functions
+    
+    /**
+     * Validate signup key format
+     * @param {string} signupKey - The signup key to validate
+     * @returns {{ valid: boolean, error: string | null }} Validation result
+     */
+    function validateSignupKey(signupKey) {
+        if (!signupKey || signupKey.trim().length === 0) {
+            return { valid: false, error: 'Signup key is required when signup is enabled' };
+        }
+        
+        const trimmedKey = signupKey.trim();
+        
+        // Check minimum length
+        if (trimmedKey.length < 8) {
+            return { valid: false, error: 'Signup key must be at least 8 characters long' };
+        }
+        
+        // Check maximum length
+        if (trimmedKey.length > 64) {
+            return { valid: false, error: 'Signup key must be no more than 64 characters long' };
+        }
+        
+        // Check allowed characters (alphanumeric, hyphens, underscores)
+        if (!/^[a-zA-Z0-9_-]+$/.test(trimmedKey)) {
+            return { valid: false, error: 'Signup key can only contain letters, numbers, hyphens, and underscores' };
+        }
+        
+        // Check that it doesn't start or end with hyphen or underscore
+        if (trimmedKey.startsWith('-') || trimmedKey.startsWith('_') || 
+            trimmedKey.endsWith('-') || trimmedKey.endsWith('_')) {
+            return { valid: false, error: 'Signup key cannot start or end with a hyphen or underscore' };
+        }
+        
+        return { valid: true, error: null };
+    }
+    
     async function fetchSettings() {
         if (isLoadingSettings) {
             console.log("Already loading settings, skipping duplicate request");
@@ -1118,7 +1160,20 @@
     }
 
     async function updateSignupSettings() {
+        // Reset error and success states
+        signupSettingsError = null;
+        signupSettingsSuccess = false;
+        
         try {
+            // Validate signup key if signup is enabled
+            if (newSignupSettings.signup_enabled) {
+                const validation = validateSignupKey(newSignupSettings.signup_key);
+                if (!validation.valid) {
+                    signupSettingsError = validation.error;
+                    return;
+                }
+            }
+            
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
@@ -1137,11 +1192,34 @@
 
             // Refresh settings
             await fetchSettings();
-            // Success - settings refreshed
+            
+            // Show success message
+            signupSettingsSuccess = true;
+            
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                signupSettingsSuccess = false;
+            }, 3000);
 
         } catch (err) {
             console.error('Error updating signup settings:', err);
-            // Error is logged to console
+            
+            // Display user-friendly error message
+            if (axios.isAxiosError(err)) {
+                if (err.response?.data?.detail) {
+                    signupSettingsError = err.response.data.detail;
+                } else if (err.response?.status === 400) {
+                    signupSettingsError = 'Invalid signup settings. Please check your input.';
+                } else if (err.response?.status === 403) {
+                    signupSettingsError = 'Access denied. Organization admin privileges required.';
+                } else {
+                    signupSettingsError = 'Failed to update signup settings. Please try again.';
+                }
+            } else if (err instanceof Error) {
+                signupSettingsError = err.message;
+            } else {
+                signupSettingsError = 'An unknown error occurred while updating signup settings.';
+            }
         }
     }
 
@@ -2065,6 +2143,22 @@
                             <div class="px-4 py-5 sm:p-6">
                                 <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Signup Settings</h3>
                                 
+                                <!-- Error Message -->
+                                {#if signupSettingsError}
+                                    <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">Error: </strong>
+                                        <span class="block sm:inline">{signupSettingsError}</span>
+                                    </div>
+                                {/if}
+                                
+                                <!-- Success Message -->
+                                {#if signupSettingsSuccess}
+                                    <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">Success! </strong>
+                                        <span class="block sm:inline">Signup settings updated successfully.</span>
+                                    </div>
+                                {/if}
+                                
                                 <div class="space-y-4">
                                     <div class="flex items-center">
                                         <input
@@ -2080,16 +2174,21 @@
 
                                     {#if newSignupSettings.signup_enabled}
                                         <div>
-                                            <label for="signup-key" class="block text-sm font-medium text-gray-700">Signup Key</label>
+                                            <label for="signup-key" class="block text-sm font-medium text-gray-700">Signup Key *</label>
                                             <input
                                                 type="text"
                                                 id="signup-key"
                                                 bind:value={newSignupSettings.signup_key}
                                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder="Enter unique signup key"
+                                                required={newSignupSettings.signup_enabled}
+                                                pattern="[a-zA-Z0-9_-]+"
+                                                minlength="8"
+                                                maxlength="64"
+                                                title="Signup key must be 8-64 characters long and can only contain letters, numbers, hyphens, and underscores. Cannot start or end with hyphens or underscores."
                                             >
                                             <p class="mt-1 text-sm text-gray-500">
-                                                Unique key for users to signup to this organization (8-64 characters)
+                                                Unique key for users to signup to this organization (8-64 characters, letters, numbers, hyphens, and underscores only)
                                             </p>
                                         </div>
                                     {/if}
