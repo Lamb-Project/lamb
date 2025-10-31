@@ -10,6 +10,7 @@ services:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - DEFAULT_USER_ROLE=user
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     ports:
