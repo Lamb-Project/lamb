@@ -644,12 +644,16 @@ async def get_knowledge_base(kb_id: str, request: Request):
         # Enhance with LAMB metadata
         if isinstance(result, dict):
             entry = db_manager.get_kb_registry_entry(kb_id)
+            # Always set can_modify based on access_type, regardless of entry existence
+            result['is_owner'] = (access_type == 'owner')
+            result['can_modify'] = (access_type == 'owner')
             if entry:
-                result['is_owner'] = (access_type == 'owner')
                 result['is_shared'] = entry.get('is_shared', False)
-                result['can_modify'] = (access_type == 'owner')
                 if access_type == 'shared':
                     result['shared_by'] = entry.get('owner_name') or entry.get('owner_email', 'Unknown')
+            else:
+                # If no entry, assume not shared
+                result['is_shared'] = False
         
         return result
 

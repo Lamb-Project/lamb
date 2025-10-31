@@ -136,6 +136,12 @@
      */
     function selectTab(tabName) {
         console.log('Selecting tab:', tabName);
+        // Prevent accessing ingest tab if user doesn't have modify permissions
+        if (tabName === 'ingest' && kb && kb.can_modify !== true) {
+            console.warn('User attempted to access ingest tab without permissions');
+            activeTab = 'files'; // Redirect to files tab
+            return;
+        }
         activeTab = tabName;
         if (tabName === 'ingest' && plugins.length === 0 && !loadingPlugins) {
             console.log('Ingest tab selected, fetching plugins.');
@@ -179,6 +185,7 @@
             const data = await getKnowledgeBaseDetails(id);
             kb = data;
             console.log('Knowledge base details loaded:', kb);
+            console.log('can_modify value:', kb?.can_modify, 'type:', typeof kb?.can_modify);
         } catch (/** @type {unknown} */ err) {
             console.error('Error loading knowledge base details:', err);
             error = err instanceof Error ? err.message : 'Failed to load knowledge base details';
@@ -596,6 +603,7 @@
                         </button>
                         
                         <!-- Ingest Content Tab -->
+                        {#if kb.can_modify === true}
                         <button 
                             type="button"
                             onclick={() => selectTab('ingest')}
@@ -605,6 +613,7 @@
                        >
                             {$_('knowledgeBases.detail.ingestTab', { default: 'Ingest Content' })}
                         </button>
+                        {/if}
 
                         <!-- Query Tab -->
                         <button
@@ -675,12 +684,14 @@
                                                         </div>
                                                     </td>
                                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                        {#if kb.can_modify === true}
                                                         <button 
                                                             onclick={() => handleDeleteFile(file.id)}
                                                             class="text-red-600 hover:text-red-900"
                                                         >
                                                             {$_('knowledgeBases.detail.fileDeleteButton', { default: 'Delete' })}
                                                         </button>
+                                                        {/if}
                                                     </td>
                                                 </tr>
                                             {/each}

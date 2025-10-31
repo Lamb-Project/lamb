@@ -108,6 +108,12 @@
      */
     function selectTab(tabName) {
         console.log('Selecting tab:', tabName);
+        // Prevent accessing ingest tab if user doesn't have modify permissions
+        if (tabName === 'ingest' && kb && kb.can_modify !== true) {
+            console.warn('User attempted to access ingest tab without permissions');
+            activeTab = 'files'; // Redirect to files tab
+            return;
+        }
         activeTab = tabName;
         
         // Fetch relevant plugins if tab is opened for the first time
@@ -465,6 +471,7 @@
                         </button>
                         
                         <!-- Ingest Content Tab -->
+                        {#if kb.can_modify === true}
                         <button 
                             type="button"
                             onclick={() => selectTab('ingest')}
@@ -474,6 +481,7 @@
                        >
                             {$_('knowledgeBases.detail.ingestTab', { default: 'Ingest Content' })}
                         </button>
+                        {/if}
                     </nav>
                 </div>
 
@@ -535,12 +543,14 @@
                                                         </div>
                                                     </td>
                                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                        {#if kb.can_modify === true}
                                                         <button 
                                                             onclick={() => handleDeleteFile(file.id)}
                                                             class="text-red-600 hover:text-red-900"
                                                         >
                                                             {$_('knowledgeBases.detail.fileDeleteButton', { default: 'Delete' })}
                                                         </button>
+                                                        {/if}
                                                     </td>
                                                 </tr>
                                             {/each}
