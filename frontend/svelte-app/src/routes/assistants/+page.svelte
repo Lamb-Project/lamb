@@ -896,28 +896,28 @@
                     <!-- Name -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.name.label')} <span class="text-red-600">*</span></div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed sm:text-sm">
+                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 cursor-not-allowed sm:text-sm text-gray-900">
                             {selectedAssistantData.name?.replace(/^\d+_/, '') || (currentLocale ? $_('common.notAvailable', { default: 'N/A' }) : 'N/A')}
                         </div>
                     </div>
                     <!-- Description -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.description.label', { default: 'Description' })}</div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[6em] whitespace-pre-wrap select-text cursor-text">
+                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[6em] whitespace-pre-wrap select-text cursor-text text-gray-900">
                             {selectedAssistantData.description || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>
                      <!-- System Prompt -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</div>
-                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[8em] whitespace-pre-wrap select-text cursor-text">
+                        <div class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm min-h-[8em] whitespace-pre-wrap select-text cursor-text text-gray-900">
                             {selectedAssistantData.system_prompt || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>
                     <!-- Prompt Template -->
                     <div>
                         <div class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}</div>
-                        <div class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm max-h-96 overflow-y-auto whitespace-pre-wrap select-text cursor-text">
+                        <div class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm max-h-96 overflow-y-auto whitespace-pre-wrap select-text cursor-text text-gray-900">
                             {selectedAssistantData.prompt_template || (currentLocale ? $_('common.notSpecified', { default: 'Not specified' }) : 'Not specified')}
                         </div>
                     </div>

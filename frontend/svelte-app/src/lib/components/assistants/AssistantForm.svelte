@@ -1285,12 +1285,12 @@
 						{#if formState === 'edit'}
 							<input type="text" id="assistant-name" name="name" bind:value={name} 
 							disabled={true}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+							class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm text-gray-900"
 							placeholder={$_('assistants.form.name.placeholder')}>
 						{:else}
 							<input type="text" id="assistant-name" name="name" bind:value={name} 
 							disabled={false}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+							class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 							placeholder={$_('assistants.form.name.placeholder')}>
 						{/if}
 					</div>
@@ -1307,7 +1307,7 @@
 							oninput={handleFieldChange}
 							rows="3"
 							disabled={false}
-							class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white"
+							class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 							placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
 							<button type="button" onclick={handleGenerateDescription} disabled={generatingDescription}
 								class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed">
@@ -1407,7 +1407,7 @@
 										id="rubric-search"
 										bind:value={rubricSearchQuery}
 										placeholder={$_('assistants.form.rubric.search.placeholder', { default: 'Search rubrics by title or description...' })}
-										class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-brand focus:border-brand sm:text-sm"
+										class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 									/>
 								</div>
 
@@ -1587,7 +1587,7 @@
 								<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
 								<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} onchange={handleFieldChange}
 										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
+										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
 									{#each promptProcessors as processor}
 										<option value={processor}>{processor}</option>
 									{/each}
@@ -1601,7 +1601,7 @@
 								<label for="connector" class="block text-sm font-medium text-gray-700">{$_('assistants.form.connector.label', { default: 'Connector' })}</label>
 								<select id="connector" name="connector" bind:value={selectedConnector} onchange={(e) => { handleFieldChange(); handleConnectorChange(e); }}
 										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm">
+										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
 									{#each connectorsList as connectorName}
 										<option value={connectorName}>{connectorName}</option>
 									{/each}
