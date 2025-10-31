@@ -467,13 +467,14 @@ class KBServerManager:
                     detail=f"Unable to connect to KB server: {str(req_err)}"
                 )
 
-    async def get_knowledge_base_details(self, kb_id: str, creator_user: Dict[str, Any]) -> Dict[str, Any]:
+    async def get_knowledge_base_details(self, kb_id: str, creator_user: Dict[str, Any], access_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Get details of a specific knowledge base from the KB server
         
         Args:
             kb_id: ID of the knowledge base to retrieve
             creator_user: Authenticated user information
+            access_type: Optional access type ('owner' or 'shared') if access has been verified at LAMB level
             
         Returns:
             Dict with knowledge base details
@@ -499,7 +500,8 @@ class KBServerManager:
                     logger.info(f"Retrieved collection data from KB server for ID: {kb_id}")
                     
                     # Check if collection belongs to the authenticated user
-                    if collection_data.get('owner') != str(creator_user.get('id')):
+                    # Skip ownership check if access has been verified at LAMB level (shared access)
+                    if access_type != 'shared' and collection_data.get('owner') != str(creator_user.get('id')):
                         # Check if collection is public
                         if collection_data.get('visibility') != 'public':
                             logger.warning(f"User {creator_user.get('email')} (ID: {creator_user.get('id')}) tried to access collection {kb_id} owned by {collection_data.get('owner')}")
@@ -843,7 +845,7 @@ class KBServerManager:
             logger.error(f"Error connecting to KB server: {str(req_err)}")
             raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {str(req_err)}")
 
-    async def query_knowledge_base(self, kb_id: str, query_data: Dict[str, Any], creator_user: Dict[str, Any]) -> Dict[str, Any]:
+    async def query_knowledge_base(self, kb_id: str, query_data: Dict[str, Any], creator_user: Dict[str, Any], access_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Query a knowledge base from the KB server
         
@@ -851,6 +853,7 @@ class KBServerManager:
             kb_id: The ID of the knowledge base to query
             query_data: The query data including query_text and optional parameters
             creator_user: The authenticated creator user
+            access_type: Optional access type ('owner' or 'shared') if access has been verified at LAMB level
             
         Returns:
             Dict with query results
@@ -890,8 +893,9 @@ class KBServerManager:
                         )
                 
                 # Verify ownership or access permission
+                # Skip ownership check if access has been verified at LAMB level (shared access)
                 collection_data = get_response.json()
-                if collection_data.get('owner') != str(creator_user.get('id')):
+                if access_type != 'shared' and collection_data.get('owner') != str(creator_user.get('id')):
                     # For queries, we might allow read-only access if the KB has public visibility
                     if collection_data.get('visibility') != 'public':
                         logger.error(f"User {creator_user.get('email')} (ID: {creator_user.get('id')}) is not the owner of knowledge base {kb_id}")

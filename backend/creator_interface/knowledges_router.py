@@ -638,7 +638,8 @@ async def get_knowledge_base(kb_id: str, request: Request):
         logger.info(f"User {creator_user['id']} accessing KB {kb_id} with access type: {access_type}")
 
         # Get knowledge base details from KB server
-        result = await kb_server_manager.get_knowledge_base_details(kb_id, creator_user)
+        # Pass access_type to skip ownership check for shared KBs
+        result = await kb_server_manager.get_knowledge_base_details(kb_id, creator_user, access_type=access_type)
         
         # Enhance with LAMB metadata
         if isinstance(result, dict):
@@ -1118,10 +1119,12 @@ async def query_knowledge_base(
         logger.info(f"User {creator_user['id']} querying KB {kb_id} with access type: {access_type}")
         
         # Both owner and shared users can query
+        # Pass access_type to skip ownership check for shared KBs
         result = await kb_server_manager.query_knowledge_base(
             kb_id=kb_id,
             query_data=query_data.dict(),
-            creator_user=creator_user
+            creator_user=creator_user,
+            access_type=access_type
         )
         
         return result
