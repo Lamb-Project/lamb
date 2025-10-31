@@ -302,14 +302,22 @@
 			ragPlaceholders = ["{context}", "{user_input}"];
 		}
 		
+		// Update available models based on selected connector
 		updateAvailableModels();
-		selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
+		// Set LLM with fallback to first available model if default not available
+		const defaultLlm = defaults.llm || '';
+		if (defaultLlm && availableModels.includes(defaultLlm)) {
+			selectedLlm = defaultLlm;
+		} else {
+			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
+		}
+		
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
 		// Reset name/description only if truly starting fresh?
 		// name = ''; 
 		// description = ''; 
-		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor });
+		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor, availableModels });
 		if (selectedRagProcessor === 'simple_rag') {
 			tick().then(fetchKnowledgeBases);
 		}
@@ -1326,10 +1334,10 @@
 							</button>
 						{/if}
 					</div>
-					<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
-							  disabled={false}
-							  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
-							  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
+				<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
+						  disabled={false}
+						  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
+						  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
 				</div>
 
 					<!-- Prompt Template -->
@@ -1346,16 +1354,16 @@
 								</button>
 							{/each}
 						</div>
-					<textarea 
-						bind:this={textareaRef}
-						bind:value={prompt_template}
-						oninput={handleFieldChange}
-						id="prompt_template" 
-						rows="6"
-						class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-						placeholder={promptPlaceholderText}
-						disabled={!isFieldEditable('prompt_template')}
-					></textarea>
+				<textarea 
+					bind:this={textareaRef}
+					bind:value={prompt_template}
+					oninput={handleFieldChange}
+					id="prompt_template" 
+					rows="6"
+					class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
+					placeholder={promptPlaceholderText}
+					disabled={!isFieldEditable('prompt_template')}
+				></textarea>
 
 						<!-- Add preview box with highlighted placeholders -->
 						{#if prompt_template}
@@ -1531,7 +1539,7 @@
 												value="markdown"
 												class="h-4 w-4 text-brand focus:ring-brand mr-2"
 											/>
-											<span class="text-sm">{$_('assistants.form.rubric.format.markdown', { default: 'Markdown (table format)' })}</span>
+											<span class="text-sm text-gray-900">{$_('assistants.form.rubric.format.markdown', { default: 'Markdown (table format)' })}</span>
 										</label>
 										<label class="flex items-center cursor-pointer">
 											<input
@@ -1540,7 +1548,7 @@
 												value="json"
 												class="h-4 w-4 text-brand focus:ring-brand mr-2"
 											/>
-											<span class="text-sm">{$_('assistants.form.rubric.format.json', { default: 'JSON (structured data)' })}</span>
+											<span class="text-sm text-gray-900">{$_('assistants.form.rubric.format.json', { default: 'JSON (structured data)' })}</span>
 										</label>
 									</div>
 									<p class="mt-2 text-xs text-gray-500">{$_('assistants.form.rubric.format.help', { default: 'Choose the format that works best with your selected LLM. You can test both to see which produces better results.' })}</p>
@@ -1606,7 +1614,7 @@
 						<label for="llm" class="block text-sm font-medium text-gray-700">{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label>
 						<select id="llm" name="llm" bind:value={selectedLlm} onchange={handleFieldChange}
 									  disabled={availableModels.length === 0}
-								  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md">
+								  class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white">
 							{#if availableModels.length > 0}
 								{#each availableModels as model}
 									<option value={model}>{model}</option>
@@ -1622,7 +1630,7 @@
 						<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
 						<select id="rag-processor" bind:value={selectedRagProcessor} onchange={handleFieldChange}
 								disabled={formState === 'edit'}
-								class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-not-allowed">
+								class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
 							{#each ragProcessors as processor}
 								<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
 							{/each}
@@ -1649,7 +1657,7 @@
 										<label for="rag-top-k" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</label>
 										<input type="number" id="rag-top-k" name="RAG_Top_k" bind:value={RAG_Top_k} min="1" max="10" 
 											   disabled={false}
-											   class="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed">
+											   class="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed">
 										<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.ragTopK.help', { default: 'Number of relevant documents to retrieve (1-10).' })}</p>
 									</div>
 								{/if}

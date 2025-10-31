@@ -186,6 +186,16 @@
             }
         }
 
+        // Trigger KB fetch on mount to ensure auto-registration happens
+        // This ensures existing KBs get registered in kb_registry table
+        // Fire and forget - don't await to avoid blocking page initialization
+        if (browser && userToken) {
+            console.log("Triggering initial KB fetch for auto-registration");
+            getKnowledgeBases()
+                .then(() => console.log("Initial KB fetch completed successfully"))
+                .catch(err => console.warn("Initial KB fetch failed (non-critical):", err));
+        }
+
         currentLocale = $locale ?? null; // Handle potential undefined value from $locale
 
         unsubscribePage = page.subscribe(currentPage => {

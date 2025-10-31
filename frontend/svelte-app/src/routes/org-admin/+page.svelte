@@ -6,6 +6,9 @@
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
     import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
+    import Pagination from '$lib/components/common/Pagination.svelte';
+    import * as adminService from '$lib/services/adminService';
+    import { processListData } from '$lib/utils/listHelpers';
 
     // Get user data  
     /** @type {any} */
@@ -39,11 +42,29 @@
 
     // User management state
     /** @type {any[]} */
-    let orgUsers = $state([]);
+    let orgUsers = $state([]); // All users (unfiltered)
+    /** @type {any[]} */
+    let displayUsers = $state([]); // Filtered/paginated users for display
     let isLoadingUsers = $state(false);
     let usersLoaded = $state(false); // Track if users have been loaded at least once
     /** @type {string | null} */
     let usersError = $state(null);
+    
+    // Pagination state for users
+    let usersPage = $state(1);
+    let usersPerPage = $state(25);
+    let usersTotalPages = $state(1);
+    let usersTotalItems = $state(0);
+    
+    // Filter state for users
+    let usersSearchQuery = $state('');
+    let usersFilterUserType = $state('all'); // 'all', 'creator', 'end_user'
+    let usersFilterStatus = $state('all'); // 'all', 'enabled', 'disabled'
+    let usersSortBy = $state('id'); // 'id', 'name', 'email'
+    let usersSortOrder = $state('asc'); // 'asc', 'desc'
+    
+    // Bulk selection state
+    let selectedUsers = $state(/** @type {number[]} */ ([]));
 
     // Create user modal state
     let isCreateUserModalOpen = $state(false);
@@ -72,12 +93,19 @@
     let changePasswordError = $state(null);
     let changePasswordSuccess = $state(false);
 
-    // Delete user modal state
+    // Delete user modal state (now used for disable)
     let isDeleteUserModalOpen = $state(false);
     let userToDelete = $state(null);
     let isDeletingUser = $state(false);
     /** @type {string | null} */
     let deleteUserError = $state(null);
+    
+    // Bulk enable/disable modal states
+    let isBulkDisableModalOpen = $state(false);
+    let isBulkEnableModalOpen = $state(false);
+    let isBulkProcessing = $state(false);
+    /** @type {string | null} */
+    let bulkActionError = $state(null);
 
     // Settings state
     /** @type {any} */
@@ -407,6 +435,7 @@
             orgUsers = response.data || [];
             console.log(`Fetched ${orgUsers.length} users`);
             usersLoaded = true; // Mark as loaded even if empty
+            applyUsersFilters(); // Apply filters and pagination
         } catch (err) {
             console.error('Error fetching users:', err);
             if (axios.isAxiosError(err) && err.response?.status === 403) {
@@ -424,6 +453,74 @@
             isLoadingUsers = false;
         }
     }
+    
+    // Apply filters, sorting, and pagination to users
+    function applyUsersFilters() {
+        // Build filters object
+        /** @type {Record<string, any>} */
+        const filters = {};
+        
+        // Filter by user type
+        if (usersFilterUserType !== 'all') {
+            filters.user_type = usersFilterUserType;
+        }
+        
+        // Filter by enabled status
+        if (usersFilterStatus === 'enabled') {
+            filters.enabled = true;
+        } else if (usersFilterStatus === 'disabled') {
+            filters.enabled = false;
+        }
+        
+        /** @type {any} */
+        let result = processListData(orgUsers, {
+            search: usersSearchQuery,
+            searchFields: ['name', 'email'],
+            filters: filters,
+            sortBy: usersSortBy,
+            sortOrder: usersSortOrder,
+            page: usersPage,
+            itemsPerPage: usersPerPage
+        });
+        
+        displayUsers = result.items.map((/** @type {any} */ u) => ({...u, selected: selectedUsers.includes(u.id)}));
+        usersTotalItems = result.filteredCount;
+        usersTotalPages = result.totalPages;
+        usersPage = result.currentPage;
+    }
+    
+    // Users filter/sort/pagination event handlers
+    function handleUsersSearchChange() {
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersFilterChange() {
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    function handleUsersSortChange() {
+        applyUsersFilters();
+    }
+    
+    function handleUsersPageChange(event) {
+        usersPage = event.detail.page;
+        applyUsersFilters();
+    }
+    
+    function handleUsersPerPageChange(event) {
+        usersPerPage = event.detail.itemsPerPage;
+        usersPage = 1;
+        applyUsersFilters();
+    }
+    
+    // Sync selectedUsers with user.selected checkboxes
+    $effect(() => {
+        if (displayUsers && displayUsers.length > 0) {
+            selectedUsers = displayUsers.filter(u => u.selected).map(u => u.id);
+        }
+    });
 
     // Create user functions
     function openCreateUserModal() {
@@ -490,6 +587,93 @@
             console.error(errorMessage);
         }
     }
+    
+    // Bulk enable/disable functions
+    function openBulkDisableModal() {
+        if (selectedUsers.length === 0) return;
+        isBulkDisableModalOpen = true;
+        bulkActionError = null;
+    }
+    
+    function closeBulkDisableModal() {
+        isBulkDisableModalOpen = false;
+        bulkActionError = null;
+    }
+    
+    function openBulkEnableModal() {
+        if (selectedUsers.length === 0) return;
+        isBulkEnableModalOpen = true;
+        bulkActionError = null;
+    }
+    
+    function closeBulkEnableModal() {
+        isBulkEnableModalOpen = false;
+        bulkActionError = null;
+    }
+    
+    async function confirmBulkDisable() {
+        if (selectedUsers.length === 0) return;
+        
+        isBulkProcessing = true;
+        bulkActionError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+            
+            const result = await adminService.disableUsersBulk(token, selectedUsers);
+            
+            if (result.success) {
+                console.log(`Bulk disable: ${result.disabled} users disabled`);
+                // Refresh user list
+                await fetchUsers();
+                // Clear selection
+                selectedUsers = [];
+                closeBulkDisableModal();
+            } else {
+                throw new Error(result.message || 'Bulk disable failed');
+            }
+        } catch (err) {
+            console.error('Error in bulk disable:', err);
+            bulkActionError = err instanceof Error ? err.message : 'Failed to disable users';
+        } finally {
+            isBulkProcessing = false;
+        }
+    }
+    
+    async function confirmBulkEnable() {
+        if (selectedUsers.length === 0) return;
+        
+        isBulkProcessing = true;
+        bulkActionError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+            
+            const result = await adminService.enableUsersBulk(token, selectedUsers);
+            
+            if (result.success) {
+                console.log(`Bulk enable: ${result.enabled} users enabled`);
+                // Refresh user list
+                await fetchUsers();
+                // Clear selection
+                selectedUsers = [];
+                closeBulkEnableModal();
+            } else {
+                throw new Error(result.message || 'Bulk enable failed');
+            }
+        } catch (err) {
+            console.error('Error in bulk enable:', err);
+            bulkActionError = err instanceof Error ? err.message : 'Failed to enable users';
+        } finally {
+            isBulkProcessing = false;
+        }
+    }
 
     // User delete function
     function openDeleteUserModal(user) {
@@ -511,6 +695,7 @@
     }
 
     async function confirmDeleteUser() {
+        // This function now DISABLES the user instead of deleting
         if (!userToDelete) return;
 
         isDeletingUser = true;
@@ -523,26 +708,35 @@
             }
 
             const apiUrl = getApiUrl(`/org-admin/users/${userToDelete.id}`);
-            console.log(`Deleting user ${userToDelete.email} at: ${apiUrl}`);
+            console.log(`Disabling user ${userToDelete.email} at: ${apiUrl}`);
 
-            const response = await axios.delete(apiUrl, {
+            // Update to disable the user instead of deleting
+            const response = await axios.put(apiUrl, {
+                enabled: false
+            }, {
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
-            console.log('User delete response:', response.data);
+            console.log('User disable response:', response.data);
 
-            // Remove the user from the local list
-            orgUsers = orgUsers.filter(u => u.id !== userToDelete.id);
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === userToDelete.id);
+            if (userIndex !== -1) {
+                orgUsers[userIndex].enabled = false;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+                applyUsersFilters(); // Re-apply filters
+            }
 
             // Close modal
             closeDeleteUserModal();
 
         } catch (err) {
-            console.error('Error deleting user:', err);
+            console.error('Error disabling user:', err);
             
-            let errorMessage = 'Failed to delete user.';
+            let errorMessage = 'Failed to disable user.';
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
                 errorMessage = err.response.data.detail;
             } else if (err instanceof Error) {
@@ -1371,22 +1565,23 @@
                                         <h1 class="text-xl font-semibold text-gray-900">{dashboardData.organization.name}</h1>
                                         <p class="text-sm text-gray-600">User Management</p>
                                     </div>
-                                                            <div class="text-right text-sm text-gray-500">
-                            {#if targetOrgSlug}
-                                <div class="text-xs text-blue-600 mb-1">
-                                    <svg class="inline h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                                    </svg>
-                                    System Admin View
-                                </div>
-                            {/if}
-                            {dashboardData.stats.total_users} users • {dashboardData.stats.active_users} active
-                        </div>
+                                    <div class="text-right text-sm text-gray-500">
+                                        {#if targetOrgSlug}
+                                            <div class="text-xs text-blue-600 mb-1">
+                                                <svg class="inline h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                System Admin View
+                                            </div>
+                                        {/if}
+                                        {usersTotalItems} users total
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     {/if}
                     
+                    <!-- Header with Create Button -->
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-2xl font-semibold text-gray-800">Manage Users</h2>
                         <button
@@ -1403,17 +1598,125 @@
                         </div>
                     {/if}
 
+                    <!-- Filters and Search Controls -->
+                    <div class="bg-white shadow-sm rounded-lg p-4 mb-4">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <!-- Search -->
+                            <div class="md:col-span-2">
+                                <label for="users-search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                                <input
+                                    id="users-search"
+                                    type="text"
+                                    placeholder="Search by name or email..."
+                                    bind:value={usersSearchQuery}
+                                    oninput={handleUsersSearchChange}
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                                />
+                            </div>
+                            
+                            <!-- User Type Filter -->
+                            <div>
+                                <label for="filter-user-type" class="block text-sm font-medium text-gray-700 mb-1">User Type</label>
+                                <select
+                                    id="filter-user-type"
+                                    bind:value={usersFilterUserType}
+                                    onchange={handleUsersFilterChange}
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand"
+                                >
+                                    <option value="all">All Types</option>
+                                    <option value="creator">Creator</option>
+                                    <option value="end_user">End User</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Status Filter -->
+                            <div>
+                                <label for="filter-status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                <select
+                                    id="filter-status"
+                                    bind:value={usersFilterStatus}
+                                    onchange={handleUsersFilterChange}
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand"
+                                >
+                                    <option value="all">All Statuses</option>
+                                    <option value="enabled">Enabled</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     {#if isLoadingUsers}
                         <div class="text-center py-12">
                             <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                             <p class="mt-2 text-gray-600">Loading users...</p>
                         </div>
                     {:else}
+                        <!-- Bulk Actions Toolbar -->
+                        {#if selectedUsers.length > 0}
+                            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 rounded-r-lg shadow-sm">
+                                <div class="flex items-center justify-between flex-wrap gap-3">
+                                    <div class="flex items-center">
+                                        <svg class="h-5 w-5 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                                        </svg>
+                                        <span class="text-sm font-medium text-blue-900">
+                                            {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''} selected
+                                        </span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button
+                                            onclick={openBulkDisableModal}
+                                            class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                                        >
+                                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                                            </svg>
+                                            Disable Selected
+                                        </button>
+                                        <button
+                                            onclick={openBulkEnableModal}
+                                            class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                        >
+                                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            Enable Selected
+                                        </button>
+                                        <button
+                                            onclick={() => { displayUsers.forEach(u => u.selected = false); selectedUsers = []; }}
+                                            class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
+
                         <!-- Users Table -->
                         <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead class="bg-gray-50">
                                     <tr>
+                                        <!-- Select All Checkbox -->
+                                        <th scope="col" class="px-3 py-3 text-left">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedUsers.length > 0 && selectedUsers.length === displayUsers.filter(u => !(userData && userData.email === u.email)).length}
+                                                onchange={(e) => {
+                                                    const checked = e.target?.checked;
+                                                    displayUsers = displayUsers.map(u => {
+                                                        // Don't allow selection of current user
+                                                        if (userData && userData.email === u.email) {
+                                                            return u;
+                                                        }
+                                                        return {...u, selected: checked};
+                                                    });
+                                                }}
+                                                class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                            />
+                                        </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Name
                                         </th>
@@ -1421,7 +1724,7 @@
                                             Email
                                         </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                            Role
+                                            User Type
                                         </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Status
@@ -1432,81 +1735,131 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
-                                    {#each orgUsers as user (user.id)}
-                                        <tr class="hover:bg-gray-50">
-                                            <td class="px-6 py-4 whitespace-nowrap align-top">
-                                                <div class="text-sm font-medium text-gray-900">{user.name || '-'}</div>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap align-top">
-                                                <div class="text-sm text-gray-800">{user.email}</div>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.role === 'admin' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">
-                                                    {user.role}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                                                    {user.enabled ? 'Active' : 'Disabled'}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <button
-                                                    class="text-amber-600 hover:text-amber-800 mr-3"
-                                                    title="Change Password"
-                                                    aria-label="Change Password"
-                                                    onclick={() => openChangePasswordModal(user)}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                                    </svg>
-                                                </button>
-                                                <button
-                                                    class={userData && userData.email === user.email && user.enabled
-                                                        ? "text-gray-400 cursor-not-allowed mr-3"
-                                                        : "text-brand hover:text-brand-hover hover:opacity-80 mr-3"}
-                                                    title={userData && userData.email === user.email && user.enabled 
-                                                        ? "You cannot disable your own account" 
-                                                        : (user.enabled ? 'Disable User' : 'Enable User')}
-                                                    aria-label={userData && userData.email === user.email && user.enabled 
-                                                        ? "You cannot disable your own account" 
-                                                        : (user.enabled ? 'Disable User' : 'Enable User')}
-                                                    onclick={() => toggleUserStatus(user)}
-                                                    disabled={userData && userData.email === user.email && user.enabled}
-                                                >
-                                                    {#if user.enabled}
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                                                        </svg>
-                                                    {:else}
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                        </svg>
-                                                    {/if}
-                                                </button>
-                                                <button
-                                                    class={userData && userData.email === user.email 
-                                                        ? "text-gray-400 cursor-not-allowed" 
-                                                        : "text-red-600 hover:text-red-800"}
-                                                    title={userData && userData.email === user.email 
-                                                        ? "You cannot delete your own account" 
-                                                        : 'Delete User'}
-                                                    aria-label={userData && userData.email === user.email 
-                                                        ? "You cannot delete your own account" 
-                                                        : 'Delete User'}
-                                                    onclick={() => openDeleteUserModal(user)}
-                                                    disabled={userData && userData.email === user.email}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                                    </svg>
-                                                </button>
+                                    {#if displayUsers.length === 0}
+                                        <tr>
+                                            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                                {#if usersSearchQuery || usersFilterUserType !== 'all' || usersFilterStatus !== 'all'}
+                                                    No users match your filters. Try adjusting the search or filters.
+                                                {:else}
+                                                    No users found in your organization.
+                                                {/if}
                                             </td>
                                         </tr>
-                                    {/each}
+                                    {:else}
+                                        {#each displayUsers as user (user.id)}
+                                            <tr class="hover:bg-gray-50 {user.selected ? 'bg-blue-50' : ''}">
+                                                <!-- Checkbox -->
+                                                <td class="px-3 py-4 whitespace-nowrap">
+                                                    <input
+                                                        type="checkbox"
+                                                        bind:checked={user.selected}
+                                                        disabled={userData && userData.email === user.email}
+                                                        class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    />
+                                                </td>
+                                                <!-- Name -->
+                                                <td class="px-6 py-4 whitespace-nowrap">
+                                                    <div class="text-sm font-medium text-gray-900">{user.name || '-'}</div>
+                                                </td>
+                                                <!-- Email -->
+                                                <td class="px-6 py-4 whitespace-nowrap">
+                                                    <div class="text-sm text-gray-800">{user.email}</div>
+                                                    {#if userData && userData.email === user.email}
+                                                        <span class="text-xs text-gray-500 italic">(You)</span>
+                                                    {/if}
+                                                </td>
+                                                <!-- User Type -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.user_type === 'end_user' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
+                                                        {user.user_type === 'end_user' ? 'End User' : 'Creator'}
+                                                    </span>
+                                                </td>
+                                                <!-- Status -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                        {user.enabled ? 'Enabled' : 'Disabled'}
+                                                    </span>
+                                                </td>
+                                                <!-- Actions -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                    <!-- Change Password -->
+                                                    <button
+                                                        class="text-amber-600 hover:text-amber-800 mr-3"
+                                                        title="Change Password"
+                                                        aria-label="Change Password for {user.name}"
+                                                        onclick={() => openChangePasswordModal(user)}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                        </svg>
+                                                    </button>
+                                                    
+                                                    <!-- Enable/Disable Toggle -->
+                                                    {#if user.enabled}
+                                                        <button
+                                                            class={userData && userData.email === user.email
+                                                                ? "text-gray-400 cursor-not-allowed mr-3"
+                                                                : "text-yellow-600 hover:text-yellow-800 mr-3"}
+                                                            title={userData && userData.email === user.email 
+                                                                ? "You cannot disable your own account" 
+                                                                : 'Disable User'}
+                                                            aria-label="Disable {user.name}"
+                                                            onclick={() => toggleUserStatus(user)}
+                                                            disabled={userData && userData.email === user.email}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                                                            </svg>
+                                                        </button>
+                                                    {:else}
+                                                        <button
+                                                            class="text-green-600 hover:text-green-800 mr-3"
+                                                            title="Enable User"
+                                                            aria-label="Enable {user.name}"
+                                                            onclick={() => toggleUserStatus(user)}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                            </svg>
+                                                        </button>
+                                                    {/if}
+                                                    
+                                                    <!-- Disable (Block) Button -->
+                                                    <button
+                                                        class={userData && userData.email === user.email 
+                                                            ? "text-gray-400 cursor-not-allowed" 
+                                                            : "text-red-600 hover:text-red-800"}
+                                                        title={userData && userData.email === user.email 
+                                                            ? "You cannot disable your own account" 
+                                                            : 'Disable User'}
+                                                        aria-label="Disable {user.name}"
+                                                        onclick={() => openDeleteUserModal(user)}
+                                                        disabled={userData && userData.email === user.email}
+                                                    >
+                                                        <!-- Block Icon -->
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728A9 9 0 015.636 5.636" />
+                                                        </svg>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        {/each}
+                                    {/if}
                                 </tbody>
                             </table>
                         </div>
+                        
+                        <!-- Pagination -->
+                        {#if usersTotalPages > 1}
+                            <Pagination
+                                currentPage={usersPage}
+                                totalPages={usersTotalPages}
+                                on:pageChange={handleUsersPageChange}
+                                itemsPerPage={usersPerPage}
+                                itemsPerPageOptions={[10, 25, 50, 100]}
+                                on:itemsPerPageChange={handleUsersPerPageChange}
+                            />
+                        {/if}
                     {/if}
                 </div>
             {/if}
@@ -2216,27 +2569,27 @@
     </div>
 {/if}
 
-<!-- Delete User Modal -->
+<!-- Disable User Modal (formerly Delete User Modal) -->
 {#if isDeleteUserModalOpen && userToDelete}
     <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
         <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div class="mt-3">
                 <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-                    <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                 </div>
                 
                 <!-- Modal Header -->
                 <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Delete User
+                    Disable User Account
                 </h3>
                 
                 <!-- Modal Content -->
                 <div class="mt-4 text-center">
                     <p class="text-sm text-gray-600">
-                        Are you sure you want to permanently delete
+                        Are you sure you want to disable the account for
                     </p>
                     <p class="text-base font-semibold text-gray-900 mt-2">
                         {userToDelete.name}
@@ -2244,9 +2597,9 @@
                     <p class="text-sm text-gray-600 mt-1">
                         ({userToDelete.email})
                     </p>
-                    <div class="mt-4 bg-red-50 border-l-4 border-red-400 p-3 rounded">
-                        <p class="text-sm text-red-800">
-                            <strong>Warning:</strong> This action cannot be undone. The user will be permanently removed from the system and will not be able to log in.
+                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
+                        <p class="text-sm text-gray-700">
+                            <strong>Note:</strong> The user will not be able to log in, but their resources (assistants, templates, rubrics) will remain accessible to other users.
                         </p>
                     </div>
                 </div>
@@ -2270,10 +2623,128 @@
                     <button 
                         type="button" 
                         onclick={confirmDeleteUser}
-                        class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
+                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
                         disabled={isDeletingUser}
                     >
-                        {isDeletingUser ? 'Deleting...' : 'Delete User'}
+                        {isDeletingUser ? 'Disabling...' : 'Disable User'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Bulk Disable Users Modal -->
+{#if isBulkDisableModalOpen}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <!-- Warning Icon -->
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                
+                <!-- Modal Header -->
+                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
+                    Disable Multiple Users
+                </h3>
+                
+                <!-- Modal Content -->
+                <div class="mt-4 text-center">
+                    <p class="text-sm text-gray-600">
+                        Are you sure you want to disable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
+                    </p>
+                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
+                        <p class="text-sm text-gray-700">
+                            These users will not be able to log in, but their resources will remain accessible to other users.
+                        </p>
+                    </div>
+                </div>
+
+                {#if bulkActionError}
+                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">{bulkActionError}</span>
+                    </div>
+                {/if}
+                
+                <!-- Modal Actions -->
+                <div class="flex items-center justify-between mt-6 gap-3">
+                    <button 
+                        type="button" 
+                        onclick={closeBulkDisableModal}
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
+                        disabled={isBulkProcessing}
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="button" 
+                        onclick={confirmBulkDisable}
+                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
+                        disabled={isBulkProcessing}
+                    >
+                        {isBulkProcessing ? 'Disabling...' : 'Disable Users'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Bulk Enable Users Modal -->
+{#if isBulkEnableModalOpen}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <!-- Success Icon -->
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                
+                <!-- Modal Header -->
+                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
+                    Enable Multiple Users
+                </h3>
+                
+                <!-- Modal Content -->
+                <div class="mt-4 text-center">
+                    <p class="text-sm text-gray-600">
+                        Are you sure you want to enable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
+                    </p>
+                    <div class="mt-4 bg-green-50 border-l-4 border-green-400 p-3 rounded">
+                        <p class="text-sm text-gray-700">
+                            These users will be able to log in and access the system.
+                        </p>
+                    </div>
+                </div>
+
+                {#if bulkActionError}
+                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                        <span class="block sm:inline">{bulkActionError}</span>
+                    </div>
+                {/if}
+                
+                <!-- Modal Actions -->
+                <div class="flex items-center justify-between mt-6 gap-3">
+                    <button 
+                        type="button" 
+                        onclick={closeBulkEnableModal}
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
+                        disabled={isBulkProcessing}
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="button" 
+                        onclick={confirmBulkEnable}
+                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
+                        disabled={isBulkProcessing}
+                    >
+                        {isBulkProcessing ? 'Enabling...' : 'Enable Users'}
                     </button>
                 </div>
             </div>

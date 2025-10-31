@@ -2611,10 +2611,11 @@
 
                                 <!-- Conflict Strategy -->
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    <label for="migration-conflict-strategy" class="block text-sm font-medium text-gray-700 mb-2">
                                         {localeLoaded ? $_('admin.organizations.migration.conflictStrategy', { default: 'Conflict Resolution Strategy' }) : 'Conflict Resolution Strategy'}
                                     </label>
                                     <select
+                                        id="migration-conflict-strategy"
                                         bind:value={migrationConflictStrategy}
                                         disabled={isMigrating}
                                         class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
