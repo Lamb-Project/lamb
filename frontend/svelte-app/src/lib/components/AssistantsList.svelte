@@ -185,6 +185,41 @@
       }
   }
 
+    /**
+     * Delete assistant and refresh list
+     * @param {number} id
+     * @param {string} name
+     * @param {boolean} published
+     */
+    async function handleDelete(id, name, published) {
+            // Prevent deleting published assistants here (UI already hides delete for published)
+            if (published) {
+                return;
+            }
+
+            // Confirmation before delete
+            const confirmMessage = localeLoaded
+                ? $_('assistants.deleteConfirm', { values: { name: name || id } })
+                : `Are you sure you want to delete assistant ${name || id}?`;
+
+            if (!confirm(confirmMessage)) return;
+
+            try {
+                loading = true;
+                await deleteAssistant(String(id));
+                // Reload current page to refresh list
+                await loadPaginatedAssistants(currentPage, ITEMS_PER_PAGE);
+                // No user-facing alerts or confirmations — list updates automatically
+            } catch (err) {
+                console.error('Error deleting assistant:', err);
+                const errorMsg = err instanceof Error ? err.message : 'Failed to delete assistant';
+                error = errorMsg;
+                // No alert shown; error state is set for UI to display if needed
+            } finally {
+                loading = false;
+            }
+    }
+
   // --- Pagination Navigation (Define functions) --- 
 
   function goToPreviousPage() {
@@ -304,9 +339,9 @@
                                         </button>
                                     {:else}
                                         <!-- Delete Button (Only show if not published) -->
-                                        <button 
-                                            onclick={() => dispatch('delete', { id: assistant.id, name: assistant.name, published: assistant.published })}
-                                            title={localeLoaded ? $_('assistants.actions.delete', { default: 'Delete' }) : 'Delete'} 
+                                        <button
+                                            onclick={() => handleDelete(assistant.id, assistant.name, assistant.published)}
+                                            title={localeLoaded ? $_('assistants.actions.delete', { default: 'Delete' }) : 'Delete'}
                                             class="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-100 transition-colors duration-150"
                                         >
                                             {@html IconDelete}
