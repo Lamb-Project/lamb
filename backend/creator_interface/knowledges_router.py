@@ -42,6 +42,10 @@ class KnowledgeBaseDetailsResponse(BaseModel):
     name: str
     description: Optional[str]
     files: Optional[List[Dict]] = [] # Or use a more specific File model if defined
+    is_owner: Optional[bool] = None
+    can_modify: Optional[bool] = None
+    is_shared: Optional[bool] = None
+    shared_by: Optional[str] = None
     # Add other fields as returned
 
 class KnowledgeBaseUpdateResponse(BaseModel):
@@ -655,6 +659,7 @@ async def get_knowledge_base(kb_id: str, request: Request):
                 # If no entry, assume not shared
                 result['is_shared'] = False
         
+        logger.info(f"DEBUG: Returning KB details with can_modify={result.get('can_modify')}, is_owner={result.get('is_owner')}, access_type={access_type}")
         return result
 
     except HTTPException as he:
@@ -1289,7 +1294,8 @@ async def upload_files_to_kb(
         result = await kb_server_manager.upload_files_to_kb(
             kb_id=kb_id,
             files=files,
-            creator_user=creator_user
+            creator_user=creator_user,
+            access_type=access_type
         )
         
         return result
@@ -1401,7 +1407,8 @@ async def delete_file_from_kb(kb_id: str, file_id: str, request: Request):
         result = await kb_server_manager.delete_file_from_kb(
             kb_id=kb_id,
             file_id=file_id,
-            creator_user=creator_user
+            creator_user=creator_user,
+            access_type=access_type
         )
         
         return result
@@ -1698,7 +1705,8 @@ async def plugin_ingest_file(
             file=file,
             plugin_name=plugin_name,
             plugin_params=plugin_params,
-            creator_user=creator_user
+            creator_user=creator_user,
+            access_type=access_type
         )
         
         return result
@@ -1789,7 +1797,8 @@ async def plugin_ingest_base(
             file=placeholder_file,
             plugin_name=body.plugin_name,
             plugin_params=body.parameters or {},
-            creator_user=creator_user
+            creator_user=creator_user,
+            access_type=access_type
         )
         return result
     except HTTPException:

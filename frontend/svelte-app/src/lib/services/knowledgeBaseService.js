@@ -237,6 +237,9 @@ export async function getKnowledgeBaseDetails(kbId) {
         });
 
         console.log('Knowledge base details response:', response.data);
+        console.log('DEBUG can_modify in response:', response.data?.can_modify);
+        console.log('DEBUG is_owner in response:', response.data?.is_owner);
+        console.log('DEBUG all keys:', Object.keys(response.data || {}));
         
         // Check for KB server offline response
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
