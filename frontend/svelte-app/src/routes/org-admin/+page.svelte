@@ -1490,7 +1490,7 @@
                 <div class="mb-6">
                     <!-- Organization Header -->
                     {#if dashboardData}
-                        <div class="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg mb-6">
+                        <div class="bg-gradient-to-r from-brand to-brand-hover rounded-lg shadow-lg mb-6">
                             <div class="px-6 py-6 text-white">
                                 <div class="flex items-center justify-between">
                                     <div>
@@ -1551,7 +1551,7 @@
                     
                     {#if isLoadingDashboard}
                         <div class="text-center py-12">
-                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
                             <p class="mt-2 text-gray-600">Loading dashboard...</p>
                         </div>
                     {:else if dashboardData}
@@ -1674,13 +1674,13 @@
                                                                     <div class="text-xs text-gray-600 mb-1">
                                                                         <strong>{providerStatus.enabled_models.length}</strong> models enabled
                                                                         {#if providerStatus.default_model}
-                                                                            <span class="text-blue-600">• Default: {providerStatus.default_model}</span>
+                                                                            <span class="text-brand">• Default: {providerStatus.default_model}</span>
                                                                         {/if}
                                                                     </div>
                                                                     <div class="flex flex-wrap gap-1">
                                                                         {#each providerStatus.enabled_models.slice(0, 8) as model}
-                                                                            <span class="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded {
-                                                                                model === providerStatus.default_model ? 'ring-2 ring-blue-300' : ''
+                                                                            <span class="inline-block px-2 py-1 text-xs bg-brand/10 text-brand rounded {
+                                                                                model === providerStatus.default_model ? 'ring-2 ring-brand' : ''
                                                                             }">
                                                                                 {model}
                                                                             </span>
@@ -1742,7 +1742,7 @@
                 <div class="mb-6">
                     <!-- Organization Header for Users -->
                     {#if dashboardData}
-                        <div class="bg-white border-l-4 border-blue-500 shadow-sm rounded-lg mb-4">
+                        <div class="bg-white border-l-4 border-brand shadow-sm rounded-lg mb-4">
                             <div class="px-4 py-3">
                                 <div class="flex items-center justify-between">
                                     <div>
@@ -1751,7 +1751,7 @@
                                     </div>
                                     <div class="text-right text-sm text-gray-500">
                                         {#if targetOrgSlug}
-                                            <div class="text-xs text-blue-600 mb-1">
+                                            <div class="text-xs text-brand mb-1">
                                                 <svg class="inline h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                                                 </svg>
@@ -1832,7 +1832,7 @@
 
                     {#if isLoadingUsers}
                         <div class="text-center py-12">
-                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
                             <p class="mt-2 text-gray-600">Loading users...</p>
                         </div>
                     {:else}
@@ -1954,7 +1954,7 @@
                                                 </td>
                                                 <!-- User Type -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.user_type === 'end_user' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}">
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.user_type === 'end_user' ? 'bg-purple-100 text-purple-800' : 'bg-brand/10 text-brand'}">
                                                         {user.user_type === 'end_user' ? 'End User' : 'Creator'}
                                                     </span>
                                                 </td>
@@ -2207,7 +2207,7 @@
                 <div class="mb-6">
                     <!-- Organization Header for Settings -->
                     {#if dashboardData}
-                        <div class="bg-white border-l-4 border-green-500 shadow-sm rounded-lg mb-4">
+                        <div class="bg-white border-l-4 border-brand shadow-sm rounded-lg mb-4">
                             <div class="px-4 py-3">
                                 <div class="flex items-center justify-between">
                                     <div>
@@ -2216,7 +2216,7 @@
                                     </div>
                                     <div class="text-right text-sm text-gray-500">
                                         {#if targetOrgSlug}
-                                            <div class="text-xs text-blue-600 mb-1">
+                                            <div class="text-xs text-brand mb-1">
                                                 <svg class="inline h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
                                                 </svg>
@@ -2240,7 +2240,7 @@
 
                     {#if isLoadingSettings}
                         <div class="text-center py-12">
-                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-brand"></div>
                             <p class="mt-2 text-gray-600">Loading settings...</p>
                         </div>
                     {:else}
@@ -2271,7 +2271,7 @@
                                             id="signup-enabled"
                                             type="checkbox"
                                             bind:checked={newSignupSettings.signup_enabled}
-                                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                            class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
                                         >
                                         <label for="signup-enabled" class="ml-2 block text-sm text-gray-900">
                                             Enable organization-specific signup
@@ -2285,7 +2285,7 @@
                                                 type="text"
                                                 id="signup-key"
                                                 bind:value={newSignupSettings.signup_key}
-                                                class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                                 placeholder="Enter unique signup key"
                                                 required={newSignupSettings.signup_enabled}
                                                 pattern="[a-zA-Z0-9_-]+"
@@ -2333,9 +2333,9 @@
                                                     <div class="text-sm text-gray-600 mb-2">
                                                         <strong>{providerStatus.model_count}</strong> models available
                                                         {#if providerStatus.enabled_models && providerStatus.enabled_models.length > 0}
-                                                            <span class="text-blue-600">• <strong>{providerStatus.enabled_models.length}</strong> selected</span>
+                                                            <span class="text-brand">• <strong>{providerStatus.enabled_models.length}</strong> selected</span>
                                                             {#if providerStatus.default_model}
-                                                                <span class="text-green-600">• Default: {providerStatus.default_model}</span>
+                                                                <span class="text-brand">• Default: {providerStatus.default_model}</span>
                                                             {/if}
                                                         {:else}
                                                             <span class="text-gray-500">• No models selected</span>
@@ -2390,7 +2390,7 @@
                                             type="password"
                                             id="openai-key"
                                             bind:value={newApiSettings.openai_api_key}
-                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                             placeholder={apiSettings.openai_api_key_set ? "••••••••••••••••" : "Enter OpenAI API key"}
                                             oninput={() => newApiSettings.openai_api_key && addPendingChange('OpenAI API key updated')}
                                         >
@@ -2409,7 +2409,7 @@
                                             type="url"
                                             id="openai-base-url"
                                             bind:value={newApiSettings.openai_base_url}
-                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                             placeholder="https://api.openai.com/v1"
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
@@ -2423,7 +2423,7 @@
                                             type="url"
                                             id="ollama-base-url"
                                             bind:value={newApiSettings.ollama_base_url}
-                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                             placeholder="http://localhost:11434"
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
@@ -2460,7 +2460,7 @@
                                                         {#if newApiSettings.selected_models?.[providerName]?.length > 0}
                                                             <div class="flex flex-wrap gap-1">
                                                                 {#each newApiSettings.selected_models[providerName] as model}
-                                                                    <span class="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                                                                    <span class="inline-block px-2 py-1 text-xs bg-brand/10 text-brand rounded">
                                                                         {model}
                                                                     </span>
                                                                 {/each}
@@ -2563,7 +2563,7 @@
                                     <label for="assistant-defaults-json" class="block text-sm font-medium text-gray-700">assistant_defaults (JSON)</label>
                                     <textarea
                                         id="assistant-defaults-json"
-                                        class="font-mono text-sm mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 min-h-[280px]"
+                                        class="font-mono text-sm mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand min-h-[280px]"
                                         bind:value={assistantDefaultsJson}
                                         placeholder={assistantDefaultsPlaceholder}
                                     ></textarea>
