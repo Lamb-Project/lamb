@@ -17,7 +17,9 @@ services:
     depends_on:
       - openwebui-build
     command: >
-      sh -lc "echo 'Build folder found, starting backend server...' && \
+      sh -lc "echo 'Waiting for open-webui build marker...' && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 1; done && \
+      echo 'Build folder found, starting backend server...' && \
       cd ${LAMB_PROJECT_PATH}/open-webui/backend && \
       python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
@@ -33,7 +35,7 @@ services:
     environment:
       - NODE_OPTIONS=--max-old-space-size=4096
     command: >
-      sh -lc "if [ ! -d ${LAMB_PROJECT_PATH}/open-webui/build ] || [ -z \"$(ls -A ${LAMB_PROJECT_PATH}/open-webui/build 2>/dev/null)\" ]; then npm install && npm run build; else echo 'Build folder already exists, skipping build.'; fi"
+      sh -lc "if [ ! -d ${LAMB_PROJECT_PATH}/open-webui/build ] || [ -z \"$(ls -A ${LAMB_PROJECT_PATH}/open-webui/build 2>/dev/null)\" ]; then npm install && npm run build && mkdir -p ${LAMB_PROJECT_PATH}/open-webui/build && touch ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete; else echo 'Build folder already exists, skipping build.' && mkdir -p ${LAMB_PROJECT_PATH}/open-webui/build && touch ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete; fi"
     # This service only runs the build step and exits
 
   frontend-build:
@@ -43,7 +45,7 @@ services:
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     command: >
-      sh -lc "npm install && npm run build"
+      sh -lc "npm install && npm run build && touch ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete"
     # This service only runs the build step and exits
 
   kb:
@@ -85,7 +87,10 @@ services:
       - kb
       - frontend-build
     command: >
-      sh -lc "python -m pip install --upgrade pip && \
+      sh -lc "echo 'Waiting for required build markers (openwebui + frontend)...' && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 1; done && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 1; done && \
+      python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload"
 
@@ -104,10 +109,13 @@ services:
       - backend
       - frontend-build
     command: >
-      sh -lc "test -f static/config.js || cp static/config.js.sample static/config.js; \
+      sh -lc "echo 'Waiting for frontend build marker...' && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 1; done && \
+      test -f static/config.js || cp static/config.js.sample static/config.js; \
       npm install; \
       npm run dev -- --host 0.0.0.0"
 
 networks:
   default:
     name: lamb
+    
