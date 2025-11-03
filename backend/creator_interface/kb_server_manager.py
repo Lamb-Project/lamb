@@ -965,7 +965,7 @@ class KBServerManager:
                 detail=f"Unable to connect to KB server: {str(req_err)}"
             )
 
-    async def upload_files_to_kb(self, kb_id: str, files: List[Any], creator_user: Dict[str, Any], access_type: Optional[str] = None) -> Dict[str, Any]:
+    async def upload_files_to_kb(self, kb_id: str, files: List[Any], creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
         Upload files to a knowledge base in the KB server
         
@@ -973,7 +973,6 @@ class KBServerManager:
             kb_id: The ID of the knowledge base to upload files to
             files: List of FastAPI UploadFile objects
             creator_user: The authenticated creator user
-            access_type: Optional access type ('owner' or 'shared') if access has been verified at LAMB level
             
         Returns:
             Dict with upload results
@@ -1012,9 +1011,9 @@ class KBServerManager:
                             detail=f"KB server error: {error_detail}"
                         )
                 
-                # Verify ownership - skip if LAMB has already verified owner access (including org admins)
+                # Verify ownership
                 collection_data = get_response.json()
-                if access_type != 'owner' and collection_data.get('owner') != str(creator_user.get('id')):
+                if collection_data.get('owner') != str(creator_user.get('id')):
                     logger.error(f"User {creator_user.get('email')} is not the owner of knowledge base {kb_id}")
                     raise HTTPException(
                         status_code=403,
@@ -1144,7 +1143,7 @@ class KBServerManager:
                 detail=f"Unable to connect to KB server: {str(req_err)}"
             )
 
-    async def delete_file_from_kb(self, kb_id: str, file_id: str, creator_user: Dict[str, Any], access_type: Optional[str] = None) -> Dict[str, Any]:
+    async def delete_file_from_kb(self, kb_id: str, file_id: str, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
         Delete a file from a knowledge base in the KB server
         
@@ -1152,7 +1151,6 @@ class KBServerManager:
             kb_id: The ID of the knowledge base containing the file
             file_id: The ID of the file to delete
             creator_user: The authenticated creator user
-            access_type: Optional access type ('owner' or 'shared') if access has been verified at LAMB level
             
         Returns:
             Dict with deletion status
@@ -1191,9 +1189,9 @@ class KBServerManager:
                             detail=f"KB server error: {error_detail}"
                         )
                 
-                # Verify ownership - skip if LAMB has already verified owner access (including org admins)
+                # Verify ownership
                 collection_data = get_response.json()
-                if access_type != 'owner' and collection_data.get('owner') != str(creator_user.get('id')):
+                if collection_data.get('owner') != str(creator_user.get('id')):
                     logger.error(f"User {creator_user.get('email')} is not the owner of knowledge base {kb_id}")
                     raise HTTPException(
                         status_code=403,
@@ -1285,7 +1283,7 @@ class KBServerManager:
                 detail=f"Unable to connect to KB server: {str(req_err)}"
             )
 
-    async def plugin_ingest_file(self, kb_id: str, file: Any, plugin_name: str, plugin_params: Dict[str, Any], creator_user: Dict[str, Any], access_type: Optional[str] = None) -> Dict[str, Any]:
+    async def plugin_ingest_file(self, kb_id: str, file: Any, plugin_name: str, plugin_params: Dict[str, Any], creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
         Upload and ingest a file using a specific plugin
         
@@ -1295,7 +1293,6 @@ class KBServerManager:
             plugin_name: Name of the ingestion plugin to use
             plugin_params: Parameters for the ingestion plugin
             creator_user: The authenticated creator user
-            access_type: Optional access type ('owner' or 'shared') if access has been verified at LAMB level
             
         Returns:
             Dict with ingestion results
@@ -1334,9 +1331,9 @@ class KBServerManager:
                             detail=f"KB server error: {error_detail}"
                         )
                 
-                # Verify ownership - skip if LAMB has already verified owner access (including org admins)
+                # Verify ownership
                 collection_data = get_response.json()
-                if access_type != 'owner' and collection_data.get('owner') != str(creator_user.get('id')):
+                if collection_data.get('owner') != str(creator_user.get('id')):
                     logger.error(f"User {creator_user.get('email')} is not the owner of knowledge base {kb_id}")
                     raise HTTPException(
                         status_code=403,

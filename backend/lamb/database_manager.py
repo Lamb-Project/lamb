@@ -4545,26 +4545,10 @@ class LambDatabaseManager:
         if entry['owner_user_id'] == user_id:
             return (True, 'owner')
         
-        # Get user info for organization checks
+        # KB is shared in user's organization
         user = self.get_creator_user_by_id(user_id)
-        if not user:
-            return (False, 'none')
-        
-        # Check if KB is in user's organization
-        kb_org_id = entry.get('organization_id')
-        user_org_id = user.get('organization_id')
-        
-        if kb_org_id and user_org_id == kb_org_id:
-            # KB is in user's organization
-            # Check if user is organization owner/admin
-            user_role = self.get_user_organization_role(user_id, kb_org_id)
-            if user_role in ['owner', 'admin']:
-                # Organization owners/admins have full access to KBs in their organization
-                return (True, 'owner')
-            
-            # KB is shared in user's organization
-            if entry.get('is_shared'):
-                return (True, 'shared')
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
         
         return (False, 'none')
 
