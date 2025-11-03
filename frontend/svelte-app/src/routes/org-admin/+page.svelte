@@ -7,7 +7,9 @@
     import { user } from '$lib/stores/userStore';
     import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
+    import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
+    import * as orgAdminService from '$lib/services/orgAdminService';
     import { processListData } from '$lib/utils/listHelpers';
 
     // Get user data  
@@ -329,6 +331,11 @@
         fetchSettings();
     }
 
+    function showBulkImport() {
+        currentView = 'bulk-import';
+        goto(`${base}/org-admin?view=bulk-import`, { replaceState: true });
+    }
+
     // Dashboard functions
     async function fetchDashboard() {
         if (isLoadingDashboard) {
@@ -628,7 +635,7 @@
                 throw new Error('Authentication token not found');
             }
             
-            const result = await adminService.disableUsersBulk(token, selectedUsers);
+            const result = await orgAdminService.disableUsersBulk(token, selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk disable: ${result.disabled} users disabled`);
@@ -660,7 +667,7 @@
                 throw new Error('Authentication token not found');
             }
             
-            const result = await adminService.enableUsersBulk(token, selectedUsers);
+            const result = await orgAdminService.enableUsersBulk(token, selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk enable: ${result.enabled} users enabled`);
@@ -751,6 +758,95 @@
             deleteUserError = errorMessage;
         } finally {
             isDeletingUser = false;
+        }
+    }
+
+    // Bulk user actions
+    async function handleBulkEnable() {
+        const usersToEnable = displayUsers.filter(u => u.selected).map(u => u.id);
+        
+        if (usersToEnable.length === 0) {
+            return;
+        }
+        
+        if (!confirm(`Enable ${usersToEnable.length} selected user(s)?`)) {
+            return;
+        }
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+            
+            const result = await orgAdminService.enableUsersBulk(token, usersToEnable);
+            
+            // Update local state
+            displayUsers = displayUsers.map(u => {
+                if (usersToEnable.includes(u.id)) {
+                    return {...u, enabled: true, selected: false};
+                }
+                return {...u, selected: false};
+            });
+            
+            // Update orgUsers as well
+            orgUsers = orgUsers.map(u => {
+                if (usersToEnable.includes(u.id)) {
+                    return {...u, enabled: true};
+                }
+                return u;
+            });
+            
+            alert(`Successfully enabled ${result.enabled} user(s)`);
+            selectedUsers = [];
+            
+        } catch (err) {
+            console.error('Bulk enable error:', err);
+            alert('Bulk enable failed: ' + (err.message || 'Unknown error'));
+        }
+    }
+    
+    async function handleBulkDisable() {
+        const usersToDisable = displayUsers.filter(u => u.selected).map(u => u.id);
+        
+        if (usersToDisable.length === 0) {
+            return;
+        }
+        
+        if (!confirm(`Disable ${usersToDisable.length} selected user(s)? They will not be able to log in.`)) {
+            return;
+        }
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+            
+            const result = await orgAdminService.disableUsersBulk(token, usersToDisable);
+            
+            // Update local state
+            displayUsers = displayUsers.map(u => {
+                if (usersToDisable.includes(u.id)) {
+                    return {...u, enabled: false, selected: false};
+                }
+                return {...u, selected: false};
+            });
+            
+            // Update orgUsers as well
+            orgUsers = orgUsers.map(u => {
+                if (usersToDisable.includes(u.id)) {
+                    return {...u, enabled: false};
+                }
+                return u;
+            });
+            
+            alert(`Successfully disabled ${result.disabled} user(s)`);
+            selectedUsers = [];
+            
+        } catch (err) {
+            console.error('Bulk disable error:', err);
+            alert('Bulk disable failed: ' + (err.message || 'Unknown error'));
         }
     }
 
@@ -1348,6 +1444,12 @@
                             onclick={showUsers}
                         >
                             Users
+                        </button>
+                        <button
+                            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'bulk-import' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                            onclick={showBulkImport}
+                        >
+                            Bulk Import
                         </button>
                         <button
                             class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'assistants' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
@@ -2486,6 +2588,13 @@
                             </div>
                         </div>
                     {/if}
+                </div>
+            {/if}
+
+            <!-- Bulk Import View -->
+            {#if currentView === 'bulk-import'}
+                <div class="mb-6">
+                    <BulkUserImport />
                 </div>
             {/if}
         </div>
