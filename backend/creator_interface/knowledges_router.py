@@ -37,12 +37,16 @@ class KnowledgeBaseCreateResponse(BaseModel):
     message: str = "Knowledge base created successfully"
 
 class KnowledgeBaseDetailsResponse(BaseModel):
-    # Assuming the response from kb_server_manager.get_knowledge_base_details
+    # Response from kb_server_manager.get_knowledge_base_details enhanced with LAMB metadata
     id: str
     name: str
     description: Optional[str]
     files: Optional[List[Dict]] = [] # Or use a more specific File model if defined
-    # Add other fields as returned
+    # LAMB-specific metadata fields
+    is_owner: Optional[bool] = None
+    can_modify: Optional[bool] = None
+    is_shared: Optional[bool] = None
+    shared_by: Optional[str] = None
 
 class KnowledgeBaseUpdateResponse(BaseModel):
     # Assuming the response from kb_server_manager.update_knowledge_base
