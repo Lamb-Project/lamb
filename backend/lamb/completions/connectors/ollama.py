@@ -155,6 +155,77 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
 
     print(f"🚀 [Ollama] Model: {resolved_model}{' (fallback)' if fallback_used else ''} | Config: {config_source} | Organization: {org_name} | URL: {base_url}")
 
+    # Store org default for potential runtime fallback
+    org_default_for_fallback = None
+    if assistant_owner and config_source == "organization":
+        try:
+            config_resolver = OrganizationConfigResolver(assistant_owner)
+            ollama_config = config_resolver.get_provider_config("ollama")
+            org_default_for_fallback = ollama_config.get("default_model")
+        except:
+            pass
+
+    # Helper to attempt API call with fallback on model-not-found errors
+    async def _attempt_ollama_call_with_fallback(model_to_use: str, ollama_params: dict, is_stream: bool, attempt_fallback: bool = True):
+        """
+        Attempt Ollama API call with fallback to org default on model errors.
+        Returns tuple: (success: bool, content_or_error: str)
+        """
+        try:
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
+                    response.raise_for_status()
+                    
+                    if is_stream:
+                        return (True, response)  # Return response object for streaming
+                    else:
+                        ollama_response = await response.json()
+                        content = ollama_response.get("message", {}).get("content", "")
+                        if not content:
+                            return (False, f"Empty response from Ollama for model {model_to_use}")
+                        return (True, content)
+                        
+        except aiohttp.ClientResponseError as e:
+            error_msg = f"API Error ({e.status}) for model {model_to_use}: {e.message}"
+            logger.error(f"Ollama {error_msg}")
+            
+            # Check if this is a model-not-found error (404) and fallback is available
+            if e.status == 404 and attempt_fallback and org_default_for_fallback and model_to_use != org_default_for_fallback:
+                logger.warning(f"Model '{model_to_use}' not found, attempting fallback to '{org_default_for_fallback}'")
+                print(f"🔄 [Ollama] Model not found, retrying with org default: '{org_default_for_fallback}'")
+                
+                # Retry with org default
+                fallback_params = ollama_params.copy()
+                fallback_params["model"] = org_default_for_fallback
+                success, result = await _attempt_ollama_call_with_fallback(org_default_for_fallback, fallback_params, is_stream, attempt_fallback=False)
+                
+                if success:
+                    logger.info(f"✅ Ollama fallback to '{org_default_for_fallback}' succeeded")
+                    print(f"✅ [Ollama] Fallback successful with model: '{org_default_for_fallback}'")
+                    return (True, result)
+                else:
+                    logger.error(f"Ollama fallback to '{org_default_for_fallback}' also failed")
+                    comprehensive_error = (
+                        f"Ollama failure for organization '{org_name}':\n"
+                        f"  • Model '{model_to_use}' failed: {error_msg}\n"
+                        f"  • Fallback to '{org_default_for_fallback}' also failed: {result}\n"
+                        f"Please verify models are pulled in Ollama"
+                    )
+                    return (False, comprehensive_error)
+            
+            return (False, error_msg)
+            
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            error_msg = f"Connection error for model {model_to_use}: {str(e)}"
+            logger.error(f"Ollama {error_msg}")
+            return (False, error_msg)
+            
+        except Exception as e:
+            error_msg = f"Unexpected error for model {model_to_use}: {str(e)}"
+            logger.error(f"Ollama {error_msg}", exc_info=True)
+            return (False, error_msg)
+
     try:
         if stream:
             async def generate_stream():
