@@ -1055,6 +1055,10 @@
             // Fetch assistant defaults for this organization
             await fetchAssistantDefaults();
 
+            // Fetch dashboard data to populate organization header and API status overview
+            // This ensures the sections are visible even when the page is refreshed directly on Settings view
+            await fetchDashboard();
+
         } catch (err) {
             console.error('Error fetching settings:', err);
             if (axios.isAxiosError(err) && err.response?.status === 403) {
