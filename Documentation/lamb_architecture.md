@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.3  
-**Last Updated:** January 2025  
+**Version:** 2.5  
+**Last Updated:** November 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -2989,10 +2989,610 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 **Related Issues:**
 
 - GitHub Issue #62: Language Model selection bug (fixed with this pattern)
+- See also Section 17.3 for complementary ID-based repopulation pattern
 
-### 17.2 Other Frontend Best Practices
+### 17.2 Async Data Loading Race Conditions ⚠️ CRITICAL
 
-#### 17.2.1 Svelte 5 Reactivity Guidelines
+**⚠️ WARNING:** Async data loading with Svelte 5's reactivity creates dangerous race conditions that can silently break user-facing functionality. This is a **critical pattern** that ALL developers must understand before implementing forms or components with async data dependencies.
+
+#### 17.2.1 The Problem
+
+When restoring saved selections (checkboxes, multi-selects, etc.) that depend on a list fetched asynchronously, setting the selections **before** the list is loaded causes Svelte's binding directives (`bind:group`, `bind:value`) to fail silently.
+
+**Real-World Example (Issue #96):**
+
+```javascript
+// BUGGY CODE - DO NOT REPLICATE
+function populateFormFields(data) {
+    // Set selections FIRST (from saved data)
+    selectedKnowledgeBases = data.RAG_collections?.split(',').filter(Boolean) || [];
+    // → selectedKnowledgeBases = ["abc123", "def456"]
+    
+    // Trigger async fetch SECOND
+    if (selectedRagProcessor === 'simple_rag') {
+        tick().then(fetchKnowledgeBases);  // ⚠️ Async - happens LATER
+    }
+}
+
+// Meanwhile, in the template:
+{#each ownedKnowledgeBases as kb}  <!-- ⚠️ Empty array initially -->
+    <input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id}>
+    <!-- ⚠️ Can't match selections to empty list -->
+{/each}
+```
+
+**What Happens:**
+1. `selectedKnowledgeBases = ["abc123", "def456"]` is set
+2. Checkboxes render with `bind:group` but `ownedKnowledgeBases` is still `[]`
+3. Svelte's `bind:group` can't match "abc123" to any checkbox (list is empty)
+4. Later, `fetchKnowledgeBases()` completes and populates the list
+5. Checkboxes re-render, but Svelte **DOES NOT retroactively apply the bindings**
+6. Result: Checkboxes appear unchecked even though data says they should be checked
+
+#### 17.2.2 Why This Is Dangerous
+
+**Silent Failure:**
+- No console errors
+- No exceptions thrown
+- UI appears to work (checkboxes render)
+- Data appears to be loaded (API calls succeed)
+- Only the **binding reconciliation** fails
+
+**User Impact:**
+- Saved data appears lost
+- Users unknowingly overwrite correct data with empty selections
+- Data corruption occurs silently
+- Trust in the application is destroyed
+
+**Testing Difficulty:**
+- Works fine on fast networks (race window is tiny)
+- Only fails on slow networks or when multiple effects interact
+- Network throttling required to reproduce reliably
+- Intermittent failures in production are the worst kind
+
+#### 17.2.3 Affected Svelte Directives
+
+The following Svelte directives are vulnerable to async race conditions:
+
+| Directive | Vulnerability | Risk Level |
+|-----------|---------------|------------|
+| `bind:group` | Multi-select checkboxes/radios | **CRITICAL** |
+| `bind:value` (select multiple) | Multi-select dropdowns | **CRITICAL** |
+| `bind:value` (select single) | Single-select dropdowns | **HIGH** |
+| `bind:checked` (dynamic list) | Checkbox lists | **HIGH** |
+
+**Common Pattern:**
+```svelte
+<!-- DANGER ZONE: Options loaded async, selection set before options ready -->
+<select bind:value={selected} multiple>
+    {#each asyncLoadedOptions as option}
+        <option value={option.id}>{option.name}</option>
+    {/each}
+</select>
+```
+
+#### 17.2.4 The Correct Pattern: Load-Then-Select
+
+**Golden Rule:** **ALWAYS load the selectable options BEFORE setting the selected values.**
+
+```javascript
+// ✅ CORRECT PATTERN
+async function populateFormFields(data) {
+    if (!data) return;
+    
+    // ... populate basic fields first ...
+    
+    // For async-dependent fields:
+    if (configInitialized && selectedRagProcessor === 'simple_rag') {
+        // 1. WAIT for options to load FIRST
+        if (!kbFetchAttempted) {
+            await fetchKnowledgeBases();  // ✅ Await the async operation
+        }
+        
+        // 2. THEN set selections when options are ready
+        selectedKnowledgeBases = data.RAG_collections?.split(',').filter(Boolean) || [];
+        // ✅ Now bind:group can match selections to available options
+    }
+}
+```
+
+**Key Requirements:**
+1. Make the populate function `async`
+2. Use `await` to ensure options are loaded
+3. Set selections **after** await completes
+4. Handle loading states in UI
+
+#### 17.2.5 Alternative Pattern: Deferred Selection
+
+If making the populate function async is not feasible, use a pending state:
+
+```javascript
+// Pending selections that will be applied when options are ready
+let pendingSelections = $state(null);
+
+// In populateFormFields (sync):
+function populateFormFields(data) {
+    // Store selections to be applied later
+    pendingSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
+    
+    // Trigger fetch
+    if (!kbFetchAttempted) {
+        fetchKnowledgeBases();
+    }
+}
+
+// Effect to apply selections when options become available
+$effect(() => {
+    if (pendingSelections && ownedKnowledgeBases.length > 0) {
+        selectedKnowledgeBases = pendingSelections;
+        pendingSelections = null;  // Clear pending state
+    }
+});
+```
+
+**Pros:**
+- Doesn't require async populate function
+- Clear separation of concerns
+
+**Cons:**
+- More state variables to manage
+- More complex effect logic
+- Harder to reason about timing
+
+#### 17.2.6 Preemptive Loading Pattern
+
+For forms that frequently need certain data, preload it:
+
+```javascript
+onMount(() => {
+    // Preload common dependencies immediately
+    if (configInitialized) {
+        fetchKnowledgeBases();  // Load before user needs it
+        fetchRubricsList();
+        fetchUserFiles();
+    }
+});
+```
+
+**Pros:**
+- Data ready when needed
+- Better perceived performance
+- Avoids race conditions entirely
+
+**Cons:**
+- Unnecessary API calls if data not needed
+- Slower initial page load
+- Higher server load
+
+**When to Use:**
+- Data is small and cheap to fetch
+- Data is needed in >80% of use cases
+- User experience demands instant interactions
+
+#### 17.2.7 Implementation Checklist
+
+When implementing forms with async data dependencies:
+
+**Before Writing Code:**
+- [ ] Identify all async data dependencies (API calls, file loads, etc.)
+- [ ] Map which form fields depend on which async data
+- [ ] Choose pattern: Load-Then-Select, Deferred Selection, or Preemptive Loading
+- [ ] Consider network latency (test with throttling)
+
+**During Implementation:**
+- [ ] Ensure options load **before** selections are set
+- [ ] Add loading states to UI (`loadingKnowledgeBases`, etc.)
+- [ ] Implement "attempted" flags to prevent duplicate fetches (`kbFetchAttempted`)
+- [ ] Handle errors gracefully (empty arrays, error messages)
+- [ ] Add console logging for debugging timing issues
+
+**Testing:**
+- [ ] Test with Chrome DevTools network throttling (Slow 3G)
+- [ ] Test editing existing records with saved selections
+- [ ] Test rapid form state changes (create → edit → create)
+- [ ] Verify selections persist through form repopulation
+- [ ] Check browser console for timing-related logs
+
+**Code Review Checklist:**
+- [ ] No selections set before async data loads
+- [ ] All async operations use `await` or proper effect ordering
+- [ ] Loading states prevent user interaction until ready
+- [ ] Error states handled (empty lists, failed fetches)
+- [ ] No race conditions between multiple effects
+
+#### 17.2.8 Warning Signs in Code
+
+**🚨 RED FLAGS - These patterns indicate potential race conditions:**
+
+```javascript
+// ❌ BAD: Setting selections before triggering fetch
+selectedItems = data.items.split(',');
+tick().then(fetchItems);  // Race condition!
+
+// ❌ BAD: Fire-and-forget async call
+fetchOptions();
+selectedOption = data.option;  // Options not loaded yet!
+
+// ❌ BAD: Assuming fetch will complete before next line
+loadData();
+useData();  // Data not ready!
+
+// ❌ BAD: Multiple effects that might run in different orders
+$effect(() => { selectedItems = data.items.split(','); });
+$effect(() => { fetchItems(); });  // Order not guaranteed!
+```
+
+**✅ SAFE PATTERNS:**
+
+```javascript
+// ✅ GOOD: Await before using data
+await fetchOptions();
+selectedOption = data.option;
+
+// ✅ GOOD: Use deferred pattern with pending state
+pendingSelection = data.option;
+// ... later in effect when options ready ...
+if (pendingSelection && options.length > 0) {
+    selectedOption = pendingSelection;
+}
+
+// ✅ GOOD: Single effect with explicit ordering
+$effect(() => {
+    if (needsOptions && !optionsLoaded) {
+        fetchOptions().then(() => {
+            selectedOption = data.option;
+        });
+    }
+});
+```
+
+#### 17.2.9 Real-World Incident Report
+
+**Issue #96: Knowledge Base Selection Race Condition**
+
+**Date Discovered:** November 2025  
+**Severity:** P1 Critical  
+**Root Cause:** KB selections restored before KB list fetched  
+**Impact:** All editing workflows for assistants with RAG broken  
+**Affected Users:** All users editing existing assistants  
+**Workaround:** Delete and recreate assistant (data loss)  
+**Detection Time:** Months (silent failure)  
+
+**What Went Wrong:**
+1. `AssistantForm.svelte` set `selectedKnowledgeBases` from saved data
+2. Then triggered async `fetchKnowledgeBases()` via `tick().then(...)`
+3. Checkboxes rendered before KB list loaded
+4. Svelte's `bind:group` couldn't match selections to empty list
+5. When KB list finally loaded, bindings were not retroactively applied
+6. Users saw unchecked boxes even though data was correct
+
+**Lessons Learned:**
+- Silent failures are the most dangerous
+- Race conditions are hard to spot in code review
+- Network throttling essential for testing
+- Async operations need explicit ordering
+- Svelte 5's reactivity doesn't retroactively bind
+
+**Prevention:**
+- This architecture section added
+- Code review checklist updated
+- Testing procedures documented
+- Example implementation in `AssistantForm.svelte` (post-fix)
+
+#### 17.2.10 Key Takeaways
+
+**For Developers:**
+1. **Never assume async operations complete instantly**
+2. **Always use `await` or explicit sequencing for data dependencies**
+3. **Test with network throttling to expose race conditions**
+4. **Document async dependencies in code comments**
+5. **When in doubt, preload data or use deferred patterns**
+
+**For Reviewers:**
+1. **Question every async operation's timing**
+2. **Look for selections set before options loaded**
+3. **Check for `tick().then()` without proper sequencing**
+4. **Verify loading states in UI**
+5. **Ensure error handling for failed fetches**
+
+**For Testers:**
+1. **Always test with network throttling (Slow 3G)**
+2. **Test edit flows, not just create flows**
+3. **Verify saved data appears correctly after reload**
+4. **Check selections persist through form repopulation**
+5. **Test rapid state transitions**
+
+---
+
+**⚠️ CRITICAL REMINDER:** If you're implementing a form with checkboxes, multi-selects, or any binding that depends on async data, **STOP** and re-read this section. The bug you prevent is better than the bug you fix.
+
+---
+
+### 17.3 Preventing Spurious Form Repopulation ⚠️ CRITICAL
+
+**⚠️ WARNING:** Even with form dirty state tracking, calling `populateFormFields()` on every prop reference change can cause dropdown selections and other fields to be unexpectedly reset. This is a **critical pattern** that complements Section 17.1.
+
+#### 17.3.1 The Problem
+
+Svelte 5's proxy-based reactivity causes prop references to change frequently, even when the underlying data hasn't changed. A naive `$effect` that repopulates on every reference change will overwrite user selections continuously.
+
+**Real-World Examples:**
+- **Issue #62 (original):** Language Model dropdown reset when editing
+- **November 2025:** Knowledge Base selections lost (Issue #96)  
+- **November 2025:** LLM dropdown reset AGAIN despite dirty state tracking
+
+**What Happens:**
+
+```javascript
+// ❌ BAD PATTERN - Causes spurious resets
+$effect(() => {
+    if (assistant && !formDirty) {
+        // This looks safe because of formDirty check, but it's NOT!
+        // Svelte 5 can trigger this on reference-only changes
+        populateFormFields(assistant); // ⚠️ Overwrites ALL fields
+    }
+});
+```
+
+**The Trap:**
+1. User opens assistant for editing (LLM = `gpt-4o`)
+2. Form populates correctly, `formDirty = false`
+3. Parent component re-renders (for any reason)
+4. `assistant` prop gets new proxy reference (Svelte 5 reactivity)
+5. Effect sees reference change + `formDirty === false`
+6. Effect calls `populateFormFields()` 
+7. **All dropdowns reset**, including LLM selection
+8. User sees their selection disappear
+
+**Why Dirty State Alone Isn't Enough:**
+
+Dirty state tracking (`formDirty`) protects against overwrites **while the user is editing**. However, when `formDirty === false` (initial load, after save, after cancel), the form is still vulnerable to spurious repopulation from reference-only changes.
+
+#### 17.3.2 The Correct Pattern: ID-Based Repopulation
+
+**Golden Rule:** Only repopulate when there's a **meaningful change**, not just a reference change.
+
+```javascript
+// ✅ CORRECT PATTERN - Only repopulates on actual data changes
+let previousAssistantId = $state(null);
+
+$effect(() => {
+    const assistantIdChanged = assistant?.id !== previousAssistantId;
+    const nullStatusChanged = (assistant === null && previousAssistantId !== null) || 
+                              (assistant !== null && previousAssistantId === null);
+    
+    if (assistantIdChanged || nullStatusChanged) {
+        // Real change - safe to repopulate
+        if (assistant) {
+            populateFormFields(assistant);
+            previousAssistantId = assistant.id;
+            formDirty = false; // Reset dirty state for new assistant
+        } else {
+            resetFormToDefaults();
+            previousAssistantId = null;
+            formDirty = false;
+        }
+    } else {
+        // Reference-only change - SKIP repopulation
+        // This protects user selections from spurious resets
+        console.log('[Form] Skipping repopulation - no meaningful change');
+    }
+});
+```
+
+**Key Principles:**
+
+1. **Track Previous Identity:** Store `previousId` to detect actual changes
+2. **Check Meaningful Changes:** ID change, null ↔ non-null transitions
+3. **Skip Reference Changes:** Don't repopulate on proxy reference updates
+4. **Explicit Reverts Only:** User must explicitly cancel to trigger repopulation
+
+#### 17.3.3 When to Repopulate
+
+| Scenario | Should Repopulate? | Reason |
+|----------|-------------------|--------|
+| Assistant ID changes | ✅ YES | Loading different assistant |
+| User clicks Cancel | ✅ YES | Explicit user action |
+| User saves successfully | ❌ NO | Form already has current values |
+| Prop reference changes only | ❌ NO | No actual data change |
+| Parent component re-renders | ❌ NO | Unrelated to this form |
+| User switches away and back | ❌ NO | Form should retain state |
+
+#### 17.3.4 What Fields Are Affected
+
+Spurious repopulation affects **all bound form fields**, but is most visible in:
+
+| Field Type | Symptom | User Impact |
+|------------|---------|-------------|
+| **Dropdowns** (select) | Selection resets to default | Very noticeable, frustrating |
+| **Checkboxes** (multi-select) | Selections cleared | Data loss, critical |
+| **Radio buttons** | Selection resets | Noticeable |
+| **Text inputs** | Value resets | Moderate (if typing slowly) |
+| **Textareas** | Content replaced | Critical if actively editing |
+
+#### 17.3.5 Implementation Checklist
+
+When implementing forms with prop-based data loading:
+
+**Setup:**
+- [ ] Add `let previousId = $state(null)` to track identity
+- [ ] Add `let formDirty = $state(false)` for user edit tracking
+- [ ] Add `handleFieldChange()` handlers on all inputs
+
+**Effect Logic:**
+- [ ] Calculate `idChanged` using previous ID comparison
+- [ ] Calculate `nullStatusChanged` for creation/deletion
+- [ ] Only call `populateFormFields()` if ID or null status changed
+- [ ] Skip repopulation on reference-only changes
+- [ ] Reset `previousId` and `formDirty` on actual changes
+
+**Testing:**
+- [ ] Open form, wait 5 seconds, verify selections persist
+- [ ] Navigate away and back, verify selections persist
+- [ ] Trigger parent re-renders, verify selections persist
+- [ ] Open different item, verify form repopulates correctly
+- [ ] Click Cancel, verify form reverts to saved state
+
+#### 17.3.6 Warning Signs in Code
+
+**🚨 RED FLAGS - These patterns indicate potential spurious repopulation:**
+
+```javascript
+// ❌ BAD: Repopulates on any prop change
+$effect(() => {
+    if (data) {
+        populateAllFields(data);
+    }
+});
+
+// ❌ BAD: Dirty check alone isn't enough
+$effect(() => {
+    if (data && !formDirty) {
+        populateAllFields(data); // Still triggers on reference changes!
+    }
+});
+
+// ❌ BAD: Repopulating after save
+async function handleSave() {
+    await saveData();
+    formDirty = false;
+    populateFormFields(data); // Unnecessary - form already has values!
+}
+```
+
+**✅ SAFE PATTERNS:**
+
+```javascript
+// ✅ GOOD: ID-based repopulation
+$effect(() => {
+    if (data?.id !== previousId) {
+        populateAllFields(data);
+        previousId = data.id;
+        formDirty = false;
+    }
+});
+
+// ✅ GOOD: Explicit revert only
+function handleCancel() {
+    populateFormFields(initialData); // Explicit user action
+    formDirty = false;
+}
+
+// ✅ GOOD: Skip repopulation after save
+async function handleSave() {
+    await saveData();
+    formDirty = false; // Just reset dirty flag
+    // Don't repopulate - form already has current values!
+}
+```
+
+#### 17.3.7 Relationship to Other Patterns
+
+This pattern **complements** but is **distinct** from:
+
+| Pattern | Purpose | When to Use |
+|---------|---------|-------------|
+| **Form Dirty Tracking** (17.1) | Protect unsaved changes | All editable forms |
+| **Async Race Conditions** (17.2) | Handle async data deps | Forms with async selectors |
+| **Spurious Repopulation** (17.3) | Prevent reference-change resets | Forms with prop-based data |
+
+**All Three Together:**
+
+```javascript
+// Complete pattern combining all three
+let formDirty = $state(false);           // 17.1: Dirty tracking
+let previousId = $state(null);            // 17.3: ID tracking
+let pendingSelections = $state(null);     // 17.2: Async pattern
+
+$effect(() => {
+    // 17.3: Only on meaningful changes
+    if (data?.id !== previousId) {
+        // 17.1: Check dirty state
+        if (!formDirty) {
+            // 17.2: Handle async deps correctly
+            await loadOptionsFirst();
+            populateFields(data);
+            previousId = data.id;
+            formDirty = false;
+        }
+    }
+});
+```
+
+#### 17.3.8 Real-World Incident Reports
+
+**November 2025: Double Repopulation Bug**
+
+Even after implementing dirty state tracking (Issue #62 fix), the AssistantForm component continued to lose LLM selections because:
+
+1. Dirty state prevented overwrites **during editing** ✅
+2. But when `formDirty === false`, Svelte 5 reference changes triggered repopulation ❌
+3. Every parent re-render caused dropdown selections to reset
+4. Fix: Skip repopulation on reference-only changes (ID-based pattern)
+
+**Lessons Learned:**
+- Dirty state tracking is necessary but not sufficient
+- Must also check for meaningful data changes (ID, null status)
+- Svelte 5's reactivity is more aggressive than Svelte 4
+- Always test with deliberate delays to expose timing issues
+
+#### 17.3.9 Example Implementation
+
+See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte`:
+
+```javascript
+// Lines 203-253: Complete implementation
+$effect(() => {
+    const idChanged = assistant?.id !== initialAssistantData?.id;
+    const nullChanged = (assistant === null && initialAssistantData !== null) || 
+                        (assistant !== null && initialAssistantData === null);
+    
+    if (idChanged || nullChanged) {
+        // Real change - repopulate
+        if (assistant) {
+            populateFormFields(assistant);
+            previousAssistantId = assistant.id;
+            formDirty = false;
+        }
+    } else {
+        // Reference-only change - protect selections
+        console.log('[Form] Skipping repopulation - protecting user selections');
+    }
+});
+```
+
+#### 17.3.10 Key Takeaways
+
+**For Developers:**
+1. **Reference changes ≠ data changes** in Svelte 5
+2. **Always track previous ID** for comparison
+3. **Skip repopulation** unless ID or null status changes
+4. **Test with delays** to expose spurious updates
+5. **Combine all three patterns** (17.1, 17.2, 17.3) for robust forms
+
+**For Reviewers:**
+1. **Question every populateFormFields() call**
+2. **Require ID-based change detection**
+3. **Reject naive prop-watching effects**
+4. **Verify testing includes delay scenarios**
+5. **Check that reference changes are ignored**
+
+**For Testers:**
+1. **Open form and wait** (5-10 seconds) before interacting
+2. **Navigate away and back** to trigger re-renders
+3. **Verify all selections persist** through navigation
+4. **Test rapid switching** between items
+5. **Use React DevTools** to observe re-renders
+
+---
+
+**⚠️ CRITICAL REMINDER:** If you're implementing a form that loads data from props and uses dropdowns or multi-selects, **STOP** and re-read this section. The pattern you use here will determine whether your form is stable or frustrating to use.
+
+---
+
+### 17.4 Other Frontend Best Practices
+
+#### 17.4.1 Svelte 5 Reactivity Guidelines
 
 - Use `$state()` for component-local reactive values
 - Use `$derived()` for computed values
@@ -3000,14 +3600,14 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 - Prefer event handlers over reactive effects when possible
 - Always check if effect should run (guard conditions)
 
-#### 17.2.2 API Service Patterns
+#### 17.4.2 API Service Patterns
 
 - Centralize API calls in service modules (`lib/services/`)
 - Include authorization headers in all authenticated requests
 - Handle loading/error states consistently
 - Return structured responses: `{success, data?, error?}`
 
-#### 17.2.3 Store Management
+#### 17.4.3 Store Management
 
 - Use stores for shared state across components
 - Keep stores minimal and focused
@@ -3051,5 +3651,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team  
-**Last Updated:** January 2025  
-**Version:** 2.3 (Added end_user feature, user blocking feature, Frontend UX patterns)
+**Last Updated:** November 2025  
+**Version:** 2.5 (Added Section 17.3: Preventing Spurious Form Repopulation - LLM selection fix documentation)

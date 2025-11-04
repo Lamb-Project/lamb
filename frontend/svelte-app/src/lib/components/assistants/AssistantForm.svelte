@@ -73,6 +73,10 @@
 	let knowledgeBaseError = $state('');
 	let kbFetchAttempted = $state(false); // Track if fetch was attempted
 	
+	// FIX FOR ISSUE #96: Deferred selection pattern
+	// Pending selections that will be applied when options are ready
+	let pendingKBSelections = $state(null);
+	
 	// Computed: combined list for backward compatibility
 	let accessibleKnowledgeBases = $derived([...ownedKnowledgeBases, ...sharedKnowledgeBases]);
 
@@ -233,12 +237,15 @@
 				}
 			}
 		} else {
-			// Only repopulate if form is NOT dirty (user hasn't made changes)
-			// This prevents overwriting user edits due to Svelte 5 reference changes
+			// FIX: Prevent unnecessary repopulation that causes field resets
+			// Svelte 5's reactivity can cause prop reference changes even when data hasn't changed
+			// Only repopulate basic text fields, NOT the configuration dropdowns
+			// Configuration dropdowns (connector, llm, rag processor, etc.) should only be
+			// populated on initial load or explicit assistant change (handled above)
 			if (assistant && !formDirty) {
-				console.log('Assistant reference changed, but form is clean - repopulating fields (preserving description).');
-				// Pass true to preserve current description value during repopulation
-				populateFormFields(assistant, true);
+				console.log('[AssistantForm] Skipping full repopulation - form is clean but only assistant reference changed. Protecting user selections.');
+				// We intentionally do NOT call populateFormFields here to protect dropdown selections
+				// The only case where we'd repopulate is on actual ID change (handled above)
 			} else if (assistant && formDirty) {
 				console.log('[AssistantForm] Skipping repopulation - form is dirty (user has unsaved changes)');
 			}
@@ -278,6 +285,19 @@
 		});
 
 		return unsubscribe;
+	});
+
+	// FIX FOR ISSUE #96: Effect to apply pending KB selections when list becomes available
+	$effect(() => {
+		// Apply pending selections AFTER fetch completes (not just when arrays have items)
+		// This handles cases where user has no KBs or KBs were deleted
+		if (pendingKBSelections !== null && kbFetchAttempted && !loadingKnowledgeBases) {
+			console.log('Effect: KB fetch complete, applying pending selections:', pendingKBSelections);
+			console.log('Effect: Available KBs - Owned:', ownedKnowledgeBases.length, 'Shared:', sharedKnowledgeBases.length);
+			selectedKnowledgeBases = pendingKBSelections;
+			pendingKBSelections = null; // Clear pending state
+			console.log('Effect: KB selections applied:', selectedKnowledgeBases);
+		}
 	});
 
 	// --- Helper to reset form fields to defaults (for create mode) ---
@@ -358,10 +378,17 @@
 	 * Populates the form fields from a given assistant data object.
 	 * @param {any} data The assistant data object.
 	 * @param {boolean} [preserveDescription=false] - Whether to preserve the current description value
+	 * 
+	 * FIX FOR ISSUE #96: Uses Deferred Selection pattern to avoid race conditions.
+	 * Basic fields populate synchronously (no blank page), async-dependent selections 
+	 * are stored as pending and applied when options become available via $effect.
+	 * See Architecture Doc Section 17.2 for details.
 	 */
 	function populateFormFields(data, preserveDescription = false) {
 		if (!data) return;
-		console.log('Populating form fields from:', data);
+		console.log('[populateFormFields] Called with data:', data);
+		console.log('[populateFormFields] configInitialized:', configInitialized);
+		
 		name = data.name?.replace(/^\d+_/, '') || '';
 		// Only update description if not preserving current edits
 		if (!preserveDescription) {
@@ -374,15 +401,33 @@
 		if (configInitialized) {
 			// Use direct properties from the data object
 			selectedPromptProcessor = data.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
+			console.log('[populateFormFields] Set selectedPromptProcessor:', selectedPromptProcessor);
+			
 			selectedConnector = data.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
+			console.log('[populateFormFields] Set selectedConnector:', selectedConnector);
+			
 			selectedRagProcessor = data.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
+			console.log('[populateFormFields] Set selectedRagProcessor:', selectedRagProcessor);
 			
-			updateAvailableModels(); // Update models based on connector
-			selectedLlm = data.llm || (availableModels.length > 0 ? availableModels[0] : '');
+			// Update available models based on the selected connector
+			updateAvailableModels();
+			console.log('[populateFormFields] Updated availableModels:', availableModels);
+			
+			// Set LLM - ensure we check if the data.llm exists in availableModels
+			const targetLlm = data.llm;
+			if (targetLlm && availableModels.includes(targetLlm)) {
+				selectedLlm = targetLlm;
+				console.log('[populateFormFields] Set selectedLlm to saved value:', selectedLlm);
+			} else if (targetLlm) {
+				// Model not available in current connector, fallback to first available
+				selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
+				console.warn(`[populateFormFields] LLM '${targetLlm}' not available for connector '${selectedConnector}'. Using fallback:`, selectedLlm);
+			} else {
+				// No LLM in data, use first available
+				selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
+				console.log('[populateFormFields] No LLM in data, using first available:', selectedLlm);
+			}
 
-			// Set selected KBs
-			selectedKnowledgeBases = data.RAG_collections?.split(',').filter(Boolean) || [];
-			
 			// Load placeholders from config for edit mode as well
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
 			try {
@@ -393,10 +438,21 @@
 				ragPlaceholders = ["{context}", "{user_input}"];
 			}
 			
-			// Fetch KBs if needed
-			if (selectedRagProcessor === 'simple_rag' && !kbFetchAttempted && !loadingKnowledgeBases) {
-				console.log('Populate: Triggering KB fetch');
-				tick().then(fetchKnowledgeBases);
+			// FIX FOR ISSUE #96: Deferred Selection Pattern
+			// Store pending selections that will be applied when options are ready
+			if (selectedRagProcessor === 'simple_rag') {
+				// Store selections to be applied later
+				pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
+				console.log('Populate: Stored pending KB selections:', pendingKBSelections);
+				
+				// Trigger fetch if needed (don't wait)
+				if (!kbFetchAttempted && !loadingKnowledgeBases) {
+					console.log('Populate: Triggering KB fetch');
+					tick().then(fetchKnowledgeBases);
+				}
+			} else {
+				// Clear pending selections if not using simple_rag
+				pendingKBSelections = null;
 			}
 
 			// Handle rubric fields if rubric_rag is selected
@@ -425,8 +481,17 @@
 
 			// TODO: Handle file selection for single_file_rag if needed
 			// selectedFilePath = data.file_path || '';
+		} else {
+			console.warn('[populateFormFields] Config not initialized yet, skipping dropdown population');
 		}
-		console.log('Form fields populated:', { name, description, selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor });
+		console.log('[populateFormFields] Complete. Final values:', { 
+			name, 
+			description: description.substring(0, 50) + '...', 
+			selectedPromptProcessor, 
+			selectedConnector, 
+			selectedLlm, 
+			selectedRagProcessor 
+		});
 	}
 
 	/** 
@@ -1148,19 +1213,32 @@
 								validationLog.push(`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`);
 							}
 
-							// Populate RAG specific fields
-							if (selectedRagProcessor === 'simple_rag') {
-								selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
-								selectedFilePath = ''; // Clear file path if switching to simple RAG
-								if (!kbFetchAttempted) fetchKnowledgeBases(); // Fetch KBs if needed
-							} else if (selectedRagProcessor === 'single_file_rag') {
-								selectedFilePath = callbackData.file_path || '';
-								selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
-								if (!filesFetchAttempted) fetchUserFiles(); // Fetch user files if needed
-							} else { // No RAG
-								selectedKnowledgeBases = [];
-								selectedFilePath = '';
+						// Populate RAG specific fields
+						// FIX FOR ISSUE #96: Apply Load-Then-Select pattern for imports too
+						if (selectedRagProcessor === 'simple_rag') {
+							selectedFilePath = ''; // Clear file path if switching to simple RAG
+							// Fetch KBs BEFORE setting selections
+							if (!kbFetchAttempted) {
+								console.log('Import: Awaiting KB fetch to complete before setting selections');
+								await fetchKnowledgeBases(); // ✅ WAIT for KBs to load
 							}
+							// NOW set selections when KB list is ready
+							selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
+							console.log('Import: KB selections set after fetch:', selectedKnowledgeBases);
+						} else if (selectedRagProcessor === 'single_file_rag') {
+							selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
+							// Fetch files BEFORE setting selection
+							if (!filesFetchAttempted) {
+								console.log('Import: Awaiting files fetch to complete before setting selection');
+								await fetchUserFiles(); // ✅ WAIT for files to load
+							}
+							// NOW set selection when file list is ready
+							selectedFilePath = callbackData.file_path || '';
+							console.log('Import: File selection set after fetch:', selectedFilePath);
+						} else { // No RAG
+							selectedKnowledgeBases = [];
+							selectedFilePath = '';
+						}
 							validationLog.push('✅ Form fields populated successfully.');
 							importError = ''; // Clear any previous error
 							// Show success message briefly
