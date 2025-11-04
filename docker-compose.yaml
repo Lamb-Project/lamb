@@ -18,7 +18,7 @@ services:
       - openwebui-build
     command: >
       sh -lc "echo 'Waiting for open-webui build marker...' && \
-      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 1; done && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 30; done && \
       echo 'Build folder found, starting backend server...' && \
       cd ${LAMB_PROJECT_PATH}/open-webui/backend && \
       python -m pip install --upgrade pip && \
@@ -88,8 +88,8 @@ services:
       - frontend-build
     command: >
       sh -lc "echo 'Waiting for required build markers (openwebui + frontend)...' && \
-      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 1; done && \
-      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 1; done && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/open-webui/build/.build_complete ]; do echo 'waiting for open-webui build...'; sleep 30; done && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 30; done && \
       python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload"
@@ -110,7 +110,7 @@ services:
       - frontend-build
     command: >
       sh -lc "echo 'Waiting for frontend build marker...' && \
-      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 1; done && \
+      while [ ! -f ${LAMB_PROJECT_PATH}/frontend/svelte-app/.build_complete ]; do echo 'waiting for frontend build...'; sleep 30; done && \
       test -f static/config.js || cp static/config.js.sample static/config.js; \
       npm install; \
       npm run dev -- --host 0.0.0.0"
