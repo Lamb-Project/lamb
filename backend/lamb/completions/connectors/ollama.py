@@ -88,7 +88,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     if assistant_owner:
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
-            org_name = config_resolver.organization.name
+            org_name = config_resolver.organization.get('name', 'Unknown')
             ollama_config = config_resolver.get_provider_config("ollama")
             
             if ollama_config:

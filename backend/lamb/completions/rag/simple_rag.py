@@ -99,7 +99,7 @@ def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None) -
     try:
         # Get organization-specific KB configuration
         config_resolver = OrganizationConfigResolver(assistant.owner)
-        org_name = config_resolver.organization.name
+        org_name = config_resolver.organization.get('name', 'Unknown')
         kb_config = config_resolver.get_knowledge_base_config()
         
         if kb_config:
