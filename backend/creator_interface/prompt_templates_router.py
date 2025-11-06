@@ -512,6 +512,21 @@ async def toggle_template_sharing(
         if not creator_user:
             raise HTTPException(status_code=401, detail="Unauthorized")
         
+        # Check if sharing is enabled for the user's organization (only when sharing, not unsharing)
+        if share_data.is_shared:
+            db_manager = LambDatabaseManager()
+            org = db_manager.get_user_organization(creator_user['id'])
+            if org:
+                config = org.get('config', {})
+                features = config.get('features', {})
+                sharing_enabled = features.get('sharing_enabled', True)
+                
+                if not sharing_enabled:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Sharing is not enabled for your organization"
+                    )
+        
         # Toggle sharing
         db_manager = LambDatabaseManager()
         success = db_manager.toggle_template_sharing(

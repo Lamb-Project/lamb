@@ -1,0 +1,43 @@
+{
+  "_comment": "Example bulk import file with validation errors for testing",
+  "version": "1.0",
+  "users": [
+    {
+      "email": "valid.user@example.com",
+      "name": "Valid User",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "invalid-email-format",
+      "name": "Invalid Email User",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "missing.name@example.com",
+      "name": "",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "invalid.type@example.com",
+      "name": "Invalid Type User",
+      "user_type": "invalid_type",
+      "enabled": false
+    },
+    {
+      "email": "duplicate@example.com",
+      "name": "Duplicate User 1",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "duplicate@example.com",
+      "name": "Duplicate User 2",
+      "user_type": "creator",
+      "enabled": false
+    }
+  ]
+}
+

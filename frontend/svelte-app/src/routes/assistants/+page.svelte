@@ -1,8 +1,10 @@
 <script>
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
+    import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import { _, locale } from '$lib/i18n';
+    import { user } from '$lib/stores/userStore';
     import DuplicateAssistantModal from '$lib/components/modals/DuplicateAssistantModal.svelte'; // Placeholder for modal
     import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
     import { onMount, onDestroy } from 'svelte';
@@ -17,7 +19,7 @@
     import { browser } from '$app/environment'; // <<< Import browser
 
     // --- State Management --- 
-    /** @type {'list' | 'create' | 'detail'} */
+    /** @type {'list' | 'create' | 'detail' | 'shared'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
@@ -31,7 +33,7 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- API Configuration State ---
@@ -88,6 +90,18 @@
     let rubricError = $state('');
     let rubricFetchTriggered = $state(false);
 
+    // --- Sharing State (for share tab) ---
+    let showSharingModal = $state(false);
+    let sharedUsers = $state([]);
+    let loadingShares = $state(false);
+    let canShare = $state(true); // Permission check result
+    
+    // --- Ownership Check ---
+    let isOwner = $derived.by(() => {
+        if (!selectedAssistantData || !$user.email) return false;
+        return selectedAssistantData.owner === $user.email;
+    });
+
     // --- Functions --- 
     /** Sets the view to the assistant creation form */
     function showCreateForm() {
@@ -106,6 +120,16 @@
         startEditMode = false; // Ensure not starting in edit for list
         // Navigate to assistants base path without query params
         goto(`${base}/assistants`, { replaceState: true });
+    }
+
+    /** Sets the view to shared assistants */
+    function showSharedAssistants() {
+        console.log("Navigating to shared assistants view");
+        selectedAssistantData = null; // Clear any selected data
+        currentView = 'shared';
+        startEditMode = false;
+        // Navigate to assistants path with shared view query param
+        goto(`${base}/assistants?view=shared`, { replaceState: true });
     }
 
     /** Fetches assistant details */
@@ -212,6 +236,11 @@
                 if (currentView !== 'create') {
                     console.log("URL indicates 'create' view.");
                     showCreateForm();
+                }
+            } else if (viewParam === 'shared') {
+                if (currentView !== 'shared') {
+                    console.log("URL indicates 'shared' view.");
+                    showSharedAssistants();
                 }
             } else if (viewParam === 'detail' && idParam) { 
                 const assistantId = parseInt(idParam, 10);
@@ -686,6 +715,68 @@
         }
     }
 
+    // --- Sharing Functions ---
+    
+    async function checkSharingPermission() {
+        try {
+            const response = await fetch(
+                'http://localhost:9099/lamb/v1/assistant-sharing/check-permission',
+                {
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`
+                    }
+                }
+            );
+            
+            if (response.ok) {
+                const data = await response.json();
+                canShare = data.can_share || false;
+            } else {
+                canShare = false;
+            }
+        } catch (error) {
+            console.error('Error checking sharing permission:', error);
+            canShare = false;
+        }
+    }
+
+    async function loadSharedUsers() {
+        if (!selectedAssistantData) return;
+        
+        loadingShares = true;
+        
+        try {
+            const response = await fetch(
+                `http://localhost:9099/lamb/v1/assistant-sharing/shares/${selectedAssistantData.id}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`
+                    }
+                }
+            );
+            
+            if (response.ok) {
+                sharedUsers = await response.json();
+            } else {
+                sharedUsers = [];
+            }
+        } catch (error) {
+            console.error('Error loading shared users:', error);
+            sharedUsers = [];
+        } finally {
+            loadingShares = false;
+        }
+    }
+
+    function handleSharingModalClose() {
+        showSharingModal = false;
+    }
+
+    function handleSharingModalSaved() {
+        // Reload shared users after successful save
+        loadSharedUsers();
+    }
+
     // Effect to trigger KB and Rubric fetch when detail view is shown and assistant data is available
     $effect(() => {
         // Only run in browser
@@ -725,6 +816,21 @@
         }
     });
 
+    // Effect to check sharing permission and load shared users when detail view is shown
+    $effect(() => {
+        if (!browser) return;
+        
+        if (currentView === 'detail' && selectedAssistantData && userToken) {
+            // Check permission once per assistant
+            checkSharingPermission();
+            
+            // Load shared users if on share tab
+            if (detailSubView === 'share') {
+                loadSharedUsers();
+            }
+        }
+    });
+
 </script>
 
 <h1 class="text-3xl font-bold mb-4 text-brand">{currentLocale ? $_('assistants.title') : 'Learning Assistants'}</h1>
@@ -739,6 +845,14 @@
             onclick={showList} 
         >
             {currentLocale ? $_('assistants.myAssistantsTab') : 'My Assistants'}
+        </button>
+        <!-- Shared with Me View Button -->
+        <button
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 {currentView === 'shared' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
+            style={currentView === 'shared' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
+            onclick={showSharedAssistants}
+        >
+            {currentLocale ? $_('assistants.sharedWithMeTab') : 'Shared with Me'}
         </button>
         <!-- Create View Button -->
         <button
@@ -788,12 +902,22 @@
         >
             {currentLocale ? $_('assistants.detail.propertiesTab', { default: 'Properties' }) : 'Properties'}
         </button>
-        <button
-            class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'edit' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
-            onclick={() => detailSubView = 'edit'}
-        >
-            {currentLocale ? $_('assistants.detail.editTab', { default: 'Edit' }) : 'Edit'}
-        </button>
+        {#if isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'edit' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'edit'}
+            >
+                {currentLocale ? $_('assistants.detail.editTab', { default: 'Edit' }) : 'Edit'}
+            </button>
+        {/if}
+        {#if canShare && isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'share' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'share'}
+            >
+                {currentLocale ? $_('assistants.detail.shareTab', { default: 'Share' }) : 'Share'}
+            </button>
+        {/if}
         <button
             class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'chat' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
             onclick={() => detailSubView = 'chat'}
@@ -819,19 +943,23 @@
         <!-- Render content based on the active sub-tab -->
         {#if detailSubView === 'properties'}
             <!-- Header for Properties View -->
+            <!-- Add key based on assistant ID to force re-render when data changes -->
+            {#key selectedAssistantData?.id}
             <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200">
                 <h2 class="text-xl font-semibold text-gray-800">
                     {currentLocale ? $_('assistants.detail.propertiesTitle', { default: 'Assistant Properties' }) : 'Assistant Properties'}
                 </h2>
                 <div class="flex space-x-2">
-                    <!-- Edit Button -->
-                    <button 
-                        type="button" 
-                        class="px-3 py-1 text-sm font-medium rounded text-indigo-600 bg-white border border-indigo-600 hover:bg-indigo-100 transition-colors"
-                        onclick={() => detailSubView = 'edit'}
-                    >
-                        {currentLocale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
-                    </button>
+                    {#if isOwner}
+                        <!-- Edit Button (Owner Only) -->
+                        <button 
+                            type="button" 
+                            class="px-3 py-1 text-sm font-medium rounded text-indigo-600 bg-white border border-indigo-600 hover:bg-indigo-100 transition-colors"
+                            onclick={() => detailSubView = 'edit'}
+                        >
+                            {currentLocale ? $_('common.edit', { default: 'Edit' }) : 'Edit'}
+                        </button>
+                    {/if}
                     
                     <!-- Duplicate Button -->
                     <button 
@@ -1132,6 +1260,7 @@
                     </div>
                 {/if}
             </div>
+            {/key}
 
         {:else if detailSubView === 'edit'}
             <!-- Edit View -->
@@ -1159,6 +1288,65 @@
                     />
                 </div>
             </div>
+        {:else if detailSubView === 'share'}
+            <!-- Share Tab Content - Clean List View -->
+            <div class="px-6 py-6">
+                <div class="mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-2">
+                        {currentLocale ? $_('assistants.sharing.title', { default: 'Shared Users' }) : 'Shared Users'}
+                    </h2>
+                    <p class="text-sm text-gray-600 mb-4">
+                        {currentLocale ? $_('assistants.sharing.description', { default: 'Manage who has access to this assistant' }) : 'Manage who has access to this assistant'}
+                    </p>
+                </div>
+
+                {#if loadingShares}
+                    <div class="flex items-center justify-center py-8">
+                        <div class="text-gray-500">Loading shared users...</div>
+                    </div>
+                {:else if sharedUsers.length === 0}
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+                        <p class="text-gray-600">
+                            {currentLocale ? $_('assistants.sharing.noShares', { default: 'This assistant is not shared with anyone yet.' }) : 'This assistant is not shared with anyone yet.'}
+                        </p>
+                    </div>
+                {:else}
+                    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
+                        <div class="divide-y divide-gray-200">
+                            {#each sharedUsers as share (share.user_id)}
+                                <div class="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
+                                    <div class="flex-1">
+                                        <div class="font-medium text-gray-900">{share.user_name}</div>
+                                        <div class="text-sm text-gray-500">{share.user_email}</div>
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        Shared by {share.shared_by_name}
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
+                <div class="mt-6">
+                    <button
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        onclick={() => showSharingModal = true}
+                    >
+                        {currentLocale ? $_('assistants.sharing.manageButton', { default: 'Manage Shared Users' }) : 'Manage Shared Users'}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sharing Modal -->
+            {#if showSharingModal}
+                <AssistantSharingModal 
+                    assistant={selectedAssistantData}
+                    token={userToken}
+                    onClose={handleSharingModalClose}
+                    onSaved={handleSharingModalSaved}
+                />
+            {/if}
         {:else if detailSubView === 'chat'}
             {#if configError}
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
@@ -1186,8 +1374,20 @@
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->
 <!-- End of detail view content -->
+{:else if currentView === 'shared'}
+    <!-- Shared with Me View -->
+    <div class="mt-6">
+        <div class="bg-white shadow rounded-lg p-4 border border-gray-200">
+            <AssistantsList 
+               showShared={true}
+               on:duplicate={handleDuplicateRequest} 
+               on:delete={handleDeleteRequest} 
+               on:export={handleExportRequest} 
+            />
+        </div>
+    </div>
 {:else}
-    <!-- Fallback for when currentView is not list, create, or detail (should not happen) -->
+    <!-- Fallback for when currentView is not list, create, detail, or shared (should not happen) -->
     <p>{currentLocale ? $_('assistants.noAssistantData') : 'Assistant data not available.'}</p>
 {/if} 
 

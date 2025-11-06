@@ -22,6 +22,7 @@ from .completions.main import router as completions_router
 from .config_router import router as config_router  # Add this import
 from .mcp_router import router as mcp_router  # Add MCP router import
 from .organization_router import router as organization_router  # Add organization router import
+from .assistant_sharing_router import router as assistant_sharing_router  # Add assistant sharing router import
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -160,6 +161,7 @@ app.include_router(completions_router, prefix="/v1/completions")
 app.include_router(config_router, prefix="/v1/config")  # Add the config router
 app.include_router(mcp_router, prefix="/v1/mcp")  # Add the MCP router
 app.include_router(organization_router, prefix="/v1")  # Add the organization router
+app.include_router(assistant_sharing_router)  # Add the assistant sharing router
 
 # Evaluaitor (Rubrics) router
 from .evaluaitor.rubrics import router as evaluaitor_router

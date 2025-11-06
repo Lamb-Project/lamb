@@ -59,6 +59,22 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
             logger.debug(f"User {user['email']} is owner of assistant {assistant_id}")
             return True
         
+        # Check if assistant is shared with this user
+        import sys
+        import os
+        # Add the parent directory to the Python path
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        
+        from lamb.database_manager import LambDatabaseManager
+        db_check = LambDatabaseManager()
+        is_shared = db_check.is_assistant_shared_with_user(assistant_id, user['id'])
+        
+        if is_shared:
+            logger.debug(f"User {user['email']} has access to shared assistant {assistant_id}")
+            return True
+        
         # Check organization membership
         user_org = user.get('organization', {})
         assistant_org_id = getattr(assistant, 'organization_id', None)

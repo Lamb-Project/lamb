@@ -1,5 +1,5 @@
 // import { API_CONFIG, getApiUrl } from '$lib/config'; // No longer used directly
-import { getApiUrl } from '$lib/config'; // Use the new helper
+import { getApiUrl, getConfig } from '$lib/config'; // Use the new helper
 import { browser } from '$app/environment';
 import axios from 'axios';
 
@@ -690,6 +690,53 @@ export async function setAssistantPublishStatus(assistantId, publishStatus) {
         }
 
         throw new Error(errorMessage);
+    }
+}
+
+/**
+ * Get assistants shared with the current user
+ * @returns {Promise<{assistants: Assistant[], count: number}>} Object with shared assistants list and count
+ * @throws {Error} If not authenticated or fetch fails
+ */
+export async function getSharedAssistants() {
+    if (!browser) {
+        console.warn('getSharedAssistants called outside browser context');
+        return { assistants: [], count: 0 };
+    }
+    
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('Not authenticated');
+    }
+    
+    try {
+        // Get the base URL without /creator prefix for lamb endpoints
+        const config = getConfig();
+        const baseUrl = config.api.lambServer || 'http://localhost:9099';
+        const apiUrl = `${baseUrl}/lamb/v1/assistant-sharing/shared-with-me`;
+        console.log('Fetching shared assistants from:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+            throw new Error(errorData.detail || 'Failed to fetch shared assistants');
+        }
+        
+        const data = await response.json();
+        console.log('Received shared assistants:', data);
+        
+        return {
+            assistants: data.assistants || [],
+            count: data.count || 0
+        };
+    } catch (error) {
+        console.error('Error fetching shared assistants:', error);
+        throw error;
     }
 }
 

@@ -29,3 +29,30 @@ class FilterForm(BaseModel):
     body: dict
     user: Optional[dict] = None
     model_config = ConfigDict(extra="allow")
+
+
+# Bulk Import Schemas
+
+class BulkImportUser(BaseModel):
+    """Single user in bulk import"""
+    email: str
+    name: str
+    user_type: str = 'creator'
+    enabled: bool = False
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class BulkImportRequest(BaseModel):
+    """Bulk import execution request"""
+    users: List[BulkImportUser]
+    filename: Optional[str] = None
+    
+    model_config = ConfigDict(extra="forbid")
+
+
+class BulkUserActionRequest(BaseModel):
+    """Bulk enable/disable request"""
+    user_ids: List[int]
+    
+    model_config = ConfigDict(extra="forbid")

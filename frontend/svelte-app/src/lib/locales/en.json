@@ -46,6 +46,7 @@
     "title": "Learning Assistants",
     "view": "View Learning Assistants",
     "myAssistantsTab": "My Assistants",
+    "sharedWithMeTab": "Shared with Me",
     "createAssistantTab": "Create Assistant",
     "detailViewTab": "Assistant Detail",
     "myAssistants": "My Assistants",
@@ -143,6 +144,19 @@
       "ragTopKHint": "Number of relevant chunks to retrieve (1-10).",
       "successMessage": "Assistant '{name}' created successfully! Redirecting...",
       "unknownError": "Failed to create assistant: Unknown error"
+    },
+    "detail": {
+      "propertiesTab": "Properties",
+      "editTab": "Edit",
+      "shareTab": "Share",
+      "chatTab": "Chat"
+    },
+    "sharing": {
+      "title": "Shared Users",
+      "description": "Manage who has access to this assistant",
+      "noShares": "This assistant is not shared with anyone yet.",
+      "manageButton": "Manage Shared Users",
+      "sharedWith": "Shared with {count} {count, plural, =1 {user} other {users}}"
     },
     "table": {
       "name": "Name",

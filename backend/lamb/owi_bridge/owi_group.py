@@ -352,6 +352,57 @@ class OwiGroupManager:
                 "error": f"Unexpected error: {str(e)}"
             }
 
+    def remove_user_from_group_by_email(self, group_id: str, user_email: str) -> Dict:
+        """
+        Remove a user from a group using their email
+        
+        Args:
+            group_id (str): ID of the group to remove the user from
+            user_email (str): Email of the user to remove
+            
+        Returns:
+            Dict: Response containing success/error status and message
+        """
+        try:
+            # First validate the group exists
+            group = self.get_group_by_id(group_id)
+            if not group:
+                return {
+                    "status": "error",
+                    "error": f"Group with id {group_id} not found"
+                }
+
+            # Get user by email using OwiUserManager
+            user_manager = OwiUserManager()
+            user = user_manager.get_user_by_email(user_email)
+            
+            if not user:
+                return {
+                    "status": "error", 
+                    "error": f"User with email {user_email} not found"
+                }
+
+            # Use existing remove_user_from_group method
+            success = self.remove_user_from_group(group_id, user['id'])
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"User {user_email} removed from group"
+                }
+            else:
+                return {
+                    "status": "error",
+                    "error": f"Failed to remove user from group"
+                }
+
+        except Exception as e:
+            logging.error(f"Error in remove_user_from_group_by_email: {e}")
+            return {
+                "status": "error",
+                "error": f"Unexpected error: {str(e)}"
+            }
+
     def _row_to_dict(self, row: tuple) -> Dict:
         """Convert a database row to a dictionary"""
         try:

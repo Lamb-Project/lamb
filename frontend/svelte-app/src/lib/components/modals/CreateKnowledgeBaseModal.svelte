@@ -2,6 +2,7 @@
     import { createEventDispatcher } from 'svelte';
     import { _ } from '$lib/i18n';
     import { createKnowledgeBase } from '$lib/services/knowledgeBaseService';
+    import { sanitizeName } from '$lib/utils/nameSanitizer';
 
     const dispatch = createEventDispatcher();
     
@@ -13,6 +14,10 @@
     // Form data
     let name = $state('');
     let description = $state('');
+    
+    // Derived: Sanitized name preview
+    let sanitizedNameInfo = $derived(sanitizeName(name));
+    let showSanitizationPreview = $derived(sanitizedNameInfo.wasModified && name.trim() !== '');
     
     // Error states
     let nameError = $state('');
@@ -174,6 +179,18 @@
                         class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm {nameError ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : ''}"
                         placeholder={$_('knowledgeBases.namePlaceholder', { default: 'Enter knowledge base name' })}
                     />
+                    {#if showSanitizationPreview}
+                        <div class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                            <p class="text-sm text-blue-800">
+                                <span class="font-semibold">{$_('knowledgeBases.createModal.willBeSaved', { default: 'Will be saved as:' })}</span>
+                                <code class="ml-2 px-2 py-1 bg-blue-100 rounded text-blue-900 font-mono">{sanitizedNameInfo.sanitized}</code>
+                            </p>
+                        </div>
+                    {:else if !name.trim()}
+                        <p class="mt-1 text-xs text-gray-500">
+                            {$_('knowledgeBases.createModal.nameHint', { default: 'Special characters and spaces will be converted to underscores' })}
+                        </p>
+                    {/if}
                     {#if nameError}
                         <p class="mt-1 text-sm text-red-600">{nameError}</p>
                     {/if}
@@ -192,6 +209,23 @@
                         placeholder={$_('knowledgeBases.descriptionPlaceholder', { default: 'Enter a description for this knowledge base' })}
                     ></textarea>
                 </div>
+                
+                <!-- Sanitization Preview (above form actions) -->
+                {#if showSanitizationPreview}
+                    <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-blue-800">
+                                    {$_('knowledgeBases.createModal.willBeSaved', { default: 'Will be saved as:' })}
+                                </p>
+                                <code class="inline-block mt-1 px-3 py-1 bg-blue-100 rounded text-blue-900 font-mono text-sm">{sanitizedNameInfo.sanitized}</code>
+                            </div>
+                        </div>
+                    </div>
+                {/if}
                 
                 <!-- Form actions -->
                 <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">

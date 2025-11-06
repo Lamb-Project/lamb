@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from .knowledgebase_classes import KnowledgeBaseCreate, KnowledgeBaseUpdate
+from utils.name_sanitizer import sanitize_name
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -143,6 +144,11 @@ class KBServerManager:
                     if response.status_code == 200:
                         kb_data = response.json()
                         
+                        # CRITICAL FIX: Use the kb_id from LAMB registry, not from KB server
+                        # The KB server may return a different ID format (UUID vs integer)
+                        # We must use the LAMB registry ID for consistency with RAG_collections
+                        kb_data['id'] = kb_id
+                        
                         # Enhance with LAMB metadata - all owned KBs
                         kb_data['is_owner'] = True
                         kb_data['is_shared'] = entry.get('is_shared', False)
@@ -232,6 +238,11 @@ class KBServerManager:
                     
                     if response.status_code == 200:
                         kb_data = response.json()
+                        
+                        # CRITICAL FIX: Use the kb_id from LAMB registry, not from KB server
+                        # The KB server may return a different ID format (UUID vs integer)
+                        # We must use the LAMB registry ID for consistency with RAG_collections
+                        kb_data['id'] = kb_id
                         
                         # Enhance with LAMB metadata - all shared KBs
                         kb_data['is_owner'] = False
@@ -345,7 +356,8 @@ class KBServerManager:
                 
     async def create_knowledge_base(self, kb_data: KnowledgeBaseCreate, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create a new knowledge base in the KB server
+        Create a new knowledge base in the KB server.
+        Automatically sanitizes KB names to conform to naming rules.
         
         Args:
             kb_data: Knowledge base creation data
@@ -354,21 +366,30 @@ class KBServerManager:
         Returns:
             Dict with created knowledge base information
         """
-        logger.info(f"Creating knowledge base via KB server: {kb_data.name}")
+        original_name = kb_data.name
+        logger.info(f"Creating knowledge base via KB server: {original_name}")
         
         # Validate required fields
-        if not kb_data.name:
+        if not original_name or not original_name.strip():
             logger.error("Name is required but not provided")
             raise HTTPException(
                 status_code=400,
-                detail="Name is required"
+                detail="Knowledge Base name is required"
             )
 
+        # Sanitize name (lowercase, spaces to underscores, remove special chars)
+        sanitized_name, was_modified = sanitize_name(original_name, max_length=50, to_lowercase=True)
+        
+        if was_modified:
+            logger.info(f"KB name sanitized: '{original_name}' → '{sanitized_name}'")
+        
+        # Update kb_data with sanitized name
+        kb_data.name = sanitized_name
    
         # Create collection in KB server
         async with httpx.AsyncClient() as client:
             kb_server_url = f"{self.kb_server_url}/collections"
-            logger.info(f"Creating collection in KB server at {kb_server_url}: {kb_data.name}")
+            logger.info(f"Creating collection in KB server at {kb_server_url}: {sanitized_name}")
             
             # Check if there's metadata with a description field
             # The frontend might send the description in metadata.description rather than directly

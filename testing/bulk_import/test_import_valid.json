@@ -1,0 +1,37 @@
+{
+  "_comment": "Example valid bulk user import file",
+  "version": "1.0",
+  "users": [
+    {
+      "email": "alice.johnson@example.com",
+      "name": "Alice Johnson",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "bob.smith@example.com",
+      "name": "Bob Smith",
+      "user_type": "creator",
+      "enabled": false
+    },
+    {
+      "email": "carol.williams@example.com",
+      "name": "Carol Williams",
+      "user_type": "end_user",
+      "enabled": false
+    },
+    {
+      "email": "david.brown@example.com",
+      "name": "David Brown",
+      "user_type": "end_user",
+      "enabled": true
+    },
+    {
+      "email": "eve.davis@example.com",
+      "name": "Eve Davis",
+      "user_type": "creator",
+      "enabled": true
+    }
+  ]
+}
+

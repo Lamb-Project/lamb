@@ -24,6 +24,7 @@ import unicodedata
 from lamb.lamb_classes import Assistant
 from datetime import datetime
 import config
+from utils.name_sanitizer import sanitize_assistant_name_with_prefix
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -296,13 +297,18 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
-def prepare_assistant_body(original_body: Dict[str, Any], creator_user: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def prepare_assistant_body(
+    original_body: Dict[str, Any], 
+    creator_user: Dict[str, Any], 
+    sanitized_prefixed_name: Optional[str] = None
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Prepare the assistant body with proper formatting and validation
 
     Args:
         original_body: The original request body
         creator_user: The creator user object
+        sanitized_prefixed_name: Optional pre-sanitized and prefixed name (if None, will create from original)
 
     Returns:
         Tuple[Optional[Dict[str, Any]], Optional[str]]: (prepared body, error message if any)
@@ -313,8 +319,12 @@ def prepare_assistant_body(original_body: Dict[str, Any], creator_user: Dict[str
         if not original_name:
             return None, "Assistant name is required"
 
-        # Create prefixed name
-        prefixed_name = f"{creator_user['id']}_{original_name}"
+        # Use provided sanitized name or create prefixed name
+        if sanitized_prefixed_name:
+            prefixed_name = sanitized_prefixed_name
+        else:
+            # Fallback: create prefixed name (for backward compatibility)
+            prefixed_name = f"{creator_user['id']}_{original_name}"
 
         # Build the body according to Assistant class structure
         new_body = {
@@ -423,6 +433,7 @@ Example Error Response (Publish Conflict):
 async def create_assistant_directly(request: Request):
     """
     Creates an assistant and publishes it directly using the database manager.
+    Automatically sanitizes assistant names to conform to naming rules.
     """
     try:
         # 1. Get original request body
@@ -434,23 +445,51 @@ async def create_assistant_directly(request: Request):
         if not creator_user:
             raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
 
-        # 3. Prepare assistant data (adds prefix, selects prompts etc.)
-        new_body, error = prepare_assistant_body(original_body, creator_user)
+        # 3. Validate that name is provided
+        if not original_name or not original_name.strip():
+            raise HTTPException(status_code=400, detail="Assistant name is required")
+
+        # 4. Sanitize name with duplicate checking
+        # Create a function to check if prefixed name exists
+        def check_assistant_exists(prefixed_name: str) -> bool:
+            """Check if an assistant with this name exists for this owner"""
+            try:
+                existing = db_manager.get_assistant_by_name_and_owner(
+                    prefixed_name, 
+                    creator_user['email']
+                )
+                return existing is not None
+            except Exception as e:
+                logger.warning(f"Error checking assistant existence: {e}")
+                return False
+        
+        # Sanitize and handle duplicates
+        sanitized_prefixed_name, sanitized_base_name, was_modified = sanitize_assistant_name_with_prefix(
+            user_name=original_name,
+            user_id=creator_user['id'],
+            check_exists_fn=check_assistant_exists,
+            max_length=50
+        )
+        
+        # Log sanitization
+        if was_modified:
+            logger.info(
+                f"Assistant name sanitized: '{original_name}' → '{sanitized_base_name}' "
+                f"(prefixed: '{sanitized_prefixed_name}')"
+            )
+        
+        assistant_name = sanitized_prefixed_name
+
+        # 5. Prepare assistant data with sanitized name
+        new_body, error = prepare_assistant_body(
+            original_body, 
+            creator_user, 
+            sanitized_prefixed_name=sanitized_prefixed_name
+        )
         if error:
             raise HTTPException(status_code=400, detail=error)
 
-        # 4. Validate Assistant Name Format
-        assistant_name = new_body.get('name')
-        if not assistant_name:
-            raise HTTPException(status_code=400, detail="Assistant name missing after preparation.")
-        if not re.match("^[a-zA-Z0-9_-]*$", assistant_name):
-            logger.warning(f"Invalid assistant name provided: {assistant_name}")
-            raise HTTPException(
-                status_code=422,
-                detail="Assistant name can only contain letters, numbers, underscores and hyphens. No spaces or special characters allowed."
-            )
-
-        # 5. Create Assistant in DB
+        # 6. Create Assistant in DB
         assistant_id = None
         try:
             # Add organization_id from creator_user
@@ -734,16 +773,34 @@ async def get_assistant_proxy(assistant_id: int, request: Request):
                 detail="Assistant not found"
             )
 
-        # --- Verify Ownership ---
-        # Important security check: Ensure the fetched assistant belongs to the requesting user
-        if assistant_data.get('owner') != creator_user['email']:
+        # --- Verify Ownership OR Sharing ---
+        # User has access if they:
+        # 1. Own the assistant OR
+        # 2. Assistant is shared with them
+        is_owner = assistant_data.get('owner') == creator_user['email']
+        
+        # Check if assistant is shared with user
+        is_shared = False
+        if not is_owner:
+            import sys
+            import os
+            # Add the parent directory to the Python path
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if parent_dir not in sys.path:
+                sys.path.insert(0, parent_dir)
+            
+            from lamb.database_manager import LambDatabaseManager
+            db_check = LambDatabaseManager()
+            is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+        
+        if not is_owner and not is_shared:
             # Log potential security/data issue but return 404 to the user for security
             logger.warning(f"Access denied: User {creator_user['email']} attempted to access assistant {assistant_id} owned by {assistant_data.get('owner')}")
             raise HTTPException(
                 status_code=404, # Treat as not found for this user
                 detail="Assistant not found"
             )
-        # --- End Ownership Verification ---
+        # --- End Ownership/Sharing Verification ---
 
         # The 'published' field is correctly calculated by the DB function
         # Ensure metadata is populated from api_callback if empty

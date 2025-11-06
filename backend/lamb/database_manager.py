@@ -226,6 +226,26 @@ class LambDatabaseManager:
                 logging.info(
                     f"Table '{self.table_prefix}assistant_publish' created successfully")
 
+                # Create the assistant_shares table
+                logging.debug("Creating assistant_shares table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_shares (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assistant_id INTEGER NOT NULL,
+                        shared_with_user_id INTEGER NOT NULL,
+                        shared_by_user_id INTEGER NOT NULL,
+                        shared_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE,
+                        FOREIGN KEY (shared_with_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (shared_by_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                        UNIQUE(assistant_id, shared_with_user_id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
+                logging.info(
+                    f"Table '{self.table_prefix}assistant_shares' created successfully")
+
                 # Create the Creator_users table
                 logging.debug("Creating Creator_users table")
                 cursor.execute(f"""
@@ -529,6 +549,65 @@ class LambDatabaseManager:
                     logging.info("Successfully created kb_registry table and indexes")
                 else:
                     logging.debug("kb_registry table already exists")
+
+                # Migration 6: Create bulk_import_logs table if it doesn't exist
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}bulk_import_logs'")
+                bulk_import_logs_table_exists = cursor.fetchone()
+
+                if not bulk_import_logs_table_exists:
+                    logging.info("Creating bulk_import_logs table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}bulk_import_logs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id INTEGER NOT NULL,
+                            admin_user_id INTEGER,
+                            admin_email TEXT NOT NULL,
+                            operation_type TEXT NOT NULL CHECK(operation_type IN ('user_creation', 'user_activation', 'user_deactivation')),
+                            total_count INTEGER NOT NULL,
+                            success_count INTEGER NOT NULL,
+                            failure_count INTEGER NOT NULL,
+                            details JSON,
+                            created_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                            FOREIGN KEY (admin_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE SET NULL
+                        )
+                    """)
+
+                    # Create indexes for performance
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_org ON {self.table_prefix}bulk_import_logs(organization_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_admin ON {self.table_prefix}bulk_import_logs(admin_user_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_created ON {self.table_prefix}bulk_import_logs(created_at)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_type ON {self.table_prefix}bulk_import_logs(operation_type)")
+
+                    logging.info("Successfully created bulk_import_logs table and indexes")
+                else:
+                    logging.debug("bulk_import_logs table already exists")
+                
+                # Migration: Check if assistant_shares table exists
+                cursor.execute(f"""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='{self.table_prefix}assistant_shares'
+                """)
+                if not cursor.fetchone():
+                    logging.info("Creating assistant_shares table")
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_shares (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            assistant_id INTEGER NOT NULL,
+                            shared_with_user_id INTEGER NOT NULL,
+                            shared_by_user_id INTEGER NOT NULL,
+                            shared_at INTEGER NOT NULL,
+                            FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE,
+                            FOREIGN KEY (shared_with_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                            FOREIGN KEY (shared_by_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE,
+                            UNIQUE(assistant_id, shared_with_user_id)
+                        )
+                    """)
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
+                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
+                    logging.info(f"Table '{self.table_prefix}assistant_shares' created successfully")
+                else:
+                    logging.debug("assistant_shares table already exists")
 
         except sqlite3.Error as e:
             logging.error(f"Migration error: {e}")
@@ -1859,6 +1938,45 @@ class LambDatabaseManager:
         finally:
             connection.close()
     
+    def update_user_config(self, user_id: int, user_config: dict) -> bool:
+        """
+        Update user's configuration (stored as JSON).
+        
+        Args:
+            user_id: User ID to update
+            user_config: Dictionary of user configuration
+            
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        import json as json_lib
+        
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                
+                # Convert dict to JSON string
+                config_json = json_lib.dumps(user_config)
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET user_config = ?, updated_at = ?
+                    WHERE id = ?
+                """, (config_json, now, user_id))
+                
+                return cursor.rowcount > 0
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error updating user config: {e}")
+            return False
+        finally:
+            connection.close()
+    
     def _get_default_org_config(self) -> Dict[str, Any]:
         """Get default configuration for new organizations"""
         return {
@@ -1875,7 +1993,8 @@ class LambDatabaseManager:
                 "rag_enabled": True,
                 "mcp_enabled": True,
                 "lti_publishing": True,
-                "signup_enabled": False
+                "signup_enabled": False,
+                "sharing_enabled": True  # Controls if users can share assistants/resources
             },
             "limits": {
                 "usage": {
@@ -2584,6 +2703,165 @@ class LambDatabaseManager:
                 connection.close()
         
         return results
+
+    def log_bulk_import(
+        self,
+        organization_id: int,
+        admin_user_id: int,
+        admin_email: str,
+        operation_type: str,
+        total_count: int,
+        success_count: int,
+        failure_count: int,
+        details: Dict[str, Any]
+    ) -> Optional[int]:
+        """
+        Log a bulk import operation to the database
+        
+        Args:
+            organization_id: Organization ID
+            admin_user_id: ID of the admin performing the operation
+            admin_email: Email of the admin
+            operation_type: Type of operation (user_creation, user_activation, user_deactivation)
+            total_count: Total number of items processed
+            success_count: Number of successful operations
+            failure_count: Number of failed operations
+            details: Additional details as JSON dict
+            
+        Returns:
+            Log ID if successful, None if failed
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return None
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(
+                    f"""INSERT INTO {self.table_prefix}bulk_import_logs 
+                        (organization_id, admin_user_id, admin_email, operation_type, 
+                         total_count, success_count, failure_count, details, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        organization_id,
+                        admin_user_id,
+                        admin_email,
+                        operation_type,
+                        total_count,
+                        success_count,
+                        failure_count,
+                        json.dumps(details),
+                        current_time
+                    )
+                )
+                
+                log_id = cursor.lastrowid
+                logging.info(
+                    f"Logged bulk operation {operation_type} "
+                    f"by {admin_email} (ID: {log_id})"
+                )
+                return log_id
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error logging bulk operation: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+    
+    def get_bulk_import_logs(
+        self,
+        organization_id: Optional[int] = None,
+        admin_user_id: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve bulk import logs
+        
+        Args:
+            organization_id: Filter by organization (optional)
+            admin_user_id: Filter by admin user (optional)
+            limit: Maximum number of logs to return
+            offset: Offset for pagination
+            
+        Returns:
+            List of log dicts
+        """
+        connection = self.get_connection()
+        if not connection:
+            logging.error("Failed to get database connection")
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Build query with optional filters
+                query = f"""
+                    SELECT 
+                        l.id,
+                        l.organization_id,
+                        l.admin_user_id,
+                        l.admin_email,
+                        l.operation_type,
+                        l.total_count,
+                        l.success_count,
+                        l.failure_count,
+                        l.details,
+                        l.created_at,
+                        o.name as organization_name,
+                        u.user_name as admin_name
+                    FROM {self.table_prefix}bulk_import_logs l
+                    LEFT JOIN {self.table_prefix}organizations o ON l.organization_id = o.id
+                    LEFT JOIN {self.table_prefix}Creator_users u ON l.admin_user_id = u.id
+                    WHERE 1=1
+                """
+                params = []
+                
+                if organization_id is not None:
+                    query += " AND l.organization_id = ?"
+                    params.append(organization_id)
+                
+                if admin_user_id is not None:
+                    query += " AND l.admin_user_id = ?"
+                    params.append(admin_user_id)
+                
+                query += " ORDER BY l.created_at DESC LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                logs = []
+                for row in rows:
+                    logs.append({
+                        'id': row[0],
+                        'organization_id': row[1],
+                        'admin_user_id': row[2],
+                        'admin_email': row[3],
+                        'operation_type': row[4],
+                        'total_count': row[5],
+                        'success_count': row[6],
+                        'failure_count': row[7],
+                        'details': json.loads(row[8]) if row[8] else {},
+                        'created_at': row[9],
+                        'organization_name': row[10],
+                        'admin_name': row[11]
+                    })
+                
+                return logs
+                
+        except sqlite3.Error as e:
+            logging.error(f"Error retrieving bulk import logs: {e}")
+            return []
+        finally:
+            if connection:
+                connection.close()
 
     def create_lti_user(self, lti_user: LTIUser):
         connection = self.get_connection()
@@ -4743,6 +5021,97 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_all_kb_registry_entries(self) -> List[Dict[str, Any]]:
+        """
+        Get all KB registry entries (for migration operations).
+        
+        Returns:
+            List of all KB registry entries
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    SELECT 
+                        kb_id, 
+                        kb_name, 
+                        owner_user_id, 
+                        organization_id, 
+                        is_shared, 
+                        created_at, 
+                        updated_at
+                    FROM {self.table_prefix}kb_registry
+                    ORDER BY created_at
+                """)
+                
+                rows = cursor.fetchall()
+                
+                if not rows:
+                    return []
+                
+                entries = []
+                for row in rows:
+                    entries.append({
+                        'kb_id': row[0],
+                        'kb_name': row[1],
+                        'owner_user_id': row[2],
+                        'organization_id': row[3],
+                        'is_shared': bool(row[4]) if row[4] is not None else False,
+                        'created_at': row[5],
+                        'updated_at': row[6]
+                    })
+                
+                return entries
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting KB registry entries: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def update_assistant_name(self, assistant_id: int, new_name: str) -> bool:
+        """
+        Update assistant name (for migration operations).
+        
+        Args:
+            assistant_id: Assistant ID
+            new_name: New assistant name
+        
+        Returns:
+            True if updated, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}assistants 
+                    SET name = ?, updated_at = ?
+                    WHERE id = ?
+                """, (new_name, current_time, assistant_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Updated assistant {assistant_id} name to '{new_name}'")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error updating assistant name: {e}")
+            return False
+        finally:
+            connection.close()
+
     def delete_kb_registry_entry(self, kb_id: str) -> bool:
         """
         Delete KB registry entry.
@@ -4778,3 +5147,398 @@ class LambDatabaseManager:
             return False
         finally:
             connection.close()
+
+    # Assistant Sharing Methods
+    
+    def share_assistant(self, assistant_id: int, shared_with_user_id: int, shared_by_user_id: int) -> bool:
+        """
+        Share an assistant with another user in the same organization
+        
+        Args:
+            assistant_id: ID of the assistant to share
+            shared_with_user_id: ID of the user to share with
+            shared_by_user_id: ID of the user sharing the assistant
+            
+        Returns:
+            True if shared successfully, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                current_time = int(time.time())
+                
+                # Check if already shared
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}assistant_shares 
+                    WHERE assistant_id = ? AND shared_with_user_id = ?
+                """, (assistant_id, shared_with_user_id))
+                
+                if cursor.fetchone():
+                    logging.info(f"Assistant {assistant_id} already shared with user {shared_with_user_id}")
+                    return True
+                
+                # Add sharing record
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}assistant_shares 
+                    (assistant_id, shared_with_user_id, shared_by_user_id, shared_at)
+                    VALUES (?, ?, ?, ?)
+                """, (assistant_id, shared_with_user_id, shared_by_user_id, current_time))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Shared assistant {assistant_id} with user {shared_with_user_id}")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error sharing assistant: {e}")
+            return False
+        finally:
+            connection.close()
+    
+    def unshare_assistant(self, assistant_id: int, shared_with_user_id: int) -> bool:
+        """
+        Remove assistant sharing with a user
+        
+        Args:
+            assistant_id: ID of the assistant to unshare
+            shared_with_user_id: ID of the user to remove sharing from
+            
+        Returns:
+            True if unshared successfully, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}assistant_shares 
+                    WHERE assistant_id = ? AND shared_with_user_id = ?
+                """, (assistant_id, shared_with_user_id))
+                
+                success = cursor.rowcount > 0
+                if success:
+                    logging.info(f"Unshared assistant {assistant_id} from user {shared_with_user_id}")
+                
+                return success
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error unsharing assistant: {e}")
+            return False
+        finally:
+            connection.close()
+    
+    def get_assistant_shares(self, assistant_id: int) -> List[Dict[str, Any]]:
+        """
+        Get list of users an assistant is shared with
+        
+        Args:
+            assistant_id: ID of the assistant
+            
+        Returns:
+            List of share records with user information
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    SELECT 
+                        s.id,
+                        s.assistant_id,
+                        s.shared_with_user_id,
+                        s.shared_by_user_id,
+                        s.shared_at,
+                        u.user_email as shared_with_email,
+                        u.user_name as shared_with_name,
+                        u.user_type as shared_with_type,
+                        u2.user_email as shared_by_email,
+                        u2.user_name as shared_by_name
+                    FROM {self.table_prefix}assistant_shares s
+                    JOIN {self.table_prefix}Creator_users u ON s.shared_with_user_id = u.id
+                    JOIN {self.table_prefix}Creator_users u2 ON s.shared_by_user_id = u2.id
+                    WHERE s.assistant_id = ?
+                    ORDER BY s.shared_at DESC
+                """, (assistant_id,))
+                
+                shares = []
+                for row in cursor.fetchall():
+                    shares.append({
+                        'id': row[0],
+                        'assistant_id': row[1],
+                        'shared_with_user_id': row[2],
+                        'shared_by_user_id': row[3],
+                        'shared_at': row[4],
+                        'shared_with_email': row[5],
+                        'shared_with_name': row[6],
+                        'shared_with_type': row[7],
+                        'shared_by_email': row[8],
+                        'shared_by_name': row[9]
+                    })
+                
+                return shares
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting assistant shares: {e}")
+            return []
+        finally:
+            connection.close()
+    
+    def get_assistants_shared_with_user(self, user_id: int) -> List[Dict[str, Any]]:
+        """
+        Get list of assistants shared with a specific user
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            List of assistants shared with the user
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    SELECT 
+                        a.id,
+                        a.organization_id,
+                        a.name,
+                        a.description,
+                        a.owner,
+                        a.api_callback as metadata,
+                        a.system_prompt,
+                        a.prompt_template,
+                        a.RAG_Top_k,
+                        a.RAG_collections,
+                        a.created_at,
+                        a.updated_at,
+                        s.shared_at,
+                        s.shared_by_user_id,
+                        u.user_email as shared_by_email,
+                        u.user_name as shared_by_name
+                    FROM {self.table_prefix}assistant_shares s
+                    JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
+                    JOIN {self.table_prefix}Creator_users u ON s.shared_by_user_id = u.id
+                    WHERE s.shared_with_user_id = ?
+                    ORDER BY s.shared_at DESC
+                """, (user_id,))
+                
+                assistants = []
+                for row in cursor.fetchall():
+                    assistants.append({
+                        'id': row[0],
+                        'organization_id': row[1],
+                        'name': row[2],
+                        'description': row[3],
+                        'owner': row[4],
+                        'metadata': row[5],
+                        'system_prompt': row[6],
+                        'prompt_template': row[7],
+                        'RAG_Top_k': row[8],
+                        'RAG_collections': row[9],
+                        'created_at': row[10],
+                        'updated_at': row[11],
+                        'shared_at': row[12],
+                        'shared_by_user_id': row[13],
+                        'shared_by_email': row[14],
+                        'shared_by_name': row[15],
+                        'is_shared': True  # Flag to indicate this is a shared assistant
+                    })
+                
+                return assistants
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting shared assistants: {e}")
+            return []
+        finally:
+            connection.close()
+    
+    def is_assistant_shared_with_user(self, assistant_id: int, user_id: int) -> bool:
+        """
+        Check if an assistant is shared with a specific user
+        
+        Args:
+            assistant_id: ID of the assistant
+            user_id: ID of the user
+            
+        Returns:
+            True if shared, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}assistant_shares 
+                    WHERE assistant_id = ? AND shared_with_user_id = ?
+                """, (assistant_id, user_id))
+                
+                return cursor.fetchone() is not None
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error checking assistant share: {e}")
+            return False
+        finally:
+            connection.close()
+    
+    def get_users_in_organization(self, organization_id: int, include_lti: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all users in an organization (for sharing UI)
+        
+        Args:
+            organization_id: ID of the organization
+            include_lti: Whether to include LTI users (default False)
+            
+        Returns:
+            List of users in the organization
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Get regular creator and end users
+                cursor.execute(f"""
+                    SELECT 
+                        u.id,
+                        u.user_email,
+                        u.user_name,
+                        u.user_type,
+                        r.role as org_role
+                    FROM {self.table_prefix}Creator_users u
+                    LEFT JOIN {self.table_prefix}organization_roles r 
+                        ON u.id = r.user_id AND r.organization_id = u.organization_id
+                    WHERE u.organization_id = ?
+                    ORDER BY u.user_name
+                """, (organization_id,))
+                
+                users = []
+                for row in cursor.fetchall():
+                    users.append({
+                        'id': row[0],
+                        'email': row[1],
+                        'name': row[2],
+                        'user_type': row[3],
+                        'org_role': row[4] or 'member'
+                    })
+                
+                return users
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting organization users: {e}")
+            return []
+        finally:
+            connection.close()
+    
+    def get_all_assistants(self) -> List[Dict[str, Any]]:
+        """
+        Get all assistants (for admin operations like OWI group sync)
+        
+        Returns:
+            List of all assistants
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                cursor.execute(f"""
+                    SELECT 
+                        id,
+                        organization_id,
+                        name,
+                        description,
+                        owner,
+                        api_callback as metadata,
+                        system_prompt,
+                        prompt_template,
+                        RAG_Top_k,
+                        RAG_collections,
+                        created_at,
+                        updated_at,
+                        published,
+                        published_at,
+                        group_id,
+                        group_name
+                    FROM {self.table_prefix}assistants
+                    ORDER BY created_at DESC
+                """)
+                
+                assistants = []
+                for row in cursor.fetchall():
+                    assistants.append({
+                        'id': row[0],
+                        'organization_id': row[1],
+                        'name': row[2],
+                        'description': row[3],
+                        'owner': row[4],
+                        'metadata': row[5],
+                        'system_prompt': row[6],
+                        'prompt_template': row[7],
+                        'RAG_Top_k': row[8],
+                        'RAG_collections': row[9],
+                        'created_at': row[10],
+                        'updated_at': row[11],
+                        'published': row[12],
+                        'published_at': row[13],
+                        'group_id': row[14],
+                        'group_name': row[15]
+                    })
+                
+                return assistants
+                
+        except sqlite3.Error as e:
+            logging.error(f"Database error getting all assistants: {e}")
+            return []
+        finally:
+            connection.close()
+    
+    def user_can_access_rubric(self, rubric_id: str, user_id: int) -> bool:
+        """
+        Check if user has access to a rubric
+        
+        Args:
+            rubric_id: ID of the rubric
+            user_id: ID of the user
+            
+        Returns:
+            True if user has access, False otherwise
+            
+        Note: This is a placeholder implementation.
+              Proper rubric sharing should be implemented when adding
+              sharing permission checks to KB/template/rubric sharing.
+        """
+        # For now, return True as rubric sharing is not fully implemented
+        # This should be replaced with actual rubric access checking
+        # when rubric sharing is implemented
+        return True
+    
+    def get_published_assistant_by_id(self, assistant_id: int) -> Optional[Dict[str, Any]]:
+        """Alias for get_publication_by_assistant_id for consistency"""
+        return self.get_publication_by_assistant_id(assistant_id)

@@ -3,6 +3,7 @@
 # admin user 
 
 * login user -> admin@owi.com pwd admin
+* setup owi openai connection - > http://lamb-backend:9099 0p3n-w3bu! 
 * create user  -> admin@dev.com pwd admin
 * create org -> dev , admin user admin@dev.com , copy main org setup , signup key "dev-signup-key"
 * logout
@@ -12,6 +13,7 @@
 * login user -> admin@owi.com pwd admin
 * create user on org -> u1@dev.com pwd owi 
 * create kb , ingest sample file, share kb
+* change kb settings 
 * create template , share template 
 * create rubric , share rubric 
 * logout

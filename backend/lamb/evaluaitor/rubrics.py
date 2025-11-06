@@ -589,6 +589,20 @@ async def update_rubric_visibility(
     PUT /lamb/v1/evaluaitor/rubrics/{rubric_id}/visibility
     """
     try:
+        # Check if sharing is enabled for the user's organization (only when making public, not private)
+        if visibility_data.is_public:
+            org = db_manager.get_user_organization(user['id'])
+            if org:
+                config = org.get('config', {})
+                features = config.get('features', {})
+                sharing_enabled = features.get('sharing_enabled', True)
+                
+                if not sharing_enabled:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Sharing is not enabled for your organization"
+                    )
+        
         # Update visibility
         success = db_manager.toggle_rubric_visibility(
             rubric_id=rubric_id,

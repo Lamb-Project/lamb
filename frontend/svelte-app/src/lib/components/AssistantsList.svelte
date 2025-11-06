@@ -6,7 +6,7 @@
   import { createEventDispatcher } from 'svelte';
   import { publishModalOpen, selectedAssistant } from '$lib/stores/assistantPublish';
   import { user } from '$lib/stores/userStore';
-  import { getAssistants, deleteAssistant, downloadAssistant, unpublishAssistant } from '$lib/services/assistantService';
+  import { getAssistants, getSharedAssistants, deleteAssistant, downloadAssistant, unpublishAssistant } from '$lib/services/assistantService';
   import { base } from '$app/paths';
   import { browser } from '$app/environment';
   import { _, locale } from '$lib/i18n';
@@ -15,6 +15,9 @@
   import Pagination from './common/Pagination.svelte';
   import FilterBar from './common/FilterBar.svelte';
   import { processListData } from '$lib/utils/listHelpers';
+  
+  // ✅ CORRECT: Props using $props()
+  let { showShared = false } = $props();
   
   // Default text for when i18n isn't loaded yet
   let localeLoaded = $state(!!get(locale));
@@ -95,8 +98,10 @@
     loading = true;
     error = null;
     try {
-      console.log('Fetching all assistants...');
-      const response = await getAssistants(100, 0); // Backend max is 100 items
+      console.log(showShared ? 'Fetching shared assistants...' : 'Fetching all assistants...');
+      const response = showShared 
+        ? await getSharedAssistants() 
+        : await getAssistants(100, 0); // Backend max is 100 items
       console.log('Received assistants:', response);
       
       allAssistants = response.assistants || [];
@@ -373,6 +378,9 @@
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.published', { default: 'Published' }) : 'Published'}</span>
                                     {:else}
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.unpublished', { default: 'Unpublished' }) : 'Unpublished'}</span>
+                                    {/if}
+                                    {#if showShared}
+                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 ml-1">{localeLoaded ? $_('assistants.status.sharedWithYou', { default: 'Shared with you' }) : 'Shared with you'}</span>
                                     {/if}
                                 </div>
                             </td>

@@ -852,6 +852,20 @@ async def toggle_kb_sharing(
                 detail="Only KB owner can change sharing settings"
             )
         
+        # Check if sharing is enabled for the user's organization (only when sharing, not unsharing)
+        if share_data.is_shared:
+            org = db_manager.get_user_organization(creator_user['id'])
+            if org:
+                config = org.get('config', {})
+                features = config.get('features', {})
+                sharing_enabled = features.get('sharing_enabled', True)
+                
+                if not sharing_enabled:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Sharing is not enabled for your organization"
+                    )
+        
         # If trying to unshare, check if KB is used by other users' assistants
         if not share_data.is_shared:
             using_assistants = db_manager.check_kb_used_by_other_users(kb_id, creator_user['id'])

@@ -3,7 +3,7 @@ Organization management router for creator interface
 Provides admin endpoints to manage organizations through the creator interface
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
@@ -28,6 +28,7 @@ from lamb.organization_router import (
     export_organization as core_export_organization,
     sync_system_organization as core_sync_organizations
 )
+from schemas import BulkImportRequest, BulkUserActionRequest
 
 # Initialize router
 router = APIRouter()
@@ -1874,7 +1875,462 @@ async def delete_organization_user(request: Request, user_id: int, org: Optional
         logger.error(f"Error deleting organization user: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ============================================================================
+# Bulk User Management Endpoints
+# ============================================================================
+
+@router.post(
+    "/org-admin/users/bulk-import/validate",
+    tags=["Organization Admin - Bulk Operations"],
+    summary="Validate Bulk User Import File",
+    description="""Validate a JSON file for bulk user import. Returns validation results 
+    with detailed error information for each user.
+    
+    The JSON file should follow this structure:
+    ```json
+    {
+      "version": "1.0",
+      "users": [
+        {
+          "email": "user@example.com",
+          "name": "User Name",
+          "user_type": "creator",  // or "end_user"
+          "enabled": false
+        }
+      ]
+    }
+    ```
+    
+    Maximum 500 users per file, maximum file size 5MB.
+    
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/org-admin/users/bulk-import/validate' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-F 'file=@users_import.json'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def validate_bulk_user_import(
+    request: Request, 
+    file: UploadFile = File(...),
+    org: Optional[str] = None
+):
+    """Validate bulk user import JSON file"""
+    from .bulk_operations import validate_bulk_import_file
+    
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        
+        # Validate file extension
+        if not file.filename.endswith('.json'):
+            raise HTTPException(
+                status_code=400,
+                detail="Only JSON files are allowed"
+            )
+        
+        # Validate and return results
+        validation_result = await validate_bulk_import_file(
+            file=file,
+            organization_id=org_id,
+            max_file_size_mb=5
+        )
+        
+        logger.info(
+            f"Bulk import validation by {admin_info['user_email']}: "
+            f"{validation_result.get('summary', {}).get('total', 0)} users, "
+            f"{validation_result.get('summary', {}).get('valid', 0)} valid"
+        )
+        
+        return validation_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating bulk import: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/org-admin/users/bulk-import/execute",
+    tags=["Organization Admin - Bulk Operations"],
+    summary="Execute Bulk User Import",
+    description="""Create multiple users from validated import data.
+    
+    Users are created with random secure passwords (admins should communicate
+    these separately). Users can be created in disabled state and activated later.
+    
+    The operation continues on individual failures (partial success).
+    
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/org-admin/users/bulk-import/execute' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "users": [
+    {
+      "email": "user1@example.com",
+      "name": "User One",
+      "user_type": "creator",
+      "enabled": false
+    }
+  ]
+}'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def execute_bulk_user_import(
+    request: Request,
+    import_data: BulkImportRequest,
+    org: Optional[str] = None
+):
+    """Execute bulk user creation"""
+    from .bulk_operations import BulkUserCreator, log_bulk_operation
+    from schemas import BulkImportRequest
+    
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        admin_user_id = admin_info['user_id']
+        admin_email = admin_info['user_email']
+        
+        # Validate request
+        if not import_data.users or len(import_data.users) == 0:
+            raise HTTPException(status_code=400, detail="No users provided")
+        
+        if len(import_data.users) > 500:
+            raise HTTPException(status_code=400, detail="Maximum 500 users per import")
+        
+        # Execute bulk creation
+        creator = BulkUserCreator(
+            organization_id=org_id,
+            admin_user_id=admin_user_id,
+            admin_email=admin_email
+        )
+        
+        users_data = [user.dict() for user in import_data.users]
+        result = await creator.create_users(users_data)
+        
+        # Log the operation
+        log_id = log_bulk_operation(
+            db_manager=db_manager,
+            organization_id=org_id,
+            admin_user_id=admin_user_id,
+            admin_email=admin_email,
+            operation_type='user_creation',
+            total_count=result['summary']['total'],
+            success_count=result['summary']['created'],
+            failure_count=result['summary']['failed'],
+            details={
+                "filename": import_data.filename or "direct_api",
+                "results": result['results']
+            }
+        )
+        
+        result['log_id'] = log_id
+        
+        logger.info(
+            f"Bulk user creation by {admin_email}: "
+            f"{result['summary']['created']} created, "
+            f"{result['summary']['failed']} failed"
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing bulk import: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/org-admin/users/bulk-import/template",
+    tags=["Organization Admin - Bulk Operations"],
+    summary="Download Bulk Import Template",
+    description="""Download a JSON template file with examples for bulk user import.
+    
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/users/bulk-import/template' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-o template.json
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def download_bulk_import_template(request: Request, org: Optional[str] = None):
+    """Download bulk import template"""
+    from .bulk_operations import generate_import_template
+    from fastapi.responses import JSONResponse
+    
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        await verify_organization_admin_access(request, target_org_id)
+        
+        template = generate_import_template()
+        
+        return JSONResponse(
+            content=template,
+            headers={
+                "Content-Disposition": "attachment; filename=lamb_bulk_import_template.json"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating template: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/org-admin/users/enable-bulk",
+    tags=["Organization Admin - Bulk Operations"],
+    summary="Bulk Enable Users",
+    description="""Enable multiple user accounts at once. Only affects users 
+    in the admin's organization.
+    
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/org-admin/users/enable-bulk' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "user_ids": [1, 2, 3, 4, 5]
+}'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def org_admin_bulk_enable_users(
+    request: Request,
+    action_data: BulkUserActionRequest,
+    org: Optional[str] = None
+):
+    """Bulk enable users (org-admin version)"""
+    from schemas import BulkUserActionRequest
+    from .bulk_operations import log_bulk_operation
+    
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        admin_user_id = admin_info['user_id']
+        admin_email = admin_info['user_email']
+        
+        # Validate request
+        if not action_data.user_ids or len(action_data.user_ids) == 0:
+            raise HTTPException(status_code=400, detail="No user IDs provided")
+        
+        if len(action_data.user_ids) > 500:
+            raise HTTPException(status_code=400, detail="Maximum 500 users per operation")
+        
+        # Filter to only users in same organization
+        valid_user_ids = []
+        for user_id in action_data.user_ids:
+            user = db_manager.get_creator_user_by_id(user_id)
+            if user and user['organization_id'] == org_id:
+                valid_user_ids.append(user_id)
+        
+        if not valid_user_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid users found in your organization"
+            )
+        
+        # Execute bulk enable
+        result = db_manager.enable_users_bulk(valid_user_ids)
+        
+        # Log the operation
+        log_bulk_operation(
+            db_manager=db_manager,
+            organization_id=org_id,
+            admin_user_id=admin_user_id,
+            admin_email=admin_email,
+            operation_type='user_activation',
+            total_count=len(valid_user_ids),
+            success_count=len(result['success']),
+            failure_count=len(result['failed']),
+            details={
+                "user_ids": valid_user_ids,
+                "results": result
+            }
+        )
+        
+        logger.info(
+            f"Bulk enable by {admin_email}: "
+            f"{len(result['success'])} enabled, "
+            f"{len(result['failed'])} failed"
+        )
+        
+        return {
+            "success": True,
+            "enabled": len(result['success']),
+            "failed": len(result['failed']),
+            "already_enabled": len(result['already_enabled']),
+            "details": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk enable: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/org-admin/users/disable-bulk",
+    tags=["Organization Admin - Bulk Operations"],
+    summary="Bulk Disable Users",
+    description="""Disable multiple user accounts at once. Only affects users 
+    in the admin's organization. Admin cannot disable themselves.
+    
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/org-admin/users/disable-bulk' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "user_ids": [1, 2, 3, 4, 5]
+}'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def org_admin_bulk_disable_users(
+    request: Request,
+    action_data: BulkUserActionRequest,
+    org: Optional[str] = None
+):
+    """Bulk disable users (org-admin version)"""
+    from schemas import BulkUserActionRequest
+    from .bulk_operations import log_bulk_operation
+    
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        admin_user_id = admin_info['user_id']
+        admin_email = admin_info['user_email']
+        
+        # Validate request
+        if not action_data.user_ids or len(action_data.user_ids) == 0:
+            raise HTTPException(status_code=400, detail="No user IDs provided")
+        
+        if len(action_data.user_ids) > 500:
+            raise HTTPException(status_code=400, detail="Maximum 500 users per operation")
+        
+        # Remove self from list (prevent self-disable)
+        user_ids_to_disable = [uid for uid in action_data.user_ids if uid != admin_user_id]
+        
+        if len(user_ids_to_disable) != len(action_data.user_ids):
+            logger.warning(f"Removed self ({admin_user_id}) from bulk disable list")
+        
+        if not user_ids_to_disable:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot disable yourself"
+            )
+        
+        # Filter to only users in same organization
+        valid_user_ids = []
+        for user_id in user_ids_to_disable:
+            user = db_manager.get_creator_user_by_id(user_id)
+            if user and user['organization_id'] == org_id:
+                valid_user_ids.append(user_id)
+        
+        if not valid_user_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid users found in your organization"
+            )
+        
+        # Execute bulk disable
+        result = db_manager.disable_users_bulk(valid_user_ids)
+        
+        # Log the operation
+        log_bulk_operation(
+            db_manager=db_manager,
+            organization_id=org_id,
+            admin_user_id=admin_user_id,
+            admin_email=admin_email,
+            operation_type='user_deactivation',
+            total_count=len(valid_user_ids),
+            success_count=len(result['success']),
+            failure_count=len(result['failed']),
+            details={
+                "user_ids": valid_user_ids,
+                "results": result
+            }
+        )
+        
+        logger.info(
+            f"Bulk disable by {admin_email}: "
+            f"{len(result['success'])} disabled, "
+            f"{len(result['failed'])} failed"
+        )
+        
+        return {
+            "success": True,
+            "disabled": len(result['success']),
+            "failed": len(result['failed']),
+            "already_disabled": len(result['already_disabled']),
+            "details": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk disable: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # Organization Settings Management
+# ============================================================================
 @router.get(
     "/org-admin/settings/signup", 
     tags=["Organization Admin - Settings"],

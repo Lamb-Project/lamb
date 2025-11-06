@@ -16,6 +16,7 @@
 	import { locale } from '$lib/i18n';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
+	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
 
@@ -38,6 +39,9 @@
 
 	// --- Form Field State Variables ---
 	let name = $state('');
+	// Derived: Sanitized name preview
+	let sanitizedNameInfo = $derived(sanitizeName(name));
+	let showSanitizationPreview = $derived(formState === 'create' && sanitizedNameInfo.wasModified);
 	// Description must be fully editable even in edit mode
 	let description = $state('');
 
@@ -1370,6 +1374,18 @@
 							disabled={false}
 							class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 							placeholder={$_('assistants.form.name.placeholder')}>
+							{#if showSanitizationPreview}
+								<div class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+									<p class="text-sm text-blue-800">
+										<span class="font-semibold">{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}</span>
+										<code class="ml-2 px-2 py-1 bg-blue-100 rounded text-blue-900 font-mono">{sanitizedNameInfo.sanitized}</code>
+									</p>
+								</div>
+							{:else if !name.trim()}
+								<p class="mt-1 text-xs text-gray-500">
+									{$_('assistants.form.name.hint', { default: 'Special characters and spaces will be converted to underscores' })}
+								</p>
+							{/if}
 						{/if}
 					</div>
 
@@ -1887,6 +1903,24 @@
 							{$_('common.cancel', { default: 'Cancel' })}
 						</button>
 					{/if}
+					
+					<!-- Sanitization Preview (above save button) -->
+					{#if showSanitizationPreview}
+						<div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+							<div class="flex items-center">
+								<svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+								</svg>
+								<div class="flex-1">
+									<p class="text-sm font-semibold text-blue-800">
+										{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}
+									</p>
+									<code class="inline-block mt-1 px-3 py-1 bg-blue-100 rounded text-blue-900 font-mono text-sm">{sanitizedNameInfo.sanitized}</code>
+								</div>
+							</div>
+						</div>
+					{/if}
+					
 					<!-- Bottom Save / Save Changes Button -->
 					<button 
 						type="submit" 

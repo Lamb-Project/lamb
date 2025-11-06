@@ -6,10 +6,11 @@
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
     import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
+    import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
-    import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
+    // BulkUserImport component not yet implemented
+    // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
-    import * as orgAdminService from '$lib/services/orgAdminService';
     import { processListData } from '$lib/utils/listHelpers';
 
     // Get user data  
@@ -36,6 +37,11 @@
     let showAccessModal = $state(false);
     let assistantsSearchQuery = $state('');
     let assistantsFilterPublished = $state('all');
+    
+    // Assistant sharing state
+    let assistantShareCounts = $state({}); // Map of assistant_id -> share count
+    let showSharingModal = $state(false);
+    let modalAssistant = $state(null); // Assistant being shared in modal
 
     // Dashboard data
     /** @type {any} */
@@ -599,6 +605,61 @@
             console.error(errorMessage);
         }
     }
+
+    // --- Sharing Permission Functions ---
+    
+    function getUserCanShare(user) {
+        // Get user's can_share permission from user_config
+        const config = user.user_config || {};
+        const userConfig = typeof config === 'string' ? JSON.parse(config || '{}') : config;
+        return userConfig.can_share !== false; // Default to true
+    }
+
+    async function toggleUserSharingPermission(user, canShare) {
+        // Toggle user's ability to share assistants (admin only)
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            const response = await axios.put(
+                `http://localhost:9099/lamb/v1/assistant-sharing/user-permission/${user.id}?can_share=${canShare}`,
+                {},
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                }
+            );
+
+            console.log('Updated user sharing permission:', response.data);
+
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === user.id);
+            if (userIndex !== -1) {
+                const config = orgUsers[userIndex].user_config || {};
+                const userConfig = typeof config === 'string' ? JSON.parse(config || '{}') : config;
+                userConfig.can_share = canShare;
+                orgUsers[userIndex].user_config = userConfig;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+            }
+
+        } catch (err) {
+            console.error('Error updating sharing permission:', err);
+            
+            let errorMessage = 'Failed to update sharing permission.';
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                errorMessage = err.response.data.detail;
+            } else if (err instanceof Error) {
+                errorMessage = err.message;
+            }
+            
+            console.error(errorMessage);
+            // Revert the checkbox state by reloading users
+            await fetchUsers();
+        }
+    }
     
     // Bulk enable/disable functions
     function openBulkDisableModal() {
@@ -635,7 +696,7 @@
                 throw new Error('Authentication token not found');
             }
             
-            const result = await orgAdminService.disableUsersBulk(token, selectedUsers);
+            const result = await adminService.disableUsersBulk(token, selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk disable: ${result.disabled} users disabled`);
@@ -667,7 +728,7 @@
                 throw new Error('Authentication token not found');
             }
             
-            const result = await orgAdminService.enableUsersBulk(token, selectedUsers);
+            const result = await adminService.enableUsersBulk(token, selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk enable: ${result.enabled} users enabled`);
@@ -779,7 +840,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
             
-            const result = await orgAdminService.enableUsersBulk(token, usersToEnable);
+            const result = await adminService.enableUsersBulk(token, usersToEnable);
             
             // Update local state
             displayUsers = displayUsers.map(u => {
@@ -823,7 +884,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
             
-            const result = await orgAdminService.disableUsersBulk(token, usersToDisable);
+            const result = await adminService.disableUsersBulk(token, usersToDisable);
             
             // Update local state
             displayUsers = displayUsers.map(u => {
@@ -1020,6 +1081,9 @@
             const response = await axios.get(`${API_BASE}/org-admin/assistants`, { headers });
             orgAssistants = response.data.assistants || [];
             assistantsLoaded = true; // Mark as loaded even if empty
+            
+            // Load share counts for all assistants
+            await loadAssistantShareCounts();
         } catch (err) {
             console.error('Error fetching assistants:', err);
             assistantsError = err.response?.data?.detail || 'Failed to fetch assistants';
@@ -1029,9 +1093,45 @@
         }
     }
 
-    function manageAssistantAccess(assistant) {
-        selectedAssistant = assistant;
-        showAccessModal = true;
+    async function loadAssistantShareCounts() {
+        // Load share counts for all assistants
+        const counts = {};
+        
+        for (const assistant of orgAssistants) {
+            try {
+                const response = await axios.get(
+                    `http://localhost:9099/lamb/v1/assistant-sharing/shares/${assistant.id}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${$user.token}`
+                        }
+                    }
+                );
+                
+                const shares = response.data || [];
+                counts[assistant.id] = shares.length;
+            } catch (error) {
+                console.error(`Error loading shares for assistant ${assistant.id}:`, error);
+                counts[assistant.id] = 0;
+            }
+        }
+        
+        assistantShareCounts = counts;
+    }
+
+    function openAssistantSharingModal(assistant) {
+        modalAssistant = assistant;
+        showSharingModal = true;
+    }
+
+    function closeAssistantSharingModal() {
+        showSharingModal = false;
+        modalAssistant = null;
+    }
+
+    function handleSharingModalSaved() {
+        // Reload share counts after sharing changes
+        loadAssistantShareCounts();
     }
 
     function closeAccessModal() {
@@ -1913,6 +2013,9 @@
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Status
                                         </th>
+                                        <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-brand uppercase tracking-wider">
+                                            Can Share
+                                        </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Actions
                                         </th>
@@ -1963,6 +2066,18 @@
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                                         {user.enabled ? 'Enabled' : 'Disabled'}
                                                     </span>
+                                                </td>
+                                                <!-- Can Share Permission -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                                    <label class="relative inline-flex items-center cursor-pointer">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            class="sr-only peer"
+                                                            checked={getUserCanShare(user)}
+                                                            onchange={(e) => toggleUserSharingPermission(user, e.target?.checked)}
+                                                        />
+                                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                                    </label>
                                                 </td>
                                                 <!-- Actions -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -2144,6 +2259,7 @@
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shared</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                         </tr>
@@ -2181,15 +2297,29 @@
                                                         </span>
                                                     {/if}
                                                 </td>
+                                                <!-- Shared Column -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                    {#if assistantShareCounts[assistant.id] !== undefined}
+                                                        {#if assistantShareCounts[assistant.id] === 0}
+                                                            <span class="text-gray-400">Not shared</span>
+                                                        {:else}
+                                                            <span class="text-blue-600 font-medium">
+                                                                Shared with {assistantShareCounts[assistant.id]} {assistantShareCounts[assistant.id] === 1 ? 'user' : 'users'}
+                                                            </span>
+                                                        {/if}
+                                                    {:else}
+                                                        <span class="text-gray-400">—</span>
+                                                    {/if}
+                                                </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                     {formatDate(assistant.created_at)}
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <button
-                                                        onclick={() => manageAssistantAccess(assistant)}
+                                                        onclick={() => openAssistantSharingModal(assistant)}
                                                         class="bg-brand hover:bg-brand-hover px-3 py-1 text-white rounded-md text-xs"
                                                     >
-                                                        Manage Access
+                                                        Manage Sharing
                                                     </button>
                                                 </td>
                                             </tr>
@@ -2594,7 +2724,8 @@
             <!-- Bulk Import View -->
             {#if currentView === 'bulk-import'}
                 <div class="mb-6">
-                    <BulkUserImport />
+                    <p class="text-gray-500">Bulk user import feature coming soon...</p>
+                    <!-- <BulkUserImport /> -->
                 </div>
             {/if}
         </div>
@@ -3142,6 +3273,16 @@
     on:close={closeAccessModal}
     on:updated={handleAccessUpdated}
 />
+
+<!-- Assistant Sharing Modal -->
+{#if showSharingModal && modalAssistant}
+    <AssistantSharingModal
+        assistant={modalAssistant}
+        token={$user.token}
+        onClose={closeAssistantSharingModal}
+        onSaved={handleSharingModalSaved}
+    />
+{/if}
 
 <style>
     /* Custom scrollbar styles */
