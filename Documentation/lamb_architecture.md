@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.5  
-**Last Updated:** November 2025  
+**Version:** 2.6  
+**Last Updated:** November 6, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -17,6 +17,7 @@
 7. [Completion Pipeline](#7-completion-pipeline)
 8. [Organization & Multi-Tenancy](#8-organization--multi-tenancy)
 9. [Knowledge Base Integration](#9-knowledge-base-integration)
+   - [9.7 Assistant Sharing](#97-assistant-sharing)
 10. [LTI Integration](#10-lti-integration)
 11. [Plugin Architecture](#11-plugin-architecture)
 12. [Frontend Architecture](#12-frontend-architecture)
@@ -1925,6 +1926,563 @@ When selecting KBs for an assistant, shared KBs are displayed in a separate sect
    - KB removed from shared list
    - KB remains accessible to owner
 
+### 9.7 Assistant Sharing
+
+LAMB supports organization-level Assistant sharing, allowing users within the same organization to share their assistants with specific colleagues. This feature provides fine-grained access control through a two-level permission system.
+
+#### 9.7.1 Overview
+
+**Key Features:**
+- Assistants can be shared with specific users within an organization
+- Two-level permission system (organization + user level)
+- Shared assistants provide read-only access (view properties and chat)
+- Assistant owners maintain full control (edit, delete, manage sharing)
+- Modal-based UI for managing shared users
+- Real-time permission checks
+
+#### 9.7.2 Permission System
+
+**Two-Level Permissions:**
+
+For a user to have sharing capabilities, **BOTH** conditions must be true:
+
+1. **Organization Level**: `config.features.sharing_enabled = true`
+2. **User Level**: `user_config.can_share = true` (default: true)
+
+**Permission Matrix:**
+
+| Org Sharing | User Can Share | Result |
+|-------------|----------------|--------|
+| ✅ Enabled  | ✅ True       | ✅ User can share |
+| ✅ Enabled  | ❌ False      | ❌ User cannot share |
+| ❌ Disabled | ✅ True       | ❌ User cannot share |
+| ❌ Disabled | ❌ False      | ❌ User cannot share |
+
+**Rationale:** Organization admins control the feature at org level, then can selectively enable/disable sharing for individual users.
+
+#### 9.7.3 Database Schema
+
+**Assistant Shares Table (`assistant_shares`):**
+
+```sql
+CREATE TABLE assistant_shares (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assistant_id INTEGER NOT NULL,
+    shared_with_user_id INTEGER NOT NULL,
+    shared_by_user_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
+    UNIQUE(assistant_id, shared_with_user_id)
+)
+
+-- Indexes for performance
+CREATE INDEX idx_shares_assistant ON assistant_shares(assistant_id)
+CREATE INDEX idx_shares_user ON assistant_shares(shared_with_user_id)
+```
+
+**Purpose:**
+- Tracks which assistants are shared with which users
+- Maintains who initiated the share (for audit/display)
+- Ensures no duplicate shares (UNIQUE constraint)
+- Cascading deletes clean up shares when assistants or users are removed
+
+**User Config Schema (Can Share Permission):**
+
+```json
+{
+  "can_share": true,
+  "preferences": {
+    "language": "en"
+  }
+}
+```
+
+Stored in `Creator_users.user_config` JSON column.
+
+#### 9.7.4 API Endpoints
+
+**Check Sharing Permission:**
+```http
+GET /lamb/v1/assistant-sharing/check-permission
+Authorization: Bearer {token}
+
+Response:
+{
+  "can_share": true,
+  "message": "User has sharing permission"
+}
+```
+
+**Get Organization Users (for Sharing UI):**
+```http
+GET /lamb/v1/assistant-sharing/organization-users
+Authorization: Bearer {token}
+
+Response:
+[
+  {
+    "user_id": 2,
+    "user_name": "Jane Smith",
+    "user_email": "jane@example.com"
+  }
+]
+```
+
+**Get Shared Users for Assistant:**
+```http
+GET /lamb/v1/assistant-sharing/shares/{assistant_id}
+Authorization: Bearer {token}
+
+Response:
+[
+  {
+    "user_id": 2,
+    "user_name": "Jane Smith",
+    "user_email": "jane@example.com",
+    "shared_by_name": "John Doe",
+    "created_at": 1730908800
+  }
+]
+```
+
+**Update Assistant Shares (Atomic):**
+```http
+PUT /lamb/v1/assistant-sharing/shares/{assistant_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "user_ids": [2, 3, 5]
+}
+
+Response:
+{
+  "success": true,
+  "shared_with": [2, 3, 5],
+  "added": [5],
+  "removed": [4]
+}
+```
+
+This endpoint accepts the **desired final state** of shared users. Backend calculates additions and removals automatically.
+
+**Update User Sharing Permission (Admin Only):**
+```http
+PUT /lamb/v1/assistant-sharing/user-permission/{user_id}?can_share=true
+Authorization: Bearer {admin_token}
+
+Response:
+{
+  "success": true,
+  "user_id": 2,
+  "can_share": true
+}
+```
+
+#### 9.7.5 Access Control
+
+**Access Levels:**
+
+| Action | Owner | Shared User |
+|--------|-------|-------------|
+| View Assistant Properties | ✅ | ✅ |
+| Chat with Assistant | ✅ | ✅ |
+| Edit Assistant | ✅ | ❌ |
+| Delete Assistant | ✅ | ❌ |
+| Publish Assistant | ✅ | ❌ |
+| Manage Sharing | ✅ | ❌ |
+
+**Implementation:**
+
+```python
+def user_can_access_assistant(assistant_id: int, user_id: int) -> Tuple[bool, str]:
+    """
+    Check if user can access assistant and return access level.
+    
+    Returns:
+        (can_access: bool, access_type: 'owner' | 'shared' | 'none')
+    """
+    assistant = get_assistant_by_id(assistant_id)
+    if not assistant:
+        return (False, 'none')
+    
+    # Owner has full access
+    user = get_creator_user_by_id(user_id)
+    if assistant.owner == user['email']:
+        return (True, 'owner')
+    
+    # Check if assistant is shared with this user
+    if is_assistant_shared_with_user(assistant_id, user_id):
+        return (True, 'shared')
+    
+    return (False, 'none')
+```
+
+**Backend Enforcement:**
+
+In `backend/creator_interface/assistant_router.py`:
+
+```python
+# Verify Ownership OR Sharing
+is_owner = assistant_data.get('owner') == creator_user['email']
+is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+
+if not is_owner and not is_shared:
+    raise HTTPException(status_code=404, detail="Assistant not found")
+```
+
+In `backend/creator_interface/learning_assistant_proxy.py`:
+
+```python
+# Enhanced verify_assistant_access
+is_owner = assistant.owner == user['email']
+if not is_owner:
+    is_shared = db_check.is_assistant_shared_with_user(assistant_id, user['id'])
+    if not is_shared:
+        return False
+return True
+```
+
+#### 9.7.6 Frontend Implementation
+
+**Sharing UI:**
+
+The frontend provides a modal-based interface for managing shared users, similar to the "Manage Ollama Models" modal:
+
+```svelte
+<!-- AssistantSharingModal.svelte -->
+<div class="modal-container">
+  <div class="dual-panel">
+    <!-- Left Panel: Shared Users -->
+    <div class="panel">
+      <h3>Shared Users ({sharedUsers.length})</h3>
+      <input type="search" bind:value={searchShared} placeholder="Search...">
+      <div class="user-list">
+        {#each filteredSharedUsers as user}
+          <label class="user-item">
+            <input type="checkbox" 
+                   bind:group={selectedShared} 
+                   value={user.user_id}>
+            <span>{user.user_name}</span>
+            <span class="email">{user.user_email}</span>
+          </label>
+        {/each}
+      </div>
+    </div>
+    
+    <!-- Center: Move Buttons -->
+    <div class="move-buttons">
+      <button onclick={moveAllToShared} disabled={!canMoveAllRight}>≪</button>
+      <button onclick={moveToShared} disabled={!canMoveRight}><</button>
+      <button onclick={moveToAvailable} disabled={!canMoveLeft}>></button>
+      <button onclick={moveAllToAvailable} disabled={!canMoveAllLeft}>≫</button>
+    </div>
+    
+    <!-- Right Panel: Available Users -->
+    <div class="panel">
+      <h3>Available Users ({availableUsers.length})</h3>
+      <input type="search" bind:value={searchAvailable} placeholder="Search...">
+      <div class="user-list">
+        {#each filteredAvailableUsers as user}
+          <label class="user-item">
+            <input type="checkbox" 
+                   bind:group={selectedAvailable} 
+                   value={user.user_id}>
+            <span>{user.user_name}</span>
+            <span class="email">{user.user_email}</span>
+          </label>
+        {/each}
+      </div>
+    </div>
+  </div>
+  
+  <div class="modal-actions">
+    <button class="btn-primary" onclick={saveChanges}>Save Changes</button>
+    <button class="btn-secondary" onclick={onClose}>Cancel</button>
+  </div>
+</div>
+```
+
+**Save Logic:**
+
+```javascript
+async function saveChanges() {
+    saving = true;
+    errorMessage = '';
+    
+    const userIds = sharedUsers.map(u => u.user_id);
+    
+    try {
+        const response = await fetch(
+            `http://localhost:9099/lamb/v1/assistant-sharing/shares/${assistant.id}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ user_ids: userIds })
+            }
+        );
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save changes');
+        }
+        
+        onSaved();  // Refresh parent view
+        onClose();  // Close modal
+    } catch (error) {
+        errorMessage = error.message;
+        // Modal stays open, error displayed
+    } finally {
+        saving = false;
+    }
+}
+```
+
+**Tab Visibility:**
+
+The "Share" tab only appears if the user has sharing permission:
+
+```javascript
+// Check permission when viewing assistant details
+async function checkSharingPermission() {
+    const response = await fetch(
+        'http://localhost:9099/lamb/v1/assistant-sharing/check-permission',
+        { headers: { 'Authorization': `Bearer ${userToken}` } }
+    );
+    
+    if (response.ok) {
+        const data = await response.json();
+        canShare = data.can_share || false;
+    }
+}
+
+// In template - conditional tab
+{#if canShare}
+  <button onclick={() => detailSubView = 'share'}>Share</button>
+{/if}
+```
+
+#### 9.7.7 Admin UI for User Permissions
+
+Organization administrators can manage sharing permissions at `/org-admin?view=users`:
+
+**Toggle Switch UI:**
+
+```svelte
+<table>
+  <thead>
+    <tr>
+      <th>Username</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Can Share</th>
+    </tr>
+  </thead>
+  <tbody>
+    {#each orgUsers as user}
+      <tr>
+        <td>{user.name}</td>
+        <td>{user.email}</td>
+        <td>{user.organization_role}</td>
+        <td class="text-center">
+          <label class="toggle-switch">
+            <input type="checkbox" 
+                   checked={getUserCanShare(user)}
+                   onchange={(e) => toggleUserSharingPermission(user, e.target.checked)}>
+            <span class="slider"></span>
+          </label>
+        </td>
+      </tr>
+    {/each}
+  </tbody>
+</table>
+```
+
+**Permission Toggle Logic:**
+
+```javascript
+function getUserCanShare(user) {
+    const config = user.user_config || {};
+    const userConfig = typeof config === 'string' ? JSON.parse(config) : config;
+    return userConfig.can_share !== false; // Default to true
+}
+
+async function toggleUserSharingPermission(user, canShare) {
+    try {
+        const token = getAuthToken();
+        const response = await axios.put(
+            `http://localhost:9099/lamb/v1/assistant-sharing/user-permission/${user.id}?can_share=${canShare}`,
+            {},
+            { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        
+        // Update local user object
+        const userIndex = orgUsers.findIndex(u => u.id === user.id);
+        if (userIndex !== -1) {
+            const userConfig = orgUsers[userIndex].user_config || {};
+            userConfig.can_share = canShare;
+            orgUsers[userIndex].user_config = userConfig;
+            orgUsers = [...orgUsers]; // Trigger reactivity
+        }
+    } catch (err) {
+        console.error('Error updating sharing permission:', err);
+        await fetchUsers(); // Revert on error
+    }
+}
+```
+
+#### 9.7.8 OWI Group Synchronization
+
+Unlike Knowledge Base sharing (which is LAMB-only), Assistant sharing integrates with Open WebUI:
+
+**Integration Pattern:**
+
+When shares are updated, LAMB synchronizes with the corresponding OWI group:
+
+```python
+@router.put("/v1/assistant-sharing/shares/{assistant_id}")
+async def update_assistant_shares(assistant_id: int, request: UpdateSharesRequest, current_user_id: int):
+    """
+    Update shares and sync with OWI group
+    """
+    # Calculate additions and removals
+    current_shares = db.get_assistant_shares(assistant_id)
+    current_user_ids = {share['shared_with_user_id'] for share in current_shares}
+    desired_user_ids = set(request.user_ids)
+    
+    to_add = desired_user_ids - current_user_ids
+    to_remove = current_user_ids - desired_user_ids
+    
+    # Update LAMB database
+    for user_id in to_add:
+        db.share_assistant(assistant_id, user_id, current_user_id)
+    
+    for user_id in to_remove:
+        db.unshare_assistant(assistant_id, user_id)
+    
+    # Sync with OWI group (one operation after all changes)
+    assistant = db.get_assistant_by_id(assistant_id)
+    if assistant.get('group_id'):
+        owi_group_manager = OwiGroupManager()
+        all_user_ids = [current_user_id] + list(desired_user_ids)
+        owi_users = [db.get_owi_user_by_creator_id(uid) for uid in all_user_ids]
+        owi_user_ids = [u['id'] for u in owi_users if u]
+        owi_group_manager.update_group_members(assistant['group_id'], owi_user_ids)
+    
+    return updated_shares_list
+```
+
+**Why Sync?** Shared users need access to the assistant in Open WebUI for chat functionality.
+
+#### 9.7.9 Viewing Shared Assistants
+
+**Shared Assistants View (`/assistants?view=shared`):**
+
+Users can view all assistants shared with them:
+
+```javascript
+// Fetch shared assistants
+async function fetchSharedAssistants() {
+    const response = await fetch(
+        'http://localhost:9099/creator/assistant/shared',
+        { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    
+    if (response.ok) {
+        sharedAssistants = await response.json();
+    }
+}
+```
+
+**Display:**
+- Grid/list view of shared assistants
+- Shows owner name and sharing date
+- View and Chat actions available
+- Read-only badge indicator
+
+#### 9.7.10 Usage Flow
+
+**Sharing an Assistant:**
+
+1. Assistant owner opens assistant details
+2. Clicks "Share" tab (visible only if user has permission)
+3. Views current shared users list
+4. Clicks "Manage Shared Users" button
+5. Modal opens with dual-panel interface:
+   - Left: Currently shared users (with search)
+   - Right: Available organization users (with search)
+   - Center: Move buttons (<<, <, >, >>)
+6. Owner adds/removes users using buttons
+7. Clicks "Save Changes"
+8. Backend:
+   - Calculates additions and removals
+   - Updates `assistant_shares` table
+   - Syncs OWI group membership
+9. Modal closes, share tab refreshes with new list
+
+**Accessing Shared Assistant:**
+
+1. User navigates to "Shared Assistants" view
+2. Sees list of assistants shared with them
+3. Clicks "View" to see details (read-only)
+4. Clicks "Chat" to open chat interface
+5. Backend verifies access:
+   - Checks ownership OR sharing
+   - Allows chat and view operations
+   - Blocks edit/delete/publish operations
+
+**Permission Denial:**
+
+If user tries to access sharing features without permission:
+- "Share" tab is hidden (frontend check)
+- API returns 403 if called directly (backend check)
+- User sees clear error message
+
+#### 9.7.11 Security Model
+
+**Authorization Checks:**
+
+Every sharing operation verifies:
+1. User is authenticated (valid JWT token)
+2. User has sharing permission (org + user level)
+3. User owns the assistant being shared
+4. Target users are in same organization
+
+**Audit Trail:**
+
+Sharing operations are logged with:
+- Sharer's email
+- Affected assistant ID
+- User IDs added/removed
+- Timestamp
+- Success/failure status
+
+**Data Isolation:**
+
+Sharing operates within organization boundaries:
+- Users can only share with organization members
+- Cross-organization sharing is not supported
+- System organization users cannot be shared with
+
+#### 9.7.12 Differences from KB Sharing
+
+| Feature | KB Sharing | Assistant Sharing |
+|---------|-----------|-------------------|
+| Scope | Organization-wide (all or none) | Specific users |
+| Protection | Cannot unshare if in use | No protection needed |
+| OWI Integration | None | Group synchronization |
+| UI Pattern | Simple toggle | Dual-panel modal |
+| Permission System | None | Two-level (org + user) |
+
+**Design Rationale:**
+
+Knowledge Bases are documents that multiple assistants might reference, so organization-wide sharing makes sense. Assistants are more personal and specialized, so user-specific sharing provides better control.
+
 ---
 
 ## 10. LTI Integration
@@ -3651,5 +4209,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team  
-**Last Updated:** November 2025  
-**Version:** 2.5 (Added Section 17.3: Preventing Spurious Form Repopulation - LLM selection fix documentation)
+**Last Updated:** November 6, 2025  
+**Version:** 2.6 (Added Section 9.7: Assistant Sharing - Two-level permission system for sharing assistants within organizations)
