@@ -282,7 +282,7 @@
      * Handle successful knowledge base creation event
      * @param {CustomEvent<{id: string, name: string, message?: string}>} event - The creation event
      */
-    function handleKnowledgeBaseCreated(event) {
+    async function handleKnowledgeBaseCreated(event) {
         const { id, name, message } = event.detail;
         
         // Show success message
@@ -296,8 +296,14 @@
             successMessage = '';
         }, 5000);
         
-        // Refresh the list
-        loadKnowledgeBases();
+        // Refresh the list - catch errors to avoid showing error after successful creation
+        try {
+            await loadKnowledgeBases();
+        } catch (err) {
+            // KB was created successfully, just log refresh error without showing to user
+            console.warn('KB created successfully but list refresh failed:', err);
+            // Keep the success message visible
+        }
     }
 </script>
 
