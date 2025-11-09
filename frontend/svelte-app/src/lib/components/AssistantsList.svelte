@@ -16,12 +16,13 @@
   import FilterBar from './common/FilterBar.svelte';
     import DeleteConfirmationModal from './modals/DeleteConfirmationModal.svelte';
     import { processListData } from '$lib/utils/listHelpers';
-    // Estado para el modal de borrado
+
+    // State for the delete confirmation modal
     let showDeleteModal = $state(false);
     /** @type {{ id: number|null, name: string, published: boolean }} */
     let deleteTarget = $state({ id: null, name: '', published: false });
     let isDeleting = $state(false);
-    // Handler para abrir el modal de confirmación de borrado
+    // Handler to open the delete confirmation modal
     function handleDelete(assistant) {
         deleteTarget = {
             id: assistant.id,
@@ -31,16 +32,16 @@
         showDeleteModal = true;
     }
 
-    // Handler para confirmar el borrado desde el modal
+    // Handler to confirm deletion from the modal
     async function handleDeleteConfirm() {
         if (!deleteTarget.id || isDeleting) return;
         isDeleting = true;
         try {
             await deleteAssistant(deleteTarget.id);
-            await loadAllAssistants(); // Refresca la lista automáticamente
+            await loadAllAssistants(); // Refresh the list automatically
         } catch (err) {
             console.error('Error deleting assistant:', err);
-            // Opcional: mostrar error al usuario
+            // Optional: show error to user
         } finally {
             isDeleting = false;
             showDeleteModal = false;
@@ -48,7 +49,7 @@
         }
     }
 
-    // Handler para cancelar el borrado desde el modal
+    // Handler to cancel deletion from the modal
     function handleDeleteCancel() {
         showDeleteModal = false;
         deleteTarget = { id: null, name: '', published: false };
@@ -465,7 +466,7 @@
                                         >
                                             {@html IconDelete}
                                         </button>
-<!-- Modal de confirmación de borrado -->
+<!-- Delete Confirmation Modal -->
 <DeleteConfirmationModal
     isOpen={showDeleteModal}
     assistantName={deleteTarget.name}
