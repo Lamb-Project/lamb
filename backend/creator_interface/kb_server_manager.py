@@ -29,19 +29,72 @@ class KBServerManager:
     """Class to manage interactions with the Knowledge Base server"""
     
     def __init__(self):
-        self.kb_server_url = LAMB_KB_SERVER
-        self.kb_server_token = LAMB_KB_SERVER_TOKEN
+        # Keep global fallback values but don't store as instance variables
+        self.global_kb_server_url = LAMB_KB_SERVER
+        self.global_kb_server_token = LAMB_KB_SERVER_TOKEN
         self.kb_server_configured = KB_SERVER_CONFIGURED
+    
+    def _get_kb_config_for_user(self, creator_user: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Resolve KB server configuration based on user's organization.
+        Uses organization-specific config if available, falls back to environment variables.
         
-    async def is_kb_server_available(self):
+        Args:
+            creator_user: Dict containing user information with 'email' and 'organization_id'
+            
+        Returns:
+            Dict with 'url' and 'token' keys for KB server connection
+        """
+        from lamb.completions.org_config_resolver import OrganizationConfigResolver
+        
+        user_email = creator_user.get('email')
+        if not user_email:
+            logger.warning("No email in creator_user, falling back to global KB config")
+            return {
+                'url': self.global_kb_server_url or 'http://localhost:9090',
+                'token': self.global_kb_server_token or '0p3n-w3bu!'
+            }
+        
+        try:
+            # Resolve organization-specific configuration
+            config_resolver = OrganizationConfigResolver(user_email)
+            kb_config = config_resolver.get_knowledge_base_config()
+            
+            if kb_config and kb_config.get('server_url'):
+                org_name = config_resolver.organization.get('name', 'Unknown')
+                logger.info(f"Using organization-specific KB config for user {user_email} (org: {org_name})")
+                return {
+                    'url': kb_config.get('server_url'),
+                    'token': kb_config.get('api_token', '0p3n-w3bu!')
+                }
+            else:
+                logger.info(f"No organization KB config for {user_email}, using global config")
+                
+        except Exception as e:
+            logger.warning(f"Error resolving organization KB config for {user_email}: {e}, falling back to global")
+        
+        # Fallback to global environment variables
+        return {
+            'url': self.global_kb_server_url or 'http://localhost:9090',
+            'token': self.global_kb_server_token or '0p3n-w3bu!'
+        }
+        
+    async def is_kb_server_available(self, creator_user: Dict[str, Any] = None):
         """Check if KB server is available by making a simple request"""
         if not self.kb_server_configured:
             logger.warning("KB server not configured (LAMB_KB_SERVER env var missing or empty)")
             return False
+        
+        # Get KB config for user (or use global if no user provided)
+        if creator_user:
+            kb_config = self._get_kb_config_for_user(creator_user)
+            kb_server_url = kb_config['url']
+        else:
+            kb_server_url = self.global_kb_server_url
             
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.kb_server_url}/health")
+                response = await client.get(f"{kb_server_url}/health")
                 if response.status_code == 200:
                     return True
                 else:
@@ -51,15 +104,15 @@ class KBServerManager:
             logger.warning(f"KB server connectivity check failed: {str(e)}")
             return False
             
-    def get_auth_headers(self):
+    def _get_auth_headers(self, kb_token: str):
         """Return standard authorization headers for KB server requests"""
         return {
-            "Authorization": f"Bearer {self.kb_server_token}"
+            "Authorization": f"Bearer {kb_token}"
         }
         
-    def get_content_type_headers(self):
+    def _get_content_type_headers(self, kb_token: str):
         """Return headers with Authorization and Content-Type"""
-        headers = self.get_auth_headers()
+        headers = self._get_auth_headers(kb_token)
         headers["Content-Type"] = "application/json"
         return headers
         
@@ -75,6 +128,11 @@ class KBServerManager:
             List of owned knowledge base objects with LAMB metadata (is_owner=true, is_shared, can_modify=true)
         """
         from lamb.database_manager import LambDatabaseManager
+        
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
         
         db_manager = LambDatabaseManager()
         user_id = creator_user.get('id')
@@ -137,8 +195,8 @@ class KBServerManager:
                     
                 try:
                     response = await client.get(
-                        f"{self.kb_server_url}/collections/{kb_id}",
-                        headers=self.get_auth_headers()
+                        f"{kb_server_url}/collections/{kb_id}",
+                        headers=self._get_auth_headers(kb_token)
                     )
                     
                     if response.status_code == 200:
@@ -212,6 +270,11 @@ class KBServerManager:
         """
         from lamb.database_manager import LambDatabaseManager
         
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         db_manager = LambDatabaseManager()
         user_id = creator_user.get('id')
         org_id = creator_user.get('organization_id')
@@ -232,8 +295,8 @@ class KBServerManager:
                     
                 try:
                     response = await client.get(
-                        f"{self.kb_server_url}/collections/{kb_id}",
-                        headers=self.get_auth_headers()
+                        f"{kb_server_url}/collections/{kb_id}",
+                        headers=self._get_auth_headers(kb_token)
                     )
                     
                     if response.status_code == 200:
@@ -304,18 +367,23 @@ class KBServerManager:
         Returns:
             List of KB dictionaries from KB Server
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         params = {
             "owner": str(creator_user.get('id'))  # Convert to string as KB server expects string
         }
         
-        kb_server_url = f"{self.kb_server_url}/collections"
-        logger.info(f"Requesting user's owned collections from KB server at {kb_server_url}")
+        kb_server_collections_url = f"{kb_server_url}/collections"
+        logger.info(f"Requesting user's owned collections from KB server at {kb_server_collections_url}")
         
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    kb_server_url, 
-                    headers=self.get_auth_headers(), 
+                    kb_server_collections_url, 
+                    headers=self._get_auth_headers(kb_token), 
                     params=params
                 )
                 logger.info(f"KB server response status: {response.status_code}")
@@ -366,6 +434,11 @@ class KBServerManager:
         Returns:
             Dict with created knowledge base information
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         original_name = kb_data.name
         logger.info(f"Creating knowledge base via KB server: {original_name}")
         
@@ -388,8 +461,8 @@ class KBServerManager:
    
         # Create collection in KB server
         async with httpx.AsyncClient() as client:
-            kb_server_url = f"{self.kb_server_url}/collections"
-            logger.info(f"Creating collection in KB server at {kb_server_url}: {sanitized_name}")
+            kb_server_collections_url = f"{kb_server_url}/collections"
+            logger.info(f"Creating collection in KB server at {kb_server_collections_url}: {sanitized_name}")
             
             # Check if there's metadata with a description field
             # The frontend might send the description in metadata.description rather than directly
@@ -425,8 +498,8 @@ class KBServerManager:
             try:
                 # Send request to KB server
                 response = await client.post(
-                    kb_server_url, 
-                    headers=self.get_content_type_headers(), 
+                    kb_server_collections_url, 
+                    headers=self._get_content_type_headers(kb_token), 
                     json=collection_data
                 )
                 logger.info(f"KB server response status: {response.status_code}")
@@ -500,18 +573,23 @@ class KBServerManager:
         Returns:
             Dict with knowledge base details
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Getting knowledge base details for ID: {kb_id} from KB server")
         
         async with httpx.AsyncClient() as client:
             # Request collection details
-            kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
-            logger.info(f"Requesting collection from KB server at {kb_server_url}")
+            kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
+            logger.info(f"Requesting collection from KB server at {kb_server_collection_url}")
             
             try:
                 # Send request to KB server
                 response = await client.get(
-                    kb_server_url, 
-                    headers=self.get_auth_headers()
+                    kb_server_collection_url, 
+                    headers=self._get_auth_headers(kb_token)
                 )
                 logger.info(f"KB server response status: {response.status_code}")
                 
@@ -532,8 +610,8 @@ class KBServerManager:
                             )
                     
                     # Get files associated with this collection
-                    files_url = f"{self.kb_server_url}/collections/{kb_id}/files"
-                    files_response = await client.get(files_url, headers=self.get_auth_headers())
+                    files_url = f"{kb_server_url}/collections/{kb_id}/files"
+                    files_response = await client.get(files_url, headers=self._get_auth_headers(kb_token))
                     
                     files = []
                     if files_response.status_code == 200:
@@ -550,7 +628,7 @@ class KBServerManager:
                             file_url = file.get('file_url', '')
                             if file_url and file_url.startswith('/'):
                                 # It's a relative URL, combine with KB server base URL
-                                base_url = self.kb_server_url.rstrip('/')
+                                base_url = kb_server_url.rstrip('/')
                                 file_url = f"{base_url}{file_url}"
                             logger.info(f"DEBUG: File URL: {file_url}")
                             
@@ -645,12 +723,17 @@ class KBServerManager:
         Returns:
             Dict with updated knowledge base information
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Updating knowledge base {kb_id} via KB server")
         
         # Connect to KB server and update the collection
         async with httpx.AsyncClient() as client:
-            kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
-            logger.info(f"Connecting to KB server at: {kb_server_url} to update collection")
+            kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
+            logger.info(f"Connecting to KB server at: {kb_server_collection_url} to update collection")
             
             # Log the received data for debugging
             logger.info(f"Received knowledge base update data: {kb_data.dict()}")
@@ -688,7 +771,7 @@ class KBServerManager:
             
             try:
                 # Get current collection data to verify ownership
-                get_response = await client.get(kb_server_url, headers=self.get_auth_headers())
+                get_response = await client.get(kb_server_collection_url, headers=self._get_auth_headers(kb_token))
                 
                 if get_response.status_code == 200:
                     collection_data = get_response.json()
@@ -706,8 +789,8 @@ class KBServerManager:
                     
                     # Send update request to KB server
                     response = await client.patch(
-                        kb_server_url, 
-                        headers=self.get_content_type_headers(), 
+                        kb_server_collection_url, 
+                        headers=self._get_content_type_headers(kb_token), 
                         json=update_data
                     )
                     logger.info(f"KB server update response status: {response.status_code}")
@@ -782,6 +865,11 @@ class KBServerManager:
         Returns:
             Dict with deletion status
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Deleting knowledge base {kb_id} for user {creator_user.get('email')}")
 
         # Normalize kb_id (allow numeric strings)
@@ -791,8 +879,8 @@ class KBServerManager:
         except Exception:
             pass
 
-        collection_url = f"{self.kb_server_url}/collections/{kb_id}"
-        headers = self.get_auth_headers()
+        collection_url = f"{kb_server_url}/collections/{kb_id}"
+        headers = self._get_auth_headers(kb_token)
 
         try:
             async with httpx.AsyncClient() as client:
@@ -879,18 +967,23 @@ class KBServerManager:
         Returns:
             Dict with query results
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Querying knowledge base {kb_id} with: {query_data.get('query_text', '')}")
         
-        kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
+        kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
         
         try:
             async with httpx.AsyncClient() as client:
                 # First check if the user has access to this collection
-                logger.info(f"Checking collection access at KB server: {kb_server_url}")
+                logger.info(f"Checking collection access at KB server: {kb_server_collection_url}")
                 
-                headers = self.get_content_type_headers()
+                headers = self._get_content_type_headers(kb_token)
                 
-                get_response = await client.get(kb_server_url, headers=headers)
+                get_response = await client.get(kb_server_collection_url, headers=headers)
                 
                 if get_response.status_code != 200:
                     if get_response.status_code == 404:
@@ -926,7 +1019,7 @@ class KBServerManager:
                         )
                 
                 # Execute the query against the KB server
-                query_url = f"{self.kb_server_url}/collections/{kb_id}/query"
+                query_url = f"{kb_server_url}/collections/{kb_id}/query"
                 if query_data.get('plugin_name'):
                     query_url += f"?plugin_name={query_data.get('plugin_name')}"
                 
@@ -998,18 +1091,23 @@ class KBServerManager:
         Returns:
             Dict with upload results
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Uploading files to knowledge base {kb_id} via KB server")
         
-        kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
-        logger.info(f"Checking collection access at KB server: {kb_server_url}")
+        kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
+        logger.info(f"Checking collection access at KB server: {kb_server_collection_url}")
         
         try:
             async with httpx.AsyncClient() as client:
                 # First verify collection exists and user has access
-                headers = self.get_auth_headers()
+                headers = self._get_auth_headers(kb_token)
                 
                 # Get collection details to verify ownership
-                get_response = await client.get(kb_server_url, headers=headers)
+                get_response = await client.get(kb_server_collection_url, headers=headers)
                 
                 if get_response.status_code != 200:
                     if get_response.status_code == 404:
@@ -1078,14 +1176,14 @@ class KBServerManager:
                         
                         # Use ingest-file endpoint instead of upload for proper file registration
                         # This endpoint combines upload, processing and registering in one operation
-                        ingest_url = f"{self.kb_server_url}/collections/{str(kb_id)}/ingest-file"
+                        ingest_url = f"{kb_server_url}/collections/{str(kb_id)}/ingest-file"
                         
                         # Add detailed debug logging
                         logger.info(f"Ingesting file to collection ID: {kb_id}")
                         logger.info(f"Ingest URL: {ingest_url}")
                         
                         # Make sure headers are defined before use
-                        upload_headers = self.get_auth_headers()  # No Content-Type for multipart/form-data
+                        upload_headers = self._get_auth_headers(kb_token)  # No Content-Type for multipart/form-data
                         
                         # --- Construct and log equivalent curl command ---
                         curl_headers = " ".join([f"-H '{k}: {v}'" for k, v in upload_headers.items()])
@@ -1176,18 +1274,23 @@ class KBServerManager:
         Returns:
             Dict with deletion status
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Deleting file {file_id} from knowledge base {kb_id} via KB server")
         
-        kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
-        logger.info(f"Checking collection access at KB server: {kb_server_url}")
+        kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
+        logger.info(f"Checking collection access at KB server: {kb_server_collection_url}")
         
         try:
             async with httpx.AsyncClient() as client:
                 # First verify collection exists and user has access
-                headers = self.get_auth_headers()
+                headers = self._get_auth_headers(kb_token)
                 
                 # Get collection details to verify ownership
-                get_response = await client.get(kb_server_url, headers=headers)
+                get_response = await client.get(kb_server_collection_url, headers=headers)
                 
                 if get_response.status_code != 200:
                     if get_response.status_code == 404:
@@ -1220,7 +1323,7 @@ class KBServerManager:
                     )
                 
                 # Now delete the file from KB server
-                delete_url = f"{self.kb_server_url}/collections/{kb_id}/files/{file_id}"
+                delete_url = f"{kb_server_url}/collections/{kb_id}/files/{file_id}"
                 logger.info(f"Deleting file from KB server at: {delete_url}")
                 
                 delete_response = await client.delete(delete_url, headers=headers)
@@ -1265,18 +1368,20 @@ class KBServerManager:
 
     async def get_ingestion_plugins(self) -> Dict[str, Any]:
         """
-        Get a list of available ingestion plugins and their parameters
+        Get a list of available ingestion plugins and their parameters.
+        Note: Uses global KB server config since no user context is available.
         
         Returns:
             Dict with plugin information including supported file extensions and parameters
         """
-        logger.info("Getting available ingestion plugins from KB server")
+        logger.info("Getting available ingestion plugins from KB server (using global config)")
         
-        plugins_url = f"{self.kb_server_url}/ingestion/plugins"
+        # Use global config since no user context
+        plugins_url = f"{self.global_kb_server_url}/ingestion/plugins"
         
         try:
             async with httpx.AsyncClient() as client:
-                headers = self.get_auth_headers()
+                headers = self._get_auth_headers(self.global_kb_server_token)
                 
                 response = await client.get(plugins_url, headers=headers)
                 
@@ -1318,18 +1423,23 @@ class KBServerManager:
         Returns:
             Dict with ingestion results
         """
+        # Get organization-specific KB config
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
         logger.info(f"Ingesting file {file.filename} to knowledge base {kb_id} using plugin {plugin_name}")
         
         # First check if user has access to the knowledge base
-        kb_server_url = f"{self.kb_server_url}/collections/{kb_id}"
+        kb_server_collection_url = f"{kb_server_url}/collections/{kb_id}"
         
         try:
             async with httpx.AsyncClient() as client:
                 # Verify collection exists and user has access
-                headers = self.get_auth_headers()
+                headers = self._get_auth_headers(kb_token)
                 
                 # Check ownership
-                get_response = await client.get(kb_server_url, headers=headers)
+                get_response = await client.get(kb_server_collection_url, headers=headers)
                 
                 if get_response.status_code != 200:
                     if get_response.status_code == 404:
@@ -1373,7 +1483,7 @@ class KBServerManager:
                 logger.info(f"Using plugin {plugin_name} with parameters: {plugin_params}")
                 
                 # Use ingest-file endpoint instead of ingest (same as in upload_files_to_kb method)
-                ingest_url = f"{self.kb_server_url}/collections/{kb_id}/ingest-file"
+                ingest_url = f"{kb_server_url}/collections/{kb_id}/ingest-file"
                 logger.info(f"Ingesting file to KB server at: {ingest_url}")
                 
                 # Add owner and collection_id to form data - match format used in upload_files_to_kb
@@ -1403,7 +1513,7 @@ class KBServerManager:
                 logger.info(f"Form data: {form_data}")
 
                 # Make sure headers are defined before use
-                upload_headers = self.get_auth_headers()  # No Content-Type for multipart/form-data
+                upload_headers = self._get_auth_headers(kb_token)  # No Content-Type for multipart/form-data
                 logger.info(f"Final Form data being sent: {form_data}") # Log final form data
 
                 # --- Construct and log equivalent curl command ---

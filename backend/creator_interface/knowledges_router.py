@@ -228,6 +228,28 @@ async def authenticate_creator_user(request: Request) -> Dict[str, Any]:
     return creator_user
 
 
+def get_user_organization(creator_user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get organization for a creator user.
+    
+    Args:
+        creator_user: Dict containing creator user information
+    
+    Returns:
+        Dict with organization information
+    """
+    db_manager = LambDatabaseManager()
+    
+    # Get user's organization
+    if creator_user.get('organization_id'):
+        org = db_manager.get_organization_by_id(creator_user['organization_id'])
+        if org:
+            return org
+    
+    # Fallback to system organization
+    return db_manager.get_organization_by_slug("lamb")
+
+
 @router.get(
     "/user",
     response_model=Union[KnowledgeBaseListResponse, KnowledgeBaseServerOfflineResponse],
@@ -297,8 +319,11 @@ async def get_user_knowledge_bases(request: Request):
     """
     logger.info("Retrieving user's owned knowledge bases from KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -306,9 +331,6 @@ async def get_user_knowledge_bases(request: Request):
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         
         # Get owned knowledge bases from the KB server
         knowledge_bases = await kb_server_manager.get_user_knowledge_bases(creator_user)
@@ -394,8 +416,11 @@ async def get_shared_knowledge_bases(request: Request):
     """
     logger.info("Retrieving shared knowledge bases from KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -403,9 +428,6 @@ async def get_shared_knowledge_bases(request: Request):
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         
         # Get shared knowledge bases from the KB server
         knowledge_bases = await kb_server_manager.get_org_shared_knowledge_bases(creator_user)
@@ -498,8 +520,11 @@ async def create_knowledge_base(
     """
     logger.info("Creating knowledge base via KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -507,9 +532,6 @@ async def create_knowledge_base(
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         
         # Create the knowledge base using the KB server manager
         result = await kb_server_manager.create_knowledge_base(
@@ -616,8 +638,11 @@ async def get_knowledge_base(kb_id: str, request: Request):
     """
     logger.info(f"Getting knowledge base details for ID: {kb_id} from KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -625,9 +650,6 @@ async def get_knowledge_base(kb_id: str, request: Request):
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access (owner OR shared can view)
@@ -754,8 +776,11 @@ async def update_knowledge_base(
     """
     logger.info(f"Updating knowledge base {kb_id} via KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -763,9 +788,6 @@ async def update_knowledge_base(
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access (owner only)
@@ -854,7 +876,7 @@ async def toggle_kb_sharing(
         
         # Check if sharing is enabled for the user's organization (only when sharing, not unsharing)
         if share_data.is_shared:
-            org = db_manager.get_user_organization(creator_user['id'])
+            org = get_user_organization(creator_user)
             if org:
                 config = org.get('config', {})
                 features = config.get('features', {})
@@ -968,8 +990,11 @@ async def delete_knowledge_base(kb_id: str, request: Request):
     """
     logger.info(f"Deleting knowledge base {kb_id} via KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -977,9 +1002,6 @@ async def delete_knowledge_base(kb_id: str, request: Request):
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access (owner only)
@@ -1116,17 +1138,17 @@ async def query_knowledge_base(
     """
     logger.info(f"Querying knowledge base {kb_id} via KB server with: {query_data.query_text}")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             return {
                 "status": "error",
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access (owner OR shared can query)
@@ -1276,8 +1298,11 @@ async def upload_files_to_kb(
     """
     logger.info(f"Uploading files to knowledge base {kb_id} via KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -1285,9 +1310,6 @@ async def upload_files_to_kb(
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access
@@ -1388,8 +1410,11 @@ async def delete_file_from_kb(kb_id: str, file_id: str, request: Request):
     """
     logger.info(f"Deleting file {file_id} from knowledge base {kb_id} via KB server")
     try:
-        # Check if KB server is available
-        kb_available = await kb_server_manager.is_kb_server_available()
+        # Authenticate creator user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
             logger.warning("Knowledge Base server is offline or not configured")
             return {
@@ -1397,9 +1422,6 @@ async def delete_file_from_kb(kb_id: str, file_id: str, request: Request):
                 "message": "Knowledge Base server offline",
                 "kb_server_available": False
             }
-            
-        # Authenticate creator user
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access
@@ -1645,16 +1667,16 @@ async def plugin_ingest_file(
     logger.info(f"Ingesting file to knowledge base {kb_id} using plugin {plugin_name}")
     
     try:
-        # First check if KB server is available
-        if not await kb_server_manager.is_kb_server_available():
+        # Get creator user from the request first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        if not await kb_server_manager.is_kb_server_available(creator_user):
             logger.error("KB server is not available")
             raise HTTPException(
                 status_code=503,
                 detail="KB server is not available"
             )
-            
-        # Get creator user from the request
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access
@@ -1753,11 +1775,11 @@ async def plugin_ingest_base(
     """Run an ingestion plugin without a direct file upload from the user.\n\nCreates an in-memory placeholder text file (optionally containing URL lines if helpful) and then reuses the existing `plugin_ingest_file` pipeline so we do not need to duplicate ownership / permission checks or low-level multipart handling logic in the KB server layer."""
     logger.info(f"Base ingestion requested for KB {kb_id} using plugin {body.plugin_name} with params: {body.parameters}")
     try:
-        if not await kb_server_manager.is_kb_server_available():
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
             logger.error("KB server is not available for base ingestion")
             raise HTTPException(status_code=503, detail="KB server is not available")
-
-        creator_user = await authenticate_creator_user(request)
         db_manager = LambDatabaseManager()
         
         # Check access
@@ -1901,14 +1923,14 @@ async def get_query_plugins(request: Request):
     logger.info("Getting available query plugins")
 
     try:
-        # Check if KB server is available
-        if not await kb_server_manager.is_kb_server_available():
+        # Authenticate user first to get organization context
+        creator_user = await authenticate_creator_user(request)
+        
+        # Check if KB server is available (using user's organization config)
+        if not await kb_server_manager.is_kb_server_available(creator_user):
             logger.warning("KB server is not available for query plugins")
             # Return the standard offline response object
             return KnowledgeBaseServerOfflineResponse()
-
-        # Authenticate user (assuming it's needed for query plugins too)
-        _ = await authenticate_creator_user(request) # We don't need the user info here, just auth
 
         # Get the plugins from the manager - this method needs to be added
         plugins = await kb_server_manager.get_query_plugins()
