@@ -1447,6 +1447,16 @@ class OrgAdminApiSettings(BaseModel):
     selected_models: Optional[Dict[str, List[str]]] = Field(None, description="Selected models per provider")
     default_models: Optional[Dict[str, str]] = Field(None, description="Default model per provider")
 
+class OrgAdminKBSettings(BaseModel):
+    url: str = Field(..., description="Knowledge Base server URL")
+    api_key: Optional[str] = Field(None, description="Knowledge Base server API key (leave empty to keep existing)")
+    embedding_model: Optional[str] = Field(None, description="Default embedding model")
+    collection_defaults: Optional[Dict[str, Any]] = Field(None, description="Default settings for new collections")
+
+class KBTestRequest(BaseModel):
+    url: str = Field(..., description="KB server URL to test")
+    api_key: str = Field(..., description="API key to test")
+
 class OrgUserResponse(BaseModel):
     id: int
     email: str
@@ -2659,6 +2669,359 @@ async def update_api_settings(request: Request, settings: OrgAdminApiSettings, o
         raise
     except Exception as e:
         logger.error(f"Error updating API settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# KNOWLEDGE BASE SERVER SETTINGS MANAGEMENT
+# ============================================================================
+
+@router.get(
+    "/org-admin/settings/kb",
+    tags=["Organization Admin - Settings"],
+    summary="Get KB Server Settings",
+    description="""Get Knowledge Base server configuration for the organization.
+    
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/settings/kb' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "url": "http://kb:9090",
+  "api_key_set": true,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "collection_defaults": {
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  }
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def get_kb_settings(request: Request, org: Optional[str] = None):
+    """Get organization KB server settings"""
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        config = organization.get('config', {})
+        kb_server = config.get('kb_server', {})
+        
+        return {
+            "url": kb_server.get('url', ''),
+            "api_key_set": bool(kb_server.get('api_key')),
+            "embedding_model": kb_server.get('embedding_model', ''),
+            "collection_defaults": kb_server.get('collection_defaults', {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting KB settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/org-admin/settings/kb/test",
+    tags=["Organization Admin - Settings"],
+    summary="Test KB Server Connection",
+    description="""Test connection to Knowledge Base server before saving configuration.
+    
+Tests both the health endpoint and API authentication.
+
+Example Request:
+```bash
+curl -X POST 'http://localhost:8000/creator/admin/org-admin/settings/kb/test' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "url": "http://kb:9090",
+  "api_key": "your-api-key"
+}'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "message": "Successfully connected to KB server",
+  "version": "1.0.0",
+  "collections_count": 5
+}
+```
+
+Example Error Response:
+```json
+{
+  "success": false,
+  "message": "Connection timeout - check if KB server is running and URL is correct"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def test_kb_connection(
+    request: Request,
+    test_data: KBTestRequest,
+    org: Optional[str] = None
+):
+    """Test connection to KB server"""
+    try:
+        # Verify admin access and get organization config
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        # Get existing KB config to use existing API key if requested
+        config = organization.get('config', {})
+        existing_kb_config = config.get('kb_server', {})
+        
+        # Use existing API key if placeholder is sent
+        api_key_to_test = test_data.api_key
+        if test_data.api_key == 'USE_EXISTING':
+            api_key_to_test = existing_kb_config.get('api_key', '')
+            if not api_key_to_test:
+                return {
+                    "success": False,
+                    "message": "No existing API key found. Please enter one to test."
+                }
+        
+        # Validate URL format
+        url = test_data.url.rstrip('/')
+        if not url.startswith(('http://', 'https://')):
+            return {
+                "success": False,
+                "message": "URL must start with http:// or https://"
+            }
+        
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Test 1: Health endpoint
+                health_response = await client.get(f"{url}/health")
+                
+                if health_response.status_code != 200:
+                    return {
+                        "success": False,
+                        "message": f"KB server health check failed (status: {health_response.status_code})"
+                    }
+                
+                health_data = health_response.json()
+                
+                # Test 2: Collections endpoint (verifies API key)
+                collections_response = await client.get(
+                    f"{url}/api/collections",
+                    headers={"Authorization": f"Bearer {api_key_to_test}"}
+                )
+                
+                if collections_response.status_code == 401:
+                    return {
+                        "success": False,
+                        "message": "API key authentication failed - invalid key"
+                    }
+                elif collections_response.status_code == 403:
+                    return {
+                        "success": False,
+                        "message": "API key authentication failed - insufficient permissions"
+                    }
+                elif collections_response.status_code not in [200, 404]:
+                    return {
+                        "success": False,
+                        "message": f"API endpoint test failed (status: {collections_response.status_code})"
+                    }
+                
+                # Success - extract info
+                collections_data = collections_response.json() if collections_response.status_code == 200 else {}
+                collections_count = len(collections_data.get('collections', []))
+                
+                return {
+                    "success": True,
+                    "message": "Successfully connected to KB server",
+                    "version": health_data.get('version', 'unknown'),
+                    "collections_count": collections_count
+                }
+                
+        except httpx.TimeoutException:
+            return {
+                "success": False,
+                "message": "Connection timeout - check if KB server is running and URL is correct"
+            }
+        except httpx.ConnectError:
+            return {
+                "success": False,
+                "message": "Connection refused - check if KB server is running at this URL"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Connection test failed: {str(e)}"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error testing KB connection: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/org-admin/settings/kb",
+    tags=["Organization Admin - Settings"],
+    summary="Update KB Server Settings",
+    description="""Update Knowledge Base server configuration.
+    
+Connection is tested before saving. If test fails, update is rejected.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/kb' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "url": "http://kb:9090",
+  "api_key": "new-api-key",
+  "embedding_model": "all-MiniLM-L6-v2",
+  "collection_defaults": {
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  }
+}'
+```
+
+Example Success Response:
+```json
+{
+  "message": "KB server settings updated successfully"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def update_kb_settings(
+    request: Request,
+    settings: OrgAdminKBSettings,
+    org: Optional[str] = None
+):
+    """Update organization KB server settings"""
+    try:
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        organization = admin_info['organization']
+        
+        # Validate URL format
+        url = settings.url.rstrip('/')
+        if not url.startswith(('http://', 'https://')):
+            raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+        
+        # Get existing config to preserve API key if not provided
+        config = organization.get('config', {})
+        existing_kb_config = config.get('kb_server', {})
+        api_key_to_test = settings.api_key if settings.api_key else existing_kb_config.get('api_key', '')
+        
+        # Mandatory connection test before saving
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Test health endpoint
+                health_response = await client.get(f"{url}/health")
+                
+                if health_response.status_code != 200:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"KB server health check failed (status: {health_response.status_code})"
+                    )
+                
+                # Test collections endpoint (verifies API key)
+                collections_response = await client.get(
+                    f"{url}/api/collections",
+                    headers={"Authorization": f"Bearer {api_key_to_test}"}
+                )
+                
+                if collections_response.status_code == 401:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="API key authentication failed - invalid key"
+                    )
+                elif collections_response.status_code == 403:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="API key authentication failed - insufficient permissions"
+                    )
+                elif collections_response.status_code not in [200, 404]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"API endpoint test failed (status: {collections_response.status_code})"
+                    )
+                    
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=400,
+                detail="Connection timeout - check if KB server is running and URL is correct"
+            )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=400,
+                detail="Connection refused - check if KB server is running at this URL"
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
+        
+        # Connection test passed - update configuration
+        if 'kb_server' not in config:
+            config['kb_server'] = {}
+        
+        config['kb_server']['url'] = url
+        
+        # Update API key only if provided
+        if settings.api_key:
+            config['kb_server']['api_key'] = settings.api_key
+        
+        # Update embedding model if provided
+        if settings.embedding_model:
+            config['kb_server']['embedding_model'] = settings.embedding_model
+        
+        # Update collection defaults if provided
+        if settings.collection_defaults:
+            config['kb_server']['collection_defaults'] = settings.collection_defaults
+        
+        # Save configuration
+        if not db_manager.update_organization_config(org_id, config):
+            raise HTTPException(status_code=500, detail="Failed to update KB settings")
+        
+        logger.info(f"Organization admin {admin_info['user_email']} updated KB server settings")
+        return {"message": "KB server settings updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating KB settings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

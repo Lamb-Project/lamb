@@ -151,6 +151,9 @@
     let assistantDefaultsSuccess = $state(false);
     const assistantDefaultsPlaceholder = '{"connector":"openai","llm":"gpt-4o-mini","system_prompt":"..."}';
 
+    // Settings sub-view navigation
+    let settingsSubView = $state('general');
+
     // New settings for editing
     /** @type {any} */
     let newSignupSettings = $state({
@@ -166,6 +169,36 @@
         model_limits: {},
         selected_models: {}
     });
+
+    // KB settings state
+    /** @type {any} */
+    let kbSettings = $state({
+        url: '',
+        api_key_set: false,
+        embedding_model: '',
+        collection_defaults: {}
+    });
+    /** @type {any} */
+    let newKbSettings = $state({
+        url: '',
+        api_key: '',
+        embedding_model: '',
+        collection_defaults: {
+            chunk_size: 1000,
+            chunk_overlap: 200
+        }
+    });
+    let isLoadingKbSettings = $state(false);
+    /** @type {string | null} */
+    let kbSettingsError = $state(null);
+    let kbSettingsSuccess = $state(false);
+    /** @type {any} */
+    let kbTestResult = $state(null);
+    let isTesting = $state(false);
+    /** @type {boolean} */
+    let showKbAdvanced = $state(false);
+    /** @type {boolean} */
+    let showKbApiKey = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -1203,7 +1236,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            // Fetch signup settings
+            // Fetch signup settings (for General tab)
             const signupUrl = targetOrgSlug 
                 ? getApiUrl(`/org-admin/settings/signup?org=${targetOrgSlug}`)
                 : getApiUrl('/org-admin/settings/signup');
@@ -1211,49 +1244,16 @@
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
-            // Fetch API settings
-            const apiUrl = targetOrgSlug 
-                ? getApiUrl(`/org-admin/settings/api?org=${targetOrgSlug}`)
-                : getApiUrl('/org-admin/settings/api');
-            const apiResponse = await axios.get(apiUrl, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
             signupSettings = signupResponse.data;
-            apiSettings = apiResponse.data;
 
-            // Initialize edit forms
+            // Initialize signup edit form
             newSignupSettings = {
                 signup_enabled: signupSettings.signup_enabled,
                 signup_key: signupSettings.signup_key || ''
             };
 
-            newApiSettings = {
-                openai_api_key: '',
-                openai_base_url: apiSettings.openai_base_url || 'https://api.openai.com/v1',
-                ollama_base_url: apiSettings.ollama_base_url || 'http://localhost:11434',
-                available_models: Array.isArray(apiSettings.available_models) ? [...apiSettings.available_models] : [],
-                model_limits: { ...(apiSettings.model_limits || {}) },
-                selected_models: { ...(apiSettings.selected_models || {}) },
-                default_models: { ...(apiSettings.default_models || {}) }
-            };
-
-            // Auto-initialize default models for providers that have enabled models but no default set
-            if (newApiSettings.selected_models) {
-                for (const [providerName, enabledModels] of Object.entries(newApiSettings.selected_models)) {
-                    if (enabledModels && enabledModels.length > 0 && !newApiSettings.default_models[providerName]) {
-                        // No default set, auto-select first enabled model
-                        newApiSettings.default_models[providerName] = enabledModels[0];
-                    }
-                }
-            }
-
-            // Fetch assistant defaults for this organization
-            await fetchAssistantDefaults();
-
-            // Fetch dashboard data to populate organization header and API status overview
-            // This ensures the sections are visible even when the page is refreshed directly on Settings view
-            await fetchDashboard();
+            // Don't fetch dashboard data on initial settings load
+            // It will be loaded when needed (contains slow API tests)
 
         } catch (err) {
             console.error('Error fetching settings:', err);
@@ -1355,6 +1355,205 @@
                 assistantDefaultsError = err.response.data.detail;
             } else {
                 assistantDefaultsError = 'Failed to update assistant defaults.';
+            }
+        }
+    }
+
+    // API Settings function
+    async function fetchApiSettings() {
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Fetch API settings
+            const apiUrl = targetOrgSlug 
+                ? getApiUrl(`/org-admin/settings/api?org=${targetOrgSlug}`)
+                : getApiUrl('/org-admin/settings/api');
+            const apiResponse = await axios.get(apiUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            apiSettings = apiResponse.data;
+
+            // Initialize API edit form
+            newApiSettings = {
+                openai_api_key: '',
+                openai_base_url: apiSettings.openai_base_url || 'https://api.openai.com/v1',
+                ollama_base_url: apiSettings.ollama_base_url || 'http://localhost:11434',
+                available_models: Array.isArray(apiSettings.available_models) ? [...apiSettings.available_models] : [],
+                model_limits: { ...(apiSettings.model_limits || {}) },
+                selected_models: { ...(apiSettings.selected_models || {}) },
+                default_models: { ...(apiSettings.default_models || {}) }
+            };
+
+            // Auto-initialize default models for providers that have enabled models but no default set
+            if (newApiSettings.selected_models) {
+                for (const [providerName, enabledModels] of Object.entries(newApiSettings.selected_models)) {
+                    if (enabledModels && enabledModels.length > 0 && !newApiSettings.default_models[providerName]) {
+                        // No default set, auto-select first enabled model
+                        newApiSettings.default_models[providerName] = enabledModels[0];
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching API settings:', err);
+        }
+    }
+
+    // KB Settings functions
+    async function fetchKbSettings() {
+        isLoadingKbSettings = true;
+        kbSettingsError = null;
+        kbSettingsSuccess = false;
+        kbTestResult = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/kb${params}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            kbSettings = response.data;
+            newKbSettings = {
+                url: kbSettings.url || '',
+                api_key: '', // Never populate with actual key
+                embedding_model: kbSettings.embedding_model || '',
+                collection_defaults: kbSettings.collection_defaults || {
+                    chunk_size: 1000,
+                    chunk_overlap: 200
+                }
+            };
+        } catch (err) {
+            console.error('Error fetching KB settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbSettingsError = err.message;
+            } else {
+                kbSettingsError = 'Failed to fetch KB settings.';
+            }
+        } finally {
+            isLoadingKbSettings = false;
+        }
+    }
+
+    async function testKbConnection() {
+        isTesting = true;
+        kbTestResult = null;
+        
+        if (!newKbSettings.url) {
+            kbTestResult = {
+                success: false,
+                message: 'Please enter a KB server URL'
+            };
+            isTesting = false;
+            return;
+        }
+        
+        // Use existing API key if not changed (allow testing current config)
+        const apiKeyToTest = newKbSettings.api_key || 'USE_EXISTING';
+        
+        if (apiKeyToTest === 'USE_EXISTING' && !kbSettings.api_key_set) {
+            kbTestResult = {
+                success: false,
+                message: 'Please enter an API key or configure one first'
+            };
+            isTesting = false;
+            return;
+        }
+        
+        try {
+            const token = getAuthToken();
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.post(
+                getApiUrl(`/org-admin/settings/kb/test${params}`),
+                {
+                    url: newKbSettings.url,
+                    api_key: apiKeyToTest
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+            
+            kbTestResult = response.data;
+        } catch (err) {
+            console.error('Error testing KB connection:', err);
+            if (axios.isAxiosError(err) && err.response?.data) {
+                kbTestResult = err.response.data;
+            } else {
+                kbTestResult = {
+                    success: false,
+                    message: err instanceof Error ? err.message : 'Test failed'
+                };
+            }
+        } finally {
+            isTesting = false;
+        }
+    }
+
+    async function updateKbSettings() {
+        kbSettingsError = null;
+        kbSettingsSuccess = false;
+        kbTestResult = null;
+        
+        // Test connection first (mandatory)
+        await testKbConnection();
+        
+        if (!kbTestResult || !kbTestResult.success) {
+            kbSettingsError = 'Connection test failed. Please fix configuration before saving.';
+            return;
+        }
+        
+        try {
+            const token = getAuthToken();
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            
+            const payload = {
+                url: newKbSettings.url,
+                embedding_model: newKbSettings.embedding_model || null,
+                collection_defaults: newKbSettings.collection_defaults || null
+            };
+            
+            // Only include API key if it was changed
+            if (newKbSettings.api_key) {
+                payload.api_key = newKbSettings.api_key;
+            }
+            
+            await axios.put(
+                getApiUrl(`/org-admin/settings/kb${params}`),
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+            
+            kbSettingsSuccess = true;
+            addPendingChange('KB server settings updated');
+            
+            // Reload to refresh api_key_set status
+            await fetchKbSettings();
+        } catch (err) {
+            console.error('Error updating KB settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbSettingsError = err.message;
+            } else {
+                kbSettingsError = 'Failed to update KB settings.';
             }
         }
     }
@@ -1564,11 +1763,6 @@
                             Settings
                         </button>
                     </div>
-                </div>
-                <div class="flex items-center">
-                    <span class="text-sm text-gray-600">
-                        {userData?.email || 'Organization Admin'}
-                    </span>
                 </div>
             </div>
         </div>
@@ -2374,6 +2568,66 @@
                             <p class="mt-2 text-gray-600">Loading settings...</p>
                         </div>
                     {:else}
+                        <!-- Settings Sub-Navigation -->
+                        <div class="bg-white shadow-sm rounded-lg mb-4">
+                            <div class="border-b border-gray-200">
+                                <nav class="flex -mb-px" aria-label="Settings Tabs">
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'general' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { settingsSubView = 'general'; }}
+                                    >
+                                        General
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'api' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={async () => { 
+                                            settingsSubView = 'api';
+                                            // Lazy load API settings and dashboard (for API status) when tab is clicked
+                                            // Check if available_models exists and has data (it's initialized as empty array)
+                                            const hasModels = apiSettings.available_models && 
+                                                ((Array.isArray(apiSettings.available_models) && apiSettings.available_models.length > 0) ||
+                                                 (typeof apiSettings.available_models === 'object' && Object.keys(apiSettings.available_models).length > 0));
+                                            
+                                            if (!hasModels) {
+                                                await fetchApiSettings();
+                                            }
+                                            if (!dashboardData) {
+                                                await fetchDashboard();
+                                            }
+                                        }}
+                                    >
+                                        API
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'kb' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'kb';
+                                            // Lazy load KB settings only when tab is clicked
+                                            if (!kbSettings.url) {
+                                                fetchKbSettings();
+                                            }
+                                        }}
+                                    >
+                                        Knowledge Base
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'defaults' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'defaults';
+                                            // Lazy load assistant defaults only when tab is clicked
+                                            if (!assistantDefaults) {
+                                                fetchAssistantDefaults();
+                                            }
+                                        }}
+                                    >
+                                        Assistant Defaults
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
+
+                        <!-- General Settings Tab -->
+                        {#if settingsSubView === 'general'}
                         <!-- Signup Settings -->
                         <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
                             <div class="px-4 py-5 sm:p-6">
@@ -2438,7 +2692,10 @@
                                 </div>
                             </div>
                         </div>
+                        {/if}
 
+                        <!-- API Configuration Tab -->
+                        {#if settingsSubView === 'api'}
                         <!-- API Status Overview -->
                         {#if dashboardData && dashboardData.api_status}
                             <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
@@ -2568,7 +2825,7 @@
                                             Configure which models are available to users in your organization
                                         </p>
                                         
-                                        {#if apiSettings.available_models && Object.keys(apiSettings.available_models).length > 0}
+                                        {#if apiSettings.available_models && Object.keys(apiSettings.available_models || {}).length > 0}
                                             {#each Object.entries(apiSettings.available_models) as [providerName, models]}
                                                 <div class="mb-6 border rounded-lg p-4">
                                                     <div class="flex items-center justify-between mb-3">
@@ -2670,7 +2927,191 @@
                                 </div>
                             </div>
                         </div>
+                        {/if}
 
+                        <!-- Knowledge Base Settings Tab -->
+                        {#if settingsSubView === 'kb'}
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Knowledge Base Server</h3>
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Configure the Knowledge Base server connection for RAG (Retrieval-Augmented Generation) functionality.
+                                    Connection will be tested before saving.
+                                </p>
+
+                                <!-- Error Message -->
+                                {#if kbSettingsError}
+                                    <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">Error: </strong>
+                                        <span class="block sm:inline">{kbSettingsError}</span>
+                                    </div>
+                                {/if}
+
+                                <!-- Success Message -->
+                                {#if kbSettingsSuccess}
+                                    <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">Success! </strong>
+                                        <span class="block sm:inline">KB server settings updated successfully.</span>
+                                    </div>
+                                {/if}
+
+                                <!-- Connection Test Result -->
+                                {#if kbTestResult}
+                                    <div class="mb-4 {kbTestResult.success ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'} border px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">{kbTestResult.success ? '✅ Success' : '❌ Failed'}</strong>
+                                        <span class="block sm:inline mt-1">{kbTestResult.message}</span>
+                                        {#if kbTestResult.version}
+                                            <div class="text-sm mt-1">Server Version: {kbTestResult.version}</div>
+                                        {/if}
+                                        {#if kbTestResult.collections_count !== undefined}
+                                            <div class="text-sm">Collections: {kbTestResult.collections_count}</div>
+                                        {/if}
+                                    </div>
+                                {/if}
+
+                                <div class="space-y-4">
+                                    <!-- KB Server URL -->
+                                    <div>
+                                        <label for="kb-url" class="block text-sm font-medium text-gray-700">KB Server URL *</label>
+                                        <input
+                                            type="text"
+                                            id="kb-url"
+                                            bind:value={newKbSettings.url}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                            placeholder="http://kb:9090"
+                                            required
+                                            oninput={() => kbTestResult = null}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            URL of the Knowledge Base server (e.g., http://kb:9090 or http://192.168.1.100:9090)
+                                        </p>
+                                    </div>
+
+                                    <!-- KB Server API Key -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label for="kb-api-key" class="block text-sm font-medium text-gray-700">API Key</label>
+                                            {#if kbSettings.api_key_set}
+                                            <button
+                                                type="button"
+                                                class="text-sm text-brand hover:text-brand-hover"
+                                                onclick={() => showKbApiKey = !showKbApiKey}
+                                            >
+                                                {showKbApiKey ? 'Hide' : 'Show'} API Key
+                                            </button>
+                                            {/if}
+                                        </div>
+                                        <input
+                                            type={showKbApiKey ? 'text' : 'password'}
+                                            id="kb-api-key"
+                                            bind:value={newKbSettings.api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                            placeholder={kbSettings.api_key_set ? '••••••••••••••••' : 'Enter API key'}
+                                            oninput={() => kbTestResult = null}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            {#if kbSettings.api_key_set}
+                                                API key is currently set. {showKbApiKey ? 'You can view it above.' : 'Click "Show API Key" to view or leave empty to keep existing.'}
+                                            {:else}
+                                                Enter the API key for KB server authentication.
+                                            {/if}
+                                        </p>
+                                    </div>
+
+                                    <!-- Advanced Options Checkbox -->
+                                    <div class="flex items-center">
+                                        <input
+                                            id="show-kb-advanced"
+                                            type="checkbox"
+                                            bind:checked={showKbAdvanced}
+                                            class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                        >
+                                        <label for="show-kb-advanced" class="ml-2 block text-sm text-gray-900">
+                                            Show advanced options
+                                        </label>
+                                    </div>
+
+                                    {#if showKbAdvanced}
+                                    <!-- Embedding Model -->
+                                    <div>
+                                        <label for="kb-embedding-model" class="block text-sm font-medium text-gray-700">Embedding Model (Optional)</label>
+                                        <input
+                                            type="text"
+                                            id="kb-embedding-model"
+                                            bind:value={newKbSettings.embedding_model}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                            placeholder="all-MiniLM-L6-v2"
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            Default embedding model for new collections (leave empty for KB server default)
+                                        </p>
+                                    </div>
+
+                                    <!-- Collection Defaults -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Collection Defaults (Optional)</label>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label for="kb-chunk-size" class="block text-xs font-medium text-gray-600">Chunk Size</label>
+                                                <input
+                                                    type="number"
+                                                    id="kb-chunk-size"
+                                                    bind:value={newKbSettings.collection_defaults.chunk_size}
+                                                    class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                                    min="100"
+                                                    max="5000"
+                                                >
+                                            </div>
+                                            <div>
+                                                <label for="kb-chunk-overlap" class="block text-xs font-medium text-gray-600">Chunk Overlap</label>
+                                                <input
+                                                    type="number"
+                                                    id="kb-chunk-overlap"
+                                                    bind:value={newKbSettings.collection_defaults.chunk_overlap}
+                                                    class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                                    min="0"
+                                                    max="1000"
+                                                >
+                                            </div>
+                                        </div>
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            Default chunking parameters for new collections
+                                        </p>
+                                    </div>
+                                    {/if}
+
+                                    <!-- Action Buttons -->
+                                    <div class="flex gap-3">
+                                        <button
+                                            type="button"
+                                            onclick={testKbConnection}
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                                            disabled={isTesting || !newKbSettings.url}
+                                        >
+                                            {isTesting ? '🔄 Testing...' : '🔌 Test Connection'}
+                                        </button>
+                                        <button
+                                            onclick={updateKbSettings}
+                                            class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                                            disabled={isTesting || !newKbSettings.url}
+                                        >
+                                            Update KB Settings
+                                        </button>
+                                    </div>
+
+                                    <p class="mt-2 text-xs text-gray-500">
+                                        💡 <strong>Tip:</strong> You can test the current configuration by clicking "Test Connection" without entering a new API key.
+                                    </p>
+                                    <p class="mt-1 text-xs text-gray-500">
+                                        ⚠️ Connection will be tested automatically before saving. Changes will not be saved if the test fails.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {/if}
+
+                        <!-- Assistant Defaults Tab -->
+                        {#if settingsSubView === 'defaults'}
                         <!-- Assistant Defaults (Organization-Scoped) -->
                         <div class="bg-white overflow-hidden shadow rounded-lg mt-6">
                             <div class="px-4 py-5 sm:p-6">
@@ -2717,6 +3158,7 @@
                                 </div>
                             </div>
                         </div>
+                        {/if}
                     {/if}
                 </div>
             {/if}
