@@ -53,7 +53,7 @@
 
     <!-- Modal Panel -->
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="relative bg-white rounded-lg shadow-xl overflow-hidden max-w-lg w-full border border-gray-300" role="dialog" aria-modal="true" aria-labelledby="modal-title-delete">
+        <div class="relative bg-white rounded-lg shadow-xl overflow-hidden max-w-md w-full border border-gray-300 mx-2" role="dialog" aria-modal="true" aria-labelledby="modal-title-delete" style="word-break:break-word;">
             
             <!-- Modal Header -->
             <div class="bg-red-50 px-4 py-3 sm:px-6 border-b border-red-200 flex items-center">
@@ -67,7 +67,7 @@
 
             <!-- Modal Body -->
             <div class="px-4 py-5 sm:p-6">
-                <p class="text-sm text-gray-700">
+                <p class="text-sm text-gray-700 whitespace-pre-line break-words">
                     {localeLoaded ? $_('assistants.deleteModal.confirmation', { values: { name: assistantName }, default: `Are you sure you want to delete the assistant "${assistantName}"? This action cannot be undone.` }) : `Are you sure you want to delete the assistant "${assistantName}"? This action cannot be undone.`}
                 </p>
                 {#if isDeleting}
@@ -76,12 +76,13 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 flex flex-col-reverse gap-2 sm:flex-row-reverse border-t border-gray-200">
                 <button 
                     type="button" 
                     class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     onclick={handleConfirm}
                     disabled={isDeleting}
+                    style="min-width:100px"
                 >
                      {#if isDeleting}
                         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -93,9 +94,10 @@
                 </button>
                 <button 
                     type="button" 
-                    class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                    class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                     onclick={handleClose}
                     disabled={isDeleting}
+                    style="min-width:100px"
                 >
                     {localeLoaded ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
                 </button>

@@ -14,7 +14,46 @@
   // Import new components and utilities
   import Pagination from './common/Pagination.svelte';
   import FilterBar from './common/FilterBar.svelte';
-  import { processListData } from '$lib/utils/listHelpers';
+    import DeleteConfirmationModal from './modals/DeleteConfirmationModal.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
+
+    // State for the delete confirmation modal
+    let showDeleteModal = $state(false);
+    /** @type {{ id: number|null, name: string, published: boolean }} */
+    let deleteTarget = $state({ id: null, name: '', published: false });
+    let isDeleting = $state(false);
+    // Handler to open the delete confirmation modal
+    function handleDelete(assistant) {
+        deleteTarget = {
+            id: assistant.id,
+            name: assistant.name ?? '',
+            published: !!assistant.published
+        };
+        showDeleteModal = true;
+    }
+
+    // Handler to confirm deletion from the modal
+    async function handleDeleteConfirm() {
+        if (!deleteTarget.id || isDeleting) return;
+        isDeleting = true;
+        try {
+            await deleteAssistant(deleteTarget.id);
+            await loadAllAssistants(); // Refresh the list automatically
+        } catch (err) {
+            console.error('Error deleting assistant:', err);
+            // Optional: show error to user
+        } finally {
+            isDeleting = false;
+            showDeleteModal = false;
+            deleteTarget = { id: null, name: '', published: false };
+        }
+    }
+
+    // Handler to cancel deletion from the modal
+    function handleDeleteCancel() {
+        showDeleteModal = false;
+        deleteTarget = { id: null, name: '', published: false };
+    }
   
   // ✅ CORRECT: Props using $props()
   let { showShared = false } = $props();
@@ -421,12 +460,20 @@
                                     {:else}
                                         <!-- Delete Button (Only show if not published) -->
                                         <button 
-                                            onclick={() => dispatch('delete', { id: assistant.id, name: assistant.name, published: assistant.published })}
+                                            onclick={() => handleDelete(assistant)}
                                             title={localeLoaded ? $_('assistants.actions.delete', { default: 'Delete' }) : 'Delete'} 
                                             class="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-100 transition-colors duration-150"
                                         >
                                             {@html IconDelete}
                                         </button>
+<!-- Delete Confirmation Modal -->
+<DeleteConfirmationModal
+    isOpen={showDeleteModal}
+    assistantName={deleteTarget.name}
+    isDeleting={isDeleting}
+    on:confirm={handleDeleteConfirm}
+    on:close={handleDeleteCancel}
+/>
                                     {/if}
                                 </div>
                                 <div class="text-xs text-gray-400 mt-2">ID: {assistant.id}</div>
