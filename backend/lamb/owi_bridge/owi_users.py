@@ -43,12 +43,12 @@ pwd_context = CryptContext(
 
 class OwiUserManager:
     def __init__(self):
+        import config
         self.db = OwiDatabaseManager()
-        self.OWI_BASE_URL = os.getenv("OWI_BASE_URL", "http://localhost:8080")
+        self.OWI_BASE_URL = config.OWI_BASE_URL
         self.OWI_API_BASE_URL = self.OWI_BASE_URL+"/api/v1"
         # Public-facing base URL to hand back to browsers. Falls back to internal base if not provided.
-        self.OWI_PUBLIC_BASE_URL = os.getenv(
-            "OWI_PUBLIC_BASE_URL", self.OWI_BASE_URL)
+        self.OWI_PUBLIC_BASE_URL = config.OWI_PUBLIC_BASE_URL
         self.OWI_PUBLIC_API_BASE_URL = self.OWI_PUBLIC_BASE_URL+"/api/v1"
         # this will ensure that the admin user is created
         self.admin_token = self.get_admin_user_token()
@@ -130,9 +130,10 @@ class OwiUserManager:
         return f"{self.OWI_PUBLIC_API_BASE_URL}/auths/complete?token={token}"
 
     def get_admin_user_token(self) -> str:
-        admin_email = os.getenv("OWI_ADMIN_EMAIL", "admin@owi.com")
-        admin_name = os.getenv("OWI_ADMIN_NAME", "Admin User")
-        admin_password = os.getenv("OWI_ADMIN_PASSWORD", "admin")
+        import config
+        admin_email = config.OWI_ADMIN_EMAIL
+        admin_name = config.OWI_ADMIN_NAME
+        admin_password = config.OWI_ADMIN_PASSWORD
         # check if the admin user exists
         user = self.get_user_by_email(admin_email)
         if not user:

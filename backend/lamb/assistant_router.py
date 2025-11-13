@@ -10,6 +10,7 @@ from .lamb_classes import Assistant
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from config import API_KEY  # Import API_KEY from config
+import config
 from .owi_bridge.owi_group import OwiGroupManager
 from .owi_bridge.owi_users import OwiUserManager
 from .owi_bridge.owi_model import OWIModel
@@ -406,7 +407,7 @@ async def soft_delete_assistant(
     2. If published, removing all users from associated group
     """
     try:
-        admin_email = os.getenv("OWI_ADMIN_EMAIL", "admin@owi.com")
+        admin_email = config.OWI_ADMIN_EMAIL
         # First get the assistant to verify it exists
         assistant = db_manager.get_assistant_by_id(assistant_id)
         if not assistant:
@@ -482,7 +483,7 @@ async def query_rag(collection_name: str, query: str, k: int = 5) -> Dict[str, A
     Returns:
         Dict containing context and sources
     """
-    OWI_BASE_URL = os.getenv('OWI_BASE_URL', 'http://localhost:8080')
+    OWI_BASE_URL = config.OWI_BASE_URL
     user_manager = OwiUserManager()
     api_token = user_manager.get_admin_user_token()
 

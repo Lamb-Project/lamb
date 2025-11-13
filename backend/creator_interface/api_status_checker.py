@@ -99,7 +99,8 @@ class APIStatusChecker:
             Status information for OpenAI
         """
         api_key = config.get("api_key")
-        base_url = config.get("base_url", "https://api.openai.com/v1")
+        import config as app_config
+        base_url = config.get("base_url") or app_config.OPENAI_BASE_URL
         
         if not api_key:
             return {

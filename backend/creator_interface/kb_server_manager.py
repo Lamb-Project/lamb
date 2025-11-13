@@ -19,7 +19,9 @@ load_dotenv()
 
 # Get environment variables
 LAMB_KB_SERVER = os.getenv('LAMB_KB_SERVER', None)
-LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN', '0p3n-w3bu!')
+LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
+if not LAMB_KB_SERVER_TOKEN:
+    raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")
 
 # Check if KB server is configured
 KB_SERVER_CONFIGURED = LAMB_KB_SERVER is not None and LAMB_KB_SERVER.strip() != ''
@@ -50,9 +52,11 @@ class KBServerManager:
         user_email = creator_user.get('email')
         if not user_email:
             logger.warning("No email in creator_user, falling back to global KB config")
+            if not self.global_kb_server_url:
+                raise ValueError("LAMB_KB_SERVER environment variable is required")
             return {
-                'url': self.global_kb_server_url or 'http://localhost:9090',
-                'token': self.global_kb_server_token or '0p3n-w3bu!'
+                'url': self.global_kb_server_url,
+                'token': self.global_kb_server_token
             }
         
         try:
@@ -63,9 +67,12 @@ class KBServerManager:
             if kb_config and kb_config.get('server_url'):
                 org_name = config_resolver.organization.get('name', 'Unknown')
                 logger.info(f"Using organization-specific KB config for user {user_email} (org: {org_name})")
+                api_token = kb_config.get('api_token')
+                if not api_token:
+                    api_token = self.global_kb_server_token
                 return {
                     'url': kb_config.get('server_url'),
-                    'token': kb_config.get('api_token', '0p3n-w3bu!')
+                    'token': api_token
                 }
             else:
                 logger.info(f"No organization KB config for {user_email}, using global config")
@@ -74,9 +81,11 @@ class KBServerManager:
             logger.warning(f"Error resolving organization KB config for {user_email}: {e}, falling back to global")
         
         # Fallback to global environment variables
+        if not self.global_kb_server_url:
+            raise ValueError("LAMB_KB_SERVER environment variable is required")
         return {
-            'url': self.global_kb_server_url or 'http://localhost:9090',
-            'token': self.global_kb_server_token or '0p3n-w3bu!'
+            'url': self.global_kb_server_url,
+            'token': self.global_kb_server_token
         }
         
     async def is_kb_server_available(self, creator_user: Dict[str, Any] = None):

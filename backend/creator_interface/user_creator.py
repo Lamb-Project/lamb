@@ -188,7 +188,8 @@ class UserCreatorManager:
                 # If verification failed, check if this is the admin user trying to log in
                 if response.status_code != 200:
                     # Check if this is the admin user from OWI
-                    admin_email = os.getenv("OWI_ADMIN_EMAIL", "admin@owi.com")
+                    import config
+                    admin_email = config.OWI_ADMIN_EMAIL
                     
                     if email == admin_email:
                         print(f"Admin user {email} attempted login but is not a creator user. Checking OWI credentials...")

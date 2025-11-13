@@ -26,9 +26,10 @@ def get_available_llms(assistant_owner: Optional[str] = None):
             logger.info("OPENAI_ENABLED is false, skipping model list fetch")
             return []
         
-        models = os.getenv("OPENAI_MODELS", "gpt-4o-mini")
+        import config
+        models = os.getenv("OPENAI_MODELS") or config.OPENAI_MODEL
         if not models:
-            return [os.getenv("OPENAI_MODEL", "gpt-4o-mini")]
+            return [os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL]
         return [model.strip() for model in models.split(",") if model.strip()]
     
     # Use organization-specific configuration
@@ -42,7 +43,8 @@ def get_available_llms(assistant_owner: Optional[str] = None):
             
         models = openai_config.get("models", [])
         if not models:
-            models = [openai_config.get("default_model", "gpt-4o-mini")]
+            import config
+            models = [openai_config.get("default_model") or config.OPENAI_MODEL]
             
         return models
     except Exception as e:
@@ -109,7 +111,7 @@ Args:
                            Defaults to None.
     llm (str, optional): The specific LLM model to use (e.g., 'gpt-4o').
                          If None, it defaults to the value of the OPENAI_MODEL
-                         environment variable or 'gpt-4o-mini'. Defaults to None.
+                         environment variable or OPENAI_MODEL env var. Defaults to None.
 
 Returns:
     Generator: If `stream=True`, a generator yielding SSE formatted chunks
@@ -119,7 +121,8 @@ Returns:
     # Get organization-specific configuration
     api_key = None
     base_url = None
-    default_model = "gpt-4o-mini"
+    import config
+    default_model = config.OPENAI_MODEL
     org_name = "Unknown"
     config_source = "env_vars"
     
@@ -132,7 +135,8 @@ Returns:
             if openai_config:
                 api_key = openai_config.get("api_key")
                 base_url = openai_config.get("base_url")
-                default_model = openai_config.get("default_model", "gpt-4o-mini")
+                import config
+                default_model = openai_config.get("default_model") or config.OPENAI_MODEL
                 config_source = "organization"
                 print(f"🏢 [OpenAI] Using organization: '{org_name}' (owner: {assistant_owner})")
                 logger.info(f"Using organization config for {assistant_owner} (org: {org_name})")
@@ -147,7 +151,8 @@ Returns:
     if not api_key:
         api_key = os.getenv("OPENAI_API_KEY")
         base_url = os.getenv("OPENAI_BASE_URL")
-        default_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        import config
+        default_model = os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
         if not assistant_owner:
             print(f"🔧 [OpenAI] Using environment variable configuration (no assistant owner provided)")
         else:

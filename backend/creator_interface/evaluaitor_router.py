@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse, JSONResponse, Response
 
 from creator_interface.assistant_router import get_creator_user_from_token
 from .user_creator import UserCreatorManager
+import config
 
 # Initialize security context for dependency injection
 security = HTTPBearer()
@@ -23,8 +24,7 @@ security = HTTPBearer()
 router = APIRouter()
 
 # Get configuration for LAMB backend URL
-import os
-LAMB_BACKEND_URL = os.getenv("LAMB_BACKEND_HOST", "http://localhost:9099")
+LAMB_BACKEND_URL = config.LAMB_BACKEND_HOST
 
 
 # Dependency functions

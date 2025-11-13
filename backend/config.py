@@ -11,15 +11,20 @@ DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'false'
 # LAMB_WEB_HOST: External/public URL for browser-side requests (e.g., https://lamb.yourdomain.com in production)
 # LAMB_BACKEND_HOST: Internal loopback URL for server-side requests (e.g., http://localhost:9099)
 # PIPELINES_HOST: Legacy variable, falls back to LAMB_WEB_HOST for backward compatibility
-LAMB_WEB_HOST = os.getenv('LAMB_WEB_HOST', os.getenv('PIPELINES_HOST', 'http://localhost:9099'))
-LAMB_BACKEND_HOST = os.getenv('LAMB_BACKEND_HOST', 'http://localhost:9099')
+LAMB_WEB_HOST = os.getenv('LAMB_WEB_HOST') or os.getenv('PIPELINES_HOST')
+if not LAMB_WEB_HOST:
+    raise ValueError("LAMB_WEB_HOST or PIPELINES_HOST environment variable is required")
+LAMB_BACKEND_HOST = os.getenv('LAMB_BACKEND_HOST')
+if not LAMB_BACKEND_HOST:
+    raise ValueError("LAMB_BACKEND_HOST environment variable is required")
 LAMB_HOST = LAMB_WEB_HOST  # Legacy alias for backward compatibility
 
 # Get the token from environment and strip any whitespace
 # LAMB_BEARER_TOKEN is the new variable name, PIPELINES_BEARER_TOKEN is kept for backward compatibility
-lamb_token = os.getenv('LAMB_BEARER_TOKEN', os.getenv('PIPELINES_BEARER_TOKEN', '0p3n-w3bu!'))
-if lamb_token:
-    lamb_token = lamb_token.strip()
+lamb_token = os.getenv('LAMB_BEARER_TOKEN') or os.getenv('PIPELINES_BEARER_TOKEN')
+if not lamb_token:
+    raise ValueError("LAMB_BEARER_TOKEN or PIPELINES_BEARER_TOKEN environment variable is required")
+lamb_token = lamb_token.strip()
 
 LAMB_BEARER_TOKEN = lamb_token
 PIPELINES_BEARER_TOKEN = lamb_token  # Legacy alias for backward compatibility
@@ -27,21 +32,31 @@ PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./lamb_assistants")
  
 API_KEY = lamb_token
 # Ollama Configuration
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.1:latest')
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+if not OLLAMA_BASE_URL:
+    raise ValueError("OLLAMA_BASE_URL environment variable is required")
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
+if not OLLAMA_MODEL:
+    raise ValueError("OLLAMA_MODEL environment variable is required")
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4-mini')
+OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
+if not OPENAI_BASE_URL:
+    raise ValueError("OPENAI_BASE_URL environment variable is required")
+OPENAI_MODEL = os.getenv('OPENAI_MODEL')
+if not OPENAI_MODEL:
+    raise ValueError("OPENAI_MODEL environment variable is required")
 
 # Openwebui Authentication
 OWI_PATH = os.getenv('OWI_PATH')
 # OWI_BASE_URL: Internal URL for backend-to-OpenWebUI API calls
-OWI_BASE_URL = os.getenv('OWI_BASE_URL', 'http://localhost:8080')
+OWI_BASE_URL = os.getenv('OWI_BASE_URL')
+if not OWI_BASE_URL:
+    raise ValueError("OWI_BASE_URL environment variable is required")
 # OWI_PUBLIC_BASE_URL: Public URL for browser-facing redirects and login URLs
 # Falls back to OWI_BASE_URL if not explicitly set
-OWI_PUBLIC_BASE_URL = os.getenv('OWI_PUBLIC_BASE_URL', OWI_BASE_URL)
+OWI_PUBLIC_BASE_URL = os.getenv('OWI_PUBLIC_BASE_URL') or OWI_BASE_URL
 CHROMA_PATH = os.path.join(OWI_PATH, "vector_db") 
 
 # Database Configuration
@@ -54,12 +69,20 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # Signup Configuration
 SIGNUP_ENABLED = os.getenv('SIGNUP_ENABLED', 'false').lower() == 'true'
-SIGNUP_SECRET_KEY = os.getenv('SIGNUP_SECRET_KEY',"pepino-secret-key")
+SIGNUP_SECRET_KEY = os.getenv('SIGNUP_SECRET_KEY')
+if not SIGNUP_SECRET_KEY:
+    raise ValueError("SIGNUP_SECRET_KEY environment variable is required")
 
 # OWI Admin Configuration
-OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME', 'Admin')
-OWI_ADMIN_EMAIL = os.getenv('OWI_ADMIN_EMAIL', 'admin@lamb.com')
-OWI_ADMIN_PASSWORD = os.getenv('OWI_ADMIN_PASSWORD', 'admin')
+OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME')
+if not OWI_ADMIN_NAME:
+    raise ValueError("OWI_ADMIN_NAME environment variable is required")
+OWI_ADMIN_EMAIL = os.getenv('OWI_ADMIN_EMAIL')
+if not OWI_ADMIN_EMAIL:
+    raise ValueError("OWI_ADMIN_EMAIL environment variable is required")
+OWI_ADMIN_PASSWORD = os.getenv('OWI_ADMIN_PASSWORD')
+if not OWI_ADMIN_PASSWORD:
+    raise ValueError("OWI_ADMIN_PASSWORD environment variable is required")
 
 # Validate required environment variables
 required_vars = ['LAMB_DB_PATH', 'OWI_PATH']

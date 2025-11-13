@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 
 # Get configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
-PIPELINES_HOST = config.LAMB_BACKEND_HOST or "http://localhost:9099"
-LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN or "0p3n-w3bu!"
+PIPELINES_HOST = config.LAMB_BACKEND_HOST
+LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN
 
 # Organization Admin Authorization Helpers
 def get_user_organization_admin_info(auth_header: str) -> Optional[Dict[str, Any]]:
@@ -1440,8 +1440,8 @@ class OrgAdminApiSettings(BaseModel):
     model_config = {"protected_namespaces": ()}
 
     openai_api_key: Optional[str] = Field(None, description="OpenAI API key")
-    openai_base_url: Optional[str] = Field(None, description="OpenAI API base URL (default: https://api.openai.com/v1)")
-    ollama_base_url: Optional[str] = Field(None, description="Ollama server base URL (default: http://localhost:11434)")
+    openai_base_url: Optional[str] = Field(None, description="OpenAI API base URL (from OPENAI_BASE_URL env var)")
+    ollama_base_url: Optional[str] = Field(None, description="Ollama server base URL (from OLLAMA_BASE_URL env var)")
     available_models: Optional[List[str]] = Field(None, description="List of available models (deprecated)")
     model_limits: Optional[Dict[str, Any]] = Field(None, description="Model usage limits")
     selected_models: Optional[Dict[str, List[str]]] = Field(None, description="Selected models per provider")
@@ -2504,8 +2504,8 @@ async def get_api_settings(request: Request, org: Optional[str] = None):
         
         return {
             "openai_api_key_set": bool(providers.get('openai', {}).get('api_key')),
-            "openai_base_url": providers.get('openai', {}).get('base_url', 'https://api.openai.com/v1'),
-            "ollama_base_url": providers.get('ollama', {}).get('base_url', 'http://localhost:11434'),
+            "openai_base_url": providers.get('openai', {}).get('base_url') or config.OPENAI_BASE_URL,
+            "ollama_base_url": providers.get('ollama', {}).get('base_url') or config.OLLAMA_BASE_URL,
             "available_models": available_models,
             "selected_models": selected_models,
             "default_models": default_models,

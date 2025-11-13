@@ -13,6 +13,7 @@ import hmac
 import hashlib
 import base64
 import urllib.parse
+import config
 
 router = APIRouter()
 db_manager = LambDatabaseManager()
@@ -378,7 +379,7 @@ async def process_lti_connection(request: Request):
                 f"Successfully retrieved token for existing user: {email}")
 
             # Get the OWI PUBLIC base URL for browser redirects (falls back to internal URL if not set)
-            owi_public_base_url = os.getenv("OWI_PUBLIC_BASE_URL", os.getenv("OWI_BASE_URL", "http://localhost:8080"))
+            owi_public_base_url = os.getenv("OWI_PUBLIC_BASE_URL") or os.getenv("OWI_BASE_URL") or config.OWI_PUBLIC_BASE_URL
             owi_public_api_base_url = f"{owi_public_base_url}/api/v1"
 
             # Redirect to the completion URL with the token
@@ -415,7 +416,7 @@ async def process_lti_connection(request: Request):
                 f"Successfully created new user and retrieved token: {email}")
 
             # Get the OWI PUBLIC base URL for browser redirects (falls back to internal URL if not set)
-            owi_public_base_url = os.getenv("OWI_PUBLIC_BASE_URL", os.getenv("OWI_BASE_URL", "http://localhost:8080"))
+            owi_public_base_url = os.getenv("OWI_PUBLIC_BASE_URL") or os.getenv("OWI_BASE_URL") or config.OWI_PUBLIC_BASE_URL
             owi_public_api_base_url = f"{owi_public_base_url}/api/v1"
 
             # Redirect to the completion URL with the token

@@ -107,7 +107,8 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     
     # Fallback to environment variables
     if not base_url:
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        import config
+        base_url = os.getenv("OLLAMA_BASE_URL") or config.OLLAMA_BASE_URL
         if not assistant_owner:
             print(f"🔧 [Ollama] Using environment variable configuration (no assistant owner provided)")
         else:

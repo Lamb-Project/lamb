@@ -19,7 +19,8 @@ class OpenAIConnector:
             api_key=os.getenv('OPENAI_API_KEY'),
             base_url=os.getenv('OPENAI_BASE_URL')
         )
-        self.model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+        import config
+        self.model = os.getenv('OPENAI_MODEL') or config.OPENAI_MODEL
 
     async def generate_assistant_description(self, assistant_data: Dict[str, Any]) -> str:
         """

@@ -117,8 +117,11 @@ def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None) -
     
     # Fallback to environment variables
     if not KB_SERVER_URL:
-        KB_SERVER_URL = os.getenv('LAMB_KB_SERVER', 'http://localhost:9090')
-        KB_API_KEY = os.getenv('LAMB_KB_SERVER_TOKEN', '0p3n-w3bu!')
+        import config
+        KB_SERVER_URL = os.getenv('LAMB_KB_SERVER')
+        if not KB_SERVER_URL:
+            raise ValueError("LAMB_KB_SERVER environment variable is required")
+        KB_API_KEY = os.getenv('LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
         print(f"🔧 [RAG/KB] Using environment variable configuration (fallback for {assistant.owner})")
         logger.info("Using environment variable KB configuration")
 

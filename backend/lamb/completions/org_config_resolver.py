@@ -10,6 +10,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from lamb.database_manager import LambDatabaseManager
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,8 @@ class OrganizationConfigResolver:
         # Fallback to env vars for system org
         if not kb_config and self.organization.get('is_system', False):
             kb_config = {
-                "server_url": os.getenv('LAMB_KB_SERVER', 'http://localhost:9090'),
-                "api_token": os.getenv('LAMB_KB_SERVER_TOKEN', '0p3n-w3bu!')
+                "server_url": os.getenv('LAMB_KB_SERVER') or (config.OWI_BASE_URL.replace(':8080', ':9090') if hasattr(config, 'OWI_BASE_URL') else None),
+                "api_token": os.getenv('LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
             }
             
         return kb_config
@@ -120,23 +121,23 @@ class OrganizationConfigResolver:
     
     def _load_openai_from_env(self) -> Dict[str, Any]:
         """Load OpenAI configuration from environment variables"""
-        config = {}
+        provider_config = {}
         
         if os.getenv("OPENAI_API_KEY"):
-            config["api_key"] = os.getenv("OPENAI_API_KEY")
-            config["base_url"] = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            provider_config["api_key"] = os.getenv("OPENAI_API_KEY")
+            provider_config["base_url"] = os.getenv("OPENAI_BASE_URL") or config.OPENAI_BASE_URL
             
             # Handle models
             models_str = os.getenv("OPENAI_MODELS", "")
             if models_str:
-                config["models"] = [m.strip() for m in models_str.split(",") if m.strip()]
+                provider_config["models"] = [m.strip() for m in models_str.split(",") if m.strip()]
             else:
-                config["models"] = [os.getenv("OPENAI_MODEL", "gpt-4o-mini")]
+                provider_config["models"] = [os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL]
                 
-            config["default_model"] = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            config["enabled"] = os.getenv("OPENAI_ENABLED", "true").lower() == "true"
+            provider_config["default_model"] = os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
+            provider_config["enabled"] = os.getenv("OPENAI_ENABLED", "true").lower() == "true"
             
-        return config
+        return provider_config
     
     def _load_ollama_from_env(self) -> Dict[str, Any]:
         """Load Ollama configuration from environment variables"""

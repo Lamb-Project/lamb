@@ -267,8 +267,9 @@ async def list_user_rubrics(
     GET /lamb/v1/evaluaitor/rubrics
     """
     try:
-        # For testing, use hardcoded admin user
-        owner_email = "admin@owi.com"
+        # For testing, use admin user from config
+        import config
+        owner_email = config.OWI_ADMIN_EMAIL
         logger.info(f"Listing rubrics for hardcoded user: {owner_email}")
 
         # Build filters
@@ -504,8 +505,9 @@ async def get_rubric(
     GET /lamb/v1/evaluaitor/rubrics/{rubric_id}
     """
     try:
-        # For testing, use hardcoded admin user
-        owner_email = "admin@owi.com"
+        # For testing, use admin user from config
+        import config
+        owner_email = config.OWI_ADMIN_EMAIL
         logger.info(f"Getting rubric {rubric_id} for hardcoded user: {owner_email}")
 
         # Get rubric with access control (simplified for testing)
@@ -1154,8 +1156,9 @@ async def generate_rubric_with_ai(prompt: str, organization_id: int, user_email:
             return RubricValidator.generate_default_rubric("AI Generated Rubric")
 
         api_key = openai_config.get("api_key")
-        base_url = openai_config.get("base_url", "https://api.openai.com/v1")
-        model = openai_config.get("default_model", "gpt-4o-mini")
+        import config
+        base_url = openai_config.get("base_url") or config.OPENAI_BASE_URL
+        model = openai_config.get("default_model") or config.OPENAI_MODEL
         logger.info(f"Using OpenAI config: base_url={base_url}, model={model}, has_api_key={bool(api_key)}")
 
         if not api_key:
@@ -1346,8 +1349,9 @@ async def modify_rubric_with_ai(
             return existing_rubric
 
         api_key = openai_config.get("api_key")
-        base_url = openai_config.get("base_url", "https://api.openai.com/v1")
-        model = openai_config.get("default_model", "gpt-4o-mini")
+        import config
+        base_url = openai_config.get("base_url") or config.OPENAI_BASE_URL
+        model = openai_config.get("default_model") or config.OPENAI_MODEL
 
         if not api_key:
             logger.warning(f"No OpenAI API key found for user {user_email}, returning original rubric")

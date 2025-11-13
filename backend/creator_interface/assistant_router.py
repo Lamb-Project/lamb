@@ -28,8 +28,8 @@ from utils.name_sanitizer import sanitize_assistant_name_with_prefix
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
-PIPELINES_HOST = config.LAMB_BACKEND_HOST or "http://localhost:9099"
-LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN or "your-bearer-token"
+PIPELINES_HOST = config.LAMB_BACKEND_HOST
+LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN
 
 # --- Pydantic Models for Assistant Router --- #
 
@@ -145,7 +145,7 @@ logger.setLevel(logging.INFO)
 load_dotenv()
 
 # Get environment variables
-LAMB_HOST = os.getenv('LAMB_HOST', 'http://localhost:9099')
+LAMB_HOST = config.LAMB_WEB_HOST
 # Note: LAMB_BEARER_TOKEN is configured in config.py and imported at the top
 router = APIRouter()
 

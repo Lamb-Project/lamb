@@ -41,8 +41,9 @@ class AIRubricGenerator:
             raise ValueError("OpenAI configuration not found for organization")
         
         self.api_key = openai_config.get("api_key")
-        self.base_url = openai_config.get("base_url", "https://api.openai.com/v1")
-        self.default_model = openai_config.get("default_model", "gpt-4o-mini")
+        import config
+        self.base_url = openai_config.get("base_url") or config.OPENAI_BASE_URL
+        self.default_model = openai_config.get("default_model") or config.OPENAI_MODEL
         
         if not self.api_key:
             raise ValueError("OpenAI API key not configured for organization")

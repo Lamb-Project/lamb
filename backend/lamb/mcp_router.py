@@ -23,7 +23,8 @@ router = APIRouter(tags=["MCP"])
 db_manager = LambDatabaseManager()
 
 # Get LTI secret from environment
-LTI_SECRET = os.getenv('LTI_SECRET', 'pepino-secret-key')
+import config
+LTI_SECRET = os.getenv('LTI_SECRET') or config.SIGNUP_SECRET_KEY
 
 logging.basicConfig(level=logging.DEBUG)
 

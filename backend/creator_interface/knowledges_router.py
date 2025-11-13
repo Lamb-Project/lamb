@@ -173,11 +173,16 @@ logger.setLevel(logging.INFO)
 # Load environment variables
 load_dotenv()
 
+# Import config module
+import config
+
 # Get environment variables
-LAMB_HOST = os.getenv('LAMB_HOST', 'http://localhost:9099')
+LAMB_HOST = config.LAMB_WEB_HOST
 # Note: LAMB_BEARER_TOKEN is configured in config.py
 LAMB_KB_SERVER = os.getenv('LAMB_KB_SERVER', None)
-LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN', '0p3n-w3bu!')
+LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
+if not LAMB_KB_SERVER_TOKEN:
+    raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")
 
 # Check if KB server is configured
 KB_SERVER_CONFIGURED = LAMB_KB_SERVER is not None and LAMB_KB_SERVER.strip() != ''

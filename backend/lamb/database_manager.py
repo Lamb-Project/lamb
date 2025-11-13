@@ -667,9 +667,9 @@ class LambDatabaseManager:
         if os.getenv("OPENAI_API_KEY"):
             providers["openai"] = {
                 "api_key": os.getenv("OPENAI_API_KEY"),
-                "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                "base_url": os.getenv("OPENAI_BASE_URL") or config.OPENAI_BASE_URL,
                 "models": os.getenv("OPENAI_MODELS", "").split(",") if os.getenv("OPENAI_MODELS") else [],
-                "default_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+                "default_model": os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
             }
         
         # Ollama configuration
