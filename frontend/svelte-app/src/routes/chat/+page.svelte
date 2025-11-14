@@ -1,6 +1,7 @@
 <script>
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
+	import { getLambApiUrl } from '$lib/config';
 	
 	/**
 	 * @typedef {Object} Message
@@ -29,8 +30,8 @@
 	/** @type {HTMLElement | null} */
 	let chatContainer = $state(null);
 	
-	// API base URL
-	const API_URL = 'http://localhost:9099';
+	// API base URL - get from config
+	const API_URL = getLambApiUrl('/v1');
 	const API_KEY = '0p3n-w3bu!';
 	
 	/**

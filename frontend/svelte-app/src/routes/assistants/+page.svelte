@@ -15,7 +15,7 @@
     import { goto } from '$app/navigation'; // <<< Add import for goto
     import { base } from '$app/paths'; // <<< Add import for base path
     import { writable } from 'svelte/store'; // Import from svelte/store instead of type import
-    import { getConfig } from '$lib/config'; // <<< Import config helper
+    import { getConfig, getLambApiUrl } from '$lib/config'; // <<< Import config helper
     import { browser } from '$app/environment'; // <<< Import browser
 
     // --- State Management --- 
@@ -720,7 +720,7 @@
     async function checkSharingPermission() {
         try {
             const response = await fetch(
-                'http://localhost:9099/lamb/v1/assistant-sharing/check-permission',
+                getLambApiUrl('/lamb/v1/assistant-sharing/check-permission'),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`
@@ -747,7 +747,7 @@
         
         try {
             const response = await fetch(
-                `http://localhost:9099/lamb/v1/assistant-sharing/shares/${selectedAssistantData.id}`,
+                getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${selectedAssistantData.id}`),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`

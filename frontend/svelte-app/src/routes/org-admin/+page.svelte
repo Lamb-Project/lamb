@@ -12,6 +12,7 @@
     // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
     import { processListData } from '$lib/utils/listHelpers';
+    import { getLambApiUrl } from '$lib/config';
 
     // Get user data  
     /** @type {any} */
@@ -657,7 +658,7 @@
             }
 
             const response = await axios.put(
-                `http://localhost:9099/lamb/v1/assistant-sharing/user-permission/${user.id}?can_share=${canShare}`,
+                `${getLambApiUrl(`/lamb/v1/assistant-sharing/user-permission/${user.id}`)}?can_share=${canShare}`,
                 {},
                 {
                     headers: {
@@ -1133,7 +1134,7 @@
         for (const assistant of orgAssistants) {
             try {
                 const response = await axios.get(
-                    `http://localhost:9099/lamb/v1/assistant-sharing/shares/${assistant.id}`,
+                    getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${assistant.id}`),
                     {
                         headers: {
                             'Authorization': `Bearer ${$user.token}`

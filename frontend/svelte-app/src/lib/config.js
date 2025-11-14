@@ -46,5 +46,20 @@ export function getApiUrl(endpoint) {
     return `${base.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
 }
 
+/**
+ * Gets the full API URL for a given endpoint path UNDER the /lamb base.
+ * This is used for endpoints that are not under /creator (e.g., /lamb/v1/*).
+ * @param {string} endpoint - The API endpoint path (e.g., '/lamb/v1/assistant-sharing/check-permission').
+ * @returns {string} The full API URL using lambServer config.
+ */
+export function getLambApiUrl(endpoint) {
+    const config = getConfig();
+    const baseUrl = config?.api?.lambServer || defaultConfig.api.lambServer;
+    // Ensure no double slashes
+    const cleanBase = baseUrl.replace(/\/$/, '');
+    const cleanEndpoint = endpoint.replace(/^\//, '');
+    return `${cleanBase}/${cleanEndpoint}`;
+}
+
 // You might export other config values if needed
 // export const API_CONFIG = getConfig().api; 
