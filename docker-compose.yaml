@@ -42,7 +42,9 @@ services:
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     command: >
-      sh -lc "npm install && npm run build"
+      sh -lc "apk add --no-cache git && \
+      git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
+      npm install && npm run build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
