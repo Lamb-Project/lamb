@@ -3049,8 +3049,8 @@
                                     </div>
 
                                     <!-- Collection Defaults -->
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Collection Defaults (Optional)</label>
+                                    <fieldset class="mb-2">
+                                        <legend class="block text-sm font-medium text-gray-700 mb-2">Collection Defaults (Optional)</legend>
                                         <div class="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label for="kb-chunk-size" class="block text-xs font-medium text-gray-600">Chunk Size</label>
@@ -3078,7 +3078,7 @@
                                         <p class="mt-1 text-sm text-gray-500">
                                             Default chunking parameters for new collections
                                         </p>
-                                    </div>
+                                    </fieldset>
                                     {/if}
 
                                     <!-- Action Buttons -->
