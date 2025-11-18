@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Dict, Any, AsyncGenerator
+from typing import Dict, Any, AsyncGenerator, Optional
 
 def get_available_llms():
     """
@@ -22,9 +22,16 @@ def format_conversation_response(messages: list) -> str:
     """Format all messages as a conversation"""
     return "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None):
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None):
     """
     Bypass connector that returns OpenAI-compatible responses
+    
+    Args:
+        messages: List of message dictionaries
+        stream: Whether to stream the response
+        body: Additional request parameters
+        llm: Model name (unused for bypass)
+        assistant_owner: Assistant owner email (unused for bypass, but required for interface compatibility)
     """
     # Determine content based on LLM type
     content = "This is a bypass response"  # default

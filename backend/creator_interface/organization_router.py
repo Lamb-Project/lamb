@@ -2827,12 +2827,39 @@ async def test_kb_connection(
                 health_data = health_response.json()
                 
                 # Test 2: Collections endpoint (verifies API key)
+                # Use an endpoint that requires authentication to properly validate the API key
+                # Try /api/collections first, if that doesn't work, try /database/status
                 collections_response = await client.get(
                     f"{url}/api/collections",
                     headers={"Authorization": f"Bearer {api_key_to_test}"}
                 )
                 
-                if collections_response.status_code == 401:
+                # If collections endpoint returns 404, try database/status as alternative auth test
+                if collections_response.status_code == 404:
+                    # Try alternative endpoint that requires auth
+                    db_status_response = await client.get(
+                        f"{url}/database/status",
+                        headers={"Authorization": f"Bearer {api_key_to_test}"}
+                    )
+                    
+                    if db_status_response.status_code == 401:
+                        return {
+                            "success": False,
+                            "message": "API key authentication failed - invalid key"
+                        }
+                    elif db_status_response.status_code == 403:
+                        return {
+                            "success": False,
+                            "message": "API key authentication failed - insufficient permissions"
+                        }
+                    elif db_status_response.status_code != 200:
+                        return {
+                            "success": False,
+                            "message": f"API key validation failed (status: {db_status_response.status_code})"
+                        }
+                    # If database/status returns 200, API key is valid
+                    # Collections endpoint might not exist or return 404 for empty collections
+                elif collections_response.status_code == 401:
                     return {
                         "success": False,
                         "message": "API key authentication failed - invalid key"
@@ -2842,21 +2869,24 @@ async def test_kb_connection(
                         "success": False,
                         "message": "API key authentication failed - insufficient permissions"
                     }
-                elif collections_response.status_code not in [200, 404]:
+                elif collections_response.status_code != 200:
                     return {
                         "success": False,
                         "message": f"API endpoint test failed (status: {collections_response.status_code})"
                     }
                 
-                # Success - extract info
-                collections_data = collections_response.json() if collections_response.status_code == 200 else {}
-                collections_count = len(collections_data.get('collections', []))
+                # Success - extract info (only if collections endpoint returned 200)
+                collections_data = {}
+                if collections_response.status_code == 200:
+                    try:
+                        collections_data = collections_response.json()
+                    except:
+                        pass
                 
                 return {
                     "success": True,
                     "message": "Successfully connected to KB server",
-                    "version": health_data.get('version', 'unknown'),
-                    "collections_count": collections_count
+                    "version": health_data.get('version', 'unknown')
                 }
                 
         except httpx.TimeoutException:
@@ -2957,12 +2987,37 @@ async def update_kb_settings(
                     )
                 
                 # Test collections endpoint (verifies API key)
+                # Use an endpoint that requires authentication to properly validate the API key
                 collections_response = await client.get(
                     f"{url}/api/collections",
                     headers={"Authorization": f"Bearer {api_key_to_test}"}
                 )
                 
-                if collections_response.status_code == 401:
+                # If collections endpoint returns 404, try database/status as alternative auth test
+                if collections_response.status_code == 404:
+                    # Try alternative endpoint that requires auth
+                    db_status_response = await client.get(
+                        f"{url}/database/status",
+                        headers={"Authorization": f"Bearer {api_key_to_test}"}
+                    )
+                    
+                    if db_status_response.status_code == 401:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="API key authentication failed - invalid key"
+                        )
+                    elif db_status_response.status_code == 403:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="API key authentication failed - insufficient permissions"
+                        )
+                    elif db_status_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"API key validation failed (status: {db_status_response.status_code})"
+                        )
+                    # If database/status returns 200, API key is valid
+                elif collections_response.status_code == 401:
                     raise HTTPException(
                         status_code=400,
                         detail="API key authentication failed - invalid key"
@@ -2972,7 +3027,7 @@ async def update_kb_settings(
                         status_code=400,
                         detail="API key authentication failed - insufficient permissions"
                     )
-                elif collections_response.status_code not in [200, 404]:
+                elif collections_response.status_code != 200:
                     raise HTTPException(
                         status_code=400,
                         detail=f"API endpoint test failed (status: {collections_response.status_code})"

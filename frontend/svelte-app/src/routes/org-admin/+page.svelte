@@ -1545,8 +1545,18 @@
             kbSettingsSuccess = true;
             addPendingChange('KB server settings updated');
             
+            // Preserve the API key that was just saved (if any) before reloading
+            const savedApiKey = newKbSettings.api_key;
+            
             // Reload to refresh api_key_set status
             await fetchKbSettings();
+            
+            // If we just saved an API key, preserve it in the form (user can see what they entered)
+            // Note: We don't show the actual saved key from server (security), but preserve what user typed
+            if (savedApiKey) {
+                newKbSettings.api_key = savedApiKey;
+                showKbApiKey = true; // Auto-show the key they just entered
+            }
         } catch (err) {
             console.error('Error updating KB settings:', err);
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
@@ -2961,11 +2971,8 @@
                                     <div class="mb-4 {kbTestResult.success ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'} border px-4 py-3 rounded relative" role="alert">
                                         <strong class="font-bold">{kbTestResult.success ? '✅ Success' : '❌ Failed'}</strong>
                                         <span class="block sm:inline mt-1">{kbTestResult.message}</span>
-                                        {#if kbTestResult.version}
+                                        {#if kbTestResult.success && kbTestResult.version}
                                             <div class="text-sm mt-1">Server Version: {kbTestResult.version}</div>
-                                        {/if}
-                                        {#if kbTestResult.collections_count !== undefined}
-                                            <div class="text-sm">Collections: {kbTestResult.collections_count}</div>
                                         {/if}
                                     </div>
                                 {/if}
@@ -2992,7 +2999,7 @@
                                     <div>
                                         <div class="flex items-center justify-between mb-1">
                                             <label for="kb-api-key" class="block text-sm font-medium text-gray-700">API Key</label>
-                                            {#if kbSettings.api_key_set}
+                                            {#if kbSettings.api_key_set || newKbSettings.api_key}
                                             <button
                                                 type="button"
                                                 class="text-sm text-brand hover:text-brand-hover"
@@ -3008,7 +3015,13 @@
                                             bind:value={newKbSettings.api_key}
                                             class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                             placeholder={kbSettings.api_key_set ? '••••••••••••••••' : 'Enter API key'}
-                                            oninput={() => kbTestResult = null}
+                                            oninput={() => {
+                                                kbTestResult = null;
+                                                // Auto-show API key when user starts typing
+                                                if (newKbSettings.api_key && !showKbApiKey) {
+                                                    showKbApiKey = true;
+                                                }
+                                            }}
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
                                             {#if kbSettings.api_key_set}
