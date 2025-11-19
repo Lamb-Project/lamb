@@ -134,7 +134,7 @@ class APIStatusChecker:
                 # Now test streaming capability with a simple request
                 headers["Accept"] = "text/event-stream"
                 test_payload = {
-                    "model": "gpt-5",
+                    "model": config.get("default_model", "gpt-3.5-turbo"),
                     "messages": [
                         {
                             "role": "user",
