@@ -111,6 +111,10 @@ services:
       sh -lc "apk add --no-cache git && \
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
       test -f static/config.js || cp static/config.js.sample static/config.js; \
+      mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/img && \
+      mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/md && \
+      cp ${LAMB_PROJECT_PATH}/backend/static/img/lamb_icon.png ${LAMB_PROJECT_PATH}/frontend/build/static/img/ && \
+      cp ${LAMB_PROJECT_PATH}/backend/static/md/lamb-news.md ${LAMB_PROJECT_PATH}/frontend/build/static/md/ && \
       npm run dev -- --host 0.0.0.0"
 networks:
   default:
