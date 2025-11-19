@@ -341,7 +341,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
 
                 metadata = {
                     "ingestion_plugin": self.name,
-                    "source_url": url,
+                    "source_url": f"{url}&t={int(c['start'])}",
                     "video_id": video_id,
                     "language": language,
                     "chunk_index": idx,
