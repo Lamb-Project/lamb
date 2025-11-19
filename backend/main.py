@@ -43,7 +43,7 @@ import random
 from config import API_KEY, PIPELINES_DIR
 from creator_interface.main import router as creator_router
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 app = FastAPI(title="LAMB", description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
 

@@ -8,7 +8,7 @@ import asyncio
 import aiohttp # Import aiohttp
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 async def get_available_llms(assistant_owner: Optional[str] = None): # Make async

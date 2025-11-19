@@ -4,7 +4,7 @@ import logging
 import os
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 # Initialize router
 router = APIRouter(

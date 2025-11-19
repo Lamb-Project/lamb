@@ -13,7 +13,7 @@ import traceback
 from .owi_model import OWIModel
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 # Initialize routers and managers
 router = APIRouter(

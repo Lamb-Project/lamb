@@ -9,9 +9,9 @@ from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, Au
 from utils.timelog import Timelog
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 def get_available_llms(assistant_owner: Optional[str] = None):
     """

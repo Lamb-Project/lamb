@@ -7,7 +7,7 @@ from .owi_database import OwiDatabaseManager
 from .owi_users import OwiUserManager
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 OWI_GROUP_PERMISSIONS = {
     "workspace": {

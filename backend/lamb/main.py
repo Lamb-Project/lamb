@@ -24,7 +24,7 @@ from .mcp_router import router as mcp_router  # Add MCP router import
 from .organization_router import router as organization_router  # Add organization router import
 from .assistant_sharing_router import router as assistant_sharing_router  # Add assistant sharing router import
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 app = FastAPI(
     title="LAMB API",

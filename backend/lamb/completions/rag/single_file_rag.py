@@ -6,7 +6,7 @@ import logging
 
 # Set up logger
 logger = logging.getLogger('lamb.completions.rag.single_file_rag')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None) -> Dict[str, Any]:
     """

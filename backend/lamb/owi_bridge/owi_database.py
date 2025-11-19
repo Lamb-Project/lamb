@@ -6,7 +6,7 @@ import time
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 # Load environment variables
 load_dotenv()

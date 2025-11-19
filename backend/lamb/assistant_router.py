@@ -54,7 +54,7 @@ class AssistantListResponse(BaseModel):
 
 db_manager = LambDatabaseManager()
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__) # Define logger here
 
 assistant_router = APIRouter(tags=["Assistants"])

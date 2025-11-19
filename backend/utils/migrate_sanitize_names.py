@@ -331,7 +331,7 @@ def main():
     args = parser.parse_args()
     
     if args.verbose:
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.WARNING)
     
     logger.info("="*70)
     logger.info("LAMB Name Sanitization Migration")

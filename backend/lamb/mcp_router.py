@@ -26,7 +26,7 @@ db_manager = LambDatabaseManager()
 import config
 LTI_SECRET = os.getenv('LTI_SECRET') or config.SIGNUP_SECRET_KEY
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 # Simple authentication dependency
 async def get_current_user_email(
