@@ -1800,19 +1800,98 @@ async def plugin_ingest_base(
                 detail="Only KB owner can ingest files. You have read-only access to this shared KB."
             )
 
-        # Build placeholder file content (embed video_url if present so plugin can fallback to file parsing)
+        # Build placeholder file content and generate a meaningful, filesystem-safe filename
+        import re
+        from urllib.parse import urlparse
+        import io as _io
+        
+        try:
+            import httpx
+            HTTPX_AVAILABLE = True
+        except ImportError:
+            HTTPX_AVAILABLE = False
+            logger.warning("httpx not available, will use basic filename generation")
+        
+        try:
+            from bs4 import BeautifulSoup
+            BS4_AVAILABLE = True
+        except ImportError:
+            BS4_AVAILABLE = False
+            logger.warning("beautifulsoup4 not available, will use basic filename generation")
+
+        def slugify(text: str, max_length: int = 80) -> str:
+            """Convert text to a filesystem-safe slug."""
+            text = text.strip().lower()
+            text = re.sub(r'[^\w\s-]', '', text)
+            text = re.sub(r'[-\s]+', '_', text)
+            return text[:max_length]
+
+        async def get_youtube_title(video_url: str) -> str:
+            """Try to extract YouTube video title using yt-dlp or web scraping."""
+            # First try with yt-dlp if available
+            try:
+                import yt_dlp
+                ydl_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'skip_download': True,
+                    'extract_flat': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                    if info and 'title' in info:
+                        return info['title']
+            except Exception as e:
+                logger.warning(f"yt-dlp failed to get YouTube title: {e}")
+
+            # Fallback: scrape the page if httpx and bs4 are available
+            if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
+                return None
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(video_url, follow_redirects=True)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        # YouTube stores title in meta tags and title element
+                        title_tag = soup.find('meta', property='og:title')
+                        if title_tag and title_tag.get('content'):
+                            return title_tag['content']
+                        title_element = soup.find('title')
+                        if title_element:
+                            title = title_element.get_text().replace(' - YouTube', '').strip()
+                            return title
+            except Exception as e:
+                logger.warning(f"Web scraping failed to get YouTube title: {e}")
+
+            return None
+
         content_bytes = b""
+        meaningful_filename = "base_ingest_placeholder.txt"
+
         if isinstance(body.parameters, dict):
-            video_url = body.parameters.get("video_url")
-            if video_url:
-                try:
-                    content_bytes = (str(video_url).strip() + "\n").encode("utf-8")
-                except Exception:
-                    content_bytes = b""
+            # For youtube_transcript_ingest, embed video_url as file content if present
+            if body.plugin_name == "youtube_transcript_ingest" and "video_url" in body.parameters:
+                video_url = body.parameters["video_url"]
+                if isinstance(video_url, str):
+                    content_bytes = (video_url.strip() + "\n").encode("utf-8")
+                    # Try to get the actual video title
+                    video_title = await get_youtube_title(video_url)
+                    if video_title:
+                        # Use the video title as filename with yt: prefix
+                        meaningful_filename = f"yt:{slugify(video_title)}.txt"
+                        logger.info(f"Using YouTube video title as filename: {meaningful_filename}")
+                    else:
+                        # Fallback: Extract YouTube video ID
+                        video_id_match = re.search(r'(?:v=|/)([A-Za-z0-9_-]{11})', video_url)
+                        if video_id_match:
+                            video_id = video_id_match.group(1)
+                            meaningful_filename = f"yt:{video_id}.txt"
+                        else:
+                            meaningful_filename = "yt:youtube_transcript.txt"
+                        logger.info(f"Could not get YouTube title, using fallback: {meaningful_filename}")
 
         # Create a minimal in-memory file object compatible with kb_server_manager expectations
-        import io as _io
-
         class InMemoryUploadFile:
             def __init__(self, filename: str, data: bytes, content_type: str = "text/plain"):
                 self.filename = filename
@@ -1824,7 +1903,7 @@ async def plugin_ingest_base(
                 return self._data
 
         placeholder_file = InMemoryUploadFile(
-            filename="base_ingest_placeholder.txt",
+            filename=meaningful_filename,
             data=content_bytes,
             content_type="text/plain"
         )
