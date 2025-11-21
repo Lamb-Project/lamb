@@ -78,6 +78,8 @@ class AssistantGetResponse(BaseModel):
     oauth_consumer_name: Optional[str]
     published_at: Optional[int]
     published: bool # Existing field
+    created_at: Optional[int] = None  # Unix timestamp in seconds
+    updated_at: Optional[int] = None  # Unix timestamp in seconds
 
 
 class GenerateDescriptionRequest(BaseModel):

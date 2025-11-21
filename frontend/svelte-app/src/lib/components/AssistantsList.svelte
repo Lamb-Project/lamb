@@ -16,6 +16,7 @@
   import FilterBar from './common/FilterBar.svelte';
     import DeleteConfirmationModal from './modals/DeleteConfirmationModal.svelte';
     import { processListData } from '$lib/utils/listHelpers';
+    import { formatDateForTable } from '$lib/utils/dateHelpers';
 
     // State for the delete confirmation modal
     let showDeleteModal = $state(false);
@@ -208,6 +209,37 @@
     applyFiltersAndPagination();
   }
   
+  // Handle column header click for sorting
+  function handleColumnSort(column) {
+    if (sortBy === column) {
+      // Toggle order if clicking same column
+      sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+      // Set new column with default descending order
+      sortBy = column;
+      sortOrder = 'desc';
+    }
+    applyFiltersAndPagination();
+  }
+  
+  // Handle date column sort - toggles between created_at and updated_at
+  function handleDateColumnSort() {
+    if (sortBy === 'created_at' || sortBy === 'updated_at') {
+      // Toggle between created_at and updated_at
+      if (sortBy === 'created_at') {
+        sortBy = 'updated_at';
+      } else {
+        sortBy = 'created_at';
+      }
+      // Keep the same sort order
+    } else {
+      // Start with updated_at (default)
+      sortBy = 'updated_at';
+      sortOrder = 'desc';
+    }
+    applyFiltersAndPagination();
+  }
+  
   function handlePageChange(event) {
     currentPage = event.detail.page;
     applyFiltersAndPagination();
@@ -388,14 +420,52 @@
         {:else}
         <!-- Responsive Table Wrapper -->
         <div class="overflow-x-auto shadow-md sm:rounded-lg mb-6 border border-gray-200">
-            <table class="min-w-full divide-y divide-gray-200">
+            <table class="min-w-full divide-y divide-gray-200 table-fixed">
+                <colgroup>
+                    <col class="w-1/5">
+                    <col class="w-2/5">
+                    <col class="w-1/5">
+                    <col class="w-1/5">
+                </colgroup>
                 <thead class="bg-gray-50">
                     <tr>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                            {localeLoaded ? $_('assistants.table.name', { default: 'Assistant Name' }) : 'Assistant Name'}
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none" onclick={() => handleColumnSort('name')}>
+                            <div class="flex items-center gap-1">
+                                {localeLoaded ? $_('assistants.table.name', { default: 'Assistant Name' }) : 'Assistant Name'}
+                                {#if sortBy === 'name'}
+                                    {#if sortOrder === 'asc'}
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                                        </svg>
+                                    {:else}
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                                        </svg>
+                                    {/if}
+                                {/if}
+                            </div>
                         </th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                             {localeLoaded ? $_('assistants.table.description', { default: 'Description' }) : 'Description'}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap" onclick={handleDateColumnSort}>
+                            <div class="flex items-center gap-1">
+                                {localeLoaded ? $_('assistants.table.createdUpdated', { default: 'Created / Updated' }) : 'Created / Updated'}
+                                {#if sortBy === 'created_at' || sortBy === 'updated_at'}
+                                    <span class="text-xs text-gray-500 ml-1">
+                                        ({sortBy === 'created_at' ? 'Created' : 'Updated'})
+                                    </span>
+                                    {#if sortOrder === 'asc'}
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                                        </svg>
+                                    {:else}
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                                        </svg>
+                                    {/if}
+                                {/if}
+                            </div>
                         </th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                             {localeLoaded ? $_('assistants.table.actions', { default: 'Actions' }) : 'Actions'}
@@ -424,9 +494,23 @@
                                 </div>
                             </td>
                             
-                            <!-- Description with max width -->
+                            <!-- Description with more space -->
                             <td class="px-6 py-4 align-top">
-                                <div class="text-sm text-gray-500 break-words max-w-md">{assistant.description || (localeLoaded ? $_('assistants.noDescription', { default: 'No description provided' }) : 'No description provided')}</div>
+                                <div class="text-sm text-gray-500 break-words">{assistant.description || (localeLoaded ? $_('assistants.noDescription', { default: 'No description provided' }) : 'No description provided')}</div>
+                            </td>
+                            
+                            <!-- Created / Updated Dates (combined column) -->
+                            <td class="px-6 py-4 text-sm text-gray-500 align-top">
+                                <div class="flex flex-col gap-1">
+                                    <div>
+                                        <span class="text-xs text-gray-400 font-medium">Created:</span>
+                                        <div class="text-xs">{formatDateForTable(assistant.created_at)}</div>
+                                    </div>
+                                    <div>
+                                        <span class="text-xs text-gray-400 font-medium">Updated:</span>
+                                        <div class="text-xs">{formatDateForTable(assistant.updated_at)}</div>
+                                    </div>
+                                </div>
                             </td>
                             
                             <!-- Actions -->

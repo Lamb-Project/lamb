@@ -16,6 +16,7 @@
     import { writable } from 'svelte/store'; // Import from svelte/store instead of type import
     import { getConfig, getLambApiUrl } from '$lib/config'; // <<< Import config helper
     import { browser } from '$app/environment'; // <<< Import browser
+    import { formatDateForTable } from '$lib/utils/dateHelpers'; // Import date formatting utility
 
     // --- State Management --- 
     /** @type {'list' | 'create' | 'detail' | 'shared'} */
@@ -1142,6 +1143,22 @@
                     </div>
                 {/if}
             </div>
+            
+            <!-- Creation / Update Dates at Bottom -->
+            {#if selectedAssistantData}
+                <div class="px-6 py-4 border-t border-gray-200 mt-6">
+                    <div class="flex flex-col sm:flex-row sm:space-x-8 text-sm text-gray-600">
+                        <div>
+                            <span class="font-medium text-gray-700">{currentLocale ? $_('assistants.detail.created', { default: 'Created:' }) : 'Created:'}</span>
+                            <span class="ml-2">{formatDateForTable(selectedAssistantData.created_at)}</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-gray-700">{currentLocale ? $_('assistants.detail.updated', { default: 'Updated:' }) : 'Updated:'}</span>
+                            <span class="ml-2">{formatDateForTable(selectedAssistantData.updated_at)}</span>
+                        </div>
+                    </div>
+                </div>
+            {/if}
             {/key}
 
         {:else if detailSubView === 'edit'}

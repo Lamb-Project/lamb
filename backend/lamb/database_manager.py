@@ -3154,6 +3154,7 @@ class LambDatabaseManager:
                         a.id, a.name, a.description, a.owner, a.api_callback,
                         a.system_prompt, a.prompt_template, a.RAG_endpoint, a.RAG_Top_k,
                         a.RAG_collections, a.pre_retrieval_endpoint, a.post_retrieval_endpoint,
+                        a.created_at, a.updated_at,
                         p.group_id, p.group_name, p.oauth_consumer_name, p.created_at as published_at,
                         CASE 
                             WHEN p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null' THEN 1 
@@ -3438,6 +3439,7 @@ class LambDatabaseManager:
                         a.id, a.name, a.description, a.owner, a.api_callback,
                         a.system_prompt, a.prompt_template, a.RAG_endpoint, a.RAG_Top_k,
                         a.RAG_collections, a.pre_retrieval_endpoint, a.post_retrieval_endpoint,
+                        a.created_at, a.updated_at,
                         p.group_id, p.group_name, p.oauth_consumer_name, p.created_at as published_at,
                         CASE 
                             WHEN p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null' THEN 1 

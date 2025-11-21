@@ -41,6 +41,8 @@ class AssistantGetResponse(BaseModel):
     oauth_consumer_name: Optional[str]
     published_at: Optional[int]
     published: bool = False # Added field with default
+    created_at: Optional[int] = None  # Unix timestamp in seconds
+    updated_at: Optional[int] = None  # Unix timestamp in seconds
 
 class AssistantListResponse(BaseModel):
     """Response model for paginated list of assistants."""
