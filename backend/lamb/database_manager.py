@@ -3396,13 +3396,14 @@ class LambDatabaseManager:
         try:
             with connection:
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT id, name, owner FROM {assistants_table}")
+                cursor.execute(f"SELECT id, name, owner, api_callback FROM {assistants_table}")
                 rows = cursor.fetchall()
                 for row in rows:
                     assistants_list.append({
                         'id': row[0],
                         'name': row[1],
-                        'owner': row[2]
+                        'owner': row[2],
+                        'api_callback': row[3]
                     })
                 return assistants_list
         except sqlite3.Error as e:

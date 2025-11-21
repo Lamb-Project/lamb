@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.6  
-**Last Updated:** November 6, 2025  
+**Version:** 2.7
+**Last Updated:** November 21, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -635,11 +635,20 @@ Authorization: Bearer {API_KEY}
       "id": "lamb_assistant.1",
       "object": "model",
       "created": 1678886400,
-      "owned_by": "lamb_v4"
+      "owned_by": "lamb_v4",
+      "capabilities": {
+        "vision": true
+      }
     }
   ]
 }
 ```
+
+**Capabilities Field:**
+- `vision`: Boolean indicating multimodal image support
+- Only present for assistants configured with vision capability
+- Defaults to `false` for backward compatibility
+- Added in November 2025 as part of multimodal support implementation
 
 **Chat Completions Endpoint:**
 
@@ -674,6 +683,36 @@ Content-Type: application/json
       "finish_reason": "stop"
     }
   ]
+}
+```
+
+**Multimodal Chat Completions:**
+
+```http
+POST /v1/chat/completions
+Authorization: Bearer {API_KEY}
+Content-Type: application/json
+
+{
+  "model": "lamb_assistant.1",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Describe this image:"
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "https://example.com/image.jpg"
+          }
+        }
+      ]
+    }
+  ],
+  "stream": false
 }
 ```
 
@@ -868,6 +907,7 @@ if api_key and api_key.startswith("Bearer "):
 ---
 
 ## 7. Completion Pipeline
+   - 7.1 Multimodal Support
 
 ### 7.1 Request Flow
 
@@ -923,6 +963,121 @@ if api_key and api_key.startswith("Bearer "):
                          │    Client    │
                          └──────────────┘
 ```
+
+### 7.1 Multimodal Support
+
+LAMB supports multimodal interactions through OpenAI's vision-capable models, allowing users to send images alongside text messages.
+
+#### 7.1.1 Multimodal Message Format
+
+LAMB supports OpenAI's standard multimodal message format:
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What's in this image?"
+        },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "https://example.com/image.jpg"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 7.1.2 Supported Image Formats
+
+- **HTTP/HTTPS URLs**: Direct links to publicly accessible images
+- **Base64 Data URLs**: `data:image/jpeg;base64,{base64_data}`
+- **File Uploads**: Images uploaded via multipart form data
+- **Formats**: JPEG (.jpg, .jpeg), PNG (.png), GIF (.gif), WebP (.webp)
+
+#### 7.1.3 Multimodal Processing Flow
+
+```
+Client Request → Main API → Completion Pipeline
+    ↓
+Assistant Processing (with vision capability check)
+    ↓
+Prompt Processor (simple_augment with multimodal support)
+    ↓
+LLM Connector (OpenAI with vision API fallback)
+    ↓
+Success → Return response
+    ↓
+Failure → Fallback to text-only + warning message
+```
+
+#### 7.1.4 Vision Capability Configuration
+
+Assistants must have vision capabilities enabled in their metadata:
+
+```json
+{
+  "connector": "openai",
+  "llm": "gpt-4o",
+  "capabilities": {
+    "vision": true
+  }
+}
+```
+
+**Security:** Images are only processed if the assistant explicitly has `"vision": true`. Non-vision assistants receive text-only processing.
+
+#### 7.1.5 Vision API Fallback Strategy
+
+```python
+# Pseudocode for vision processing
+if has_images(message) and assistant_has_vision_capability(assistant):
+    try:
+        # Try vision API call
+        response = await client.chat.completions.create(
+            model=vision_model,
+            messages=multimodal_messages
+        )
+        return response
+    except Exception as e:
+        # Fallback: extract text content and add warning
+        text_only_messages = extract_text_content(multimodal_messages)
+        text_only_messages[0]["content"] = (
+            "Unable to send image to the base LLM, multimodality is not supported. "
+            + text_only_messages[0]["content"]
+        )
+        response = await client.chat.completions.create(
+            model=fallback_model,
+            messages=text_only_messages
+        )
+        return response
+```
+
+#### 7.1.6 Prompt Template Integration
+
+The `simple_augment` prompt processor handles multimodal content:
+
+- **Text Extraction**: Combines all text parts from multimodal messages
+- **Template Application**: Applies `{user_input}` and `{context}` to extracted text
+- **Image Preservation**: Maintains image elements alongside augmented text
+- **Backward Compatibility**: Falls back to legacy string-only processing
+
+#### 7.1.7 Security and Scoping Fixes (November 2025)
+
+**Vision Capability Check:** Images are only accepted if the assistant has `"vision": true` in its capabilities metadata, preventing unauthorized image processing and associated costs.
+
+**Streaming Function Scoping:** Fixed NameError in `backend/lamb/completions/connectors/openai.py` where `_generate_vision_stream` and `_generate_original_stream` helper functions were not properly scoped within the `llm_connect` function, causing multimodal requests to fail.
+
+**Implementation Details:**
+- Added `_has_vision_capability()` helper function to check assistant metadata
+- Moved streaming helper functions inside `llm_connect` to resolve scoping issues
+- Enhanced error handling for vision API failures with clear user messages
 
 ### 7.2 Detailed Steps
 
@@ -4208,6 +4363,6 @@ This document provides comprehensive technical documentation for the LAMB platfo
 
 ---
 
-**Maintainers:** LAMB Development Team  
-**Last Updated:** November 6, 2025  
-**Version:** 2.6 (Added Section 9.7: Assistant Sharing - Two-level permission system for sharing assistants within organizations)
+**Maintainers:** LAMB Development Team
+**Last Updated:** November 21, 2025
+**Version:** 2.7 (Added Section 7.1: Multimodal Support - Complete vision API integration with security controls and prompt template handling)

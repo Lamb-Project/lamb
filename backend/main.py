@@ -45,6 +45,14 @@ from creator_interface.main import router as creator_router
 
 logging.basicConfig(level=logging.WARNING)
 
+# Set up detailed logging for multimodal debugging
+multimodal_logger = logging.getLogger('multimodal')
+multimodal_logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+multimodal_logger.addHandler(handler)
+multimodal_logger.propagate = False  # Don't propagate to root logger
+
 app = FastAPI(title="LAMB", description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -113,6 +121,36 @@ app.add_middleware(
 
 
 
+def _get_assistant_capabilities(assistant: dict) -> dict:
+    """
+    Extract capabilities from assistant metadata
+
+    Args:
+        assistant: Assistant dictionary with api_callback field
+
+    Returns:
+        Capabilities dictionary with defaults
+    """
+    capabilities = {
+        "vision": False  # Default to False for backward compatibility
+    }
+
+    # Parse metadata from api_callback
+    if assistant.get('api_callback'):
+        try:
+            metadata = json.loads(assistant['api_callback'])
+            if metadata.get('capabilities'):
+                capabilities.update(metadata['capabilities'])
+        except json.JSONDecodeError:
+            # Invalid JSON, keep defaults
+            pass
+        except Exception as e:
+            # Any other error, keep defaults
+            print(f"Warning: Error parsing assistant capabilities: {e}")
+
+    return capabilities
+
+
 @app.get("/v1/models")
 @app.get("/models")
 async def get_models(request: Request):
@@ -164,6 +202,7 @@ async def get_models(request: Request):
                 "created": int(time.time()),
                 "owned_by": "lamb_v4",
                 "parent": None,
+                "capabilities": _get_assistant_capabilities(assistant)
             }
             for assistant in assistants
         ]
@@ -346,6 +385,11 @@ async def filter_outlet(pipeline_id: str, form_data: FilterForm):
 @app.post("/chat/completions")
 async def generate_openai_chat_completion(request: Request):
     """
+    Generate Chat Completion (OpenAI Compatible) with multimodal support.
+
+    Supports both JSON and multipart form data for image uploads.
+    """
+    """
     Generate Chat Completion (OpenAI Compatible).
 
     Processes a chat request using a specified LAMB pipeline, mimicking the OpenAI chat completions endpoint.
@@ -440,27 +484,154 @@ async def generate_openai_chat_completion(request: Request):
             detail="Invalid Authorization header",
         )
 
-    body = await request.body()
-    body_str = body.decode()
-    form_data=completions_get_form_data(body_str)
+    # Log request details for debugging multimodal issues
+    content_type = request.headers.get("content-type", "")
+    multimodal_logger.debug("=== NEW CHAT COMPLETIONS REQUEST ===")
+    multimodal_logger.debug(f"Method: {request.method}")
+    multimodal_logger.debug(f"URL: {request.url}")
+    multimodal_logger.debug(f"Content-Type: {content_type}")
+    multimodal_logger.debug(f"Content-Length: {request.headers.get('content-length', 'N/A')}")
+    multimodal_logger.debug(f"User-Agent: {request.headers.get('user-agent', 'N/A')}")
+    multimodal_logger.debug(f"Authorization: Bearer {request.headers.get('authorization', '').replace('Bearer ', '')[:10]}...")
+    multimodal_logger.debug(f"All Headers: {dict(request.headers)}")
+
+    # Handle both JSON and multipart form data
+    if "multipart/form-data" in content_type:
+        multimodal_logger.info("=== MULTIPART REQUEST DETECTED ===")
+        multimodal_logger.debug(f"Boundary: {content_type.split('boundary=')[1] if 'boundary=' in content_type else 'N/A'}")
+
+        form = await request.form()
+        multimodal_logger.info(f"Form fields count: {len(form)}")
+        multimodal_logger.debug(f"Form field names: {list(form.keys())}")
+
+        # Log details of each form field
+        for field_name, field_value in form.items():
+            if hasattr(field_value, 'filename') and field_value.filename:
+                file_size = len(await field_value.read()) if hasattr(field_value, 'read') else 'N/A'
+                await field_value.seek(0)  # Reset for later reading
+                multimodal_logger.info(f"FILE field '{field_name}': filename={field_value.filename}, size={file_size}")
+            else:
+                field_content = str(field_value)
+                multimodal_logger.debug(f"TEXT field '{field_name}': length={len(field_content)}, preview={field_content[:200]}{'...' if len(field_content) > 200 else ''}")
+
+        # Extract JSON data from form
+        json_data = form.get("data") or form.get("messages")
+        if json_data:
+            if hasattr(json_data, 'read'):  # File-like object
+                json_str = (await json_data.read()).decode()
+            else:  # String
+                json_str = str(json_data)
+            multimodal_logger.info(f"JSON data from form field: {json_str}")
+            form_data = completions_get_form_data(json_str)
+        else:
+            # Try to reconstruct from individual fields
+            model = form.get("model")
+            messages_json = form.get("messages")
+            stream = form.get("stream", False)
+
+            multimodal_logger.debug(f"Individual fields: model={model}, messages={messages_json is not None}, stream={stream}")
+
+            if messages_json:
+                if hasattr(messages_json, 'read'):
+                    messages_str = (await messages_json.read()).decode()
+                else:
+                    messages_str = str(messages_json)
+                messages = json.loads(messages_str)
+                multimodal_logger.debug(f"Parsed messages: {messages}")
+            else:
+                messages = []
+
+            # Handle file uploads - convert to base64 data URLs
+            files = []
+            for field_name, field_value in form.items():
+                if hasattr(field_value, 'filename') and field_value.filename:
+                    multimodal_logger.info(f"Processing uploaded file: {field_value.filename}")
+                    file_content = await field_value.read()
+                    import base64
+                    base64_data = base64.b64encode(file_content).decode()
+
+                    # Determine MIME type
+                    if field_value.filename.lower().endswith(('.jpg', '.jpeg')):
+                        mime_type = "image/jpeg"
+                    elif field_value.filename.lower().endswith('.png'):
+                        mime_type = "image/png"
+                    elif field_value.filename.lower().endswith('.gif'):
+                        mime_type = "image/gif"
+                    elif field_value.filename.lower().endswith('.webp'):
+                        mime_type = "image/webp"
+                    else:
+                        mime_type = "application/octet-stream"
+
+                    data_url = f"data:{mime_type};base64,{base64_data}"
+                    multimodal_logger.debug(f"Converted to data URL: {data_url[:100]}...")
+
+                    # Add as image content to the last user message
+                    if messages and messages[-1].get('role') == 'user':
+                        content = messages[-1].get('content', '')
+                        if isinstance(content, str):
+                            # Convert to multimodal format
+                            messages[-1]['content'] = [
+                                {'type': 'text', 'text': content},
+                                {'type': 'image_url', 'image_url': {'url': data_url}}
+                            ]
+                            multimodal_logger.info("Converted text message to multimodal format")
+                        elif isinstance(content, list):
+                            # Add to existing multimodal content
+                            messages[-1]['content'].append({
+                                'type': 'image_url',
+                                'image_url': {'url': data_url}
+                            })
+                            multimodal_logger.info("Added image to existing multimodal message")
+
+            form_data_dict = {
+                'model': model,
+                'messages': messages,
+                'stream': stream
+            }
+            multimodal_logger.debug(f"Final form_data_dict: {json.dumps(form_data_dict, indent=2)}")
+            form_data = completions_get_form_data(json.dumps(form_data_dict))
+    else:
+        # Standard JSON processing
+        multimodal_logger.info("=== JSON REQUEST DETECTED ===")
+        body = await request.body()
+        body_str = body.decode()
+        multimodal_logger.info(f"Raw body length: {len(body_str)} bytes")
+        multimodal_logger.debug(f"Raw body content: {body_str}")
+        form_data = completions_get_form_data(body_str)
     
     # Extract and validate fields
     model = form_data.get('model')
     messages = form_data.get('messages', [])
     stream = form_data.get('stream', False)
-    
+
+    multimodal_logger.info("Final parsed data:")
+    multimodal_logger.info(f"Model: {model}")
+    multimodal_logger.info(f"Stream: {stream}")
+    multimodal_logger.info(f"Messages count: {len(messages)}")
+    for i, msg in enumerate(messages):
+        role = msg.get('role', 'unknown')
+        content = msg.get('content', '')
+        content_type = type(content).__name__
+        if isinstance(content, list):
+            item_types = [item.get('type', 'unknown') for item in content[:3]]
+            content_preview = f"[{len(content)} items: {', '.join(item_types)}{'...' if len(content) > 3 else ''}]"
+        else:
+            content_preview = f"'{str(content)[:100]}{'...' if len(str(content)) > 100 else ''}'"
+        multimodal_logger.info(f"Message {i}: role={role}, content_type={content_type}, content={content_preview}")
 
     # Create a form_data object that mimics the Pydantic model
+    # Handle both text and multimodal message formats
     class DummyMessage:
         def __init__(self, role, content):
             self.role = role
-            self.content = content
+            self.content = content  # Can be string (text) or list (multimodal)
         def model_dump(self):
             return {"role": self.role, "content": self.content}
 
     class DummyFormData:
         def __init__(self, model, messages, stream):
             self.model = model
+            # Preserve original message structure (multimodal messages have list content)
             self.messages = [DummyMessage(m["role"], m["content"]) for m in messages]
             self.stream = stream
         def model_dump(self):
@@ -497,12 +668,21 @@ async def generate_openai_chat_completion(request: Request):
         }
 
         # Directly call and await run_lamb_assistant
-        # Pass the request body (form_data.model_dump()), assistant_id, and headers
+        multimodal_logger.info(f"Calling run_lamb_assistant with assistant_id={assistant_id}")
+        request_data = form_data.model_dump()
+        multimodal_logger.debug(f"Request data being sent: {json.dumps(request_data, indent=2)[:1000]}...")
+
         response = await run_lamb_assistant(
-            request=form_data.model_dump(),
+            request=request_data,
             assistant=assistant_id,
             headers=common_headers # Pass headers to the assistant runner
         )
+
+        multimodal_logger.info(f"Assistant returned response, type: {type(response)}")
+        if hasattr(response, 'body'):
+            multimodal_logger.debug(f"Response has body, length: {len(response.body) if response.body else 0}")
+        elif isinstance(response, dict):
+            multimodal_logger.debug(f"Response is dict with keys: {list(response.keys())}")
         return response
 
     except Exception as e:

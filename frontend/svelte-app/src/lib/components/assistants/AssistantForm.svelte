@@ -66,6 +66,9 @@
 	let selectedLlm = $state('');
 	let selectedRagProcessor = $state('');
 
+	// Vision capability
+	let visionEnabled = $state(false);
+
 	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
 	let ownedKnowledgeBases = $state([]);
@@ -345,8 +348,9 @@
 		
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
+		visionEnabled = false; // Reset vision capability for new assistants
 		// Reset name/description only if truly starting fresh?
-		// name = ''; 
+		// name = '';
 		// description = ''; 
 		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor, availableModels });
 		if (selectedRagProcessor === 'simple_rag') {
@@ -490,6 +494,20 @@
 				}
 			}
 
+			// Handle vision capability
+			try {
+				let metadata = data.metadata;
+				if (typeof metadata === 'string') {
+					metadata = JSON.parse(metadata);
+				}
+
+				visionEnabled = metadata?.capabilities?.vision || false;
+				console.log('Populate: Vision capability loaded:', visionEnabled);
+			} catch (e) {
+				console.warn('Failed to parse vision capability from metadata:', e);
+				visionEnabled = false;
+			}
+
 			// TODO: Handle file selection for single_file_rag if needed
 			// selectedFilePath = data.file_path || '';
 		} else {
@@ -532,10 +550,16 @@
 	async function handleConnectorChange() {
 		console.log('Connector changed to:', selectedConnector);
 		updateAvailableModels();
-		await tick(); 
+		await tick();
 		if (!availableModels.includes(selectedLlm)) {
 			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
 			console.log('Resetting LLM to:', selectedLlm);
+		}
+
+		// Validate vision capability - only available for OpenAI
+		if (selectedConnector !== 'openai' && visionEnabled) {
+			console.log('Disabling vision capability - not supported for connector:', selectedConnector);
+			visionEnabled = false;
 		}
 	}
 
@@ -1005,7 +1029,10 @@
 			connector: selectedConnector,
 			llm: selectedLlm,
 			rag_processor: selectedRagProcessor,
-			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : ''
+			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : '',
+			capabilities: {
+				vision: visionEnabled
+			}
 		};
 
 		// Add rubric fields if rubric_rag is selected
@@ -1730,6 +1757,29 @@
 							{/if}
 						</select>
 					</div>
+
+					<!-- Vision Capability (Only for OpenAI connector) -->
+					{#if selectedConnector === 'openai' || visionEnabled}
+					<div class="mb-3">
+						<label class="inline-flex items-center cursor-pointer">
+							<input
+								type="checkbox"
+								bind:checked={visionEnabled}
+								onchange={handleFieldChange}
+								class="sr-only peer"
+							/>
+							<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+							<div class="ms-3">
+								<span class="text-sm font-medium text-gray-900 dark:text-gray-300">
+									{$_('assistants.form.vision.label', { default: 'Enable Vision Capability' })}
+								</span>
+								<p class="text-xs text-gray-500 mt-1">
+									{$_('assistants.form.vision.description', { default: 'Allow this assistant to process images alongside text messages' })}
+								</p>
+							</div>
+						</label>
+					</div>
+					{/if}
 
 					<!-- RAG Processor -->
 					<div>

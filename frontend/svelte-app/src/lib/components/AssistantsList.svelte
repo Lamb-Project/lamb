@@ -481,15 +481,26 @@
                                 <button onclick={() => handleView(assistant.id)} class="text-sm font-medium text-brand hover:underline break-words text-left">
                                     {assistant.name || '-'}
                                 </button>
-                                <!-- Status badge -->
-                                <div class="mt-1">
+                                <!-- Status badges -->
+                                <div class="mt-1 flex flex-wrap gap-1">
                                     {#if assistant.published}
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.published', { default: 'Published' }) : 'Published'}</span>
                                     {:else}
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.unpublished', { default: 'Unpublished' }) : 'Unpublished'}</span>
                                     {/if}
                                     {#if showShared}
-                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 ml-1">{localeLoaded ? $_('assistants.status.sharedWithYou', { default: 'Shared with you' }) : 'Shared with you'}</span>
+                                        <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.sharedWithYou', { default: 'Shared with you' }) : 'Shared with you'}</span>
+                                    {/if}
+                                    {#if assistant.metadata}
+                                        {@const callback = parseMetadata(assistant.metadata)}
+                                        {#if callback.capabilities?.vision}
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                {localeLoaded ? $_('assistants.table.visionEnabled', { default: 'Vision' }) : 'Vision'}
+                                            </span>
+                                        {/if}
                                     {/if}
                                 </div>
                             </td>
@@ -573,7 +584,16 @@
                                         <span class="mr-3">{callback.llm || (localeLoaded ? $_('assistants.notSet', { default: 'Not set' }) : 'Not set')}</span>
                                         
                                         <span class="text-brand font-medium mr-1">{localeLoaded ? $_('assistants.table.ragProcessor', { default: 'RAG Processor' }) : 'RAG Processor'}:</span>
-                                        <span>{callback.rag_processor || (localeLoaded ? $_('assistants.notSet', { default: 'Not set' }) : 'Not set')}</span>
+                                        <span class="mr-3">{callback.rag_processor || (localeLoaded ? $_('assistants.notSet', { default: 'Not set' }) : 'Not set')}</span>
+
+                                        {#if callback.capabilities?.vision}
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-3">
+                                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                </svg>
+                                                {localeLoaded ? $_('assistants.table.visionEnabled', { default: 'Vision Enabled' }) : 'Vision Enabled'}
+                                            </span>
+                                        {/if}
                                     </div>
                                 </td>
                                 <td class="px-6 py-2"></td> <!-- Empty cell to maintain table structure -->
