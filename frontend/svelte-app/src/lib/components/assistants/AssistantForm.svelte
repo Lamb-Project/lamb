@@ -206,27 +206,34 @@
 	// --- Store Integration and Initialization ---
 	$effect(() => {
 		console.log('AssistantForm.svelte: $effect (assistant prop) running...');
-		
+
 		const assistantIdChanged = assistant?.id !== initialAssistantData?.id;
 		const assistantNullStatusChanged = (assistant === null && initialAssistantData !== null) || (assistant !== null && initialAssistantData === null);
-		
-		if (assistantIdChanged || assistantNullStatusChanged) {
-			console.log(`[AssistantForm] Assistant change detected (ID changed: ${assistantIdChanged}, Null status changed: ${assistantNullStatusChanged})`);
+
+		// Check if the assistant data content has changed (not just ID)
+		const assistantDataChanged = assistant && initialAssistantData &&
+			(assistant.system_prompt !== initialAssistantData.system_prompt ||
+			 assistant.prompt_template !== initialAssistantData.prompt_template ||
+			 assistant.name !== initialAssistantData.name ||
+			 assistant.description !== initialAssistantData.description);
+
+		if (assistantIdChanged || assistantNullStatusChanged || assistantDataChanged) {
+			console.log(`[AssistantForm] Assistant change detected (ID changed: ${assistantIdChanged}, Null status changed: ${assistantNullStatusChanged}, Data changed: ${assistantDataChanged})`);
 			if (assistant) {
 				console.log('[AssistantForm] Assistant prop received or changed:', assistant);
 				console.log('Assistant prop received or changed:', assistant);
-				initialAssistantData = { ...assistant }; 
+				initialAssistantData = { ...assistant };
 				console.log('Stored initial assistant data:', initialAssistantData);
 				// Always set to edit mode when assistant changes
-				formState = 'edit'; 
+				formState = 'edit';
 				console.log(`Initial formState set to: ${formState}`);
-				
+
 				// Track assistant ID for dirty state management
 				previousAssistantId = assistant.id;
 				// Reset dirty state when loading a different assistant
 				formDirty = false;
 				console.log('[AssistantForm] Loading new assistant, formDirty reset to false');
-				
+
 				populateFormFields(assistant);
 				formError = '';
 				successMessage = '';
@@ -1034,7 +1041,12 @@
 				console.log('[AssistantForm] Changes saved successfully, formDirty reset to false');
 				// After update, store the updated data as the new initial state
 				// and stay in edit mode. The parent page handles list refresh via the event.
-				initialAssistantData = { ...initialAssistantData, ...assistantDataPayload }; // Use payload data for consistency, ID doesn't change
+				// Preserve the original metadata structure (object) instead of using the payload's stringified version
+				initialAssistantData = {
+					...initialAssistantData,
+					...assistantDataPayload,
+					metadata: metadataObj // Use the parsed metadata object, not the stringified version
+				};
 				populateFormFields(initialAssistantData); // Update form with potentially modified response data
 				dispatch('formSuccess', { assistantId: initialAssistantData.id }); // Dispatch success for update
 			} else if (formState === 'create') {
