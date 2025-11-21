@@ -164,7 +164,6 @@
     "details": "Detalls",
     "actions": {
       "edit": "Editar",
-      "duplicate": "Duplicar",
       "export": "Exportar JSON",
       "unpublish": "Despublicar",
       "delete": "Eliminar",
@@ -290,7 +289,6 @@
     "save": "Desar",
     "edit": "Editar",
     "delete": "Eliminar",
-    "duplicate": "Duplicar",
     "confirm": "Confirmar",
     "back": "Tornar",
     "publishing": "Publicant",

@@ -83,7 +83,6 @@
     "details": "Details",
     "actions": {
       "edit": "Edit",
-      "duplicate": "Duplicate",
       "export": "Export JSON",
       "unpublish": "Unpublish",
       "delete": "Delete",
@@ -300,7 +299,6 @@
     "save": "Save",
     "edit": "Edit",
     "delete": "Delete",
-    "duplicate": "Duplicate",
     "confirm": "Confirm",
     "back": "Back",
     "publishing": "Publishing",

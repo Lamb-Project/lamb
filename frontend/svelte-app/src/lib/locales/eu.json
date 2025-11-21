@@ -82,7 +82,6 @@
     "details": "Xehetasunak",
     "actions": {
       "edit": "Editatu",
-      "duplicate": "Bikoiztu",
       "export": "JSON-a esportatu",
       "unpublish": "Argitalpena kendu",
       "delete": "Ezabatu",
@@ -297,7 +296,6 @@
     "save": "Gorde",
     "edit": "Editatu",
     "delete": "Ezabatu",
-    "duplicate": "Bikoiztu",
     "confirm": "Berretsi",
     "back": "Itzuli",
     "publishing": "Argitaratzen",

@@ -5,7 +5,6 @@
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
-    import DuplicateAssistantModal from '$lib/components/modals/DuplicateAssistantModal.svelte'; // Placeholder for modal
     import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores'; // Import page store to read URL params
@@ -46,18 +45,6 @@
     /** @type {Function|null} */
     let unsubscribePage = null;
 
-    // --- Duplicate State ---
-    let isDuplicateModalOpen = $state(false);
-    /** @type {number | null} */
-    let assistantToDuplicateId = $state(null);
-    /** @type {string | null} */
-    let assistantToDuplicateName = $state(null); // Original name for display
-    /** @type {any | null} */
-    let assistantToDuplicateData = $state(null); // Full data fetched for duplication
-    let isFetchingDuplicateDetails = $state(false);
-    let isSubmittingDuplicate = $state(false); // For modal submission loading
-    let defaultDuplicateName = $state('');
-    let duplicateError = $state('');
 
     // --- Delete State ---
     let isDeleteModalOpen = $state(false);
@@ -323,101 +310,7 @@
         showList(); 
     }
 
-    /**
-     * Handles the request to duplicate an assistant. Fetches details and opens the modal.
-     * @param {CustomEvent<{ id: number, name: string }>} event - The custom event from AssistantsList.
-     */
-    async function handleDuplicateRequest(event) {
-        const { id, name } = event.detail;
-        console.log(`Duplicate request received for ID: ${id}, Name: ${name}`);
 
-        assistantToDuplicateId = id;
-        assistantToDuplicateName = name;
-        assistantToDuplicateData = null; // Clear previous data
-        isFetchingDuplicateDetails = true;
-        isDuplicateModalOpen = false; // Ensure modal is closed initially
-        duplicateError = '';
-
-        try {
-            // Fetch full details required for duplication
-            const fullData = await getAssistantById(id);
-            if (fullData) {
-                assistantToDuplicateData = fullData;
-                // Prepare default name, stripping potential creator prefix if needed for display
-                const baseName = name.includes('_') ? name.substring(name.indexOf('_') + 1) : name;
-                defaultDuplicateName = `Copy_${baseName}`;
-                isDuplicateModalOpen = true; // Open modal only after successful fetch
-            } else {
-                throw new Error(`Assistant with ID ${id} not found.`);
-            }
-        } catch (error) {
-            console.error('Error fetching assistant details for duplication:', error);
-            duplicateError = error instanceof Error ? error.message : $_('error_fetching_assistant');
-            // Optionally display this error to the user via a toast/notification
-            alert(`Error preparing duplication: ${duplicateError}`); // Simple alert for now
-        } finally {
-            isFetchingDuplicateDetails = false;
-        }
-    }
-
-    /**
-     * Handles the submission of the duplicate assistant modal.
-     * Creates a new assistant using the data from the original and the new name.
-     * @param {CustomEvent<{ newName: string }>} event
-     */
-    async function handleDuplicateSubmit(event) {
-        const newName = event.detail.newName;
-        if (!assistantToDuplicateData || !newName) {
-            duplicateError = 'Missing data for duplication.'; // Should not happen
-            return;
-        }
-
-        isSubmittingDuplicate = true;
-        duplicateError = '';
-
-        try {
-            // Prepare the data for the new assistant
-            // Use all relevant fields from the original assistant data
-            const originalData = assistantToDuplicateData;
-            const newData = {
-                name: newName, // Use the new name provided by the user
-                description: originalData.description || '',
-                // Use system_prompt first, fallback to instructions if needed (as per backend logic)
-                system_prompt: originalData.system_prompt || originalData.instructions || '',
-                prompt_template: originalData.prompt_template || '',
-                                    metadata: originalData.metadata || originalData.api_callback || '',
-                pre_retrieval_endpoint: originalData.pre_retrieval_endpoint || '',
-                post_retrieval_endpoint: originalData.post_retrieval_endpoint || '',
-                RAG_endpoint: originalData.RAG_endpoint || '',
-                RAG_Top_k: originalData.RAG_Top_k ?? 3, // Use ?? for nullish coalescing
-                RAG_collections: originalData.RAG_collections || ''
-            };
-
-            console.log('Creating duplicate assistant with data:', newData);
-            const createResponse = await createAssistant(newData);
-
-            if (createResponse && createResponse.assistant_id) {
-                console.log('Duplicate created successfully, ID:', createResponse.assistant_id);
-                // Close modal and reset state
-                isDuplicateModalOpen = false;
-                assistantToDuplicateId = null;
-                assistantToDuplicateData = null;
-                assistantToDuplicateName = null;
-                defaultDuplicateName = '';
-                // Optionally refresh the list or add locally before navigation
-                // For simplicity, navigate directly
-                goto(`${base}/assistants?view=detail&id=${createResponse.assistant_id}`, { replaceState: true });
-            } else {
-                throw new Error('Create operation did not return a valid assistant ID.');
-            }
-        } catch (error) {
-            console.error('Error creating duplicate assistant:', error);
-            duplicateError = error instanceof Error ? error.message : $_('assistants.duplicateModal.submitError', { default: 'Failed to create duplicate.' });
-            // Keep modal open to show error
-        } finally {
-            isSubmittingDuplicate = false;
-        }
-    }
 
     /**
      * Handles the delete request from list or detail view.
@@ -883,10 +776,9 @@
 {#if currentView === 'list'}
     <div class="mt-6">
         <div class="bg-white shadow rounded-lg p-4 border border-gray-200">
-            <AssistantsList 
-               on:duplicate={handleDuplicateRequest} 
-               on:delete={handleDeleteRequest} 
-               on:export={handleExportRequest} 
+            <AssistantsList
+               on:delete={handleDeleteRequest}
+               on:export={handleExportRequest}
             />
         </div>
     </div>
@@ -961,16 +853,6 @@
                         </button>
                     {/if}
                     
-                    <!-- Duplicate Button -->
-                    <button 
-                        type="button" 
-                        class="px-3 py-1 text-sm font-medium rounded text-white hover:bg-opacity-90 transition-colors"
-                        style="background-color: #2271b3;"
-                        onclick={() => handleDuplicateRequest({ detail: { id: selectedAssistantData.id, name: selectedAssistantData.name } })}
-                        disabled={isFetchingDuplicateDetails} 
-                    >
-                        {currentLocale ? $_('common.duplicate') : 'Duplicate'}
-                    </button>
                     
                     <!-- Export Button -->
                     <button 
@@ -1378,11 +1260,10 @@
     <!-- Shared with Me View -->
     <div class="mt-6">
         <div class="bg-white shadow rounded-lg p-4 border border-gray-200">
-            <AssistantsList 
+            <AssistantsList
                showShared={true}
-               on:duplicate={handleDuplicateRequest} 
-               on:delete={handleDeleteRequest} 
-               on:export={handleExportRequest} 
+               on:delete={handleDeleteRequest}
+               on:export={handleExportRequest}
             />
         </div>
     </div>
@@ -1391,23 +1272,6 @@
     <p>{currentLocale ? $_('assistants.noAssistantData') : 'Assistant data not available.'}</p>
 {/if} 
 
-<!-- Duplicate Assistant Modal -->
-{#if isDuplicateModalOpen}
-   <DuplicateAssistantModal 
-       bind:isOpen={isDuplicateModalOpen} 
-       originalName={assistantToDuplicateName} 
-       defaultNewName={defaultDuplicateName} 
-       bind:isSubmitting={isSubmittingDuplicate} 
-       on:submit={handleDuplicateSubmit} 
-       on:close={() => {
-           isDuplicateModalOpen = false;
-           assistantToDuplicateId = null;
-           assistantToDuplicateData = null;
-           duplicateError = ''; // Clear errors on close
-       }}
-       error={duplicateError}
-   />
-{/if}
 
 <!-- Delete Confirmation Modal -->
 {#if isDeleteModalOpen}

@@ -436,14 +436,6 @@
                                     <button onclick={() => handleView(assistant.id)} title={localeLoaded ? $_('assistants.actions.view', { default: 'View' }) : 'View'} class="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-100 transition-colors duration-150">
                                         {@html IconView}
                                     </button>
-                                    <!-- Duplicate Button -->
-                                    <button 
-                                        onclick={() => dispatch('duplicate', { id: assistant.id, name: assistant.name })} 
-                                        title={localeLoaded ? $_('assistants.actions.duplicate', { default: 'Duplicate' }) : 'Duplicate'} 
-                                        class="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-100 transition-colors duration-150"
-                                    >
-                                        {@html IconClone}
-                                    </button>
                                     <!-- Export Button -->
                                     <button 
                                         onclick={() => dispatch('export', { id: assistant.id })} 
