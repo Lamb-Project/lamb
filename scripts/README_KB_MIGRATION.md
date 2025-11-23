@@ -242,6 +242,7 @@ After running the migration:
    ```
 
    This should return a JSON array of KBs. Verify that:
+
    - The response includes KB ID "13" (or whichever KB is showing "Not Found")
    - The `id` field matches exactly (not `_id` or other variations)
    - The `name` field is populated
@@ -257,7 +258,7 @@ After running the migration:
    Replace `13` with the KB ID that's showing "(Not Found)". If this returns 404, the KB was deleted from the KB Server but still referenced in assistants.
 
 7. **Check Browser Console** (if KB is in backend API but not displaying):
-   
+
    - Open browser Developer Tools (F12)
    - Go to Console tab
    - Look for errors when loading the assistant detail page
@@ -364,37 +365,44 @@ This is the most common post-migration issue. The migration completed successful
 **Solution:**
 
 1. **Restart the backend** (most important):
+
    ```bash
    ssh user@server "docker restart lamb-backend-1"
    ```
 
 2. **Verify backend is running**:
+
    ```bash
    ssh user@server "docker ps | grep lamb-backend"
    ```
 
 3. **Clear browser cache**:
+
    - Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows/Linux)
    - Or clear site data in browser DevTools
 
 4. **Verify the fix**:
+
    - Navigate to the assistant detail page
    - KB names should now appear instead of "13 (Not Found)"
 
 5. **If still not working, check backend API directly**:
+
    ```bash
    # Get your user token from browser localStorage (F12 > Console > localStorage.getItem('userToken'))
    curl -H 'Authorization: Bearer <your_token>' \
         https://your-domain.com/creator/knowledgebases/user
    ```
-   
+
    **If this returns an empty array `[]`:**
+
    - Your user may not be registered in the Creator system
    - Check if your email exists: `SELECT * FROM LAMB_Creator_users WHERE user_email = 'your@email.com';`
    - You may need to login to the Creator interface at least once to auto-register
    - Or manually register the user in the `LAMB_Creator_users` table
-   
+
    **If this returns KBs:**
+
    - The response should include your KB with `id: "13"` and `name: "ikasiker"` (or whatever name)
    - The issue is in the frontend - check browser console for errors
 
@@ -412,6 +420,7 @@ ssh user@server "docker logs -f lamb-backend-1"
 ```
 
 Look for these key log messages:
+
 - `KB server response status: 401` → **KB Server authentication issue** (see Solution A below)
 - `No creator user found for email` → **User registration issue** (see Solution B below)
 - `KB Server returned 404 for KB X` → **KB doesn't exist** (see Solution C below)
@@ -419,6 +428,7 @@ Look for these key log messages:
 #### Solution A: KB Server Returns 401 Unauthorized (Most Common)
 
 **Symptoms in logs:**
+
 ```
 INFO: KB server response status: 401
 ERROR: KB server returned non-200 status: 401
@@ -426,6 +436,7 @@ WARNING: KB Server returned 401 for KB 13, skipping
 ```
 
 **Root Cause:** The organization's KB Server API token in the database doesn't match the token the KB Server expects. This happens when:
+
 - The organization was created with an incorrect token
 - The KB Server token was changed but the organization config wasn't updated
 - Multiple organizations exist with different KB Server configurations
@@ -433,28 +444,31 @@ WARNING: KB Server returned 401 for KB 13, skipping
 **Diagnosis:**
 
 1. **Check what token the backend is using** (from backend logs or database):
+
    ```sql
    -- View the organization's KB Server configuration
-   SELECT id, name, slug, 
+   SELECT id, name, slug,
           json_extract(config, '$.setups.default.knowledge_base.api_token') as kb_token,
           json_extract(config, '$.setups.default.knowledge_base.server_url') as kb_url
    FROM LAMB_organizations;
    ```
 
 2. **Check what token the KB Server expects**:
+
    ```bash
    # Check the KB Server's environment
    docker exec lamb-kb-server-stable-backend-1 env | grep -i token
-   
+
    # Or check the KB Server's .env file
    docker exec lamb-kb-server-stable-backend-1 cat /opt/lamb/lamb-kb-server-stable/backend/.env | grep KB_TOKEN
    ```
 
 3. **Test KB Server authentication manually**:
+
    ```bash
    # Test with the token from organization config
    curl -H "Authorization: Bearer 0p3n-w3bu!" http://localhost:9090/collections
-   
+
    # If it returns 401, the token is wrong
    # If it returns 200, the token is correct but something else is wrong
    ```
@@ -464,23 +478,24 @@ WARNING: KB Server returned 401 for KB 13, skipping
 ```sql
 -- Update the organization's KB Server token
 -- Replace 2 with your organization_id and 'correct_token' with the actual token
-UPDATE LAMB_organizations 
+UPDATE LAMB_organizations
 SET config = json_set(
-    config, 
-    '$.setups.default.knowledge_base.api_token', 
+    config,
+    '$.setups.default.knowledge_base.api_token',
     'correct_token_here'
 ),
 updated_at = strftime('%s', 'now')
 WHERE id = 2;
 
 -- Verify the update
-SELECT id, name, 
+SELECT id, name,
        json_extract(config, '$.setups.default.knowledge_base.api_token') as kb_token
-FROM LAMB_organizations 
+FROM LAMB_organizations
 WHERE id = 2;
 ```
 
 **After fixing the token, restart the backend:**
+
 ```bash
 docker restart lamb-backend-1
 ```
@@ -490,6 +505,7 @@ Then test again - the KBs should now appear!
 #### Solution B: User Not Registered in Creator System
 
 **Symptoms in logs:**
+
 ```
 ERROR: No creator user found for email: user@example.com
 ```
@@ -497,6 +513,7 @@ ERROR: No creator user found for email: user@example.com
 **Diagnosis:**
 
 1. **Check if your user exists in Creator system**:
+
    ```sql
    -- Replace with your actual email
    SELECT * FROM LAMB_Creator_users WHERE user_email = 'your@email.com';
@@ -505,7 +522,7 @@ ERROR: No creator user found for email: user@example.com
 2. **Check who owns the KB**:
    ```sql
    SELECT r.kb_id, r.kb_name, r.owner_user_id, u.user_email
-   FROM LAMB_kb_registry r 
+   FROM LAMB_kb_registry r
    LEFT JOIN LAMB_Creator_users u ON r.owner_user_id = u.id
    WHERE r.kb_id = '13';
    ```
@@ -513,24 +530,26 @@ ERROR: No creator user found for email: user@example.com
 **Fix:**
 
 Option 1: **Auto-register by logging in**:
+
 - Navigate to the Creator interface: `https://your-domain.com/creator/`
 - Login with your credentials
 - The system should auto-register you in `LAMB_Creator_users`
 
 Option 2: **Manual registration** (if auto-registration doesn't work):
+
 ```sql
 -- Find the next available user ID
 SELECT MAX(id) + 1 FROM LAMB_Creator_users;
 
 -- Register the user (replace values as needed)
 INSERT INTO LAMB_Creator_users (
-    id, 
-    organization_id, 
-    user_email, 
-    user_name, 
-    created_at, 
-    updated_at, 
-    user_type, 
+    id,
+    organization_id,
+    user_email,
+    user_name,
+    created_at,
+    updated_at,
+    user_type,
     enabled
 ) VALUES (
     <next_id>,
@@ -547,6 +566,7 @@ INSERT INTO LAMB_Creator_users (
 #### Solution C: KB Belongs to Different User / Access Issue
 
 **Symptoms in logs:**
+
 ```
 INFO: Found 1 owned KB registry entries for user 3
 INFO: Returning 0 owned KBs to user 3  (mismatch indicates access issue)
