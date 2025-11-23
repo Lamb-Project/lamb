@@ -12,6 +12,7 @@ Usage:
 Options:
     --dry-run    Show what would be done without making changes
     --verbose    Show detailed logging
+    --check-env  Check environment setup and exit
 """
 
 import os
@@ -20,31 +21,70 @@ import sqlite3
 import argparse
 import logging
 from typing import List, Dict, Optional, Set
-from dotenv import load_dotenv
-import httpx
-import asyncio
-import time
+
+# Print to stdout immediately for debugging Docker issues
+print("KB Registry Migration Script - Starting...", flush=True)
 
 # Load environment BEFORE importing LAMB modules
-load_dotenv()
-
-# Try to load from parent directory if not found
-if not os.getenv('LAMB_DB_PATH'):
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    load_dotenv(os.path.join(parent_dir, '.env'))
-
-# Set minimal required env vars if not set
-if not os.getenv('LAMB_BACKEND_HOST'):
-    os.environ['LAMB_BACKEND_HOST'] = 'http://localhost:9099'
-if not os.getenv('LAMB_BEARER_TOKEN'):
-    os.environ['LAMB_BEARER_TOKEN'] = '0p3n-w3bu!'
+try:
+    from dotenv import load_dotenv
+    import httpx
+    import asyncio
+    import time
+    
+    load_dotenv()
+    
+    # Try to load from parent directory if not found
+    if not os.getenv('LAMB_DB_PATH'):
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_file = os.path.join(parent_dir, 'backend', '.env')
+        if os.path.exists(env_file):
+            print(f"Loading environment from: {env_file}", flush=True)
+            load_dotenv(env_file)
+        else:
+            print(f"Warning: .env file not found at {env_file}", flush=True)
+    
+    # Set minimal required env vars if not set
+    # These are needed by config.py which gets imported by database_manager
+    if not os.getenv('LAMB_BACKEND_HOST'):
+        os.environ['LAMB_BACKEND_HOST'] = 'http://localhost:9099'
+    if not os.getenv('LAMB_BEARER_TOKEN'):
+        os.environ['LAMB_BEARER_TOKEN'] = '0p3n-w3bu!'
+    if not os.getenv('LAMB_WEB_HOST'):
+        os.environ['LAMB_WEB_HOST'] = 'http://localhost:9099'
+    if not os.getenv('OLLAMA_BASE_URL'):
+        os.environ['OLLAMA_BASE_URL'] = 'http://localhost:11434'
+    if not os.getenv('OLLAMA_MODEL'):
+        os.environ['OLLAMA_MODEL'] = 'llama2'
+    if not os.getenv('OPENAI_BASE_URL'):
+        os.environ['OPENAI_BASE_URL'] = 'http://localhost:11434/v1'
+    if not os.getenv('OPENAI_MODEL'):
+        os.environ['OPENAI_MODEL'] = 'llama2'
+    
+    print("Environment variables loaded", flush=True)
+    
+except Exception as e:
+    print(f"FATAL ERROR during initialization: {str(e)}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 # Add backend directory to path to import LAMB modules
 script_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.join(os.path.dirname(script_dir), 'backend')
 sys.path.insert(0, backend_dir)
 
-from lamb.database_manager import LambDatabaseManager
+print(f"Python path includes: {backend_dir}", flush=True)
+
+# Import LAMB modules with error handling
+try:
+    from lamb.database_manager import LambDatabaseManager
+    print("Successfully imported LambDatabaseManager", flush=True)
+except Exception as e:
+    print(f"FATAL ERROR importing LambDatabaseManager: {str(e)}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 
 class KBRegistryMigration:
@@ -54,28 +94,51 @@ class KBRegistryMigration:
         self.db_file = db_file
         self.setup_logging()
         
+        print("Initializing database manager...", flush=True)
+        
         # Override database file if specified
         if db_file:
             db_path_dir = os.getenv('LAMB_DB_PATH', '.')
             full_db_path = os.path.join(db_path_dir, db_file) if not os.path.isabs(db_file) else db_file
             
             if not os.path.exists(full_db_path):
-                raise FileNotFoundError(f"Database file not found: {full_db_path}")
+                error_msg = f"Database file not found: {full_db_path}"
+                self.logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
             
             self.logger.info(f"Using database: {full_db_path}")
             # Override the db_path by setting it in the manager after creation
-            self.db_manager = LambDatabaseManager()
-            self.db_manager.db_path = full_db_path
+            try:
+                self.db_manager = LambDatabaseManager()
+                self.db_manager.db_path = full_db_path
+            except Exception as e:
+                error_msg = f"Failed to initialize database manager: {str(e)}"
+                self.logger.error(error_msg)
+                raise
         else:
             # Initialize database manager normally
-            self.db_manager = LambDatabaseManager()
+            try:
+                self.db_manager = LambDatabaseManager()
+                self.logger.info(f"Using database from LAMB_DB_PATH: {os.getenv('LAMB_DB_PATH')}")
+            except Exception as e:
+                error_msg = f"Failed to initialize database manager: {str(e)}"
+                self.logger.error(error_msg)
+                print(error_msg, file=sys.stderr, flush=True)
+                raise
         
         # Get KB Server config
         self.kb_server_url = os.getenv('LAMB_KB_SERVER', '').rstrip('/')
         self.kb_server_token = os.getenv('LAMB_KB_SERVER_TOKEN', '')
         
         if not self.kb_server_url:
-            raise ValueError("LAMB_KB_SERVER environment variable is required")
+            error_msg = "LAMB_KB_SERVER environment variable is required"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        if not self.kb_server_token:
+            self.logger.warning("LAMB_KB_SERVER_TOKEN not set - KB Server requests may fail")
+        
+        self.logger.info(f"KB Server configured: {self.kb_server_url}")
         
         # Statistics
         self.stats = {
@@ -92,12 +155,18 @@ class KBRegistryMigration:
     def setup_logging(self):
         """Configure logging"""
         level = logging.DEBUG if self.verbose else logging.INFO
+        
+        # Configure logging to output to stdout explicitly
+        # This ensures output is visible in Docker exec
         logging.basicConfig(
             level=level,
             format='%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            datefmt='%Y-%m-%d %H:%M:%S',
+            stream=sys.stdout,
+            force=True  # Override any existing configuration
         )
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(level)
     
     async def fetch_kb_from_server(self, kb_id: str) -> Optional[Dict]:
         """Fetch KB details from KB Server"""
@@ -340,12 +409,109 @@ class KBRegistryMigration:
             self.logger.error(f"✗ {self.stats['errors']} error(s) occurred during migration")
 
 
+def check_environment():
+    """Check and display environment configuration"""
+    print("\n" + "=" * 70)
+    print("Environment Check")
+    print("=" * 70)
+    
+    # Check critical environment variables
+    critical_vars = {
+        'LAMB_DB_PATH': 'Database directory path',
+        'LAMB_KB_SERVER': 'KB Server URL',
+        'LAMB_KB_SERVER_TOKEN': 'KB Server authentication token',
+    }
+    
+    optional_vars = {
+        'LAMB_BACKEND_HOST': 'Backend host URL',
+        'LAMB_WEB_HOST': 'Web host URL',
+        'LAMB_BEARER_TOKEN': 'Bearer token',
+    }
+    
+    all_good = True
+    
+    print("\nCritical Variables:")
+    for var, description in critical_vars.items():
+        value = os.getenv(var)
+        if value:
+            # Mask tokens for security
+            if 'TOKEN' in var or 'KEY' in var:
+                display_value = value[:8] + '...' if len(value) > 8 else '***'
+            else:
+                display_value = value
+            print(f"  ✓ {var}: {display_value}")
+        else:
+            print(f"  ✗ {var}: NOT SET - {description}")
+            all_good = False
+    
+    print("\nOptional Variables (with defaults):")
+    for var, description in optional_vars.items():
+        value = os.getenv(var)
+        if value:
+            if 'TOKEN' in var or 'KEY' in var:
+                display_value = value[:8] + '...' if len(value) > 8 else '***'
+            else:
+                display_value = value
+            print(f"  ✓ {var}: {display_value}")
+        else:
+            print(f"  ℹ {var}: using default")
+    
+    # Check database file
+    print("\nDatabase Check:")
+    db_path = os.getenv('LAMB_DB_PATH')
+    if db_path:
+        db_file = os.path.join(db_path, 'lamb_v4.db')
+        if os.path.exists(db_file):
+            size = os.path.getsize(db_file)
+            print(f"  ✓ Database file exists: {db_file} ({size} bytes)")
+        else:
+            print(f"  ✗ Database file not found: {db_file}")
+            all_good = False
+    else:
+        print(f"  ✗ LAMB_DB_PATH not set, cannot check database")
+        all_good = False
+    
+    # Check KB Server connectivity
+    print("\nKB Server Connectivity:")
+    kb_server = os.getenv('LAMB_KB_SERVER')
+    kb_token = os.getenv('LAMB_KB_SERVER_TOKEN')
+    if kb_server and kb_token:
+        try:
+            import httpx
+            response = httpx.get(
+                f"{kb_server.rstrip('/')}/health",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                print(f"  ✓ KB Server reachable: {kb_server}")
+            else:
+                print(f"  ⚠ KB Server responded with status {response.status_code}")
+        except Exception as e:
+            print(f"  ✗ Cannot reach KB Server: {str(e)}")
+            all_good = False
+    else:
+        print(f"  ✗ KB Server URL or token not set")
+        all_good = False
+    
+    print("\n" + "=" * 70)
+    if all_good:
+        print("✓ Environment check passed - ready to run migration")
+        return 0
+    else:
+        print("✗ Environment check failed - please fix the issues above")
+        return 1
+
+
 async def main():
     parser = argparse.ArgumentParser(
         description='Migrate KB references to kb_registry table',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Check environment setup
+  python scripts/migrate_kb_registry.py --check-env
+
   # Dry run to see what would be done
   python scripts/migrate_kb_registry.py --dry-run
 
@@ -357,6 +523,9 @@ Examples:
 
   # Run actual migration
   python scripts/migrate_kb_registry.py
+
+  # Docker execution
+  docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --check-env
         """
     )
     parser.add_argument('--dry-run', action='store_true',
@@ -365,15 +534,23 @@ Examples:
                        help='Enable verbose logging')
     parser.add_argument('--db', type=str,
                        help='Database file to use (relative to LAMB_DB_PATH or absolute path)')
+    parser.add_argument('--check-env', action='store_true',
+                       help='Check environment configuration and exit')
     
     args = parser.parse_args()
     
+    # Handle --check-env flag
+    if args.check_env:
+        sys.exit(check_environment())
+    
     try:
+        print("Initializing migration...", flush=True)
         migration = KBRegistryMigration(
             dry_run=args.dry_run, 
             verbose=args.verbose,
             db_file=args.db
         )
+        print("Starting migration run...", flush=True)
         await migration.run()
         
         # Exit with error code if there were errors
@@ -381,12 +558,20 @@ Examples:
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n\nMigration interrupted by user")
+        print("\n\nMigration interrupted by user", flush=True)
         sys.exit(130)
     except Exception as e:
-        logging.error(f"Fatal error: {str(e)}", exc_info=True)
+        print(f"\nFATAL ERROR: {str(e)}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"\nFATAL ERROR in main: {str(e)}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

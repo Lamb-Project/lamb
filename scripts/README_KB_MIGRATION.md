@@ -20,7 +20,21 @@ After upgrading to v0.2, the new `LAMB_kb_registry` table needs to be populated 
 
 ## Usage
 
-### Dry Run (Recommended First Step)
+### Check Environment (Recommended First Step)
+
+Verify that all environment variables and dependencies are properly configured:
+
+```bash
+cd /opt/lamb
+python scripts/migrate_kb_registry.py --check-env
+```
+
+This will check:
+- Required environment variables (LAMB_DB_PATH, LAMB_KB_SERVER, etc.)
+- Database file existence and accessibility
+- KB Server connectivity
+
+### Dry Run (Recommended Before Migration)
 
 See what the script would do without making any changes:
 
@@ -68,12 +82,20 @@ python scripts/migrate_kb_registry.py --db lamb_v4_prod.db --dry-run --verbose
 When running in a Docker environment where the KB Server is accessible:
 
 ```bash
-# From within the LAMB backend container
-python /opt/lamb/scripts/migrate_kb_registry.py --dry-run
+# First, check the environment setup
+docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --check-env
 
-# Or using docker exec
-docker exec lamb-backend python /opt/lamb/scripts/migrate_kb_registry.py --dry-run
+# If environment check passes, run dry-run
+docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --dry-run
+
+# Finally, run the actual migration
+docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py
+
+# With verbose output for debugging
+docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --dry-run --verbose
 ```
+
+**Note:** The container name may vary depending on your setup. Use `docker ps` to find the exact name (e.g., `lamb-backend`, `lamb-backend-1`, `lamb_backend_1`).
 
 ## What It Does
 
@@ -212,14 +234,45 @@ WHERE id IN (19, 42, 67);  -- Replace with actual IDs
 
 ## Troubleshooting
 
+### Script produces no output in Docker
+
+If the script runs but produces no output when executed via `docker exec`:
+
+1. **Check environment variables in the container**:
+   ```bash
+   docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --check-env
+   ```
+
+2. **Verify the .env file is mounted**:
+   ```bash
+   docker exec lamb-backend-1 cat /opt/lamb/backend/.env
+   ```
+
+3. **Check Python and import errors**:
+   ```bash
+   docker exec lamb-backend-1 python -c "import sys; sys.path.insert(0, '/opt/lamb/backend'); from lamb.database_manager import LambDatabaseManager; print('Import successful')"
+   ```
+
+4. **Run with verbose flag**:
+   ```bash
+   docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --dry-run --verbose
+   ```
+
+5. **Capture both stdout and stderr**:
+   ```bash
+   docker exec lamb-backend-1 python /opt/lamb/scripts/migrate_kb_registry.py --check-env 2>&1
+   ```
+
 ### "LAMB_KB_SERVER environment variable is required"
 - Ensure `.env` file has `LAMB_KB_SERVER` set
 - Check that `LAMB_KB_SERVER_TOKEN` is also set
+- Run `--check-env` to diagnose the issue
 
 ### "Failed to connect to database"
 - Verify `LAMB_DB_PATH` in `.env`
 - Check database file exists: `ls -l $LAMB_DB_PATH/lamb_v4.db`
 - Ensure proper file permissions
+- Run `--check-env` to see detailed database information
 
 ### "KB Server returned status 500"
 - Check KB Server logs
@@ -230,6 +283,11 @@ WHERE id IN (19, 42, 67);  -- Replace with actual IDs
 - User may have been deleted
 - Check `LAMB_Creator_users` table for the email
 - May need to reassign assistant ownership before migration
+
+### Module import errors in Docker
+- Ensure the backend directory is accessible in the container
+- Verify all Python dependencies are installed: `docker exec lamb-backend-1 pip list`
+- Check that the script path is correct: `/opt/lamb/scripts/migrate_kb_registry.py`
 
 ## Related Documentation
 
