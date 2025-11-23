@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Security, Depends, Query
+from fastapi import APIRouter, Request, HTTPException, Security, Depends, Query, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, ValidationError
 import httpx
@@ -748,9 +748,15 @@ Example Error Response (Forbidden):
         500: {"description": "Internal server error or database error"}
     }
 )
-async def get_assistant_proxy(assistant_id: int, request: Request):
+async def get_assistant_proxy(assistant_id: int, request: Request, response: Response):
     """Gets a specific assistant with its publication info directly from the database."""
     logger.info(f"Received request to get assistant ID: {assistant_id} directly from DB.")
+    
+    # Add cache-control headers to prevent caching of assistant data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     try:
         # Get creator user from auth header
         creator_user = get_creator_user_from_token(

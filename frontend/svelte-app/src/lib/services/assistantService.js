@@ -191,8 +191,11 @@ export async function getAssistantById(assistantId) {
     const response = await fetch(apiUrl, {
         headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+        },
+        cache: 'no-store' // Prevent browser caching of GET request
     });
 
     if (!response.ok) {

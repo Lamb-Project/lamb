@@ -121,10 +121,12 @@
     }
 
     /** Fetches assistant details */
-    /** @param {number} id */
-    // Remove shouldStartInEdit parameter
-    async function fetchAssistantDetail(id) { 
-        if (lastAttemptedId === id) return; // Simpler check now
+    /**
+     * @param {number} id
+     * @param {boolean} forceRefresh - Force refresh even if ID is the same (used after updates)
+     */
+    async function fetchAssistantDetail(id, forceRefresh = false) { 
+        if (lastAttemptedId === id && !forceRefresh) return; // Skip if same ID unless forcing refresh
         lastAttemptedId = id;
         // startEditMode is already set by the subscription callback
         loadingDetail = true;
@@ -1196,8 +1198,8 @@
                     <AssistantForm 
                         assistant={selectedAssistantData}
                         on:formSuccess={() => {
-                            // Refresh the assistant data after successful update
-                            fetchAssistantDetail(selectedAssistantData.id);
+                            // Refresh the assistant data after successful update with forceRefresh
+                            fetchAssistantDetail(selectedAssistantData.id, true);
                             detailSubView = 'properties'; // Switch back to properties view
                         }}
                         on:cancel={() => {
