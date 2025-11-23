@@ -219,7 +219,7 @@ After running the migration:
    ```bash
    # Docker deployment
    docker restart lamb-backend-1
-   
+
    # Or restart the entire stack
    docker-compose restart
    ```
