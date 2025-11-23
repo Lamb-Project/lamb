@@ -81,6 +81,7 @@ class KBRegistryMigration:
         self.stats = {
             'assistants_scanned': 0,
             'assistants_with_kbs': 0,
+            'assistants_deleted': 0,
             'unique_kb_ids': set(),
             'kbs_registered': 0,
             'kbs_already_registered': 0,
@@ -189,6 +190,13 @@ class KBRegistryMigration:
         
         # Get owner user ID
         owner_email = assistant.get('owner')
+        
+        # Check for deleted assistants (special marker email)
+        if owner_email == 'deleted_assistant@owi.com':
+            self.logger.info(f"  Skipping deleted assistant {assistant['id']}")
+            self.stats['assistants_deleted'] += 1
+            return
+        
         owner_user_id = self.get_user_id_by_email(owner_email) if owner_email else None
         
         if not owner_user_id:
@@ -306,6 +314,8 @@ class KBRegistryMigration:
         self.logger.info("=" * 70)
         self.logger.info(f"Assistants scanned:       {self.stats['assistants_scanned']}")
         self.logger.info(f"Assistants with KBs:      {self.stats['assistants_with_kbs']}")
+        if self.stats['assistants_deleted'] > 0:
+            self.logger.info(f"Assistants deleted:       {self.stats['assistants_deleted']} (skipped)")
         self.logger.info(f"Unique KB IDs found:      {len(self.stats['unique_kb_ids'])}")
         self.logger.info(f"KBs registered:           {self.stats['kbs_registered']}")
         self.logger.info(f"KBs already registered:   {self.stats['kbs_already_registered']}")
