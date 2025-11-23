@@ -214,12 +214,37 @@ After running the migration:
    LIMIT 10;
    ```
 
-3. **Test Assistant Display**:
+3. **Restart Backend Service** (CRITICAL):
 
+   ```bash
+   # Docker deployment
+   docker restart lamb-backend-1
+   
+   # Or restart the entire stack
+   docker-compose restart
+   ```
+
+   ⚠️ **The backend must be restarted** after migration to ensure it reads the updated registry data and clears any internal caches.
+
+4. **Test Assistant Display**:
+
+   - **Hard refresh** the browser (Cmd+Shift+R on Mac, Ctrl+Shift+R on Windows/Linux) to clear frontend cache
    - Open assistants with KBs in the web interface
    - Verify KB names display correctly (not "X (Not Found)")
+   - Check browser console for errors if KBs still show "(Not Found)"
 
-4. **Update Sharing Status** (if needed):
+5. **Verify KB Server Has the KB** (if still showing "Not Found"):
+
+   ```bash
+   # Test that KB Server has the KB
+   curl -H "Authorization: Bearer $LAMB_KB_SERVER_TOKEN" \
+        http://localhost:9090/collections/13
+   ```
+
+   Replace `13` with the KB ID that's showing "(Not Found)". If this returns 404, the KB was deleted from the KB Server but still referenced in assistants.
+
+6. **Update Sharing Status** (if needed):
+
    ```sql
    -- Make specific KBs shared
    UPDATE LAMB_kb_registry
