@@ -32,12 +32,10 @@ PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./lamb_assistants")
  
 API_KEY = lamb_token
 # Ollama Configuration
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
-if not OLLAMA_BASE_URL:
-    raise ValueError("OLLAMA_BASE_URL environment variable is required")
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
-if not OLLAMA_MODEL:
-    raise ValueError("OLLAMA_MODEL environment variable is required")
+
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://:11434')
+
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'nomic-embed-text')
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
