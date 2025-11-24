@@ -72,4 +72,5 @@ llama-index==0.10.56
 llama-index-llms-ollama==0.2.2
 
 # migration script from v01 to v02
-python-dotenv~=1.2.1
+python-dotenv>=1.2.1
+httpx>=0.28.1
