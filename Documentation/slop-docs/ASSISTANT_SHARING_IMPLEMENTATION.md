@@ -69,18 +69,24 @@ This document provides comprehensive documentation for the assistant sharing fea
 
 **Schema**:
 ```sql
-CREATE TABLE IF NOT EXISTS {prefix}assistant_shares (
+CREATE TABLE LAMB_assistant_shares (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     assistant_id INTEGER NOT NULL,
     shared_with_user_id INTEGER NOT NULL,
     shared_by_user_id INTEGER NOT NULL,
     shared_at INTEGER NOT NULL,
-    FOREIGN KEY (assistant_id) REFERENCES {prefix}assistants(id) ON DELETE CASCADE,
-    FOREIGN KEY (shared_with_user_id) REFERENCES {prefix}Creator_users(id) ON DELETE CASCADE,
-    FOREIGN KEY (shared_by_user_id) REFERENCES {prefix}Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (assistant_id) REFERENCES LAMB_assistants(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with_user_id) REFERENCES LAMB_Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by_user_id) REFERENCES LAMB_Creator_users(id) ON DELETE CASCADE,
     UNIQUE(assistant_id, shared_with_user_id)
 );
+
+-- Indexes for performance
+CREATE INDEX idx_LAMB_assistant_shares_assistant ON LAMB_assistant_shares(assistant_id);
+CREATE INDEX idx_LAMB_assistant_shares_shared_with ON LAMB_assistant_shares(shared_with_user_id);
 ```
+
+**Note**: All LAMB database tables use the `LAMB_` prefix convention.
 
 ### Permission Model
 
@@ -514,7 +520,7 @@ This made debugging particularly challenging as the errors were not surfaced in 
 ### ✅ Backend Implementation (100% Complete)
 
 #### Database Layer
-- [x] Created `assistant_shares` table with proper foreign keys and UNIQUE constraint
+- [x] Created `LAMB_assistant_shares` table with proper foreign keys and UNIQUE constraint
 - [x] Added `sharing_enabled` flag to organization configuration
 - [x] Implemented all required database methods:
   - `share_assistant()`
@@ -1064,27 +1070,27 @@ If the database schema needs updates in production:
 ```sql
 -- Check if table exists
 SELECT name FROM sqlite_master 
-WHERE type='table' AND name LIKE '%assistant_shares';
+WHERE type='table' AND name = 'LAMB_assistant_shares';
 
 -- If not exists, create table
-CREATE TABLE IF NOT EXISTS assistant_shares (
+CREATE TABLE IF NOT EXISTS LAMB_assistant_shares (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     assistant_id INTEGER NOT NULL,
     shared_with_user_id INTEGER NOT NULL,
     shared_by_user_id INTEGER NOT NULL,
     shared_at INTEGER NOT NULL,
-    FOREIGN KEY (assistant_id) REFERENCES assistants(id) ON DELETE CASCADE,
-    FOREIGN KEY (shared_with_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
-    FOREIGN KEY (shared_by_user_id) REFERENCES Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (assistant_id) REFERENCES LAMB_assistants(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with_user_id) REFERENCES LAMB_Creator_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by_user_id) REFERENCES LAMB_Creator_users(id) ON DELETE CASCADE,
     UNIQUE(assistant_id, shared_with_user_id)
 );
 
 -- Add indexes
-CREATE INDEX IF NOT EXISTS idx_assistant_shares_assistant 
-ON assistant_shares(assistant_id);
+CREATE INDEX IF NOT EXISTS idx_LAMB_assistant_shares_assistant 
+ON LAMB_assistant_shares(assistant_id);
 
-CREATE INDEX IF NOT EXISTS idx_assistant_shares_shared_with 
-ON assistant_shares(shared_with_user_id);
+CREATE INDEX IF NOT EXISTS idx_LAMB_assistant_shares_shared_with 
+ON LAMB_assistant_shares(shared_with_user_id);
 ```
 
 ---
@@ -1400,6 +1406,82 @@ curl http://localhost:9099/lamb/v1/assistant-sharing/organization-users \
 #   {"id": 5, "name": "Bob", "email": "bob@org.com", "user_type": "end_user"}
 # ]
 # Note: Returns 403 if sharing not enabled
+```
+
+## Appendix C: SQL Query Examples (Production)
+
+### Get User Information
+
+```sql
+SELECT id, user_name, user_email, organization_id 
+FROM LAMB_Creator_users 
+WHERE user_email = 'user@example.com';
+```
+
+### Get All Assistants Shared With a User
+
+```sql
+-- Replace 20 with the actual user_id
+SELECT 
+    a.id AS assistant_id,
+    a.name AS assistant_name,
+    a.description,
+    a.owner AS assistant_owner,
+    datetime(s.shared_at, 'unixepoch') AS shared_at,
+    s.shared_by_user_id,
+    u.user_name AS shared_by_name,
+    u.user_email AS shared_by_email
+FROM LAMB_assistant_shares s
+JOIN LAMB_assistants a ON s.assistant_id = a.id
+JOIN LAMB_Creator_users u ON s.shared_by_user_id = u.id
+WHERE s.shared_with_user_id = 20
+ORDER BY s.shared_at DESC;
+```
+
+### Get Detailed Information With Organization
+
+```sql
+SELECT 
+    a.id AS assistant_id,
+    a.name AS assistant_name,
+    a.description,
+    a.owner AS assistant_owner,
+    datetime(a.created_at, 'unixepoch') AS assistant_created,
+    datetime(s.shared_at, 'unixepoch') AS shared_at,
+    u.user_name AS shared_by_name,
+    u.user_email AS shared_by_email,
+    org.name AS organization_name,
+    org.slug AS organization_slug
+FROM LAMB_assistant_shares s
+JOIN LAMB_assistants a ON s.assistant_id = a.id
+JOIN LAMB_Creator_users u ON s.shared_by_user_id = u.id
+JOIN LAMB_organizations org ON a.organization_id = org.id
+WHERE s.shared_with_user_id = 20
+ORDER BY s.shared_at DESC;
+```
+
+### Check Total Shares in Database
+
+```sql
+SELECT COUNT(*) as total_shares FROM LAMB_assistant_shares;
+```
+
+### Get All Shares for a Specific Assistant
+
+```sql
+-- Replace 34 with the actual assistant_id
+SELECT 
+    s.id,
+    cu.id AS user_id,
+    cu.user_name,
+    cu.user_email,
+    datetime(s.shared_at, 'unixepoch') AS shared_at,
+    shared_by.user_name AS shared_by_name
+FROM LAMB_assistant_shares s
+JOIN LAMB_Creator_users cu ON s.shared_with_user_id = cu.id
+JOIN LAMB_Creator_users shared_by ON s.shared_by_user_id = shared_by.id
+WHERE s.assistant_id = 34
+ORDER BY s.shared_at DESC;
 ```
 
 ### Get Current Shares
