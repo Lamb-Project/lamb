@@ -595,9 +595,6 @@
                                  <div class="py-4 text-center"> <div class="text-gray-500"> {$_('knowledgeBases.fileUpload.noPlugins', { default: 'No ingestion plugins available.' })} </div> </div>
                             {:else}
                                 <form onsubmit={(e) => { e.preventDefault(); handleIngestSubmit(); }} class="space-y-6">
-                                     {#if uploadSuccess} <div class="p-4 bg-green-50 border border-green-100 rounded"> <div class="text-sm text-green-700"> {$_('knowledgeBases.fileUpload.success', { default: 'File uploaded and ingestion started successfully!' })} </div> </div> {/if}
-                                     {#if uploadError} <div class="p-4 bg-red-50 border border-red-100 rounded"> <div class="text-sm text-red-700"> {uploadError} </div> </div> {/if}
-                                    
                                     {#if isFilePlugin}
                                         {console.log('File input rendered because isFilePlugin is true.')}
                                         <div> <label for="file-upload-input-inline" class="block text-sm font-medium text-gray-700"> {$_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })} {#if acceptTypes}<span class="text-xs text-gray-500 ml-1">(Supported: {acceptTypes})</span>{/if} </label> <div class="mt-1 flex items-center"> <input id="file-upload-input-inline" type="file" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#2271b3] file:text-white hover:file:bg-[#195a91]" style="file:background-color: #2271b3;" onchange={handleFileSelect} accept={acceptTypes} /> </div> {#if selectedFile} <p class="mt-2 text-sm text-gray-500"> {selectedFile.name} ({formatFileSize(selectedFile.size)}) </p> {/if} </div>
@@ -694,7 +691,31 @@
                         {/each}
                     </div>
                 {/if}
-                                     <div class="pt-4 flex justify-end"> <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]" style="background-color: #2271b3;" disabled={!selectedIngestionPlugin || uploading || (isFilePlugin && !selectedFile)}> {#if uploading} <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> {$_('knowledgeBases.fileUpload.uploadingButton', { default: 'Uploading...' })} {:else} {isFilePlugin ? $_('knowledgeBases.fileUpload.uploadButton', { default: 'Upload File' }) : $_('knowledgeBases.fileUpload.runButton', { default: 'Run Ingestion' })} {/if} </button> </div>
+                                     <!-- Submit Button and Feedback -->
+                                     <div class="pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                                        <!-- Inline feedback messages -->
+                                        {#if uploadSuccess}
+                                            <div class="flex-1 p-3 bg-green-50 border border-green-200 rounded-md">
+                                                <div class="text-sm text-green-700 flex items-center">
+                                                    <svg class="h-4 w-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    {$_('knowledgeBases.fileUpload.success', { default: 'File uploaded and ingestion started successfully!' })}
+                                                </div>
+                                            </div>
+                                        {/if}
+                                        {#if uploadError}
+                                            <div class="flex-1 p-3 bg-red-50 border border-red-200 rounded-md">
+                                                <div class="text-sm text-red-700 flex items-center">
+                                                    <svg class="h-4 w-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    {uploadError}
+                                                </div>
+                                            </div>
+                                        {/if}
+                                        <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] flex-shrink-0" style="background-color: #2271b3;" disabled={!selectedIngestionPlugin || uploading || (isFilePlugin && !selectedFile)}> {#if uploading} <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> {$_('knowledgeBases.fileUpload.uploadingButton', { default: 'Uploading...' })} {:else} {isFilePlugin ? $_('knowledgeBases.fileUpload.uploadButton', { default: 'Upload File' }) : $_('knowledgeBases.fileUpload.runButton', { default: 'Run Ingestion' })} {/if} </button>
+                                     </div>
                                 </form>
                             {/if}
                         </div>
