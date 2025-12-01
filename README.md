@@ -81,7 +81,7 @@ LAMB features a modular, extensible architecture:
 
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
+📘 **[Docker Installation Guide](Documentation/slop-docs/deployment.md)** - One-command deployment with all services configured
 
 ### Alternative: Manual Installation
 
@@ -109,12 +109,12 @@ Visit our [official website](http://www.lamb-project.org) for:
 ### 📖 Developer Documentation
 Comprehensive documentation is available in the `/Documentation` directory:
 
-- [Backend Architecture](Documentation/backend-briefing.md)
-- [Frontend Development Guide](Documentation/frontend-dev.md)
-- [Knowledge Base Integration](Documentation/kb-server-integration.md)
-- [Multi-Organization Setup](Documentation/multi_org.md)
-- [API Documentation](Documentation/openapi/api.json)
-- [Final Setup Guide](final-setup.md)
+- [Backend Architecture](Documentation/small-context/backend_architecture.md)
+- [Frontend Development Guide](Documentation/small-context/frontend_architecture.md)
+- [Knowledge Base Integration](Documentation/attic/kb-server-integration.md)
+- [Multi-Organization Setup](Documentation/attic/multi_org.md)
+- [Database Schema](Documentation/LAMB_DATABASE_SCHEMA.md)
+- [Final Setup Guide](Documentation/slop-docs/final-setup.md)
 
 ## 🗂️ Project Structure
 
