@@ -1,6 +1,6 @@
 # Lamb final setup
 
-Asuming you have successfully followed the instruction on [Installation Guide](../installationguide.md) or [Deployment Guide](deployment.md) and lamb is running follow these steps to finish the setup and test it. 
+Assuming you have successfully followed the instruction on [Installation Guide](../installationguide.md) or [Deployment Guide](deployment.md) and lamb is running follow these steps to finish the setup and test it. 
 
 # Log in as admin
 
