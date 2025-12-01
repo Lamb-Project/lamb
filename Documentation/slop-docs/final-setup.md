@@ -1,6 +1,6 @@
 # Lamb final setup
 
-Asuming you have successfully followed the instruction on [Installation Guide](../installationguide.md) or [Deployment Guide](deployment.md) and lamb is running follow these steps to finish the setup and test it. 
+Assuming you have successfully followed the instruction on [Installation Guide](../installationguide.md) or [Deployment Guide](deployment.md) and lamb is running follow these steps to finish the setup and test it. 
 
 # Log in as admin
 
@@ -16,7 +16,7 @@ On your browser go to http://localhost:9099 (or the adress where you have pointe
 
 ![LAMB UI Login Screen](../../static/lamb-ui-01.png)
 
-## Troubleshoting
+## Troubleshooting
 
 If you are not able to log in with the admin user it means 
 1- Lamb is working 
