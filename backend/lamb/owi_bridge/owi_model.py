@@ -52,7 +52,7 @@ class OWIModel:
                 "suggestion_prompts": suggestion_prompts,
                 "tags": [],
                 "capabilities": capabilities or {
-                    "vision": False,
+                    "vision": True,
                     "citations": True
                 }
             },
