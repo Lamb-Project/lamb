@@ -50,7 +50,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 try:
-	from firecrawl import FirecrawlApp
+	from firecrawl import Firecrawl
 	from langchain_text_splitters import (
 		RecursiveCharacterTextSplitter,
 		CharacterTextSplitter,
@@ -253,7 +253,7 @@ class URLIngestPlugin(IngestPlugin):
 			# For self-hosted instances, use a dummy API key if none provided
 			if not api_key and api_url != "https://api.firecrawl.dev":
 				api_key = "dummy-key-for-self-hosted"
-			firecrawl = FirecrawlApp(api_key=api_key, api_url=api_url)
+			firecrawl = Firecrawl(api_key=api_key, api_url=api_url)
 		except Exception as e:
 			raise ValueError(f"Failed to initialize crawler client: {str(e)}")
 

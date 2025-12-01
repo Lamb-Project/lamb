@@ -18,7 +18,7 @@ openai>=1.0.0
 # pathlib and uuid are in the Python standard library; no need to install separately.
 markdown2
 # YouTube video and subtitle extraction
-yt-dlp>=2024.1.1
+yt-dlp>=2025.11.12
 langchain-community
 beautifulsoup4
 lxml
