@@ -295,11 +295,9 @@ export async function publishAssistant(assistantId, assistantName, groupName, oa
 /**
  * Unpublish assistant
  * @param {string} assistantId
- * @param {string} groupId
- * @param {string} userEmail
  * @returns {Promise<any>}
  */
-export async function unpublishAssistant(assistantId, groupId, userEmail) {
+export async function unpublishAssistant(assistantId) {
 	// Use the correct publish status endpoint and method
 	const token = localStorage.getItem('userToken');
 	if (!token) {

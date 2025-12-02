@@ -294,16 +294,11 @@
   /** @param {{ detail: { assistantId: number; groupId: string | null | undefined; ownerEmail: string } }} event */
   async function handleUnpublish(event) { 
       const assistantId = Number(event.detail.assistantId);
-      const { groupId, ownerEmail } = event.detail;
-      if (!groupId || !ownerEmail) {
-          alert(localeLoaded ? $_('assistants.unpublishErrorMissingData') : 'Cannot unpublish: Missing group ID or owner email.');
-          return;
-      }
       const assistantToUnpublish = allAssistants.find(a => a.id === assistantId);
       const confirmMessage = localeLoaded ? $_('assistants.unpublishConfirm', { values: { name: assistantToUnpublish?.name || assistantId } }) : `Are you sure you want to unpublish assistant ${assistantId}?`;
       if (confirm(confirmMessage)) {
           try {
-              await unpublishAssistant(assistantId.toString(), groupId, ownerEmail);
+              await unpublishAssistant(assistantId.toString());
               await loadAllAssistants();
               alert(localeLoaded ? $_('assistants.unpublishSuccess') : 'Assistant unpublished successfully!');
           } catch (err) {
