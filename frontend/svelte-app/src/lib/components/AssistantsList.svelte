@@ -291,7 +291,7 @@
       alert(localeLoaded ? $_('assistants.actions.cloneNotImplemented', { default: 'Clone functionality not yet implemented.' }) : 'Clone functionality not yet implemented.');
   }
   
-  /** @param {{ detail: { assistantId: number; groupId: string | null | undefined; ownerEmail: string } }} event */
+  /** @param {{ detail: { assistantId: number} }} event */
   async function handleUnpublish(event) { 
       const assistantId = Number(event.detail.assistantId);
       const assistantToUnpublish = allAssistants.find(a => a.id === assistantId);
