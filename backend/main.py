@@ -132,7 +132,8 @@ def _get_assistant_capabilities(assistant: dict) -> dict:
         Capabilities dictionary with defaults
     """
     capabilities = {
-        "vision": False  # Default to False for backward compatibility
+        "vision": False,  # Default to False for backward compatibility
+        "image_generation": False  # Support for image generation models
     }
 
     # Parse metadata from api_callback

@@ -1,75 +1,74 @@
-fastapi==0.111.0
-uvicorn[standard]==0.31.1
-pydantic==2.11.0
-python-multipart==0.0.9
-python-socketio==5.11.2
-grpcio==1.64.1
+# Web framework
+fastapi>=0.111.0,<1.0.0
+uvicorn[standard]>=0.31.0,<1.0.0
+pydantic[email]>=2.0.0,<3.0.0
+python-multipart>=0.0.9,<1.0.0
+python-socketio>=5.11.0,<6.0.0
+grpcio>=1.64.0,<2.0.0
 
-passlib==1.7.4
-passlib[bcrypt]==1.7.4
-bcrypt==4.2.0
+# Authentication
+passlib[bcrypt]>=1.7.4,<2.0.0
+bcrypt>=4.0.0,<5.0.0
+PyJWT[crypto]>=2.0.0,<3.0.0
 
-PyJWT[crypto]
-
-requests==2.32.2
-aiohttp==3.9.5
-httpx==0.27.1
+# HTTP clients
+requests>=2.32.0,<3.0.0
+aiohttp>=3.9.0,<4.0.0
+httpx>=0.28.1,<1.0.0
 
 # MCP (Model Context Protocol) libraries
-mcp==1.14.0
+mcp>=1.14.0,<2.0.0
 
 # AI libraries
-openai==1.35.3
-anthropic==0.28.0
-google-generativeai==0.7.2
-vertexai==1.60.0
+openai>=1.35.0,<2.0.0
+anthropic>=0.28.0,<1.0.0
+google-genai>=1.0.0
 
 # Database
-pymongo==4.7.3
-peewee==3.17.5
-SQLAlchemy==2.0.30
-boto3==1.34.131
-redis==5.0.7
-sqlmodel==0.0.18
-chromadb==0.5.0
-psycopg2-binary==2.9.9
+pymongo>=4.7.0,<5.0.0
+peewee>=3.17.0,<4.0.0
+SQLAlchemy>=2.0.0,<3.0.0
+boto3>=1.34.0,<2.0.0
+redis>=5.0.0,<6.0.0
+sqlmodel>=0.0.18,<1.0.0
+chromadb>=0.5.0,<1.0.0
+psycopg2-binary>=2.9.0,<3.0.0
 
 # Observability
-langfuse==2.48.0
-ddtrace==2.9.2
+langfuse>=2.48.0,<3.0.0
+ddtrace>=2.9.0,<3.0.0
 
 # ML libraries
-torch==2.3.1
-numpy==1.26.4
-pandas==2.2.2
-
-xgboost==2.0.3
-scikit-learn==1.5.1
+torch>=2.3.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+pandas>=2.2.0,<3.0.0
+xgboost>=2.0.0,<3.0.0
+scikit-learn>=1.5.0,<2.0.0
 
 # NLP libraries
-sentence-transformers==2.7.0
-transformers==4.42.3
-tokenizers==0.19.1
-nltk==3.8.1
-tiktoken==0.7.0
+sentence-transformers>=2.7.0,<3.0.0
+transformers>=4.42.0,<5.0.0
+tokenizers>=0.19.0,<1.0.0
+nltk>=3.8.2,<4.0.0
+tiktoken>=0.7.0,<1.0.0
 
 # Image processing
-Pillow==10.3.0
-opencv-python==4.10.0.84
+Pillow>=10.3.0,<11.0.0
+opencv-python>=4.10.0,<5.0.0
 
 # Visualization
-matplotlib==3.9.1
-seaborn==0.13.2
+matplotlib>=3.9.0,<4.0.0
+seaborn>=0.13.0,<1.0.0
 
 # Web scraping
-selenium==4.20.0
-playwright==1.45.0
-beautifulsoup4==4.12.3
+selenium>=4.20.0,<5.0.0
+playwright>=1.45.0,<2.0.0
+beautifulsoup4>=4.12.0,<5.0.0
 yt-dlp>=2024.1.1
 
 # Llama Index for RAG
-llama-index==0.10.56
-llama-index-llms-ollama==0.2.2
+llama-index>=0.10.56,<0.11.0
+llama-index-llms-ollama>=0.2.0,<0.3.0
 
-# migration script from v01 to v02
-python-dotenv>=1.2.1
+# Utilities
+python-dotenv>=1.2.1,<2.0.0
