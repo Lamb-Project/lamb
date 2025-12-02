@@ -28,6 +28,31 @@ def _has_vision_capability(assistant: Assistant) -> bool:
         return capabilities.get('vision', False)
     except (json.JSONDecodeError, AttributeError):
         return False
+
+def _has_image_generation_capability(assistant: Assistant) -> bool:
+    """
+    Check if the assistant has image generation capabilities enabled.
+
+    Args:
+        assistant: Assistant object with metadata
+
+    Returns:
+        bool: True if image generation is enabled, False otherwise
+    """
+    if not assistant:
+        return False
+
+    # Check if assistant has metadata (stored in api_callback column)
+    metadata_str = getattr(assistant, 'metadata', None) or getattr(assistant, 'api_callback', None)
+    if not metadata_str:
+        return False
+
+    try:
+        metadata = json.loads(metadata_str)
+        capabilities = metadata.get('capabilities', {})
+        return capabilities.get('image_generation', False)
+    except (json.JSONDecodeError, AttributeError):
+        return False
 def prompt_processor(
     request: Dict[str, Any],
     assistant: Optional[Assistant] = None,
