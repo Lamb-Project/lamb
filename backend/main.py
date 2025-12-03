@@ -670,6 +670,21 @@ async def generate_openai_chat_completion(request: Request):
         # Directly call and await run_lamb_assistant
         multimodal_logger.info(f"Calling run_lamb_assistant with assistant_id={assistant_id}")
         request_data = form_data.model_dump()
+        
+        # Inject OpenWebUI headers into request data for user identification
+        # These headers are sent by OpenWebUI when ENABLE_FORWARD_USER_INFO_HEADERS=True
+        openwebui_headers = {}
+        for header_name in ['x-openwebui-user-name', 'x-openwebui-user-id', 
+                           'x-openwebui-user-email', 'x-openwebui-user-role',
+                           'x-openwebui-chat-id']:
+            header_value = request.headers.get(header_name)
+            if header_value:
+                openwebui_headers[header_name] = header_value
+        
+        if openwebui_headers:
+            request_data['__openwebui_headers__'] = openwebui_headers
+            multimodal_logger.info(f"Injected OpenWebUI headers: {list(openwebui_headers.keys())}")
+        
         multimodal_logger.debug(f"Request data being sent: {json.dumps(request_data, indent=2)[:1000]}...")
 
         response = await run_lamb_assistant(

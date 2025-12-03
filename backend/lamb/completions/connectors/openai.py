@@ -544,7 +544,8 @@ Returns:
             multimodal_logger.info(f"Attempting vision API call with model: {resolved_model}")
 
             # Prepare request parameters for vision API call
-            vision_params = body.copy() if body else {}
+            # Filter out OWUI-internal parameters that shouldn't be passed to OpenAI
+            vision_params = {k: v for k, v in (body or {}).items() if not k.startswith('__')}
             vision_params["model"] = resolved_model
             vision_params["messages"] = vision_messages
             vision_params["stream"] = stream
@@ -591,7 +592,8 @@ Returns:
         multimodal_logger.warning("Using text-only fallback for multimodal request")
 
     # Prepare request parameters for OpenAI API call (text-only or fallback)
-    params = body.copy() if body else {}
+    # Filter out OWUI-internal parameters (like __openwebui_headers__) that shouldn't be passed to OpenAI
+    params = {k: v for k, v in (body or {}).items() if not k.startswith('__')}
     params["model"] = resolved_model
     params["messages"] = messages
     params["stream"] = stream

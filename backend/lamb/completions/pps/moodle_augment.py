@@ -22,11 +22,14 @@ Example prompt template:
     {context}
 
 User ID Extraction Priority:
-1. request.metadata.user_id - Explicitly provided user ID
-2. request.metadata.lti_user_id - LTI launch user ID
-3. request.metadata.lis_person_sourcedid - LTI person source ID
-4. request.metadata.email - User email
-5. "default" - Fallback if no user identification is available
+1. X-OpenWebUI-User-Id header - OpenWebUI user ID (injected via __openwebui_headers__)
+2. X-OpenWebUI-User-Email header - OpenWebUI user email
+3. X-OpenWebUI-User-Name header - OpenWebUI user name
+4. request.metadata.user_id - Explicitly provided user ID
+5. request.metadata.lti_user_id - LTI launch user ID
+6. request.metadata.lis_person_sourcedid - LTI person source ID
+7. request.metadata.email - User email
+8. "default" - Fallback if no user identification is available
 """
 
 from typing import Dict, Any, List, Optional
@@ -66,21 +69,39 @@ def _has_vision_capability(assistant: Assistant) -> bool:
 
 def _extract_user_id(request: Dict[str, Any]) -> str:
     """
-    Extract user ID from request metadata.
+    Extract user ID from request, checking OpenWebUI headers first, then metadata.
     
     Attempts to find user identification in the following order:
-    1. request.metadata.user_id - Explicitly provided
-    2. request.metadata.lti_user_id - From LTI launch
-    3. request.metadata.lis_person_sourcedid - LTI person ID
-    4. request.metadata.email - User email
-    5. Falls back to "default"
+    1. request.__openwebui_headers__.x-openwebui-user-id - OpenWebUI User ID header
+    2. request.__openwebui_headers__.x-openwebui-user-email - OpenWebUI User Email header  
+    3. request.__openwebui_headers__.x-openwebui-user-name - OpenWebUI User Name header
+    4. request.metadata.user_id - Explicitly provided in metadata
+    5. request.metadata.lti_user_id - From LTI launch
+    6. request.metadata.lis_person_sourcedid - LTI person ID
+    7. request.metadata.email - User email in metadata
+    8. Falls back to "default"
     
     Args:
-        request: The incoming request dictionary
+        request: The incoming request dictionary, may contain __openwebui_headers__ dict
         
     Returns:
         str: User ID or "default" if not found
     """
+    # First, check OpenWebUI headers (injected by main.py from HTTP request headers)
+    openwebui_headers = request.get('__openwebui_headers__', {})
+    
+    if openwebui_headers:
+        user_id = (
+            openwebui_headers.get('x-openwebui-user-id') or
+            openwebui_headers.get('x-openwebui-user-email') or
+            openwebui_headers.get('x-openwebui-user-name') or
+            None
+        )
+        if user_id:
+            logger.info(f"Extracted user ID from OpenWebUI headers: {user_id}")
+            return str(user_id)
+    
+    # Fall back to metadata fields (for LTI or other integrations)
     metadata = request.get('metadata', {})
     
     # Try various user identification fields
@@ -97,7 +118,7 @@ def _extract_user_id(request: Dict[str, Any]) -> str:
         logger.info(f"Extracted user ID from request metadata: {user_id}")
         return str(user_id)
     
-    logger.info("No user ID found in request metadata, using 'default'")
+    logger.info("No user ID found in request (checked OpenWebUI headers and metadata), using 'default'")
     return "default"
 
 
@@ -105,7 +126,9 @@ def _get_moodle_courses_sync(user_id: str) -> str:
     """
     Synchronously get Moodle courses for a user.
     
-    This is a wrapper that calls the async Moodle tool synchronously.
+    This function directly accesses the mock data from the Moodle tool
+    to avoid async/event loop issues when called from a synchronous context
+    within an already-running async application (like FastAPI).
     
     Args:
         user_id: The user identifier
@@ -114,17 +137,27 @@ def _get_moodle_courses_sync(user_id: str) -> str:
         JSON string with course information
     """
     try:
-        from lamb.completions.tools.moodle import get_moodle_courses
+        # Import the mock data directly to avoid async issues
+        # The prompt processor runs synchronously within FastAPI's async context,
+        # so we can't use asyncio.run() or create new event loops
+        from lamb.completions.tools.moodle import MOCK_USER_COURSES
         
-        # Run the async function in an event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(get_moodle_courses(user_id))
-        finally:
-            loop.close()
+        user_id_lower = user_id.lower().strip()
         
-        return result
+        # Get courses for user (or default if not found)
+        courses = MOCK_USER_COURSES.get(user_id_lower, MOCK_USER_COURSES["default"])
+        
+        result = {
+            "user_id": user_id,
+            "courses": courses,
+            "course_count": len(courses),
+            "success": True,
+            "source": "mock"  # Indicates this is mock data
+        }
+        
+        logger.info(f"Retrieved {len(courses)} courses for Moodle user '{user_id}'")
+        return json.dumps(result)
+        
     except Exception as e:
         logger.error(f"Error getting Moodle courses for user {user_id}: {e}")
         return json.dumps({

@@ -241,11 +241,16 @@ A Moodle-aware prompt processor that extends `simple_augment` functionality with
 
 **1. User Identification (`_extract_user_id()`)**
 Extracts user identifier from multiple sources in priority order:
-- `user_id` from request body
-- `lti_user_id` from request metadata
-- `lis_person_sourcedid` from request metadata
-- `email` from request metadata
-- Falls back to "anonymous" if none found
+- `__openwebui_headers__.x-openwebui-user-id` - OpenWebUI User ID header
+- `__openwebui_headers__.x-openwebui-user-email` - OpenWebUI User Email header
+- `__openwebui_headers__.x-openwebui-user-name` - OpenWebUI User Name header
+- `request.metadata.user_id` - Explicitly provided in metadata
+- `request.metadata.lti_user_id` - LTI launch user ID
+- `request.metadata.lis_person_sourcedid` - LTI person source ID
+- `request.metadata.email` - User email in metadata
+- Falls back to "default" if none found
+
+**Note:** OpenWebUI headers are injected by `main.py` when `ENABLE_FORWARD_USER_INFO_HEADERS=True` is set in OpenWebUI's configuration. The headers are captured from the HTTP request and stored in the request dictionary under `__openwebui_headers__`.
 
 **2. Moodle Integration (`_get_moodle_courses_sync()`)**
 - Synchronous wrapper around the async Moodle tool

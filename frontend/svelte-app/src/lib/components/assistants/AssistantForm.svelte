@@ -1579,6 +1579,15 @@
 									{placeholder}
 								</button>
 							{/each}
+							{#if selectedPromptProcessor === 'moodle_augment'}
+								<button type="button"
+									class="ml-1 px-2 py-0.5 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-800 dark:text-blue-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+									onclick={() => insertPlaceholder('{moodle_info_for_user}')}
+									title="Insert Moodle course information for the current user"
+								>
+									{'{moodle_info_for_user}'}
+								</button>
+							{/if}
 						</div>
 				<textarea 
 					bind:this={textareaRef}
