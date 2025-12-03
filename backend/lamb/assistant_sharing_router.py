@@ -105,14 +105,14 @@ def check_sharing_permission(user_id: int) -> bool:
     return org_sharing_enabled
 
 def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManager):
-    """Create/update OWI group for shared assistant"""
+    """Sync users from LAMB_assistant_shares to the assistant_X group in OWI"""
     assistant = db_manager.get_assistant_by_id(assistant_id)
     if not assistant:
         return
     
     group_manager = OwiGroupManager()
     
-    # Get all users who should have access (owner + shared users)
+    # Get all users who should have access (owner + shared users from LAMB_assistant_shares)
     shares = db_manager.get_assistant_shares(assistant_id)
     user_emails = [assistant.owner]  # Owner always has access
     
@@ -121,8 +121,8 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
         if user:
             user_emails.append(user['user_email'])
     
-    # Create or update OWI group
-    group_name = f"assistant_{assistant_id}_shared"
+    # Use the ORIGINAL assistant group (assistant_X, not assistant_X_shared)
+    group_name = f"assistant_{assistant_id}"
     
     # Check if group exists
     existing_groups = group_manager.get_all_groups()
@@ -134,7 +134,7 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
             break
     
     if not group_id:
-        # Create new group
+        # Create new group if it doesn't exist
         owner_manager = OwiUserManager()
         owner_user = owner_manager.get_user_by_email(assistant.owner)
         if owner_user:
@@ -143,12 +143,12 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
                 description=f"Shared access for assistant {assistant.name}",
                 user_id=owner_user['id']
             )
-            group_id = result.get('id') if result.get('status') == 'success' else None
+            # create_group returns the group dict directly (not wrapped in status)
+            group_id = result.get('id') if result else None
     
     if group_id:
-        # Add all users to group
-        for email in user_emails:
-            add_users_to_owi_group(group_id, [email])
+        # Add all users to the assistant_X group
+        add_users_to_owi_group(group_id, user_emails)
 
 def add_users_to_owi_group(group_id: str, user_emails: List[str]):
     """Add users to OWI group by email"""
