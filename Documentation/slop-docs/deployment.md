@@ -81,4 +81,4 @@ OpenWebUI is the open source software Lamb uses as main chat client. We have sev
 Go to Your user menu and get to the "Admin Panel", on the "Settings" tab, choose the "Connections" option on the side bar. Now you need to:
 * Edit the OpenAi connection and change the endpoint to **lamb-backend** on your system, and use as API KEY the value of LAMB_BEARER_TOKEN on backend/.env (that you should change for a secure key that no one knows). If you are using the Docker option it should look like this.
 
-![OpenWebUI Settings Example](../static/owi-settings.png)
+![OpenWebUI Settings Example](../../static/owi-settings.png)

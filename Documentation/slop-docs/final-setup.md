@@ -1,6 +1,6 @@
 # Lamb final setup
 
-Asuming you have successfully followed the instruction on [installationguide.md] or [docker.md] and lamb is running follow these steps to finish the setup and test it. 
+Assuming you have successfully followed the instruction on [Installation Guide](../installationguide.md) or [Deployment Guide](deployment.md) and lamb is running follow these steps to finish the setup and test it. 
 
 # Log in as admin
 
@@ -14,9 +14,9 @@ OWI_ADMIN_PASSWORD=admin
 
 On your browser go to http://localhost:9099 (or the adress where you have pointed lamb-backend to). Log in with the previous credentials and log in. You should see something like:
 
-![LAMB UI Login Screen](static/lamb-ui-01.png)
+![LAMB UI Login Screen](../../static/lamb-ui-01.png)
 
-## Troubleshoting
+## Troubleshooting
 
 If you are not able to log in with the admin user it means 
 1- Lamb is working 
@@ -30,11 +30,11 @@ Just go to assistants->Create Assistant then assign a name to your test assistan
 
 Now go to the list of assistants and you should see:
 
-![LAMB Assistants List](static/lamb-ui-02.png)
+![LAMB Assistants List](../../static/lamb-ui-02.png)
 
 Now click on the name of the assistant or click on the eye icon thing ("view"). Then you can go to the "chat with {assistant name}" and try to chat with it.
 
-![LAMB Assistant Chat Screen](static/lamb-ui-03.png)
+![LAMB Assistant Chat Screen](../../static/lamb-ui-03.png)
 
 If you make it so far it means that the Lamb system is working, that the openai api key works fine and should celebrate with a little victory dance. Just a little one, do not get ahead of yourself.
 
@@ -49,7 +49,7 @@ Openwebui is the open source software Lamb uses as main chat client. We have sev
 Go to Your user menu and get to the "Admin Panel", on the "Settings" tab, choose the "Connections" option on the side bar. Now you need to:
 * Edit the OpenAi connection and change the endpoint to **lamb-backend** on your system, and use as API KEY the value of PIPELINES_BEARER_TOKEN on backend/.env (that you should change for a secure key that no one knows). If you are using the Docker option it should look like this.
 
-![OpenWebUI Settings Example](static/owi-settings.png)
+![OpenWebUI Settings Example](../../static/owi-settings.png)
 
 Now Openwebui can access LAMB and you can chat with your test assistant on a new chat on openwebui.
 
