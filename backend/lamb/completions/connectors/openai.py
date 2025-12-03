@@ -386,6 +386,7 @@ Args:
     assistant (object, optional): Assistant object containing metadata with tool configuration.
     use_small_fast_model (bool, optional): If True, use organization's small-fast-model instead of default.
                                            Defaults to False.
+    assistant (object, optional): The assistant object containing metadata with tool configuration.
 
 Returns:
     Generator: If `stream=True`, a generator yielding SSE formatted chunks
@@ -879,12 +880,12 @@ Returns:
             else:
                 # No tool calls - this is the final response
                 logger.info("Final response received (no more tool calls)")
-                Timelog(f"Tool-enabled response created", 2)
+                logger.debug("Tool-enabled response created")
                 return response.model_dump()
         
         # If we hit max iterations, return the last response
         logger.warning(f"Hit max tool iterations ({max_tool_iterations})")
-        Timelog(f"Tool-enabled response created (max iterations)", 2)
+        logger.debug("Tool-enabled response created (max iterations)")
         return response.model_dump()
 
     async def _handle_streaming_with_tools(tool_specs: List[Dict]):
@@ -1001,7 +1002,7 @@ Returns:
                     yield f"data: {chunk.model_dump_json()}\n\n"
                 
                 yield "data: [DONE]\n\n"
-                Timelog(f"Tool-enabled stream completed", 2)
+                logger.debug("Tool-enabled stream completed")
                 return
         
         # If we hit max iterations, yield done

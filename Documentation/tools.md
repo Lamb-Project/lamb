@@ -60,12 +60,10 @@ Added helper functions:
 
 ### 2. Moodle Tool (`/backend/lamb/completions/tools/moodle.py`)
 
-Implemented to call the Moodle Web Services API:
+Implemented to use Moodle Web Services when configured, otherwise returns clearly-labeled mock data:
 - `MOODLE_TOOL_SPEC` - OpenAI function specification
-- `get_moodle_courses(user_id)` - Calls Moodle Webservice `core_enrol_get_users_courses` using `MOODLE_API_URL` and `MOODLE_TOKEN` env vars; will attempt to resolve emails to numeric Moodle user IDs via `core_user_get_users_by_field` if needed
-- `get_moodle_courses_real()` - Internal helper that implements the actual API call
-Requirements:
-- Set environment variables `MOODLE_API_URL` and `MOODLE_TOKEN` in the running environment
+- `get_moodle_courses(user_id)` - Calls Moodle API if `MOODLE_API_URL` + `MOODLE_TOKEN` are set; otherwise returns mock data (source=`mock`)
+- `get_moodle_courses_real()` - Helper that implements the actual API call
 
 ### 3. API Endpoint (`/backend/lamb/completions/main.py`)
 
@@ -242,21 +240,18 @@ A Moodle-aware prompt processor that extends `simple_augment` functionality with
 
 **1. User Identification (`_extract_user_id()`)**
 Extracts user identifier from multiple sources in priority order:
-- `__openwebui_headers__.x-openwebui-user-id` - OpenWebUI User ID header
-- `__openwebui_headers__.x-openwebui-user-email` - OpenWebUI User Email header
-- `__openwebui_headers__.x-openwebui-user-name` - OpenWebUI User Name header
+- `__openwebui_headers__.x-openwebui-user-email` - OpenWebUI user email (optionally resolved to Moodle numeric ID)
+- `__openwebui_headers__.x-openwebui-user-id` - OpenWebUI user ID
 - `request.metadata.user_id` - Explicitly provided in metadata
 - `request.metadata.lti_user_id` - LTI launch user ID
 - `request.metadata.lis_person_sourcedid` - LTI person source ID
 - `request.metadata.email` - User email in metadata
 - Falls back to "default" if none found
 
-**Note:** OpenWebUI headers are injected by `main.py` when `ENABLE_FORWARD_USER_INFO_HEADERS=True` is set in OpenWebUI's configuration. The headers are captured from the HTTP request and stored in the request dictionary under `__openwebui_headers__`.
-
 **2. Moodle Integration (`_get_moodle_courses_sync()`)**
 - Synchronous wrapper around the async Moodle tool
 - Uses existing `get_moodle_courses()` from tools registry
-- Now integrates with Moodle Web Services using `MOODLE_API_URL` and `MOODLE_TOKEN` (set in environment). If not configured, the function will return an error response.
+- Uses Moodle Web Services when `MOODLE_API_URL` and `MOODLE_TOKEN` are configured; otherwise falls back to mock data
 
 **3. Context Formatting (`_format_moodle_context()`)**
 Formats Moodle course data into human-readable text:
@@ -320,15 +315,10 @@ Added `{moodle_info_for_user}` to default rag_placeholders.
 3. In the Prompt Template, use `{moodle_info_for_user}` where you want course info
 4. The placeholder button is available in the template editor UI
 
-### Moodle API configuration and sample behavior
+### Moodle Configuration / Mock Behavior
 
-The Moodle tool has been updated to fetch courses via the Moodle Web Services API.
-Configure the following environment variables on the backend server where LAMB runs:
-- `MOODLE_API_URL` — the base URL of the Moodle instance (e.g., https://moodle.example.com/webservice/rest/server.php)
-- `MOODLE_TOKEN` — a Moodle webservice token with permission to call `core_enrol_get_users_courses` (and `core_user_get_users_by_field` for email->ID resolution)
-
-If these variables are not configured, `get_moodle_courses()` will return a helpful error response rather than mock data.
-For development, you can point `MOODLE_API_URL` to a demo Moodle instance and use a token for that instance to return sample course data.
+- If `MOODLE_API_URL` and `MOODLE_TOKEN` are configured on the backend, the Moodle tool fetches real enrollments via `core_enrol_get_users_courses`.
+- If they are not configured, the tool returns mock course data (source=`mock`) so the workflow can be tested end-to-end.
 
 ---
 
@@ -514,7 +504,7 @@ TOOL_REGISTRY = {
 
 1. **Phase 1: Backend Tool Registry** ✅ COMPLETED (December 3, 2025)
    - Create tool registry in `/backend/lamb/completions/tools/__init__.py`
-    - Implement Moodle tool with Moodle API integration
+    - Implement Moodle tool (API when configured; mock fallback otherwise)
    - Add API endpoint to list available tools
 
 2. **Phase 2: Unified Connector** ✅ COMPLETED (December 3, 2025)

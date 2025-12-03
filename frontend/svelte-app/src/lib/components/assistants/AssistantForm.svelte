@@ -366,6 +366,7 @@
 		selectedTools = []; // Reset tools for new assistants
 		imageGenerationEnabled = false; // Reset image generation capability for new assistants
 		imageGenerationEnabled = false; // Reset image generation capability for new assistants
+		selectedTools = []; // Reset tools for new assistants
 		// Reset name/description only if truly starting fresh?
 		// name = '';
 		// description = ''; 
@@ -1116,7 +1117,7 @@
 		}
 
 		// Construct the data for the metadata field
-		const metadataObj = {
+		const metadataObj = /** @type {any} */ ({
 			prompt_processor: selectedPromptProcessor,
 			connector: selectedConnector,
 			llm: selectedLlm,
@@ -1128,7 +1129,7 @@
 			},
 			// Add tools if any are selected (only for OpenAI connector)
 			tools: selectedConnector === 'openai' && selectedTools.length > 0 ? selectedTools : undefined
-		};
+		});
 
 		// Add rubric fields if rubric_rag is selected
 		if (selectedRagProcessor === 'rubric_rag') {
@@ -1895,26 +1896,71 @@
 					</div>
 					{/if}
 
-					<!-- Image Generation Capability (Only for banana-img connector) -->
-					{#if selectedConnector === 'banana-img' || imageGenerationEnabled}
-					<div class="mb-3">
-						<label class="inline-flex items-center cursor-pointer">
-							<input
-								type="checkbox"
-								bind:checked={imageGenerationEnabled}
-								onchange={handleFieldChange}
-								class="sr-only peer"
-							/>
-							<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
-							<div class="ms-3">
-								<span class="text-sm font-medium text-gray-900 dark:text-gray-300">
-									Enable Image Generation
-								</span>
-								<p class="text-xs text-gray-500 mt-1">
-									Allow this assistant to generate images using Google Gemini
-								</p>
+								<!-- Image Generation Capability (Only for banana-img connector) -->
+								{#if selectedConnector === 'banana-img' || imageGenerationEnabled}
+								<div class="mb-3">
+									<label class="inline-flex items-center cursor-pointer">
+										<input
+											type="checkbox"
+											bind:checked={imageGenerationEnabled}
+											onchange={handleFieldChange}
+											class="sr-only peer"
+										/>
+										<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+										<div class="ms-3">
+											<span class="text-sm font-medium text-gray-900 dark:text-gray-300">
+												Enable Image Generation
+											</span>
+											<p class="text-xs text-gray-500 mt-1">
+												Allow this assistant to generate images using Google Gemini
+											</p>
+										</div>
+									</label>
+								</div>
+								{/if}
+
+					<!-- Tools Section (Only for OpenAI connector in advanced mode or edit mode) -->
+					{#if (isAdvancedMode || formState === 'edit') && selectedConnector === 'openai'}
+					<div class="pt-4 border-t border-gray-200">
+						<h4 class="block text-sm font-medium text-gray-700 mb-2">
+							{$_('assistants.form.tools.label', { default: 'Tools (Function Calling)' })}
+						</h4>
+						<p class="text-xs text-gray-500 mb-3">
+							{$_('assistants.form.tools.description', { default: 'Enable tools that the assistant can use during conversations' })}
+						</p>
+
+						{#if loadingTools}
+							<p class="text-sm text-gray-500">{$_('assistants.form.tools.loading', { default: 'Loading tools...' })}</p>
+						{:else if toolsError}
+							<p class="text-sm text-red-600">{$_('assistants.form.tools.error', { default: 'Error loading tools:' })} {toolsError}</p>
+						{:else if availableTools.length === 0}
+							<p class="text-sm text-gray-500">{$_('assistants.form.tools.noneFound', { default: 'No tools available.' })}</p>
+						{:else}
+							<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="tools-group-label">
+								<span id="tools-group-label" class="sr-only">{$_('assistants.form.tools.label', { default: 'Tools' })}</span>
+								{#each availableTools as tool (tool.name)}
+									<label class="flex items-start space-x-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
+											<input
+											type="checkbox"
+											bind:group={selectedTools}
+											value={tool.name}
+											onchange={handleFieldChange}
+											class="mt-0.5 rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50"
+										/>
+										<div class="flex-1 min-w-0">
+											<span class="text-sm font-medium text-gray-700 capitalize">{tool.name}</span>
+											<span class="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{tool.category}</span>
+											<p class="text-xs text-gray-500 mt-0.5">{tool.description}</p>
+										</div>
+									</label>
+								{/each}
 							</div>
-						</label>
+							{#if selectedTools.length > 0}
+								<p class="mt-2 text-xs text-gray-600">
+									{$_('assistants.form.tools.selected', { default: 'Selected:' })} {selectedTools.join(', ')}
+								</p>
+							{/if}
+									{/if}
 					</div>
 					{/if}
 
