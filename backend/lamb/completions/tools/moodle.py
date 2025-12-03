@@ -40,7 +40,7 @@ MOCK_USER_COURSES = {
         {"id": 102, "name": "Data Structures", "shortname": "CS201", "category": "Computer Science"},
         {"id": 103, "name": "Web Development", "shortname": "WEB101", "category": "Computer Science"}
     ],
-    "student2": [
+    "admin@owi.com": [
         {"id": 201, "name": "Calculus I", "shortname": "MATH101", "category": "Mathematics"},
         {"id": 202, "name": "Linear Algebra", "shortname": "MATH201", "category": "Mathematics"},
         {"id": 103, "name": "Web Development", "shortname": "WEB101", "category": "Computer Science"}

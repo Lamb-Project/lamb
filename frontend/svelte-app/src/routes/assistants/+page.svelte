@@ -1095,6 +1095,30 @@
                                         </div>
                                     </div>
 
+                                    <!-- Tools (Function Calling) - Only show for OpenAI connector -->
+                                    {#if apiCallback.connector === 'openai'}
+                                        <div>
+                                            <div class="font-medium text-gray-700 mb-1">
+                                                {currentLocale ? $_('assistants.form.tools.label', { default: 'Tools (Function Calling)' }) : 'Tools (Function Calling)'}
+                                            </div>
+                                            <div class="bg-white border border-gray-200 p-2 rounded">
+                                                {#if apiCallback.tools && Array.isArray(apiCallback.tools) && apiCallback.tools.length > 0}
+                                                    <div class="flex flex-wrap gap-1">
+                                                        {#each apiCallback.tools as tool}
+                                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                                                                {tool}
+                                                            </span>
+                                                        {/each}
+                                                    </div>
+                                                {:else}
+                                                    <span class="text-gray-500">
+                                                        {currentLocale ? $_('common.none', { default: 'None' }) : 'None'}
+                                                    </span>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    {/if}
+
                                     <!-- RAG Processor -->
                                     <div>
                                         <div class="font-medium text-gray-700 mb-1">

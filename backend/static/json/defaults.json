@@ -1,16 +1,18 @@
 {
-    "config": {
-        "lamb_helper_assistant": "lamb_assistant.1", 
-        "surfer_system_prompt": "You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.",
-        "surfer_prompt_template": "You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\nThis is the user input: {user_input}---\nThis is the context: {context}\nNow answer the question:",
-        "system_prompt": "Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.",
-        "prompt_template": "Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\nEste es el contexto:\n --- {context} --- \n\nAhora responde la pregunta del usuario: --- {user_input} --- \n", 
-        "prompt_processor": "simple_augment",
-        "connector": "openai",
-        "llm": "gpt-4o-mini",
-        "rag_processor":"No RAG",
-        "rag_placeholders": ["--- {context} --- ", "--- {user_input} ---", "{moodle_info_for_user}"]
-    }
+  "config": {
+    "lamb_helper_assistant": "lamb_assistant.1",
+    "surfer_system_prompt": "You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.",
+    "surfer_prompt_template": "You are a wise surfer dude and a helpful teaching assistant that uses Retrieval-Augmented Generation (RAG) to improve your answers.\nThis is the user input: {user_input}---\nThis is the context: {context}\nNow answer the question:",
+    "system_prompt": "Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.",
+    "prompt_template": "Eres un asistente de aprendizaje que ayuda a los estudiantes a aprender sobre un tema especifico. Utiliza el contexto para responder las preguntas del usuario.\nEste es el contexto:\n --- {context} --- \n\nAhora responde la pregunta del usuario: --- {user_input} --- \n",
+    "prompt_processor": "simple_augment",
+    "connector": "openai",
+    "llm": "gpt-4o-mini",
+    "rag_processor": "No RAG",
+    "rag_placeholders": [
+      "--- {context} --- ",
+      "--- {user_input} ---",
+      "--- {moodle_user} ---"
+    ]
+  }
 }
-
-
