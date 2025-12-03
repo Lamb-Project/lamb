@@ -87,6 +87,26 @@ async def list_processors_and_connectors(
         "rag_processors": list(rag_processors.keys())
     }
 
+
+@router.get("/tools")
+async def list_available_tools():
+    """
+    List available tools that can be configured for assistant function calling.
+    
+    Returns a list of tools with their name, description, category, and function name.
+    This endpoint is used by the frontend to populate the Tools selection in the assistant configuration.
+    """
+    from lamb.completions.tools import list_available_tools as get_tools_list
+    
+    tools = get_tools_list()
+    logger.info(f"Returning {len(tools)} available tools")
+    
+    return {
+        "tools": tools,
+        "count": len(tools)
+    }
+
+
 @router.post("/")
 async def create_completion(
     request: Dict[str, Any],
@@ -121,13 +141,13 @@ async def create_completion(
             logger.debug("Returning streaming response")
             Timelog(f"Returning streaming response",2)
             return StreamingResponse(
-                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner),
+                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, assistant=assistant_details),
                 media_type="text/event-stream"
             )
         else:
             logger.debug("Returning direct response")
             Timelog(f"Returning direct response",2)
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner)
+            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, assistant=assistant_details)
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         Timelog(f"Error in create_completion: {str(e)}",2)
@@ -285,13 +305,14 @@ async def run_lamb_assistant(
         connector_func = connectors[plugin_config["connector"]]
 
         # Call the connector function, passing all necessary arguments
-        # The openai.py connector expects: messages, stream, body (original request), llm, assistant_owner
+        # The openai.py connector expects: messages, stream, body (original request), llm, assistant_owner, assistant
         llm_response = await connector_func( # Use await as connector is now async
             messages=messages,
             stream=stream,
             body=request, # Pass the original request dict as body
             llm=llm,
-            assistant_owner=assistant_details.owner
+            assistant_owner=assistant_details.owner,
+            assistant=assistant_details  # Pass full assistant for tool detection
         )
 
         if stream:

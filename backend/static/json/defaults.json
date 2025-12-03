@@ -9,7 +9,7 @@
         "connector": "openai",
         "llm": "gpt-4o-mini",
         "rag_processor":"No RAG",
-        "rag_placeholders": ["--- {context} --- ", "--- {user_input} ---"]
+        "rag_placeholders": ["--- {context} --- ", "--- {user_input} ---", "{moodle_info_for_user}"]
     }
 }
 

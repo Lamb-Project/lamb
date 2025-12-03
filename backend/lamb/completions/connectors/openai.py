@@ -10,6 +10,7 @@ import base64
 from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, AuthenticationError
 from utils.timelog import Timelog
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.completions.tools import TOOL_REGISTRY, get_tool_specs, get_tool_function
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -242,12 +243,90 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
 
     return errors
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None):
+
+# --- Tool Support Functions ---
+
+def get_tools_for_assistant(assistant) -> List[Dict]:
+    """
+    Get tool specifications for an assistant based on its metadata configuration.
+    
+    Args:
+        assistant: Assistant object with metadata field containing tools config
+        
+    Returns:
+        List of OpenAI-compatible tool specification dicts
+    """
+    if not assistant:
+        return []
+    
+    try:
+        metadata = json.loads(assistant.metadata or "{}")
+        tool_names = metadata.get("tools", [])
+        
+        if not tool_names:
+            return []
+        
+        # Get tool specs from registry
+        tools = []
+        for name in tool_names:
+            if name in TOOL_REGISTRY:
+                tools.append(TOOL_REGISTRY[name]["spec"])
+            else:
+                logger.warning(f"Tool '{name}' not found in registry")
+        
+        return tools
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse assistant metadata: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error getting tools for assistant: {e}")
+        return []
+
+
+async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
+    """
+    Execute a tool by name with the provided arguments.
+    
+    Args:
+        tool_name: Name of the tool to execute (function name from spec)
+        arguments: Dictionary of arguments to pass to the tool
+        
+    Returns:
+        Tool result as a JSON string
+    """
+    # Find the tool by function name
+    tool_func = None
+    for name, tool_data in TOOL_REGISTRY.items():
+        if tool_data["spec"]["function"]["name"] == tool_name:
+            tool_func = tool_data["function"]
+            break
+    
+    if not tool_func:
+        logger.error(f"Unknown tool: {tool_name}")
+        return json.dumps({"error": f"Unknown tool: {tool_name}"})
+    
+    try:
+        # Check if the function is async
+        if asyncio.iscoroutinefunction(tool_func):
+            result = await tool_func(**arguments)
+        else:
+            result = tool_func(**arguments)
+            
+        logger.info(f"Tool '{tool_name}' executed successfully")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error executing tool '{tool_name}': {e}")
+        return json.dumps({"error": str(e)})
+
+
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, assistant=None):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
 
 This function serves as the primary interface for interacting with the LLM.
 It handles both standard (non-streaming) and streaming requests.
+It also supports tool/function calling when tools are configured in the assistant.
 
 **Current Behavior and Future Strategy:**
 
@@ -264,6 +343,14 @@ It handles both standard (non-streaming) and streaming requests.
   Event (`data: ...\n\n`), mimicking the structure of the previous
   simulated streaming output. Finally, it yields the `data: [DONE]\n\n`
   marker to signal the end of the stream.
+
+**Tool Calling Support:**
+
+- When an assistant has tools configured in its metadata (e.g., {"tools": ["weather", "moodle"]}),
+  the connector will automatically include these tools in the API call.
+- If the LLM requests tool calls, the connector executes them and continues
+  the conversation until a final response is generated.
+- Tool calling supports both streaming and non-streaming modes.
 
 **Future Considerations:**
 
@@ -290,6 +377,8 @@ Args:
     llm (str, optional): The specific LLM model to use (e.g., 'gpt-4o').
                          If None, it defaults to the value of the OPENAI_MODEL
                          environment variable or OPENAI_MODEL env var. Defaults to None.
+    assistant_owner (str, optional): Email of the assistant owner for organization-specific config.
+    assistant (object, optional): The assistant object containing metadata with tool configuration.
 
 Returns:
     Generator: If `stream=True`, a generator yielding SSE formatted chunks
@@ -693,7 +782,224 @@ Returns:
         yield "data: [DONE]\n\n"
         Timelog(f"Experimental Stream completed", 2)
 
+    # --- Helper functions for TOOL CALLING support ---
+    async def _handle_non_streaming_with_tools(tool_specs: List[Dict]) -> Dict[str, Any]:
+        """
+        Handle non-streaming requests with tool calling loop.
+        
+        The loop:
+        1. Call the LLM with tools
+        2. If it wants to use tools, execute them
+        3. Add tool results to messages
+        4. Call the LLM again
+        5. Repeat until we get a final response (max 5 iterations)
+        """
+        working_messages = messages.copy()
+        max_tool_iterations = 5
+        iteration = 0
+        
+        # Add tools to params
+        tool_params = params.copy()
+        tool_params["tools"] = tool_specs
+        tool_params["tool_choice"] = "auto"
+        tool_params["stream"] = False
+        
+        logger.info(f"Tool-enabled call with {len(tool_specs)} tools: {[t['function']['name'] for t in tool_specs]}")
+        
+        while iteration < max_tool_iterations:
+            iteration += 1
+            tool_params["messages"] = working_messages
+            
+            logger.info(f"Tool iteration {iteration}/{max_tool_iterations}")
+            
+            response = await _make_api_call_with_fallback(tool_params)
+            choice = response.choices[0]
+            message = choice.message
+            
+            # Check if the model wants to call tools
+            if message.tool_calls:
+                logger.info(f"Model requested {len(message.tool_calls)} tool call(s)")
+                
+                # Add the assistant's response with tool calls to the conversation
+                working_messages.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        }
+                        for tc in message.tool_calls
+                    ]
+                })
+                
+                # Execute each tool and add results
+                for tool_call in message.tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    
+                    logger.info(f"Executing tool: {tool_name}({arguments})")
+                    
+                    result = await execute_tool(tool_name, arguments)
+                    
+                    # Add tool result to messages
+                    working_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
+                    })
+            else:
+                # No tool calls - this is the final response
+                logger.info("Final response received (no more tool calls)")
+                Timelog(f"Tool-enabled response created", 2)
+                return response.model_dump()
+        
+        # If we hit max iterations, return the last response
+        logger.warning(f"Hit max tool iterations ({max_tool_iterations})")
+        Timelog(f"Tool-enabled response created (max iterations)", 2)
+        return response.model_dump()
+
+    async def _handle_streaming_with_tools(tool_specs: List[Dict]):
+        """
+        Handle streaming requests with tool calling support.
+        
+        For tool calls during streaming:
+        1. Collect the full response to detect tool calls
+        2. If tools are called, execute them (not streamed)
+        3. Make another call and stream that response
+        """
+        working_messages = messages.copy()
+        max_tool_iterations = 5
+        iteration = 0
+        
+        # Add tools to params
+        tool_params = params.copy()
+        tool_params["tools"] = tool_specs
+        tool_params["tool_choice"] = "auto"
+        
+        logger.info(f"Tool-enabled streaming call with {len(tool_specs)} tools")
+        
+        while iteration < max_tool_iterations:
+            iteration += 1
+            tool_params["messages"] = working_messages
+            tool_params["stream"] = True
+            
+            logger.info(f"Streaming tool iteration {iteration}/{max_tool_iterations}")
+            
+            # Collect stream to check for tool calls
+            full_content = ""
+            tool_calls_data = {}  # {index: {id, name, arguments}}
+            finish_reason = None
+            
+            stream_obj = await _make_api_call_with_fallback(tool_params)
+            
+            async for chunk in stream_obj:
+                if chunk.choices:
+                    choice = chunk.choices[0]
+                    delta = choice.delta
+                    finish_reason = choice.finish_reason or finish_reason
+                    
+                    # Collect content
+                    if delta.content:
+                        full_content += delta.content
+                    
+                    # Collect tool calls
+                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            if idx not in tool_calls_data:
+                                tool_calls_data[idx] = {
+                                    "id": tc.id or "",
+                                    "name": "",
+                                    "arguments": ""
+                                }
+                            if tc.id:
+                                tool_calls_data[idx]["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    tool_calls_data[idx]["name"] = tc.function.name
+                                if tc.function.arguments:
+                                    tool_calls_data[idx]["arguments"] += tc.function.arguments
+            
+            # Check if we have tool calls to process
+            if tool_calls_data and finish_reason == "tool_calls":
+                logger.info(f"Stream detected {len(tool_calls_data)} tool call(s)")
+                
+                # Add the assistant message with tool calls
+                working_messages.append({
+                    "role": "assistant",
+                    "content": full_content,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": tc["arguments"]
+                            }
+                        }
+                        for tc in tool_calls_data.values()
+                    ]
+                })
+                
+                # Execute tools and add results
+                for tc_data in tool_calls_data.values():
+                    try:
+                        arguments = json.loads(tc_data["arguments"])
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    
+                    logger.info(f"Executing tool: {tc_data['name']}({arguments})")
+                    result = await execute_tool(tc_data["name"], arguments)
+                    
+                    working_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_data["id"],
+                        "content": result
+                    })
+                
+                # Continue the loop to get the next response
+                continue
+            
+            else:
+                # No tool calls - stream the final response
+                logger.info("Streaming final response (no more tool calls)")
+                
+                # Make a fresh call for the actual stream output
+                tool_params["messages"] = working_messages
+                stream_obj = await _make_api_call_with_fallback(tool_params)
+                
+                async for chunk in stream_obj:
+                    yield f"data: {chunk.model_dump_json()}\n\n"
+                
+                yield "data: [DONE]\n\n"
+                Timelog(f"Tool-enabled stream completed", 2)
+                return
+        
+        # If we hit max iterations, yield done
+        logger.warning(f"Hit max tool iterations ({max_tool_iterations})")
+        yield "data: [DONE]\n\n"
+
     # --- Main logic for llm_connect ---
+    
+    # Check if assistant has tools configured
+    tool_specs = get_tools_for_assistant(assistant)
+    
+    if tool_specs:
+        logger.info(f"Tools detected for assistant: {[t['function']['name'] for t in tool_specs]}")
+        if stream:
+            return _handle_streaming_with_tools(tool_specs)
+        else:
+            return await _handle_non_streaming_with_tools(tool_specs)
+    
+    # Standard path (no tools)
     if stream:
         # --- CHOOSE IMPLEMENTATION HERE ---
         # return _generate_original_stream()

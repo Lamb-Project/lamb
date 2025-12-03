@@ -56,7 +56,7 @@ function getFallbackDefaults() {
 			llm: 'gpt-4o-mini',
 			rag_processor: 'no_rag', // Use consistent key format
 			RAG_Top_k: '3',
-			rag_placeholders: ['--- {context} --- ', '--- {user_input} ---']
+			rag_placeholders: ['--- {context} --- ', '--- {user_input} ---', '{moodle_info_for_user}']
 		}
 	};
 	// Cast to the defined type to help type checker

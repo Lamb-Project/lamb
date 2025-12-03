@@ -69,6 +69,15 @@
 	// Vision capability
 	let visionEnabled = $state(false);
 
+	// Tools State
+	/** @type {Array<{name: string, description: string, category: string, function_name: string}>} */
+	let availableTools = $state([]);
+	/** @type {string[]} */
+	let selectedTools = $state([]); // Array of selected tool names
+	let loadingTools = $state(false);
+	let toolsError = $state('');
+	let toolsFetchAttempted = $state(false);
+
 	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
 	let ownedKnowledgeBases = $state([]);
@@ -287,6 +296,9 @@
 
 				configInitialized = true; 
 
+				// Fetch available tools when config initializes
+				tick().then(fetchAvailableTools);
+
 				if (formState === 'create') {
 					console.log('Applying defaults for CREATE mode...');
 					resetFormFieldsToDefaults(); // Use helper
@@ -349,6 +361,7 @@
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
 		visionEnabled = false; // Reset vision capability for new assistants
+		selectedTools = []; // Reset tools for new assistants
 		// Reset name/description only if truly starting fresh?
 		// name = '';
 		// description = ''; 
@@ -508,6 +521,20 @@
 				visionEnabled = false;
 			}
 
+			// Handle tools selection
+			try {
+				let metadata = data.metadata;
+				if (typeof metadata === 'string') {
+					metadata = JSON.parse(metadata);
+				}
+
+				selectedTools = Array.isArray(metadata?.tools) ? metadata.tools : [];
+				console.log('Populate: Tools loaded:', selectedTools);
+			} catch (e) {
+				console.warn('Failed to parse tools from metadata:', e);
+				selectedTools = [];
+			}
+
 			// TODO: Handle file selection for single_file_rag if needed
 			// selectedFilePath = data.file_path || '';
 		} else {
@@ -642,6 +669,59 @@
 			loadingRubrics = false;
 			rubricsFetchAttempted = true; // Mark fetch as attempted
 			console.log(`Rubrics Fetch complete (Attempted: ${rubricsFetchAttempted}, Error: '${rubricError}', Count: ${accessibleRubrics.length})`);
+		}
+	}
+
+	/** Fetches available tools from the backend */
+	async function fetchAvailableTools() {
+		// Prevent fetch if already loading OR if already attempted
+		if (loadingTools || toolsFetchAttempted) {
+			console.log(`Skipping tools fetch (Loading: ${loadingTools}, Attempted: ${toolsFetchAttempted})`);
+			return;
+		}
+
+		console.log('Fetching available tools...');
+		loadingTools = true;
+		toolsError = '';
+
+		try {
+			const token = getAuthToken();
+			if (!token) {
+				throw new Error('Authentication token not found');
+			}
+
+			// Get the lamb server URL
+			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
+			if (!lambServerUrl) {
+				throw new Error('LAMB server URL not configured in window.LAMB_CONFIG.api.lambServer');
+			}
+
+			// Call the tools endpoint
+			const endpointPath = '/lamb/v1/completions/tools';
+			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
+			
+			const response = await fetch(apiUrl, {
+				headers: {
+					'Authorization': `Bearer ${token}`
+				}
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
+			}
+
+			const data = await response.json();
+			availableTools = data.tools || [];
+			console.log(`Loaded ${availableTools.length} available tools`);
+		} catch (err) {
+			console.error('Error fetching available tools:', err);
+			toolsError = err instanceof Error ? err.message : 'Failed to load tools';
+			availableTools = [];
+		} finally {
+			loadingTools = false;
+			toolsFetchAttempted = true;
+			console.log(`Tools Fetch complete (Attempted: ${toolsFetchAttempted}, Error: '${toolsError}', Count: ${availableTools.length})`);
 		}
 	}
 
@@ -1032,7 +1112,9 @@
 			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : '',
 			capabilities: {
 				vision: visionEnabled
-			}
+			},
+			// Add tools if any are selected (only for OpenAI connector)
+			tools: selectedConnector === 'openai' && selectedTools.length > 0 ? selectedTools : undefined
 		};
 
 		// Add rubric fields if rubric_rag is selected
@@ -1202,6 +1284,11 @@
 										validationLog.push('❌ Missing file_path in metadata for single_file_rag processor.');
 									}
 
+									// Validate tools if present
+									if (callbackData.tools && Array.isArray(callbackData.tools)) {
+										validationLog.push(`ℹ️ Found ${callbackData.tools.length} tool(s) in import: ${callbackData.tools.join(', ')}`);
+									}
+
 								} catch (callbackError) {
 									validationLog.push(`❌ Error parsing metadata JSON: ${callbackError instanceof Error ? callbackError.message : 'Unknown error'}`);
 								}
@@ -1282,6 +1369,12 @@
 							selectedKnowledgeBases = [];
 							selectedFilePath = '';
 						}
+
+							// Populate vision and tools from metadata
+							visionEnabled = callbackData.capabilities?.vision || false;
+							selectedTools = Array.isArray(callbackData.tools) ? callbackData.tools : [];
+							console.log('Import: Vision enabled:', visionEnabled, 'Tools:', selectedTools);
+
 							validationLog.push('✅ Form fields populated successfully.');
 							importError = ''; // Clear any previous error
 							// Show success message briefly
@@ -1778,6 +1871,51 @@
 								</p>
 							</div>
 						</label>
+					</div>
+					{/if}
+
+					<!-- Tools Section (Only for OpenAI connector in advanced mode or edit mode) -->
+					{#if (isAdvancedMode || formState === 'edit') && selectedConnector === 'openai'}
+					<div class="pt-4 border-t border-gray-200">
+						<h4 class="block text-sm font-medium text-gray-700 mb-2">
+							{$_('assistants.form.tools.label', { default: 'Tools (Function Calling)' })}
+						</h4>
+						<p class="text-xs text-gray-500 mb-3">
+							{$_('assistants.form.tools.description', { default: 'Enable tools that the assistant can use during conversations' })}
+						</p>
+						
+						{#if loadingTools}
+							<p class="text-sm text-gray-500">{$_('assistants.form.tools.loading', { default: 'Loading tools...' })}</p>
+						{:else if toolsError}
+							<p class="text-sm text-red-600">{$_('assistants.form.tools.error', { default: 'Error loading tools:' })} {toolsError}</p>
+						{:else if availableTools.length === 0}
+							<p class="text-sm text-gray-500">{$_('assistants.form.tools.noneFound', { default: 'No tools available.' })}</p>
+						{:else}
+							<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="tools-group-label">
+								<span id="tools-group-label" class="sr-only">{$_('assistants.form.tools.label', { default: 'Tools' })}</span>
+								{#each availableTools as tool (tool.name)}
+									<label class="flex items-start space-x-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
+										<input 
+											type="checkbox" 
+											bind:group={selectedTools} 
+											value={tool.name}
+											onchange={handleFieldChange}
+											class="mt-0.5 rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50"
+										/>
+										<div class="flex-1 min-w-0">
+											<span class="text-sm font-medium text-gray-700 capitalize">{tool.name}</span>
+											<span class="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{tool.category}</span>
+											<p class="text-xs text-gray-500 mt-0.5">{tool.description}</p>
+										</div>
+									</label>
+								{/each}
+							</div>
+							{#if selectedTools.length > 0}
+								<p class="mt-2 text-xs text-gray-600">
+									{$_('assistants.form.tools.selected', { default: 'Selected:' })} {selectedTools.join(', ')}
+								</p>
+							{/if}
+						{/if}
 					</div>
 					{/if}
 
