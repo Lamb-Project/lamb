@@ -48,23 +48,75 @@ def verify_api_key(request: Request):
     return True
 
 def handle_response(success: bool, data: Any = None, error: str = None) -> JSONResponse:
-    """Helper function to format consistent API responses"""
-    if success:
-        return JSONResponse(
-            content={
-                "status": "success",
-                "data": data
-            },
-            status_code=200
-        )
-    else:
-        return JSONResponse(
-            content={
-                "status": "error",
-                "error": error
-            },
-            status_code=400
-        )
+    """Standardized response handler"""
+    response = {"success": success}
+    if data is not None:
+        response["data"] = data
+    if error:
+        response["error"] = error
+    return JSONResponse(content=response)
+
+def sync_group_to_lamb_shares(assistant_id: int, user_ids: List[str]):
+    """Sync OWI group changes back to LAMB_assistant_shares table"""
+    try:
+        from ..database_manager import LambDatabaseManager
+        
+        db_manager = LambDatabaseManager()
+        
+        # Get assistant owner
+        assistant = db_manager.get_assistant_by_id(assistant_id)
+        if not assistant:
+            logging.warning(f"Cannot sync group: assistant {assistant_id} not found")
+            return
+        
+        # Get owner's user_id in OWI
+        owner_user = user_manager.get_user_by_email(assistant.owner)
+        if not owner_user:
+            logging.warning(f"Cannot sync group: owner {assistant.owner} not found in OWI")
+            return
+        
+        owner_owi_id = owner_user['id']
+        
+        # Convert OWI user_ids to creator user_ids (exclude owner)
+        current_shares = db_manager.get_assistant_shares(assistant_id)
+        current_share_user_ids = {share['shared_with_user_id'] for share in current_shares}
+        
+        desired_share_user_ids = set()
+        for owi_user_id in user_ids:
+            if owi_user_id != owner_owi_id:  # Don't add owner as a share
+                # Get user email from OWI
+                owi_user = user_manager.get_user_by_id(owi_user_id)
+                if owi_user:
+                    # Get creator user by email
+                    creator_user = db_manager.get_creator_user_by_email(owi_user['email'])
+                    if creator_user:
+                        desired_share_user_ids.add(creator_user['id'])
+        
+        # Calculate changes
+        to_add = desired_share_user_ids - current_share_user_ids
+        to_remove = current_share_user_ids - desired_share_user_ids
+        
+        # Get admin user_id for "shared_by"
+        creator_owner = db_manager.get_creator_user_by_email(assistant.owner)
+        shared_by_id = creator_owner['id'] if creator_owner else 1
+        
+        # Apply changes to LAMB_assistant_shares
+        for user_id in to_add:
+            try:
+                db_manager.share_assistant(assistant_id, user_id, shared_by_id)
+                logging.info(f"Added share: assistant {assistant_id} -> user {user_id}")
+            except Exception as e:
+                logging.error(f"Error adding share for user {user_id}: {e}")
+        
+        for user_id in to_remove:
+            try:
+                db_manager.unshare_assistant(assistant_id, user_id)
+                logging.info(f"Removed share: assistant {assistant_id} -> user {user_id}")
+            except Exception as e:
+                logging.error(f"Error removing share for user {user_id}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error syncing group to LAMB shares: {e}")
 
 @router.post("/users", 
     summary="Create a new user",
@@ -383,6 +435,9 @@ async def update_group(group_id: str, request: Request, _=Depends(verify_api_key
     try:
         data = await request.json()
         
+        # Get current group info to check if it's an assistant group
+        current_group = group_manager.get_group_by_id(group_id)
+        
         # Update only provided fields
         group = group_manager.update_group(
             group_id=group_id,
@@ -395,6 +450,17 @@ async def update_group(group_id: str, request: Request, _=Depends(verify_api_key
         )
         
         if group:
+            # If this is an assistant_X group and user_ids changed, sync to LAMB_assistant_shares
+            if current_group and 'user_ids' in data:
+                group_name = current_group.get('name', '')
+                if group_name.startswith('assistant_') and not group_name.endswith('_shared'):
+                    # Extract assistant_id from group name (assistant_15 -> 15)
+                    try:
+                        assistant_id = int(group_name.replace('assistant_', ''))
+                        sync_group_to_lamb_shares(assistant_id, data['user_ids'])
+                    except (ValueError, Exception) as e:
+                        logging.warning(f"Could not sync group {group_name} to LAMB shares: {e}")
+            
             return handle_response(True, data=group)
         else:
             raise HTTPException(
@@ -518,13 +584,19 @@ async def remove_user_from_group(group_id: str, user_id: str, _=Depends(verify_a
     summary="Get all groups",
     description="Retrieves all groups")
 async def get_groups(_=Depends(verify_api_key)):
-    """Endpoint to get all groups"""
+    """Endpoint to get all groups (filters out internal assistant sharing groups)"""
     try:
         groups = group_manager.get_all_groups()
         if not groups:
             return handle_response(True, data=[])
+        
+        # Filter out internal assistant sharing groups (assistant_X_shared)
+        filtered_groups = [
+            group for group in groups 
+            if not (group.get('name', '').startswith('assistant_') and group.get('name', '').endswith('_shared'))
+        ]
             
-        return handle_response(True, data=groups)
+        return handle_response(True, data=filtered_groups)
             
     except Exception as e:
         logging.error(f"Error in get_groups endpoint: {e}")
