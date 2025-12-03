@@ -523,10 +523,10 @@ docker restart lamb-openwebui
 
 ## 📚 Related Documentation
 
-- [LAMB Architecture](Documentation/lamb_architecture.md)
-- [Product Requirements](Documentation/prd.md)
-- [Deployment Guide](Documentation/deployment.md)
-- [Installation Guide](Documentation/installationguide.md)
+- [LAMB Architecture](../lamb_architecture.md)
+- [Product Requirements](../prd.md)
+- [Deployment Guide](deployment.md)
+- [Installation Guide](../installationguide.md)
 
 ---
 
