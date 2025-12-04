@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from typing import Optional
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +34,9 @@ MOODLE_TOOL_SPEC = {
     }
 }
 
-# Note: We now use the Moodle Webservice API via `core_enrol_get_users_courses`.
-# This file no longer provides mock data; it uses the configured
-# `MOODLE_API_URL` and `MOODLE_TOKEN` environment variables.
-
-
 async def get_moodle_courses(user_id: str) -> str:
     """
     Get courses for a Moodle user.
-    
-    Phase 1: Return mocked data based on user_id
-    Phase 2: Call actual Moodle Web Services API
     
     Args:
         user_id: The Moodle user identifier (username or ID)
@@ -63,29 +56,10 @@ async def get_moodle_courses(user_id: str) -> str:
             "success": False
         })
 
-    # If the caller passes a non-numeric user_id (e.g. email), try to resolve it to a Moodle numeric ID
-    # using the Moodle core_user_get_users_by_field API. If resolution fails, assume user_id is already an ID.
+    # The caller should pass a numeric user_id
     numeric_user_id = user_id
     if not str(user_id).isdigit():
-        import httpx
-        try:
-            params = {
-                "wstoken": moodle_token,
-                "wsfunction": "core_user_get_users_by_field",
-                "moodlewsrestformat": "json",
-                "field": "email",
-                "values[0]": user_id
-            }
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(moodle_url, params=params, timeout=10.0)
-                resp.raise_for_status()
-                data = resp.json()
-                if isinstance(data, list) and len(data) > 0 and "id" in data[0]:
-                    numeric_user_id = str(data[0]["id"])
-                    logger.info(f"Resolved Moodle user by email to id={numeric_user_id} for {user_id}")
-        except Exception:
-            # Fall through and leave numeric_user_id as passed; the core_enrol_get_users_courses call will fail
-            logger.debug(f"Unable to resolve Moodle user from '{user_id}', attempting as-is")
+        logger.debug(f"Unable to resolve Moodle user from '{user_id}', attempting as-is")
 
     # Call the real Moodle API
     return await get_moodle_courses_real(numeric_user_id, moodle_url, moodle_token)
@@ -95,9 +69,6 @@ async def get_moodle_courses_real(user_id: str, moodle_url: str, token: str) -> 
     """
     Get courses for a Moodle user using the actual Moodle Web Services API.
     
-    This is a placeholder for Phase 2 implementation.
-    Will use the core_enrol_get_users_courses web service function.
-    
     Args:
         user_id: The Moodle user identifier
         moodle_url: The Moodle instance URL
@@ -106,7 +77,6 @@ async def get_moodle_courses_real(user_id: str, moodle_url: str, token: str) -> 
     Returns:
         JSON string with course information or error message
     """
-    import httpx
     
     try:
         # Moodle Web Services endpoint - assume `moodle_url` is already the full server.php ws URL
