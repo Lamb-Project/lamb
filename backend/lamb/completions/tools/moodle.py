@@ -1,15 +1,15 @@
 """
 Moodle Tool for LAMB Assistants
 
-This tool provides integration with Moodle LMS to retrieve user course information.
-Currently implements mock data; future versions will integrate with actual Moodle Web Services API.
-
-Phase 1: Mock data implementation
-Phase 2: Real Moodle Web Services API integration (using core_enrol_get_users_courses)
+This tool provides integration with Moodle LMS to retrieve user course information
+via the Moodle Web Service API (core_enrol_get_users_courses). The function
+`get_moodle_courses(user_id)` calls the configured Moodle instance using
+environment variables `MOODLE_API_URL` and `MOODLE_TOKEN`.
 """
 
 import json
 import logging
+import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -33,29 +33,9 @@ MOODLE_TOOL_SPEC = {
     }
 }
 
-# Mock course data for different users (Phase 1)
-MOCK_USER_COURSES = {
-    "student1": [
-        {"id": 101, "name": "Introduction to Programming", "shortname": "CS101", "category": "Computer Science"},
-        {"id": 102, "name": "Data Structures", "shortname": "CS201", "category": "Computer Science"},
-        {"id": 103, "name": "Web Development", "shortname": "WEB101", "category": "Computer Science"}
-    ],
-    "admin@owi.com": [
-        {"id": 201, "name": "Calculus I", "shortname": "MATH101", "category": "Mathematics"},
-        {"id": 202, "name": "Linear Algebra", "shortname": "MATH201", "category": "Mathematics"},
-        {"id": 103, "name": "Web Development", "shortname": "WEB101", "category": "Computer Science"}
-    ],
-    "instructor1": [
-        {"id": 101, "name": "Introduction to Programming", "shortname": "CS101", "category": "Computer Science", "role": "instructor"},
-        {"id": 301, "name": "Advanced Algorithms", "shortname": "CS401", "category": "Computer Science", "role": "instructor"}
-    ],
-    # Default courses for unknown users
-    "default": [
-        {"id": 101, "name": "Introduction to Programming", "shortname": "CS101", "category": "Computer Science"},
-        {"id": 102, "name": "Data Structures", "shortname": "CS201", "category": "Computer Science"},
-        {"id": 103, "name": "Web Development", "shortname": "WEB101", "category": "Computer Science"}
-    ]
-}
+# Note: We now use the Moodle Webservice API via `core_enrol_get_users_courses`.
+# This file no longer provides mock data; it uses the configured
+# `MOODLE_API_URL` and `MOODLE_TOKEN` environment variables.
 
 
 async def get_moodle_courses(user_id: str) -> str:
@@ -71,21 +51,44 @@ async def get_moodle_courses(user_id: str) -> str:
     Returns:
         JSON string with course information or error message
     """
-    user_id_lower = user_id.lower().strip()
-    
-    # Get courses for user (or default if not found)
-    courses = MOCK_USER_COURSES.get(user_id_lower, MOCK_USER_COURSES["default"])
-    
-    result = {
-        "user_id": user_id,
-        "courses": courses,
-        "course_count": len(courses),
-        "success": True,
-        "source": "mock"  # Indicates this is mock data
-    }
-    
-    logger.info(f"Retrieved {len(courses)} courses for Moodle user '{user_id}'")
-    return json.dumps(result)
+    # Get Moodle config from environment
+    moodle_url = os.getenv("MOODLE_API_URL")
+    moodle_token = os.getenv("MOODLE_TOKEN")
+
+    if not moodle_url or not moodle_token:
+        logger.error("MOODLE_API_URL or MOODLE_TOKEN environment variable not set.")
+        return json.dumps({
+            "user_id": user_id,
+            "error": "MOODLE_API_URL or MOODLE_TOKEN not configured",
+            "success": False
+        })
+
+    # If the caller passes a non-numeric user_id (e.g. email), try to resolve it to a Moodle numeric ID
+    # using the Moodle core_user_get_users_by_field API. If resolution fails, assume user_id is already an ID.
+    numeric_user_id = user_id
+    if not str(user_id).isdigit():
+        import httpx
+        try:
+            params = {
+                "wstoken": moodle_token,
+                "wsfunction": "core_user_get_users_by_field",
+                "moodlewsrestformat": "json",
+                "field": "email",
+                "values[0]": user_id
+            }
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(moodle_url, params=params, timeout=10.0)
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, list) and len(data) > 0 and "id" in data[0]:
+                    numeric_user_id = str(data[0]["id"])
+                    logger.info(f"Resolved Moodle user by email to id={numeric_user_id} for {user_id}")
+        except Exception:
+            # Fall through and leave numeric_user_id as passed; the core_enrol_get_users_courses call will fail
+            logger.debug(f"Unable to resolve Moodle user from '{user_id}', attempting as-is")
+
+    # Call the real Moodle API
+    return await get_moodle_courses_real(numeric_user_id, moodle_url, moodle_token)
 
 
 async def get_moodle_courses_real(user_id: str, moodle_url: str, token: str) -> str:
@@ -106,8 +109,8 @@ async def get_moodle_courses_real(user_id: str, moodle_url: str, token: str) -> 
     import httpx
     
     try:
-        # Moodle Web Services endpoint
-        ws_url = f"{moodle_url}/webservice/rest/server.php"
+        # Moodle Web Services endpoint - assume `moodle_url` is already the full server.php ws URL
+        ws_url = moodle_url
         
         params = {
             "wstoken": token,

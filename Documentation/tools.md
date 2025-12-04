@@ -60,11 +60,12 @@ Added helper functions:
 
 ### 2. Moodle Tool (`/backend/lamb/completions/tools/moodle.py`)
 
-Implemented with mock data for Phase 1:
+Implemented to call the Moodle Web Services API:
 - `MOODLE_TOOL_SPEC` - OpenAI function specification
-- `get_moodle_courses(user_id)` - Returns mock course data based on user_id
-- `get_moodle_courses_real()` - Placeholder for Phase 5 real Moodle API integration
-- Mock data for different user types (student1, student2, instructor1, default)
+- `get_moodle_courses(user_id)` - Calls Moodle Webservice `core_enrol_get_users_courses` using `MOODLE_API_URL` and `MOODLE_TOKEN` env vars; will attempt to resolve emails to numeric Moodle user IDs via `core_user_get_users_by_field` if needed
+- `get_moodle_courses_real()` - Internal helper that implements the actual API call
+Requirements:
+- Set environment variables `MOODLE_API_URL` and `MOODLE_TOKEN` in the running environment
 
 ### 3. API Endpoint (`/backend/lamb/completions/main.py`)
 
@@ -255,7 +256,7 @@ Extracts user identifier from multiple sources in priority order:
 **2. Moodle Integration (`_get_moodle_courses_sync()`)**
 - Synchronous wrapper around the async Moodle tool
 - Uses existing `get_moodle_courses()` from tools registry
-- Currently works with mock data (Phase 5 will add real Moodle API)
+- Now integrates with Moodle Web Services using `MOODLE_API_URL` and `MOODLE_TOKEN` (set in environment). If not configured, the function will return an error response.
 
 **3. Context Formatting (`_format_moodle_context()`)**
 Formats Moodle course data into human-readable text:
@@ -319,13 +320,15 @@ Added `{moodle_info_for_user}` to default rag_placeholders.
 3. In the Prompt Template, use `{moodle_info_for_user}` where you want course info
 4. The placeholder button is available in the template editor UI
 
-### Mock Data (Until Phase 5):
+### Moodle API configuration and sample behavior
 
-The system uses mock course data for these test users:
-- `student1`: Programming courses (CS101, CS201, WEB101)
-- `student2`: Business courses (BUS101, MKT201, FIN301)
-- `instructor1`: Teaching courses (CS101, CS201)
-- Default: Generic courses for any other user
+The Moodle tool has been updated to fetch courses via the Moodle Web Services API.
+Configure the following environment variables on the backend server where LAMB runs:
+- `MOODLE_API_URL` — the base URL of the Moodle instance (e.g., https://moodle.example.com/webservice/rest/server.php)
+- `MOODLE_TOKEN` — a Moodle webservice token with permission to call `core_enrol_get_users_courses` (and `core_user_get_users_by_field` for email->ID resolution)
+
+If these variables are not configured, `get_moodle_courses()` will return a helpful error response rather than mock data.
+For development, you can point `MOODLE_API_URL` to a demo Moodle instance and use a token for that instance to return sample course data.
 
 ---
 
@@ -511,7 +514,7 @@ TOOL_REGISTRY = {
 
 1. **Phase 1: Backend Tool Registry** ✅ COMPLETED (December 3, 2025)
    - Create tool registry in `/backend/lamb/completions/tools/__init__.py`
-   - Implement Moodle tool with mock data
+    - Implement Moodle tool with Moodle API integration
    - Add API endpoint to list available tools
 
 2. **Phase 2: Unified Connector** ✅ COMPLETED (December 3, 2025)

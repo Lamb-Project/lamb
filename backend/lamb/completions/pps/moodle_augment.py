@@ -36,6 +36,12 @@ import json
 import logging
 from utils.timelog import Timelog
 
+import requests
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -68,37 +74,54 @@ def _has_vision_capability(assistant: Assistant) -> bool:
 
 def _extract_user_id(request: Dict[str, Any]) -> str:
     """
-    Extract user ID from request, checking OpenWebUI headers first, then metadata.
+    Extract user ID from request, prioritizing x-openwebui-user-email header.
 
     Attempts to find user identification in the following order:
     1. request.__openwebui_headers__.x-openwebui-user-email - OpenWebUI User Email header
-    2. request.__openwebui_headers__.x-openwebui-user-id - OpenWebUI User ID header  
-    3. request.__openwebui_headers__.x-openwebui-user-name - OpenWebUI User Name header
-    4. request.metadata.user_id - Explicitly provided in metadata
-    5. request.metadata.lti_user_id - From LTI launch
-    6. request.metadata.lis_person_sourcedid - LTI person ID
-    7. request.metadata.email - User email in metadata
-    8. Falls back to "default"
+    2. request.metadata.user_id - Explicitly provided in metadata
+    3. request.metadata.lti_user_id - From LTI launch
+    4. request.metadata.lis_person_sourcedid - LTI person ID
+    5. request.metadata.email - User email in metadata
+    6. request.metadata.user - Generic user field
+    7. Falls back to "unknown"
 
     Args:
         request: The incoming request dictionary, may contain __openwebui_headers__ dict
 
     Returns:
-        str: User ID or "default" if not found
+        str: User ID or "unknown" if not found
     """
-    # First, check OpenWebUI headers (injected by main.py from HTTP request headers)
+    # Only use x-openwebui-user-email from OpenWebUI headers (injected by main.py from HTTP request headers)
     openwebui_headers = request.get('__openwebui_headers__', {})
-
-    if openwebui_headers:
-        user_id = (
-            openwebui_headers.get('x-openwebui-user-email') or
-            openwebui_headers.get('x-openwebui-user-id') or
-            openwebui_headers.get('x-openwebui-user-name') or
-            None
-        )
-        if user_id:
-            logger.info(f"Extracted user ID from OpenWebUI headers: {user_id}")
-            return str(user_id)
+    email = openwebui_headers.get('x-openwebui-user-email')
+    if email:
+        logger.info(f"Extracted email from x-openwebui-user-email header: {email}")
+        # Call Moodle API to get user ID by email
+        MOODLE_API_URL = os.getenv("MOODLE_API_URL")
+        MOODLE_TOKEN = os.getenv("MOODLE_TOKEN")
+        if not MOODLE_TOKEN:
+            logger.error("MOODLE_TOKEN environment variable not set.")
+            return "unknown"
+        params = {
+            "wstoken": MOODLE_TOKEN,
+            "wsfunction": "core_user_get_users_by_field",
+            "moodlewsrestformat": "json",
+            "field": "email",
+            "values[0]": email
+        }
+        try:
+            response = requests.get(MOODLE_API_URL, params=params, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0 and "id" in data[0]:
+                moodle_id = str(data[0]["id"])
+                logger.info(f"Moodle user ID for {email}: {moodle_id}")
+                return moodle_id
+            else:
+                logger.warning(f"No Moodle user found for email: {email}")
+        except Exception as e:
+            logger.error(f"Error fetching Moodle user ID for {email}: {e}")
+        return "unknown"
 
     # Fall back to metadata fields (for LTI or other integrations)
     metadata = request.get('metadata', {})
