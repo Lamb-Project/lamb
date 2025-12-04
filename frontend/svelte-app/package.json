@@ -50,7 +50,7 @@
 		"axios": "^1.8.1",
 		"flowbite-svelte": "^0.48.6",
 		"flowbite-svelte-icons": "^2.1.1",
-		"marked": "^15.0.11",
+		"marked": "^15.0.12",
 		"openai": "^4.53.3",
 		"svelte-i18n": "^4.0.1"
 	}

@@ -300,24 +300,20 @@ export async function publishAssistant(assistantId, assistantName, groupName, oa
  * @returns {Promise<any>}
  */
 export async function unpublishAssistant(assistantId, groupId, userEmail) {
+	// Use the correct publish status endpoint and method
 	const token = localStorage.getItem('userToken');
 	if (!token) {
 		throw new Error('Not authenticated');
 	}
-
-	// Correct endpoint based on likely pattern, confirm if needed
-	const apiUrl = getApiUrl(
-		`/assistant/unpublish_assistant/${assistantId}/${groupId}?user_email=${encodeURIComponent(userEmail)}`
-	);
-
+	const apiUrl = getApiUrl(`/assistant/publish/${assistantId}`);
 	const response = await fetch(apiUrl, {
-		method: 'DELETE',
+		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
-		}
+		},
+		body: JSON.stringify({ publish_status: false })
 	});
-
 	if (!response.ok) {
 		let errorDetail = 'Failed to unpublish assistant';
 		try {
@@ -329,7 +325,6 @@ export async function unpublishAssistant(assistantId, groupId, userEmail) {
 		console.error('Unpublish error:', response.status, errorDetail);
 		throw new Error(errorDetail);
 	}
-
 	return await response.json();
 }
 
