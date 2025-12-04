@@ -1,9 +1,28 @@
 <script>
     import { writable } from 'svelte/store';
     import { onMount } from 'svelte';
+    import { marked } from 'marked';
     // Note: 'ai' and '@ai-sdk/openai' might not be strictly necessary if only using fetch
     // import { streamText } from 'ai'; 
-    // import { openai } from '@ai-sdk/openai'; 
+    // import { openai } from '@ai-sdk/openai';
+    
+    // Configure marked for sync operation
+    marked.use({ async: false });
+    
+    /**
+     * Parse markdown content to HTML
+     * @param {string} content - Markdown content
+     * @returns {string} HTML string
+     */
+    function parseMarkdown(content) {
+        if (!content) return '';
+        try {
+            return /** @type {string} */ (marked.parse(content));
+        } catch (e) {
+            console.error('Markdown parse error:', e);
+            return content;
+        }
+    }
 
     /**
      * @typedef {Object} Message
@@ -378,8 +397,10 @@
                                 {/each}
                             </div>
                         {:else}
-                            <!-- Render markdown or plain text -->
-                            <p class="whitespace-pre-wrap">{message.content}</p>
+                            <!-- Render markdown content (supports images, links, etc.) -->
+                            <div class="whitespace-pre-wrap [&_p]:m-0 [&_img]:max-w-full">
+                                {@html parseMarkdown(message.content)}
+                            </div>
                         {/if}
                      {/if}
                 </div>
