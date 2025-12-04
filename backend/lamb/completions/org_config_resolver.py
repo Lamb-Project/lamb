@@ -114,6 +114,8 @@ class OrganizationConfigResolver:
             return self._load_openai_from_env()
         elif provider == "ollama":
             return self._load_ollama_from_env()
+        elif provider == "google":
+            return self._load_google_from_env()
         elif provider == "llm":
             return self._load_llm_from_env()
         else:
@@ -153,10 +155,27 @@ class OrganizationConfigResolver:
     def _load_llm_from_env(self) -> Dict[str, Any]:
         """Load LLM CLI configuration from environment variables"""
         config = {}
-        
+
         config["default_model"] = os.getenv("LLM_DEFAULT_MODEL", "o1-mini")
         config["enabled"] = os.getenv("LLM_ENABLED", "false").lower() == "true"
-        
+
+        return config
+
+    def _load_google_from_env(self) -> Dict[str, Any]:
+        """Load Google Vertex AI configuration from environment variables"""
+        config = {}
+
+        # Vertex AI uses project_id and location instead of API key
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("VERTEX_PROJECT_ID")
+        location = os.getenv("GOOGLE_CLOUD_LOCATION") or os.getenv("VERTEX_LOCATION", "us-central1")
+
+        if project_id:
+            config["project_id"] = project_id
+            config["location"] = location
+            config["models"] = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"]
+            config["default_model"] = "imagen-3.0-generate-001"
+            config["enabled"] = os.getenv("VERTEX_ENABLED", "true").lower() == "true"
+
         return config
 
 

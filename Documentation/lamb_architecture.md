@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.7
-**Last Updated:** November 21, 2025  
+**Version:** 2.8
+**Last Updated:** December 1, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -2975,12 +2975,409 @@ Update assistant metadata:
 **Connectors:**
 - `openai`: OpenAI API (organization-aware)
 - `ollama`: Ollama local models (organization-aware)
+- `banana_img`: Google Gen AI (Gemini) image generation with intelligent routing (organization-aware)
 - `bypass`: Testing connector (returns messages as-is)
 
 **RAG Processors:**
 - `simple_rag`: Queries KB server and formats context
 - `single_file_rag`: Retrieves from single file
 - `no_rag`: No retrieval (returns empty context)
+
+### 11.8 Banana Image Connector (`banana_img`)
+
+The `banana_img` connector provides intelligent image generation using Google Gen AI SDK (Gemini) with automatic request routing.
+
+#### 11.8.1 Overview
+
+**Purpose:** Generate images from text prompts while gracefully handling chat interface metadata requests (titles, tags).
+
+**Key Features:**
+- Automatic request type detection (title generation vs image generation)
+- Intelligent routing: text requests → GPT-4o-mini, image requests → Google Gen AI (Gemini)
+- File-based image storage with markdown responses
+- Organization-aware configuration for both OpenAI and Google Gen AI
+- Support for multiple image formats (JPEG, PNG, WebP)
+- Configurable aspect ratios and image counts
+- Uses the unified Google Gen AI SDK (`google-genai`) for all Google generative AI models
+
+#### 11.8.2 Request Routing Logic
+
+The connector uses pattern matching to detect title/tags generation requests:
+
+```python
+# Title generation patterns (routed to GPT-4o-mini)
+patterns = [
+    "generate.*title",
+    "create.*title", 
+    "suggest.*title",
+    "generate.*tags",
+    "categorizing.*themes",
+    "chat history",
+    "conversation title",
+    "summarize.*conversation"
+]
+```
+
+**Routing Behavior:**
+- **Title Request Detected** → Use GPT-4o-mini for text generation
+- **Image Request** → Use Vertex AI Imagen for image generation
+
+#### 11.8.3 Image Storage Strategy
+
+Generated images are stored in the backend filesystem:
+
+```
+/backend/static/public/{user_id}/img/{filename}
+```
+
+**Path Components:**
+- `{user_id}`: **Database ID** from `Creator_users.id` field (e.g., `1`, `42`, `123`)
+  - Retrieved by looking up `assistant_owner` email in `Creator_users` table
+  - Falls back to `"default"` if user not found
+- `{filename}`: `img_{timestamp}_{uuid}.{format}` (e.g., `img_1701234567890_a1b2c3d4.jpeg`)
+
+**Storage Creation:**
+- Directories created automatically on first use
+- Permissions inherit from parent directories
+- Images accessible via `/static/public/{user_id}/img/{filename}` URL
+
+**User ID Resolution:**
+
+```python
+# Code flow:
+1. Get assistant_owner email (e.g., "admin@owi.com")
+2. Query Creator_users table: SELECT id FROM Creator_users WHERE user_email = ?
+3. Use returned id (e.g., 1) as user_id
+4. Create directory: /backend/static/public/1/img/
+5. Save image: /backend/static/public/1/img/img_1701234567890_abc123.jpeg
+```
+
+**Example Directory Structure:**
+
+```
+backend/static/public/
+├── 1/                    # User ID 1
+│   └── img/
+│       ├── img_1701234567890_abc123.jpeg
+│       └── img_1701234568123_def456.png
+├── 2/                    # User ID 2
+│   └── img/
+│       └── img_1701234568901_ghi789.jpeg
+└── default/              # Fallback for unknown users
+    └── img/
+        └── img_1701234569012_jkl012.jpeg
+```
+
+#### 11.8.4 Response Format
+
+**For Image Generation:**
+
+Returns OpenAI-compatible chat completion with markdown image links:
+
+```json
+{
+  "id": "chatcmpl-img_1701234567",
+  "object": "chat.completion",
+  "created": 1701234567,
+  "model": "gemini-2.0-flash-preview-image-generation",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "![Generated Image](/static/public/1/img/img_1701234567890_a1b2c3d4.jpeg)"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 0,
+    "total_tokens": 10
+  }
+}
+```
+
+**Note:** The URL uses the numeric user ID (`1`) from the `Creator_users.id` field, not a sanitized email address.
+
+**For Title Generation:**
+
+Returns standard OpenAI chat completion format from GPT-4o-mini.
+
+#### 11.8.5 Configuration
+
+**Organization Config (Google Gen AI):**
+
+```json
+{
+  "google": {
+    "enabled": true,
+    "api_key": "your-gemini-api-key"
+  },
+  "openai": {
+    "enabled": true,
+    "api_key": "sk-...",
+    "models": ["gpt-4o-mini", "gpt-4o"]
+  }
+}
+```
+
+**Environment Variables Fallback:**
+
+```bash
+# For Google Gen AI (Gemini)
+GEMINI_API_KEY=your-gemini-api-key
+# or
+GOOGLE_API_KEY=your-gemini-api-key
+
+# For title generation (GPT-4o-mini)
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+#### 11.8.5.1 Google Gen AI Authentication Setup
+
+**Simplified Authentication:** The Google Gen AI SDK uses API key authentication, which is simpler than the previous Vertex AI service account approach.
+
+**Getting Your API Key:**
+
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Sign in with your Google account
+3. Click "Get API Key" or navigate to API Keys section
+4. Create a new API key or copy an existing one
+5. Store the key securely
+
+**Configuration Options:**
+
+**Option A: Environment Variable (Recommended)**
+
+```bash
+export GEMINI_API_KEY=your-api-key-here
+# or
+export GOOGLE_API_KEY=your-api-key-here
+```
+
+**Option B: Docker Compose**
+
+```yaml
+services:
+  backend:
+    environment:
+      - GEMINI_API_KEY=your-api-key-here
+      # For title generation (GPT-4o-mini)
+      - OPENAI_API_KEY=sk-...
+```
+
+**Option C: Organization Config**
+
+Store the API key in organization settings for multi-tenant deployments:
+
+```json
+{
+  "setups": {
+    "default": {
+      "providers": {
+        "google": {
+          "enabled": true,
+          "api_key": "your-gemini-api-key"
+        }
+      }
+    }
+  }
+}
+```
+
+**Testing Configuration:**
+
+```python
+# Test script: test_genai_auth.py
+import os
+from google import genai
+
+api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+print(f"API Key configured: {'Yes' if api_key else 'No'}")
+
+try:
+    client = genai.Client(api_key=api_key)
+    print("✅ Google Gen AI client initialized successfully")
+except Exception as e:
+    print(f"❌ Error: {e}")
+```
+
+**Security Best Practices:**
+
+1. **Never commit API keys to git**
+   ```bash
+   # Add to .gitignore
+   echo ".env" >> .gitignore
+   ```
+
+2. **Use environment variables** instead of hardcoding keys
+
+3. **Rotate keys regularly** via Google AI Studio
+
+4. **Use organization config** for multi-tenant deployments where each organization has their own API key
+
+**Troubleshooting:**
+
+**Error: `API key not valid`**
+
+- ✅ Verify API key is correct and not expired
+- ✅ Check for extra whitespace in the key
+- ✅ Ensure the key has access to Gemini image generation models
+
+**Error: `Model not found`**
+
+- ✅ Verify model name is correct (e.g., `gemini-2.0-flash-preview-image-generation`)
+- ✅ Check if your API key has access to image generation models
+- ✅ Some models may require specific API tier access
+
+**Error: `Quota exceeded`**
+
+- ✅ Check your usage limits in Google AI Studio
+- ✅ Consider upgrading your API tier for higher limits
+
+#### 11.8.6 Generation Parameters
+
+**Supported Parameters (via request body):**
+
+- `number_of_images`: 1-4 images (default: 1)
+- `aspect_ratio`: "1:1", "3:4", "4:3", "16:9", "9:16" (default: "16:9")
+- `output_mime_type`: "image/jpeg", "image/png", "image/webp" (default: "image/jpeg")
+
+**Example Request:**
+
+```json
+{
+  "model": "lamb_assistant.123",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Generate an image of a sunset over mountains"
+    }
+  ],
+  "number_of_images": 2,
+  "aspect_ratio": "16:9",
+  "output_mime_type": "image/png"
+}
+```
+
+#### 11.8.7 Assistant Configuration
+
+To use `banana_img` connector in an assistant:
+
+```json
+{
+  "connector": "banana_img",
+  "llm": "imagen-4.0-generate-001",
+  "prompt_processor": "simple_augment",
+  "rag_processor": ""
+}
+```
+
+**Available Models (MUST use exact names):**
+
+**Gemini Models (uses `generate_content` API - may work with free tier):**
+- `gemini-2.5-flash-image-preview`: Gemini 2.5 Flash preview (cheapest, recommended for free tier)
+- `gemini-2.5-flash-image`: Gemini 2.5 Flash with image generation
+
+**Imagen Models (uses `generate_images` API - requires billing):**
+- `imagen-4.0-fast-generate-001`: Imagen 4 Fast - faster generation, good quality
+- `imagen-4.0-generate-001`: Imagen 4 - high quality image generation
+
+**⚠️ Important:** 
+- Gemini models use a different API (`generate_content`) and may work with free tier accounts
+- Imagen models require billing to be enabled in Google Cloud Console
+- The model name must match exactly. Invalid model names will be rejected with a clear error message listing available options.
+
+#### 11.8.8 Error Handling
+
+**Common Errors:**
+
+- **No Google Gen AI API Key**: Check organization config and environment variables (GEMINI_API_KEY or GOOGLE_API_KEY)
+- **No OpenAI API Key**: Required for title generation fallback
+- **Image Generation Failed**: Check API key validity and quota
+- **No Prompt Found**: Ensure messages contain user content
+
+**Graceful Degradation:**
+- Title requests always fallback to GPT-4o-mini
+- Image generation errors return descriptive error messages
+- Organization config failures fallback to environment variables
+
+#### 11.8.9 Performance Considerations
+
+**Image Storage:**
+- Images stored permanently until manually deleted
+- No automatic cleanup implemented
+- Consider implementing TTL or cleanup policies for production
+
+**File System Impact:**
+- Each user gets separate directory (`/public/{user_id}/img/`)
+- No size limits enforced (monitor disk usage)
+- Images served directly by backend static file handler
+
+**API Costs:**
+- Google Gen AI (Gemini) charges per image generation
+- GPT-4o-mini charges for title generation (minimal)
+- Organization-specific API keys allow cost tracking per org
+
+#### 11.8.10 Testing
+
+**Manual Test (Title Generation):**
+
+```bash
+curl -X POST http://localhost:9099/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "lamb_assistant.123",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Generate a title for this conversation about machine learning"
+      }
+    ]
+  }'
+```
+
+**Manual Test (Image Generation):**
+
+```bash
+curl -X POST http://localhost:9099/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "lamb_assistant.123",
+    "messages": [
+      {
+        "role": "user",
+        "content": "A beautiful sunset over mountains with vibrant colors"
+      }
+    ],
+    "aspect_ratio": "16:9"
+  }'
+```
+
+**Expected Response:** Markdown with image link that displays in Open WebUI chat interface.
+
+#### 11.8.11 Integration with Open WebUI
+
+**Chat Interface Behavior:**
+
+1. User sends image generation prompt
+2. Backend detects it's not a title request
+3. Backend resolves user ID from `assistant_owner` email via `Creator_users` table
+4. Google Gen AI (Gemini) generates image
+5. Image saved to `/backend/static/public/{user_id}/img/` (where `{user_id}` is the numeric ID)
+6. Markdown response sent to Open WebUI with image URL
+7. Open WebUI renders markdown → displays image inline
+
+**Title/Tags Requests:**
+
+1. Open WebUI requests conversation title/tags
+2. Backend detects title generation pattern
+3. Routes to GPT-4o-mini for text generation
+4. Returns JSON/text response as expected by Open WebUI
 
 ---
 
@@ -4364,5 +4761,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team
-**Last Updated:** November 21, 2025
-**Version:** 2.7 (Added Section 7.1: Multimodal Support - Complete vision API integration with security controls and prompt template handling)
+**Last Updated:** December 1, 2025
+**Version:** 2.8 (Updated Section 11.8: Banana Image Connector - Migrated from Vertex AI to Google Gen AI SDK for simpler API key authentication)
