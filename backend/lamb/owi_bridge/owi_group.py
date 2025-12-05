@@ -55,6 +55,12 @@ class OwiGroupManager:
             Optional[Dict]: Created group data or None if creation fails
         """
         try:
+            # Check if group with this name already exists (prevent duplicates)
+            existing_group = self.get_group_by_name(name)
+            if existing_group:
+                logging.warning(f"Group with name '{name}' already exists. Returning existing group.")
+                return existing_group
+            
             group_id = str(uuid.uuid4())
             current_time = int(time.time())
 
@@ -298,15 +304,23 @@ class OwiGroupManager:
             if not group:
                 return False
 
-            user_ids = json.loads(group['user_ids'])
+            # user_ids is already a list from _row_to_dict, not a JSON string
+            user_ids = group.get('user_ids', [])
+            if not isinstance(user_ids, list):
+                # In case it's still a string, parse it
+                user_ids = json.loads(user_ids) if isinstance(user_ids, str) else []
+            
+            logging.info(f"Current user_ids: {user_ids}, removing user: {user_id}")
+            
             if user_id in user_ids:
                 user_ids.remove(user_id)
+                logging.info(f"User {user_id} removed, updated user_ids: {user_ids}")
                 return self.update_group(group_id, user_ids=user_ids) is not None
 
             return True
 
         except Exception as e:
-            logging.error(f"Error in remove_user_from_group: {e}")
+            logging.error(f"Error in remove_user_from_group: {e}", exc_info=True)
             return False
 
     def add_user_to_group_by_email(self, group_id: str, user_email: str) -> Dict:
@@ -417,11 +431,14 @@ class OwiGroupManager:
             for field in ['data', 'meta', 'permissions', 'user_ids']:
                 if group_dict[field]:
                     try:
-                        group_dict[field] = json.loads(group_dict[field])
+                        parsed = json.loads(group_dict[field])
+                        group_dict[field] = parsed
                     except json.JSONDecodeError:
-                        group_dict[field] = {}
+                        # If it's user_ids, default to empty list; otherwise empty dict
+                        group_dict[field] = [] if field == 'user_ids' else {}
                 else:
-                    group_dict[field] = {}
+                    # If it's user_ids, default to empty list; otherwise empty dict
+                    group_dict[field] = [] if field == 'user_ids' else {}
                     
             return group_dict
 
@@ -593,3 +610,46 @@ class OwiGroupManager:
         except Exception as e:
             logging.error(f"Error getting group user emails: {e}")
             return []
+
+    def clean_duplicate_assistant_groups(self) -> None:
+        """
+        Remove duplicate assistant groups, keeping only the first one created.
+        This helps clean up any duplicate groups that may have been created.
+        """
+        try:
+            # Get all groups with names like "assistant_X"
+            query = 'SELECT * FROM "group" WHERE name LIKE "assistant_%" AND name NOT LIKE "assistant_%_%" ORDER BY created_at ASC'
+            groups = self.db.execute_query(query, fetch_one=False)
+            
+            if not groups:
+                logging.info("No duplicate assistant groups found")
+                return
+            
+            # Group by name to find duplicates
+            groups_by_name = {}
+            for group in groups:
+                group_dict = self._row_to_dict(group)
+                name = group_dict.get('name')
+                if name not in groups_by_name:
+                    groups_by_name[name] = []
+                groups_by_name[name].append(group_dict)
+            
+            # Delete duplicates, keeping the first (oldest) one
+            deleted_count = 0
+            for name, group_list in groups_by_name.items():
+                if len(group_list) > 1:
+                    logging.info(f"Found {len(group_list)} duplicate groups with name '{name}', keeping the first one")
+                    # Keep the first one (oldest), delete the rest
+                    for duplicate_group in group_list[1:]:
+                        try:
+                            self.delete_group(duplicate_group['id'])
+                            deleted_count += 1
+                            logging.info(f"Deleted duplicate group '{name}' with ID {duplicate_group['id']}")
+                        except Exception as e:
+                            logging.error(f"Error deleting duplicate group {duplicate_group['id']}: {e}")
+            
+            if deleted_count > 0:
+                logging.info(f"Successfully cleaned up {deleted_count} duplicate assistant groups")
+                
+        except Exception as e:
+            logging.error(f"Error in clean_duplicate_assistant_groups: {e}")

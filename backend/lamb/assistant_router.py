@@ -240,6 +240,20 @@ async def delete_assistant(assistant_id: int, owner: str, current_user: str = De
             
         success = db_manager.delete_assistant(assistant_id, owner)
         if success:
+            # Clean up associated OWI group
+            from .owi_bridge.owi_group import OwiGroupManager
+            try:
+                group_manager = OwiGroupManager()
+                group_name = f"assistant_{assistant_id}"
+                groups = group_manager.get_all_groups()
+                for group in groups:
+                    if group.get('name') == group_name:
+                        group_manager.delete_group(group['id'])
+                        logging.info(f"Deleted OWI group {group_name} for assistant {assistant_id}")
+                        break
+            except Exception as e:
+                logging.warning(f"Could not delete OWI group for assistant {assistant_id}: {e}")
+            
             return {"message": "Assistant deleted successfully"}
         else:
             raise HTTPException(status_code=500, detail="Failed to delete assistant")
