@@ -402,17 +402,15 @@
                                 {/each}
                             </div>
                         {:else}
-                            <!-- Render markdown content (supports images, links, etc.) -->
-                            <div class="whitespace-pre-wrap [&_p]:m-0 [&_img]:max-w-full">
-                                {@html parseMarkdown(message.content)}
-                            </div>
+                            <!-- Render markdown or plain text based on checkbox -->
+                            {#if renderMarkdown}
+                                <div class="whitespace-pre-wrap [&_p]:m-0 [&_img]:max-w-full">
+                                    {@html parseMarkdown(message.content)}
+                                </div>
+                            {:else}
+                                <p class="whitespace-pre-wrap">{message.content}</p>
+                            {/if}
                         {/if}
-                        <!-- Render markdown or plain text based on checkbox -->
-                        {#if renderMarkdown}
-                            <div class="prose prose-sm">{@html marked(message.content)}</div>
-                        {:else}
-                            <p class="whitespace-pre-wrap">{message.content}</p>
-                        {/if} 
                      {/if}
                 </div>
             </div>
