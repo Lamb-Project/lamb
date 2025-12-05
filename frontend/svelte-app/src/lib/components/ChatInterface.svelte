@@ -54,6 +54,7 @@
     let models = $state(/** @type {string[]} */([]));
     let selectedModel = $state(initialModel ?? 'gpt-3.5-turbo'); // Use initialModel prop if provided
     let isLoadingModels = $state(false);
+    let renderMarkdown = $state(false);
     let modelsError = $state(/** @type {string|null} */ (null));
     let isStreaming = $state(false);
     let chatContainer = $state(/** @type {HTMLElement | null} */(null)); // For autoscroll
@@ -335,6 +336,10 @@
     <!-- Header / Model Selector -->
     <div class="p-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-700">Chat</h2>
+        <label class="flex items-center space-x-2 text-sm text-gray-600">
+            <input type="checkbox" bind:checked={renderMarkdown} class="rounded" />
+            <span>Render as markdown</span>
+    </label>
         {#if false} <!-- Start: Hide model selector -->
         {#if isLoadingModels}
             <span class="text-sm text-gray-500">Loading models...</span>
@@ -402,6 +407,12 @@
                                 {@html parseMarkdown(message.content)}
                             </div>
                         {/if}
+                        <!-- Render markdown or plain text based on checkbox -->
+                        {#if renderMarkdown}
+                            <div class="prose prose-sm">{@html marked(message.content)}</div>
+                        {:else}
+                            <p class="whitespace-pre-wrap">{message.content}</p>
+                        {/if} 
                      {/if}
                 </div>
             </div>
