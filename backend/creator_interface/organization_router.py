@@ -1443,6 +1443,7 @@ class OrgAdminApiSettings(BaseModel):
     openai_base_url: Optional[str] = Field(None, description="OpenAI API base URL (from OPENAI_BASE_URL env var)")
     ollama_base_url: Optional[str] = Field(None, description="Ollama server base URL (from OLLAMA_BASE_URL env var)")
     available_models: Optional[List[str]] = Field(None, description="List of available models (deprecated)")
+    google_api_key: Optional[str] = Field(None, description="Google API key")
     model_limits: Optional[Dict[str, Any]] = Field(None, description="Model usage limits")
     selected_models: Optional[Dict[str, List[str]]] = Field(None, description="Selected models per provider")
     default_models: Optional[Dict[str, str]] = Field(None, description="Default model per provider")
@@ -2505,6 +2506,7 @@ async def get_api_settings(request: Request, org: Optional[str] = None):
         return {
             "openai_api_key_set": bool(providers.get('openai', {}).get('api_key')),
             "openai_base_url": providers.get('openai', {}).get('base_url') or config.OPENAI_BASE_URL,
+            "google_api_key_set": bool(providers.get("google", {}).get("api_key")),
             "ollama_base_url": providers.get('ollama', {}).get('base_url') or config.OLLAMA_BASE_URL,
             "available_models": available_models,
             "selected_models": selected_models,
@@ -2580,7 +2582,14 @@ async def update_api_settings(request: Request, settings: OrgAdminApiSettings, o
                 providers['openai'] = {}
             providers['openai']['base_url'] = settings.openai_base_url.rstrip('/')
             logger.info(f"Updated OpenAI base URL to: {settings.openai_base_url}")
-        
+
+        # Google API key update
+        if settings.google_api_key is not None:
+            if "google" not in providers:
+                providers["google"] = {}
+            providers["google"]["api_key"] = settings.google_api_key
+            logger.info(f"Updated Google API key for organization {org_id}")
+
         # Update Ollama configuration
         if settings.ollama_base_url:
             if 'ollama' not in providers:
@@ -2736,7 +2745,7 @@ async def get_kb_settings(request: Request, org: Optional[str] = None):
 
 @router.post(
     "/org-admin/settings/kb/test",
-    tags=["Organization Admin - Settings"],
+    tags=["Organization Adxmin - Settings"],
     summary="Test KB Server Connection",
     description="""Test connection to Knowledge Base server before saving configuration.
     

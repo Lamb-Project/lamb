@@ -46,6 +46,10 @@ OPENAI_MODEL = os.getenv('OPENAI_MODEL')
 if not OPENAI_MODEL:
     raise ValueError("OPENAI_MODEL environment variable is required")
 
+# Google AI API Configuration (for image generation)
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+
+
 # Openwebui Authentication
 OWI_PATH = os.getenv('OWI_PATH')
 # OWI_BASE_URL: Internal URL for backend-to-OpenWebUI API calls

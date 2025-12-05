@@ -679,6 +679,15 @@ class LambDatabaseManager:
                 "models": [os.getenv("OLLAMA_MODEL", "llama3.1")]
             }
         
+        # Google configuration (for Gemini/Imagen image generation)
+        google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if google_api_key:
+            providers["google"] = {
+                "api_key": google_api_key,
+                "models": ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"],
+                "default_model": "imagen-3.0-generate-001"
+            }
+        
         return providers
     
     def _load_kb_config_from_env(self) -> Dict[str, Any]:

@@ -162,10 +162,19 @@ class OrganizationConfigResolver:
         return config
 
     def _load_google_from_env(self) -> Dict[str, Any]:
-        """Load Google Vertex AI configuration from environment variables"""
+        """Load Google Gen AI / Vertex AI configuration from environment variables"""
         config = {}
 
-        # Vertex AI uses project_id and location instead of API key
+        # First try Google Gen AI API key (simpler, for Gemini/Imagen)
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if api_key:
+            config["api_key"] = api_key
+            config["models"] = ["imagen-3.0-generate-001", "imagen-3.0-fast-generate-001"]
+            config["default_model"] = "imagen-3.0-generate-001"
+            config["enabled"] = True
+            return config
+
+        # Fallback to Vertex AI (uses project_id and location instead of API key)
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("VERTEX_PROJECT_ID")
         location = os.getenv("GOOGLE_CLOUD_LOCATION") or os.getenv("VERTEX_LOCATION", "us-central1")
 
