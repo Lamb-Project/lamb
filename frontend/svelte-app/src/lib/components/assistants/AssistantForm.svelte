@@ -68,6 +68,8 @@
 
 	// Vision capability
 	let visionEnabled = $state(false);
+	// Image generation capability
+	let imageGenerationEnabled = $state(false);
 
 	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
@@ -349,6 +351,7 @@
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
 		visionEnabled = false; // Reset vision capability for new assistants
+		imageGenerationEnabled = false; // Reset image generation capability for new assistants
 		// Reset name/description only if truly starting fresh?
 		// name = '';
 		// description = ''; 
@@ -502,7 +505,9 @@
 				}
 
 				visionEnabled = metadata?.capabilities?.vision || false;
+				imageGenerationEnabled = metadata?.capabilities?.image_generation || false;
 				console.log('Populate: Vision capability loaded:', visionEnabled);
+				console.log('Populate: Image generation capability loaded:', imageGenerationEnabled);
 			} catch (e) {
 				console.warn('Failed to parse vision capability from metadata:', e);
 				visionEnabled = false;
@@ -560,6 +565,12 @@
 		if (selectedConnector !== 'openai' && visionEnabled) {
 			console.log('Disabling vision capability - not supported for connector:', selectedConnector);
 			visionEnabled = false;
+		}
+
+		// Validate image generation capability - only available for banana-img
+		if (selectedConnector !== 'banana-img' && imageGenerationEnabled) {
+			console.log('Disabling image generation capability - not supported for connector:', selectedConnector);
+			imageGenerationEnabled = false;
 		}
 	}
 
@@ -1031,7 +1042,8 @@
 			rag_processor: selectedRagProcessor,
 			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : '',
 			capabilities: {
-				vision: visionEnabled
+				vision: visionEnabled,
+				image_generation: imageGenerationEnabled
 			}
 		};
 
@@ -1775,6 +1787,29 @@
 								</span>
 								<p class="text-xs text-gray-500 mt-1">
 									{$_('assistants.form.vision.description', { default: 'Allow this assistant to process images alongside text messages' })}
+								</p>
+							</div>
+						</label>
+					</div>
+					{/if}
+
+					<!-- Image Generation Capability (Only for banana-img connector) -->
+					{#if selectedConnector === 'banana-img' || imageGenerationEnabled}
+					<div class="mb-3">
+						<label class="inline-flex items-center cursor-pointer">
+							<input
+								type="checkbox"
+								bind:checked={imageGenerationEnabled}
+								onchange={handleFieldChange}
+								class="sr-only peer"
+							/>
+							<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+							<div class="ms-3">
+								<span class="text-sm font-medium text-gray-900 dark:text-gray-300">
+									Enable Image Generation
+								</span>
+								<p class="text-xs text-gray-500 mt-1">
+									Allow this assistant to generate images using Google Gemini
 								</p>
 							</div>
 						</label>

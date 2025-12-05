@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.7
-**Last Updated:** November 21, 2025  
+**Version:** 2.8
+**Last Updated:** December 1, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -27,8 +27,7 @@
 16. [User Blocking Feature](#16-user-blocking-feature)
 17. [Frontend UX Patterns & Best Practices](#17-frontend-ux-patterns--best-practices)
 18. [API Reference](#18-api-reference)
-19. [Evaluator (Rubrics) Feature](#19-evaluator-rubrics-feature)
-20. [File Structure](#20-file-structure-summary)
+19. [File Structure](#19-file-structure)
 
 ---
 
@@ -2976,12 +2975,409 @@ Update assistant metadata:
 **Connectors:**
 - `openai`: OpenAI API (organization-aware)
 - `ollama`: Ollama local models (organization-aware)
+- `banana_img`: Google Gen AI (Gemini) image generation with intelligent routing (organization-aware)
 - `bypass`: Testing connector (returns messages as-is)
 
 **RAG Processors:**
 - `simple_rag`: Queries KB server and formats context
 - `single_file_rag`: Retrieves from single file
 - `no_rag`: No retrieval (returns empty context)
+
+### 11.8 Banana Image Connector (`banana_img`)
+
+The `banana_img` connector provides intelligent image generation using Google Gen AI SDK (Gemini) with automatic request routing.
+
+#### 11.8.1 Overview
+
+**Purpose:** Generate images from text prompts while gracefully handling chat interface metadata requests (titles, tags).
+
+**Key Features:**
+- Automatic request type detection (title generation vs image generation)
+- Intelligent routing: text requests → GPT-4o-mini, image requests → Google Gen AI (Gemini)
+- File-based image storage with markdown responses
+- Organization-aware configuration for both OpenAI and Google Gen AI
+- Support for multiple image formats (JPEG, PNG, WebP)
+- Configurable aspect ratios and image counts
+- Uses the unified Google Gen AI SDK (`google-genai`) for all Google generative AI models
+
+#### 11.8.2 Request Routing Logic
+
+The connector uses pattern matching to detect title/tags generation requests:
+
+```python
+# Title generation patterns (routed to GPT-4o-mini)
+patterns = [
+    "generate.*title",
+    "create.*title", 
+    "suggest.*title",
+    "generate.*tags",
+    "categorizing.*themes",
+    "chat history",
+    "conversation title",
+    "summarize.*conversation"
+]
+```
+
+**Routing Behavior:**
+- **Title Request Detected** → Use GPT-4o-mini for text generation
+- **Image Request** → Use Vertex AI Imagen for image generation
+
+#### 11.8.3 Image Storage Strategy
+
+Generated images are stored in the backend filesystem:
+
+```
+/backend/static/public/{user_id}/img/{filename}
+```
+
+**Path Components:**
+- `{user_id}`: **Database ID** from `Creator_users.id` field (e.g., `1`, `42`, `123`)
+  - Retrieved by looking up `assistant_owner` email in `Creator_users` table
+  - Falls back to `"default"` if user not found
+- `{filename}`: `img_{timestamp}_{uuid}.{format}` (e.g., `img_1701234567890_a1b2c3d4.jpeg`)
+
+**Storage Creation:**
+- Directories created automatically on first use
+- Permissions inherit from parent directories
+- Images accessible via `/static/public/{user_id}/img/{filename}` URL
+
+**User ID Resolution:**
+
+```python
+# Code flow:
+1. Get assistant_owner email (e.g., "admin@owi.com")
+2. Query Creator_users table: SELECT id FROM Creator_users WHERE user_email = ?
+3. Use returned id (e.g., 1) as user_id
+4. Create directory: /backend/static/public/1/img/
+5. Save image: /backend/static/public/1/img/img_1701234567890_abc123.jpeg
+```
+
+**Example Directory Structure:**
+
+```
+backend/static/public/
+├── 1/                    # User ID 1
+│   └── img/
+│       ├── img_1701234567890_abc123.jpeg
+│       └── img_1701234568123_def456.png
+├── 2/                    # User ID 2
+│   └── img/
+│       └── img_1701234568901_ghi789.jpeg
+└── default/              # Fallback for unknown users
+    └── img/
+        └── img_1701234569012_jkl012.jpeg
+```
+
+#### 11.8.4 Response Format
+
+**For Image Generation:**
+
+Returns OpenAI-compatible chat completion with markdown image links:
+
+```json
+{
+  "id": "chatcmpl-img_1701234567",
+  "object": "chat.completion",
+  "created": 1701234567,
+  "model": "gemini-2.0-flash-preview-image-generation",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "![Generated Image](/static/public/1/img/img_1701234567890_a1b2c3d4.jpeg)"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 0,
+    "total_tokens": 10
+  }
+}
+```
+
+**Note:** The URL uses the numeric user ID (`1`) from the `Creator_users.id` field, not a sanitized email address.
+
+**For Title Generation:**
+
+Returns standard OpenAI chat completion format from GPT-4o-mini.
+
+#### 11.8.5 Configuration
+
+**Organization Config (Google Gen AI):**
+
+```json
+{
+  "google": {
+    "enabled": true,
+    "api_key": "your-gemini-api-key"
+  },
+  "openai": {
+    "enabled": true,
+    "api_key": "sk-...",
+    "models": ["gpt-4o-mini", "gpt-4o"]
+  }
+}
+```
+
+**Environment Variables Fallback:**
+
+```bash
+# For Google Gen AI (Gemini)
+GEMINI_API_KEY=your-gemini-api-key
+# or
+GOOGLE_API_KEY=your-gemini-api-key
+
+# For title generation (GPT-4o-mini)
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+#### 11.8.5.1 Google Gen AI Authentication Setup
+
+**Simplified Authentication:** The Google Gen AI SDK uses API key authentication, which is simpler than the previous Vertex AI service account approach.
+
+**Getting Your API Key:**
+
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Sign in with your Google account
+3. Click "Get API Key" or navigate to API Keys section
+4. Create a new API key or copy an existing one
+5. Store the key securely
+
+**Configuration Options:**
+
+**Option A: Environment Variable (Recommended)**
+
+```bash
+export GEMINI_API_KEY=your-api-key-here
+# or
+export GOOGLE_API_KEY=your-api-key-here
+```
+
+**Option B: Docker Compose**
+
+```yaml
+services:
+  backend:
+    environment:
+      - GEMINI_API_KEY=your-api-key-here
+      # For title generation (GPT-4o-mini)
+      - OPENAI_API_KEY=sk-...
+```
+
+**Option C: Organization Config**
+
+Store the API key in organization settings for multi-tenant deployments:
+
+```json
+{
+  "setups": {
+    "default": {
+      "providers": {
+        "google": {
+          "enabled": true,
+          "api_key": "your-gemini-api-key"
+        }
+      }
+    }
+  }
+}
+```
+
+**Testing Configuration:**
+
+```python
+# Test script: test_genai_auth.py
+import os
+from google import genai
+
+api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+print(f"API Key configured: {'Yes' if api_key else 'No'}")
+
+try:
+    client = genai.Client(api_key=api_key)
+    print("✅ Google Gen AI client initialized successfully")
+except Exception as e:
+    print(f"❌ Error: {e}")
+```
+
+**Security Best Practices:**
+
+1. **Never commit API keys to git**
+   ```bash
+   # Add to .gitignore
+   echo ".env" >> .gitignore
+   ```
+
+2. **Use environment variables** instead of hardcoding keys
+
+3. **Rotate keys regularly** via Google AI Studio
+
+4. **Use organization config** for multi-tenant deployments where each organization has their own API key
+
+**Troubleshooting:**
+
+**Error: `API key not valid`**
+
+- ✅ Verify API key is correct and not expired
+- ✅ Check for extra whitespace in the key
+- ✅ Ensure the key has access to Gemini image generation models
+
+**Error: `Model not found`**
+
+- ✅ Verify model name is correct (e.g., `gemini-2.0-flash-preview-image-generation`)
+- ✅ Check if your API key has access to image generation models
+- ✅ Some models may require specific API tier access
+
+**Error: `Quota exceeded`**
+
+- ✅ Check your usage limits in Google AI Studio
+- ✅ Consider upgrading your API tier for higher limits
+
+#### 11.8.6 Generation Parameters
+
+**Supported Parameters (via request body):**
+
+- `number_of_images`: 1-4 images (default: 1)
+- `aspect_ratio`: "1:1", "3:4", "4:3", "16:9", "9:16" (default: "16:9")
+- `output_mime_type`: "image/jpeg", "image/png", "image/webp" (default: "image/jpeg")
+
+**Example Request:**
+
+```json
+{
+  "model": "lamb_assistant.123",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Generate an image of a sunset over mountains"
+    }
+  ],
+  "number_of_images": 2,
+  "aspect_ratio": "16:9",
+  "output_mime_type": "image/png"
+}
+```
+
+#### 11.8.7 Assistant Configuration
+
+To use `banana_img` connector in an assistant:
+
+```json
+{
+  "connector": "banana_img",
+  "llm": "imagen-4.0-generate-001",
+  "prompt_processor": "simple_augment",
+  "rag_processor": ""
+}
+```
+
+**Available Models (MUST use exact names):**
+
+**Gemini Models (uses `generate_content` API - may work with free tier):**
+- `gemini-2.5-flash-image-preview`: Gemini 2.5 Flash preview (cheapest, recommended for free tier)
+- `gemini-2.5-flash-image`: Gemini 2.5 Flash with image generation
+
+**Imagen Models (uses `generate_images` API - requires billing):**
+- `imagen-4.0-fast-generate-001`: Imagen 4 Fast - faster generation, good quality
+- `imagen-4.0-generate-001`: Imagen 4 - high quality image generation
+
+**⚠️ Important:** 
+- Gemini models use a different API (`generate_content`) and may work with free tier accounts
+- Imagen models require billing to be enabled in Google Cloud Console
+- The model name must match exactly. Invalid model names will be rejected with a clear error message listing available options.
+
+#### 11.8.8 Error Handling
+
+**Common Errors:**
+
+- **No Google Gen AI API Key**: Check organization config and environment variables (GEMINI_API_KEY or GOOGLE_API_KEY)
+- **No OpenAI API Key**: Required for title generation fallback
+- **Image Generation Failed**: Check API key validity and quota
+- **No Prompt Found**: Ensure messages contain user content
+
+**Graceful Degradation:**
+- Title requests always fallback to GPT-4o-mini
+- Image generation errors return descriptive error messages
+- Organization config failures fallback to environment variables
+
+#### 11.8.9 Performance Considerations
+
+**Image Storage:**
+- Images stored permanently until manually deleted
+- No automatic cleanup implemented
+- Consider implementing TTL or cleanup policies for production
+
+**File System Impact:**
+- Each user gets separate directory (`/public/{user_id}/img/`)
+- No size limits enforced (monitor disk usage)
+- Images served directly by backend static file handler
+
+**API Costs:**
+- Google Gen AI (Gemini) charges per image generation
+- GPT-4o-mini charges for title generation (minimal)
+- Organization-specific API keys allow cost tracking per org
+
+#### 11.8.10 Testing
+
+**Manual Test (Title Generation):**
+
+```bash
+curl -X POST http://localhost:9099/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "lamb_assistant.123",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Generate a title for this conversation about machine learning"
+      }
+    ]
+  }'
+```
+
+**Manual Test (Image Generation):**
+
+```bash
+curl -X POST http://localhost:9099/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "lamb_assistant.123",
+    "messages": [
+      {
+        "role": "user",
+        "content": "A beautiful sunset over mountains with vibrant colors"
+      }
+    ],
+    "aspect_ratio": "16:9"
+  }'
+```
+
+**Expected Response:** Markdown with image link that displays in Open WebUI chat interface.
+
+#### 11.8.11 Integration with Open WebUI
+
+**Chat Interface Behavior:**
+
+1. User sends image generation prompt
+2. Backend detects it's not a title request
+3. Backend resolves user ID from `assistant_owner` email via `Creator_users` table
+4. Google Gen AI (Gemini) generates image
+5. Image saved to `/backend/static/public/{user_id}/img/` (where `{user_id}` is the numeric ID)
+6. Markdown response sent to Open WebUI with image URL
+7. Open WebUI renders markdown → displays image inline
+
+**Title/Tags Requests:**
+
+1. Open WebUI requests conversation title/tags
+2. Backend detects title generation pattern
+3. Routes to GPT-4o-mini for text generation
+4. Returns JSON/text response as expected by Open WebUI
 
 ---
 
@@ -4336,331 +4732,7 @@ See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 19. Evaluator (Rubrics) Feature
-
-The Evaluator feature provides a comprehensive rubric creation, management, and assessment system for educational use. It enables educators to create detailed assessment rubrics with AI assistance, manage rubric libraries, and integrate rubrics with assistant responses for automated assessment.
-
-### 19.1 Overview
-
-**Purpose:** Educational assessment tool for creating, managing, and using rubrics in AI-assisted learning environments.
-
-**Key Capabilities:**
-- AI-powered rubric generation from natural language prompts
-- Visual rubric editor with real-time collaboration
-- Organization-based rubric sharing and templates
-- Multiple export formats (JSON, Markdown)
-- Integration with assistants for automated assessment
-- Undo/redo functionality with comprehensive history tracking
-
-### 19.2 Backend Implementation
-
-#### 19.2.1 Core API (`backend/lamb/evaluaitor/rubrics.py`)
-
-**Main Features:**
-- RESTful CRUD operations for rubrics
-- JWT-based authentication with organization context
-- AI rubric generation and modification endpoints
-- Import/export functionality
-- Access control with ownership and sharing permissions
-
-**Key Endpoints:**
-- `POST /lamb/v1/evaluaitor/rubrics` - Create rubric
-- `GET /lamb/v1/evaluaitor/rubrics` - List user's rubrics
-- `GET /lamb/v1/evaluaitor/rubrics/public` - List public rubrics
-- `GET /lamb/v1/evaluaitor/rubrics/{rubric_id}` - Get specific rubric
-- `PUT /lamb/v1/evaluaitor/rubrics/{rubric_id}` - Update rubric
-- `PUT /lamb/v1/evaluaitor/rubrics/{rubric_id}/visibility` - Toggle public/private
-- `POST /lamb/v1/evaluaitor/rubrics/ai-generate` - AI generation (preview only)
-- `POST /lamb/v1/evaluaitor/rubrics/{rubric_id}/ai-modify` - AI modification
-
-**Authentication Flow:**
-```python
-# Extract JWT token and validate user
-user = get_current_user_from_token(auth_header)
-org = get_user_organization(user)
-
-# Check permissions based on ownership/sharing
-if rubric.owner_email == user.email or (rubric.is_public and org.id == rubric.org_id):
-    # Allow access
-    pass
-```
-
-#### 19.2.2 Database Layer (`backend/lamb/evaluaitor/rubric_database.py`)
-
-**Schema:**
-```sql
-CREATE TABLE rubrics (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rubric_id TEXT UNIQUE NOT NULL,           -- UUID identifier
-    organization_id INTEGER NOT NULL,
-    owner_email TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    rubric_data JSON NOT NULL,                -- Complete rubric structure
-    is_public BOOLEAN DEFAULT FALSE,
-    is_showcase BOOLEAN DEFAULT FALSE,        -- Admin-curated templates
-    parent_rubric_id TEXT,                    -- For derived rubrics
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
-);
-```
-
-**Key Operations:**
-- `create_rubric()` - Insert new rubric with validation
-- `get_rubric_by_id()` - Access control with ownership/sharing checks
-- `get_rubrics_by_owner()` - Filter by user with pagination
-- `get_public_rubrics()` - Organization-scoped public rubrics
-- `toggle_rubric_visibility()` - Public/private toggle with permissions
-- `duplicate_rubric()` - Create copies as templates
-
-#### 19.2.3 AI Generation Engine (`backend/lamb/evaluaitor/ai_generator.py`)
-
-**AIRubricGenerator Class:**
-- Organization-aware LLM configuration
-- Multi-strategy JSON extraction with fallbacks
-- Robust error handling and validation
-- Support for multiple languages and models
-
-**Generation Strategies:**
-1. **Strategy A:** Direct JSON extraction from AI response
-2. **Strategy D:** Retry with stricter JSON instructions
-3. **Strategy E:** Return for manual editing (fallback)
-
-**Integration with Organization Config:**
-```python
-# Get org-specific OpenAI configuration
-config_resolver = OrganizationConfigResolver(user_email)
-openai_config = config_resolver.get_provider_config("openai")
-api_key = openai_config.get("api_key")
-model = openai_config.get("default_model")
-```
-
-#### 19.2.4 Validation System (`backend/lamb/evaluaitor/rubric_validator.py`)
-
-**Structure Validation:**
-- Required fields: `title`, `description`, `metadata`, `criteria`, `scoringType`, `maxScore`
-- Criteria validation: name, description, weight, performance levels
-- Level validation: label, description, score
-- Scoring types: `points`, `percentage`, `holistic`, `single-point`, `checklist`
-
-**Import Validation:**
-- JSON structure validation
-- Data sanitization and normalization
-- ID generation for imported rubrics
-
-#### 19.2.5 Prompt Management (`backend/lamb/evaluaitor/prompt_loader.py`)
-
-**Multilingual Support:**
-- Language-specific prompt templates
-- Fallback to English for unsupported languages
-- Template caching for performance
-
-**Supported Languages:** `en`, `es`, `eu`, `ca`
-
-#### 19.2.6 Creator Interface Proxy (`backend/creator_interface/evaluaitor_router.py`)
-
-**Purpose:** Enhanced proxy between frontend and core API with additional features:
-- Form data handling for file uploads
-- Enhanced error responses
-- Additional validation layer
-- Backward compatibility with existing endpoints
-
-**Key Features:**
-- `multipart/form-data` support for rubric creation/updates
-- Proxy request forwarding with authentication
-- Response transformation for frontend consumption
-
-#### 19.2.7 RAG Integration (`backend/lamb/completions/rag/rubric_rag.py`)
-
-**Purpose:** Inject rubric content into assistant responses for assessment contexts.
-
-**Integration Points:**
-- Assistant metadata specifies `rubric_id` and `rubric_format` (`markdown` or `json`)
-- Retrieves rubric from database with access control
-- Formats rubric as context for LLM prompts
-- Supports both markdown and JSON output formats
-
-**Usage in Assistant:**
-```python
-# Assistant metadata
-{
-  "rag_processor": "rubric_rag",
-  "rubric_id": "550e8400-e29b-41d4-a716-446655440000",
-  "rubric_format": "markdown"
-}
-```
-
-### 19.3 Frontend Implementation
-
-#### 19.3.1 Service Layer (`frontend/svelte-app/src/lib/services/rubricService.js`)
-
-**API Operations:**
-- `fetchRubrics()` - List user's rubrics with filtering
-- `fetchPublicRubrics()` - Organization public rubrics
-- `createRubric()`, `updateRubric()`, `deleteRubric()` - CRUD operations
-- `aiGenerateRubric()`, `aiModifyRubric()` - AI integration
-- `exportRubricJSON()`, `exportRubricMarkdown()` - Export functions
-- `importRubric()` - JSON import with validation
-
-**Authentication:**
-- JWT token management via localStorage
-- Automatic authorization headers
-- Error handling with user-friendly messages
-
-#### 19.3.2 State Management (`frontend/svelte-app/src/lib/stores/rubricStore.svelte.js`)
-
-**RubricStore Class (Svelte 5 with Runes):**
-- Reactive state management with `$state()` and `$derived()`
-- Undo/redo functionality with history tracking (50-level deep)
-- Real-time validation
-- Change tracking and conflict resolution
-
-**Key Features:**
-- `loadRubric()` - Load rubric with ID generation
-- `updateCell()` - Modify individual rubric cells
-- `addCriterion()`, `removeCriterion()` - Structure modifications
-- `validate()` - Comprehensive validation with error reporting
-- History management: `undo()`, `redo()`, `canUndo`, `canRedo`
-
-#### 19.3.3 UI Components
-
-**Core Components (`frontend/svelte-app/src/lib/components/evaluaitor/`):**
-
-**RubricsList.svelte:**
-- Tabbed interface: "My Rubrics" vs "Templates"
-- Advanced filtering and search
-- Bulk operations support
-- Responsive grid/list views
-
-**RubricEditor.svelte:**
-- Real-time editing with validation
-- AI chat integration for modifications
-- Undo/redo controls
-- Save/cancel with confirmation dialogs
-
-**RubricTable.svelte:**
-- Visual rubric editor with drag-and-drop
-- Performance level management
-- Weight distribution visualization
-- Real-time validation feedback
-
-**RubricAIGenerationModal.svelte:**
-- Natural language prompt interface
-- Preview of AI-generated rubrics
-- Accept/reject workflow
-- Error handling and retry mechanisms
-
-**RubricAIChat.svelte:**
-- Conversational AI modification interface
-- Real-time preview of changes
-- Change summary and approval workflow
-
-**Supporting Components:**
-- `RubricForm.svelte` - Basic form fields
-- `RubricMetadataForm.svelte` - Metadata editing
-- `RubricPreview.svelte` - Read-only display
-
-### 19.4 Key Workflows
-
-#### 19.4.1 AI Generation Workflow
-
-```
-User Prompt → Frontend Service → Backend API → AI Generator
-    ↓              ↓                    ↓            ↓
-Natural Language → JWT Auth → Organization Config → LLM Call
-    ↓              ↓                    ↓            ↓
-Preview Response ← JSON Validation ← Multi-strategy Extraction ← OpenAI API
-    ↓              ↓                    ↓            ↓
-Accept/Reject ← User Review ← Markdown Generation ← Response Processing
-```
-
-#### 19.4.2 Editing Workflow
-
-```
-Load Rubric → RubricStore → Real-time Updates → Validation
-    ↓              ↓              ↓                 ↓
-Database → State Management → History Tracking → Error Display
-    ↓              ↓              ↓                 ↓
-UI Sync ← Reactive Updates ← Undo/Redo ← User Actions
-```
-
-#### 19.4.3 Sharing Workflow
-
-```
-Create Rubric → Set Visibility → Organization Access → Permissions
-    ↓              ↓                ↓                 ↓
-Private → Public Toggle → Same Org Users → Read Access
-    ↓              ↓                ↓                 ↓
-Templates → Showcase Status → Admin Approval → Featured Display
-```
-
-### 19.5 Security & Access Control
-
-**Authentication:**
-- JWT token validation on all endpoints
-- User context extraction from tokens
-- Organization membership verification
-
-**Authorization:**
-- Owner-based access control
-- Organization-scoped public rubrics
-- Admin-only showcase management
-- Creator user type restrictions
-
-**Data Isolation:**
-- Organization-scoped rubric storage
-- User-specific access patterns
-- Secure file upload handling
-
-### 19.6 Integration Points
-
-**With Assistants:**
-- RAG processor for rubric injection
-- Metadata-driven configuration
-- Format selection (markdown/json)
-
-**With Organization Management:**
-- Configuration-driven AI settings
-- User permission management
-- Multi-tenancy support
-
-**With Authentication:**
-- Creator user integration
-- JWT token validation
-- Session management
-
-### 19.7 Performance Optimizations
-
-**Backend:**
-- Database indexing on frequently queried fields
-- Pagination for large rubric lists
-- Template caching for AI prompts
-- Connection pooling for database operations
-
-**Frontend:**
-- Lazy loading of rubric components
-- Optimistic UI updates
-- Efficient state management with Svelte 5 runes
-- Service worker caching for static assets
-
-### 19.8 Error Handling
-
-**Backend Error Responses:**
-- Structured JSON error messages
-- Appropriate HTTP status codes
-- Detailed validation error reporting
-- AI generation fallback strategies
-
-**Frontend Error Handling:**
-- User-friendly error messages
-- Retry mechanisms for transient failures
-- Validation feedback in real-time
-- Graceful degradation for network issues
-
----
-
-## 20. File Structure Summary
+## 19. File Structure Summary
 
 ```
 /backend/
@@ -4689,5 +4761,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team
-**Last Updated:** November 21, 2025
-**Version:** 2.7 (Added Section 7.1: Multimodal Support - Complete vision API integration with security controls and prompt template handling)
+**Last Updated:** December 1, 2025
+**Version:** 2.8 (Updated Section 11.8: Banana Image Connector - Migrated from Vertex AI to Google Gen AI SDK for simpler API key authentication)
