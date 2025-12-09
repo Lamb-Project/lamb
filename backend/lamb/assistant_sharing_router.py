@@ -123,22 +123,22 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
     
     # Use the ORIGINAL assistant group (assistant_X, not assistant_X_shared)
     group_name = f"assistant_{assistant_id}"
-    
+
     # Check if group exists using get_group_by_name (more efficient and avoids duplicates)
     existing_group = group_manager.get_group_by_name(group_name)
     group_id = existing_group['id'] if existing_group else None
-    
+
     if not group_id:
         # Before creating, check if there are any duplicate groups with this name
         # This handles edge case where duplicates already exist in DB
         all_groups = group_manager.get_all_groups()
         matching_groups = [g for g in all_groups if g.get('name') == group_name]
-        
+
         if matching_groups:
             # Use the first (oldest) one and clean up others
             group_id = matching_groups[0]['id']
             logger.info(f"Found existing group '{group_name}' with ID {group_id}")
-            
+
             # Clean up any duplicates
             if len(matching_groups) > 1:
                 logger.warning(f"Found {len(matching_groups)} duplicate groups with name '{group_name}'")
@@ -149,20 +149,22 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
                     except Exception as e:
                         logger.error(f"Error deleting duplicate group: {e}")
         else:
-            # Create new group if it doesn't exist
             owner_manager = OwiUserManager()
             owner_user = owner_manager.get_user_by_email(assistant.owner)
-            if owner_user:
-                result = group_manager.create_group(
-                    name=group_name,
-                    description=f"Shared access for assistant {assistant.name}",
-                    user_id=owner_user['id']
-                )
-                # create_group returns the group dict directly (not wrapped in status)
-                group_id = result.get('id') if result else None
-                if group_id:
-                    logger.info(f"Created new group '{group_name}' with ID {group_id}")
-    
+            if not owner_user:
+                logger.warning(f"Could not find OWI user for owner {assistant.owner}; skipping group sync")
+                return
+
+            result = group_manager.create_group(
+                name=group_name,
+                description=f"Shared access for assistant {assistant.name}",
+                user_id=owner_user['id']
+            )
+            # create_group returns the group dict directly (not wrapped in status)
+            group_id = result.get('id') if result else None
+            if group_id:
+                logger.info(f"Created new group '{group_name}' with ID {group_id}")
+
     if group_id:
         # Add all users to the assistant_X group
         add_users_to_owi_group(group_id, user_emails)
