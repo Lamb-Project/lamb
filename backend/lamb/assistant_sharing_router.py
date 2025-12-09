@@ -106,14 +106,12 @@ def check_sharing_permission(user_id: int) -> bool:
 
 def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManager):
     """Sync users from LAMB_assistant_shares to the assistant_X group in OWI"""
-    """Sync users from LAMB_assistant_shares to the assistant_X group in OWI"""
     assistant = db_manager.get_assistant_by_id(assistant_id)
     if not assistant:
         return
     
     group_manager = OwiGroupManager()
     
-    # Get all users who should have access (owner + shared users from LAMB_assistant_shares)
     # Get all users who should have access (owner + shared users from LAMB_assistant_shares)
     shares = db_manager.get_assistant_shares(assistant_id)
     user_emails = [assistant.owner]  # Owner always has access
@@ -125,31 +123,20 @@ def sync_assistant_to_owi_group(assistant_id: int, db_manager: LambDatabaseManag
     
     # Use the ORIGINAL assistant group (assistant_X, not assistant_X_shared)
     group_name = f"assistant_{assistant_id}"
-    # Use the ORIGINAL assistant group (assistant_X, not assistant_X_shared)
-    group_name = f"assistant_{assistant_id}"
     
-    # Check if group exists using get_group_by_name (more efficient and avoids duplicates)
-    existing_group = group_manager.get_group_by_name(group_name)
-    group_id = existing_group['id'] if existing_group else None
+    # Create the group
+    owner_manager = OwiUserManager()
+    owner_user = owner_manager.get_user_by_email(assistant.owner)
     
-    if not group_id:
-        # Create new group if it doesn't exist
-        owner_manager = OwiUserManager()
-        owner_user = owner_manager.get_user_by_email(assistant.owner)
-        if owner_user:
-            result = group_manager.create_group(
-                name=group_name,
-                description=f"Shared access for assistant {assistant.name}",
-                user_id=owner_user['id']
-            )
-            # create_group returns the group dict directly (not wrapped in status)
-            group_id = result.get('id') if result else None
+    result = group_manager.create_group(
+        name=group_name,
+        description=f"Shared access for assistant {assistant.name}",
+        user_id=owner_user['id']
+    )
+    group_id = result.get('id')
     
-    if group_id:
-        # Add all users to the assistant_X group
-        add_users_to_owi_group(group_id, user_emails)
-        # Add all users to the assistant_X group
-        add_users_to_owi_group(group_id, user_emails)
+    # Add all users to the assistant_X group
+    add_users_to_owi_group(group_id, user_emails)
 
 def add_users_to_owi_group(group_id: str, user_emails: List[str]):
     """Add users to OWI group by email"""
