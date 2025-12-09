@@ -52,6 +52,8 @@ This document specifies the backend changes required to support a **multi-tool a
 ### 2.1 Directory Structure (Current)
 
 ```
+
+**Verbose flag:** `verbose: true` enables pipeline tracing (redacted) including tool inputs (sans secrets), output lengths, and prompt-after-substitution. Default `false`; traces must exclude API keys, tokens, PII, and tool contents.
 lamb/completions/
 ├── main.py                    # Main completion router & pipeline orchestrator
 ├── org_config_resolver.py     # Organization-aware configuration
@@ -786,6 +788,7 @@ def get_definition() -> ToolDefinition:
         "vision": false,
         "image_generation": false
     },
+    "verbose": false,
     
     "tools": [
         {
@@ -1022,6 +1025,14 @@ class ToolOrchestrator:
         return all_sources
 ```
 
+**Streaming status messages:** When `stream=True` on the completion request, the orchestrator emits markdown-formatted status events per tool step in execution order, e.g.:
+- `querying knowledge base {collection_id}`
+- `generating rubric {rubric_id}`
+- `reading file {file_path}`
+- `merging tool outputs`
+
+These events must avoid leaking secrets and should include only safe identifiers. Downstream connectors should stream them before/while sending model tokens.
+
 ### 7.2 Modified Main Pipeline
 
 ```python
@@ -1098,6 +1109,8 @@ def _extract_legacy_config(assistant: Assistant, rag_processor: str) -> Dict[str
     
     return config
 ```
+
+**Verbose propagation:** `assistant.metadata.verbose` (default `false`) is propagated through the request context to control emission of redacted pipeline traces (tool inputs sans secrets, output lengths, prompt after substitution). When `verbose` is off, traces are suppressed; errors still log without sensitive payloads.
 
 ### 7.3 Modified Prompt Processor
 
@@ -1676,6 +1689,8 @@ If migration has bugs:
 | B16 | Integration tests for multi-tool pipeline | 4 | B9, B10 |
 | B17 | Create migration script | 3 | B11 |
 | B18 | Test backward compatibility | 4 | B11 |
+| B19 | Streaming status message tests | 2 | B4, B9 |
+| B20 | Verbose trace redaction tests | 2 | B4, B9 |
 
 ### 11.4 Total Estimates
 
@@ -1755,6 +1770,27 @@ def test_multi_tool_execution():
     # Each tool outputs to its placeholder
     assert "context" in results  # simple_rag
     assert "rubric" in results   # rubric
+
+def test_streaming_status_events():
+    """Streaming emits ordered markdown status messages without secrets"""
+    orchestrator = ToolOrchestrator()
+    request = {"messages": [{"role": "user", "content": "test query"}], "stream": True}
+    assistant = create_test_assistant(verbose=False)
+    tools = [{"type": "simple_rag", "enabled": True, "config": {"collections": ["kb1"]}}]
+    
+    statuses, _ = orchestrator.execute_with_status(request, assistant, tools)  # helper returns (status_events, results)
+    assert statuses[0].startswith("querying knowledge base")
+    assert "secret" not in "".join(statuses)
+
+def test_verbose_trace_redacts():
+    """Verbose traces include lengths but redact sensitive values"""
+    request = {"messages": [{"role": "user", "content": "test query"}], "stream": False}
+    assistant = create_test_assistant(verbose=True)
+    tool_configs = [{"type": "single_file", "enabled": True, "config": {"file_path": "docs/guide.md"}}]
+    
+    trace = run_with_verbose_trace(request, assistant, tool_configs)  # returns trace metadata/log object
+    assert "docs/guide.md" in trace["steps"][0]["input"]
+    assert "api_key" not in str(trace)
 ```
 
 ### 12.3 Backward Compatibility Tests

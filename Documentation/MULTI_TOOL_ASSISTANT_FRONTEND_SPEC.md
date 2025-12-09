@@ -255,6 +255,7 @@ AssistantForm.svelte
         "vision": false,
         "image_generation": false
     },
+    "verbose": false,
     "tools": [
         {
             "type": "knowledge_base",
@@ -285,6 +286,8 @@ AssistantForm.svelte
     ]
 }
 ```
+
+**Verbose flag:** `verbose: true` enables a developer-facing trace (redacted) showing tool inputs (sans secrets), output lengths, and the prompt after substitution. Default `false`; UI should expose a toggle in AssistantForm and warn that outputs may include operational details.
 
 ### 4.2 Tool Type Definitions
 
@@ -1095,6 +1098,11 @@ For MVP, use static imports in the registry to avoid complexity.
 - Disabled save button if any tool invalid
 - Summary of errors above save button
 
+### 7.6 Streaming Status & Verbose Controls
+- When `stream=true`, display markdown status events from backend in the chat stream before/alongside model tokens (e.g., “querying knowledge base {kb}”, “merging contexts”), in order received; style as muted/system messages and throttle to avoid spam.
+- AssistantForm: add a `Verbose (developer trace)` toggle (default off) under advanced settings. When enabled, downstream UI can show trace metadata (redacted) such as tool input summaries and prompt-after-substitution.
+- Redaction: do not display secrets, tokens, or tool content in status/verbose surfaces; show lengths and safe identifiers only.
+
 ---
 
 ## 8. Service Layer Changes
@@ -1150,6 +1158,7 @@ export async function createAssistant(assistantData) {
         connector: assistantData.connector || 'openai',
         llm: assistantData.llm || 'gpt-4o-mini',
         capabilities: assistantData.capabilities || {},
+        verbose: !!assistantData.verbose,
         tools: assistantData.tools || []
     };
     
@@ -1163,6 +1172,8 @@ export async function createAssistant(assistantData) {
     // ... rest of function ...
 }
 ```
+
+**Verbose handling:** Assistant load/save flows should read/write `metadata.verbose` (default `false`) and bind it to the UI toggle. Do not send verbose traces unless toggle enabled.
 
 ### 8.2 New toolService.js
 
@@ -1464,6 +1475,8 @@ export const FEATURE_FLAGS = {
 - Editing assistant with tools
 - Saving persists tool configurations
 - Loading displays correct tool configs
+- Verbose toggle defaults off, persists on save, and surfaces trace panel only when enabled
+- Streaming status events render as muted markdown system messages in order (no secrets shown)
 
 **Legacy Compatibility:**
 - Loading legacy single-RAG assistant
@@ -1503,6 +1516,20 @@ test('legacy assistant loads correctly', async ({ page }) => {
     
     // Should show tool card for legacy RAG processor
     await expect(page.locator('[data-testid="tool-card"]')).toBeVisible();
+});
+
+test('verbose toggle shows trace metadata', async ({ page }) => {
+    await page.goto('/assistants?id=123');
+    await page.getByTestId('verbose-toggle').check();
+    await page.click('[data-testid="save-assistant"]');
+    
+    await page.goto('/chat?id=123');
+    await page.getByTestId('chat-input').fill('Test streaming');
+    await page.getByTestId('chat-send').click();
+    
+    await expect(page.locator('[data-testid="status-event"]').first()).toContainText('querying knowledge base');
+    await expect(page.locator('[data-testid="trace-panel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="trace-panel"]')).not.toContainText('sk-'); // redaction check
 });
 ```
 
