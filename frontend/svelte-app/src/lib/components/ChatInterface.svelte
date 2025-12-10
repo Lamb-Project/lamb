@@ -356,14 +356,14 @@
                                                     Download
                                                 </button>
                                             </div>
-                                        </div>
                                     </div>
-                                {/each}
-                            </div>
-                        {:else}
-                            <!-- Render plain text -->
-                            <p class="whitespace-pre-wrap">{message.content}</p>
-                        {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {:else}
+                        <!-- Render plain text -->
+                        <p class="whitespace-pre-wrap">{message.content}</p>
+                    {/if}
                      {/if}
                 </div>
             </div>
