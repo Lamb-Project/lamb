@@ -9,25 +9,16 @@ passlib==1.7.4
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.0
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 # HTTP clients
 requests>=2.32.2,<3.0.0
 aiohttp>=3.9.5,<4.0.0
-httpx>=0.28.1,<1.0.0
-=======
-=======
->>>>>>> 9d3a99d (fix: pin httpx below 0.28)
+httpx>=0.27.0,<0.28.0
 PyJWT[crypto]
 
 requests==2.32.2
 aiohttp==3.9.5
-<<<<<<< HEAD
-httpx==0.27.1
->>>>>>> 4c1be26 (fix: Remove merge conflict markers and ensure httpx is listed in requirements)
-=======
-httpx==0.27.0
->>>>>>> 9d3a99d (fix: pin httpx below 0.28)
+httpx>=0.27.0,<0.28.0
 
 # MCP (Model Context Protocol) libraries
 mcp==1.14.0
