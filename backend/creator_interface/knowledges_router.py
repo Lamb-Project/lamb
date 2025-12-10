@@ -1800,6 +1800,7 @@ async def plugin_ingest_base(
                 detail="Only KB owner can ingest files. You have read-only access to this shared KB."
             )
 
+
         # Build placeholder file content and generate a meaningful, filesystem-safe filename
         import re
         from urllib.parse import urlparse
@@ -1843,11 +1844,11 @@ async def plugin_ingest_base(
                         return info['title']
             except Exception as e:
                 logger.warning(f"yt-dlp failed to get YouTube title: {e}")
-
+            
             # Fallback: scrape the page if httpx and bs4 are available
             if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
                 return None
-
+                
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.get(video_url, follow_redirects=True)
@@ -1863,7 +1864,32 @@ async def plugin_ingest_base(
                             return title
             except Exception as e:
                 logger.warning(f"Web scraping failed to get YouTube title: {e}")
+            
+            return None
 
+        async def get_web_page_title(url: str) -> str:
+            """Try to extract web page title."""
+            if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
+                return None
+                
+            try:
+                async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                    response = await client.get(url, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        # Try og:title first (more reliable)
+                        og_title = soup.find('meta', property='og:title')
+                        if og_title and og_title.get('content'):
+                            return og_title['content']
+                        # Fallback to title element
+                        title = soup.find('title')
+                        if title:
+                            return title.get_text().strip()
+            except Exception as e:
+                logger.warning(f"Failed to get web page title for {url}: {e}")
+            
             return None
 
         content_bytes = b""
@@ -1890,8 +1916,39 @@ async def plugin_ingest_base(
                         else:
                             meaningful_filename = "yt:youtube_transcript.txt"
                         logger.info(f"Could not get YouTube title, using fallback: {meaningful_filename}")
+            # For url_ingest, embed url as file content if present
+            elif body.plugin_name == "url_ingest" and "url" in body.parameters:
+                url_param = body.parameters["url"]
+                if isinstance(url_param, str):
+                    content_bytes = (url_param.strip() + "\n").encode("utf-8")
+                    # Try to get the actual page title
+                    page_title = await get_web_page_title(url_param)
+                    if page_title:
+                        # Use the page title as filename with url: prefix
+                        meaningful_filename = f"url:{slugify(page_title)}.txt"
+                        logger.info(f"Using web page title as filename: {meaningful_filename}")
+                    else:
+                        # Fallback: use domain and path
+                        parsed = urlparse(url_param)
+                        domain = parsed.netloc.replace("www.", "").replace(".", "_") if parsed.netloc else "url"
+                        path = parsed.path.strip("/").replace("/", "_")[:30] if parsed.path != "/" else ""
+                        if path:
+                            meaningful_filename = f"url:{domain}_{path}.txt"
+                        else:
+                            meaningful_filename = f"url:{domain}.txt"
+                        
+                        # Clean filename
+                        meaningful_filename = "".join(c for c in meaningful_filename if c.isalnum() or c in "._-:")[:80]
+                        logger.info(f"Could not get page title, using domain/path: {meaningful_filename}")
+            else:
+                # Fallback for other plugins: try to use a parameter as identifier
+                for key, value in body.parameters.items():
+                    if isinstance(value, str) and value:
+                        safe_val = value[:30].replace("/", "_").replace(".", "_")
+                        safe_val = "".join(c for c in safe_val if c.isalnum() or c == "_")
+                        meaningful_filename = f"{body.plugin_name}_{safe_val}.txt"
+                        break
 
-        # Create a minimal in-memory file object compatible with kb_server_manager expectations
         class InMemoryUploadFile:
             def __init__(self, filename: str, data: bytes, content_type: str = "text/plain"):
                 self.filename = filename
