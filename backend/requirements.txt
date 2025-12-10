@@ -13,7 +13,7 @@ PyJWT[crypto]
 
 requests==2.32.2
 aiohttp==3.9.5
-httpx==0.27.0
+httpx>=0.27.0,<0.28.0
 
 # MCP (Model Context Protocol) libraries
 mcp==1.14.0
