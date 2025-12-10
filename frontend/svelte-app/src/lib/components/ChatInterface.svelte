@@ -1,7 +1,6 @@
 <script>
     import { writable } from 'svelte/store';
     import { onMount } from 'svelte';
-    import { marked } from 'marked';
     // Note: 'ai' and '@ai-sdk/openai' might not be strictly necessary if only using fetch
     // import { streamText } from 'ai'; 
     // import { openai } from '@ai-sdk/openai'; 
@@ -36,7 +35,6 @@
     let models = $state(/** @type {string[]} */([]));
     let selectedModel = $state(initialModel ?? 'gpt-3.5-turbo'); // Use initialModel prop if provided
     let isLoadingModels = $state(false);
-    let renderMarkdown = $state(false);
     let modelsError = $state(/** @type {string|null} */ (null));
     let isStreaming = $state(false);
     let chatContainer = $state(/** @type {HTMLElement | null} */(null)); // For autoscroll
@@ -49,6 +47,28 @@
     function logWithTime(message) {
         const timestamp = new Date().toISOString().split('T')[1].replace('Z', '');
         console.log(`[${timestamp}] CHAT: ${message}`);
+    }
+
+    /**
+     * Build a data URL for a generated image.
+     * @param {{ mime_type: string; image_base64: string }} image
+     */
+    function getImageDataUrl(image) {
+        return `data:${image.mime_type};base64,${image.image_base64}`;
+    }
+
+    /**
+     * Trigger a download for a generated image.
+     * @param {{ mime_type: string; image_base64: string }} image
+     * @param {string} messageId
+     */
+    function downloadImage(image, messageId) {
+        const link = document.createElement('a');
+        link.href = getImageDataUrl(image);
+        link.download = `lamb-image-${messageId}.${image.mime_type?.split('/')[1] ?? 'png'}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
     }
 
     // --- API Calls ---
@@ -165,98 +185,69 @@
                 throw new Error('Response body is null');
             }
 
-            // Check if this is a streaming response or direct JSON response
-            const contentType = response.headers.get('content-type');
-            const isStreamingResponse = contentType && contentType.includes('text/event-stream');
+            // --- Process Stream ---
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            logWithTime('Starting stream processing');
 
-            if (isStreamingResponse) {
-                // --- Process Stream ---
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                logWithTime('Starting stream processing');
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    logWithTime('Stream finished.');
+                    break;
+                }
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) {
-                        logWithTime('Stream finished.');
-                        break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (line.trim() === '' || !line.startsWith('data: ')) continue;
+
+                    const jsonData = line.substring(5).trim(); // Get content after "data: "
+                    if (jsonData === '[DONE]') {
+                        logWithTime('Received [DONE] signal');
+                        continue; // Move to next line or break if this was the last useful data
                     }
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-                    for (const line of lines) {
-                        if (line.trim() === '' || !line.startsWith('data: ')) continue;
-
-                        const jsonData = line.substring(5).trim(); // Get content after "data: "
-                        if (jsonData === '[DONE]') {
-                            logWithTime('Received [DONE] signal');
-                            continue; // Move to next line or break if this was the last useful data
-                        }
-
-                        try {
-                            const parsedData = JSON.parse(jsonData);
-                            // Check structure for OpenAI compatible stream chunk
-                            if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
-                                const deltaContent = parsedData.choices[0].delta.content;
-                                if (deltaContent) {
-                                    currentAssistantContent += deltaContent;
-                                    // Update the specific assistant message by ID
-                                    messages = messages.map(msg =>
-                                        msg.id === assistantMessageId
-                                        ? { ...msg, content: currentAssistantContent }
-                                        : msg
-                                    );
-                                }
-                            } else {
-                                 logWithTime(`Received non-delta data chunk: ${jsonData.slice(0,100)}...`);
+                    try {
+                        const parsedData = JSON.parse(jsonData);
+                        // Check structure for OpenAI compatible stream chunk
+                        if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
+                            const deltaContent = parsedData.choices[0].delta.content;
+                            if (deltaContent) {
+                                currentAssistantContent += deltaContent;
+                                // Update the specific assistant message by ID
+                                messages = messages.map(msg => 
+                                    msg.id === assistantMessageId 
+                                    ? { ...msg, content: currentAssistantContent } 
+                                    : msg
+                                );
                             }
-                        } catch (e) {
-                            logWithTime(`Error parsing JSON line: ${line} - Error: ${e}`);
-                            // Decide if you want to show partial content or wait
+                        } else {
+                             logWithTime(`Received non-delta data chunk: ${jsonData.slice(0,100)}...`);
                         }
-                    }
-                     // Process any remaining content in the buffer if needed, though usually not necessary with SSE line breaks
-                    if(buffer.startsWith('data: ')){
-                        // Simplified handling for potential final partial chunk, full parsing recommended if needed
-                        const jsonData = buffer.substring(5).trim();
-                        if(jsonData !== '[DONE]') {
-                            // Attempt to parse and extract content if possible...
-                        }
+                    } catch (e) {
+                        logWithTime(`Error parsing JSON line: ${line} - Error: ${e}`);
+                        // Decide if you want to show partial content or wait
                     }
                 }
-                // Final update in case the last chunk didn't trigger map update
-                messages = messages.map(msg =>
-                    msg.id === assistantMessageId
-                    ? { ...msg, content: currentAssistantContent }
-                    : msg
-                );
-            } else {
-                // --- Handle Direct JSON Response (for image generation, etc.) ---
-                logWithTime('Processing direct JSON response');
-                const responseData = await response.json();
-                logWithTime(`Received response: ${JSON.stringify(responseData).slice(0,200)}...`);
-
-                // Check if this is an image generation response
-                if (responseData.object === 'image_generation' && responseData.images) {
-                    // Update message with images
-                    messages = messages.map(msg =>
-                        msg.id === assistantMessageId
-                        ? { ...msg, images: responseData.images, content: responseData.images.length > 0 ? `Generated ${responseData.images.length} image(s)` : 'No images generated' }
-                        : msg
-                    );
-                } else {
-                    // Handle other non-streaming responses (fallback to content)
-                    const content = responseData.choices?.[0]?.message?.content || JSON.stringify(responseData, null, 2);
-                    messages = messages.map(msg =>
-                        msg.id === assistantMessageId
-                        ? { ...msg, content: content }
-                        : msg
-                    );
+                 // Process any remaining content in the buffer if needed, though usually not necessary with SSE line breaks
+                if(buffer.startsWith('data: ')){
+                    // Simplified handling for potential final partial chunk, full parsing recommended if needed
+                    const jsonData = buffer.substring(5).trim();
+                    if(jsonData !== '[DONE]') {
+                        // Attempt to parse and extract content if possible...
+                    }
                 }
             }
+            // Final update in case the last chunk didn't trigger map update
+            messages = messages.map(msg => 
+                msg.id === assistantMessageId 
+                ? { ...msg, content: currentAssistantContent } 
+                : msg
+            );
 
         } catch (/** @type {any} */ error) {
             logWithTime(`Error during chat submission: ${error.message}`);
@@ -281,16 +272,6 @@
              messages[assistantMsgIndex].content = newContent;
              messages = messages; // Trigger reactivity
         }
-    }
-
-    /** Download generated image */
-    function downloadImage(image, messageId) {
-        const link = document.createElement('a');
-        link.href = `data:${image.mime_type};base64,${image.image_base64}`;
-        link.download = `generated_image_${messageId}_${image.index + 1}.${image.mime_type.split('/')[1]}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
     }
 
     // --- Lifecycle & Effects ---
@@ -318,10 +299,6 @@
     <!-- Header / Model Selector -->
     <div class="p-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-700">Chat</h2>
-        <label class="flex items-center space-x-2 text-sm text-gray-600">
-            <input type="checkbox" bind:checked={renderMarkdown} class="rounded" />
-            <span>Render as markdown</span>
-    </label>
         {#if false} <!-- Start: Hide model selector -->
         {#if isLoadingModels}
             <span class="text-sm text-gray-500">Loading models...</span>
@@ -348,7 +325,7 @@
                 >
                      {#if message.role === 'assistant' && isStreaming && message.id === messages[messages.length - 1].id}
                         <!-- Basic streaming indicator -->
-                         <span class="italic">{message.content || 'Thinking...'}</span>
+                         <span class="italic">{message.content || 'Thinking...'}</span> 
                      {:else}
                         <!-- Check if this is an image generation response -->
                         {#if message.images && message.images.length > 0}
@@ -357,14 +334,14 @@
                                 {#each message.images as image (image.index)}
                                     <div class="border rounded-lg overflow-hidden max-w-sm">
                                         <button
-                                            onclick={() => window.open(this.src, '_blank')}
-                                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(this.src, '_blank'); } }}
+                                            onclick={() => window.open(getImageDataUrl(image), '_blank')}
+                                            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.open(getImageDataUrl(image), '_blank'); } }}
                                             class="w-full p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-lg overflow-hidden"
                                             aria-label="View generated image in full size"
                                             title="Click to view full size"
                                         >
                                             <img
-                                                src="data:{image.mime_type};base64,{image.image_base64}"
+                                                src={getImageDataUrl(image)}
                                                 alt="AI-generated artwork"
                                                 class="w-full h-auto max-h-96 object-contain hover:opacity-90 transition-opacity"
                                             />
@@ -384,12 +361,8 @@
                                 {/each}
                             </div>
                         {:else}
-                            <!-- Render markdown or plain text based on checkbox -->
-                            {#if renderMarkdown}
-                                <div class="prose prose-sm">{@html marked(message.content)}</div>
-                            {:else}
-                                <p class="whitespace-pre-wrap">{message.content}</p>
-                            {/if}
+                            <!-- Render plain text -->
+                            <p class="whitespace-pre-wrap">{message.content}</p>
                         {/if}
                      {/if}
                 </div>
