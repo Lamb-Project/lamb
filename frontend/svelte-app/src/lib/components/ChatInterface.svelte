@@ -185,69 +185,98 @@
                 throw new Error('Response body is null');
             }
 
-            // --- Process Stream ---
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            logWithTime('Starting stream processing');
+            // Check if this is a streaming response or direct JSON response
+            const contentType = response.headers.get('content-type');
+            const isStreamingResponse = contentType && contentType.includes('text/event-stream');
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    logWithTime('Stream finished.');
-                    break;
-                }
+            if (isStreamingResponse) {
+                // --- Process Stream ---
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                logWithTime('Starting stream processing');
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-                for (const line of lines) {
-                    if (line.trim() === '' || !line.startsWith('data: ')) continue;
-
-                    const jsonData = line.substring(5).trim(); // Get content after "data: "
-                    if (jsonData === '[DONE]') {
-                        logWithTime('Received [DONE] signal');
-                        continue; // Move to next line or break if this was the last useful data
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        logWithTime('Stream finished.');
+                        break;
                     }
 
-                    try {
-                        const parsedData = JSON.parse(jsonData);
-                        // Check structure for OpenAI compatible stream chunk
-                        if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
-                            const deltaContent = parsedData.choices[0].delta.content;
-                            if (deltaContent) {
-                                currentAssistantContent += deltaContent;
-                                // Update the specific assistant message by ID
-                                messages = messages.map(msg => 
-                                    msg.id === assistantMessageId 
-                                    ? { ...msg, content: currentAssistantContent } 
-                                    : msg
-                                );
-                            }
-                        } else {
-                             logWithTime(`Received non-delta data chunk: ${jsonData.slice(0,100)}...`);
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.trim() === '' || !line.startsWith('data: ')) continue;
+
+                        const jsonData = line.substring(5).trim(); // Get content after "data: "
+                        if (jsonData === '[DONE]') {
+                            logWithTime('Received [DONE] signal');
+                            continue; // Move to next line or break if this was the last useful data
                         }
-                    } catch (e) {
-                        logWithTime(`Error parsing JSON line: ${line} - Error: ${e}`);
-                        // Decide if you want to show partial content or wait
+
+                        try {
+                            const parsedData = JSON.parse(jsonData);
+                            // Check structure for OpenAI compatible stream chunk
+                            if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
+                                const deltaContent = parsedData.choices[0].delta.content;
+                                if (deltaContent) {
+                                    currentAssistantContent += deltaContent;
+                                    // Update the specific assistant message by ID
+                                    messages = messages.map(msg =>
+                                        msg.id === assistantMessageId
+                                        ? { ...msg, content: currentAssistantContent }
+                                        : msg
+                                    );
+                                }
+                            } else {
+                                 logWithTime(`Received non-delta data chunk: ${jsonData.slice(0,100)}...`);
+                            }
+                        } catch (e) {
+                            logWithTime(`Error parsing JSON line: ${line} - Error: ${e}`);
+                            // Decide if you want to show partial content or wait
+                        }
+                    }
+                     // Process any remaining content in the buffer if needed, though usually not necessary with SSE line breaks
+                    if(buffer.startsWith('data: ')){
+                        // Simplified handling for potential final partial chunk, full parsing recommended if needed
+                        const jsonData = buffer.substring(5).trim();
+                        if(jsonData !== '[DONE]') {
+                            // Attempt to parse and extract content if possible...
+                        }
                     }
                 }
-                 // Process any remaining content in the buffer if needed, though usually not necessary with SSE line breaks
-                if(buffer.startsWith('data: ')){
-                    // Simplified handling for potential final partial chunk, full parsing recommended if needed
-                    const jsonData = buffer.substring(5).trim();
-                    if(jsonData !== '[DONE]') {
-                        // Attempt to parse and extract content if possible...
-                    }
+                // Final update in case the last chunk didn't trigger map update
+                messages = messages.map(msg =>
+                    msg.id === assistantMessageId
+                    ? { ...msg, content: currentAssistantContent }
+                    : msg
+                );
+            } else {
+                // --- Handle Direct JSON Response (for image generation, etc.) ---
+                logWithTime('Processing direct JSON response');
+                const responseData = await response.json();
+                logWithTime(`Received response: ${JSON.stringify(responseData).slice(0,200)}...`);
+
+                // Check if this is an image generation response
+                if (responseData.object === 'image_generation' && responseData.images) {
+                    // Update message with images
+                    messages = messages.map(msg =>
+                        msg.id === assistantMessageId
+                        ? { ...msg, images: responseData.images, content: responseData.images.length > 0 ? `Generated ${responseData.images.length} image(s)` : 'No images generated' }
+                        : msg
+                    );
+                } else {
+                    // Handle other non-streaming responses (fallback to content)
+                    const content = responseData.choices?.[0]?.message?.content || JSON.stringify(responseData, null, 2);
+                    messages = messages.map(msg =>
+                        msg.id === assistantMessageId
+                        ? { ...msg, content: content }
+                        : msg
+                    );
                 }
             }
-            // Final update in case the last chunk didn't trigger map update
-            messages = messages.map(msg => 
-                msg.id === assistantMessageId 
-                ? { ...msg, content: currentAssistantContent } 
-                : msg
-            );
 
         } catch (/** @type {any} */ error) {
             logWithTime(`Error during chat submission: ${error.message}`);
@@ -325,7 +354,7 @@
                 >
                      {#if message.role === 'assistant' && isStreaming && message.id === messages[messages.length - 1].id}
                         <!-- Basic streaming indicator -->
-                         <span class="italic">{message.content || 'Thinking...'}</span> 
+                         <span class="italic">{message.content || 'Thinking...'}</span>
                      {:else}
                         <!-- Check if this is an image generation response -->
                         {#if message.images && message.images.length > 0}
@@ -356,14 +385,14 @@
                                                     Download
                                                 </button>
                                             </div>
+                                        </div>
                                     </div>
-                                </div>
-                            {/each}
-                        </div>
-                    {:else}
-                        <!-- Render plain text -->
-                        <p class="whitespace-pre-wrap">{message.content}</p>
-                    {/if}
+                                {/each}
+                            </div>
+                        {:else}
+                            <!-- Render plain text -->
+                            <p class="whitespace-pre-wrap">{message.content}</p>
+                        {/if}
                      {/if}
                 </div>
             </div>
