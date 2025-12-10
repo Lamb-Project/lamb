@@ -305,8 +305,12 @@
                         <!-- Basic streaming indicator -->
                          <span class="italic">{message.content || 'Thinking...'}</span> 
                      {:else}
-                        <!-- Render markdown or plain text here eventually -->
-                        <p class="whitespace-pre-wrap">{message.content}</p> 
+                        <!-- Render markdown or plain text based on checkbox -->
+                        {#if renderMarkdown}
+                            <div class="prose prose-sm">{@html marked(message.content)}</div>
+                        {:else}
+                            <p class="whitespace-pre-wrap">{message.content}</p>
+                        {/if}
                      {/if}
                 </div>
             </div>
