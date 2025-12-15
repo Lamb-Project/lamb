@@ -9,7 +9,7 @@ python-multipart
 markitdown[all]>=0.1.0
 flask>=2.3.0
 requests>=2.31.0
-firecrawl==1.7.0
+firecrawl-py==4.8.0
 langchain-text-splitters>=0.3.0,<0.4.0
 ollama
 openai>=1.0.0
@@ -18,4 +18,7 @@ openai>=1.0.0
 # pathlib and uuid are in the Python standard library; no need to install separately.
 markdown2
 # YouTube video and subtitle extraction
-yt-dlp>=2024.1.1
+yt-dlp>=2025.11.12
+langchain-community
+beautifulsoup4
+lxml
