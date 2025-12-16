@@ -138,7 +138,11 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     if not model:
         model = llm or os.getenv("OLLAMA_MODEL", "llama3.1")
 
-    # Phase 3: Model resolution and fallback logic
+    # Phase 3: Model resolution and fallback logic following the hierarchy:
+    # 1. Explicit model specified → use that (if available)
+    # 2. Global default model → use that (if provider matches and available)
+    # 3. Per-provider default model → use that (if available)
+    # 4. First available model → use that
     resolved_model = model
     fallback_used = False
     
@@ -149,12 +153,24 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
             available_models = ollama_config.get("models", [])
             org_default_model = ollama_config.get("default_model")
             
+            # Get global default model configuration
+            global_default_config = config_resolver.get_global_default_model_config()
+            global_default_provider = global_default_config.get('provider', '')
+            global_default_model = global_default_config.get('model', '')
+            
             # Check if requested model is available
             if resolved_model not in available_models and available_models:
                 original_model = resolved_model
                 
-                # Try organization's default model first
-                if org_default_model and org_default_model in available_models:
+                # Try global default model first (if it's configured for Ollama)
+                if global_default_provider == 'ollama' and global_default_model and global_default_model in available_models:
+                    resolved_model = global_default_model
+                    fallback_used = True
+                    logger.warning(f"Model '{original_model}' not available for org '{org_name}', using global default: '{resolved_model}'")
+                    print(f"⚠️  [Ollama] Model '{original_model}' not enabled, using global default: '{resolved_model}'")
+                
+                # Try organization's per-provider default model
+                elif org_default_model and org_default_model in available_models:
                     resolved_model = org_default_model
                     fallback_used = True
                     logger.warning(f"Model '{original_model}' not available for org '{org_name}', using org default: '{resolved_model}'")
@@ -164,7 +180,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 elif available_models:
                     resolved_model = available_models[0]
                     fallback_used = True
-                    logger.warning(f"Model '{original_model}' and default '{org_default_model}' not available for org '{org_name}', using first available: '{resolved_model}'")
+                    logger.warning(f"Model '{original_model}' and defaults not available for org '{org_name}', using first available: '{resolved_model}'")
                     print(f"⚠️  [Ollama] Model '{original_model}' not enabled, using first available: '{resolved_model}'")
                 
                 # Note: Unlike OpenAI, we don't raise an error if no models are configured
