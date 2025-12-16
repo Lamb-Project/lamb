@@ -10,12 +10,12 @@ import requests
 import logging
 from lamb.database_manager import LambDatabaseManager
 import json
-from utils.timelog import Timelog
+from lamb.logging_config import get_logger
 import traceback
 import asyncio
 
 # Set up logger for completions module
-logger = logging.getLogger('lamb.completions')
+logger = get_logger('lamb.completions', component="MAIN")
 logger.setLevel(logging.INFO)
 
 # Create handler if none exists
@@ -121,42 +121,45 @@ async def create_completion(
     try:
         logger.info("Starting completion request")
         logger.debug(f"Parameters: assistant={assistant}")
-        Timelog(f"Starting completion request: assistant={assistant}",1)
         # Use helper functions to structure the process:
         assistant_details = get_assistant_details(assistant)
-        Timelog(f"Assistant details: {assistant_details}",2)
+        logger.debug(f"Assistant details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
-        Timelog(f"Plugin config: {plugin_config}",2)
+        logger.debug(f"Plugin config: {plugin_config}")
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
-        Timelog(f"Plugins loaded: {pps}, {connectors}, {rag_processors}",2)
+        logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
-        Timelog(f"RAG context: {rag_context}",2)
+        logger.debug(f"RAG context: {rag_context}")
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
-        Timelog(f"Messages: {messages}",2)
+        logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
-        Timelog(f"Stream mode: {stream}",2)
         logger.debug(f"Stream mode: {stream}")
         logger.info("Getting completion from LLM")
         if stream:
             logger.debug("Returning streaming response")
-            Timelog(f"Returning streaming response",2)
             return StreamingResponse(
                 connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, assistant=assistant_details),
                 media_type="text/event-stream"
             )
         else:
             logger.debug("Returning direct response")
-            Timelog(f"Returning direct response",2)
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, assistant=assistant_details)
+            return connectors[plugin_config["connector"]](
+                messages,
+                stream=False,
+                body=request,
+                llm=plugin_config["llm"],
+                assistant_owner=assistant_details.owner,
+                assistant=assistant_details,
+            )
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
-        Timelog(f"Error in create_completion: {str(e)}",2)
+        logger.debug(f"Error in create_completion: {str(e)}")
         stream = request.get("stream", False)
-        Timelog(f"Stream mode: {stream}",2)
+        logger.debug(f"Stream mode: {stream}")
         error_msg = f"Error in create_completion: {str(e)}"
-        Timelog(f"Error message: {error_msg}",2)
+        logger.debug(f"Error message: {error_msg}")
         if stream:
-            Timelog(f"Returning streaming response",2)
+            logger.debug(f"Returning streaming response")
             return StreamingResponse(
                 iter([f"data: {error_msg}\n\n".encode()]),
                 media_type="text/event-stream"
