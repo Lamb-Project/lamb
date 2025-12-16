@@ -2,6 +2,7 @@
 import { getApiUrl, getConfig } from '$lib/config'; // Use the new helper
 import { browser } from '$app/environment';
 import axios from 'axios';
+import { authenticatedFetch } from '$lib/utils/httpClient';
 
 /**
  * @typedef {Object} Assistant - Defines the structure of an assistant object from the API
@@ -141,7 +142,7 @@ export async function getAssistants(limit = 10, offset = 0) {
 		`Equivalent curl command:\ncurl -X GET "${apiUrl}" -H "Authorization: Bearer ${token}"`
 	);
 
-	const response = await fetch(apiUrl, {
+	const response = await authenticatedFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
@@ -157,6 +158,7 @@ export async function getAssistants(limit = 10, offset = 0) {
 			// Ignore if response is not JSON
 		}
 		console.error('API error response status:', response.status, 'Detail:', errorDetail);
+		// Note: authenticatedFetch already handles 401 errors and shows modal
 		throw new Error(errorDetail);
 	}
 
@@ -196,7 +198,7 @@ export async function getAssistantById(assistantId) {
 	const apiUrl = getApiUrl(`/assistant/get_assistant/${assistantId}`); // <-- Added
 	console.log('Fetching assistant by ID from absolute URL:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await authenticatedFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json',
@@ -268,7 +270,7 @@ export async function publishAssistant(assistantId, assistantName, groupName, oa
 		is_published: true
 	};
 
-	const response = await fetch(apiUrl, {
+	const response = await authenticatedFetch(apiUrl, {
 		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -306,7 +308,7 @@ export async function unpublishAssistant(assistantId, groupId, userEmail) {
 		throw new Error('Not authenticated');
 	}
 	const apiUrl = getApiUrl(`/assistant/publish/${assistantId}`);
-	const response = await fetch(apiUrl, {
+	const response = await authenticatedFetch(apiUrl, {
 		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -391,7 +393,7 @@ export async function deleteAssistant(id) {
 			`/assistant/delete_assistant/${id}?owner=${encodeURIComponent(userEmail)}`
 		);
 
-		const response = await fetch(apiUrl, {
+		const response = await authenticatedFetch(apiUrl, {
 			method: 'DELETE',
 			headers: {
 				Authorization: `Bearer ${token}`
@@ -446,7 +448,7 @@ export async function getSystemCapabilities() {
 		throw new Error('Not authenticated');
 	}
 	// Assuming capabilities endpoint is relative to base URL
-	const response = await fetch(getApiUrl(`/system/capabilities`), {
+	const response = await authenticatedFetch(getApiUrl(`/system/capabilities`), {
 		headers: {
 			Authorization: `Bearer ${token}`
 		}
@@ -539,7 +541,7 @@ export async function downloadAssistant(assistantId) {
 	const apiUrl = getApiUrl(`/assistant/download_assistant/${assistantId}`);
 
 	try {
-		const response = await fetch(apiUrl, {
+		const response = await authenticatedFetch(apiUrl, {
 			headers: {
 				Authorization: `Bearer ${token}`
 			}
@@ -631,7 +633,7 @@ export async function updateAssistant(assistantId, assistantData) {
 	console.log('With data:', filteredData);
 
 	try {
-		const response = await fetch(url, {
+		const response = await authenticatedFetch(url, {
 			method: 'PUT',
 			headers: {
 				Authorization: `Bearer ${token}`,
@@ -690,7 +692,7 @@ export async function setAssistantPublishStatus(assistantId, publishStatus) {
 	const method = 'PUT'; // <-- Corrected: Always PUT
 
 	try {
-		const response = await fetch(apiUrl, {
+		const response = await authenticatedFetch(apiUrl, {
 			method: method,
 			headers: {
 				Authorization: `Bearer ${token}`,
@@ -747,7 +749,7 @@ export async function getSharedAssistants() {
 		const apiUrl = `${baseUrl}/lamb/v1/assistant-sharing/shared-with-me`;
 		console.log('Fetching shared assistants from:', apiUrl);
 
-		const response = await fetch(apiUrl, {
+		const response = await authenticatedFetch(apiUrl, {
 			headers: {
 				Authorization: `Bearer ${token}`
 			}

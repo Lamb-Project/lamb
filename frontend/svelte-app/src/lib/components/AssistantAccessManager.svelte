@@ -122,13 +122,13 @@
 {#if show && assistant}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-overlay" on:click={close} role="presentation">
+  <div class="modal-overlay" onclick={close} role="presentation">
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-content" on:click|stopPropagation role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+    <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
       <div class="modal-header">
         <h2 id="modal-title">Manage Access: {assistant.name}</h2>
-        <button class="close-btn" on:click={close}>&times;</button>
+        <button class="close-btn" onclick={close}>&times;</button>
       </div>
       
       <div class="modal-body">
@@ -154,7 +154,7 @@
                     type="checkbox"
                     checked={selectedUsers.has(user.email)}
                     disabled={user.is_owner || loading}
-                    on:change={() => toggleUser(user.email)}
+                    onchange={() => toggleUser(user.email)}
                   />
                   <div class="user-info">
                     <span class="user-name">{user.name}</span>
@@ -172,12 +172,12 @@
       </div>
       
       <div class="modal-footer">
-        <button class="btn btn-secondary" on:click={close} disabled={loading}>
+        <button class="btn btn-secondary" onclick={close} disabled={loading}>
           Cancel
         </button>
         <button 
           class="btn btn-primary" 
-          on:click={saveChanges}
+          onclick={saveChanges}
           disabled={loading || !accessInfo}
         >
           {loading ? 'Saving...' : 'Save Changes'}

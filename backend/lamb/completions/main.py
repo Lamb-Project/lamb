@@ -107,11 +107,23 @@ async def create_completion(
         Timelog(f"Assistant details: {assistant_details}",2)
         plugin_config = parse_plugin_config(assistant_details)
         Timelog(f"Plugin config: {plugin_config}",2)
-        pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
-        Timelog(f"Plugins loaded: {pps}, {connectors}, {rag_processors}",2)
-        rag_context = get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
-        Timelog(f"RAG context: {rag_context}",2)
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+
+        # Route based on assistant type
+        assistant_type = plugin_config.get("assistant_type", "classic")
+        if assistant_type == "multi_tool":
+            # Multi-tool pipeline
+            verbose = plugin_config.get("verbose", False)
+            stream_mode = request.get("stream", False)
+            messages, sources = process_multi_tool_completion(request, assistant_details, plugin_config, verbose=verbose, stream=stream_mode)
+        else:
+            # Classic pipeline (existing code)
+            pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
+            Timelog(f"Plugins loaded: {pps}, {connectors}, {rag_processors}",2)
+            rag_context = get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+            Timelog(f"RAG context: {rag_context}",2)
+            messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+            sources = []  # Classic pipeline doesn't separate sources
+
         Timelog(f"Messages: {messages}",2)
         stream = request.get("stream", False)
         Timelog(f"Stream mode: {stream}",2)
@@ -121,13 +133,13 @@ async def create_completion(
             logger.debug("Returning streaming response")
             Timelog(f"Returning streaming response",2)
             return StreamingResponse(
-                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner),
+                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, sources=sources),
                 media_type="text/event-stream"
             )
         else:
             logger.debug("Returning direct response")
             Timelog(f"Returning direct response",2)
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner)
+            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner, sources=sources)
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         Timelog(f"Error in create_completion: {str(e)}",2)
@@ -226,6 +238,53 @@ def process_completion_request(request: Dict[str, Any], assistant_details: Any, 
     messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context)
     logger.debug(f"Processed messages: {messages}")
     return messages
+
+
+def process_multi_tool_completion(request: Dict[str, Any], assistant_details: Any, plugin_config: Dict[str, Any], verbose: bool = False, stream: bool = False) -> tuple:
+    """
+    Process multi-tool completion using the tool orchestrator.
+    Returns (messages, sources) tuple.
+    """
+    logger.info(f"Processing multi-tool completion (verbose={verbose}, stream={stream})")
+
+    from lamb.completions.tool_orchestrator import tool_orchestrator
+
+    # Set up stream callback if streaming is enabled
+    stream_callback = None
+    if stream and verbose:
+        # For streaming verbose mode, we'll collect progress messages
+        progress_messages = []
+
+        def progress_callback(message: str):
+            progress_messages.append(message)
+            # In streaming mode, we could send these as SSE events
+            # For now, we'll collect them and include in the final verbose report
+
+        stream_callback = progress_callback
+
+    # Orchestrator handles everything: tools + placeholders
+    result = tool_orchestrator.orchestrate(
+        request, assistant_details, plugin_config,
+        verbose=verbose, stream_callback=stream_callback
+    )
+
+    if result.error:
+        logger.error(f"Multi-tool orchestration failed: {result.error}")
+        # Return error message in a user message format
+        return [{
+            "role": "user",
+            "content": f"Error in multi-tool processing: {result.error}"
+        }], []
+
+    # In verbose mode, return the verbose report instead of processed messages
+    if verbose and result.verbose_report:
+        return [{
+            "role": "user",
+            "content": result.verbose_report
+        }], result.sources
+
+    # Result contains processed messages ready for LLM
+    return result.processed_messages, result.sources
 
 def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
@@ -352,3 +411,43 @@ async def run_lamb_assistant(
                  media_type="application/json",
                  headers=final_headers # Include headers even for errors
              )
+
+
+@router.get("/tools")
+async def list_available_tools(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+):
+    """
+    List all available tools for multi-tool assistants.
+    """
+    from lamb.completions.tool_registry import tool_registry
+    return {"tools": tool_registry.get_tool_definitions()}
+
+
+@router.get("/tools/{tool_name}")
+async def get_tool_definition(tool_name: str):
+    """Get definition for a specific tool."""
+    from lamb.completions.tool_registry import tool_registry
+    tool = tool_registry.get_tool(tool_name)
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+
+    definition = tool["definition"]
+    return {
+        "name": definition.name,
+        "display_name": definition.display_name,
+        "description": definition.description,
+        "placeholder": definition.placeholder,
+        "config_schema": definition.config_schema
+    }
+
+
+@router.get("/orchestrators")
+async def list_available_orchestrators(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+):
+    """
+    List all available orchestrator strategies for multi-tool assistants.
+    """
+    from lamb.completions.tool_orchestrator import ToolOrchestrator
+    return {"orchestrators": ToolOrchestrator.get_available_strategies()}

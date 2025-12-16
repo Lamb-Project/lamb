@@ -667,51 +667,6 @@ async def update_user_password_post(request: Request, _=Depends(verify_api_key))
             detail=f"Internal server error: {str(e)}"
         )
 
-@router.get("/basic-test") 
-async def basic_test():
-    # Absolute minimum test endpoint to rule out authentication/validation issues
-    logger.error("[BASIC_TEST] This basic test endpoint was called successfully")
-    try:
-        # Print the RouterClass to help debug if needed
-        logger.error(f"[BASIC_TEST] Router type: {type(router).__name__}")
-        return {"status": "success", "message": "Basic test endpoint working"}
-    except Exception as e:
-        logger.error(f"[BASIC_TEST] Exception in basic test: {type(e).__name__}: {str(e)}")
-        import traceback
-        logger.error(f"[BASIC_TEST] Traceback:\n{traceback.format_exc()}")
-        return {"status": "error", "message": str(e)}
-        
-@router.post("/dual-method-test")
-@router.put("/dual-method-test")
-async def dual_method_test(request: Request):
-    # Test endpoint that accepts both POST and PUT requests
-    method = request.method
-    logger.error(f"[DUAL_METHOD] Received {method} request successfully")
-    try:
-        # Try to parse the request data if present
-        try:
-            data = await request.json()
-            logger.error(f"[DUAL_METHOD] Request data: {data}")
-        except:
-            data = {}
-            logger.error(f"[DUAL_METHOD] No request data or not JSON")
-            
-        return {
-            "status": "success", 
-            "message": f"{method} request processed",
-            "data": data
-        }
-    except Exception as e:
-        logger.error(f"[DUAL_METHOD] Exception: {type(e).__name__}: {str(e)}")
-        import traceback
-        logger.error(f"[DUAL_METHOD] Traceback:\n{traceback.format_exc()}")
-        return {"status": "error", "message": str(e)}
-
-@router.get("/test-endpoint", summary="Test endpoint", description="Simple test endpoint to verify routing")
-async def test_endpoint():
-    logger.error("[TEST_ENDPOINT] Test endpoint was called successfully")
-    return {"status": "success", "message": "Test endpoint working"}
-
 @router.post("/users/role-update", include_in_schema=True)
 async def update_user_role(request: Request):
     """Ultra simple endpoint to update a user's role"""

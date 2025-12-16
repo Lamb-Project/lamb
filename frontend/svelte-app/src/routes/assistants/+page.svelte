@@ -1,6 +1,7 @@
 <script>
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
+    import MultiToolAssistantForm from '$lib/components/multi-tool-assistants/MultiToolAssistantForm.svelte';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import { _, locale } from '$lib/i18n';
@@ -19,7 +20,7 @@
     import { formatDateForTable } from '$lib/utils/dateHelpers'; // Import date formatting utility
 
     // --- State Management --- 
-    /** @type {'list' | 'create' | 'detail' | 'shared'} */
+    /** @type {'list' | 'create' | 'createMultiTool' | 'detail' | 'shared'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
@@ -83,6 +84,8 @@
     let sharedUsers = $state([]);
     let loadingShares = $state(false);
     let canShare = $state(true); // Permission check result
+    let lastPermissionCheckAssistantId = $state(null); // Track last permission check
+    let lastSharesLoadAssistantId = $state(null); // Track last shares load
     
     // --- Ownership Check ---
     let isOwner = $derived.by(() => {
@@ -99,6 +102,16 @@
         startEditMode = false; // Ensure not starting in edit for create
         // Navigate to assistants path with query param
         goto(`${base}/assistants?view=create`, { replaceState: true });
+    }
+
+    /** Sets the view to the multi-tool assistant creation form */
+    function showCreateMultiToolForm() {
+        console.log("Navigating to create multi-tool form");
+        selectedAssistantData = null; // Clear any selected data
+        currentView = 'createMultiTool';
+        startEditMode = false; // Ensure not starting in edit for create
+        // Navigate to assistants path with query param
+        goto(`${base}/assistants?view=createMultiTool`, { replaceState: true });
     }
 
     /** Sets the view back to the list */
@@ -231,6 +244,11 @@
                 if (currentView !== 'shared') {
                     console.log("URL indicates 'shared' view.");
                     showSharedAssistants();
+                }
+            } else if (viewParam === 'createMultiTool') {
+                if (currentView !== 'createMultiTool') {
+                    console.log("URL indicates 'createMultiTool' view.");
+                    showCreateMultiToolForm();
                 }
             } else if (viewParam === 'detail' && idParam) { 
                 const assistantId = parseInt(idParam, 10);
@@ -717,13 +735,23 @@
         if (!browser) return;
         
         if (currentView === 'detail' && selectedAssistantData && userToken) {
-            // Check permission once per assistant
-            checkSharingPermission();
+            const currentAssistantId = selectedAssistantData.id;
             
-            // Load shared users if on share tab
-            if (detailSubView === 'share') {
-                loadSharedUsers();
+            // Check permission only once per assistant (prevent repeated calls)
+            if (lastPermissionCheckAssistantId !== currentAssistantId) {
+                checkSharingPermission();
+                lastPermissionCheckAssistantId = currentAssistantId;
             }
+            
+            // Load shared users only when entering share tab (prevent repeated calls)
+            if (detailSubView === 'share' && lastSharesLoadAssistantId !== currentAssistantId) {
+                loadSharedUsers();
+                lastSharesLoadAssistantId = currentAssistantId;
+            }
+        } else {
+            // Reset tracking when leaving detail view
+            lastPermissionCheckAssistantId = null;
+            lastSharesLoadAssistantId = null;
         }
     });
 
@@ -758,6 +786,14 @@
         >
             {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
         </button>
+        <!-- Create Multi-Tool Assistant View Button -->
+        <button
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md {currentView === 'createMultiTool' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
+            style={currentView === 'createMultiTool' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
+            onclick={showCreateMultiToolForm}
+        >
+            {currentLocale ? $_('assistants.createMultiToolTab', { default: 'Create Multi-Tool Assistant' }) : 'Create Multi-Tool Assistant'}
+        </button>
         <!-- Detail View Tab (Only visible when active) -->
         {#if currentView === 'detail' && (selectedAssistantData || loadingDetail)}
              <div class="relative">
@@ -788,6 +824,13 @@
 {:else if currentView === 'create'}
     <!-- Pass null to indicate creation mode -->
     <AssistantForm assistant={null} on:formSuccess={handleAssistantCreated} />
+{:else if currentView === 'createMultiTool'}
+    <!-- Multi-tool assistant creation form -->
+    <MultiToolAssistantForm
+        on:success={() => {
+            showList();
+        }}
+    />
 {:else if currentView === 'detail'}
     <!-- Detail View Sub-Tabs -->
     <div class="mb-4 border-b border-gray-300 flex space-x-4">

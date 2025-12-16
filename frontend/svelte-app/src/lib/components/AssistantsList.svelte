@@ -72,7 +72,7 @@
   let displayAssistants = $state([]);
   
   // Loading and error states
-  let loading = $state(true);
+  let loading = $state(false);
   /** @type {string | null} */
   let error = $state(null);
   let isRefreshing = $state(false);
@@ -94,6 +94,7 @@
   // Lifecycle and Data Loading
   let localeUnsubscribe = () => {};
   let userUnsubscribe = () => {};
+  let hasLoadedOnce = $state(false); // Guard to prevent multiple loads
 
   onMount(() => {
     localeUnsubscribe = locale.subscribe(value => {
@@ -103,14 +104,28 @@
     });
     
     if (browser) {
+      // Get initial user state without creating reactive dependency
+      const initialUserData = get(user);
+      
+      if (initialUserData.isLoggedIn) {
+        console.log('User already logged in on mount, loading assistants...');
+        hasLoadedOnce = true;
+        loadAllAssistants();
+      }
+
+      // Subscribe to user changes (only react to login/logout changes)
       userUnsubscribe = user.subscribe(userData => {
         if (userData.isLoggedIn) {
-          if (allAssistants.length === 0 && !loading) {
-             console.log('User logged in, loading assistants...');
-             loadAllAssistants();
+          // Only load if we haven't loaded yet and we're not currently loading
+          if (!hasLoadedOnce && !loading && allAssistants.length === 0) {
+            console.log('User logged in, loading assistants...');
+            hasLoadedOnce = true;
+            loadAllAssistants();
           }
         } else {
+          // User logged out - reset everything
           console.log('User logged out, clearing assistants.');
+          hasLoadedOnce = false;
           allAssistants = [];
           displayAssistants = [];
           totalItems = 0;
@@ -119,12 +134,6 @@
           loading = false; 
         }
       });
-
-      const initialUserData = $user;
-      if(initialUserData.isLoggedIn) {
-        console.log('User already logged in on mount, loading assistants...');
-        loadAllAssistants();
-      }
     }
     
     return () => {
@@ -135,6 +144,12 @@
 
   // Load all assistants (with high limit for client-side processing)
   async function loadAllAssistants() {
+    // Prevent concurrent loads
+    if (loading) {
+      console.log('Load already in progress, skipping...');
+      return;
+    }
+    
     loading = true;
     error = null;
     try {
@@ -179,7 +194,7 @@
   
   // Refresh function
   async function handleRefresh() {
-    if (isRefreshing) return;
+    if (isRefreshing || loading) return; // Prevent concurrent loads
     console.log('Manual refresh triggered...');
     isRefreshing = true;
     await loadAllAssistants();
@@ -266,11 +281,38 @@
    * Handle view button click
    * @param {number} id - The ID of the assistant to view
    */
-  function handleView(id) { 
+  function handleView(id) {
     console.log(`View assistant (navigate to detail view): ${id}`);
-    const targetUrl = `${base}/assistants?view=detail&id=${id}`;
+
+    // Find the assistant to check its type
+    const assistant = allAssistants.find(a => a.id === id);
+    let targetUrl;
+
+    if (assistant && assistant.metadata) {
+      try {
+        const metadata = typeof assistant.metadata === 'string'
+          ? JSON.parse(assistant.metadata)
+          : assistant.metadata;
+
+        if (metadata.assistant_type === 'multi_tool') {
+          // Route to multi-tool assistant view
+          targetUrl = `${base}/multi-tool-assistants/${id}`;
+        } else {
+          // Route to classic assistant view
+          targetUrl = `${base}/assistants?view=detail&id=${id}`;
+        }
+      } catch (error) {
+        console.warn('Error parsing assistant metadata:', error);
+        // Fall back to classic view
+        targetUrl = `${base}/assistants?view=detail&id=${id}`;
+      }
+    } else {
+      // No metadata or assistant not found, use classic view
+      targetUrl = `${base}/assistants?view=detail&id=${id}`;
+    }
+
     console.log('[AssistantsList] Navigating to view:', targetUrl);
-    goto(targetUrl); 
+    goto(targetUrl);
   }
   
   /**
@@ -483,6 +525,14 @@
                                 </button>
                                 <!-- Status badges -->
                                 <div class="mt-1 flex flex-wrap gap-1">
+                                    {#if assistant.metadata}
+                                        {@const callback = parseMetadata(assistant.metadata)}
+                                        {#if callback.assistant_type === 'multi_tool'}
+                                            <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5">
+                                                🔧 {localeLoaded ? $_('assistants.type.multiTool', { default: 'Multi-Tool' }) : 'Multi-Tool'}
+                                            </span>
+                                        {/if}
+                                    {/if}
                                     {#if assistant.published}
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.published', { default: 'Published' }) : 'Published'}</span>
                                     {:else}
@@ -553,14 +603,6 @@
                                         >
                                             {@html IconDelete}
                                         </button>
-<!-- Delete Confirmation Modal -->
-<DeleteConfirmationModal
-    isOpen={showDeleteModal}
-    assistantName={deleteTarget.name}
-    isDeleting={isDeleting}
-    on:confirm={handleDeleteConfirm}
-    on:close={handleDeleteCancel}
-/>
                                     {/if}
                                 </div>
                                 <div class="text-xs text-gray-400 mt-2">ID: {assistant.id}</div>
@@ -647,6 +689,15 @@
         {/if}
     {/if}
 </div>
+
+<!-- Delete Confirmation Modal -->
+<DeleteConfirmationModal
+    isOpen={showDeleteModal}
+    assistantName={deleteTarget.name}
+    isDeleting={isDeleting}
+    on:confirm={handleDeleteConfirm}
+    on:close={handleDeleteCancel}
+/>
 
 <!-- Publish Modal -->
 {#if $publishModalOpen}

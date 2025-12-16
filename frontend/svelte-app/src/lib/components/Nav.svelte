@@ -22,6 +22,7 @@
   
   // Navigation state
   let toolsMenuOpen = $state(false);
+  let assistantsMenuOpen = $state(false);
 
   // Logout function
   function logout() { // Restore logout function
@@ -33,8 +34,13 @@
   // Close dropdown when clicking outside
   function handleClickOutside(event) {
     const toolsMenu = event.target.closest('.tools-menu');
+    const assistantsMenu = event.target.closest('.assistants-menu');
+
     if (!toolsMenu) {
       toolsMenuOpen = false;
+    }
+    if (!assistantsMenu) {
+      assistantsMenuOpen = false;
     }
   }
 
@@ -97,15 +103,42 @@
         <!-- Navigation links -->
         <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
           
-          <!-- Restore dynamic class based on $page.url.pathname and $user -->
-          <!-- Restore: aria-disabled={!$user.isLoggedIn} -->
-          <a
-            href="{base}/assistants"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname === base + '/assistants' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
-            aria-disabled={!$user.isLoggedIn}
-          >
-            {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
-          </a>
+          <!-- Assistants dropdown menu -->
+          <div class="relative assistants-menu h-full flex items-center">
+            <button
+              onclick={() => assistantsMenuOpen = !assistantsMenuOpen}
+              class="inline-flex items-center h-full px-1 border-b-2 text-sm font-medium focus:outline-none {($page.url.pathname.startsWith(base + '/assistants') || $page.url.pathname.startsWith(base + '/multi-tool-assistants')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              aria-disabled={!$user.isLoggedIn}
+              aria-expanded={assistantsMenuOpen}
+              aria-haspopup="true"
+            >
+              {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
+              <svg class="ml-1 h-4 w-4 transition-transform duration-200 {assistantsMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+
+            {#if assistantsMenuOpen}
+              <div class="absolute z-50 left-0 top-full w-64 bg-white border border-gray-200 rounded-b-md shadow-lg">
+                <div class="py-2">
+                  <a
+                    href="{base}/assistants"
+                    onclick={() => assistantsMenuOpen = false}
+                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname === base + '/assistants' ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                  >
+                    📚 {localeLoaded ? $_('assistants.list', { default: 'All Assistants' }) : 'All Assistants'}
+                  </a>
+                  <a
+                    href="{base}/multi-tool-assistants"
+                    onclick={() => assistantsMenuOpen = false}
+                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/multi-tool-assistants') ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                  >
+                    🔧 {localeLoaded ? $_('assistants.multiTool', { default: 'Multi-Tool Assistants' }) : 'Multi-Tool Assistants'}
+                  </a>
+                </div>
+              </div>
+            {/if}
+          </div>
           
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
           <a
