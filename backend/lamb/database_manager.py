@@ -765,19 +765,47 @@ class LambDatabaseManager:
         if not org or not org.get('is_system'):
             logging.warning("Cannot sync non-system organization")
             return
-        
+
         # Update config with latest env values
         config = org['config']
         config["setups"]["default"]["providers"] = self._load_providers_from_env()
         config["setups"]["default"]["knowledge_base"] = self._load_kb_config_from_env()
         config["features"] = self._load_features_from_env()
-        
+
         # Ensure assistant defaults exist and include any new keys from defaults.json
         try:
             config = self._ensure_assistant_defaults_in_config(config)
         except Exception as e:
             logging.warning(f"Could not ensure assistant_defaults during system sync: {e}")
+
+        # Sync global default model from environment
+        global_default_provider = os.getenv('GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
+        global_default_model = os.getenv('GLOBAL_DEFAULT_MODEL_NAME', '').strip()
         
+        if global_default_provider and global_default_model:
+            if 'default' not in config['setups']:
+                config['setups']['default'] = {}
+            
+            config['setups']['default']['global_default_model'] = {
+                "provider": global_default_provider,
+                "model": global_default_model
+            }
+            logging.info(f"Synced global-default-model: {global_default_provider}/{global_default_model}")
+        
+        # Sync small fast model from environment
+        small_fast_provider = os.getenv('SMALL_FAST_MODEL_PROVIDER', '').strip()
+        small_fast_model = os.getenv('SMALL_FAST_MODEL_NAME', '').strip()
+        
+        if small_fast_provider and small_fast_model:
+            if 'default' not in config['setups']:
+                config['setups']['default'] = {}
+            
+            config['setups']['default']['small_fast_model'] = {
+                "provider": small_fast_provider,
+                "model": small_fast_model
+            }
+            logging.info(f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
+
         self.update_organization_config(org_id, config)
 
     # Organization Management Methods
@@ -808,6 +836,21 @@ class LambDatabaseManager:
                         else:
                             # Fallback to loading from file
                             config['assistant_defaults'] = self._load_assistant_defaults_from_file()
+                    
+                    # Ensure both global models exist if not provided
+                    if 'setups' in config and 'default' in config['setups']:
+                        system_cfg = self.get_system_org_config_as_baseline()
+                        if 'setups' in system_cfg and 'default' in system_cfg['setups']:
+                            # Inherit global_default_model
+                            if 'global_default_model' not in config['setups']['default']:
+                                config['setups']['default']['global_default_model'] = system_cfg['setups']['default'].get(
+                                    'global_default_model', {"provider": "", "model": ""}
+                                )
+                            # Inherit small_fast_model
+                            if 'small_fast_model' not in config['setups']['default']:
+                                config['setups']['default']['small_fast_model'] = system_cfg['setups']['default'].get(
+                                    'small_fast_model', {"provider": "", "model": ""}
+                                )
                 
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}organizations 
@@ -1985,6 +2028,14 @@ class LambDatabaseManager:
                 "default": {
                     "name": "Default Setup",
                     "is_default": True,
+                    "global_default_model": {
+                        "provider": "",
+                        "model": ""
+                    },
+                    "small_fast_model": {
+                        "provider": "",
+                        "model": ""
+                    },
                     "providers": {},
                     "knowledge_base": {}
                 }

@@ -1446,6 +1446,8 @@ class OrgAdminApiSettings(BaseModel):
     model_limits: Optional[Dict[str, Any]] = Field(None, description="Model usage limits")
     selected_models: Optional[Dict[str, List[str]]] = Field(None, description="Selected models per provider")
     default_models: Optional[Dict[str, str]] = Field(None, description="Default model per provider")
+    global_default_model: Optional[Dict[str, str]] = Field(None, description="Global default model for the organization")
+    small_fast_model: Optional[Dict[str, str]] = Field(None, description="Small fast model for auxiliary operations")
 
 class OrgAdminKBSettings(BaseModel):
     url: str = Field(..., description="Knowledge Base server URL")
@@ -2501,7 +2503,11 @@ async def get_api_settings(request: Request, org: Optional[str] = None):
 
                 # Get default model from provider config
                 default_models[provider_name] = provider_config.get("default_model", "")
-        
+
+        # Get global model configurations
+        global_default_model = default_setup.get('global_default_model', {})
+        small_fast_model = default_setup.get('small_fast_model', {})
+
         return {
             "openai_api_key_set": bool(providers.get('openai', {}).get('api_key')),
             "openai_base_url": providers.get('openai', {}).get('base_url') or config.OPENAI_BASE_URL,
@@ -2509,6 +2515,8 @@ async def get_api_settings(request: Request, org: Optional[str] = None):
             "available_models": available_models,
             "selected_models": selected_models,
             "default_models": default_models,
+            "global_default_model": global_default_model,
+            "small_fast_model": small_fast_model,
             "api_status": api_status
         }
         
@@ -2658,11 +2666,89 @@ async def update_api_settings(request: Request, settings: OrgAdminApiSettings, o
             if 'models' not in config:
                 config['models'] = {}
             config['models']['limits'] = settings.model_limits
-        
+
+        # Update global-default-model configuration
+        if settings.global_default_model is not None:
+            provider = settings.global_default_model.get('provider', '')
+            model = settings.global_default_model.get('model', '')
+            
+            # Validate that the provider exists and is enabled
+            if provider and model:
+                if provider not in providers:
+                    logger.warning(f"Global-default-model provider '{provider}' not configured, ignoring")
+                else:
+                    # Validate that the model is in the enabled models list
+                    enabled_models = providers.get(provider, {}).get('models', [])
+                    if model not in enabled_models:
+                        logger.warning(f"Global-default-model '{model}' not in enabled models for {provider}, auto-correcting")
+                        if enabled_models:
+                            # Auto-select first enabled model
+                            model = enabled_models[0]
+                            settings.global_default_model['model'] = model
+                            logger.info(f"Auto-corrected global-default-model to '{model}'")
+                        else:
+                            # No models enabled, clear the configuration
+                            settings.global_default_model = {"provider": "", "model": ""}
+                            logger.warning(f"No models enabled for {provider}, clearing global-default-model")
+                    
+                    # Save to config
+                    if 'default' not in config['setups']:
+                        config['setups']['default'] = {}
+                    
+                    config['setups']['default']['global_default_model'] = {
+                        "provider": settings.global_default_model.get('provider', ''),
+                        "model": settings.global_default_model.get('model', '')
+                    }
+                    logger.info(f"Updated global-default-model: {settings.global_default_model}")
+            else:
+                # Clear global-default-model if empty
+                if 'default' in config['setups']:
+                    config['setups']['default']['global_default_model'] = {"provider": "", "model": ""}
+                logger.info("Cleared global-default-model configuration")
+
+        # Update small-fast-model configuration
+        if settings.small_fast_model is not None:
+            provider = settings.small_fast_model.get('provider', '')
+            model = settings.small_fast_model.get('model', '')
+            
+            # Validate that the provider exists and is enabled
+            if provider and model:
+                if provider not in providers:
+                    logger.warning(f"Small-fast-model provider '{provider}' not configured, ignoring")
+                else:
+                    # Validate that the model is in the enabled models list
+                    enabled_models = providers.get(provider, {}).get('models', [])
+                    if model not in enabled_models:
+                        logger.warning(f"Small-fast-model '{model}' not in enabled models for {provider}, auto-correcting")
+                        if enabled_models:
+                            # Auto-select first enabled model
+                            model = enabled_models[0]
+                            settings.small_fast_model['model'] = model
+                            logger.info(f"Auto-corrected small-fast-model to '{model}'")
+                        else:
+                            # No models enabled, clear the configuration
+                            settings.small_fast_model = {"provider": "", "model": ""}
+                            logger.warning(f"No models enabled for {provider}, clearing small-fast-model")
+                    
+                    # Save to config
+                    if 'default' not in config['setups']:
+                        config['setups']['default'] = {}
+                    
+                    config['setups']['default']['small_fast_model'] = {
+                        "provider": settings.small_fast_model.get('provider', ''),
+                        "model": settings.small_fast_model.get('model', '')
+                    }
+                    logger.info(f"Updated small-fast-model: {settings.small_fast_model}")
+            else:
+                # Clear small-fast-model if empty
+                if 'default' in config['setups']:
+                    config['setups']['default']['small_fast_model'] = {"provider": "", "model": ""}
+                logger.info("Cleared small-fast-model configuration")
+
         # Save configuration
         if not db_manager.update_organization_config(org_id, config):
             raise HTTPException(status_code=500, detail="Failed to update API settings")
-        
+
         return {"message": "API settings updated successfully"}
         
     except HTTPException:

@@ -243,7 +243,6 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
 
     return errors
 
-
 # --- Tool Support Functions ---
 
 def get_tools_for_assistant(assistant) -> List[Dict]:
@@ -320,7 +319,15 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
         return json.dumps({"error": str(e)})
 
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, assistant=None):
+async def llm_connect(
+    messages: list,
+    stream: bool = False,
+    body: Dict[str, Any] = None,
+    llm: str = None,
+    assistant_owner: Optional[str] = None,
+    assistant=None,
+    use_small_fast_model: bool = False,
+):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
 
@@ -377,8 +384,10 @@ Args:
     llm (str, optional): The specific LLM model to use (e.g., 'gpt-4o').
                          If None, it defaults to the value of the OPENAI_MODEL
                          environment variable or OPENAI_MODEL env var. Defaults to None.
-    assistant_owner (str, optional): Email of the assistant owner for organization-specific config.
-    assistant (object, optional): The assistant object containing metadata with tool configuration.
+    assistant_owner (str, optional): Email of assistant owner for org config resolution.
+    assistant (object, optional): Assistant object containing metadata with tool configuration.
+    use_small_fast_model (bool, optional): If True, use organization's small-fast-model instead of default.
+                                           Defaults to False.
 
 Returns:
     Generator: If `stream=True`, a generator yielding SSE formatted chunks
@@ -433,6 +442,18 @@ Returns:
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
             org_name = config_resolver.organization.get('name', 'Unknown')
+            
+            # Handle small-fast-model logic
+            if use_small_fast_model:
+                small_fast_config = config_resolver.get_small_fast_model_config()
+                
+                if small_fast_config.get('provider') == 'openai' and small_fast_config.get('model'):
+                    llm = small_fast_config['model']
+                    logger.info(f"Using small-fast-model: {llm}")
+                    multimodal_logger.info(f"🚀 Using small-fast-model: {llm}")
+                else:
+                    logger.warning("Small-fast-model requested but not configured for OpenAI, using default")
+            
             openai_config = config_resolver.get_provider_config("openai")
             
             if openai_config:

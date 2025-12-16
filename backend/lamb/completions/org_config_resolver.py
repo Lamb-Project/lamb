@@ -108,6 +108,126 @@ class OrganizationConfigResolver:
         features = org_config.get("features", {})
         return features.get(feature, False)
     
+    def get_global_default_model_config(self) -> Dict[str, str]:
+        """
+        Get the global-default-model configuration for this organization
+        
+        Returns:
+            Dict with keys 'provider' and 'model'
+            Returns empty strings if not configured
+        """
+        org_config = self.organization.get('config', {})
+        setups = org_config.get('setups', {})
+        setup = setups.get(self.setup_name, {})
+        global_default_config = setup.get('global_default_model', {})
+        
+        provider = global_default_config.get('provider', '')
+        model = global_default_config.get('model', '')
+        
+        # If not configured and this is system org, try env vars
+        if (not provider or not model) and self.organization.get('is_system', False):
+            provider = os.getenv('GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
+            model = os.getenv('GLOBAL_DEFAULT_MODEL_NAME', '').strip()
+        
+        return {
+            "provider": provider,
+            "model": model
+        }
+
+    def get_small_fast_model_config(self) -> Dict[str, str]:
+        """
+        Get the small-fast-model configuration for this organization
+        
+        Returns:
+            Dict with keys 'provider' and 'model'
+            Returns empty strings if not configured
+        """
+        org_config = self.organization.get('config', {})
+        setups = org_config.get('setups', {})
+        setup = setups.get(self.setup_name, {})
+        small_fast_config = setup.get('small_fast_model', {})
+        
+        provider = small_fast_config.get('provider', '')
+        model = small_fast_config.get('model', '')
+        
+        # If not configured and this is system org, try env vars
+        if (not provider or not model) and self.organization.get('is_system', False):
+            provider = os.getenv('SMALL_FAST_MODEL_PROVIDER', '').strip()
+            model = os.getenv('SMALL_FAST_MODEL_NAME', '').strip()
+        
+        return {
+            "provider": provider,
+            "model": model
+        }
+
+    def resolve_model_for_completion(self, requested_model: Optional[str] = None, 
+                                     requested_provider: Optional[str] = None) -> Dict[str, str]:
+        """
+        Resolve which model to use for a completion using the hierarchy:
+        1. Explicitly requested model/provider
+        2. Global default model
+        3. Per-provider default model
+        4. First available model from provider
+        
+        Args:
+            requested_model: Explicitly requested model name (optional)
+            requested_provider: Explicitly requested provider (optional)
+        
+        Returns:
+            Dict with 'provider' and 'model' keys
+        
+        Raises:
+            ValueError: If no model can be resolved
+        """
+        # 1. If explicit model and provider requested, use that
+        if requested_model and requested_provider:
+            # Validate it exists in provider config
+            provider_config = self.get_provider_config(requested_provider)
+            if provider_config and requested_model in provider_config.get('models', []):
+                return {"provider": requested_provider, "model": requested_model}
+            else:
+                logger.warning(f"Requested model {requested_provider}/{requested_model} not available, falling back")
+        
+        # 2. Try global default model
+        global_default = self.get_global_default_model_config()
+        if global_default.get('provider') and global_default.get('model'):
+            provider = global_default['provider']
+            model = global_default['model']
+            provider_config = self.get_provider_config(provider)
+            if provider_config and model in provider_config.get('models', []):
+                logger.info(f"Using global default model: {provider}/{model}")
+                return {"provider": provider, "model": model}
+            else:
+                logger.warning(f"Global default model {provider}/{model} not available, falling back")
+        
+        # 3. Try per-provider default (if provider is known)
+        if requested_provider:
+            provider_config = self.get_provider_config(requested_provider)
+            if provider_config:
+                default_model = provider_config.get('default_model')
+                models = provider_config.get('models', [])
+                if default_model and default_model in models:
+                    logger.info(f"Using provider default model: {requested_provider}/{default_model}")
+                    return {"provider": requested_provider, "model": default_model}
+                elif models:
+                    model = models[0]
+                    logger.info(f"Using first available model from provider: {requested_provider}/{model}")
+                    return {"provider": requested_provider, "model": model}
+        
+        # 4. Try first available provider and model
+        org_config = self.organization.get('config', {})
+        setups = org_config.get('setups', {})
+        setup = setups.get(self.setup_name, {})
+        providers = setup.get('providers', {})
+        
+        for provider_name, provider_config in providers.items():
+            if provider_config.get('enabled', True) and provider_config.get('models'):
+                model = provider_config['models'][0]
+                logger.info(f"Using first available provider: {provider_name}/{model}")
+                return {"provider": provider_name, "model": model}
+        
+        raise ValueError("No models configured for this organization")
+    
     def _load_from_env(self, provider: str) -> Dict[str, Any]:
         """Load provider configuration from environment variables"""
         if provider == "openai":

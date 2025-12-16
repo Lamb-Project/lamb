@@ -168,7 +168,10 @@
         ollama_base_url: '',
         available_models: [],
         model_limits: {},
-        selected_models: {}
+        selected_models: {},
+        default_models: {},
+        global_default_model: {provider: '', model: ''},
+        small_fast_model: {provider: '', model: ''}
     });
 
     // KB settings state
@@ -1386,7 +1389,9 @@
                 available_models: Array.isArray(apiSettings.available_models) ? [...apiSettings.available_models] : [],
                 model_limits: { ...(apiSettings.model_limits || {}) },
                 selected_models: { ...(apiSettings.selected_models || {}) },
-                default_models: { ...(apiSettings.default_models || {}) }
+                default_models: { ...(apiSettings.default_models || {}) },
+                global_default_model: apiSettings.global_default_model || {provider: '', model: ''},
+                small_fast_model: apiSettings.small_fast_model || {provider: '', model: ''}
             };
 
             // Auto-initialize default models for providers that have enabled models but no default set
@@ -2897,6 +2902,155 @@
                                                 <p>No API providers configured or available.</p>
                                             </div>
                                         {/if}
+                                    </div>
+
+                                    <!-- Global Model Configurations -->
+                                    <div class="mt-8 space-y-6">
+                                        <h3 class="text-lg font-semibold text-gray-900 border-b pb-2">
+                                            Global Model Configuration
+                                        </h3>
+                                        <p class="text-sm text-gray-600">
+                                            Configure organization-wide default models that apply across all assistants and operations.
+                                        </p>
+
+                                        <!-- Global Default Model Configuration -->
+                                        <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-md">
+                                            <h4 class="text-md font-semibold text-indigo-900 mb-3">
+                                                Global Default Model
+                                            </h4>
+                                            <p class="text-sm text-indigo-700 mb-4">
+                                                The primary model for this organization. Used for assistants and completions when 
+                                                no specific model is configured. This overrides per-provider defaults.
+                                            </p>
+                                            
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <!-- Provider Selection -->
+                                                <div>
+                                                    <label for="global-default-provider" class="block text-sm font-medium text-gray-700 mb-2">
+                                                        Provider
+                                                    </label>
+                                                    <select
+                                                        id="global-default-provider"
+                                                        bind:value={newApiSettings.global_default_model.provider}
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        onchange={() => {
+                                                            // Reset model when provider changes
+                                                            newApiSettings.global_default_model.model = '';
+                                                            addPendingChange('Global default model provider changed');
+                                                        }}
+                                                    >
+                                                        <option value="">-- None --</option>
+                                                        {#each Object.keys(newApiSettings.selected_models || {}) as providerName}
+                                                            {#if newApiSettings.selected_models[providerName]?.length > 0}
+                                                                <option value={providerName}>{providerName}</option>
+                                                            {/if}
+                                                        {/each}
+                                                    </select>
+                                                </div>
+                                                
+                                                <!-- Model Selection -->
+                                                <div>
+                                                    <label for="global-default-model" class="block text-sm font-medium text-gray-700 mb-2">
+                                                        Model
+                                                    </label>
+                                                    <select
+                                                        id="global-default-model"
+                                                        bind:value={newApiSettings.global_default_model.model}
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        disabled={!newApiSettings.global_default_model.provider}
+                                                        onchange={() => addPendingChange('Global default model changed')}
+                                                    >
+                                                        <option value="">-- Select Model --</option>
+                                                        {#if newApiSettings.global_default_model.provider && newApiSettings.selected_models[newApiSettings.global_default_model.provider]}
+                                                            {#each newApiSettings.selected_models[newApiSettings.global_default_model.provider] as model}
+                                                                <option value={model}>{model}</option>
+                                                            {/each}
+                                                        {/if}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            {#if newApiSettings.global_default_model.provider && newApiSettings.global_default_model.model}
+                                                <div class="mt-3 p-2 bg-indigo-100 border border-indigo-300 rounded text-sm text-indigo-900">
+                                                    ✓ Global default model configured: 
+                                                    <strong>{newApiSettings.global_default_model.provider}/{newApiSettings.global_default_model.model}</strong>
+                                                </div>
+                                            {:else}
+                                                <div class="mt-3 p-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                                                    ℹ️ No global default model configured. Per-provider defaults will be used.
+                                                </div>
+                                            {/if}
+                                        </div>
+
+                                        <!-- Small Fast Model Configuration -->
+                                        <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                                            <h4 class="text-md font-semibold text-blue-900 mb-3">
+                                                Small Fast Model (Optional)
+                                            </h4>
+                                            <p class="text-sm text-blue-700 mb-4">
+                                                Configure a lightweight model for auxiliary plugin operations like query rewriting, 
+                                                classification, and data extraction. This can reduce costs and improve performance 
+                                                for internal processing tasks.
+                                            </p>
+                                            
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <!-- Provider Selection -->
+                                                <div>
+                                                    <label for="small-fast-provider" class="block text-sm font-medium text-gray-700 mb-2">
+                                                        Provider
+                                                    </label>
+                                                    <select
+                                                        id="small-fast-provider"
+                                                        bind:value={newApiSettings.small_fast_model.provider}
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        onchange={() => {
+                                                            // Reset model when provider changes
+                                                            newApiSettings.small_fast_model.model = '';
+                                                            addPendingChange('Small fast model provider changed');
+                                                        }}
+                                                    >
+                                                        <option value="">-- None --</option>
+                                                        {#each Object.keys(newApiSettings.selected_models || {}) as providerName}
+                                                            {#if newApiSettings.selected_models[providerName]?.length > 0}
+                                                                <option value={providerName}>{providerName}</option>
+                                                            {/if}
+                                                        {/each}
+                                                    </select>
+                                                </div>
+                                                
+                                                <!-- Model Selection -->
+                                                <div>
+                                                    <label for="small-fast-model" class="block text-sm font-medium text-gray-700 mb-2">
+                                                        Model
+                                                    </label>
+                                                    <select
+                                                        id="small-fast-model"
+                                                        bind:value={newApiSettings.small_fast_model.model}
+                                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        disabled={!newApiSettings.small_fast_model.provider}
+                                                        onchange={() => addPendingChange('Small fast model changed')}
+                                                    >
+                                                        <option value="">-- Select Model --</option>
+                                                        {#if newApiSettings.small_fast_model.provider && newApiSettings.selected_models[newApiSettings.small_fast_model.provider]}
+                                                            {#each newApiSettings.selected_models[newApiSettings.small_fast_model.provider] as model}
+                                                                <option value={model}>{model}</option>
+                                                            {/each}
+                                                        {/if}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            {#if newApiSettings.small_fast_model.provider && newApiSettings.small_fast_model.model}
+                                                <div class="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                                                    ✓ Small fast model configured: 
+                                                    <strong>{newApiSettings.small_fast_model.provider}/{newApiSettings.small_fast_model.model}</strong>
+                                                </div>
+                                            {:else}
+                                                <div class="mt-3 p-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                                                    ℹ️ No small fast model configured. Plugins will use default models for auxiliary operations.
+                                                </div>
+                                            {/if}
+                                        </div>
                                     </div>
 
                                     <!-- Pending Changes Indicator -->

@@ -75,9 +75,17 @@ def format_messages_for_ollama(messages: list) -> list:
         for msg in messages
     ]
 
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None): # Make async
+async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False): # Make async
     """
     Ollama connector that returns OpenAI-compatible responses
+    
+    Args:
+        messages: List of conversation messages
+        stream: Whether to stream the response
+        body: Additional parameters for the request
+        llm: Specific model to use
+        assistant_owner: Email of assistant owner for org config
+        use_small_fast_model: If True, use organization's small-fast-model
     """
     # Get organization-specific configuration
     base_url = None
@@ -89,8 +97,20 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         try:
             config_resolver = OrganizationConfigResolver(assistant_owner)
             org_name = config_resolver.organization.get('name', 'Unknown')
-            ollama_config = config_resolver.get_provider_config("ollama")
             
+            # Handle small-fast-model logic
+            if use_small_fast_model:
+                small_fast_config = config_resolver.get_small_fast_model_config()
+                
+                if small_fast_config.get('provider') == 'ollama' and small_fast_config.get('model'):
+                    llm = small_fast_config['model']
+                    logger.info(f"Using small-fast-model: {llm}")
+                    print(f"🚀 [Ollama] Using small-fast-model: {llm}")
+                else:
+                    logger.warning("Small-fast-model requested but not configured for Ollama, using default")
+            
+            ollama_config = config_resolver.get_provider_config("ollama")
+
             if ollama_config:
                 base_url = ollama_config.get("base_url")
                 if not llm and ollama_config.get("models"):
