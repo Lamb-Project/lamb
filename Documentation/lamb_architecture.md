@@ -317,6 +317,14 @@ CREATE TABLE organizations (
   "setups": {
     "default": {
       "name": "Default Setup",
+      "global_default_model": {
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
+      "small_fast_model": {
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "providers": {
         "openai": {
           "enabled": true,
@@ -348,6 +356,10 @@ CREATE TABLE organizations (
   }
 }
 ```
+
+**Global Model Configuration:**
+- `global_default_model`: Organization-wide default model used when no specific model is configured (overrides per-provider defaults)
+- `small_fast_model`: Lightweight model for auxiliary plugin operations (query rewriting, classification, etc.) - provides cost optimization and faster response times
 
 #### 4.1.2 Organization Roles Table
 
@@ -1461,21 +1473,48 @@ class OrganizationConfigResolver:
         default_setup = setups.get('default', {})
         providers = default_setup.get('providers', {})
         return providers.get(provider_name)
-    
+
+    def get_global_default_model_config(self) -> Dict[str, str]:
+        """
+        Get global default model configuration (organization-wide)
+        Returns: {"provider": str, "model": str}
+        """
+        config = self.organization.get('config', {})
+        setups = config.get('setups', {})
+        default_setup = setups.get('default', {})
+        return default_setup.get('global_default_model', {"provider": "", "model": ""})
+
+    def get_small_fast_model_config(self) -> Dict[str, str]:
+        """
+        Get small-fast-model configuration (for auxiliary operations)
+        Returns: {"provider": str, "model": str}
+        """
+        config = self.organization.get('config', {})
+        setups = config.get('setups', {})
+        default_setup = setups.get('default', {})
+        return default_setup.get('small_fast_model', {"provider": "", "model": ""})
+
+    def resolve_model_for_completion(self, requested_model: Optional[str] = None,
+                                     requested_provider: Optional[str] = None) -> Dict[str, str]:
+        """
+        Resolve model using hierarchy: explicit > global default > provider default > first available
+        """
+        # Implementation follows hierarchy for model resolution
+
     def get_kb_server_config(self) -> Dict:
         """
         Get Knowledge Base server configuration
         """
         config = self.organization.get('config', {})
         kb_config = config.get('kb_server', {})
-        
+
         # Fallback to environment variables
         if not kb_config.get('url'):
             kb_config = {
                 'url': os.getenv('KB_SERVER_URL', 'http://localhost:9090'),
                 'api_key': os.getenv('KB_API_KEY', '')
             }
-        
+
         return kb_config
 ```
 
@@ -1491,6 +1530,40 @@ api_key = openai_config.get("api_key")
 config_resolver = OrganizationConfigResolver(assistant.owner)
 kb_config = config_resolver.get_kb_server_config()
 kb_server_url = kb_config.get("url")
+
+# Using small-fast-model for auxiliary operations
+from lamb.completions.small_fast_model_helper import invoke_small_fast_model, is_small_fast_model_configured
+
+if is_small_fast_model_configured(assistant.owner):
+    response = await invoke_small_fast_model(
+        messages=[{"role": "user", "content": "Rewrite this query: ..."}],
+        assistant_owner=assistant.owner
+    )
+```
+
+### 7.4 Model Resolution Hierarchy
+
+When resolving which model to use for completions:
+
+1. **Explicit model/provider** in request → use that
+2. **Global default model** configured → use that
+3. **Per-provider default model** → use that
+4. **First available model** from provider → use that
+
+For auxiliary plugin operations using small-fast-model:
+
+1. **Small-fast-model** configured → use that
+2. **Fallback to plugin's default behavior**
+
+**Environment Variables:**
+```bash
+# Global default model (organization-wide)
+GLOBAL_DEFAULT_MODEL_PROVIDER=openai
+GLOBAL_DEFAULT_MODEL_NAME=gpt-4o
+
+# Small fast model (auxiliary operations)
+SMALL_FAST_MODEL_PROVIDER=openai
+SMALL_FAST_MODEL_NAME=gpt-4o-mini
 ```
 
 ---
