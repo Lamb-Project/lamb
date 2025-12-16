@@ -2795,7 +2795,7 @@
                                             bind:value={newApiSettings.openai_api_key}
                                             class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
                                             placeholder={apiSettings.openai_api_key_set ? "••••••••••••••••" : "Enter OpenAI API key"}
-                                            oninput={() => newApiSettings.openai_api_key && addPendingChange('OpenAI API key updated')}
+                                            onchange={() => newApiSettings.openai_api_key && addPendingChange('OpenAI API key updated')}
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
                                             {#if apiSettings.openai_api_key_set}
