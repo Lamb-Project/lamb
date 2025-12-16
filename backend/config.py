@@ -62,7 +62,15 @@ LAMB_DB_PATH = os.getenv('LAMB_DB_PATH')
 LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', '')
 
 # Logging Configuration
-GLOBAL_LOG_LEVEL = os.getenv('GLOBAL_LOG_LEVEL', 'INFO')
+GLOBAL_LOG_LEVEL = os.getenv('GLOBAL_LOG_LEVEL', 'WARNING')
+
+# Individual module log levels (overrides GLOBAL_LOG_LEVEL if set)
+MAIN_LOG_LEVEL = os.getenv('MAIN_LOG_LEVEL') or GLOBAL_LOG_LEVEL
+API_LOG_LEVEL = os.getenv('API_LOG_LEVEL') or GLOBAL_LOG_LEVEL
+DB_LOG_LEVEL = os.getenv('DB_LOG_LEVEL') or GLOBAL_LOG_LEVEL
+RAG_LOG_LEVEL = os.getenv('RAG_LOG_LEVEL') or GLOBAL_LOG_LEVEL
+EVALUATOR_LOG_LEVEL = os.getenv('EVALUATOR_LOG_LEVEL') or GLOBAL_LOG_LEVEL
+OWI_LOG_LEVEL = os.getenv('OWI_LOG_LEVEL') or GLOBAL_LOG_LEVEL
 
 
 # Signup Configuration
