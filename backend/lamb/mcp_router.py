@@ -14,7 +14,7 @@ from lamb.completions.main import (
     load_plugins
 )
 from lamb.lamb_classes import Assistant
-from utils.timelog import Timelog
+from lamb.logging_config import get_logger
 
 # Initialize router
 router = APIRouter(tags=["MCP"])
@@ -26,7 +26,7 @@ db_manager = LambDatabaseManager()
 import config
 LTI_SECRET = os.getenv('LTI_SECRET') or config.SIGNUP_SECRET_KEY
 
-logging.basicConfig(level=logging.WARNING)
+logger = get_logger(__name__, component="MAIN")
 
 # Simple authentication dependency
 async def get_current_user_email(
@@ -65,7 +65,7 @@ async def get_current_user_email(
             detail="X-User-Email header required"
         )
     
-    logging.info(f"Authenticated user: {x_user_email}")
+    logger.info(f"Authenticated user: {x_user_email}")
     return x_user_email
 
 # MCP-specific utility functions
@@ -115,7 +115,7 @@ def build_mcp_prompt(
             result["template_used"] = assistant.prompt_template
             
             # Replace placeholders in template
-            Timelog(f"MCP Prompt Builder - User message: {last_message}", 2)
+            logger.debug(f"MCP Prompt Builder - User message: {last_message}")
             prompt = assistant.prompt_template.replace("{user_input}", last_message)
             
             # Add RAG context if available
@@ -200,7 +200,7 @@ async def initialize_mcp_server(
     This endpoint handles the initialization handshake for MCP protocol.
     """
     try:
-        logging.info(f"MCP initialization request from user: {user}")
+        logger.info(f"MCP initialization request from user: {user}")
         
         # Validate protocol version
         if request.protocolVersion != "2024-11-05":
@@ -235,7 +235,7 @@ async def initialize_mcp_server(
         }
         
     except Exception as e:
-        logging.error(f"Error initializing MCP server: {str(e)}")
+        logger.error(f"Error initializing MCP server: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to initialize MCP server: {str(e)}"
@@ -252,7 +252,7 @@ async def list_resources(
     Currently returns an empty list as resources are not yet implemented.
     """
     try:
-        logging.info(f"Listing MCP resources for user: {user}")
+        logger.info(f"Listing MCP resources for user: {user}")
         
         # Return empty list for now
         resources = []
@@ -260,7 +260,7 @@ async def list_resources(
         return MCPListResourcesResponse(resources=resources)
         
     except Exception as e:
-        logging.error(f"Error listing MCP resources: {str(e)}")
+        logger.error(f"Error listing MCP resources: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list resources: {str(e)}"
@@ -277,7 +277,7 @@ async def list_tools(
     Currently returns an empty list as tools are not yet implemented.
     """
     try:
-        logging.info(f"Listing MCP tools for user: {user}")
+        logger.info(f"Listing MCP tools for user: {user}")
         
         # Return empty list for now
         tools = []
@@ -285,7 +285,7 @@ async def list_tools(
         return MCPListToolsResponse(tools=tools)
         
     except Exception as e:
-        logging.error(f"Error listing MCP tools: {str(e)}")
+        logger.error(f"Error listing MCP tools: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list tools: {str(e)}"
@@ -301,7 +301,7 @@ async def list_mcp_prompts(
     Returns LAMB assistants owned by the current user as MCP prompts.
     """
     try:
-        logging.info(f"Listing MCP prompts for user: {user_email}")
+        logger.info(f"Listing MCP prompts for user: {user_email}")
         
         # Get assistants owned by the current user
         assistants = db_manager.get_list_of_assistants(owner=user_email)
@@ -327,7 +327,7 @@ async def list_mcp_prompts(
         
         return {"prompts": prompts}
     except Exception as e:
-        logging.error(f"Error listing MCP prompts: {str(e)}")
+        logger.error(f"Error listing MCP prompts: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list prompts: {str(e)}"
@@ -345,8 +345,8 @@ async def call_tool(
     Executes the specified tool with the provided arguments.
     """
     try:
-        logging.info(f"Calling MCP tool '{tool_name}' for user: {user}")
-        logging.debug(f"Tool arguments: {arguments}")
+        logger.info(f"Calling MCP tool '{tool_name}' for user: {user}")
+        logger.debug(f"Tool arguments: {arguments}")
         
         if tool_name == "create_assistant":
             # Create a new assistant
@@ -437,7 +437,7 @@ async def call_tool(
                         assistant_obj
                     )
                 except Exception as e:
-                    logging.warning(f"Failed to get RAG context: {str(e)}")
+                    logger.warning(f"Failed to get RAG context: {str(e)}")
             
             # Convert dictionary to Assistant object for build_mcp_prompt compatibility
             assistant = Assistant(
@@ -525,7 +525,7 @@ async def call_tool(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error calling MCP tool '{tool_name}': {str(e)}")
+        logger.error(f"Error calling MCP tool '{tool_name}': {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to call tool: {str(e)}"
@@ -543,7 +543,7 @@ async def get_mcp_prompt(
     This returns the fully crafted prompt with RAG context instead of executing it.
     """
     try:
-        logging.info(f"Getting MCP prompt '{prompt_name}' for user: {user}")
+        logger.info(f"Getting MCP prompt '{prompt_name}' for user: {user}")
         
         # Extract assistant ID from prompt name (format: assistant_123)
         if not prompt_name.startswith("assistant_"):
@@ -618,7 +618,7 @@ async def get_mcp_prompt(
                     assistant_details=assistant_obj
                 )
             except Exception as e:
-                logging.warning(f"Failed to get RAG context: {str(e)}")
+                logger.warning(f"Failed to get RAG context: {str(e)}")
         
         # Convert dictionary to Assistant object for build_mcp_prompt compatibility
         assistant = Assistant(
@@ -644,7 +644,7 @@ async def get_mcp_prompt(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting MCP prompt: {str(e)}")
+        logger.error(f"Error getting MCP prompt: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get prompt: {str(e)}"
@@ -661,7 +661,7 @@ async def read_resource(
     Returns the content of the specified resource.
     """
     try:
-        logging.info(f"Reading MCP resource '{uri}' for user: {user}")
+        logger.info(f"Reading MCP resource '{uri}' for user: {user}")
         
         if uri == "lamb://assistants":
             # Get assistants owned by the current user
@@ -735,7 +735,7 @@ async def read_resource(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error reading MCP resource '{uri}': {str(e)}")
+        logger.error(f"Error reading MCP resource '{uri}': {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to read resource: {str(e)}"
@@ -751,7 +751,7 @@ async def get_mcp_status(
     Returns the current status and capabilities of the MCP server.
     """
     try:
-        logging.info(f"Getting MCP status for user: {user}")
+        logger.info(f"Getting MCP status for user: {user}")
         
         # Get counts for status
         assistants = db_manager.get_full_list_of_assistants()
@@ -783,7 +783,7 @@ async def get_mcp_status(
             }
         }
     except Exception as e:
-        logging.error(f"Error getting MCP status: {str(e)}")
+        logger.error(f"Error getting MCP status: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get status: {str(e)}"

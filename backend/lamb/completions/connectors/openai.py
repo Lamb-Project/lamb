@@ -8,12 +8,10 @@ import re
 import base64
 # import openai
 from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, AuthenticationError
-from utils.timelog import Timelog
+from lamb.logging_config import get_logger
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+logger = get_logger(__name__, component="MAIN")
 
 # Set up multimodal logging
 multimodal_logger = logging.getLogger('multimodal.openai')
@@ -303,7 +301,7 @@ Returns:
     # --- Helper function for VISION stream generation ---
     async def _generate_vision_stream(vision_client: AsyncOpenAI, vision_params: dict):
         """Generate streaming response for vision API calls"""
-        Timelog(f"Vision Stream created", 2)
+        logger.debug(f"Vision Stream created")
 
         try:
             stream_obj = await vision_client.chat.completions.create(**vision_params)
@@ -312,7 +310,7 @@ Returns:
                 yield f"data: {chunk.model_dump_json()}\n\n"
 
             yield "data: [DONE]\n\n"
-            Timelog(f"Vision Stream completed successfully", 2)
+            logger.debug(f"Vision Stream completed successfully")
 
         except Exception as e:
             # If vision streaming fails, we can't easily fallback here
@@ -481,14 +479,14 @@ Returns:
                 base_url=base_url
             )
 
-            Timelog(f"OpenAI vision client created", 2)
+            logger.debug(f"OpenAI vision client created")
 
             # Try the vision API call
             if stream:
                 return _generate_vision_stream(vision_client, vision_params)
             else:
                 response = await vision_client.chat.completions.create(**vision_params)
-                Timelog(f"OpenAI vision response created", 2)
+                logger.debug(f"OpenAI vision response created")
                 multimodal_logger.info("Vision API call successful")
                 multimodal_supported = True
                 return response.model_dump()
@@ -528,7 +526,7 @@ Returns:
         base_url=base_url
     )
 
-    Timelog(f"OpenAI client created", 2)
+    logger.debug(f"OpenAI client created")
 
     # Helper function to make API call with runtime fallback
     async def _make_api_call_with_fallback(params_to_use: dict, attempt_fallback: bool = True):
@@ -548,7 +546,7 @@ Returns:
         current_model = params_to_use["model"]
         
         try:
-            Timelog(f"Attempting API call with model: {current_model}", 2)
+            logger.debug(f"Attempting API call with model: {current_model}")
             return await client.chat.completions.create(**params_to_use)
         
         except (APIError, APIConnectionError, RateLimitError, AuthenticationError) as e:
@@ -623,7 +621,7 @@ Returns:
         created_time = None
         model_name = None
         sent_initial_role = False # Track if the initial chunk with role/refusal has been sent
-        Timelog(f"Original Stream created", 2)
+        logger.debug(f"Original Stream created")
 
         stream_obj = await _make_api_call_with_fallback(params) # Use helper with fallback
 
@@ -693,11 +691,11 @@ Returns:
                     yield f"data: {json.dumps(data)}\\n\\n"
 
         yield "data: [DONE]\\n\\n"
-        Timelog(f"Original Stream completed", 2)
+        logger.debug(f"Original Stream completed")
 
     # --- Helper function for EXPERIMENTAL stream generation ---
     async def _generate_experimental_stream():
-        Timelog(f"Experimental Stream created", 2)
+        logger.debug(f"Experimental Stream created")
         # Create a streaming response
         stream_obj = await _make_api_call_with_fallback(params) # Use helper with fallback
 
@@ -706,7 +704,7 @@ Returns:
             yield f"data: {chunk.model_dump_json()}\n\n"
 
         yield "data: [DONE]\n\n"
-        Timelog(f"Experimental Stream completed", 2)
+        logger.debug(f"Experimental Stream completed")
 
     # --- Main logic for llm_connect ---
     if stream:
@@ -716,5 +714,5 @@ Returns:
     else:
         # Non-streaming call with fallback
         response = await _make_api_call_with_fallback(params) # Use helper with fallback
-        Timelog(f"Direct response created", 2)
+        logger.debug(f"Direct response created")
         return response.model_dump()

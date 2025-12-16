@@ -62,7 +62,7 @@ LAMB_DB_PATH = os.getenv('LAMB_DB_PATH')
 LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', '')
 
 # Logging Configuration
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+GLOBAL_LOG_LEVEL = os.getenv('GLOBAL_LOG_LEVEL', 'INFO')
 
 
 # Signup Configuration
