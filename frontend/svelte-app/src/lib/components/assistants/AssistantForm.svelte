@@ -356,7 +356,7 @@
 		// name = '';
 		// description = ''; 
 		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor, availableModels });
-		if (selectedRagProcessor === 'simple_rag') {
+		if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag') {
 			tick().then(fetchKnowledgeBases);
 		}
 		if (selectedRagProcessor === 'single_file_rag') {
@@ -458,7 +458,7 @@
 			
 			// FIX FOR ISSUE #96: Deferred Selection Pattern
 			// Store pending selections that will be applied when options are ready
-			if (selectedRagProcessor === 'simple_rag') {
+			if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag') {
 				// Store selections to be applied later
 				pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
 				console.log('Populate: Stored pending KB selections:', pendingKBSelections);
@@ -469,7 +469,7 @@
 					tick().then(fetchKnowledgeBases);
 				}
 			} else {
-				// Clear pending selections if not using simple_rag
+				// Clear pending selections if not using simple_rag or context_aware_rag
 				pendingKBSelections = null;
 			}
 
@@ -582,8 +582,8 @@
 			return;
 		}
 		// Ensure we actually need KBs
-		if (selectedRagProcessor !== 'simple_rag') {
-			console.log('Skipping KB fetch (RAG processor is not simple_rag)');
+		if (selectedRagProcessor !== 'simple_rag' && selectedRagProcessor !== 'context_aware_rag') {
+			console.log('Skipping KB fetch (RAG processor is not simple_rag or context_aware_rag)');
 			return;
 		}
 
@@ -913,7 +913,7 @@
 
 	// --- Reactive UI Logic (Mostly Unchanged) ---
 	const showRagOptions = $derived(selectedRagProcessor && selectedRagProcessor !== 'no_rag');
-	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag');
+	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag');
 	const showSingleFileSelector = $derived(selectedRagProcessor === 'single_file_rag');
 	const showRubricSelector = $derived(selectedRagProcessor === 'rubric_rag');
 	
@@ -932,11 +932,11 @@
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
 	$effect(() => {
 		console.log(`Effect: RAG processor changed to ${selectedRagProcessor}`);
-		if (selectedRagProcessor === 'simple_rag' && configInitialized) {
-			// Trigger fetch only if we land on simple_rag and haven't attempted the fetch yet
+		if ((selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag') && configInitialized) {
+			// Trigger fetch only if we land on simple_rag or context_aware_rag and haven't attempted the fetch yet
 			console.log(`Effect: Checking KB fetch need (Attempted: ${kbFetchAttempted})`);
 			if (!kbFetchAttempted && !loadingKnowledgeBases) { // Check attempted flag, ignore error here
-				console.log('Effect: Conditions met (simple_rag, not attempted), calling fetchKnowledgeBases()');
+				console.log('Effect: Conditions met (simple_rag/context_aware_rag, not attempted), calling fetchKnowledgeBases()');
 				fetchKnowledgeBases();
 			} else {
 				console.log('Effect: Skipping KB fetch (already attempted or loading).');
@@ -1060,7 +1060,7 @@
 			system_prompt: system_prompt,
 			prompt_template: prompt_template,
 			RAG_Top_k: Number(RAG_Top_k) || 3,
-			RAG_collections: selectedRagProcessor === 'simple_rag' ? selectedKnowledgeBases.join(',') : '',
+			RAG_collections: (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag') ? selectedKnowledgeBases.join(',') : '',
 			// Add metadata with the stringified JSON
 			metadata: JSON.stringify(metadataObj),
 			pre_retrieval_endpoint: '',
@@ -1222,12 +1222,12 @@
 							}
 
 							// Validate top-level RAG fields if processor requires them
-							if (callbackData?.rag_processor === 'simple_rag') {
+							if (callbackData?.rag_processor === 'simple_rag' || callbackData?.rag_processor === 'context_aware_rag') {
 								if (parsedData.RAG_Top_k === undefined || typeof parsedData.RAG_Top_k !== 'number') {
-									validationLog.push(`⚠️ RAG_Top_k is missing or not a number (Required for simple_rag). Found: ${typeof parsedData.RAG_Top_k}`);
+									validationLog.push(`⚠️ RAG_Top_k is missing or not a number (Required for ${callbackData.rag_processor}). Found: ${typeof parsedData.RAG_Top_k}`);
 								}
 								if (parsedData.RAG_collections === undefined || typeof parsedData.RAG_collections !== 'string') {
-									validationLog.push(`⚠️ RAG_collections is missing or not a string (Required for simple_rag). Found: ${typeof parsedData.RAG_collections}`);
+									validationLog.push(`⚠️ RAG_collections is missing or not a string (Required for ${callbackData.rag_processor}). Found: ${typeof parsedData.RAG_collections}`);
 								}
 							}
 						}
@@ -1270,8 +1270,8 @@
 
 						// Populate RAG specific fields
 						// FIX FOR ISSUE #96: Apply Load-Then-Select pattern for imports too
-						if (selectedRagProcessor === 'simple_rag') {
-							selectedFilePath = ''; // Clear file path if switching to simple RAG
+						if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag') {
+							selectedFilePath = ''; // Clear file path if switching to simple RAG or context_aware_rag
 							// Fetch KBs BEFORE setting selections
 							if (!kbFetchAttempted) {
 								console.log('Import: Awaiting KB fetch to complete before setting selections');
@@ -1842,8 +1842,8 @@
 									</div>
 								{/if}
 								
-								<!-- RAG Top K (Only for simple_rag) -->
-								{#if selectedRagProcessor === 'simple_rag'}
+								<!-- RAG Top K (Only for simple_rag and context_aware_rag) -->
+								{#if selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag'}
 									<div>
 										<label for="rag-top-k" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</label>
 										<input type="number" id="rag-top-k" name="RAG_Top_k" bind:value={RAG_Top_k} min="1" max="10" 
