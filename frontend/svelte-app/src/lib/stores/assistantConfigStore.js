@@ -71,7 +71,7 @@ function getFallbackCapabilities() {
 	const capabilities = {
 		prompt_processors: ['simple_augment'], // Keep simple_augment as fallback, zero_shot removed
 		connectors: { openai: { models: ['gpt-4o-mini', 'gpt-4'] } }, // Keep basic connector/model fallback
-		rag_processors: ['no_rag', 'simple_rag', 'single_file_rag'] // Keep RAG options
+		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag'] // Keep RAG options
 	};
 	return capabilities;
 }

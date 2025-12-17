@@ -129,7 +129,7 @@ async def create_completion(
         Timelog(f"Plugin config: {plugin_config}",2)
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         Timelog(f"Plugins loaded: {pps}, {connectors}, {rag_processors}",2)
-        rag_context = get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+        rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         Timelog(f"RAG context: {rag_context}",2)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
         Timelog(f"Messages: {messages}",2)
@@ -225,14 +225,24 @@ def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, 
 
     return pps, connectors, rag_processors
 
-def get_rag_context(request: Dict[str, Any], rag_processors: Dict[str, Any], rag_processor: str, assistant_details: Any) -> Any:
+async def get_rag_context(request: Dict[str, Any], rag_processors: Dict[str, Any], rag_processor: str, assistant_details: Any) -> Any:
     """
     If a RAG processor is specified, process the RAG context using the plugin.
+    Supports both sync and async RAG processors.
     """
     if rag_processor:
         logger.info("Processing RAG request")
         messages = request.get('messages', [])
-        rag_context = rag_processors[rag_processor](messages=messages, assistant=assistant_details)
+        rag_func = rag_processors[rag_processor]
+        
+        # Check if the RAG processor is async
+        if asyncio.iscoroutinefunction(rag_func):
+            logger.debug(f"RAG processor '{rag_processor}' is async, awaiting...")
+            rag_context = await rag_func(messages=messages, assistant=assistant_details, request=request)
+        else:
+            logger.debug(f"RAG processor '{rag_processor}' is sync, calling directly...")
+            rag_context = rag_func(messages=messages, assistant=assistant_details, request=request)
+        
         logger.debug(f"RAG context generated: {rag_context}")
         return rag_context
     logger.debug("No RAG processor requested")
@@ -294,7 +304,7 @@ async def run_lamb_assistant(
         logger.debug(f"Run assistant, details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
-        rag_context = get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+        rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
