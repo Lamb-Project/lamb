@@ -132,70 +132,55 @@ def _get_moodle_courses_sync(user_id: str) -> str:
     moodle_url = os.getenv("MOODLE_API_URL")
     moodle_token = os.getenv("MOODLE_TOKEN")
 
-    if moodle_url and moodle_token:
-        ws_url = _moodle_ws_url(moodle_url)
-        params = {
-            "wstoken": moodle_token,
-            "wsfunction": "core_enrol_get_users_courses",
-            "moodlewsrestformat": "json",
-            "userid": user_id,
-        }
+    if not moodle_url or not moodle_token:
+        return json.dumps({
+            "user_id": user_id,
+            "courses": [],
+            "error": "MOODLE_API_URL and/or MOODLE_TOKEN not configured",
+            "success": False,
+        })
 
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.get(ws_url, params=params)
-                response.raise_for_status()
-                courses_data = response.json()
+    ws_url = _moodle_ws_url(moodle_url)
+    params = {
+        "wstoken": moodle_token,
+        "wsfunction": "core_enrol_get_users_courses",
+        "moodlewsrestformat": "json",
+        "userid": user_id,
+    }
 
-            if isinstance(courses_data, dict) and "exception" in courses_data:
-                return json.dumps({
-                    "user_id": user_id,
-                    "error": courses_data.get("message", "Moodle API error"),
-                    "success": False,
-                })
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(ws_url, params=params)
+            response.raise_for_status()
+            courses_data = response.json()
 
-            courses = [
-                {
-                    "id": course.get("id"),
-                    "name": course.get("fullname"),
-                    "shortname": course.get("shortname"),
-                    "category": course.get("categoryname", ""),
-                }
-                for course in (courses_data or [])
-                if isinstance(course, dict)
-            ]
-
+        if isinstance(courses_data, dict) and "exception" in courses_data:
             return json.dumps({
                 "user_id": user_id,
-                "courses": courses,
-                "course_count": len(courses),
-                "success": True,
-                "source": "moodle_api",
-            })
-        except Exception as e:
-            logger.error(f"Error getting Moodle courses for {user_id}: {e}")
-            return json.dumps({
-                "user_id": user_id,
-                "courses": [],
-                "error": str(e),
+                "error": courses_data.get("message", "Moodle API error"),
                 "success": False,
             })
 
-    # Fallback to the tool module's mock data
-    try:
-        from lamb.completions.tools.moodle import MOCK_USER_COURSES
+        courses = [
+            {
+                "id": course.get("id"),
+                "name": course.get("fullname"),
+                "shortname": course.get("shortname"),
+                "category": course.get("categoryname", ""),
+            }
+            for course in (courses_data or [])
+            if isinstance(course, dict)
+        ]
 
-        user_id_lower = str(user_id).lower().strip()
-        courses = MOCK_USER_COURSES.get(user_id_lower, MOCK_USER_COURSES.get("default", []))
         return json.dumps({
             "user_id": user_id,
             "courses": courses,
             "course_count": len(courses),
             "success": True,
-            "source": "mock",
-            "moodle_configured": False,
+            "source": "moodle_api",
         })
     except Exception as e:
+        logger.error(f"Error getting Moodle courses for {user_id}: {e}")
         return json.dumps({
             "user_id": user_id,
             "courses": [],

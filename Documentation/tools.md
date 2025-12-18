@@ -60,9 +60,9 @@ Added helper functions:
 
 ### 2. Moodle Tool (`/backend/lamb/completions/tools/moodle.py`)
 
-Implemented to use Moodle Web Services when configured, otherwise returns clearly-labeled mock data:
+Implemented to use Moodle Web Services:
 - `MOODLE_TOOL_SPEC` - OpenAI function specification
-- `get_moodle_courses(user_id)` - Calls Moodle API if `MOODLE_API_URL` + `MOODLE_TOKEN` are set; otherwise returns mock data (source=`mock`)
+- `get_moodle_courses(user_id)` - Calls Moodle API using `MOODLE_API_URL` + `MOODLE_TOKEN`
 - `get_moodle_courses_real()` - Helper that implements the actual API call
 
 ### 3. API Endpoint (`/backend/lamb/completions/main.py`)
