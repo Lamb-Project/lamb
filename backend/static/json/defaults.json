@@ -12,7 +12,6 @@
     "rag_placeholders": [
       "--- {context} --- ",
       "--- {user_input} ---",
-      "{moodle_info_for_user}",
       "{moodle_user}"
     ]
   }

@@ -251,22 +251,13 @@ Extracts user identifier from multiple sources in priority order:
 **2. Moodle Integration (`_get_moodle_courses_sync()`)**
 - Synchronous wrapper around the async Moodle tool
 - Uses existing `get_moodle_courses()` from tools registry
-- Uses Moodle Web Services when `MOODLE_API_URL` and `MOODLE_TOKEN` are configured; otherwise falls back to mock data
-
-**3. Context Formatting (`_format_moodle_context()`)**
-Formats Moodle course data into human-readable text:
-```
-Enrolled Courses:
-• Introduction to Programming (CS101) - Course ID: 101
-• Data Structures (CS201) - Course ID: 102
-• Web Development (WEB101) - Course ID: 103
-```
+- Uses Moodle Web Services when `MOODLE_API_URL` and `MOODLE_TOKEN` are configured
 
 **4. Template Processing**
 Supports three template variables:
 - `{user_input}` - The user's message/question
 - `{context}` - RAG context (if available)
-- `{moodle_info_for_user}` - Formatted Moodle course information
+- `{moodle_user}` - Best-effort user identifier (prefers Moodle numeric ID when resolvable)
 
 ### Example Usage:
 
@@ -274,10 +265,10 @@ Supports three template variables:
 ```
 You are an academic advisor helping students.
 
-The student is enrolled in the following courses:
-{moodle_info_for_user}
+The student's Moodle identifier is:
+{moodle_user}
 
-Based on their course enrollment, help answer:
+Help answer:
 {user_input}
 
 Additional knowledge base context:
@@ -288,12 +279,10 @@ Additional knowledge base context:
 ```
 You are an academic advisor helping students.
 
-The student is enrolled in the following courses:
-Enrolled Courses:
-• Introduction to Programming (CS101) - Course ID: 101
-• Data Structures (CS201) - Course ID: 102
+The student's Moodle identifier is:
+12345
 
-Based on their course enrollment, help answer:
+Help answer:
 What electives should I take next semester?
 
 Additional knowledge base context:
@@ -303,22 +292,22 @@ Additional knowledge base context:
 ### Frontend Changes:
 
 **`/backend/static/json/defaults.json`:**
-Added `{moodle_info_for_user}` to rag_placeholders array.
+Added `{moodle_user}` to rag_placeholders array.
 
 **`/frontend/svelte-app/src/lib/stores/assistantConfigStore.js`:**
-Added `{moodle_info_for_user}` to default rag_placeholders.
+Added `{moodle_user}` to default rag_placeholders.
 
 ### How to Use:
 
 1. Create or edit an assistant
 2. Select `moodle_augment` as the Prompt Processor
-3. In the Prompt Template, use `{moodle_info_for_user}` where you want course info
+3. In the Prompt Template, use `{moodle_user}` where you want the Moodle user identifier
 4. The placeholder button is available in the template editor UI
 
-### Moodle Configuration / Mock Behavior
+### Moodle Configuration
 
-- If `MOODLE_API_URL` and `MOODLE_TOKEN` are configured on the backend, the Moodle tool fetches real enrollments via `core_enrol_get_users_courses`.
-- If they are not configured, the tool returns mock course data (source=`mock`) so the workflow can be tested end-to-end.
+- `MOODLE_API_URL` and `MOODLE_TOKEN` must be configured on the backend.
+- If configured, `moodle_augment` can resolve an OpenWebUI user email into a Moodle numeric user ID.
 
 ---
 
@@ -352,32 +341,9 @@ MOODLE_TOOL_SPEC = {
 }
 ```
 
-**Implementation** (initially mocked):
-```python
-async def get_moodle_courses(user_id: str) -> str:
-    """
-    Get courses for a Moodle user.
-    
-    Phase 1: Return mocked data
-    Phase 2: Call actual Moodle Web Services API
-    """
-    # Mock response for POC
-    mock_courses = {
-        "user_id": user_id,
-        "courses": [
-            {"id": 101, "name": "Introduction to Programming", "shortname": "CS101"},
-            {"id": 102, "name": "Data Structures", "shortname": "CS201"},
-            {"id": 103, "name": "Web Development", "shortname": "WEB101"}
-        ],
-        "success": True
-    }
-    return json.dumps(mock_courses)
-```
-
-**Future Moodle Integration**:
-- Configure Moodle API endpoint in organization settings
-- Use Moodle Web Services token for authentication
-- Call `core_enrol_get_users_courses` web service function
+**Implementation**:
+- Uses Moodle Web Services (`core_enrol_get_users_courses`) via `MOODLE_API_URL` + `MOODLE_TOKEN`.
+- If Moodle is not configured, the tool returns an error response (no mock fallback).
 
 ---
 
@@ -387,20 +353,19 @@ async def get_moodle_courses(user_id: str) -> str:
 
 **Purpose**: Extends `simple_augment` to automatically inject Moodle user context into prompts.
 
-**New Template Variable**: `{moodle_info_for_user}`
+**New Template Variable**: `{moodle_user}`
 
 **Behavior**:
 1. Extract user identifier from LTI launch or session
-2. Call Moodle tool to get user's enrolled courses
-3. Format course list as context
-4. Replace `{moodle_info_for_user}` in prompt template
+2. Best-effort resolve OpenWebUI email to Moodle numeric user ID (when configured)
+3. Replace `{moodle_user}` in prompt template
 
 **Example Prompt Template**:
 ```
 You are a helpful academic assistant. 
 
-The student is enrolled in the following courses:
-{moodle_info_for_user}
+The student's Moodle identifier is:
+{moodle_user}
 
 Based on this context, help the student with their question:
 {user_input}
@@ -419,19 +384,14 @@ def prompt_processor(
     """
     Moodle-aware prompt processor.
     
-    Extends simple_augment with Moodle course information.
+    Extends simple_augment with Moodle user identifier.
     """
     # Get user ID from request metadata or LTI context
     user_id = extract_user_id(request)
-    
-    # Fetch Moodle courses
-    moodle_info = await get_moodle_courses(user_id)
-    
-    # Format for template
-    formatted_moodle_info = format_moodle_context(moodle_info)
-    
+
+    # Replace {moodle_user} in template
     # Apply simple_augment logic with additional variable
-    # Replace {moodle_info_for_user} in template
+    # Replace {moodle_user} in template
     ...
 ```
 
@@ -504,7 +464,7 @@ TOOL_REGISTRY = {
 
 1. **Phase 1: Backend Tool Registry** ✅ COMPLETED (December 3, 2025)
    - Create tool registry in `/backend/lamb/completions/tools/__init__.py`
-    - Implement Moodle tool (API when configured; mock fallback otherwise)
+    - Implement Moodle tool (requires backend Moodle configuration)
    - Add API endpoint to list available tools
 
 2. **Phase 2: Unified Connector** ✅ COMPLETED (December 3, 2025)
@@ -520,7 +480,7 @@ TOOL_REGISTRY = {
 4. **Phase 4: Moodle Augment Processor** ✅ COMPLETED (December 3, 2025)
    - Created `moodle_augment.py` prompt processor
    - Implemented user ID extraction from LTI/session
-   - Added `{moodle_info_for_user}` template variable
+    - Added `{moodle_user}` template variable
    - Added placeholder button to frontend defaults
 
 5. **Phase 5: Real Moodle Integration** (4-6 hours)
@@ -549,7 +509,7 @@ Current state:
 The goal is to:
 1. Add a Tools configuration UI in the assistant form
 2. Support Weather and Moodle tools
-3. Create moodle_augment prompt processor with {moodle_info_for_user} variable
+3. Create moodle_augment prompt processor with {moodle_user} variable
 4. Integrate tool detection into the standard openai connector (no separate openai_tools needed)
 
 Please review the roadmap in tools.md and help me implement [SPECIFIC TASK].
