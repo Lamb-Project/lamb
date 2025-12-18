@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.8
-**Last Updated:** December 1, 2025  
+**Version:** 2.9
+**Last Updated:** December 17, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -25,9 +25,10 @@
 14. [Development Workflow](#14-development-workflow)
 15. [End User Feature](#15-end-user-feature)
 16. [User Blocking Feature](#16-user-blocking-feature)
-17. [Frontend UX Patterns & Best Practices](#17-frontend-ux-patterns--best-practices)
-18. [API Reference](#18-api-reference)
-19. [File Structure](#19-file-structure)
+17. [Centralized Logging System](#17-centralized-logging-system)
+18. [Frontend UX Patterns & Best Practices](#18-frontend-ux-patterns--best-practices)
+19. [API Reference](#19-api-reference)
+20. [File Structure](#20-file-structure)
 
 ---
 
@@ -4074,9 +4075,186 @@ CREATE TABLE user_status_audit (
 
 ---
 
-## 17. Frontend UX Patterns & Best Practices
+## 17. Centralized Logging System
 
-### 17.1 Form Dirty State Tracking
+### 17.1 Overview
+
+The LAMB backend implements a centralized logging system that eliminates code duplication, removes legacy utilities, and provides unified environment-based configuration for all logging operations.
+
+**Key Benefits:**
+- **Single Point of Control:** One environment variable controls all logging by default
+- **Fine-Grained Control:** Optional component-specific overrides for targeted debugging
+- **Container-Friendly:** All logs go to stdout for proper container log aggregation
+
+### 17.2 Architecture
+
+#### 17.2.1 Centralized Logging Module
+
+**Location:** `backend/lamb/logging_config.py`
+
+This module serves as the single source of truth for all logging configuration. It handles:
+
+```python
+from lamb.logging_config import get_logger
+
+# Get a logger for the current module, categorized as a specific component
+logger = get_logger(__name__, component="MAIN")
+
+# Use standard Python logging
+logger.debug("Detailed debugging information")
+logger.info("General informational message")
+logger.warning("Warning message")
+logger.error("Error occurred")
+logger.critical("Critical error")
+```
+
+**Global Configuration:**
+The module reads the `GLOBAL_LOG_LEVEL` environment variable at import time and configures the root logger once using:
+
+```python
+logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL, force=True)
+```
+
+The `force=True` parameter ensures this configuration overrides any prior logging configurations in the application.
+
+#### 17.2.2 Component-Based Log Levels
+
+Six components are supported with fine-grained log level control:
+
+| Component | Environment Variable | Purpose |
+|-----------|----------------------|---------|
+| MAIN | `MAIN_LOG_LEVEL` | Main application logic |
+| API | `API_LOG_LEVEL` | API endpoints and routers |
+| DB | `DB_LOG_LEVEL` | Database operations |
+| RAG | `RAG_LOG_LEVEL` | RAG (Retrieval-Augmented Generation) operations |
+| EVALUATOR | `EVALUATOR_LOG_LEVEL` | Evaluation and grading components |
+| OWI | `OWI_LOG_LEVEL` | Open WebUI integration |
+
+**Fallback Behavior:**
+If a component-specific log level is not set, the logger falls back to `GLOBAL_LOG_LEVEL`. This allows:
+- Global control with `GLOBAL_LOG_LEVEL` for all components
+- Selective override of specific components while others use the global level
+
+#### 17.2.3 get_logger() Function
+
+```python
+def get_logger(name: str, component: str = "MAIN") -> logging.Logger:
+    """
+    Return a module logger configured for the given component.
+    
+    Args:
+        name: Logger name (typically __name__ for module-level loggers)
+        component: Component category (MAIN, API, DB, RAG, EVALUATOR, OWI)
+    
+    Returns:
+        logging.Logger: Properly configured logger instance
+    
+    The component level is taken from SRC_LOG_LEVELS; defaults to GLOBAL_LOG_LEVEL.
+    """
+    logger = logging.getLogger(name)
+    level = SRC_LOG_LEVELS.get(component, GLOBAL_LOG_LEVEL)
+    logger.setLevel(level)
+    return logger
+```
+
+**Key Features:**
+- Creates or retrieves a logger with the specified name
+- Sets the level based on the component type
+- Returns a properly configured logger instance
+- Supports inheritance from root logger configuration
+
+### 17.3 Environment Variables
+
+**Global Default Level:**
+```bash
+# Global log level - applied to all components that don't have specific overrides
+GLOBAL_LOG_LEVEL=WARNING  # Default: WARNING
+# Supported values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+```
+
+**Component-Specific Levels (Optional):**
+```bash
+# Each component can have its own log level
+MAIN_LOG_LEVEL=INFO        # Optional: Controls main application logging
+API_LOG_LEVEL=WARNING      # Optional: Controls API endpoint logging
+DB_LOG_LEVEL=DEBUG         # Optional: Controls database operation logging
+RAG_LOG_LEVEL=INFO         # Optional: Controls RAG pipeline logging
+EVALUATOR_LOG_LEVEL=WARNING # Optional: Controls evaluator logging
+OWI_LOG_LEVEL=WARNING      # Optional: Controls OWI integration logging
+```
+### 17.5 Usage Examples
+
+#### 17.5.1 Basic Setup
+
+**In any module:**
+```python
+from lamb.logging_config import get_logger
+
+# For main application logic
+logger = get_logger(__name__, component="MAIN")
+
+# For database operations
+logger = get_logger(__name__, component="DB")
+
+# For API endpoints
+logger = get_logger(__name__, component="API")
+```
+
+#### 17.5.2 Common Logging Patterns
+
+**Debug Information:**
+```python
+logger.debug(f"Processing request for user {user_id}")
+logger.debug(f"Database query: {query}")
+```
+
+**Operational Events:**
+```python
+logger.info(f"Assistant created: {assistant_name}")
+logger.info(f"Knowledge base collection created: {collection_id}")
+```
+
+**Warnings:**
+```python
+logger.warning(f"Fallback model used for user {user_id}")
+logger.warning(f"Knowledge base query returned no results")
+```
+
+**Errors:**
+```python
+logger.error(f"Failed to connect to KB server: {error}")
+logger.error(f"LLM API error: {error}", exc_info=True)
+```
+
+#### 17.5.3 Environment Configuration Examples
+
+**Development (All DEBUG):**
+```bash
+GLOBAL_LOG_LEVEL=DEBUG
+```
+
+**Development (Selective Debugging):**
+```bash
+GLOBAL_LOG_LEVEL=INFO
+DB_LOG_LEVEL=DEBUG        # Only database logs at DEBUG
+RAG_LOG_LEVEL=DEBUG       # Only RAG logs at DEBUG
+```
+
+**Production (Clean Logs):**
+```bash
+GLOBAL_LOG_LEVEL=WARNING
+```
+
+**Production (Monitor Specific Issues):**
+```bash
+GLOBAL_LOG_LEVEL=WARNING
+API_LOG_LEVEL=INFO        # Watch API operations
+OWI_LOG_LEVEL=DEBUG       # Debug OWI integration issues
+```
+
+## 18. Frontend UX Patterns & Best Practices
+
+### 18.1 Form Dirty State Tracking
 
 **Problem:** Svelte 5's reactivity system can cause component props to change references frequently, even when the underlying data hasn't changed. In forms that react to prop changes by repopulating fields, this creates a critical UX issue where user edits are lost.
 
@@ -4174,11 +4352,11 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 - GitHub Issue #62: Language Model selection bug (fixed with this pattern)
 - See also Section 17.3 for complementary ID-based repopulation pattern
 
-### 17.2 Async Data Loading Race Conditions ⚠️ CRITICAL
+### 18.2 Async Data Loading Race Conditions ⚠️ CRITICAL
 
 **⚠️ WARNING:** Async data loading with Svelte 5's reactivity creates dangerous race conditions that can silently break user-facing functionality. This is a **critical pattern** that ALL developers must understand before implementing forms or components with async data dependencies.
 
-#### 17.2.1 The Problem
+#### 18.2.1 The Problem
 
 When restoring saved selections (checkboxes, multi-selects, etc.) that depend on a list fetched asynchronously, setting the selections **before** the list is loaded causes Svelte's binding directives (`bind:group`, `bind:value`) to fail silently.
 
@@ -4212,7 +4390,7 @@ function populateFormFields(data) {
 5. Checkboxes re-render, but Svelte **DOES NOT retroactively apply the bindings**
 6. Result: Checkboxes appear unchecked even though data says they should be checked
 
-#### 17.2.2 Why This Is Dangerous
+#### 18.2.2 Why This Is Dangerous
 
 **Silent Failure:**
 - No console errors
@@ -4233,7 +4411,7 @@ function populateFormFields(data) {
 - Network throttling required to reproduce reliably
 - Intermittent failures in production are the worst kind
 
-#### 17.2.3 Affected Svelte Directives
+#### 18.2.3 Affected Svelte Directives
 
 The following Svelte directives are vulnerable to async race conditions:
 
@@ -4254,7 +4432,7 @@ The following Svelte directives are vulnerable to async race conditions:
 </select>
 ```
 
-#### 17.2.4 The Correct Pattern: Load-Then-Select
+#### 18.2.4 The Correct Pattern: Load-Then-Select
 
 **Golden Rule:** **ALWAYS load the selectable options BEFORE setting the selected values.**
 
@@ -4285,7 +4463,7 @@ async function populateFormFields(data) {
 3. Set selections **after** await completes
 4. Handle loading states in UI
 
-#### 17.2.5 Alternative Pattern: Deferred Selection
+#### 18.2.5 Alternative Pattern: Deferred Selection
 
 If making the populate function async is not feasible, use a pending state:
 
@@ -4322,7 +4500,7 @@ $effect(() => {
 - More complex effect logic
 - Harder to reason about timing
 
-#### 17.2.6 Preemptive Loading Pattern
+#### 18.2.6 Preemptive Loading Pattern
 
 For forms that frequently need certain data, preload it:
 
@@ -4352,7 +4530,7 @@ onMount(() => {
 - Data is needed in >80% of use cases
 - User experience demands instant interactions
 
-#### 17.2.7 Implementation Checklist
+#### 18.2.7 Implementation Checklist
 
 When implementing forms with async data dependencies:
 
@@ -4383,7 +4561,7 @@ When implementing forms with async data dependencies:
 - [ ] Error states handled (empty lists, failed fetches)
 - [ ] No race conditions between multiple effects
 
-#### 17.2.8 Warning Signs in Code
+#### 18.2.8 Warning Signs in Code
 
 **🚨 RED FLAGS - These patterns indicate potential race conditions:**
 
@@ -4429,7 +4607,7 @@ $effect(() => {
 });
 ```
 
-#### 17.2.9 Real-World Incident Report
+#### 18.2.9 Real-World Incident Report
 
 **Issue #96: Knowledge Base Selection Race Condition**
 
@@ -4462,7 +4640,7 @@ $effect(() => {
 - Testing procedures documented
 - Example implementation in `AssistantForm.svelte` (post-fix)
 
-#### 17.2.10 Key Takeaways
+#### 18.2.10 Key Takeaways
 
 **For Developers:**
 1. **Never assume async operations complete instantly**
@@ -4491,11 +4669,11 @@ $effect(() => {
 
 ---
 
-### 17.3 Preventing Spurious Form Repopulation ⚠️ CRITICAL
+### 18.3 Preventing Spurious Form Repopulation ⚠️ CRITICAL
 
 **⚠️ WARNING:** Even with form dirty state tracking, calling `populateFormFields()` on every prop reference change can cause dropdown selections and other fields to be unexpectedly reset. This is a **critical pattern** that complements Section 17.1.
 
-#### 17.3.1 The Problem
+#### 18.3.1 The Problem
 
 Svelte 5's proxy-based reactivity causes prop references to change frequently, even when the underlying data hasn't changed. A naive `$effect` that repopulates on every reference change will overwrite user selections continuously.
 
@@ -4531,7 +4709,7 @@ $effect(() => {
 
 Dirty state tracking (`formDirty`) protects against overwrites **while the user is editing**. However, when `formDirty === false` (initial load, after save, after cancel), the form is still vulnerable to spurious repopulation from reference-only changes.
 
-#### 17.3.2 The Correct Pattern: ID-Based Repopulation
+#### 18.3.2 The Correct Pattern: ID-Based Repopulation
 
 **Golden Rule:** Only repopulate when there's a **meaningful change**, not just a reference change.
 
@@ -4570,7 +4748,7 @@ $effect(() => {
 3. **Skip Reference Changes:** Don't repopulate on proxy reference updates
 4. **Explicit Reverts Only:** User must explicitly cancel to trigger repopulation
 
-#### 17.3.3 When to Repopulate
+#### 18.3.3 When to Repopulate
 
 | Scenario | Should Repopulate? | Reason |
 |----------|-------------------|--------|
@@ -4581,7 +4759,7 @@ $effect(() => {
 | Parent component re-renders | ❌ NO | Unrelated to this form |
 | User switches away and back | ❌ NO | Form should retain state |
 
-#### 17.3.4 What Fields Are Affected
+#### 18.3.4 What Fields Are Affected
 
 Spurious repopulation affects **all bound form fields**, but is most visible in:
 
@@ -4593,7 +4771,7 @@ Spurious repopulation affects **all bound form fields**, but is most visible in:
 | **Text inputs** | Value resets | Moderate (if typing slowly) |
 | **Textareas** | Content replaced | Critical if actively editing |
 
-#### 17.3.5 Implementation Checklist
+#### 18.3.5 Implementation Checklist
 
 When implementing forms with prop-based data loading:
 
@@ -4616,7 +4794,7 @@ When implementing forms with prop-based data loading:
 - [ ] Open different item, verify form repopulates correctly
 - [ ] Click Cancel, verify form reverts to saved state
 
-#### 17.3.6 Warning Signs in Code
+#### 18.3.6 Warning Signs in Code
 
 **🚨 RED FLAGS - These patterns indicate potential spurious repopulation:**
 
@@ -4669,7 +4847,7 @@ async function handleSave() {
 }
 ```
 
-#### 17.3.7 Relationship to Other Patterns
+#### 18.3.7 Relationship to Other Patterns
 
 This pattern **complements** but is **distinct** from:
 
@@ -4702,7 +4880,7 @@ $effect(() => {
 });
 ```
 
-#### 17.3.8 Real-World Incident Reports
+#### 18.3.8 Real-World Incident Reports
 
 **November 2025: Double Repopulation Bug**
 
@@ -4719,7 +4897,7 @@ Even after implementing dirty state tracking (Issue #62 fix), the AssistantForm 
 - Svelte 5's reactivity is more aggressive than Svelte 4
 - Always test with deliberate delays to expose timing issues
 
-#### 17.3.9 Example Implementation
+#### 18.3.9 Example Implementation
 
 See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte`:
 
@@ -4744,7 +4922,7 @@ $effect(() => {
 });
 ```
 
-#### 17.3.10 Key Takeaways
+#### 18.3.10 Key Takeaways
 
 **For Developers:**
 1. **Reference changes ≠ data changes** in Svelte 5
@@ -4773,9 +4951,9 @@ $effect(() => {
 
 ---
 
-### 17.4 Other Frontend Best Practices
+### 18.4 Other Frontend Best Practices
 
-#### 17.4.1 Svelte 5 Reactivity Guidelines
+#### 18.4.1 Svelte 5 Reactivity Guidelines
 
 - Use `$state()` for component-local reactive values
 - Use `$derived()` for computed values
@@ -4783,14 +4961,14 @@ $effect(() => {
 - Prefer event handlers over reactive effects when possible
 - Always check if effect should run (guard conditions)
 
-#### 17.4.2 API Service Patterns
+#### 18.4.2 API Service Patterns
 
 - Centralize API calls in service modules (`lib/services/`)
 - Include authorization headers in all authenticated requests
 - Handle loading/error states consistently
 - Return structured responses: `{success, data?, error?}`
 
-#### 17.4.3 Store Management
+#### 18.4.3 Store Management
 
 - Use stores for shared state across components
 - Keep stores minimal and focused
@@ -4799,13 +4977,13 @@ $effect(() => {
 
 ---
 
-## 18. API Reference
+## 19. API Reference
 
 See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 19. File Structure Summary
+## 20. File Structure Summary
 
 ```
 /backend/
@@ -4834,5 +5012,5 @@ This document provides comprehensive technical documentation for the LAMB platfo
 ---
 
 **Maintainers:** LAMB Development Team
-**Last Updated:** December 1, 2025
-**Version:** 2.8 (Updated Section 11.8: Banana Image Connector - Migrated from Vertex AI to Google Gen AI SDK for simpler API key authentication)
+**Last Updated:** December 17, 2025
+**Version:** 2.9 (Added Section 17: Centralized Logging System - Unified environment-based configuration, removed legacy Timelog utility)

@@ -1,7 +1,9 @@
 from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 import json
-from utils.timelog import Timelog
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="MAIN")
 
 
 def _has_vision_capability(assistant: Assistant) -> bool:
@@ -105,7 +107,7 @@ def prompt_processor(
                 user_input_text = ' '.join(text_parts)
 
                 # Create augmented text content with template
-                Timelog(f"User message: {user_input_text}", 2)
+                logger.debug(f"User message: {user_input_text}")
                 augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available
@@ -146,7 +148,7 @@ def prompt_processor(
                     user_input_text = str(last_message)
 
                 # Replace placeholders in template
-                Timelog(f"User message: {user_input_text}", 2)
+                logger.debug(f"User message: {user_input_text}")
                 prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available

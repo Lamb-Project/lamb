@@ -168,13 +168,21 @@ These variables are used for initial admin account setup:
 
 **Default**: `./lamb_assistants`
 
-### `LOG_LEVEL`
+### `GLOBAL_LOG_LEVEL`
 
-**Purpose**: Logging verbosity level
+**Purpose**: Sets the default logging verbosity for the backend.
 
 **Values**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
 
-**Default**: `INFO`
+**Default**: `INFO` (the sample `.env` sets `WARNING`)
+
+### Component-specific log levels
+
+**Purpose**: Override the global level for specific components.
+
+**Variables**: `MAIN_LOG_LEVEL`, `API_LOG_LEVEL`, `DB_LOG_LEVEL`, `RAG_LOG_LEVEL`, `EVALUATOR_LOG_LEVEL`, `OWI_LOG_LEVEL`
+
+**Default**: Unset (each falls back to `GLOBAL_LOG_LEVEL`)
 
 ## LLM Configuration
 
@@ -212,7 +220,13 @@ OWI_ADMIN_EMAIL=admin@lamb.com
 OWI_ADMIN_PASSWORD=your-admin-password
 
 # Optional
-LOG_LEVEL=INFO
+GLOBAL_LOG_LEVEL=WARNING
+# MAIN_LOG_LEVEL=
+# API_LOG_LEVEL=
+# DB_LOG_LEVEL=
+# RAG_LOG_LEVEL=
+# EVALUATOR_LOG_LEVEL=
+# OWI_LOG_LEVEL=
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
@@ -240,7 +254,7 @@ For production deployments:
 
 3. **Change all default passwords and tokens**
 
-4. **Set appropriate `LOG_LEVEL`** (typically `WARNING` or `ERROR` in production)
+4. **Set appropriate `GLOBAL_LOG_LEVEL`** (typically `WARNING` or `ERROR` in production)
 
 5. **Disable signup if not needed**:
    ```bash

@@ -1,7 +1,9 @@
 # Backend Architecture
 
+**Version:** 1.1  
+**Last Updated:** December 17, 2025  
 **Purpose:** Overview of LAMB backend structure, dual API design, and core components  
-**Related Docs:** `backend_completions_pipeline.md`, `backend_authentication.md`, `backend_organizations.md`
+**Related Docs:** `backend_completions_pipeline.md`, `backend_authentication.md`, `backend_organizations.md`, `lamb_architecture.md` (Section 17: Centralized Logging System)
 
 ---
 
@@ -476,28 +478,162 @@ async def get_assistant(id: int, request: Request):
 
 ---
 
-## Logging
+## Centralized Logging System
 
-### Configuration
+The LAMB backend implements a centralized logging system that provides unified, environment-based configuration for all logging operations.
+
+**See:** `lamb_architecture.md` Section 17 for comprehensive documentation.
+
+#### Basic Usage
 
 ```python
-import logging
+from lamb.logging_config import get_logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Get a logger for the current module
+logger = get_logger(__name__, component="MAIN")
 
-logger = logging.getLogger(__name__)
+# Use standard Python logging
+logger.info("Assistant created successfully")
+logger.debug("Processing request for user")
+logger.warning("Fallback model used")
+logger.error("Failed to connect to KB server")
 ```
 
-### Usage
+#### Supported Components
+
+| Component | Use Case | Environment Variable |
+|-----------|----------|----------------------|
+| MAIN | Main application logic | `MAIN_LOG_LEVEL` |
+| API | API endpoints and routers | `API_LOG_LEVEL` |
+| DB | Database operations | `DB_LOG_LEVEL` |
+| RAG | RAG pipeline operations | `RAG_LOG_LEVEL` |
+| EVALUATOR | Evaluation/grading components | `EVALUATOR_LOG_LEVEL` |
+| OWI | Open WebUI integration | `OWI_LOG_LEVEL` |
+
+#### Environment Configuration
+
+**Global Control (all components):**
+```bash
+GLOBAL_LOG_LEVEL=WARNING  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+```
+
+**Component-Specific Overrides (optional):**
+```bash
+GLOBAL_LOG_LEVEL=INFO      # Default for all components
+DB_LOG_LEVEL=DEBUG         # Override: Database logs at DEBUG
+RAG_LOG_LEVEL=DEBUG        # Override: RAG logs at DEBUG
+```
+
+#### Development Examples
+
+**Development (All DEBUG):**
+```bash
+GLOBAL_LOG_LEVEL=DEBUG
+```
+
+**Development (Selective Debugging):**
+```bash
+GLOBAL_LOG_LEVEL=INFO
+DB_LOG_LEVEL=DEBUG        # Only database logs at DEBUG
+API_LOG_LEVEL=DEBUG       # Only API logs at DEBUG
+```
+
+**Production (Clean Logs):**
+```bash
+GLOBAL_LOG_LEVEL=WARNING
+```
+
+**Production (Monitor Specific Issues):**
+```bash
+GLOBAL_LOG_LEVEL=WARNING
+OWI_LOG_LEVEL=INFO        # Watch OWI operations
+API_LOG_LEVEL=INFO        # Watch API operations
+```
+
+### Implementation Details
+
+#### Centralized Module
+
+**Location:** `/backend/lamb/logging_config.py`
+
+Provides:
+- Global log level configuration via `GLOBAL_LOG_LEVEL` environment variable
+- Component-specific log level overrides
+- `get_logger(name, component)` function for creating configured loggers
+
+#### Migration from Legacy System
+
+The legacy `Timelog` utility has been removed. Migration pattern:
 
 ```python
-logger.info(f"Creating assistant: {name}")
-logger.warning(f"Organization not found: {slug}")
-logger.error(f"Failed to update assistant: {e}")
-logger.debug(f"Config loaded: {config}")
+# Old code (REMOVED)
+from utils.timelog import Timelog
+Timelog("Processing message", 1)
+
+# New code
+from lamb.logging_config import get_logger
+logger = get_logger(__name__, component="MAIN")
+logger.info("Processing message")
+```
+
+**Migration Levels:**
+- `Timelog(msg, 1)` → `logger.info(msg)` (important messages)
+- `Timelog(msg, 2)` → `logger.debug(msg)` (detailed debugging)
+- `Timelog(msg, 3)` → `logger.debug(msg)` (very detailed information)
+
+### Best Practices
+
+1. **Use Component Categories:** Always specify the appropriate component when creating loggers
+   ```python
+   logger = get_logger(__name__, component="DB")  # Database operations
+   logger = get_logger(__name__, component="API") # API endpoints
+   ```
+
+2. **Environment-Based Configuration:** Avoid hardcoding log levels
+   ```bash
+   # Good: Set via environment
+   DB_LOG_LEVEL=DEBUG
+   
+   # Avoid: Hardcoding in code
+   logger.setLevel(logging.DEBUG)
+   ```
+
+3. **Structured Information:** Include relevant context in log messages
+   ```python
+   # Good: Include IDs, emails, etc.
+   logger.info(f"Assistant created: id={assistant_id}, owner={owner_email}")
+   
+   # Avoid: Vague messages
+   logger.info("Assistant created")
+   ```
+
+4. **Appropriate Log Levels:**
+   - `DEBUG` - Detailed information for diagnosing problems
+   - `INFO` - General informational messages about application operation
+   - `WARNING` - Something unexpected or configuration issue
+   - `ERROR` - Error that needs attention
+   - `CRITICAL` - Critical error that may prevent operation
+
+### Output
+
+All logs are written to **stdout** for proper container log aggregation. When running with Docker Compose, logs are captured and available via:
+
+```bash
+docker-compose logs -f lamb-backend
+```
+
+### Container Deployment
+
+In Docker containers, set log levels via environment variables:
+
+```yaml
+# docker-compose.yaml
+services:
+  lamb-backend:
+    environment:
+      GLOBAL_LOG_LEVEL: WARNING
+      DB_LOG_LEVEL: INFO
+      API_LOG_LEVEL: INFO
 ```
 
 ---
