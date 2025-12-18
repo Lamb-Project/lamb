@@ -1,6 +1,7 @@
 <script>
     import { writable } from 'svelte/store';
     import { onMount } from 'svelte';
+    import { marked } from 'marked';
     // Note: 'ai' and '@ai-sdk/openai' might not be strictly necessary if only using fetch
     // import { streamText } from 'ai'; 
     // import { openai } from '@ai-sdk/openai'; 
@@ -10,6 +11,7 @@
      * @property {string} id - Unique ID for the message
      * @property {('user'|'assistant')} role - Role of the message sender
      * @property {string} content - Content of the message
+        * @property {{ index: number; mime_type: string; image_base64: string; width?: number; height?: number }[]=} images - Optional generated images
      */
 
     /**
@@ -38,6 +40,7 @@
     let modelsError = $state(/** @type {string|null} */ (null));
     let isStreaming = $state(false);
     let chatContainer = $state(/** @type {HTMLElement | null} */(null)); // For autoscroll
+    let renderAssistantAsMarkdown = $state(false);
 
     // --- Helper Functions ---
     /**
@@ -69,6 +72,61 @@
         document.body.appendChild(link);
         link.click();
         link.remove();
+    }
+
+    /** @param {string} input */
+    function escapeHtml(input) {
+        return input
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    /** @param {string | null | undefined} href */
+    function isSafeHref(href) {
+        if (!href) return false;
+        const value = String(href).trim();
+        if (!value) return false;
+        if (value.startsWith('#')) return true;
+        if (value.startsWith('/')) return true;
+        if (value.startsWith('./') || value.startsWith('../')) return true;
+        if (/^https?:\/\//i.test(value)) return true;
+        if (/^mailto:/i.test(value)) return true;
+        return false;
+    }
+
+    const markdownRenderer = new marked.Renderer();
+    // Disallow unsafe link protocols.
+    /**
+     * @this {any}
+     * @param {{ href: string | null; title?: string | null; tokens?: any[] }} link
+     */
+    markdownRenderer.link = function (link) {
+        const href = link?.href ?? null;
+        const title = link?.title ?? null;
+        const text = this?.parser?.parseInline(link?.tokens ?? []) ?? '';
+
+        if (!isSafeHref(href)) {
+            return text;
+        }
+        const safeHref = String(href);
+        const safeTitle = title ? escapeHtml(String(title)) : '';
+        const attrs = [
+            `href="${escapeHtml(safeHref)}"`,
+            safeTitle ? `title="${safeTitle}"` : '',
+            'target="_blank"',
+            'rel="noopener noreferrer"'
+        ].filter(Boolean).join(' ');
+        return `<a ${attrs}>${text}</a>`;
+    };
+
+    /** @param {string} markdown */
+    function renderMarkdown(markdown) {
+        // Escape raw HTML in model output, then parse Markdown.
+        const escaped = escapeHtml(String(markdown ?? ''));
+        return String(marked.parse(escaped, { renderer: markdownRenderer }));
     }
 
     // --- API Calls ---
@@ -328,6 +386,14 @@
     <!-- Header / Model Selector -->
     <div class="p-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-700">Chat</h2>
+        <label class="flex items-center gap-2 text-xs text-gray-600">
+            <input
+                type="checkbox"
+                bind:checked={renderAssistantAsMarkdown}
+                class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Render assistant as Markdown</span>
+        </label>
         {#if false} <!-- Start: Hide model selector -->
         {#if isLoadingModels}
             <span class="text-sm text-gray-500">Loading models...</span>
@@ -390,8 +456,14 @@
                                 {/each}
                             </div>
                         {:else}
-                            <!-- Render plain text -->
-                            <p class="whitespace-pre-wrap">{message.content}</p>
+                            {#if message.role === 'assistant' && renderAssistantAsMarkdown}
+                                <div class="prose prose-sm max-w-none whitespace-normal">
+                                    {@html renderMarkdown(message.content)}
+                                </div>
+                            {:else}
+                                <!-- Render plain text -->
+                                <p class="whitespace-pre-wrap">{message.content}</p>
+                            {/if}
                         {/if}
                      {/if}
                 </div>
