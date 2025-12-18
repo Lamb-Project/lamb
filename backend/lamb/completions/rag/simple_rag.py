@@ -2,13 +2,17 @@ import logging
 import json
 import os
 import requests
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 
 logger = logging.getLogger(__name__)
 
-def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None) -> Dict[str, Any]:
+def rag_processor(
+    messages: List[Dict[str, Any]],
+    assistant: Assistant = None,
+    request: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Synchronous RAG processor that returns context from the knowledge base server
     using the last user message as a query.

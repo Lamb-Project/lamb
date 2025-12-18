@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 def rag_processor(
     messages: List[Dict[str, Any]],
-    assistant = None
+    assistant=None,
+    request: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Retrieve rubric and format as context (markdown or JSON)
@@ -20,6 +21,7 @@ def rag_processor(
     Args:
         messages: List of conversation messages
         assistant: Assistant object with metadata
+        request: Optional original request payload (unused by this processor)
 
     Returns:
         Dict with:
