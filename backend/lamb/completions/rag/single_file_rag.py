@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 import json
 import logging
@@ -8,7 +8,11 @@ import logging
 logger = logging.getLogger('lamb.completions.rag.single_file_rag')
 logger.setLevel(logging.WARNING)
 
-def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None) -> Dict[str, Any]:
+def rag_processor(
+    messages: List[Dict[str, Any]],
+    assistant: Assistant = None,
+    request: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     A RAG processor that returns the content of a single file as context.
     The file path should be specified in the assistant's metadata field under 'file_path'.
