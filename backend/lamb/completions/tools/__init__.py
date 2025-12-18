@@ -8,7 +8,12 @@
 #   - description: Human-readable description for the UI
 
 from .weather import get_weather, WEATHER_TOOL_SPEC
-from .moodle import get_moodle_courses, MOODLE_TOOL_SPEC
+from .moodle import (
+    get_moodle_courses,
+    get_moodle_assignments_status,
+    MOODLE_TOOL_SPEC,
+    MOODLE_ASSIGNMENTS_STATUS_TOOL_SPEC,
+)
 
 # Tool Registry - maps tool names to their specs and functions
 TOOL_REGISTRY = {
@@ -23,7 +28,13 @@ TOOL_REGISTRY = {
         "function": get_moodle_courses,
         "description": "Get user's enrolled courses from Moodle LMS",
         "category": "lms"
-    }
+    },
+    "moodle_assignments": {
+        "spec": MOODLE_ASSIGNMENTS_STATUS_TOOL_SPEC,
+        "function": get_moodle_assignments_status,
+        "description": "Get Moodle assignment status for a user (completed, due, missed)",
+        "category": "lms",
+    },
 }
 
 
@@ -85,6 +96,8 @@ __all__ = [
     'WEATHER_TOOL_SPEC',
     'get_moodle_courses',
     'MOODLE_TOOL_SPEC',
+    'get_moodle_assignments_status',
+    'MOODLE_ASSIGNMENTS_STATUS_TOOL_SPEC',
     'TOOL_REGISTRY',
     'get_tool_specs',
     'get_tool_function',

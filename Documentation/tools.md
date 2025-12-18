@@ -65,6 +65,25 @@ Implemented to use Moodle Web Services:
 - `get_moodle_courses(user_id)` - Calls Moodle API using `MOODLE_API_URL` + `MOODLE_TOKEN`
 - `get_moodle_courses_real()` - Helper that implements the actual API call
 
+### 2b. Moodle Assignments Status Tool (`/backend/lamb/completions/tools/moodle.py`)
+
+Implemented to retrieve assignment status (completed / due / missed) for a user across their enrolled courses:
+- `MOODLE_ASSIGNMENTS_STATUS_TOOL_SPEC` - OpenAI function specification
+- `get_moodle_assignments_status(user_id, days_past=30, days_future=30, limit=40)` -
+    - Fetches enrolled courses via `core_enrol_get_users_courses`
+    - Fetches assignments via `mod_assign_get_assignments`
+    - Fetches per-assignment submission status via `mod_assign_get_submission_status`
+    - Categorizes assignments into `completed`, `due`, and `missed`
+
+Requirements:
+- Set environment variables `MOODLE_API_URL` and `MOODLE_TOKEN` in the running environment
+- Moodle token must be permitted to call:
+    - `core_enrol_get_users_courses`
+    - `mod_assign_get_assignments`
+    - `mod_assign_get_submission_status`
+    - The tool expects the caller to provide a numeric Moodle user ID
+
+
 ### 3. API Endpoint (`/backend/lamb/completions/main.py`)
 
 Added `GET /lamb/v1/completions/tools` endpoint:
@@ -82,6 +101,11 @@ Response:
   ],
   "count": 2
 }
+```
+
+After adding the assignments tool, the endpoint should include something like:
+```json
+{"name": "moodle_assignments", "description": "Get Moodle assignment status for a user (completed, due, missed)", "category": "lms", "function_name": "get_moodle_assignments_status"}
 ```
 
 ---
