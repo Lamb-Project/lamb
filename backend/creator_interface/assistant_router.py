@@ -13,7 +13,6 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.assistant_router import update_assistant as core_update_assistant, get_assistant_with_publication as core_get_assistant_with_publication, soft_delete_assistant as core_soft_delete_assistant
 from lamb.organization_router import get_organization_assistant_defaults as core_get_assistant_defaults, update_organization_assistant_defaults as core_update_assistant_defaults
 from typing import Optional, List, Dict, Any, Tuple, Union
-import logging
 import re
 from .openai_connect import OpenAIConnector
 import json
@@ -25,6 +24,7 @@ from lamb.lamb_classes import Assistant
 from datetime import datetime
 import config
 from utils.name_sanitizer import sanitize_assistant_name_with_prefix
+from lamb.logging_config import get_logger
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -128,20 +128,8 @@ class PublishRequest(BaseModel):
 
 # --- End Pydantic Models --- #
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-# Set specific loggers to a higher level to reduce verbosity
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('httpcore').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logging.getLogger('lamb.owi_bridge.owi_users').setLevel(logging.INFO)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# Set up logger for assistant router
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()

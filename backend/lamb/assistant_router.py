@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import ValidationError, BaseModel
 from utils.pipelines.auth import get_current_user
-import logging
 import os
 from fastapi.responses import FileResponse, JSONResponse
 from .database_manager import LambDatabaseManager
@@ -11,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from config import API_KEY  # Import API_KEY from config
 import config
+from lamb.logging_config import get_logger
 from .owi_bridge.owi_group import OwiGroupManager
 from .owi_bridge.owi_users import OwiUserManager
 from .owi_bridge.owi_model import OWIModel
@@ -56,8 +56,8 @@ class AssistantListResponse(BaseModel):
 
 db_manager = LambDatabaseManager()
 
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__) # Define logger here
+# Set up logger for assistant router
+logger = get_logger(__name__, component="API")
 
 assistant_router = APIRouter(tags=["Assistants"])
 templates = Jinja2Templates(directory="lamb/templates")

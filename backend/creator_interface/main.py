@@ -17,18 +17,13 @@ from lamb.owi_bridge.owi_users import OwiUserManager
 from .assistant_router import router as assistant_router, get_creator_user_from_token
 from .knowledges_router import router as knowledges_router
 import json
-import logging
 import shutil
 from pydantic import BaseModel, EmailStr
 from fastapi import Body  # Import Body for request body definitions
+from lamb.logging_config import get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+# Set up logger for creator interface
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()

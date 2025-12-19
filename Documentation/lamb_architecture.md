@@ -4252,6 +4252,185 @@ API_LOG_LEVEL=INFO        # Watch API operations
 OWI_LOG_LEVEL=DEBUG       # Debug OWI integration issues
 ```
 
+### 17.6 Implementation Details
+
+#### 17.6.1 Core Configuration Module
+
+**Source Code Reference:**
+```python
+# backend/lamb/logging_config.py
+import os
+import sys
+import logging
+
+# Supported log levels
+_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
+
+# Global level from environment (default: WARNING)
+GLOBAL_LOG_LEVEL = os.environ.get("GLOBAL_LOG_LEVEL", "WARNING").upper()
+if GLOBAL_LOG_LEVEL not in _LOG_LEVELS:
+    GLOBAL_LOG_LEVEL = "WARNING"
+
+# Configure root logging once to stdout; force=True to override prior configs
+logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL, force=True)
+
+# Component-specific levels (override via env)
+_LOG_SOURCES = ["MAIN", "API", "DB", "RAG", "EVALUATOR", "OWI"]
+
+SRC_LOG_LEVELS: dict[str, str] = {}
+for source in _LOG_SOURCES:
+    env_var = f"{source}_LOG_LEVEL"
+    level = os.environ.get(env_var, "").upper()
+    if level not in _LOG_LEVELS:
+        level = GLOBAL_LOG_LEVEL
+    SRC_LOG_LEVELS[source] = level
+
+def get_logger(name: str, component: str = "MAIN") -> logging.Logger:
+    """Return a module logger configured for the given component.
+
+    The component level is taken from SRC_LOG_LEVELS; defaults to GLOBAL.
+    """
+    logger = logging.getLogger(name)
+    level = SRC_LOG_LEVELS.get(component, GLOBAL_LOG_LEVEL)
+    logger.setLevel(level)
+    return logger
+```
+
+#### 17.6.2 Recent Changes (Issue #149)
+
+**Pull Request #153** implemented centralized logging configuration and removed the legacy Timelog utility:
+
+**Changes Made:**
+- ✅ Added `backend/lamb/logging_config.py` - Centralized logging configuration module
+- ✅ Removed `backend/utils/timelog.py` - Legacy Timelog utility completely removed
+- ✅ Updated all backend modules to use `get_logger()` from centralized config
+- ✅ Updated documentation to reflect new logging system
+
+**Migration Pattern:**
+```python
+# Before (Legacy Timelog - REMOVED)
+from utils.timelog import Timelog
+Timelog("Processing message", 1)
+
+# After (New Centralized Logging)
+from lamb.logging_config import get_logger
+logger = get_logger(__name__, component="MAIN")
+logger.info("Processing message")
+```
+
+### 17.7 Troubleshooting
+
+#### 17.7.1 Common Issues
+
+**Logs Not Appearing:**
+```bash
+# Check environment variable is set correctly
+echo $GLOBAL_LOG_LEVEL
+
+# Verify logger creation
+logger = get_logger(__name__, component="MAIN")
+logger.info("Test message")  # Should appear in stdout
+```
+
+**Component Logs Not Working:**
+```bash
+# Check component-specific variable
+echo $DB_LOG_LEVEL  # Should be DEBUG/INFO/etc. if set
+
+# Verify component name is correct
+logger = get_logger(__name__, component="DB")  # Not "DATABASE"
+```
+
+**Invalid Log Level:**
+```bash
+# These are valid: DEBUG, INFO, WARNING, ERROR, CRITICAL
+GLOBAL_LOG_LEVEL=INVALID  # Will fallback to WARNING
+```
+
+#### 17.7.2 Container Deployment
+
+**Docker Compose Logging:**
+```yaml
+# docker-compose.yaml
+services:
+  lamb-backend:
+    environment:
+      - GLOBAL_LOG_LEVEL=INFO
+      - DB_LOG_LEVEL=DEBUG
+      - API_LOG_LEVEL=DEBUG
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+**View Container Logs:**
+```bash
+# View all backend logs
+docker-compose logs -f lamb-backend
+
+# View specific service logs
+docker logs lamb-backend-1
+```
+
+### 17.8 Integration Examples
+
+#### 17.8.1 Database Operations
+```python
+# backend/lamb/database_manager.py
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="DB")
+
+def execute_query(query, params=None):
+    logger.debug(f"Executing query: {query}")
+    try:
+        result = self.db.execute(query, params)
+        logger.debug(f"Query returned {len(result)} rows")
+        return result
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise
+```
+
+#### 17.8.2 API Endpoints
+```python
+# backend/creator_interface/main.py
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="API")
+
+@app.get("/assistants")
+async def list_assistants(request: Request):
+    logger.info("Listing assistants for user")
+    try:
+        assistants = await get_user_assistants(request)
+        logger.debug(f"Found {len(assistants)} assistants")
+        return assistants
+    except Exception as e:
+        logger.error(f"Failed to list assistants: {e}")
+        raise
+```
+
+#### 17.8.3 RAG Pipeline
+```python
+# backend/lamb/completions/rag/simple_rag.py
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="RAG")
+
+def retrieve_documents(query, collection_id):
+    logger.debug(f"RAG retrieval for query: {query[:50]}...")
+    try:
+        docs = self.vector_store.search(query, limit=10)
+        logger.info(f"Retrieved {len(docs)} documents for RAG")
+        return docs
+    except Exception as e:
+        logger.error(f"RAG retrieval failed: {e}")
+        raise
+```
+
 ## 18. Frontend UX Patterns & Best Practices
 
 ### 18.1 Form Dirty State Tracking

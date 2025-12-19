@@ -7,7 +7,6 @@ import importlib
 import os
 import glob
 import requests
-import logging
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
@@ -15,16 +14,7 @@ import traceback
 import asyncio
 
 # Set up logger for completions module
-logger = get_logger('lamb.completions', component="MAIN")
-logger.setLevel(logging.INFO)
-
-# Create handler if none exists
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+logger = get_logger('lamb.completions', component="API")
 
 router = APIRouter(tags=["completions"])
 security = HTTPBearer()
@@ -262,7 +252,7 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
             elif plugin_type == 'rag' and hasattr(module, 'rag_processor'):
                 plugins[module_name] = module.rag_processor
         except Exception as e:
-            print(f"Error loading plugin {module_name}: {str(e)}")            
+            logger.error(f"Error loading plugin {module_name}: {str(e)}")            
     return plugins
 
 

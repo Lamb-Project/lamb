@@ -1,12 +1,12 @@
-import logging
 import json
 import os
 import requests
 from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="RAG")
 
 async def _generate_optimal_query(messages: List[Dict[str, Any]], assistant: Assistant) -> str:
     """
@@ -94,15 +94,14 @@ OPTIMAL QUERY:"""
         ]
         
         logger.info("🔍 Generating optimal query using small-fast-model...")
-        print("\n===== QUERY OPTIMIZATION =====")
-        print(f"Conversation context: {len(recent_messages)} messages")
-        
+        logger.debug(f"Query optimization context: {len(recent_messages)} messages")
+
         response = await invoke_small_fast_model(
             messages=enhancement_messages,
             assistant_owner=assistant.owner,
             stream=False
         )
-        
+
         # Extract the optimized query from response
         optimized_query = ""
         if isinstance(response, dict):
@@ -110,11 +109,10 @@ OPTIMAL QUERY:"""
                 optimized_query = response['choices'][0]['message']['content'].strip()
             elif 'message' in response:
                 optimized_query = response['message'].get('content', '').strip()
-        
+
         if optimized_query:
             logger.info(f"✅ Optimized query generated: {optimized_query[:100]}...")
-            print(f"Optimized query: {optimized_query}")
-            print("==============================\n")
+            logger.debug(f"Full optimized query: {optimized_query}")
             return optimized_query
         else:
             logger.warning("Empty response from small-fast-model, falling back to last user message")
@@ -130,7 +128,6 @@ OPTIMAL QUERY:"""
             
     except Exception as e:
         logger.error(f"Error generating optimal query: {e}", exc_info=True)
-        print(f"❌ Query optimization failed: {e}")
         # Fallback: return last user message
         for msg in reversed(messages):
             if msg.get("role") == "user":
@@ -155,16 +152,16 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     logger.info("Using context_aware_rag processor with assistant: %s", assistant.name if assistant else "None")
     
     # Print the messages passed to the processor
-    print("\n===== MESSAGES =====\n")
+    logger.debug("=== MESSAGES ===")
     try:
-        print(f"Messages count: {len(messages)}")
-        print(json.dumps(messages, indent=2))
+        logger.debug(f"Messages count: {len(messages)}")
+        logger.debug(f"Messages content: {json.dumps(messages, indent=2)}")
     except Exception as e:
-        print(f"Error printing messages: {str(e)}")
-        print(f"Messages type: {type(messages)}")
+        logger.debug(f"Error logging messages: {str(e)}")
+        logger.debug(f"Messages type: {type(messages)}")
         for i, msg in enumerate(messages):
-            print(f"Message {i+1}: {msg}")
-    print("\n=====\n")
+            logger.debug(f"Message {i+1}: {msg}")
+    logger.debug("=== END MESSAGES ===")
     
     # Create a JSON-serializable dictionary from the assistant
     assistant_dict = {}
@@ -181,11 +178,11 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                     logger.debug(f"Cannot serialize {key}: {str(e)}")
                     assistant_dict[key] = str(value)
     
-    # Print the assistant dictionary
-    print(f"\nAssistant Dictionary: {json.dumps(assistant_dict, indent=2)}\n")
-    
+    # Log the assistant dictionary
+    logger.debug(f"Assistant Dictionary: {json.dumps(assistant_dict, indent=2)}")
+
     # Generate optimal query from full conversation context
-    print("\n🧠 Analyzing conversation context for optimal query generation...")
+    logger.info("Analyzing conversation context for optimal query generation...")
     optimal_query = await _generate_optimal_query(messages, assistant)
     
     if not optimal_query:
@@ -200,12 +197,12 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                     optimal_query = content
                 break
     
-    print(f"\n📝 Query for RAG retrieval: {optimal_query}\n")
-    
+    logger.info(f"Query for RAG retrieval: {optimal_query}")
+
     # Check if we have what we need to make a query
     if not assistant or not hasattr(assistant, 'RAG_collections') or not assistant.RAG_collections:
         error_message = "No RAG collections specified in the assistant configuration"
-        print(f"Error: {error_message}")
+        logger.error(f"RAG processing failed: {error_message}")
         return {
             "context": error_message,
             "sources": [],
@@ -214,7 +211,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     
     if not optimal_query:
         error_message = "No query could be generated from the conversation"
-        print(f"Error: {error_message}")
+        logger.error(f"RAG processing failed: {error_message}")
         return {
             "context": error_message,
             "sources": [],
@@ -225,7 +222,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     collections = assistant.RAG_collections.split(',')
     if not collections:
         error_message = "RAG_collections is empty or improperly formatted"
-        print(f"Error: {error_message}")
+        logger.error(f"RAG processing failed: {error_message}")
         return {
             "context": error_message,
             "sources": [],
@@ -234,7 +231,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     
     # Clean up collection IDs
     collections = [cid.strip() for cid in collections if cid.strip()]
-    print(f"Found {len(collections)} collections: {collections}")
+    logger.info(f"Found {len(collections)} collections: {collections}")
     
     # Get the top_k value or use a default
     top_k = getattr(assistant, 'RAG_Top_k', 3)
@@ -255,13 +252,13 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
             KB_SERVER_URL = kb_config.get("server_url")
             KB_API_KEY = kb_config.get("api_token")
             config_source = "organization"
-            print(f"🏢 [RAG/KB] Using organization: '{org_name}' (owner: {assistant.owner})")
+            logger.info(f"Using organization: '{org_name}' (owner: {assistant.owner})")
             logger.info(f"Using organization KB config for {assistant.owner} (org: {org_name})")
         else:
-            print(f"⚠️  [RAG/KB] No config found for organization '{org_name}', falling back to environment variables")
+            logger.warning(f"No config found for organization '{org_name}', falling back to environment variables")
             logger.warning(f"No KB config found for {assistant.owner} (org: {org_name}), falling back to env vars")
     except Exception as e:
-        print(f"❌ [RAG/KB] Error getting organization config for {assistant.owner}: {e}")
+        logger.error(f"Error getting organization config for {assistant.owner}: {e}")
         logger.error(f"Error getting org KB config for {assistant.owner}: {e}, falling back to env vars")
     
     # Fallback to environment variables

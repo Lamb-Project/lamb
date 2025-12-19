@@ -636,6 +636,48 @@ services:
       API_LOG_LEVEL: INFO
 ```
 
+### Recent Changes (Issue #149)
+
+**Pull Request #153** - Centralized Logging Configuration:
+
+- **Added:** `backend/lamb/logging_config.py` - Single source of truth for all logging
+- **Removed:** `backend/utils/timelog.py` - Legacy utility completely removed
+- **Updated:** All backend modules migrated to use centralized logging
+- **Benefits:** Environment-based configuration, component-specific overrides, container-friendly stdout logging
+
+### Troubleshooting Logging
+
+**Logs Not Appearing?**
+```bash
+# Check environment variables
+echo $GLOBAL_LOG_LEVEL  # Should be set (default: WARNING)
+
+# Test logging in Python REPL
+python3 -c "
+from lamb.logging_config import get_logger
+logger = get_logger('test', 'MAIN')
+logger.info('Test message')
+"
+```
+
+**Component-Specific Logs Not Working?**
+```bash
+# Check component variables
+echo $DB_LOG_LEVEL      # Should be DEBUG/INFO/etc.
+echo $API_LOG_LEVEL     # Should be DEBUG/INFO/etc.
+
+# Valid component names: MAIN, API, DB, RAG, EVALUATOR, OWI
+```
+
+**Container Logs:**
+```bash
+# View backend logs
+docker-compose logs -f lamb-backend
+
+# View specific container
+docker logs lamb-backend-1
+```
+
 ---
 
 ## Development Workflow

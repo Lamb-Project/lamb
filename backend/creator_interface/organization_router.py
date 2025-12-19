@@ -8,13 +8,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import httpx
-import logging
 import json
 import time
 from datetime import datetime
 from .assistant_router import get_creator_user_from_token, is_admin_user
 import config
 from lamb.database_manager import LambDatabaseManager
+from lamb.logging_config import get_logger
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.organization_router import (
     create_organization as core_create_organization,
@@ -37,8 +37,8 @@ security = HTTPBearer()
 # Initialize database manager
 db_manager = LambDatabaseManager()
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Set up logger for organization router
+logger = get_logger(__name__, component="API")
 
 # Get configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests

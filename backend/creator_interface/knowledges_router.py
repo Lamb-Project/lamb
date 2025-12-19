@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.database_manager import LambDatabaseManager
 from typing import Optional, List, Dict, Any, Union
-import logging
 import json
 import time
 from pydantic import BaseModel, Field
 from .assistant_router import get_creator_user_from_token
+from lamb.logging_config import get_logger
 from io import BytesIO
 from .knowledgebase_classes import (
     KnowledgeBaseMetadata, KnowledgeBaseCreate, KnowledgeBaseUpdate,
@@ -156,19 +156,8 @@ class ErrorResponseDetail(BaseModel):
 
 # --- End Pydantic Models --- #
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-# Set specific loggers to a higher level to reduce verbosity
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('httpcore').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# Set up logger for knowledges router
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()
