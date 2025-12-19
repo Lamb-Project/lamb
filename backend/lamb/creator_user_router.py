@@ -1,17 +1,15 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Header
 from pydantic import BaseModel, EmailStr
-import logging
 from typing import Optional, List, Dict, Any
 from .database_manager import LambDatabaseManager
 import os
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.templating import Jinja2Templates
 from config import API_KEY  # Import API_KEY from config
+from lamb.logging_config import get_logger
 
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Set up logger for creator user router
+logger = get_logger(__name__, component="API")
 
 router = APIRouter()
 db_manager = LambDatabaseManager()

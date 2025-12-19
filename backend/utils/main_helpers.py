@@ -1,6 +1,9 @@
 import json
 from fastapi import HTTPException, status
 import lamb.database_manager as db_manager
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="API")
 
 def completions_get_form_data(body_str: str):
     """
@@ -13,14 +16,13 @@ def completions_get_form_data(body_str: str):
     Args:
         request: The request object containing form data.
     """
-    print("\n=== Starting Chat Completion Request ===")
-    # print(f"\nRaw request body: {body_str}")
+    logger.debug("Starting Chat Completion Request")
     # Parse the JSON body manually
     try:
         form_data = json.loads(body_str)
-        print("\nParsed JSON data:", json.dumps(form_data, indent=2))
+        logger.debug(f"Parsed JSON data: {json.dumps(form_data, indent=2)}")
     except json.JSONDecodeError as e:
-        print(f"\nError parsing JSON: {str(e)}")
+        logger.error(f"Error parsing JSON: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid JSON: {str(e)}"
@@ -29,7 +31,7 @@ def completions_get_form_data(body_str: str):
     # Validate required fields - now either 'messages' or 'prompt' is required
     if 'model' not in form_data:
         error_msg = "Missing required field: model"
-        print(f"\nValidation error: {error_msg}")
+        logger.error(f"Validation error: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=error_msg
@@ -59,10 +61,9 @@ def completions_get_form_data(body_str: str):
             detail=error_msg
         )
     _validate_messages(form_data['messages'])
-    
 
-    print("\nREQUEST Form data:", json.dumps(form_data, indent=2))
-    
+    logger.debug(f"REQUEST Form data: {json.dumps(form_data, indent=2)}")
+
     return form_data
 
 
@@ -70,7 +71,7 @@ def _validate_messages(messages):
     for msg in messages:
         if not isinstance(msg, dict) or 'role' not in msg or 'content' not in msg:
             error_msg = "Invalid message format. Each message must have 'role' and 'content'"
-            print(f"\nValidation error: {error_msg}")
+            logger.error(f"Validation error: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
@@ -82,12 +83,12 @@ def helper_get_assistant_id(model: str):
     It can either be the assistant ID or the assistant name.
     """
     db = db_manager.LambDatabaseManager()
-    print(f"Getting assistant ID for model: {model}")
+    logger.debug(f"Getting assistant ID for model: {model}")
     # Remove "lamb_assistant." prefix if present
     if model.startswith("lamb_assistant."):
         model = model[15:]  # Remove "lamb_assistant." prefix
     assistant = db.get_assistant_by_id(model)
-    print(f"try AS ID Assistant: {assistant}")
+    logger.debug(f"try AS ID Assistant: {assistant}")
     if assistant:
         return assistant.id
     else:
@@ -95,7 +96,7 @@ def helper_get_assistant_id(model: str):
         if model.startswith("LAMB:"):
             model = model[5:]  # Remove first 5 characters ("LAMB:")
         assistant = db.get_assistant_by_name(model)
-        print(f"try AS NAME Assistant: {assistant}")
+        logger.debug(f"try AS NAME Assistant: {assistant}")
         if assistant: 
             return assistant.id
         else:
@@ -109,7 +110,7 @@ def helper_get_all_assistants(filter_deleted: bool = False):
     Get all assistants from the database.
     If filter_deleted is True, it will exclude deleted assistants.
     """
-    print(f"Getting all assistants with filter_deleted: {filter_deleted}")
+    logger.debug(f"Getting all assistants with filter_deleted: {filter_deleted}")
     db = db_manager.LambDatabaseManager()
     assistants = db.get_list_of_assitants_id_and_name()
     if filter_deleted:
@@ -118,9 +119,9 @@ def helper_get_all_assistants(filter_deleted: bool = False):
         for assistant in unfiltered_assistants:
             if assistant.get("owner") != "deleted_assistant@owi.com":
                 assistants.append(assistant)
-                print(f"Including assistant: {assistant.get('name')}, owner: {assistant.get('owner')}")
+                logger.debug(f"Including assistant: {assistant.get('name')}, owner: {assistant.get('owner')}")
             else:
-                print(f"Excluding deleted assistant: {assistant.get('name')}")
+                logger.debug(f"Excluding deleted assistant: {assistant.get('name')}")
     return assistants
 
 

@@ -129,12 +129,21 @@ This document lists all violations of the centralized logging standard implement
 3. `backend/creator_interface/organization_router.py` ✅ FIXED
 4. `backend/lamb/assistant_router.py` ✅ FIXED
 
-### Low Priority (Utilities/Debug) - PARTIALLY COMPLETED:
+### Low Priority (Utilities/Debug) - SIGNIFICANTLY COMPLETED:
 1. `backend/lamb/completions/rag/simple_rag.py` ✅ FIXED (20+ print statements converted)
 2. `backend/lamb/completions/rag/context_aware_rag.py` ✅ FIXED (15+ print statements converted)
-3. RAG debugging print statements (remaining)
-4. Test files
-5. Utility scripts
+3. `backend/utils/main_helpers.py` ✅ FIXED (16 print statements converted to structured logging)
+4. `backend/creator_interface/user_creator.py` ✅ FIXED (20 print statements converted to structured logging)
+5. RAG debugging print statements (remaining)
+6. Test files
+7. Utility scripts
+
+### Additional Files Fixed:
+- `backend/lamb/completions/connectors/ollama.py` ✅ FIXED (removed manual basicConfig)
+- `backend/lamb/database_manager.py` ✅ FIXED (removed manual basicConfig)
+- `backend/lamb/owi_bridge/owi_users.py` ✅ FIXED (removed manual logger setup)
+- `backend/lamb/creator_user_router.py` ✅ FIXED (removed manual basicConfig)
+- `backend/lamb/completions/connectors/openai.py` ✅ FIXED (removed redundant print statements, fixed multimodal logger)
 
 ## Summary
 

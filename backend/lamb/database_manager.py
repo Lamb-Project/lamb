@@ -17,7 +17,6 @@ When working with this code:
 
 import sqlite3
 import os
-import logging
 from .lamb_classes import Assistant, LTIUser, Organization, OrganizationRole
 import json
 import time
@@ -26,9 +25,11 @@ from dotenv import load_dotenv
 from .owi_bridge.owi_users import OwiUserManager
 import jwt
 import config
+from lamb.logging_config import get_logger
 
 
-logging.basicConfig(level=logging.INFO)
+# Set up logger for database operations
+logger = get_logger(__name__, component="DB")
 
 
 class LambDatabaseManager:
