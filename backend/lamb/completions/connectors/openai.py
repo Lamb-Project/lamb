@@ -11,7 +11,7 @@ from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, Au
 from lamb.logging_config import get_logger
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 
-logger = get_logger(__name__, component="MAIN")
+logger = get_logger(__name__, component="API")
 
 # Set up multimodal logging using centralized config
 multimodal_logger = get_logger('multimodal.openai', component="API")
