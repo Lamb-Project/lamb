@@ -36,6 +36,13 @@ load_dotenv()
 # Get environment variables
 SIGNUP_ENABLED = os.getenv('SIGNUP_ENABLED', 'false').lower() == 'true'
 SIGNUP_SECRET_KEY = os.getenv('SIGNUP_SECRET_KEY')
+LAMB_NEWS_HOME = os.getenv('LAMB_NEWS_HOME', 'https://lamb-project.org/news/')
+LAMB_NEWS_DEFAULT_LANG = os.getenv('LAMB_NEWS_DEFAULT_LANG', 'en')
+
+# Cache configuration
+NEWS_CACHE_DIR = Path(__file__).parent.parent / 'static' / 'cache' / 'news'
+NEWS_CACHE_TIMEOUT = 5.0  # Timeout in seconds for fetching from origin
+
 # Note: LAMB_WEB_HOST, LAMB_BACKEND_HOST, and LAMB_BEARER_TOKEN are configured in config.py
 # Other modules import from config module instead of reading these directly
 
@@ -191,10 +198,42 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
 
+class NewsResponse(BaseModel):
+    success: bool = True
+    content: str
+    lang: str
+
 # --- End Pydantic Models ---
 
 
+# --- Cache Utility Functions ---
 
+def get_cache_file_path(lang: str) -> Path:
+    """Get the cache file path for a specific language."""
+    return NEWS_CACHE_DIR / f"{lang}.md"
+
+def read_from_cache(lang: str) -> Optional[str]:
+    """Read cached news content for a language."""
+    cache_file = get_cache_file_path(lang)
+    try:
+        if cache_file.exists():
+            logger.info(f"Reading cached news for language '{lang}'")
+            return cache_file.read_text(encoding='utf-8')
+    except Exception as e:
+        logger.warning(f"Failed to read cache for language '{lang}': {e}")
+    return None
+
+def write_to_cache(lang: str, content: str) -> bool:
+    """Write news content to cache for a language."""
+    try:
+        NEWS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file = get_cache_file_path(lang)
+        cache_file.write_text(content, encoding='utf-8')
+        logger.info(f"Cached news for language '{lang}'")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write cache for language '{lang}': {e}")
+        return False
 
 
 @router.post(
@@ -1751,3 +1790,145 @@ async def get_current_user(request: Request):
     except Exception as e:
         logger.error(f"Error getting current user: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/news/{lang}",
+    tags=["News"],
+    summary="Get News Content by Language",
+    description="""Fetches news content from a remote markdown file based on the specified language.
+
+Supported languages: en, es, ca, eu (and other language codes)
+
+The content is fetched from: LAMB_NEWS_HOME/{lang}.md
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/news/es' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "content": "# LAMB News\\n\\nWelcome to LAMB...",
+  "lang": "es"
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    response_model=NewsResponse,
+    responses={
+        200: {"model": NewsResponse, "description": "News content retrieved successfully"},
+        404: {"model": ErrorResponse, "description": "News file not found for specified language"},
+        500: {"model": ErrorResponse, "description": "Server error while fetching news"},
+    },
+)
+async def get_news(lang: str):
+    """Get news content for a specific language from remote source with caching fallback"""
+    try:
+        # Validate language parameter (basic validation)
+        if not lang or not lang.isalnum() or len(lang) > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid language code. Must be alphanumeric and max 10 characters."
+            )
+
+        # Construct the remote URL
+        news_url = f"{LAMB_NEWS_HOME.rstrip('/')}/news_{lang}.md"
+
+        # Try to fetch from origin with timeout
+        try:
+            logger.info(f"Fetching news from origin: {news_url}")
+            async with httpx.AsyncClient(timeout=NEWS_CACHE_TIMEOUT) as client:
+                response = await client.get(news_url)
+
+                if response.status_code == 404:
+                    logger.warning(f"News content not found for language '{lang}' at origin URL: {news_url}")
+                    # Origin doesn't have this language, try cache
+                    cached_content = read_from_cache(lang)
+                    if cached_content is not None:
+                        logger.info(f"Using cached news for language '{lang}'")
+                        return {
+                            "success": True,
+                            "content": cached_content,
+                            "lang": lang
+                        }
+                    else:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"News content not found for language '{lang}'. No cached version available."
+                        )
+                elif not response.is_success:
+                    logger.error(f"Failed to fetch news from origin URL {news_url}: HTTP {response.status_code}")
+                    # Origin failed, try cache
+                    cached_content = read_from_cache(lang)
+                    if cached_content is not None:
+                        logger.info(f"Using cached news for language '{lang}' due to origin failure")
+                        return {
+                            "success": True,
+                            "content": cached_content,
+                            "lang": lang
+                        }
+                    else:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to fetch news content from origin (HTTP {response.status_code}) and no cached version available."
+                        )
+
+                # Get the content from origin
+                content = response.text
+
+                if not content or not content.strip():
+                    logger.warning(f"Empty news content received for language '{lang}' from origin URL {news_url}")
+                    # Try cache instead
+                    cached_content = read_from_cache(lang)
+                    if cached_content is not None:
+                        logger.info(f"Using cached news for language '{lang}' due to empty origin response")
+                        return {
+                            "success": True,
+                            "content": cached_content,
+                            "lang": lang
+                        }
+                    else:
+                        # Return empty content rather than error for better UX
+                        content = ""
+
+                # Successfully fetched from origin, cache it
+                if content and write_to_cache(lang, content):
+                    logger.info(f"Cached fresh news content for language '{lang}'")
+
+                logger.info(f"Successfully fetched news content for language '{lang}' from origin URL {news_url} ({len(content)} characters)")
+
+                return {
+                    "success": True,
+                    "content": content,
+                    "lang": lang
+                }
+
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as network_error:
+            logger.warning(f"Network error fetching news from origin URL {news_url} for language '{lang}': {network_error}")
+            # Origin timed out or network error, try cache
+            cached_content = read_from_cache(lang)
+            if cached_content is not None:
+                logger.info(f"Using cached news for language '{lang}' due to network error")
+                return {
+                    "success": True,
+                    "content": cached_content,
+                    "lang": lang
+                }
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Unable to fetch news content from origin (network timeout/error) and no cached version available for language '{lang}'."
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error fetching news for language '{lang}': {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error while fetching news: {str(e)}"
+        )

@@ -6,6 +6,8 @@
 	import { user } from '$lib/stores/userStore';
 	import { onMount } from 'svelte';
 	import { marked } from 'marked';
+	import { getApiUrl } from '$lib/config';
+	import { locale } from '$lib/i18n';
 	// import { _ } from 'svelte-i18n'; // Restore later
 	// onMount(() => { // Needed for i18n
 
@@ -21,38 +23,110 @@
 		}
 	});
 
-	onMount(async () => {
-		if ($user.isLoggedIn) {
-			try {
-				// Build the fetch URL - the news file is always at /static/md/lamb-news.md
-				const newsUrl = `${base}/static/md/lamb-news.md`;
-				console.log('Fetching news from:', newsUrl);
-				
-				const response = await fetch(newsUrl);
-				console.log('News fetch response status:', response.status);
-				
-				if (response.ok) {
-					const markdown = await response.text();
-					console.log('News markdown length:', markdown.length);
-					
-					if (markdown && markdown.trim()) {
-						newsContent = String(marked.parse(markdown));
+	// Function to load news content
+	async function loadNews() {
+		if (!$user.isLoggedIn) {
+			isLoadingNews = false;
+			return;
+		}
+
+		try {
+			isLoadingNews = true;
+			// Get current language from the locale store
+			const currentLang = $locale || 'en'; // Default to 'en' if no locale set (backend handles default language)
+			console.log('Loading news for language:', currentLang);
+
+			// Build the API URL for news endpoint
+			const newsUrl = getApiUrl(`news/${currentLang}`);
+			console.log('Fetching news from API:', newsUrl);
+
+			// Include authorization header for the API call
+			const response = await fetch(newsUrl, {
+				headers: {
+					'Authorization': `Bearer ${$user.token}`,
+					'Content-Type': 'application/json'
+				}
+			});
+			console.log('News API response status:', response.status);
+
+			if (response.ok) {
+				const data = await response.json();
+				console.log('News API response:', data);
+
+				if (data.success && data.content && data.content.trim()) {
+					newsContent = String(marked.parse(data.content));
+					console.log('News content rendered successfully');
+				} else {
+					console.warn('News API returned empty content');
+					newsContent = '<p>No news content available.</p>';
+				}
+			} else if (response.status === 404) {
+				console.warn('News not found for current language, trying fallback to English');
+				// Try fallback to English if current language doesn't have news
+				const fallbackUrl = getApiUrl('news/en');
+				const fallbackResponse = await fetch(fallbackUrl, {
+					headers: {
+						'Authorization': `Bearer ${$user.token}`,
+						'Content-Type': 'application/json'
+					}
+				});
+
+				if (fallbackResponse.ok) {
+					const fallbackData = await fallbackResponse.json();
+					if (fallbackData.success && fallbackData.content && fallbackData.content.trim()) {
+						newsContent = String(marked.parse(fallbackData.content));
+						console.log('News fallback to English successful');
 					} else {
-						console.warn('News markdown is empty');
 						newsContent = '<p>No news content available.</p>';
 					}
 				} else {
-					newsContent = '<p>Error loading news. Please try again later.</p>';
-					console.error('Failed to fetch lamb-news.md:', response.status, response.statusText);
+					newsContent = '<p>No news content available for your language.</p>';
 				}
-			} catch (error) {
-				newsContent = '<p>Error loading news. Please try again later.</p>';
-				console.error('Error fetching lamb-news.md:', error);
-			} finally {
-				isLoadingNews = false;
+			} else if (response.status === 503) {
+				// Service unavailable - likely using cache due to origin timeout
+				try {
+					const cacheData = await response.json();
+					if (cacheData.success && cacheData.content) {
+						newsContent = String(marked.parse(cacheData.content));
+						console.log('Using cached news due to origin timeout');
+					} else {
+						newsContent = '<p>News service temporarily unavailable.</p>';
+					}
+				} catch (e) {
+					newsContent = '<p>News service temporarily unavailable.</p>';
+				}
+			} else {
+				let errorMessage = 'Error loading news. Please try again later.';
+				try {
+					const errorData = await response.json();
+					if (errorData.error) {
+						errorMessage = `Error: ${errorData.error}`;
+					}
+				} catch (e) {
+					// Ignore JSON parsing errors
+				}
+				newsContent = `<p>${errorMessage}</p>`;
+				console.error('Failed to fetch news from API:', response.status, response.statusText);
 			}
-		} else {
-			isLoadingNews = false; // Not logged in, no need to load news
+		} catch (error) {
+			newsContent = '<p>Error loading news. Please try again later.</p>';
+			console.error('Error fetching news from API:', error);
+		} finally {
+			isLoadingNews = false;
+		}
+	}
+
+	// Load news when component mounts
+	onMount(async () => {
+		await loadNews();
+	});
+
+	// Reload news when language changes
+	$effect(() => {
+		// React to locale changes
+		if ($locale && $user.isLoggedIn) {
+			console.log('Language changed, reloading news...');
+			loadNews();
 		}
 	});
 
