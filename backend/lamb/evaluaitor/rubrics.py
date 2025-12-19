@@ -3,7 +3,6 @@ LAMB Core API for Rubrics
 Provides REST endpoints for rubric CRUD operations, import/export, and AI assistance.
 """
 
-import logging
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -15,11 +14,11 @@ from pydantic import BaseModel, Field
 from ..owi_bridge.owi_users import OwiUserManager
 from .rubric_database import RubricDatabaseManager
 from .rubric_validator import RubricValidator
+from lamb.logging_config import get_logger
 
 
 # Set up logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__, component="EVALUATOR")
 
 
 # Helper functions
@@ -248,7 +247,7 @@ async def create_rubric(
         }
 
     except Exception as e:
-        logging.error(f"Error creating rubric: {e}")
+        logger.error(f"Error creating rubric: {e}")
         raise HTTPException(status_code=500, detail="Failed to create rubric")
 
 
@@ -307,7 +306,7 @@ async def list_user_rubrics(
         }
 
     except Exception as e:
-        logging.error(f"Error listing rubrics: {e}")
+        logger.error(f"Error listing rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list rubrics")
 
 
@@ -364,7 +363,7 @@ async def list_public_rubrics(
         }
 
     except Exception as e:
-        logging.error(f"Error listing public rubrics: {e}")
+        logger.error(f"Error listing public rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list public rubrics")
 
 
@@ -404,7 +403,7 @@ async def get_accessible_rubrics(
         user_email = user.get('email')  # Note: LambDatabaseManager returns 'email', not 'user_email'
         organization_id = org.get('id')
         
-        logging.info(f"Getting accessible rubrics for user: {user_email}, org: {organization_id}")
+        logger.info(f"Getting accessible rubrics for user: {user_email}, org: {organization_id}")
         
         # Get user's own rubrics
         my_rubrics = db_manager.get_rubrics_by_owner(
@@ -414,7 +413,7 @@ async def get_accessible_rubrics(
             filters={}
         )
         
-        logging.info(f"Found {len(my_rubrics)} rubrics owned by user")
+        logger.info(f"Found {len(my_rubrics)} rubrics owned by user")
         
         # Get public rubrics in organization
         public_rubrics = db_manager.get_public_rubrics(
@@ -467,7 +466,7 @@ async def get_accessible_rubrics(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting accessible rubrics: {e}", exc_info=True)
+        logger.error(f"Error getting accessible rubrics: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get accessible rubrics: {str(e)}")
 
 
@@ -490,7 +489,7 @@ async def list_showcase_rubrics(
         return rubrics
 
     except Exception as e:
-        logging.error(f"Error listing showcase rubrics: {e}")
+        logger.error(f"Error listing showcase rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list showcase rubrics")
 
 
@@ -521,7 +520,7 @@ async def get_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting rubric {rubric_id}: {e}")
+        logger.error(f"Error getting rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get rubric")
 
 
@@ -575,7 +574,7 @@ async def update_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating rubric {rubric_id}: {e}")
+        logger.error(f"Error updating rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric")
 
 
@@ -620,7 +619,7 @@ async def update_rubric_visibility(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating rubric visibility {rubric_id}: {e}")
+        logger.error(f"Error updating rubric visibility {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric visibility")
 
 
@@ -662,7 +661,7 @@ async def update_rubric_showcase(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating rubric showcase {rubric_id}: {e}")
+        logger.error(f"Error updating rubric showcase {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric showcase status")
 
 
@@ -691,7 +690,7 @@ async def delete_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error deleting rubric {rubric_id}: {e}")
+        logger.error(f"Error deleting rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete rubric")
 
 
@@ -728,7 +727,7 @@ async def duplicate_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error duplicating rubric {rubric_id}: {e}")
+        logger.error(f"Error duplicating rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to duplicate rubric")
 
 
@@ -787,7 +786,7 @@ async def import_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error importing rubric: {e}")
+        logger.error(f"Error importing rubric: {e}")
         raise HTTPException(status_code=500, detail="Failed to import rubric")
 
 
@@ -824,7 +823,7 @@ async def export_rubric_json(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting rubric {rubric_id}: {e}")
+        logger.error(f"Error exporting rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to export rubric")
 
 
@@ -866,7 +865,7 @@ async def export_rubric_markdown(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting rubric {rubric_id} as markdown: {e}")
+        logger.error(f"Error exporting rubric {rubric_id} as markdown: {e}")
         raise HTTPException(status_code=500, detail="Failed to export rubric as markdown")
 
 
@@ -1121,7 +1120,7 @@ async def ai_modify_rubric(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error modifying rubric {rubric_id} with AI: {e}")
+        logger.error(f"Error modifying rubric {rubric_id} with AI: {e}")
         raise HTTPException(status_code=500, detail="Failed to modify rubric with AI")
 
 

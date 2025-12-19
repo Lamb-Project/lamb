@@ -2,11 +2,11 @@
 Helper utilities for plugins to invoke the small-fast-model
 """
 
-import logging
 from typing import List, Dict, Any, Optional
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 
 async def invoke_small_fast_model(

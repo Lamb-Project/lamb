@@ -5,10 +5,10 @@ Supports both markdown and JSON formats for LLM context
 """
 
 import json
-import logging
 from typing import Dict, List, Any, Optional
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="RAG")
 
 def rag_processor(
     messages: List[Dict[str, Any]],

@@ -25,7 +25,6 @@ Important:
 import sys
 import os
 import json
-import logging
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 import argparse
@@ -36,13 +35,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from utils.name_sanitizer import sanitize_name
+from lamb.logging_config import get_logger
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 
 class NameMigrator:

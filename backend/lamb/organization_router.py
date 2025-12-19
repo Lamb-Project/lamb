@@ -16,9 +16,11 @@ from .database_manager import LambDatabaseManager
 import logging
 import json
 from datetime import datetime
+from lamb.logging_config import get_logger
 
 # Initialize router
 router = APIRouter()
+logger = get_logger(__name__, component="API")
 
 # Initialize database manager
 db_manager = LambDatabaseManager()
@@ -129,7 +131,7 @@ async def create_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error creating organization: {e}")
+        logger.error(f"Error creating organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/organizations", response_model=List[OrganizationResponse])
@@ -142,7 +144,7 @@ async def list_organizations(
         organizations = db_manager.list_organizations(status=status)
         return [OrganizationResponse(**org) for org in organizations]
     except Exception as e:
-        logging.error(f"Error listing organizations: {e}")
+        logger.error(f"Error listing organizations: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/organizations/{slug}", response_model=OrganizationResponse)
@@ -156,7 +158,7 @@ async def get_organization(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting organization: {e}")
+        logger.error(f"Error getting organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/organizations/{slug}", response_model=OrganizationResponse)
@@ -203,7 +205,7 @@ async def update_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating organization: {e}")
+        logger.error(f"Error updating organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/organizations/{slug}")
@@ -232,7 +234,7 @@ async def delete_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error deleting organization: {e}")
+        logger.error(f"Error deleting organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Configuration Management Endpoints
@@ -248,7 +250,7 @@ async def get_organization_config(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting organization config: {e}")
+        logger.error(f"Error getting organization config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/organizations/{slug}/config")
@@ -282,7 +284,7 @@ async def update_organization_config(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating organization config: {e}")
+        logger.error(f"Error updating organization config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/organizations/{slug}/config")
@@ -305,7 +307,7 @@ async def patch_organization_config(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error patching organization config: {e}")
+        logger.error(f"Error patching organization config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Import/Export Endpoints
@@ -343,7 +345,7 @@ async def export_organization(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting organization: {e}")
+        logger.error(f"Error exporting organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/organizations/{slug}/import")
@@ -379,7 +381,7 @@ async def import_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error importing organization: {e}")
+        logger.error(f"Error importing organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User & Role Management Endpoints
@@ -401,7 +403,7 @@ async def get_organization_users(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting organization users: {e}")
+        logger.error(f"Error getting organization users: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/organizations/{slug}/users/assign-role")
@@ -436,7 +438,7 @@ async def assign_user_role(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error assigning user role: {e}")
+        logger.error(f"Error assigning user role: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Usage Tracking Endpoints
@@ -469,7 +471,7 @@ async def get_organization_usage(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting organization usage: {e}")
+        logger.error(f"Error getting organization usage: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/organizations/{slug}/usage/logs")
@@ -498,7 +500,7 @@ async def get_organization_usage_logs(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting usage logs: {e}")
+        logger.error(f"Error getting usage logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # System organization sync endpoint
@@ -527,7 +529,7 @@ async def sync_system_organization(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error syncing system organization: {e}")
+        logger.error(f"Error syncing system organization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -549,7 +551,7 @@ async def get_organization_assistant_defaults(slug: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting assistant defaults for {slug}: {e}")
+        logger.error(f"Error getting assistant defaults for {slug}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -587,5 +589,5 @@ async def update_organization_assistant_defaults(slug: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error updating assistant defaults for {slug}: {e}")
+        logger.error(f"Error updating assistant defaults for {slug}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

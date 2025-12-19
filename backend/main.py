@@ -42,16 +42,12 @@ import random
 
 from config import API_KEY, PIPELINES_DIR
 from creator_interface.main import router as creator_router
+from lamb.logging_config import get_logger
 
-logging.basicConfig(level=logging.WARNING)
+logger = get_logger(__name__, component="MAIN")
 
-# Set up detailed logging for multimodal debugging
-multimodal_logger = logging.getLogger('multimodal')
-multimodal_logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-multimodal_logger.addHandler(handler)
-multimodal_logger.propagate = False  # Don't propagate to root logger
+# Set up detailed logging for multimodal debugging (centralized)
+multimodal_logger = get_logger('multimodal', component="MAIN")
 
 app = FastAPI(title="LAMB", description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
 
@@ -208,7 +204,7 @@ async def get_models(request: Request):
             for assistant in assistants
         ]
     }
-    logging.info("Models: "+str(response_body))
+    logger.info("Models: "+str(response_body))
 
     # Generate Request ID and set headers
     request_id = f"req_{uuid.uuid4()}"

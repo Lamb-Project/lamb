@@ -25,6 +25,7 @@ from lamb.lamb_classes import Assistant
 from datetime import datetime
 import config
 from utils.name_sanitizer import sanitize_assistant_name_with_prefix
+from lamb.logging_config import get_logger
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -128,20 +129,14 @@ class PublishRequest(BaseModel):
 
 # --- End Pydantic Models --- #
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Centralized logger
+logger = get_logger(__name__, component="API")
 
-# Set specific loggers to a higher level to reduce verbosity
+# Reduce noisy third-party loggers
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 logging.getLogger('lamb.owi_bridge.owi_users').setLevel(logging.INFO)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 # Load environment variables
 load_dotenv()

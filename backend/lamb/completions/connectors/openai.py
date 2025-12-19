@@ -14,8 +14,7 @@ from lamb.completions.org_config_resolver import OrganizationConfigResolver
 logger = get_logger(__name__, component="MAIN")
 
 # Set up multimodal logging
-multimodal_logger = logging.getLogger('multimodal.openai')
-multimodal_logger.setLevel(logging.DEBUG)
+multimodal_logger = get_logger('multimodal.openai', component="MAIN")
 
 def get_available_llms(assistant_owner: Optional[str] = None):
     """

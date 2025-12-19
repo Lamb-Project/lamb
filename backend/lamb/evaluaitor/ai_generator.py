@@ -6,7 +6,6 @@ Generates educational rubrics using LLM with robust JSON extraction and validati
 
 import json
 import re
-import logging
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from openai import OpenAI
@@ -15,8 +14,9 @@ import os
 from .prompt_loader import get_rubric_generation_prompt
 from .rubric_validator import RubricValidator
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="EVALUATOR")
 
 
 class AIRubricGenerator:

@@ -5,12 +5,14 @@ Handles all database operations for rubrics including CRUD, visibility, and show
 
 import sqlite3
 import json
-import logging
 import uuid
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 from ..database_manager import LambDatabaseManager
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="EVALUATOR")
 
 
 class RubricDatabaseManager:
@@ -80,7 +82,7 @@ class RubricDatabaseManager:
                 return rubric_record
 
         except sqlite3.Error as e:
-            logging.error(f"Error creating rubric: {e}")
+            logger.error(f"Error creating rubric: {e}")
             raise Exception(f"Failed to create rubric: {e}")
         finally:
             if connection:
@@ -143,7 +145,7 @@ class RubricDatabaseManager:
                 return rubric_dict
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting rubric {rubric_id}: {e}")
+            logger.error(f"Error getting rubric {rubric_id}: {e}")
             return None
         finally:
             if connection:
@@ -213,7 +215,7 @@ class RubricDatabaseManager:
                 return rubrics
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting rubrics for {owner_email}: {e}")
+            logger.error(f"Error getting rubrics for {owner_email}: {e}")
             return []
         finally:
             if connection:
@@ -299,7 +301,7 @@ class RubricDatabaseManager:
                 return rubrics
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting public rubrics for org {organization_id}: {e}")
+            logger.error(f"Error getting public rubrics for org {organization_id}: {e}")
             return []
         finally:
             if connection:
@@ -341,7 +343,7 @@ class RubricDatabaseManager:
                 return rubrics
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting showcase rubrics for org {organization_id}: {e}")
+            logger.error(f"Error getting showcase rubrics for org {organization_id}: {e}")
             return []
         finally:
             if connection:
@@ -399,7 +401,7 @@ class RubricDatabaseManager:
                 return updated_rubric
 
         except sqlite3.Error as e:
-            logging.error(f"Error updating rubric {rubric_id}: {e}")
+            logger.error(f"Error updating rubric {rubric_id}: {e}")
             raise Exception(f"Failed to update rubric: {e}")
         finally:
             if connection:
@@ -444,7 +446,7 @@ class RubricDatabaseManager:
                 return cursor.rowcount > 0
 
         except sqlite3.Error as e:
-            logging.error(f"Error toggling visibility for rubric {rubric_id}: {e}")
+            logger.error(f"Error toggling visibility for rubric {rubric_id}: {e}")
             return False
         finally:
             if connection:
@@ -499,7 +501,7 @@ class RubricDatabaseManager:
                 return cursor.rowcount > 0
 
         except sqlite3.Error as e:
-            logging.error(f"Error setting showcase status for rubric {rubric_id}: {e}")
+            logger.error(f"Error setting showcase status for rubric {rubric_id}: {e}")
             return False
         finally:
             if connection:
@@ -532,7 +534,7 @@ class RubricDatabaseManager:
                 return cursor.rowcount > 0
 
         except sqlite3.Error as e:
-            logging.error(f"Error deleting rubric {rubric_id}: {e}")
+            logger.error(f"Error deleting rubric {rubric_id}: {e}")
             return False
         finally:
             if connection:
@@ -586,7 +588,7 @@ class RubricDatabaseManager:
                 return cursor.fetchone()[0]
 
         except sqlite3.Error as e:
-            logging.error(f"Error counting rubrics for {owner_email}: {e}")
+            logger.error(f"Error counting rubrics for {owner_email}: {e}")
             return 0
         finally:
             if connection:
@@ -661,7 +663,7 @@ class RubricDatabaseManager:
                 return rubric_dict
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting rubric {rubric_id}: {e}")
+            logger.error(f"Error getting rubric {rubric_id}: {e}")
             return None
         finally:
             if connection:

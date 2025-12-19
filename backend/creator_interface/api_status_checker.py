@@ -7,11 +7,11 @@ for different providers (OpenAI, Ollama) to show detailed configuration status.
 
 import asyncio
 import aiohttp
-import logging
 from typing import Dict, List, Any, Optional
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="API")
 
 
 class APIStatusChecker:

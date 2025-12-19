@@ -4,8 +4,10 @@ Validates rubric JSON structure and data integrity.
 """
 
 import json
-import logging
 from typing import Dict, List, Tuple, Optional, Any
+from lamb.logging_config import get_logger
+
+logger = get_logger(__name__, component="EVALUATOR")
 
 
 class RubricValidator:
@@ -179,7 +181,7 @@ class RubricValidator:
             # Check for duplicate scores within criterion (allow if intentional)
             level_score = level.get('score')
             if level_score in level_scores:
-                logging.warning(f"Duplicate score {level_score} in criterion {criterion_id}")
+                logger.warning(f"Duplicate score {level_score} in criterion {criterion_id}")
             level_scores.add(level_score)
 
         # Optional fields

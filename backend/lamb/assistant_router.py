@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import ValidationError, BaseModel
 from utils.pipelines.auth import get_current_user
-import logging
 import os
 from fastapi.responses import FileResponse, JSONResponse
 from .database_manager import LambDatabaseManager
@@ -19,6 +18,7 @@ import aiohttp
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 import time  # Add this import for the timestamp
+from lamb.logging_config import get_logger
 
 # --- Pydantic Models (Moved to Top) --- #
 
@@ -56,8 +56,7 @@ class AssistantListResponse(BaseModel):
 
 db_manager = LambDatabaseManager()
 
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__) # Define logger here
+logger = get_logger(__name__, component="API")
 
 assistant_router = APIRouter(tags=["Assistants"])
 templates = Jinja2Templates(directory="lamb/templates")
@@ -90,19 +89,19 @@ async def verify_token(request: Request):
 @assistant_router.post("/create_assistant")
 async def create_assistant(request: Request, current_user: str = Depends(get_current_user)):
     try:
-        logging.info("Starting create_assistant endpoint")
+        logger.info("Starting create_assistant endpoint")
         assistant_data = await request.json()
-        logging.debug(f"Received assistant data: {assistant_data}")
+        logger.debug(f"Received assistant data: {assistant_data}")
         assistant_data.pop('id', None)
-        logging.debug(f"Assistant data after removing id: {assistant_data}")
+        logger.debug(f"Assistant data after removing id: {assistant_data}")
 
         # Create the Assistant object
-        logging.info("Creating Assistant object")
+        logger.info("Creating Assistant object")
         try:
             assistant = Assistant(**assistant_data)
-            logging.debug(f"Created Assistant object: {assistant}")
+            logger.debug(f"Created Assistant object: {assistant}")
         except Exception as e:
-            logging.error(f"Error creating Assistant object: {str(e)}")
+            logger.error(f"Error creating Assistant object: {str(e)}")
             raise HTTPException(
                 status_code=422,
                 detail=f"Error creating Assistant object: {str(e)}"
@@ -111,31 +110,31 @@ async def create_assistant(request: Request, current_user: str = Depends(get_cur
         # Check for whitespace and special characters in the assistant name
         import re
         if not re.match("^[a-zA-Z0-9_-]*$", assistant_data['name']):
-            logging.warning(
+            logger.warning(
                 f"Invalid assistant name: {assistant_data['name']}")
             raise HTTPException(
                 status_code=422,
                 detail="Assistant name can only contain letters, numbers, underscores and hyphens. No spaces or special characters allowed."
             )
 
-        logging.info("Adding assistant to database")
+        logger.info("Adding assistant to database")
         try:
-            logging.debug(
+            logger.debug(
                 f"Assistant object before database insert: {assistant.dict()}")
             assistant_id = db_manager.add_assistant(assistant)
-            logging.debug(
+            logger.debug(
                 f"Database operation completed. Returned ID: {assistant_id}")
             if assistant_id is None:
-                logging.error(
+                logger.error(
                     "Database operation returned None for assistant_id")
                 raise HTTPException(
                     status_code=409,
                     detail=f"An assistant named '{assistant.name}' already exists for this owner. Please choose a different name."
                 )
-            logging.debug(f"Added assistant with ID: {assistant_id}")
+            logger.debug(f"Added assistant with ID: {assistant_id}")
         except Exception as e:
-            logging.error(f"Error adding assistant to database: {str(e)}")
-            logging.error("Database error details:", exc_info=True)
+            logger.error(f"Error adding assistant to database: {str(e)}")
+            logger.error("Database error details:", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Error adding assistant to database: {str(e)}"
@@ -144,19 +143,19 @@ async def create_assistant(request: Request, current_user: str = Depends(get_cur
 
 
         if assistant_id:
-            logging.info(
+            logger.info(
                 f"Successfully created assistant with ID: {assistant_id}")
             return {"assistant_id": assistant_id}
         else:
-            logging.error("Failed to create assistant - no ID returned")
+            logger.error("Failed to create assistant - no ID returned")
             raise HTTPException(
                 status_code=500, detail="Failed to create assistant")
     except ValidationError as ve:
-        logging.error(f"Validation error: {str(ve)}")
+        logger.error(f"Validation error: {str(ve)}")
         raise HTTPException(
             status_code=422, detail=f"Validation error: {str(ve)}")
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Unexpected error in create_assistant: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}")
@@ -165,7 +164,7 @@ async def create_assistant(request: Request, current_user: str = Depends(get_cur
 
 @assistant_router.get("/get_assistant_by_id/{assistant_id}")
 async def get_assistant(assistant_id: int, current_user: str = Depends(get_current_user)):
- #   logging.debug(f"Getting assistant {assistant_id} for user: {current_user}")
+ #   logger.debug(f"Getting assistant {assistant_id} for user: {current_user}")
     try:
         assistant = db_manager.get_assistant_by_id(assistant_id)
         if assistant:
@@ -174,13 +173,13 @@ async def get_assistant(assistant_id: int, current_user: str = Depends(get_curre
         else:
             raise HTTPException(status_code=404, detail="Assistant not found")
     except Exception as e:
-        logging.error(f"Error getting assistant: {str(e)}")
+        logger.error(f"Error getting assistant: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get assistant: {str(e)}")
 
 @assistant_router.get("/get_assistant_by_name/{assistant_name}")
 async def get_assistant_by_name(assistant_name: str, owner: str, current_user: str = Depends(get_current_user)):
-    #    logging.debug(f"Getting assistant {assistant_name} for user: {current_user}")
+    #    logger.debug(f"Getting assistant {assistant_name} for user: {current_user}")
     try:
         assistant = db_manager.get_assistant_by_name(assistant_name, owner)
         if assistant:
@@ -188,25 +187,25 @@ async def get_assistant_by_name(assistant_name: str, owner: str, current_user: s
         else:
             raise HTTPException(status_code=404, detail="Assistant not found")
     except Exception as e:
-        logging.error(f"Error getting assistant: {str(e)}")
+        logger.error(f"Error getting assistant: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get assistant: {str(e)}")
 
 @assistant_router.get("/get_list_of_assistants/{owner}")
 async def get_list_of_assistants(owner: str, current_user: str = Depends(get_current_user)):
-    logging.debug(f"Getting list of assistants for user: {current_user}")
+    logger.debug(f"Getting list of assistants for user: {current_user}")
     try:
         assistants = db_manager.get_list_of_assistants(owner)
         # Return empty list if no assistants found instead of raising 404
         return {"assistants": assistants or []}
     except Exception as e:
-        logging.error(f"Error getting assistants: {str(e)}")
+        logger.error(f"Error getting assistants: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get assistants: {str(e)}")
 
 @assistant_router.get("/get_list_of_all_assistants")
 async def get_list_of_all_assistants(current_user: str = Depends(get_current_user)):
-    logging.debug(f"Getting list of all assistants for user: {current_user}")
+    logger.debug(f"Getting list of all assistants for user: {current_user}")
     try:
         # Get all assistants with publication data in one query
         assistants = db_manager.get_all_assistants_with_publication()
@@ -218,13 +217,13 @@ async def get_list_of_all_assistants(current_user: str = Depends(get_current_use
         # If there are no assistants, return an empty list
         return {"assistants": assistants or []}
     except Exception as e:
-        logging.error(f"Error getting assistants: {e}")
+        logger.error(f"Error getting assistants: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get assistants: {str(e)}")
 
 @assistant_router.delete("/delete_assistant/{assistant_id}")
 async def delete_assistant(assistant_id: int, owner: str, current_user: str = Depends(get_current_user)):
-    logging.debug(
+    logger.debug(
         f"Deleting assistant {assistant_id} for user: {current_user}")
     try:
         # First verify that the assistant exists and belongs to the owner
@@ -249,10 +248,10 @@ async def delete_assistant(assistant_id: int, owner: str, current_user: str = De
                 for group in groups:
                     if group.get('name') == group_name:
                         group_manager.delete_group(group['id'])
-                        logging.info(f"Deleted OWI group {group_name} for assistant {assistant_id}")
+                        logger.info(f"Deleted OWI group {group_name} for assistant {assistant_id}")
                         break
             except Exception as e:
-                logging.warning(f"Could not delete OWI group for assistant {assistant_id}: {e}")
+                logger.warning(f"Could not delete OWI group for assistant {assistant_id}: {e}")
             
             return {"message": "Assistant deleted successfully"}
         else:
@@ -260,7 +259,7 @@ async def delete_assistant(assistant_id: int, owner: str, current_user: str = De
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error deleting assistant: {str(e)}")
+        logger.error(f"Error deleting assistant: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to delete assistant: {str(e)}")
 
@@ -273,9 +272,9 @@ async def get_published_assistants(current_user: str = Depends(get_current_user)
     """Get list of published assistants"""
     try:
         # Add debug logging
-        logging.debug("Getting published assistants from database")
+        logger.debug("Getting published assistants from database")
         published_assistants = db_manager.get_published_assistants()
-        logging.debug(f"Published assistants from DB: {published_assistants}")
+        logger.debug(f"Published assistants from DB: {published_assistants}")
 
         if published_assistants:
             return published_assistants
@@ -283,7 +282,7 @@ async def get_published_assistants(current_user: str = Depends(get_current_user)
             return []
 
     except Exception as e:
-        logging.error(f"Error getting published assistants: {e}")
+        logger.error(f"Error getting published assistants: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @assistant_router.get("/get_assistant_with_publication/{assistant_id}")
@@ -302,7 +301,7 @@ async def get_assistant_with_publication(assistant_id: int, current_user: str = 
     except HTTPException as he:
         raise he
     except Exception as e:
-        logging.error(f"Error getting assistant with publication: {str(e)}")
+        logger.error(f"Error getting assistant with publication: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get assistant: {str(e)}")
 
@@ -346,24 +345,24 @@ async def unpublish_assistant(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error unpublishing assistant: {e}")
+        logger.error(f"Error unpublishing assistant: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @assistant_router.put("/update_assistant/{assistant_id}")
 async def update_assistant(assistant_id: int, request: Request, current_user: str = Depends(get_current_user)):
     try:
-        logging.info(
+        logger.info(
             f"Starting update_assistant endpoint for ID: {assistant_id}")
         assistant_data = await request.json()
-        logging.debug(f"Received assistant data: {assistant_data}")
+        logger.debug(f"Received assistant data: {assistant_data}")
 
         # Create the Assistant object
-        logging.info("Creating Assistant object")
+        logger.info("Creating Assistant object")
         try:
             assistant = Assistant(**assistant_data)
-            logging.debug(f"Created Assistant object: {assistant}")
+            logger.debug(f"Created Assistant object: {assistant}")
         except Exception as e:
-            logging.error(f"Error creating Assistant object: {str(e)}")
+            logger.error(f"Error creating Assistant object: {str(e)}")
             raise HTTPException(
                 status_code=422,
                 detail=f"Error creating Assistant object: {str(e)}"
@@ -372,28 +371,28 @@ async def update_assistant(assistant_id: int, request: Request, current_user: st
         # Check for whitespace and special characters in the assistant name
         import re
         if not re.match("^[a-zA-Z0-9_-]*$", assistant_data['name']):
-            logging.warning(
+            logger.warning(
                 f"Invalid assistant name: {assistant_data['name']}")
             raise HTTPException(
                 status_code=422,
                 detail="Assistant name can only contain letters, numbers, underscores and hyphens. No spaces or special characters allowed."
             )
 
-        logging.info("Updating assistant in database")
+        logger.info("Updating assistant in database")
         try:
-            logging.debug(
+            logger.debug(
                 f"Assistant object before database update: {assistant.dict()}")
             success = db_manager.update_assistant(assistant_id, assistant)
             if not success:
-                logging.error("Failed to update assistant")
+                logger.error("Failed to update assistant")
                 raise HTTPException(
                     status_code=404,
                     detail=f"Assistant with ID {assistant_id} not found or could not be updated"
                 )
-            logging.debug(f"Updated assistant with ID: {assistant_id}")
+            logger.debug(f"Updated assistant with ID: {assistant_id}")
         except Exception as e:
-            logging.error(f"Error updating assistant: {str(e)}")
-            logging.error("Database error details:", exc_info=True)
+            logger.error(f"Error updating assistant: {str(e)}")
+            logger.error("Database error details:", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Error updating assistant: {str(e)}"
@@ -403,11 +402,11 @@ async def update_assistant(assistant_id: int, request: Request, current_user: st
        
         return {"success": True, "message": "Assistant updated successfully"}
     except ValidationError as ve:
-        logging.error(f"Validation error: {str(ve)}")
+        logger.error(f"Validation error: {str(ve)}")
         raise HTTPException(
             status_code=422, detail=f"Validation error: {str(ve)}")
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Unexpected error in update_assistant: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}")
@@ -481,7 +480,7 @@ async def soft_delete_assistant(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error soft deleting assistant: {e}")
+        logger.error(f"Error soft deleting assistant: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Error soft deleting assistant: {str(e)}"
@@ -525,7 +524,7 @@ async def query_rag(collection_name: str, query: str, k: int = 5) -> Dict[str, A
         async with session.post(url, headers=headers, json=payload) as response:
             if response.status != 200:
                 error_text = await response.text()
-                logging.error(
+                logger.error(
                     f"RAG query failed. Status: {response.status}, Response: {error_text}")
                 raise HTTPException(
                     status_code=500,
@@ -573,17 +572,17 @@ async def update_assistant_publication(
     This adds or updates a record in the LAMB_assistant_publish table.
     """
     try:
-        logging.info(
+        logger.info(
             f"Updating publication for assistant {assistant_id} by user {current_user}")
 
         # Get the assistant details
         assistant = db_manager.get_assistant_by_id(assistant_id)
         if not assistant:
-            logging.error(f"Assistant {assistant_id} not found")
+            logger.error(f"Assistant {assistant_id} not found")
             raise HTTPException(status_code=404, detail="Assistant not found")
 
         # Log the assistant owner and current user for debugging
-        logging.info(
+        logger.info(
             f"Assistant owner: {assistant.owner}, Current user: {current_user}")
 
         # Get existing publication info if it exists
@@ -606,12 +605,12 @@ async def update_assistant_publication(
             )
 
             if updated:
-                logging.info(
+                logger.info(
                     f"Successfully updated publication for assistant {assistant_id}")
                 return {"message": "Assistant publication updated successfully"}
 
         # If no existing publication or update fails, create new one
-        logging.info(f"Creating new publication for assistant {assistant_id}")
+        logger.info(f"Creating new publication for assistant {assistant_id}")
         published = db_manager.publish_assistant(
             assistant_id=assistant_id,
             assistant_name=assistant.name,
@@ -622,15 +621,15 @@ async def update_assistant_publication(
         )
 
         if published:
-            logging.info(f"Successfully published assistant {assistant_id}")
+            logger.info(f"Successfully published assistant {assistant_id}")
             return {"message": "Assistant published successfully"}
         else:
-            logging.error(f"Failed to publish assistant {assistant_id}")
+            logger.error(f"Failed to publish assistant {assistant_id}")
             raise HTTPException(
                 status_code=500, detail="Failed to publish assistant")
 
     except Exception as e:
-        logging.error(f"Error updating assistant publication: {str(e)}")
+        logger.error(f"Error updating assistant publication: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error updating assistant publication: {str(e)}")
 

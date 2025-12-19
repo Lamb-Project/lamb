@@ -14,17 +14,8 @@ from lamb.logging_config import get_logger
 import traceback
 import asyncio
 
-# Set up logger for completions module
-logger = get_logger('lamb.completions', component="MAIN")
-logger.setLevel(logging.INFO)
-
-# Create handler if none exists
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+# Set up centralized logger for completions module
+logger = get_logger(__name__, component="API")
 
 router = APIRouter(tags=["completions"])
 security = HTTPBearer()

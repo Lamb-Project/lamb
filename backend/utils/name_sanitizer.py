@@ -12,9 +12,9 @@ Ensures names conform to the naming rules:
 
 import re
 from typing import Tuple, Optional, Callable
-import logging
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 
 def sanitize_name(

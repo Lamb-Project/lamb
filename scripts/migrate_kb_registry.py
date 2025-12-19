@@ -19,7 +19,6 @@ import os
 import sys
 import sqlite3
 import argparse
-import logging
 from typing import List, Dict, Optional, Set
 
 # Print to stdout immediately for debugging Docker issues
@@ -31,8 +30,11 @@ try:
     import httpx
     import asyncio
     import time
+    from lamb.logging_config import get_logger
     
     load_dotenv()
+    
+    logger = get_logger(__name__, component="MAIN")
     
     # Try to load from parent directory if not found
     if not os.getenv('LAMB_DB_PATH'):

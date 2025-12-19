@@ -11,9 +11,9 @@ import os
 import json
 import traceback
 from .owi_model import OWIModel
+from lamb.logging_config import get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
+logger = get_logger(__name__, component="OWI")
 
 # Initialize routers and managers
 router = APIRouter(
@@ -66,13 +66,13 @@ def sync_group_to_lamb_shares(assistant_id: int, user_ids: List[str]):
         # Get assistant owner
         assistant = db_manager.get_assistant_by_id(assistant_id)
         if not assistant:
-            logging.warning(f"Cannot sync group: assistant {assistant_id} not found")
-            return
+            logger.warning(f"Cannot sync group: assistant {assistant_id} not found")
+        return
         
         # Get owner's user_id in OWI
         owner_user = user_manager.get_user_by_email(assistant.owner)
         if not owner_user:
-            logging.warning(f"Cannot sync group: owner {assistant.owner} not found in OWI")
+            logger.warning(f"Cannot sync group: owner {assistant.owner} not found in OWI")
             return
         
         owner_owi_id = owner_user['id']
@@ -104,19 +104,19 @@ def sync_group_to_lamb_shares(assistant_id: int, user_ids: List[str]):
         for user_id in to_add:
             try:
                 db_manager.share_assistant(assistant_id, user_id, shared_by_id)
-                logging.info(f"Added share: assistant {assistant_id} -> user {user_id}")
+                logger.info(f"Added share: assistant {assistant_id} -> user {user_id}")
             except Exception as e:
-                logging.error(f"Error adding share for user {user_id}: {e}")
+                logger.error(f"Error adding share for user {user_id}: {e}")
         
         for user_id in to_remove:
             try:
                 db_manager.unshare_assistant(assistant_id, user_id)
-                logging.info(f"Removed share: assistant {assistant_id} -> user {user_id}")
+                logger.info(f"Removed share: assistant {assistant_id} -> user {user_id}")
             except Exception as e:
-                logging.error(f"Error removing share for user {user_id}: {e}")
+                logger.error(f"Error removing share for user {user_id}: {e}")
                 
     except Exception as e:
-        logging.error(f"Error syncing group to LAMB shares: {e}")
+        logger.error(f"Error syncing group to LAMB shares: {e}")
 
 @router.post("/users", 
     summary="Create a new user",
@@ -159,7 +159,7 @@ async def create_user(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in create_user endpoint: {e}")
+        logger.error(f"Error in create_user endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -180,7 +180,7 @@ async def verify_user(request: Request, _=Depends(verify_api_key)):
         admin_token = user_manager.get_admin_user_token()
         
         data = await request.json()
-        logging.info(f"Verify user request: {data}")
+        logger.info(f"Verify user request: {data}")
         # Validate required fields
         if not data.get('email') or not data.get('password'):
             raise HTTPException(
@@ -218,7 +218,7 @@ async def verify_user(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in verify_user endpoint: {e}")
+        logger.error(f"Error in verify_user endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -258,7 +258,7 @@ async def get_user_token(email: str, _=Depends(verify_api_key)):
             )
             
     except Exception as e:
-        logging.error(f"Error in get_user_token endpoint: {e}")
+        logger.error(f"Error in get_user_token endpoint: {e}")
         return handle_response(False, error=str(e))
 
 @router.get("/")
@@ -338,7 +338,7 @@ async def get_users(request: Request):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or missing authentication token"
         )
-    logging.info(f"OWI Bridge: Authenticated user: {auth_header.split()[1]}")
+    logger.info(f"OWI Bridge: Authenticated user: {auth_header.split()[1]}")
     try:
         users = db_manager.get_all_users()
         if not users:
@@ -389,7 +389,7 @@ async def create_group(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in create_group endpoint: {e}")
+        logger.error(f"Error in create_group endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -405,7 +405,7 @@ async def get_group_by_id(group_id: str, _=Depends(verify_api_key)):
         return handle_response(True, data=group)
             
     except Exception as e:
-        logging.error(f"Error in get_group_by_id endpoint: {e}")
+        logger.error(f"Error in get_group_by_id endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -421,7 +421,7 @@ async def get_user_groups(user_id: str, _=Depends(verify_api_key)):
         return handle_response(True, data=groups)
             
     except Exception as e:
-        logging.error(f"Error in get_user_groups endpoint: {e}")
+        logger.error(f"Error in get_user_groups endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -459,7 +459,7 @@ async def update_group(group_id: str, request: Request, _=Depends(verify_api_key
                         assistant_id = int(group_name.replace('assistant_', ''))
                         sync_group_to_lamb_shares(assistant_id, data['user_ids'])
                     except (ValueError, Exception) as e:
-                        logging.warning(f"Could not sync group {group_name} to LAMB shares: {e}")
+                        logger.warning(f"Could not sync group {group_name} to LAMB shares: {e}")
             
             return handle_response(True, data=group)
         else:
@@ -471,7 +471,7 @@ async def update_group(group_id: str, request: Request, _=Depends(verify_api_key
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in update_group endpoint: {e}")
+        logger.error(f"Error in update_group endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -511,7 +511,7 @@ async def add_user_to_group(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in add_user_to_group endpoint: {e}")
+        logger.error(f"Error in add_user_to_group endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -549,7 +549,7 @@ async def add_user_to_group_by_email(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in add_user_to_group_by_email endpoint: {e}")
+        logger.error(f"Error in add_user_to_group_by_email endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -574,7 +574,7 @@ async def remove_user_from_group(group_id: str, user_id: str, _=Depends(verify_a
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in remove_user_from_group endpoint: {e}")
+        logger.error(f"Error in remove_user_from_group endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -599,7 +599,7 @@ async def get_groups(_=Depends(verify_api_key)):
         return handle_response(True, data=filtered_groups)
             
     except Exception as e:
-        logging.error(f"Error in get_groups endpoint: {e}")
+        logger.error(f"Error in get_groups endpoint: {e}")
         return handle_response(False, error=str(e))
 
 @router.get("/get_group_users/{group_id}", 
@@ -635,7 +635,7 @@ async def get_group_users(group_id: str, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in get_group_users endpoint: {e}")
+        logger.error(f"Error in get_group_users endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
@@ -683,8 +683,8 @@ async def update_user_password(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in update_user_password endpoint: {e}")
-        logging.error(traceback.format_exc())
+        logger.error(f"Error in update_user_password endpoint: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -732,8 +732,8 @@ async def update_user_password_post(request: Request, _=Depends(verify_api_key))
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in update_user_password_post endpoint: {e}")
-        logging.error(traceback.format_exc())
+        logger.error(f"Error in update_user_password_post endpoint: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -1074,7 +1074,7 @@ async def get_user_models(
         return handle_response(True, data=models)
             
     except Exception as e:
-        logging.error(f"Error in get_user_models endpoint: {e}")
+        logger.error(f"Error in get_user_models endpoint: {e}")
         return handle_response(False, error=str(e))
 
 @router.put("/models/add_group", 
@@ -1089,32 +1089,32 @@ async def add_group_to_model(
 ):
     """Add a group to a model's read permissions"""
     try:
-        logging.info(f"Adding group to model with params: email={user_owner_email}, model={model_name}, group={group_name}")
+        logger.info(f"Adding group to model with params: email={user_owner_email}, model={model_name}, group={group_name}")
         
         # Get user by email
         user = user_manager.get_user_by_email(user_owner_email)
-        logging.info(f"Found user: {user}")
+        logger.info(f"Found user: {user}")
         if not user:
             return handle_response(False, error=f"User with email {user_owner_email} not found")
 
         # Get user's groups
         groups = group_manager.get_user_groups(user['id'])
-        logging.info(f"Retrieved groups: {groups}")
+        logger.info(f"Retrieved groups: {groups}")
         group = next((g for g in groups if g['name'] == group_name), None)
-        logging.info(f"Found group: {group}")
+        logger.info(f"Found group: {group}")
         if not group:
             return handle_response(False, error=f"Group {group_name} not found in user's groups")
 
         # Add group to model
         model_manager = OWIModel(db_manager)
-        logging.info(f"Attempting to add group {group['id']} to model {model_name}")
+        logger.info(f"Attempting to add group {group['id']} to model {model_name}")
         model_data = model_manager.add_group_to_model_by_name(
             user_id=user['id'],
             model_name=model_name,
             group_id=group['id'],
             permission_type="read"
         )
-        logging.info(f"Result from add_group_to_model_by_name: {model_data}")
+        logger.info(f"Result from add_group_to_model_by_name: {model_data}")
         
         if not model_data:
             return handle_response(False, error="Failed to update model")
@@ -1122,7 +1122,7 @@ async def add_group_to_model(
         return handle_response(True, data=model_data)
             
     except Exception as e:
-        logging.error(f"Error in add_group_to_model endpoint: {e}")
+        logger.error(f"Error in add_group_to_model endpoint: {e}")
         return handle_response(False, error=str(e))
 
 @router.get("/get_owi_config", 
@@ -1143,7 +1143,7 @@ async def get_owi_config(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in get_owi_config endpoint: {e}")
+        logger.error(f"Error in get_owi_config endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -1167,7 +1167,7 @@ async def set_owi_config(request: Request, _=Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in set_owi_config endpoint: {e}")
+        logger.error(f"Error in set_owi_config endpoint: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

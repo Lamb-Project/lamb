@@ -7,12 +7,12 @@ variables for backward compatibility with the system organization.
 """
 
 import os
-import logging
 from typing import Dict, Any, Optional
 from lamb.database_manager import LambDatabaseManager
 import config
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 
 class OrganizationConfigResolver:

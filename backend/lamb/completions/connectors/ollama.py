@@ -1,15 +1,14 @@
 import json
 # import requests
 import os
-import logging
 from typing import Dict, Any, AsyncGenerator, Optional
 import time
 import asyncio
 import aiohttp # Import aiohttp
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 async def get_available_llms(assistant_owner: Optional[str] = None): # Make async
     """

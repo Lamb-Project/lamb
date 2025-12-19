@@ -10,15 +10,15 @@ Date: November 2025
 
 import re
 import json
-import logging
 import secrets
 from typing import Dict, List, Any, Optional, Tuple
 from fastapi import UploadFile
 
 from backend.lamb.database_manager import LambDatabaseManager
 from backend.utils.pipelines.user_creator_manager import UserCreatorManager
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="API")
 
 
 class BulkImportValidator:

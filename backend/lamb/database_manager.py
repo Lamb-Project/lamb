@@ -19,6 +19,7 @@ import sqlite3
 import os
 import logging
 from .lamb_classes import Assistant, LTIUser, Organization, OrganizationRole
+from .logging_config import get_logger
 import json
 import time
 from typing import Optional, List, Dict, Any, Tuple
@@ -27,25 +28,25 @@ from .owi_bridge.owi_users import OwiUserManager
 import jwt
 import config
 
-
-logging.basicConfig(level=logging.INFO)
+# Centralized logger for DB component
+logger = get_logger(__name__, component="DB")
 
 
 class LambDatabaseManager:
     def __init__(self):
 
-        #        logging.debug("Initializing LambDatabaseManager")
+        #        logger.debug("Initializing LambDatabaseManager")
         try:
             # Load environment variables
             load_dotenv()
 
             # Get database configuration from environment variables
             self.table_prefix = os.getenv('LAMB_DB_PREFIX', '')
-#            logging.debug(f"Table prefix: {self.table_prefix}")
+#            logger.debug(f"Table prefix: {self.table_prefix}")
 
             lamb_db_path = os.getenv('LAMB_DB_PATH')
             if not lamb_db_path:
-                logging.error(
+                logger.error(
                     "LAMB_DB_PATH not found in environment variables")
                 raise ValueError(
                     "LAMB_DB_PATH must be specified in environment variables")
@@ -55,39 +56,39 @@ class LambDatabaseManager:
                 # Create the database file and directory if they don't exist
                 os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
                 self.create_database_and_tables()
-                logging.info(f"Created database at: {self.db_path}")
-#            logging.debug(f"Found database at: {self.db_path}")
+                logger.info(f"Created database at: {self.db_path}")
+#            logger.debug(f"Found database at: {self.db_path}")
             
             # Always run migrations on initialization (handles existing databases)
             self.run_migrations()
 
         except Exception as e:
-            logging.error(f"Error during initialization: {e}")
+            logger.error(f"Error during initialization: {e}")
             raise
 
     def get_connection(self):
-        # logging.debug(f"Attempting to connect to database at: {self.db_path}")
+        # logger.debug(f"Attempting to connect to database at: {self.db_path}")
         try:
             connection = sqlite3.connect(self.db_path)
- #           logging.debug("Database connection established successfully")
+ #           logger.debug("Database connection established successfully")
             return connection
         except sqlite3.Error as e:
-            logging.error(f"Failed to connect to database: {e}")
+            logger.error(f"Failed to connect to database: {e}")
             return None
 
     def create_database_and_tables(self):
-        logging.debug("Starting database and tables creation")
+        logger.debug("Starting database and tables creation")
         try:
             connection = self.get_connection()
             if not connection:
-                logging.error("Failed to establish database connection")
+                logger.error("Failed to establish database connection")
                 return
 
             with connection:
                 cursor = connection.cursor()
 
                 # Create the organizations table
-                logging.debug("Creating organizations table")
+                logger.debug("Creating organizations table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}organizations (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,11 +104,11 @@ class LambDatabaseManager:
                 cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_slug ON {self.table_prefix}organizations(slug)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_status ON {self.table_prefix}organizations(status)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_is_system ON {self.table_prefix}organizations(is_system)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}organizations' created successfully")
 
                 # Create the organization_roles table
-                logging.debug("Creating organization_roles table")
+                logger.debug("Creating organization_roles table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}organization_roles (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,11 +125,11 @@ class LambDatabaseManager:
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_org ON {self.table_prefix}organization_roles(organization_id)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_user ON {self.table_prefix}organization_roles(user_id)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_role ON {self.table_prefix}organization_roles(role)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}organization_roles' created successfully")
 
                 # Create usage_logs table
-                logging.debug("Creating usage_logs table")
+                logger.debug("Creating usage_logs table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}usage_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,11 +145,11 @@ class LambDatabaseManager:
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_org_date ON {self.table_prefix}usage_logs(organization_id, created_at)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_user_date ON {self.table_prefix}usage_logs(user_id, created_at)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}usage_logs' created successfully")
 
                 # Create the model_permissions table
-                logging.debug("Creating model_permissions table")
+                logger.debug("Creating model_permissions table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}model_permissions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,11 +159,11 @@ class LambDatabaseManager:
                         UNIQUE(user_email, model_name)
                     )
                 """)
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}model_permissions' created successfully")
 
                 # Create the assistants table
-                logging.debug("Creating assistants table")
+                logger.debug("Creating assistants table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}assistants (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,11 +186,11 @@ class LambDatabaseManager:
                     )
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistants_org ON {self.table_prefix}assistants(organization_id)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}assistants' created successfully")
 
                 # Create the lti_users table
-                logging.debug("Creating lti_users table")
+                logger.debug("Creating lti_users table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}lti_users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,11 +207,11 @@ class LambDatabaseManager:
                         UNIQUE(user_email, assistant_id)
                     )
                 """)
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}lti_users' created successfully")
 
                 # Create the assistant_publish table
-                logging.debug("Creating assistant_publish table")
+                logger.debug("Creating assistant_publish table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_publish (
                         assistant_id INTEGER PRIMARY KEY, -- Made assistant_id the primary key
@@ -223,11 +224,11 @@ class LambDatabaseManager:
                         FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE -- Optional: Add foreign key constraint
                     )
                 """)
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}assistant_publish' created successfully")
 
                 # Create the assistant_shares table
-                logging.debug("Creating assistant_shares table")
+                logger.debug("Creating assistant_shares table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_shares (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,11 +244,11 @@ class LambDatabaseManager:
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}assistant_shares' created successfully")
 
                 # Create the Creator_users table
-                logging.debug("Creating Creator_users table")
+                logger.debug("Creating Creator_users table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}Creator_users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,11 +265,11 @@ class LambDatabaseManager:
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org ON {self.table_prefix}Creator_users(organization_id)")
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}Creator_users' created successfully")
 
                 # Create the collections table
-                logging.debug("Creating collections table")
+                logger.debug("Creating collections table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}collections (
                         id TEXT PRIMARY KEY,
@@ -283,12 +284,12 @@ class LambDatabaseManager:
                     )
                 """)
                 cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}collections_org ON {self.table_prefix}collections(organization_id)")
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}collections' created successfully")
 
             
                 # Create the config table
-                logging.debug("Creating config table")
+                logger.debug("Creating config table")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_prefix}config (
                         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -302,18 +303,18 @@ class LambDatabaseManager:
                     VALUES (1, '{{}}')
                 """)
 
-                logging.info(
+                logger.info(
                     f"Table '{self.table_prefix}config' created successfully")
 
             # Initialize system organization and admin user
             self.initialize_system_organization()
         except sqlite3.Error as e:
-            logging.error(f"Database error occurred: {e}")
+            logger.error(f"Database error occurred: {e}")
 
         finally:
             if connection:
                 connection.close()
-                logging.debug("Database connection closed")
+                logger.debug("Database connection closed")
 
     def create_admin_user(self):
         """Create the system admin user in both OWI and LAMB systems"""
@@ -328,19 +329,19 @@ class LambDatabaseManager:
                 password=config.OWI_ADMIN_PASSWORD,
                 role="admin"
             )
-            logging.info(f"Created OWI admin user: {config.OWI_ADMIN_EMAIL}")
+            logger.info(f"Created OWI admin user: {config.OWI_ADMIN_EMAIL}")
         else:
             # Ensure the user has admin role in OWI
             if owi_user.get('role') != 'admin':
                 owi_manager.update_user_role_by_email(config.OWI_ADMIN_EMAIL, 'admin')
-                logging.info(f"Updated OWI user to admin role: {config.OWI_ADMIN_EMAIL}")
+                logger.info(f"Updated OWI user to admin role: {config.OWI_ADMIN_EMAIL}")
         
         # Note: LAMB creator user will be created in initialize_system_organization
         # to ensure it's created with the correct organization_id
 
     def initialize_system_organization(self):
         """Initialize the system organization and admin user"""
-        logging.info("Initializing system organization")
+        logger.info("Initializing system organization")
         
         # Check if system organization exists
         system_org = self.get_organization_by_slug("lamb")
@@ -349,13 +350,13 @@ class LambDatabaseManager:
             # Create system organization from environment
             system_org_id = self.create_system_organization()
             if not system_org_id:
-                logging.error("Failed to create system organization")
+                logger.error("Failed to create system organization")
                 return
         else:
             system_org_id = system_org['id']
             # Update system organization config from .env
             self.sync_system_org_with_env(system_org_id)
-            logging.info("System organization configuration updated from environment")
+            logger.info("System organization configuration updated from environment")
         
         # Always ensure admin user exists and has proper roles
         self.ensure_system_admin(system_org_id)
@@ -377,14 +378,14 @@ class LambDatabaseManager:
                 organization_id=system_org_id
             )
             if admin_user_id:
-                logging.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
+                logger.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
                 # Assign admin role in organization
                 self.assign_organization_role(
                     organization_id=system_org_id,
                     user_id=admin_user_id,
                     role="admin"
                 )
-                logging.info(f"Assigned admin role to user {admin_user_id} in system organization")
+                logger.info(f"Assigned admin role to user {admin_user_id} in system organization")
         else:
             # User exists, ensure they have correct organization and role
             admin_user_id = admin_user['id']
@@ -392,7 +393,7 @@ class LambDatabaseManager:
             # Check and update organization if needed
             if admin_user.get('organization_id') != system_org_id:
                 self.update_user_organization(admin_user_id, system_org_id)
-                logging.info(f"Updated admin user organization to system org")
+                logger.info(f"Updated admin user organization to system org")
             
             # Check and assign admin role if needed
             current_role = self.get_user_organization_role(admin_user_id, system_org_id)
@@ -402,14 +403,14 @@ class LambDatabaseManager:
                     user_id=admin_user_id,
                     role="admin"
                 )
-                logging.info(f"Updated admin user role to 'admin' in system organization")
+                logger.info(f"Updated admin user role to 'admin' in system organization")
     
     def run_migrations(self):
         """Run database migrations for schema updates"""
-        logging.info("Running database migrations")
+        logger.info("Running database migrations")
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection for migrations")
+            logger.error("Could not establish database connection for migrations")
             return
         
         try:
@@ -421,7 +422,7 @@ class LambDatabaseManager:
                 columns = [row[1] for row in cursor.fetchall()]
                 
                 if 'user_type' not in columns:
-                    logging.info("Adding user_type column to Creator_users table")
+                    logger.info("Adding user_type column to Creator_users table")
                     cursor.execute(f"""
                         ALTER TABLE {self.table_prefix}Creator_users 
                         ADD COLUMN user_type TEXT NOT NULL DEFAULT 'creator' 
@@ -429,16 +430,16 @@ class LambDatabaseManager:
                     """)
                     # Create index for user_type
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
-                    logging.info("Successfully added user_type column and index")
+                    logger.info("Successfully added user_type column and index")
                 else:
-                    logging.debug("user_type column already exists in Creator_users table")
+                    logger.debug("user_type column already exists in Creator_users table")
 
                 # Migration 2: Create rubrics table if it doesn't exist
                 cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}rubrics'")
                 rubrics_table_exists = cursor.fetchone()
 
                 if not rubrics_table_exists:
-                    logging.info("Creating rubrics table")
+                    logger.info("Creating rubrics table")
                     cursor.execute(f"""
                         CREATE TABLE {self.table_prefix}rubrics (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -465,16 +466,16 @@ class LambDatabaseManager:
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_public ON {self.table_prefix}rubrics(is_public)")
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_showcase ON {self.table_prefix}rubrics(is_showcase)")
 
-                    logging.info("Successfully created rubrics table and indexes")
+                    logger.info("Successfully created rubrics table and indexes")
                 else:
-                    logging.debug("rubrics table already exists")
+                    logger.debug("rubrics table already exists")
 
                 # Migration 3: Create prompt_templates table if it doesn't exist
                 cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}prompt_templates'")
                 prompt_templates_table_exists = cursor.fetchone()
 
                 if not prompt_templates_table_exists:
-                    logging.info("Creating prompt_templates table")
+                    logger.info("Creating prompt_templates table")
                     cursor.execute(f"""
                         CREATE TABLE {self.table_prefix}prompt_templates (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -499,32 +500,32 @@ class LambDatabaseManager:
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_owner ON {self.table_prefix}prompt_templates(owner_email)")
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_name ON {self.table_prefix}prompt_templates(name)")
 
-                    logging.info("Successfully created prompt_templates table and indexes")
+                    logger.info("Successfully created prompt_templates table and indexes")
                 else:
-                    logging.debug("prompt_templates table already exists")
+                    logger.debug("prompt_templates table already exists")
 
                 # Migration 4: Add enabled column to Creator_users if it doesn't exist
                 cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
                 columns = [row[1] for row in cursor.fetchall()]
                 
                 if 'enabled' not in columns:
-                    logging.info("Adding enabled column to Creator_users table")
+                    logger.info("Adding enabled column to Creator_users table")
                     cursor.execute(f"""
                         ALTER TABLE {self.table_prefix}Creator_users 
                         ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1
                     """)
                     # Create index for performance
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
-                    logging.info("Successfully added enabled column and index")
+                    logger.info("Successfully added enabled column and index")
                 else:
-                    logging.debug("enabled column already exists in Creator_users table")
+                    logger.debug("enabled column already exists in Creator_users table")
 
                 # Migration 5: Create kb_registry table if it doesn't exist
                 cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
                 kb_registry_table_exists = cursor.fetchone()
 
                 if not kb_registry_table_exists:
-                    logging.info("Creating kb_registry table")
+                    logger.info("Creating kb_registry table")
                     cursor.execute(f"""
                         CREATE TABLE {self.table_prefix}kb_registry (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -546,16 +547,16 @@ class LambDatabaseManager:
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
 
-                    logging.info("Successfully created kb_registry table and indexes")
+                    logger.info("Successfully created kb_registry table and indexes")
                 else:
-                    logging.debug("kb_registry table already exists")
+                    logger.debug("kb_registry table already exists")
 
                 # Migration 6: Create bulk_import_logs table if it doesn't exist
                 cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}bulk_import_logs'")
                 bulk_import_logs_table_exists = cursor.fetchone()
 
                 if not bulk_import_logs_table_exists:
-                    logging.info("Creating bulk_import_logs table")
+                    logger.info("Creating bulk_import_logs table")
                     cursor.execute(f"""
                         CREATE TABLE {self.table_prefix}bulk_import_logs (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -579,9 +580,9 @@ class LambDatabaseManager:
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_created ON {self.table_prefix}bulk_import_logs(created_at)")
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_type ON {self.table_prefix}bulk_import_logs(operation_type)")
 
-                    logging.info("Successfully created bulk_import_logs table and indexes")
+                    logger.info("Successfully created bulk_import_logs table and indexes")
                 else:
-                    logging.debug("bulk_import_logs table already exists")
+                    logger.debug("bulk_import_logs table already exists")
                 
                 # Migration: Check if assistant_shares table exists
                 cursor.execute(f"""
@@ -589,7 +590,7 @@ class LambDatabaseManager:
                     WHERE type='table' AND name='{self.table_prefix}assistant_shares'
                 """)
                 if not cursor.fetchone():
-                    logging.info("Creating assistant_shares table")
+                    logger.info("Creating assistant_shares table")
                     cursor.execute(f"""
                         CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_shares (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -605,12 +606,12 @@ class LambDatabaseManager:
                     """)
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                    logging.info(f"Table '{self.table_prefix}assistant_shares' created successfully")
+                    logger.info(f"Table '{self.table_prefix}assistant_shares' created successfully")
                 else:
-                    logging.debug("assistant_shares table already exists")
+                    logger.debug("assistant_shares table already exists")
 
         except sqlite3.Error as e:
-            logging.error(f"Migration error: {e}")
+            logger.error(f"Migration error: {e}")
         finally:
             if connection:
                 connection.close()
@@ -629,8 +630,6 @@ class LambDatabaseManager:
             },
             "setups": {
                 "default": {
-                    "name": "System Default",
-                    "is_default": True,
                     "providers": self._load_providers_from_env(),
                     "knowledge_base": self._load_kb_config_from_env()
                 }
@@ -649,7 +648,7 @@ class LambDatabaseManager:
         try:
             config_data['assistant_defaults'] = self._load_assistant_defaults_from_file()
         except Exception as e:
-            logging.warning(f"Could not load assistant defaults for system org: {e}")
+            logger.warning(f"Could not load assistant defaults for system org: {e}")
         
         return self.create_organization(
             slug="lamb",
@@ -731,7 +730,7 @@ class LambDatabaseManager:
                             return data['config']
                         return data
             
-            logging.warning("defaults.json not found, using minimal defaults")
+            logger.warning("defaults.json not found, using minimal defaults")
             return {
                 "connector": "openai",
                 "llm": "gpt-4o-mini",
@@ -739,7 +738,7 @@ class LambDatabaseManager:
                 "rag_processor": "No RAG"
             }
         except Exception as e:
-            logging.error(f"Error loading assistant defaults from file: {e}")
+            logger.error(f"Error loading assistant defaults from file: {e}")
             return {
                 "connector": "openai",
                 "llm": "gpt-4o-mini",
@@ -763,7 +762,7 @@ class LambDatabaseManager:
         """Update system organization configuration from environment variables"""
         org = self.get_organization_by_id(org_id)
         if not org or not org.get('is_system'):
-            logging.warning("Cannot sync non-system organization")
+            logger.warning("Cannot sync non-system organization")
             return
 
         # Update config with latest env values
@@ -776,7 +775,7 @@ class LambDatabaseManager:
         try:
             config = self._ensure_assistant_defaults_in_config(config)
         except Exception as e:
-            logging.warning(f"Could not ensure assistant_defaults during system sync: {e}")
+            logger.warning(f"Could not ensure assistant_defaults during system sync: {e}")
 
         # Sync global default model from environment
         global_default_provider = os.getenv('GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
@@ -790,7 +789,7 @@ class LambDatabaseManager:
                 "provider": global_default_provider,
                 "model": global_default_model
             }
-            logging.info(f"Synced global-default-model: {global_default_provider}/{global_default_model}")
+            logger.info(f"Synced global-default-model: {global_default_provider}/{global_default_model}")
         
         # Sync small fast model from environment
         small_fast_provider = os.getenv('SMALL_FAST_MODEL_PROVIDER', '').strip()
@@ -804,7 +803,7 @@ class LambDatabaseManager:
                 "provider": small_fast_provider,
                 "model": small_fast_model
             }
-            logging.info(f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
+            logger.info(f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
 
         self.update_organization_config(org_id, config)
 
@@ -859,11 +858,11 @@ class LambDatabaseManager:
                 """, (slug, name, is_system, status, json.dumps(config), now, now))
                 
                 org_id = cursor.lastrowid
-                logging.info(f"Organization '{name}' created with id: {org_id}")
+                logger.info(f"Organization '{name}' created with id: {org_id}")
                 return org_id
                 
         except sqlite3.Error as e:
-            logging.error(f"Error creating organization: {e}")
+            logger.error(f"Error creating organization: {e}")
             return None
         finally:
             connection.close()
@@ -896,28 +895,28 @@ class LambDatabaseManager:
             if signup_key:
                 is_valid, error_msg = self.validate_signup_key_format(signup_key)
                 if not is_valid:
-                    logging.error(f"Invalid signup key format: {error_msg}")
+                    logger.error(f"Invalid signup key format: {error_msg}")
                     return None
                 
                 if not self.validate_signup_key_uniqueness(signup_key):
-                    logging.error(f"Signup key '{signup_key}' already exists")
+                    logger.error(f"Signup key '{signup_key}' already exists")
                     return None
             
             # Validate that admin user exists and is in system organization
             admin_user = self.get_creator_user_by_id(admin_user_id)
             if not admin_user:
-                logging.error(f"Admin user {admin_user_id} not found")
+                logger.error(f"Admin user {admin_user_id} not found")
                 return None
             
             system_org = self.get_organization_by_slug("lamb")
             if not system_org or admin_user['organization_id'] != system_org['id']:
-                logging.error(f"Admin user {admin_user_id} is not in system organization")
+                logger.error(f"Admin user {admin_user_id} is not in system organization")
                 return None
             
             # Check if user is currently an admin in the system organization
             current_role = self.get_user_organization_role(admin_user_id, system_org['id'])
             if current_role == "admin":
-                logging.error(f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
+                logger.error(f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
                 return None
             
             with connection:
@@ -955,7 +954,7 @@ class LambDatabaseManager:
                 """, (slug, name, False, "active", json.dumps(config), now, now))
                 
                 org_id = cursor.lastrowid
-                logging.info(f"Organization '{name}' created with id: {org_id}")
+                logger.info(f"Organization '{name}' created with id: {org_id}")
                 
                 # Move admin user to new organization (inline to avoid connection conflicts)
                 cursor.execute(f"""
@@ -965,7 +964,7 @@ class LambDatabaseManager:
                 """, (org_id, now, admin_user_id))
                 
                 if cursor.rowcount == 0:
-                    logging.error(f"Failed to move admin user to new organization")
+                    logger.error(f"Failed to move admin user to new organization")
                     return None
                 
                 # Assign admin role to user in new organization (inline to avoid connection conflicts)
@@ -975,13 +974,13 @@ class LambDatabaseManager:
                     VALUES (?, ?, ?, ?, ?)
                 """, (org_id, admin_user_id, "admin", now, now))
                 
-                logging.info(f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                logger.info(f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
                 
-                logging.info(f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
+                logger.info(f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
                 return org_id
                 
         except sqlite3.Error as e:
-            logging.error(f"Error creating organization with admin: {e}")
+            logger.error(f"Error creating organization with admin: {e}")
             return None
         finally:
             connection.close()
@@ -1017,7 +1016,7 @@ class LambDatabaseManager:
                 }
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting organization by ID: {e}")
+            logger.error(f"Error getting organization by ID: {e}")
             return None
         finally:
             connection.close()
@@ -1053,7 +1052,7 @@ class LambDatabaseManager:
                 }
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting organization by slug: {e}")
+            logger.error(f"Error getting organization by slug: {e}")
             return None
         finally:
             connection.close()
@@ -1101,7 +1100,7 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
                 
         except sqlite3.Error as e:
-            logging.error(f"Error updating organization: {e}")
+            logger.error(f"Error updating organization: {e}")
             return False
         finally:
             connection.close()
@@ -1127,7 +1126,7 @@ class LambDatabaseManager:
                 
                 result = cursor.fetchone()
                 if result and result[0]:
-                    logging.error("Cannot delete system organization")
+                    logger.error("Cannot delete system organization")
                     return False
                 
                 # Delete organization (cascade will handle related records)
@@ -1138,7 +1137,7 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
                 
         except sqlite3.Error as e:
-            logging.error(f"Error deleting organization: {e}")
+            logger.error(f"Error deleting organization: {e}")
             return False
         finally:
             connection.close()
@@ -1290,7 +1289,7 @@ class LambDatabaseManager:
                 }
                 
         except sqlite3.Error as e:
-            logging.error(f"Error validating migration: {e}")
+            logger.error(f"Error validating migration: {e}")
             return {
                 "can_migrate": False,
                 "error": str(e),
@@ -1318,11 +1317,11 @@ class LambDatabaseManager:
                 """, (target_org_id, now, source_org_id))
                 
                 migrated = cursor.rowcount
-                logging.info(f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
+                logger.info(f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
                 return migrated
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating users: {e}")
+            logger.error(f"Error migrating users: {e}")
             raise
         finally:
             connection.close()
@@ -1376,11 +1375,11 @@ class LambDatabaseManager:
                     """, (target_org_id, user_id, target_role, now, now))
                     migrated += 1
                 
-                logging.info(f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
+                logger.info(f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
                 return migrated
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating roles: {e}")
+            logger.error(f"Error migrating roles: {e}")
             raise
         finally:
             connection.close()
@@ -1429,7 +1428,7 @@ class LambDatabaseManager:
                     
                     if conflict_exists:
                         if conflict_strategy == "skip":
-                            logging.warning(f"Skipping assistant {name} (conflict detected)")
+                            logger.warning(f"Skipping assistant {name} (conflict detected)")
                             continue
                         elif conflict_strategy == "fail":
                             raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
@@ -1450,11 +1449,11 @@ class LambDatabaseManager:
                     
                     migrated += 1
                 
-                logging.info(f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                logger.info(f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
                 return {"count": migrated, "renamed": renamed}
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating assistants: {e}")
+            logger.error(f"Error migrating assistants: {e}")
             raise
         finally:
             connection.close()
@@ -1503,7 +1502,7 @@ class LambDatabaseManager:
                     
                     if conflict_exists:
                         if conflict_strategy == "skip":
-                            logging.warning(f"Skipping template {name} (conflict detected)")
+                            logger.warning(f"Skipping template {name} (conflict detected)")
                             continue
                         elif conflict_strategy == "fail":
                             raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
@@ -1524,11 +1523,11 @@ class LambDatabaseManager:
                     
                     migrated += 1
                 
-                logging.info(f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+                logger.info(f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
                 return {"count": migrated, "renamed": renamed}
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating templates: {e}")
+            logger.error(f"Error migrating templates: {e}")
             raise
         finally:
             connection.close()
@@ -1551,11 +1550,11 @@ class LambDatabaseManager:
                 """, (target_org_id, now, source_org_id))
                 
                 migrated = cursor.rowcount
-                logging.info(f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
+                logger.info(f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
                 return migrated
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating KB registry: {e}")
+            logger.error(f"Error migrating KB registry: {e}")
             raise
         finally:
             connection.close()
@@ -1577,11 +1576,11 @@ class LambDatabaseManager:
                 """, (target_org_id, source_org_id))
                 
                 migrated = cursor.rowcount
-                logging.info(f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
+                logger.info(f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
                 return migrated
                 
         except sqlite3.Error as e:
-            logging.error(f"Error migrating usage logs: {e}")
+            logger.error(f"Error migrating usage logs: {e}")
             raise
         finally:
             connection.close()
@@ -1632,7 +1631,7 @@ class LambDatabaseManager:
                 """, (target_org_id, now, source_org_id))
                 users_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["users"] = users_migrated
-                logging.info(f"Migrated {users_migrated} users")
+                logger.info(f"Migrated {users_migrated} users")
                 
                 # 2. Migrate roles
                 cursor.execute(f"""
@@ -1650,7 +1649,7 @@ class LambDatabaseManager:
                     """, (target_org_id, user_id, target_role, now, now))
                     roles_migrated += 1
                 migration_report["resources_migrated"]["roles"] = roles_migrated
-                logging.info(f"Migrated {roles_migrated} roles")
+                logger.info(f"Migrated {roles_migrated} roles")
                 
                 # 3. Migrate assistants
                 cursor.execute(f"""
@@ -1689,7 +1688,7 @@ class LambDatabaseManager:
                     assistants_migrated += 1
                 migration_report["resources_migrated"]["assistants"] = assistants_migrated
                 migration_report["conflicts_resolved"]["assistants_renamed"] = len(assistants_renamed)
-                logging.info(f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
+                logger.info(f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
                 
                 # 4. Migrate templates
                 cursor.execute(f"""
@@ -1728,7 +1727,7 @@ class LambDatabaseManager:
                     templates_migrated += 1
                 migration_report["resources_migrated"]["templates"] = templates_migrated
                 migration_report["conflicts_resolved"]["templates_renamed"] = len(templates_renamed)
-                logging.info(f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
+                logger.info(f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
                 
                 # 5. Migrate KB registry
                 cursor.execute(f"""
@@ -1738,7 +1737,7 @@ class LambDatabaseManager:
                 """, (target_org_id, now, source_org_id))
                 kbs_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["kbs"] = kbs_migrated
-                logging.info(f"Migrated {kbs_migrated} KB registry entries")
+                logger.info(f"Migrated {kbs_migrated} KB registry entries")
                 
                 # 6. Migrate usage logs
                 cursor.execute(f"""
@@ -1748,17 +1747,17 @@ class LambDatabaseManager:
                 """, (target_org_id, source_org_id))
                 logs_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["usage_logs"] = logs_migrated
-                logging.info(f"Migrated {logs_migrated} usage logs")
+                logger.info(f"Migrated {logs_migrated} usage logs")
                 
                 # All migrations successful
                 migration_report["success"] = True
-                logging.info(f"Successfully migrated organization {source_org_id} to {target_org_id}")
+                logger.info(f"Successfully migrated organization {source_org_id} to {target_org_id}")
                 
                 return migration_report
                 
         except Exception as e:
             error_msg = str(e)
-            logging.error(f"Error during migration: {error_msg}")
+            logger.error(f"Error during migration: {error_msg}")
             migration_report["success"] = False
             migration_report["errors"].append(error_msg)
             # Transaction will rollback automatically on exception
@@ -1808,7 +1807,7 @@ class LambDatabaseManager:
                 return organizations
                 
         except sqlite3.Error as e:
-            logging.error(f"Error listing organizations: {e}")
+            logger.error(f"Error listing organizations: {e}")
             return []
         finally:
             connection.close()
@@ -1833,11 +1832,11 @@ class LambDatabaseManager:
                     VALUES (?, ?, ?, ?, ?)
                 """, (organization_id, user_id, role, now, now))
                 
-                logging.info(f"Assigned role '{role}' to user {user_id} in organization {organization_id}")
+                logger.info(f"Assigned role '{role}' to user {user_id} in organization {organization_id}")
                 return True
                 
         except sqlite3.Error as e:
-            logging.error(f"Error assigning organization role: {e}")
+            logger.error(f"Error assigning organization role: {e}")
             return False
         finally:
             connection.close()
@@ -1878,7 +1877,7 @@ class LambDatabaseManager:
                 return users
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting organization users: {e}")
+            logger.error(f"Error getting organization users: {e}")
             return []
         finally:
             connection.close()
@@ -1918,7 +1917,7 @@ class LambDatabaseManager:
                 return organizations
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting user organizations: {e}")
+            logger.error(f"Error getting user organizations: {e}")
             return []
         finally:
             connection.close()
@@ -1951,7 +1950,7 @@ class LambDatabaseManager:
                 return result[0] if result else None
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting user organization role: {e}")
+            logger.error(f"Error getting user organization role: {e}")
             return None
         finally:
             connection.close()
@@ -1976,7 +1975,7 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
                 
         except sqlite3.Error as e:
-            logging.error(f"Error updating user organization: {e}")
+            logger.error(f"Error updating user organization: {e}")
             return False
         finally:
             connection.close()
@@ -2015,7 +2014,7 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
                 
         except sqlite3.Error as e:
-            logging.error(f"Error updating user config: {e}")
+            logger.error(f"Error updating user config: {e}")
             return False
         finally:
             connection.close()
@@ -2061,7 +2060,7 @@ class LambDatabaseManager:
         """Get system organization configuration to use as baseline for new organizations"""
         system_org = self.get_organization_by_slug("lamb")
         if not system_org:
-            logging.warning("System organization not found, using default config")
+            logger.warning("System organization not found, using default config")
             return self._get_default_org_config()
         
         # Deep copy the system config and modify it for new organizations
@@ -2098,7 +2097,7 @@ class LambDatabaseManager:
         """Get all users from the system organization ('lamb') for admin assignment"""
         system_org = self.get_organization_by_slug("lamb")
         if not system_org:
-            logging.error("System organization not found")
+            logger.error("System organization not found")
             return []
         
         return self.get_organization_users(system_org['id'])
@@ -2133,7 +2132,7 @@ class LambDatabaseManager:
                         config = json.loads(config_json)
                         existing_key = config.get('features', {}).get('signup_key')
                         if existing_key and existing_key.strip() == signup_key.strip():
-                            logging.warning(f"Signup key '{signup_key}' already exists in organization {org_id}")
+                            logger.warning(f"Signup key '{signup_key}' already exists in organization {org_id}")
                             return False
                     except json.JSONDecodeError:
                         continue
@@ -2141,7 +2140,7 @@ class LambDatabaseManager:
                 return True
                 
         except sqlite3.Error as e:
-            logging.error(f"Error validating signup key uniqueness: {e}")
+            logger.error(f"Error validating signup key uniqueness: {e}")
             return False
         finally:
             connection.close()
@@ -2202,7 +2201,7 @@ class LambDatabaseManager:
                         
                         # Check if this organization has the matching signup key and signup is enabled
                         if (existing_key and existing_key.strip() == signup_key.strip() and signup_enabled):
-                            logging.info(f"Found organization '{slug}' (ID: {org_id}) for signup key")
+                            logger.info(f"Found organization '{slug}' (ID: {org_id}) for signup key")
                             return {
                                 'id': org_id,
                                 'slug': slug,
@@ -2214,14 +2213,14 @@ class LambDatabaseManager:
                                 'updated_at': updated_at
                             }
                     except json.JSONDecodeError:
-                        logging.warning(f"Invalid JSON config for organization {org_id}")
+                        logger.warning(f"Invalid JSON config for organization {org_id}")
                         continue
                 
-                logging.info(f"No organization found for signup key '{signup_key}'")
+                logger.info(f"No organization found for signup key '{signup_key}'")
                 return None
                 
         except sqlite3.Error as e:
-            logging.error(f"Error finding organization by signup key: {e}")
+            logger.error(f"Error finding organization by signup key: {e}")
             return None
         finally:
             connection.close()
@@ -2249,7 +2248,7 @@ class LambDatabaseManager:
             # Get system organization
             system_org = self.get_organization_by_slug("lamb")
             if not system_org:
-                logging.warning("System organization 'lamb' not found")
+                logger.warning("System organization 'lamb' not found")
                 return False
             
             # Check user's role in system organization
@@ -2257,7 +2256,7 @@ class LambDatabaseManager:
             return user_role == 'admin'
             
         except Exception as e:
-            logging.error(f"Error checking system admin status for {user_email}: {e}")
+            logger.error(f"Error checking system admin status for {user_email}: {e}")
             return False
     
     def is_organization_admin(self, user_email: str, organization_id: int) -> bool:
@@ -2273,7 +2272,7 @@ class LambDatabaseManager:
             return user_role in ['admin', 'owner']
             
         except Exception as e:
-            logging.error(f"Error checking organization admin status: {e}")
+            logger.error(f"Error checking organization admin status: {e}")
             return False
 
     def get_creator_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -2289,7 +2288,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection")
+            logger.error("Could not establish database connection")
             return None
 
         try:
@@ -2314,10 +2313,10 @@ class LambDatabaseManager:
                 }
 
         except sqlite3.Error as e:
-            logging.error(f"Database error in get_creator_user_by_id: {e}")
+            logger.error(f"Database error in get_creator_user_by_id: {e}")
             return None
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Unexpected error in get_creator_user_by_id: {e}")
             return None
         finally:
@@ -2336,7 +2335,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection")
+            logger.error("Could not establish database connection")
             return None
 
         try:
@@ -2363,15 +2362,15 @@ class LambDatabaseManager:
                 }
 
         except sqlite3.Error as e:
-            logging.error(f"Database error in get_creator_user_by_email: {e}")
+            logger.error(f"Database error in get_creator_user_by_email: {e}")
             return None
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Unexpected error in get_creator_user_by_email: {e}")
             return None
         finally:
             connection.close()
- #           logging.debug("Database connection closed")
+ #           logger.debug("Database connection closed")
 
     def create_creator_user(self, user_email: str, user_name: str, password: str, organization_id: int = None, user_type: str = 'creator'):
         """
@@ -2387,13 +2386,13 @@ class LambDatabaseManager:
         Returns:
             Optional[int]: ID of created user or None if creation fails
         """
-        logging.debug(f"Creating creator user: {user_email}")
+        logger.debug(f"Creating creator user: {user_email}")
 
         try:
             # First check if creator user already exists
             connection = self.get_connection()
             if not connection:
-                logging.error("Could not establish database connection")
+                logger.error("Could not establish database connection")
                 return None
 
             with connection:
@@ -2404,7 +2403,7 @@ class LambDatabaseManager:
                 """, (user_email,))
 
                 if cursor.fetchone():
-                    logging.warning(
+                    logger.warning(
                         f"Creator user {user_email} already exists")
                     return None
 
@@ -2414,7 +2413,7 @@ class LambDatabaseManager:
 
             if not owi_user:
                 # Create new OWI user if doesn't exist
-                logging.debug(f"Creating new OWI user for {user_email}")
+                logger.debug(f"Creating new OWI user for {user_email}")
                 owi_user = owi_manager.create_user(
                     name=user_name,
                     email=user_email,
@@ -2423,7 +2422,7 @@ class LambDatabaseManager:
                 )
 
                 if not owi_user:
-                    logging.error(
+                    logger.error(
                         f"Failed to create OWI user for {user_email}")
                     return None
 
@@ -2433,7 +2432,7 @@ class LambDatabaseManager:
                 if system_org:
                     organization_id = system_org['id']
                 else:
-                    logging.error("System organization not found")
+                    logger.error("System organization not found")
                     return None
 
             # Now create the creator user
@@ -2447,17 +2446,17 @@ class LambDatabaseManager:
                 """, (organization_id, user_email, user_name, user_type, "{}", now, now))
 
                 new_user_id = cursor.lastrowid
-                logging.info(
+                logger.info(
                     f"Creator user {user_email} created successfully with id: {new_user_id}")
                 return new_user_id
 
         except Exception as e:
-            logging.error(f"Error creating creator user: {e}")
+            logger.error(f"Error creating creator user: {e}")
             return None
         finally:
             if connection:
                 connection.close()
-                logging.debug("Database connection closed")
+                logger.debug("Database connection closed")
 
     def delete_creator_user(self, user_id: int) -> bool:
         """
@@ -2471,7 +2470,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return False
             
         try:
@@ -2483,14 +2482,14 @@ class LambDatabaseManager:
                 )
                 
                 if cursor.rowcount > 0:
-                    logging.info(f"Creator user with id {user_id} deleted successfully from LAMB database")
+                    logger.info(f"Creator user with id {user_id} deleted successfully from LAMB database")
                     return True
                 else:
-                    logging.warning(f"No creator user found with id {user_id}")
+                    logger.warning(f"No creator user found with id {user_id}")
                     return False
                     
         except Exception as e:
-            logging.error(f"Error deleting creator user: {e}")
+            logger.error(f"Error deleting creator user: {e}")
             return False
         finally:
             if connection:
@@ -2508,7 +2507,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return False
         
         try:
@@ -2523,11 +2522,11 @@ class LambDatabaseManager:
                 row = cursor.fetchone()
                 
                 if not row:
-                    logging.warning(f"User {user_id} not found")
+                    logger.warning(f"User {user_id} not found")
                     return False
                 
                 if row[0] == 0:  # Already disabled
-                    logging.info(f"User {user_id} already disabled")
+                    logger.info(f"User {user_id} already disabled")
                     return False
                 
                 # Disable user
@@ -2537,11 +2536,11 @@ class LambDatabaseManager:
                         WHERE id = ?""",
                     (int(time.time()), user_id)
                 )
-                logging.info(f"Successfully disabled user {user_id}")
+                logger.info(f"Successfully disabled user {user_id}")
                 return True
                 
         except Exception as e:
-            logging.error(f"Error disabling user {user_id}: {e}")
+            logger.error(f"Error disabling user {user_id}: {e}")
             return False
         finally:
             if connection:
@@ -2559,7 +2558,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return False
         
         try:
@@ -2574,11 +2573,11 @@ class LambDatabaseManager:
                 row = cursor.fetchone()
                 
                 if not row:
-                    logging.warning(f"User {user_id} not found")
+                    logger.warning(f"User {user_id} not found")
                     return False
                 
                 if row[0] == 1:  # Already enabled
-                    logging.info(f"User {user_id} already enabled")
+                    logger.info(f"User {user_id} already enabled")
                     return False
                 
                 # Enable user
@@ -2588,11 +2587,11 @@ class LambDatabaseManager:
                         WHERE id = ?""",
                     (int(time.time()), user_id)
                 )
-                logging.info(f"Successfully enabled user {user_id}")
+                logger.info(f"Successfully enabled user {user_id}")
                 return True
                 
         except Exception as e:
-            logging.error(f"Error enabling user {user_id}: {e}")
+            logger.error(f"Error enabling user {user_id}: {e}")
             return False
         finally:
             if connection:
@@ -2610,7 +2609,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return False
         
         try:
@@ -2623,7 +2622,7 @@ class LambDatabaseManager:
             return row and row[0] == 1
             
         except Exception as e:
-            logging.error(f"Error checking user enabled status: {e}")
+            logger.error(f"Error checking user enabled status: {e}")
             return False
         finally:
             if connection:
@@ -2641,7 +2640,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return {"success": [], "failed": user_ids, "already_disabled": []}
         
         results = {"success": [], "failed": [], "already_disabled": []}
@@ -2677,13 +2676,13 @@ class LambDatabaseManager:
                         )
                         results["success"].append(user_id)
                     except Exception as e:
-                        logging.error(f"Error disabling user {user_id}: {e}")
+                        logger.error(f"Error disabling user {user_id}: {e}")
                         results["failed"].append(user_id)
                 
-                logging.info(f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                logger.info(f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
                 
         except Exception as e:
-            logging.error(f"Error in bulk disable: {e}")
+            logger.error(f"Error in bulk disable: {e}")
             # Mark all as failed
             results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_disabled"] and uid not in results["failed"]])
         finally:
@@ -2704,7 +2703,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return {"success": [], "failed": user_ids, "already_enabled": []}
         
         results = {"success": [], "failed": [], "already_enabled": []}
@@ -2740,13 +2739,13 @@ class LambDatabaseManager:
                         )
                         results["success"].append(user_id)
                     except Exception as e:
-                        logging.error(f"Error enabling user {user_id}: {e}")
+                        logger.error(f"Error enabling user {user_id}: {e}")
                         results["failed"].append(user_id)
                 
-                logging.info(f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
+                logger.info(f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
                 
         except Exception as e:
-            logging.error(f"Error in bulk enable: {e}")
+            logger.error(f"Error in bulk enable: {e}")
             # Mark all as failed
             results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_enabled"] and uid not in results["failed"]])
         finally:
@@ -2784,7 +2783,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return None
         
         try:
@@ -2811,14 +2810,14 @@ class LambDatabaseManager:
                 )
                 
                 log_id = cursor.lastrowid
-                logging.info(
+                logger.info(
                     f"Logged bulk operation {operation_type} "
                     f"by {admin_email} (ID: {log_id})"
                 )
                 return log_id
                 
         except sqlite3.Error as e:
-            logging.error(f"Error logging bulk operation: {e}")
+            logger.error(f"Error logging bulk operation: {e}")
             return None
         finally:
             if connection:
@@ -2845,7 +2844,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Failed to get database connection")
+            logger.error("Failed to get database connection")
             return []
         
         try:
@@ -2908,7 +2907,7 @@ class LambDatabaseManager:
                 return logs
                 
         except sqlite3.Error as e:
-            logging.error(f"Error retrieving bulk import logs: {e}")
+            logger.error(f"Error retrieving bulk import logs: {e}")
             return []
         finally:
             if connection:
@@ -2929,15 +2928,15 @@ class LambDatabaseManager:
                           lti_user.group_name, lti_user.assistant_owner, lti_user.user_email,
                           lti_user.user_name, lti_user.user_display_name,
                           lti_user.lti_context_id, lti_user.lti_app_id))
-                    logging.info(
+                    logger.info(
                         f"LTI user {lti_user.user_email} created with id: {cursor.lastrowid}")
                     return cursor.lastrowid
             except sqlite3.Error as e:
-                logging.error(f"Error creating LTI user: {e}")
+                logger.error(f"Error creating LTI user: {e}")
                 return None
             finally:
                 connection.close()
-   #             logging.debug("Database connection closed")
+   #             logger.debug("Database connection closed")
         return None
 
     def get_lti_user_by_email(self, user_email):
@@ -2973,30 +2972,30 @@ class LambDatabaseManager:
                         }
                     return None
             except sqlite3.Error as e:
-                logging.error(f"Error getting LTI user: {e}")
+                logger.error(f"Error getting LTI user: {e}")
                 return None
             finally:
                 connection.close()
         return None
 
     def update_model_permissions(self, user_data):
-        #        logging.debug("Entering update_model_permissions method")
-        #        logging.debug(f"Received user_data: {user_data}")
+        #        logger.debug("Entering update_model_permissions method")
+        #        logger.debug(f"Received user_data: {user_data}")
         try:
             connection = self.get_connection()
-            logging.debug("Database connection established")
+            logger.debug("Database connection established")
 
             with connection:
                 cursor = connection.cursor()
                 user_email = user_data['user_email']
                 include_models = user_data['filter']['include']
                 exclude_models = user_data['filter']['exclude']
-#                logging.debug(f"Processing user_email: {user_email}")
+#                logger.debug(f"Processing user_email: {user_email}")
 
                 # First, remove all existing permissions for this user
                 cursor.execute(
                     f"DELETE FROM {self.table_prefix}model_permissions WHERE user_email = ?", (user_email,))
-#                logging.debug(
+#                logger.debug(
 #                    f"Deleted existing permissions for user: {user_email}")
 
                 # Insert 'include' permissions
@@ -3005,7 +3004,7 @@ class LambDatabaseManager:
                         INSERT INTO {self.table_prefix}model_permissions (user_email, model_name, access_type)
                         VALUES (?, ?, ?)
                     """, (user_email, model, 'include'))
-                    logging.debug(
+                    logger.debug(
                         f"Inserted 'include' permission for model: {model}")
 
                 # Insert 'exclude' permissions
@@ -3014,18 +3013,18 @@ class LambDatabaseManager:
                         INSERT INTO {self.table_prefix}model_permissions (user_email, model_name, access_type)
                         VALUES (?, ?, ?)
                     """, (user_email, model, 'exclude'))
-#                    logging.debug(
+#                    logger.debug(
 #                        f"Inserted 'exclude' permission for model: {model}")
 
-            logging.debug(f"Changes committed to database")
+            logger.debug(f"Changes committed to database")
 
         except sqlite3.Error as e:
-            logging.error(f"Error occurred: {e}")
+            logger.error(f"Error occurred: {e}")
 
         finally:
             if connection:
                 connection.close()
-#                logging.debug("SQLite connection closed")
+#                logger.debug("SQLite connection closed")
 
     def get_model_permissions(self, user_email):
         try:
@@ -3047,7 +3046,7 @@ class LambDatabaseManager:
                 ]
 
         except sqlite3.Error as e:
-            logging.error(f"Error: {e}")
+            logger.error(f"Error: {e}")
             return None
 
         finally:
@@ -3068,10 +3067,10 @@ class LambDatabaseManager:
         try:
             user_filters = self.get_model_permissions(email)
             if user_filters is None:
-                logging.warning(
+                logger.warning(
                     f"No permissions found for user {email}, returning unfiltered models")
                 return models
-            logging.debug(f"Applying filter for user: {user_filters}")
+            logger.debug(f"Applying filter for user: {user_filters}")
 
             include_models = [f['model_name']
                               for f in user_filters if f['access_type'] == 'include']
@@ -3090,10 +3089,10 @@ class LambDatabaseManager:
                 else:
                     filtered_models.append(model)
 
-#            logging.debug(f"Filtered models: {filtered_models}")
+#            logger.debug(f"Filtered models: {filtered_models}")
             return filtered_models
         except Exception as e:
-            logging.error(f"Error in filter_models: {str(e)}")
+            logger.error(f"Error in filter_models: {str(e)}")
             raise
 
     def add_assistant(self, assistant: Assistant):
@@ -3125,15 +3124,15 @@ class LambDatabaseManager:
                           "",  # post_retrieval_endpoint - DEPRECATED, always empty
                           int(time.time()),  # created_at (using time.time() since datetime was removed)
                           int(time.time())))  # updated_at
-                    logging.info(
+                    logger.info(
                         f"Assistant {assistant.name} created with id: {cursor.lastrowid}")
                     return cursor.lastrowid
             except sqlite3.Error as e:
-                logging.error(f"Error creating assistant: {e}")
+                logger.error(f"Error creating assistant: {e}")
                 return None
             finally:
                 connection.close()
-#                logging.debug("Database connection closed")
+#                logger.debug("Database connection closed")
         return None
 
     def get_assistant_by_id(self, assistant_id: int) -> Optional[Assistant]:
@@ -3173,7 +3172,7 @@ class LambDatabaseManager:
             )
             return assistant
         except sqlite3.Error as e:
-            logging.error(f"Database error in get_assistant_by_id: {e}")
+            logger.error(f"Database error in get_assistant_by_id: {e}")
             return None
         finally:
             connection.close()
@@ -3236,7 +3235,7 @@ class LambDatabaseManager:
                 return assistant_dict
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting assistant {assistant_id} with publication: {e}")
+            logger.error(f"Error getting assistant {assistant_id} with publication: {e}")
             return None
         finally:
             connection.close()
@@ -3282,12 +3281,12 @@ class LambDatabaseManager:
                             )
                             return assistant
                         except Exception as e:
-                            logging.error(f"Error creating assistant: {e}")
+                            logger.error(f"Error creating assistant: {e}")
                             return None
                     else:
                         return None
             except sqlite3.Error as e:
-                logging.error(f"Error getting assistant: {e}")
+                logger.error(f"Error getting assistant: {e}")
                 return None
             finally:
                 connection.close()
@@ -3310,7 +3309,7 @@ class LambDatabaseManager:
                 cursor.execute(
                     f"SELECT * FROM {self.table_prefix}assistants WHERE owner = ?", (owner,))
                 assistants_data = cursor.fetchall()
-#                logging.debug(f"Retrieved assistants data: {assistants_data}")
+#                logger.debug(f"Retrieved assistants data: {assistants_data}")
 
                 # Convert the tuples to dictionaries with proper keys
                 assistants_list = []
@@ -3332,7 +3331,7 @@ class LambDatabaseManager:
                     })
                 return assistants_list
         except sqlite3.Error as e:
-            logging.error(f"Error getting assistants: {e}")
+            logger.error(f"Error getting assistants: {e}")
             return []  # Return empty list on error
         finally:
             connection.close()
@@ -3372,12 +3371,12 @@ class LambDatabaseManager:
                         })
                     return assistants_list
             except sqlite3.Error as e:
-                logging.error(f"Error getting assistants: {e}")
+                logger.error(f"Error getting assistants: {e}")
                 return None
             finally:
                 if connection:
                     connection.close()
-                    logging.debug("Database connection closed")
+                    logger.debug("Database connection closed")
         return None
 
     def get_all_assistants_with_publication(self) -> List[Dict[str, Any]]:
@@ -3432,7 +3431,7 @@ class LambDatabaseManager:
                 return assistants_list
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting all assistants with publication: {e}")
+            logger.error(f"Error getting all assistants with publication: {e}")
             return []
         finally:
             connection.close()
@@ -3458,7 +3457,7 @@ class LambDatabaseManager:
                     })
                 return assistants_list
         except sqlite3.Error as e:
-            logging.error(f"Error getting list of assistants: {e}")
+            logger.error(f"Error getting list of assistants: {e}")
             return []
         finally:
             connection.close()
@@ -3510,8 +3509,8 @@ class LambDatabaseManager:
                 columns = [desc[0] for desc in cursor.description]
 
                 # --- Add Logging --- #
-                #logging.info(f"DB Query for owner '{owner}' (limit={limit}, offset={offset}) - Total Count: {total_count}")
-                #logging.debug(f"DB Query Raw Rows ({len(rows)}): {rows}")
+                #logger.info(f"DB Query for owner '{owner}' (limit={limit}, offset={offset}) - Total Count: {total_count}")
+                #logger.debug(f"DB Query Raw Rows ({len(rows)}): {rows}")
                 # --- End Logging --- #
 
                 for row in rows:
@@ -3525,7 +3524,7 @@ class LambDatabaseManager:
                 return assistants_list, total_count
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting paginated assistants for owner {owner}: {e}")
+            logger.error(f"Error getting paginated assistants for owner {owner}: {e}")
             return [], 0 # Return empty list and 0 count on error
         finally:
             connection.close()
@@ -3580,11 +3579,11 @@ class LambDatabaseManager:
                     assistant_dict['metadata'] = assistant_dict.get('api_callback', '')
                     assistants_list.append(assistant_dict)
                 
-                logging.info(f"Retrieved {len(assistants_list)} assistants for organization {organization_id}")
+                logger.info(f"Retrieved {len(assistants_list)} assistants for organization {organization_id}")
                 return assistants_list
                 
         except sqlite3.Error as e:
-            logging.error(f"Error getting assistants for organization {organization_id}: {e}")
+            logger.error(f"Error getting assistants for organization {organization_id}: {e}")
             return []
         finally:
             connection.close()
@@ -3601,7 +3600,7 @@ class LambDatabaseManager:
                     existing_assistant = cursor.fetchone()
 
                     if not existing_assistant:
-                        logging.warning(
+                        logger.warning(
                             f"Assistant {assistant_id} not found or doesn't belong to {owner}")
                         return False
 
@@ -3611,16 +3610,16 @@ class LambDatabaseManager:
                     # Deletion will cascade to assistant_publish due to FOREIGN KEY ON DELETE CASCADE
                     cursor.execute(f"DELETE FROM {self.table_prefix}assistants WHERE id = ? AND owner = ?",
                                    (assistant_id, owner))
-                    logging.info(
+                    logger.info(
                         f"Assistant {assistant_id} deleted successfully")
                     return True
             except sqlite3.Error as e:
-                logging.error(f"Error deleting assistant: {e}")
+                logger.error(f"Error deleting assistant: {e}")
                 return False
             finally:
                 if connection:
                     connection.close()
-                    logging.debug("Database connection closed")
+                    logger.debug("Database connection closed")
         return False
 
     def get_lti_users_by_assistant_id(self, assistant_id: str) -> list[LTIUser]:
@@ -3653,7 +3652,7 @@ class LambDatabaseManager:
                         })
                     return users
             except sqlite3.Error as e:
-                logging.error(
+                logger.error(
                     f"Database error when fetching LTI users by assistant_id: {e}")
                 raise e
             finally:
@@ -3676,16 +3675,16 @@ class LambDatabaseManager:
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (assistant_id, assistant_name, assistant_owner, group_id,
                           group_name, oauth_consumer_name, int(time.time())))
-                    logging.info(
+                    logger.info(
                         f"Assistant {assistant_id} publication created/updated successfully")
                     return True
             except sqlite3.Error as e:
                 # Specifically catch integrity errors for unique constraint violation
                 if "UNIQUE constraint failed" in str(e) and "oauth_consumer_name" in str(e):
-                     logging.error(f"Error publishing assistant {assistant_id}: OAuth Consumer Name '{oauth_consumer_name}' is already in use.")
+                     logger.error(f"Error publishing assistant {assistant_id}: OAuth Consumer Name '{oauth_consumer_name}' is already in use.")
                      # Re-raise or return specific error? For now, just log and return False
                      return False
-                logging.error(f"Error publishing assistant {assistant_id}: {e}")
+                logger.error(f"Error publishing assistant {assistant_id}: {e}")
                 return False
             finally:
                 connection.close()
@@ -3703,7 +3702,7 @@ class LambDatabaseManager:
                     columns = [col[0] for col in cursor.description]
                     return [dict(zip(columns, row)) for row in cursor.fetchall()]
             except sqlite3.Error as e:
-                logging.error(f"Error getting published assistants: {e}")
+                logger.error(f"Error getting published assistants: {e}")
                 return []
             finally:
                 connection.close()
@@ -3723,13 +3722,13 @@ class LambDatabaseManager:
                     )
                     deleted_count = cursor.rowcount
                     if deleted_count > 0:
-                        logging.info(f"Unpublished assistant {assistant_id}")
+                        logger.info(f"Unpublished assistant {assistant_id}")
                     else:
-                        logging.warning(f"Attempted to unpublish assistant {assistant_id}, but no publication record was found.")
+                        logger.warning(f"Attempted to unpublish assistant {assistant_id}, but no publication record was found.")
                     # Return True if a record was deleted, False otherwise
                     return deleted_count > 0
             except sqlite3.Error as e:
-                logging.error(f"Error unpublishing assistant {assistant_id}: {e}")
+                logger.error(f"Error unpublishing assistant {assistant_id}: {e}")
                 return False
             finally:
                 connection.close()
@@ -3767,7 +3766,7 @@ class LambDatabaseManager:
                     return None
 
             except sqlite3.Error as e:
-                logging.error(f"Error getting published assistant: {e}")
+                logger.error(f"Error getting published assistant: {e}")
                 return None
             finally:
                 connection.close()
@@ -3782,7 +3781,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection")
+            logger.error("Could not establish database connection")
             return None
 
         try:
@@ -3820,14 +3819,14 @@ class LambDatabaseManager:
                 return users
 
         except sqlite3.Error as e:
-            logging.error(f"Database error in get_creator_users: {e}")
+            logger.error(f"Database error in get_creator_users: {e}")
             return None
         except Exception as e:
-            logging.error(f"Unexpected error in get_creator_users: {e}")
+            logger.error(f"Unexpected error in get_creator_users: {e}")
             return None
         finally:
             connection.close()
-            logging.debug("Database connection closed")
+            logger.debug("Database connection closed")
 
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """
@@ -3858,11 +3857,11 @@ class LambDatabaseManager:
                           assistant_id))
                     return cursor.rowcount > 0
             except sqlite3.Error as e:
-                logging.error(f"Error updating assistant: {e}")
+                logger.error(f"Error updating assistant: {e}")
                 return False
             finally:
                 connection.close()
-                logging.debug("Database connection closed")
+                logger.debug("Database connection closed")
         return False
 
     def get_published_assistants_by_owner(self, owner: str) -> list:
@@ -3877,7 +3876,7 @@ class LambDatabaseManager:
                     columns = [col[0] for col in cursor.description]
                     return [dict(zip(columns, row)) for row in cursor.fetchall()]
             except sqlite3.Error as e:
-                logging.error(
+                logger.error(
                     f"Error getting published assistants for owner {owner}: {e}")
                 return []
             finally:
@@ -3923,7 +3922,7 @@ class LambDatabaseManager:
                 return pub_record
 
         except sqlite3.Error as e:
-            logging.error(f"Error getting publication for assistant {assistant_id}: {e}")
+            logger.error(f"Error getting publication for assistant {assistant_id}: {e}")
             return None
         finally:
             connection.close()
@@ -3951,10 +3950,10 @@ class LambDatabaseManager:
             return self.get_creator_user_by_email(user_email)
 
         except jwt.InvalidTokenError:
-            logging.error("Invalid JWT token")
+            logger.error("Invalid JWT token")
             return None
         except Exception as e:
-            logging.error(f"Error verifying token: {e}")
+            logger.error(f"Error verifying token: {e}")
             return None
 
     def get_collections_by_owner(self, owner: str) -> List[Dict[str, Any]]:
@@ -3986,7 +3985,7 @@ class LambDatabaseManager:
             } for row in collections]
 
         except Exception as e:
-            logging.error(f"Error getting collections by owner: {str(e)}")
+            logger.error(f"Error getting collections by owner: {str(e)}")
             return []
         finally:
             cursor.close()
@@ -4023,7 +4022,7 @@ class LambDatabaseManager:
             }
 
         except Exception as e:
-            logging.error(f"Error getting collection by ID: {str(e)}")
+            logger.error(f"Error getting collection by ID: {str(e)}")
             return None
         finally:
             cursor.close()
@@ -4054,7 +4053,7 @@ class LambDatabaseManager:
             conn.commit()
             return True
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Error inserting collection into database: {str(e)}")
             conn.rollback()
             return False
@@ -4067,7 +4066,7 @@ class LambDatabaseManager:
         try:
             connection = self.get_connection()
             if not connection:
-                logging.error("Could not establish database connection")
+                logger.error("Could not establish database connection")
                 return False
 
             with connection:
@@ -4080,7 +4079,7 @@ class LambDatabaseManager:
                 return cursor.rowcount > 0
 
         except sqlite3.Error as e:
-            logging.error(f"Database error in delete_collection: {e}")
+            logger.error(f"Database error in delete_collection: {e}")
             return False
         finally:
             if connection:
@@ -4100,7 +4099,7 @@ class LambDatabaseManager:
                 result = cursor.fetchone()
                 return json.loads(result[0]) if result else {}
         except sqlite3.Error as e:
-            logging.error(f"Error getting config: {e}")
+            logger.error(f"Error getting config: {e}")
             return {}
         finally:
             connection.close()
@@ -4120,7 +4119,7 @@ class LambDatabaseManager:
                 )
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Error updating config: {e}")
+            logger.error(f"Error updating config: {e}")
             return False
         finally:
             connection.close()
@@ -4166,7 +4165,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection")
+            logger.error("Could not establish database connection")
             return None
         
         try:
@@ -4195,14 +4194,14 @@ class LambDatabaseManager:
                 ))
                 
                 template_id = cursor.lastrowid
-                logging.info(f"Created prompt template '{template_data['name']}' with id: {template_id}")
+                logger.info(f"Created prompt template '{template_data['name']}' with id: {template_id}")
                 return template_id
                 
         except sqlite3.IntegrityError as e:
-            logging.error(f"Integrity error creating prompt template: {e}")
+            logger.error(f"Integrity error creating prompt template: {e}")
             return None
         except sqlite3.Error as e:
-            logging.error(f"Database error creating prompt template: {e}")
+            logger.error(f"Database error creating prompt template: {e}")
             return None
         finally:
             connection.close()
@@ -4259,7 +4258,7 @@ class LambDatabaseManager:
                 return template
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting prompt template: {e}")
+            logger.error(f"Database error getting prompt template: {e}")
             return None
         finally:
             connection.close()
@@ -4329,7 +4328,7 @@ class LambDatabaseManager:
                 return templates, total
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting user prompt templates: {e}")
+            logger.error(f"Database error getting user prompt templates: {e}")
             return [], 0
         finally:
             connection.close()
@@ -4399,7 +4398,7 @@ class LambDatabaseManager:
                 return templates, total
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting shared templates: {e}")
+            logger.error(f"Database error getting shared templates: {e}")
             return [], 0
         finally:
             connection.close()
@@ -4431,7 +4430,7 @@ class LambDatabaseManager:
                 row = cursor.fetchone()
                 
                 if not row or row[0] != owner_email:
-                    logging.warning(f"User {owner_email} attempted to update template {template_id} without ownership")
+                    logger.warning(f"User {owner_email} attempted to update template {template_id} without ownership")
                     return False
                 
                 # Build update query
@@ -4448,7 +4447,7 @@ class LambDatabaseManager:
                             values.append(updates[field])
                 
                 if not update_fields:
-                    logging.warning("No valid fields to update")
+                    logger.warning("No valid fields to update")
                     return False
                 
                 # Add updated_at
@@ -4462,14 +4461,14 @@ class LambDatabaseManager:
                     WHERE id = ?
                 """, values)
                 
-                logging.info(f"Updated prompt template {template_id}")
+                logger.info(f"Updated prompt template {template_id}")
                 return cursor.rowcount > 0
                 
         except sqlite3.IntegrityError as e:
-            logging.error(f"Integrity error updating prompt template: {e}")
+            logger.error(f"Integrity error updating prompt template: {e}")
             return False
         except sqlite3.Error as e:
-            logging.error(f"Database error updating prompt template: {e}")
+            logger.error(f"Database error updating prompt template: {e}")
             return False
         finally:
             connection.close()
@@ -4500,14 +4499,14 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Deleted prompt template {template_id}")
+                    logger.info(f"Deleted prompt template {template_id}")
                 else:
-                    logging.warning(f"User {owner_email} attempted to delete template {template_id} without ownership")
+                    logger.warning(f"User {owner_email} attempted to delete template {template_id} without ownership")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error deleting prompt template: {e}")
+            logger.error(f"Database error deleting prompt template: {e}")
             return False
         finally:
             connection.close()
@@ -4543,7 +4542,7 @@ class LambDatabaseManager:
                 
                 row = cursor.fetchone()
                 if not row:
-                    logging.error(f"Template {template_id} not found for duplication")
+                    logger.error(f"Template {template_id} not found for duplication")
                     return None
                 
                 # Create new template
@@ -4569,14 +4568,14 @@ class LambDatabaseManager:
                 ))
                 
                 new_id = cursor.lastrowid
-                logging.info(f"Duplicated template {template_id} to new template {new_id}")
+                logger.info(f"Duplicated template {template_id} to new template {new_id}")
                 return new_id
                 
         except sqlite3.IntegrityError as e:
-            logging.error(f"Integrity error duplicating template (likely duplicate name): {e}")
+            logger.error(f"Integrity error duplicating template (likely duplicate name): {e}")
             return None
         except sqlite3.Error as e:
-            logging.error(f"Database error duplicating template: {e}")
+            logger.error(f"Database error duplicating template: {e}")
             return None
         finally:
             connection.close()
@@ -4616,7 +4615,7 @@ class LambDatabaseManager:
         """
         connection = self.get_connection()
         if not connection:
-            logging.error("Could not establish database connection")
+            logger.error("Could not establish database connection")
             return None
         
         try:
@@ -4632,14 +4631,14 @@ class LambDatabaseManager:
                 """, (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata_json, current_time, current_time))
                 
                 registry_id = cursor.lastrowid
-                logging.info(f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
+                logger.info(f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
                 return registry_id
                 
         except sqlite3.IntegrityError as e:
-            logging.error(f"Integrity error registering KB: {e}")
+            logger.error(f"Integrity error registering KB: {e}")
             return None
         except sqlite3.Error as e:
-            logging.error(f"Database error registering KB: {e}")
+            logger.error(f"Database error registering KB: {e}")
             return None
         finally:
             connection.close()
@@ -4690,7 +4689,7 @@ class LambDatabaseManager:
                 }
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting KB registry entry: {e}")
+            logger.error(f"Database error getting KB registry entry: {e}")
             return None
         finally:
             connection.close()
@@ -4742,7 +4741,7 @@ class LambDatabaseManager:
                 return results
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting owned KBs: {e}")
+            logger.error(f"Database error getting owned KBs: {e}")
             return []
         finally:
             connection.close()
@@ -4796,7 +4795,7 @@ class LambDatabaseManager:
                 return results
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting shared KBs: {e}")
+            logger.error(f"Database error getting shared KBs: {e}")
             return []
         finally:
             connection.close()
@@ -4851,7 +4850,7 @@ class LambDatabaseManager:
                 return results
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting accessible KBs: {e}")
+            logger.error(f"Database error getting accessible KBs: {e}")
             return []
         finally:
             connection.close()
@@ -4954,7 +4953,7 @@ class LambDatabaseManager:
                 return matching_assistants
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error checking KB usage: {e}")
+            logger.error(f"Database error checking KB usage: {e}")
             return []
 
     def toggle_kb_sharing(self, kb_id: str, is_shared: bool) -> bool:
@@ -4986,14 +4985,14 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Toggled KB {kb_id} sharing to {is_shared}")
+                    logger.info(f"Toggled KB {kb_id} sharing to {is_shared}")
                 else:
-                    logging.warning(f"KB {kb_id} not found for sharing toggle")
+                    logger.warning(f"KB {kb_id} not found for sharing toggle")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error toggling KB sharing: {e}")
+            logger.error(f"Database error toggling KB sharing: {e}")
             return False
         finally:
             connection.close()
@@ -5024,14 +5023,14 @@ class LambDatabaseManager:
                 """, (created_at, kb_id))
                 
                 if cursor.rowcount > 0:
-                    logging.info(f"Updated created_at for KB {kb_id} to {created_at}")
+                    logger.info(f"Updated created_at for KB {kb_id} to {created_at}")
                     return True
                 else:
-                    logging.warning(f"KB {kb_id} not found in registry for created_at update")
+                    logger.warning(f"KB {kb_id} not found in registry for created_at update")
                     return False
                     
         except sqlite3.Error as e:
-            logging.error(f"Database error updating KB created_at: {e}")
+            logger.error(f"Database error updating KB created_at: {e}")
             return False
         finally:
             connection.close()
@@ -5065,12 +5064,12 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Updated KB {kb_id} name to '{kb_name}'")
+                    logger.info(f"Updated KB {kb_id} name to '{kb_name}'")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error updating KB registry name: {e}")
+            logger.error(f"Database error updating KB registry name: {e}")
             return False
         finally:
             connection.close()
@@ -5123,7 +5122,7 @@ class LambDatabaseManager:
                 return entries
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting KB registry entries: {e}")
+            logger.error(f"Database error getting KB registry entries: {e}")
             return []
         finally:
             connection.close()
@@ -5156,12 +5155,12 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Updated assistant {assistant_id} name to '{new_name}'")
+                    logger.info(f"Updated assistant {assistant_id} name to '{new_name}'")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error updating assistant name: {e}")
+            logger.error(f"Database error updating assistant name: {e}")
             return False
         finally:
             connection.close()
@@ -5192,12 +5191,12 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Deleted KB registry entry for {kb_id}")
+                    logger.info(f"Deleted KB registry entry for {kb_id}")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error deleting KB registry entry: {e}")
+            logger.error(f"Database error deleting KB registry entry: {e}")
             return False
         finally:
             connection.close()
@@ -5232,7 +5231,7 @@ class LambDatabaseManager:
                 """, (assistant_id, shared_with_user_id))
                 
                 if cursor.fetchone():
-                    logging.info(f"Assistant {assistant_id} already shared with user {shared_with_user_id}")
+                    logger.info(f"Assistant {assistant_id} already shared with user {shared_with_user_id}")
                     return True
                 
                 # Add sharing record
@@ -5244,12 +5243,12 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Shared assistant {assistant_id} with user {shared_with_user_id}")
+                    logger.info(f"Shared assistant {assistant_id} with user {shared_with_user_id}")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error sharing assistant: {e}")
+            logger.error(f"Database error sharing assistant: {e}")
             return False
         finally:
             connection.close()
@@ -5280,12 +5279,12 @@ class LambDatabaseManager:
                 
                 success = cursor.rowcount > 0
                 if success:
-                    logging.info(f"Unshared assistant {assistant_id} from user {shared_with_user_id}")
+                    logger.info(f"Unshared assistant {assistant_id} from user {shared_with_user_id}")
                 
                 return success
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error unsharing assistant: {e}")
+            logger.error(f"Database error unsharing assistant: {e}")
             return False
         finally:
             connection.close()
@@ -5345,7 +5344,7 @@ class LambDatabaseManager:
                 return shares
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting assistant shares: {e}")
+            logger.error(f"Database error getting assistant shares: {e}")
             return []
         finally:
             connection.close()
@@ -5418,7 +5417,7 @@ class LambDatabaseManager:
                 return assistants
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting shared assistants: {e}")
+            logger.error(f"Database error getting shared assistants: {e}")
             return []
         finally:
             connection.close()
@@ -5450,7 +5449,7 @@ class LambDatabaseManager:
                 return cursor.fetchone() is not None
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error checking assistant share: {e}")
+            logger.error(f"Database error checking assistant share: {e}")
             return False
         finally:
             connection.close()
@@ -5502,7 +5501,7 @@ class LambDatabaseManager:
                 return users
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting organization users: {e}")
+            logger.error(f"Database error getting organization users: {e}")
             return []
         finally:
             connection.close()
@@ -5568,7 +5567,7 @@ class LambDatabaseManager:
                 return assistants
                 
         except sqlite3.Error as e:
-            logging.error(f"Database error getting all assistants: {e}")
+            logger.error(f"Database error getting all assistants: {e}")
             return []
         finally:
             connection.close()

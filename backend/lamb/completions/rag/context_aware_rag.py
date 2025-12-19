@@ -5,8 +5,9 @@ import requests
 from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="RAG")
 
 async def _generate_optimal_query(messages: List[Dict[str, Any]], assistant: Assistant) -> str:
     """

@@ -1,6 +1,5 @@
 import uuid
 from passlib.context import CryptContext
-import logging
 from typing import Optional, Dict
 import time
 from .owi_database import OwiDatabaseManager
@@ -8,6 +7,7 @@ import requests
 import os
 import warnings
 import config
+from lamb.logging_config import get_logger
 
 # Suppress the specific passlib warning about bcrypt version
 warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
@@ -17,17 +17,7 @@ PIPELINES_HOST = config.LAMB_WEB_HOST
 
 
 # Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# If not already configured elsewhere, add this:
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.WARNING)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+logger = get_logger(__name__, component="OWI")
 
 # Password hashing configuration
 # Using bcrypt with settings that work with newer bcrypt 4.x versions

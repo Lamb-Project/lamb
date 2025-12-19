@@ -1,6 +1,5 @@
 import json
 import os
-import logging
 import base64
 import time
 import uuid
@@ -15,9 +14,9 @@ from openai import AsyncOpenAI
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.database_manager import LambDatabaseManager
 import config
+from lamb.logging_config import get_logger
 
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 def get_available_llms(assistant_owner: Optional[str] = None):
     """

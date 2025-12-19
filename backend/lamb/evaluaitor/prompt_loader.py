@@ -5,11 +5,11 @@ Loads multilingual prompt templates from markdown files with language fallback s
 """
 
 import os
-import logging
 from typing import Dict, Optional
 from pathlib import Path
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="EVALUATOR")
 
 # Cache for loaded templates to avoid repeated file I/O
 _template_cache: Dict[str, str] = {}

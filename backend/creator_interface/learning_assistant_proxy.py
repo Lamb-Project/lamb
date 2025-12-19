@@ -18,12 +18,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .assistant_router import get_creator_user_from_token
 from lamb.completions.main import run_lamb_assistant
 from lamb.database_manager import LambDatabaseManager
+from lamb.logging_config import get_logger
 import json
 import logging
 from typing import Dict, Any
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Set up logging with centralized logger
+logger = get_logger(__name__, component="API")
 
 # Initialize router and security
 router = APIRouter(tags=["Learning Assistant Proxy"])

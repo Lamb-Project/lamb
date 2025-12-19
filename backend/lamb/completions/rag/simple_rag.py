@@ -1,12 +1,12 @@
-import logging
 import json
 import os
 import requests
 from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="RAG")
 
 def rag_processor(
     messages: List[Dict[str, Any]],

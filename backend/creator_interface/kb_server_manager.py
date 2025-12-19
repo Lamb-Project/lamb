@@ -1,6 +1,5 @@
 import httpx
 import os
-import logging
 import json
 import time
 import datetime
@@ -9,10 +8,10 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from .knowledgebase_classes import KnowledgeBaseCreate, KnowledgeBaseUpdate
 from utils.name_sanitizer import sanitize_name
+from lamb.logging_config import get_logger
 
 # Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()

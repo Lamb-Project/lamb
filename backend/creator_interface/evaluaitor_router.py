@@ -16,12 +16,14 @@ from fastapi.responses import StreamingResponse, JSONResponse, Response
 from creator_interface.assistant_router import get_creator_user_from_token
 from .user_creator import UserCreatorManager
 import config
+from lamb.logging_config import get_logger
 
 # Initialize security context for dependency injection
 security = HTTPBearer()
 
 # Initialize router
 router = APIRouter()
+logger = get_logger(__name__, component="API")
 
 # Get configuration for LAMB backend URL
 LAMB_BACKEND_URL = config.LAMB_BACKEND_HOST
@@ -60,14 +62,14 @@ async def proxy_request(
         Response from backend
     """
     url = f"{LAMB_BACKEND_URL}{endpoint}"
-    logging.debug(f"Proxying {method} request to: {url}")
+    logger.debug(f"Proxying {method} request to: {url}")
 
     # For lamb core API endpoints, pass auth_header as query parameter
     if endpoint.startswith("/lamb/"):
         if params is None:
             params = {}
         params["auth_header"] = auth_token
-        logging.debug(f"Setting auth_header param: {auth_token}")
+        logger.debug(f"Setting auth_header param: {auth_token}")
         headers = {
             "Content-Type": "application/json" if not files else None
         }
@@ -77,10 +79,10 @@ async def proxy_request(
             "Content-Type": "application/json" if not files else None
         }
 
-    logging.debug(f"Final URL: {url}")
-    logging.debug(f"Headers: {headers}")
-    logging.debug(f"Params: {params}")
-    logging.debug(f"Data: {data}")
+    logger.debug(f"Final URL: {url}")
+    logger.debug(f"Headers: {headers}")
+    logger.debug(f"Params: {params}")
+    logger.debug(f"Data: {data}")
 
     # Remove None values from headers
     headers = {k: v for k, v in headers.items() if v is not None}
@@ -88,7 +90,7 @@ async def proxy_request(
     # Remove None values from params and convert all values to strings
     if params:
         params = {k: str(v) for k, v in params.items() if v is not None}
-        logging.debug(f"Filtered params: {params}")
+        logger.debug(f"Filtered params: {params}")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -117,27 +119,27 @@ async def proxy_request(
                 raise HTTPException(status_code=405, detail=f"Method {method} not supported")
 
         except aiohttp.ClientError as e:
-            logging.error(f"Error proxying request to {url}: {e}")
+            logger.error(f"Error proxying request to {url}: {e}")
             raise HTTPException(status_code=502, detail=f"Backend service unavailable: {str(e)}")
         except Exception as e:
-            logging.error(f"Unexpected error proxying request to {url}: {e}")
+            logger.error(f"Unexpected error proxying request to {url}: {e}")
             raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
 async def handle_response(response: aiohttp.ClientResponse) -> Any:
     """Handle response from backend"""
-    logging.debug(f"Response status: {response.status}")
-    logging.debug(f"Response headers: {response.headers}")
+    logger.debug(f"Response status: {response.status}")
+    logger.debug(f"Response headers: {response.headers}")
     
     if response.status >= 400:
         try:
             error_data = await response.json()
-            logging.error(f"Backend error {response.status}: {error_data}")
+            logger.error(f"Backend error {response.status}: {error_data}")
             raise HTTPException(status_code=response.status, detail=error_data.get("detail", "Backend error"))
         except Exception as e:
-            logging.error(f"Failed to parse backend error: {e}")
+            logger.error(f"Failed to parse backend error: {e}")
             error_text = await response.text()
-            logging.error(f"Raw error response: {error_text}")
+            logger.error(f"Raw error response: {error_text}")
             raise HTTPException(status_code=response.status, detail=f"Backend error: {error_text}")
 
     content_type = response.headers.get('content-type', '')
@@ -172,7 +174,7 @@ async def create_rubric(
     try:
         # Authenticate user
         auth_header = request.headers.get("Authorization")
-        logging.debug(f"Auth header: {auth_header}")
+        logger.debug(f"Auth header: {auth_header}")
         creator_user = get_creator_user_from_token(auth_header)
         if not creator_user:
             raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
@@ -195,7 +197,7 @@ async def create_rubric(
 
         # Get auth token from request header
         auth_token = request.headers.get("Authorization")
-        logging.debug(f"Auth token: {auth_token}")
+        logger.debug(f"Auth token: {auth_token}")
 
         # Proxy to backend
         result = await proxy_request(
@@ -210,7 +212,7 @@ async def create_rubric(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid criteria JSON")
     except Exception as e:
-        logging.error(f"Error creating rubric: {e}")
+        logger.error(f"Error creating rubric: {e}")
         raise HTTPException(status_code=500, detail="Failed to create rubric")
 
 
@@ -269,7 +271,7 @@ async def list_rubrics(
         return result
 
     except Exception as e:
-        logging.error(f"Error listing rubrics: {e}")
+        logger.error(f"Error listing rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list rubrics")
 
 
@@ -324,7 +326,7 @@ async def list_public_rubrics(
         return response
 
     except Exception as e:
-        logging.error(f"Error listing public rubrics: {e}")
+        logger.error(f"Error listing public rubrics: {e}")
         raise HTTPException(status_code=500, detail="Failed to list public rubrics")
 
 
@@ -354,7 +356,7 @@ async def get_rubric(
         return result
 
     except Exception as e:
-        logging.error(f"Error getting rubric {rubric_id}: {e}")
+        logger.error(f"Error getting rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get rubric")
 
 
@@ -428,7 +430,7 @@ async def update_rubric(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid criteria JSON")
     except Exception as e:
-        logging.error(f"Error updating rubric {rubric_id}: {e}")
+        logger.error(f"Error updating rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric")
 
 
@@ -460,7 +462,7 @@ async def update_rubric_visibility(
         return result
 
     except Exception as e:
-        logging.error(f"Error updating rubric visibility {rubric_id}: {e}")
+        logger.error(f"Error updating rubric visibility {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric visibility")
 
 
@@ -488,7 +490,7 @@ async def update_rubric_showcase(
         return result
 
     except Exception as e:
-        logging.error(f"Error updating rubric showcase {rubric_id}: {e}")
+        logger.error(f"Error updating rubric showcase {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update rubric showcase status")
 
 
@@ -514,7 +516,7 @@ async def delete_rubric(
         return result
 
     except Exception as e:
-        logging.error(f"Error deleting rubric {rubric_id}: {e}")
+        logger.error(f"Error deleting rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete rubric")
 
 
@@ -540,7 +542,7 @@ async def duplicate_rubric(
         return result
 
     except Exception as e:
-        logging.error(f"Error duplicating rubric {rubric_id}: {e}")
+        logger.error(f"Error duplicating rubric {rubric_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to duplicate rubric")
 
 
@@ -627,7 +629,7 @@ async def export_rubric_json(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting rubric {rubric_id} as JSON: {e}")
+        logger.error(f"Error exporting rubric {rubric_id} as JSON: {e}")
         raise HTTPException(status_code=500, detail="Failed to export rubric")
 
 
@@ -689,7 +691,7 @@ async def export_rubric_markdown(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error exporting rubric {rubric_id} as Markdown: {e}", exc_info=True)
+        logger.error(f"Error exporting rubric {rubric_id} as Markdown: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to export rubric: {str(e)}")
 
 

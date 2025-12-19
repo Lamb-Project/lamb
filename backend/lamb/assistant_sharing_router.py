@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from typing import List
-import logging
+from lamb.logging_config import get_logger
 
 from .database_manager import LambDatabaseManager
 from .owi_bridge.owi_group import OwiGroupManager
 from .owi_bridge.owi_users import OwiUserManager
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 # --- Pydantic Models ---
 class UpdateSharesRequest(BaseModel):

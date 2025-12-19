@@ -17,18 +17,13 @@ from lamb.owi_bridge.owi_users import OwiUserManager
 from .assistant_router import router as assistant_router, get_creator_user_from_token
 from .knowledges_router import router as knowledges_router
 import json
-import logging
 import shutil
 from pydantic import BaseModel, EmailStr
 from fastapi import Body  # Import Body for request body definitions
+from lamb.logging_config import get_logger
 
 # Configure logging
-logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()
@@ -462,7 +457,7 @@ async def signup(
         
         if target_org:
             # Organization-specific signup found
-            logging.info(f"Creating user in organization '{target_org['slug']}' using signup key")
+            logger.info(f"Creating user in organization '{target_org['slug']}' using signup key")
             
             user_creator = UserCreatorManager()
             result = await user_creator.create_user(
@@ -475,9 +470,9 @@ async def signup(
             if result["success"]:
                 # Assign member role to user in the organization
                 if db_manager.assign_organization_role(target_org['id'], result.get('user_id'), "member"):
-                    logging.info(f"Assigned member role to user {email} in organization {target_org['slug']}")
+                    logger.info(f"Assigned member role to user {email} in organization {target_org['slug']}")
                 else:
-                    logging.warning(f"Failed to assign role to user {email} in organization {target_org['slug']}")
+                    logger.warning(f"Failed to assign role to user {email} in organization {target_org['slug']}")
                 
                 return {
                     "success": True,
@@ -492,7 +487,7 @@ async def signup(
         # Step 2: Fallback to system organization signup
         elif SIGNUP_ENABLED and secret_key == SIGNUP_SECRET_KEY:
             # Legacy system signup
-            logging.info("Creating user in system organization using legacy signup key")
+            logger.info("Creating user in system organization using legacy signup key")
             
             # Get system organization
             system_org = db_manager.get_organization_by_slug("lamb")
@@ -513,9 +508,9 @@ async def signup(
             if result["success"]:
                 # Assign member role to user in the system organization
                 if db_manager.assign_organization_role(system_org['id'], result.get('user_id'), "member"):
-                    logging.info(f"Assigned member role to user {email} in system organization")
+                    logger.info(f"Assigned member role to user {email} in system organization")
                 else:
-                    logging.warning(f"Failed to assign role to user {email} in system organization")
+                    logger.warning(f"Failed to assign role to user {email} in system organization")
                 
                 return {
                     "success": True,
@@ -541,7 +536,7 @@ async def signup(
                 }
 
     except Exception as e:
-        logging.error(f"Signup error: {str(e)}")
+        logger.error(f"Signup error: {str(e)}")
         return {
             "success": False,
             "error": "An unexpected error occurred. Please try again."

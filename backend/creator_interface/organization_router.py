@@ -8,7 +8,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import httpx
-import logging
 import json
 import time
 from datetime import datetime
@@ -29,6 +28,7 @@ from lamb.organization_router import (
     sync_system_organization as core_sync_organizations
 )
 from schemas import BulkImportRequest, BulkUserActionRequest
+from lamb.logging_config import get_logger
 
 # Initialize router
 router = APIRouter()
@@ -38,7 +38,7 @@ security = HTTPBearer()
 db_manager = LambDatabaseManager()
 
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="API")
 
 # Get configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests

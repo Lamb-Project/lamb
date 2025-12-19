@@ -5,9 +5,9 @@ import time
 from typing import Optional, Dict, List, Any
 from .owi_database import OwiDatabaseManager
 from .owi_users import OwiUserManager
+from lamb.logging_config import get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
+logger = get_logger(__name__, component="OWI")
 
 OWI_GROUP_PERMISSIONS = {
     "workspace": {
@@ -58,7 +58,7 @@ class OwiGroupManager:
             # Check if group with this name already exists (prevent duplicates)
             existing_group = self.get_group_by_name(name)
             if existing_group:
-                logging.warning(f"Group with name '{name}' already exists. Returning existing group.")
+                logger.warning(f"Group with name '{name}' already exists. Returning existing group.")
                 return existing_group
             
             group_id = str(uuid.uuid4())
@@ -93,13 +93,13 @@ class OwiGroupManager:
                 return self.get_group_by_id(group_id)
             except Exception as e:
                 conn.rollback()
-                logging.error(f"Error creating group: {e}")
+                logger.error(f"Error creating group: {e}")
                 return None
             finally:
                 conn.close()
 
         except Exception as e:
-            logging.error(f"Unexpected error in create_group: {e}")
+            logger.error(f"Unexpected error in create_group: {e}")
             return None
 
     def get_group_by_id(self, group_id: str) -> Optional[Dict]:
@@ -113,7 +113,7 @@ class OwiGroupManager:
             return None
 
         except Exception as e:
-            logging.error(f"Error in get_group_by_id: {e}")
+            logger.error(f"Error in get_group_by_id: {e}")
             return None
 
     def get_group_by_name(self, group_name: str) -> Optional[Dict]:
@@ -123,7 +123,7 @@ class OwiGroupManager:
             result = self.db.execute_query(query, (group_name,), fetch_one=True)
             return self._row_to_dict(result) if result else None
         except Exception as e:
-            logging.error(f"Error in get_group_by_name: {e}")
+            logger.error(f"Error in get_group_by_name: {e}")
             return None
 
     def get_user_groups(self, user_id: str) -> List[Dict]:
@@ -146,7 +146,7 @@ class OwiGroupManager:
             return groups
 
         except Exception as e:
-            logging.error(f"Error in get_user_groups: {e}")
+            logger.error(f"Error in get_user_groups: {e}")
             return []
 
     def update_group(
@@ -208,13 +208,13 @@ class OwiGroupManager:
                 return self.get_group_by_id(group_id)
             except Exception as e:
                 conn.rollback()
-                logging.error(f"Error updating group: {e}")
+                logger.error(f"Error updating group: {e}")
                 return None
             finally:
                 conn.close()
 
         except Exception as e:
-            logging.error(f"Unexpected error in update_group: {e}")
+            logger.error(f"Unexpected error in update_group: {e}")
             return None
 
     def delete_group(self, group_id: str) -> bool:
@@ -233,13 +233,13 @@ class OwiGroupManager:
                 return True
             except Exception as e:
                 conn.rollback()
-                logging.error(f"Error deleting group: {e}")
+                logger.error(f"Error deleting group: {e}")
                 return False
             finally:
                 conn.close()
 
         except Exception as e:
-            logging.error(f"Unexpected error in delete_group: {e}")
+            logger.error(f"Unexpected error in delete_group: {e}")
             return False
 
     def add_user_to_group(self, group_id: str, user_id: str) -> Dict:
@@ -291,7 +291,7 @@ class OwiGroupManager:
                 }
 
         except Exception as e:
-            logging.error(f"Error in add_user_to_group: {e}")
+            logger.error(f"Error in add_user_to_group: {e}")
             return {
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}"
@@ -310,17 +310,17 @@ class OwiGroupManager:
                 # In case it's still a string, parse it
                 user_ids = json.loads(user_ids) if isinstance(user_ids, str) else []
             
-            logging.info(f"Current user_ids: {user_ids}, removing user: {user_id}")
+            logger.info(f"Current user_ids: {user_ids}, removing user: {user_id}")
             
             if user_id in user_ids:
                 user_ids.remove(user_id)
-                logging.info(f"User {user_id} removed, updated user_ids: {user_ids}")
+                logger.info(f"User {user_id} removed, updated user_ids: {user_ids}")
                 return self.update_group(group_id, user_ids=user_ids) is not None
 
             return True
 
         except Exception as e:
-            logging.error(f"Error in remove_user_from_group: {e}", exc_info=True)
+            logger.error(f"Error in remove_user_from_group: {e}", exc_info=True)
             return False
 
     def add_user_to_group_by_email(self, group_id: str, user_email: str) -> Dict:
@@ -360,7 +360,7 @@ class OwiGroupManager:
             return result
 
         except Exception as e:
-            logging.error(f"Error in add_user_to_group_by_email: {e}")
+            logger.error(f"Error in add_user_to_group_by_email: {e}")
             return {
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}"
@@ -411,7 +411,7 @@ class OwiGroupManager:
                 }
 
         except Exception as e:
-            logging.error(f"Error in remove_user_from_group_by_email: {e}")
+            logger.error(f"Error in remove_user_from_group_by_email: {e}")
             return {
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}"
@@ -443,7 +443,7 @@ class OwiGroupManager:
             return group_dict
 
         except Exception as e:
-            logging.error(f"Error in _row_to_dict: {e}")
+            logger.error(f"Error in _row_to_dict: {e}")
             return {}
 
     def get_group_users(self, group_id: str) -> List[Dict]:
@@ -475,7 +475,7 @@ class OwiGroupManager:
             ]
             
         except Exception as e:
-            logging.error(f"Error getting group users: {e}")
+            logger.error(f"Error getting group users: {e}")
             return None
 
     def get_all_groups(self) -> List[Dict]:
@@ -494,7 +494,7 @@ class OwiGroupManager:
             return [self._row_to_dict(group) for group in groups]
             
         except Exception as e:
-            logging.error(f"Error getting all groups: {e}")
+            logger.error(f"Error getting all groups: {e}")
             return []
     
     def add_users_to_group(self, group_id: str, user_emails: List[str]) -> Dict[str, Any]:
@@ -536,7 +536,7 @@ class OwiGroupManager:
             }
             
         except Exception as e:
-            logging.error(f"Error adding users to group: {e}")
+            logger.error(f"Error adding users to group: {e}")
             return {
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}"
@@ -585,7 +585,7 @@ class OwiGroupManager:
             }
             
         except Exception as e:
-            logging.error(f"Error removing users from group: {e}")
+            logger.error(f"Error removing users from group: {e}")
             return {
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}"
@@ -608,7 +608,7 @@ class OwiGroupManager:
             return []
             
         except Exception as e:
-            logging.error(f"Error getting group user emails: {e}")
+            logger.error(f"Error getting group user emails: {e}")
             return []
 
     def clean_duplicate_assistant_groups(self) -> None:
@@ -622,7 +622,7 @@ class OwiGroupManager:
             groups = self.db.execute_query(query, fetch_one=False)
             
             if not groups:
-                logging.info("No duplicate assistant groups found")
+                logger.info("No duplicate assistant groups found")
                 return
             
             # Group by name to find duplicates
@@ -638,18 +638,18 @@ class OwiGroupManager:
             deleted_count = 0
             for name, group_list in groups_by_name.items():
                 if len(group_list) > 1:
-                    logging.info(f"Found {len(group_list)} duplicate groups with name '{name}', keeping the first one")
+                    logger.info(f"Found {len(group_list)} duplicate groups with name '{name}', keeping the first one")
                     # Keep the first one (oldest), delete the rest
                     for duplicate_group in group_list[1:]:
                         try:
                             self.delete_group(duplicate_group['id'])
                             deleted_count += 1
-                            logging.info(f"Deleted duplicate group '{name}' with ID {duplicate_group['id']}")
+                            logger.info(f"Deleted duplicate group '{name}' with ID {duplicate_group['id']}")
                         except Exception as e:
-                            logging.error(f"Error deleting duplicate group {duplicate_group['id']}: {e}")
+                            logger.error(f"Error deleting duplicate group {duplicate_group['id']}: {e}")
             
             if deleted_count > 0:
-                logging.info(f"Successfully cleaned up {deleted_count} duplicate assistant groups")
+                logger.info(f"Successfully cleaned up {deleted_count} duplicate assistant groups")
                 
         except Exception as e:
-            logging.error(f"Error in clean_duplicate_assistant_groups: {e}")
+            logger.error(f"Error in clean_duplicate_assistant_groups: {e}")

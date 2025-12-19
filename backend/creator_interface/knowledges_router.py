@@ -8,10 +8,10 @@ from dotenv import load_dotenv
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.database_manager import LambDatabaseManager
 from typing import Optional, List, Dict, Any, Union
-import logging
 import json
 import time
 from pydantic import BaseModel, Field
+import logging
 from .assistant_router import get_creator_user_from_token
 from io import BytesIO
 from .knowledgebase_classes import (
@@ -20,6 +20,7 @@ from .knowledgebase_classes import (
     KnowledgeBaseListResponse
 )
 from .kb_server_manager import KBServerManager
+from lamb.logging_config import get_logger
 
 # --- Pydantic Models for Knowledges Router --- #
 
@@ -156,19 +157,13 @@ class ErrorResponseDetail(BaseModel):
 
 # --- End Pydantic Models --- #
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+"""Module logging setup: use centralized logger; reduce noisy libs."""
+logger = get_logger(__name__, component="API")
 
-# Set specific loggers to a higher level to reduce verbosity
+# Reduce noisy third-party loggers
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 # Load environment variables
 load_dotenv()

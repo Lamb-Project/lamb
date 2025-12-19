@@ -3,9 +3,6 @@ from fastapi.templating import Jinja2Templates
 import logging
 import os
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
-
 # Initialize router
 router = APIRouter(
     prefix="/simple_lti",

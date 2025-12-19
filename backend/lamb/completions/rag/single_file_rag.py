@@ -2,11 +2,10 @@ import os
 from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 import json
-import logging
+from lamb.logging_config import get_logger
 
 # Set up logger
-logger = logging.getLogger('lamb.completions.rag.single_file_rag')
-logger.setLevel(logging.WARNING)
+logger = get_logger(__name__, component="RAG")
 
 def rag_processor(
     messages: List[Dict[str, Any]],

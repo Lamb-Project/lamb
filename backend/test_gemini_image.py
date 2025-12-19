@@ -22,12 +22,12 @@ from io import BytesIO
 from dotenv import load_dotenv
 from google import genai
 from PIL import Image
+from lamb.logging_config import get_logger
 
 # Load environment variables from .env file
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="MAIN")
 
 
 def main():

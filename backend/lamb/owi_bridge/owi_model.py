@@ -4,10 +4,12 @@ import json
 import logging
 import requests
 import os
+from lamb.logging_config import get_logger
 
 class OWIModel:
     def __init__(self, db_connection):
         self.db = db_connection
+        self.logger = get_logger(__name__, component="OWI")
 
 
     def create_model_api(self, 
@@ -72,7 +74,7 @@ class OWIModel:
             }
         }
         
-        logging.info(f"Creating model with data: {model_data}")
+        self.logger.info(f"Creating model with data: {model_data}")
         
         try:
             # Print equivalent curl command for debugging
@@ -97,8 +99,8 @@ class OWIModel:
             
             if not response.ok:
                 error_data = response.json()
-                logging.info(f"Equivalent curl command:\n{curl_command}")
-                logging.error(f"API Error Response: {error_data}")
+                self.logger.info(f"Equivalent curl command:\n{curl_command}")
+                self.logger.error(f"API Error Response: {error_data}")
                 return None
             
             result = response.json()
@@ -106,7 +108,7 @@ class OWIModel:
             return result
             
         except Exception as e:
-            logging.error(f"Error creating model via API: {str(e)}")
+            self.logger.error(f"Error creating model via API: {str(e)}")
             return None
 
     def create_model(
@@ -181,25 +183,25 @@ class OWIModel:
         """
         try:
             query = "SELECT access_control FROM model WHERE id = ?"
-            logging.info(f"Getting current access control for model {model_id}")
+            self.logger.info(f"Getting current access control for model {model_id}")
             result = self.db.execute_query(query, (model_id,), fetch_one=True)
             
             if not result:
-                logging.error(f"No model found with id {model_id}")
+                self.logger.error(f"No model found with id {model_id}")
                 return False
             
             access_control = json.loads(result[0]) if result[0] else {
                 "read": {"group_ids": [], "user_ids": []},
                 "write": {"group_ids": [], "user_ids": []}
             }
-            logging.info(f"Current access control: {access_control}")
+            self.logger.info(f"Current access control: {access_control}")
             
             if permission_type not in ["read", "write"]:
                 raise ValueError("Permission type must be 'read' or 'write'")
             
             if group_id not in access_control[permission_type]["group_ids"]:
                 access_control[permission_type]["group_ids"].append(group_id)
-                logging.info(f"Added group {group_id} to {permission_type} access. New access control: {access_control}")
+                self.logger.info(f"Added group {group_id} to {permission_type} access. New access control: {access_control}")
             
             update_query = """
                 UPDATE model 
@@ -213,12 +215,12 @@ class OWIModel:
                 update_query,
                 (json.dumps(access_control), current_time, model_id)
             )
-            logging.info(f"Update result: {success}")
+            self.logger.info(f"Update result: {success}")
             
             return success is not None
             
         except Exception as e:
-            logging.error(f"Error adding group to model: {e}")
+            self.logger.error(f"Error adding group to model: {e}")
             return False
 
     def remove_group_from_model(

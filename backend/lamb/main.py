@@ -23,8 +23,9 @@ from .config_router import router as config_router  # Add this import
 from .mcp_router import router as mcp_router  # Add MCP router import
 from .organization_router import router as organization_router  # Add organization router import
 from .assistant_sharing_router import router as assistant_sharing_router  # Add assistant sharing router import
+from lamb.logging_config import get_logger
 
-logging.basicConfig(level=logging.WARNING)
+logger = get_logger(__name__, component="MAIN")
 
 app = FastAPI(
     title="LAMB API",
@@ -89,14 +90,14 @@ async def root(request: Request):
 
 @router.post("/update_permissions")
 async def update_permissions(user_permissions: UserPermissions, str = Depends(get_current_user)):
-    logging.debug("Entering update_permissions method")
+    logger.debug("Entering update_permissions method")
     try:
-        logging.debug(f"Received user_permissions: {user_permissions}")
+        logger.debug(f"Received user_permissions: {user_permissions}")
         db_manager.update_model_permissions(user_permissions.dict())
-        logging.debug("Permissions updated successfully in the database")
+        logger.debug("Permissions updated successfully in the database")
         return {"message": "Permissions updated successfully"}
     except Exception as e:
-        logging.debug(f"Error updating permissions: {e}")
+        logger.debug(f"Error updating permissions: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -106,13 +107,13 @@ async def get_permissions(user_email: EmailStr, str = Depends(get_current_user))
     try:
         permissions = db_manager.get_model_permissions(user_email)
         if permissions:
-            logging.debug(f"Permissions found for user_email: {user_email}")
+            logger.debug(f"Permissions found for user_email: {user_email}")
             return permissions
         else:
-            logging.debug(f"No permissions found for user_email: {user_email}")
+            logger.debug(f"No permissions found for user_email: {user_email}")
             return []
     except Exception as e:
-        logging.debug(f"Error retrieving permissions for user_email: {user_email}, error: {e}")
+        logger.debug(f"Error retrieving permissions for user_email: {user_email}, error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post("/create_database_and_tables")
@@ -125,18 +126,18 @@ async def create_database_and_tables(str = Depends(get_current_user)):
 
 @router.post("/filter_models") 
 async def filter_models(request: Request, str = Depends(get_current_user)):
-    logging.debug("Entering filter_models endpoint")
+    logger.debug("Entering filter_models endpoint")
     try:
-        logging.debug("request: %s", request   )
+        logger.debug("request: %s", request   )
         # Parse the request body
         body = await request.json()
-        logging.debug(f"Received request body: {body}")
+        logger.debug(f"Received request body: {body}")
 
         # Extract email and models from the body
         email = body.get('email')
         models = body.get('models')
 
-        logging.debug(f"Extracted email: {email}, models: {models}")
+        logger.debug(f"Extracted email: {email}, models: {models}")
 
         # Validate the input
         if not email or not models:
@@ -144,11 +145,11 @@ async def filter_models(request: Request, str = Depends(get_current_user)):
 
         # Call the filter_models method
         filtered_models = db_manager.filter_models(email, models)
-        logging.debug(f"Filtered models: {filtered_models}")
+        logger.debug(f"Filtered models: {filtered_models}")
 
         return filtered_models
     except Exception as e:
-        logging.error(f"Error in filter_models: {str(e)}")
+        logger.error(f"Error in filter_models: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 app.include_router(router, prefix="/v1/auth")
@@ -178,33 +179,32 @@ async def read_simple_lti(request: Request):
 # Direct test endpoint for role updates - bypassing router
 @app.post("/v1/OWI/users/direct-role-update")
 async def direct_role_update(request: Request):
-    import logging
-    logging.error("[DIRECT_ENDPOINT] Direct role update endpoint called")
+    logger.error("[DIRECT_ENDPOINT] Direct role update endpoint called")
     try:
         data = await request.json()
-        logging.error(f"[DIRECT_ENDPOINT] Request data: {data}")
+        logger.error(f"[DIRECT_ENDPOINT] Request data: {data}")
         
         user_id = data.get('user_id')
         new_role = data.get('role')
         
         if not user_id or not new_role:
-            logging.error(f"[DIRECT_ENDPOINT] Missing required fields. user_id: {user_id}, role: {new_role}")
+            logger.error(f"[DIRECT_ENDPOINT] Missing required fields. user_id: {user_id}, role: {new_role}")
             return {"success": False, "message": "Missing required fields"}
             
-        logging.error(f"[DIRECT_ENDPOINT] Attempting to update user {user_id} to role {new_role}")
+        logger.error(f"[DIRECT_ENDPOINT] Attempting to update user {user_id} to role {new_role}")
         
         # Using the user_manager directly - bypassing all middleware
         from .owi_bridge.owi_users import OwiUserManager
         user_manager = OwiUserManager()
         
         result = user_manager.update_user_role(str(user_id), new_role)
-        logging.error(f"[DIRECT_ENDPOINT] Update result: {result}")
+        logger.error(f"[DIRECT_ENDPOINT] Update result: {result}")
         
         return {"success": result, "message": "Role updated successfully" if result else "Failed to update role"}
     except Exception as e:
         import traceback
-        logging.error(f"[DIRECT_ENDPOINT] Exception: {type(e).__name__}: {str(e)}")
-        logging.error(f"[DIRECT_ENDPOINT] Traceback:\n{traceback.format_exc()}")
+        logger.error(f"[DIRECT_ENDPOINT] Exception: {type(e).__name__}: {str(e)}")
+        logger.error(f"[DIRECT_ENDPOINT] Traceback:\n{traceback.format_exc()}")
         return {"success": False, "message": f"Error: {str(e)}"}
 
 if __name__ == "__main__":

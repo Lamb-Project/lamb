@@ -14,11 +14,13 @@ import hashlib
 import base64
 import urllib.parse
 import config
+from lamb.logging_config import get_logger
 
 router = APIRouter()
 db_manager = LambDatabaseManager()
 owi_user_manager = OwiUserManager()
 owi_group_manager = OwiGroupManager()
+logger = get_logger(__name__, component="API")
 
 
 @router.get("/")
@@ -91,7 +93,7 @@ async def create_lti_user(request: Request, current_user: str = Depends(get_curr
             raise HTTPException(
                 status_code=400, detail="Failed to create LTI user")
     except Exception as e:
-        logging.error(f"Error creating LTI user: {str(e)}")
+        logger.error(f"Error creating LTI user: {str(e)}")
         raise HTTPException(
             status_code=400, detail=f"Error processing request: {str(e)}")
 
@@ -107,7 +109,7 @@ async def get_lti_user(user_email: str, current_user: str = Depends(get_current_
         # Re-raise HTTP exceptions (like 404) without changing them
         raise
     except Exception as e:
-        logging.error(f"Error retrieving LTI user: {e}")
+        logger.error(f"Error retrieving LTI user: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -119,7 +121,7 @@ async def get_lti_users_by_assistant(assistant_id: str, current_user: str = Depe
             return users
         return []
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Error retrieving LTI users for assistant {assistant_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -199,7 +201,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
             existing_owi_user = owi_user_manager.get_user_by_email(email)
 
             if not existing_owi_user:
-                logging.info(f"Creating new OWI user for email: {email}")
+                logger.info(f"Creating new OWI user for email: {email}")
                 # Create OWI user
                 owi_user = owi_user_manager.create_user(
                     name=username,
@@ -212,7 +214,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
                     raise HTTPException(
                         status_code=500, detail="Failed to create OWI user")
             else:
-                logging.info(
+                logger.info(
                     f"OWI user with email {email} already exists, skipping creation")
 
             # Add user to OWI group
@@ -252,7 +254,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error in sign_in_lti_user: {str(e)}")
+        logger.error(f"Error in sign_in_lti_user: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -314,7 +316,7 @@ async def process_lti_connection(request: Request):
 
         lti_secret = os.getenv("LTI_SECRET")
         if not lti_secret:
-            logging.error("LTI_SECRET environment variable not set")
+            logger.error("LTI_SECRET environment variable not set")
             raise HTTPException(
                 status_code=500, detail="LTI secret not configured"
             )
@@ -324,7 +326,7 @@ async def process_lti_connection(request: Request):
         url_prefix = os.getenv("LTI_URL_PREFIX", "/lamb")
         base_url = f"{proto}://{host}{url_prefix}{request.url.path}"
 
-        logging.info(f"Reconstructed base URL: {base_url}")
+        logger.info(f"Reconstructed base URL: {base_url}")
 
         computed_signature, base_string, encoded_params = generate_signature(
             post_data,
@@ -338,7 +340,7 @@ async def process_lti_connection(request: Request):
 
         # Compare computed signature with provided signature
         if computed_signature != post_data.get("oauth_signature"):
-            logging.error(
+            logger.error(
                 f"Invalid OAuth signature. Computed: {computed_signature}, Received: {post_data.get('oauth_signature')}")
             raise HTTPException(
                 status_code=401, detail="Invalid OAuth signature")
@@ -358,24 +360,24 @@ async def process_lti_connection(request: Request):
         oauth_consumer_name = post_data.get("oauth_consumer_key", "")
         email = f"{username}-{oauth_consumer_name}@lamb-project.org"
 
-        logging.info(
+        logger.info(
             f"LTI connection attempt for email: {email}, username: {username}, oauth_consumer_key: {oauth_consumer_name}")
 
         # Check if user already exists
         existing_user = db_manager.get_lti_user_by_email(email)
 
         if existing_user:
-            logging.info(
+            logger.info(
                 f"User with email {email} already exists, getting token directly")
             # User exists, just get the token
             user_token = owi_user_manager.get_auth_token(email, username)
             if not user_token:
-                logging.error(
+                logger.error(
                     f"Failed to get token for existing user: {email}")
                 raise HTTPException(
                     status_code=500, detail="Failed to get user token")
 
-            logging.info(
+            logger.info(
                 f"Successfully retrieved token for existing user: {email}")
 
             # Get the OWI PUBLIC base URL for browser redirects (falls back to internal URL if not set)
@@ -384,10 +386,10 @@ async def process_lti_connection(request: Request):
 
             # Redirect to the completion URL with the token
             redirect_url = f"{owi_public_api_base_url}/auths/complete?token={user_token}"
-            logging.info(f"Redirecting to: {redirect_url}")
+            logger.info(f"Redirecting to: {redirect_url}")
             return RedirectResponse(url=redirect_url, status_code=303)
         else:
-            logging.info(
+            logger.info(
                 f"User with email {email} does not exist, creating new user")
             # User doesn't exist, proceed with normal flow
             # Prepare data for sign_in_lti_user
@@ -408,11 +410,11 @@ async def process_lti_connection(request: Request):
             current_user = "admin"  # Default admin user for LTI connections
 
             # Call the sign_in_lti_user function
-            logging.info(f"Calling sign_in_lti_user for new user: {email}")
+            logger.info(f"Calling sign_in_lti_user for new user: {email}")
             result = await sign_in_lti_user(mock_request, current_user)
 
             token = result.get("token")
-            logging.info(
+            logger.info(
                 f"Successfully created new user and retrieved token: {email}")
 
             # Get the OWI PUBLIC base URL for browser redirects (falls back to internal URL if not set)
@@ -421,11 +423,11 @@ async def process_lti_connection(request: Request):
 
             # Redirect to the completion URL with the token
             redirect_url = f"{owi_public_api_base_url}/auths/complete?token={token}"
-            logging.info(f"Redirecting to: {redirect_url}")
+            logger.info(f"Redirecting to: {redirect_url}")
             return RedirectResponse(url=redirect_url, status_code=303)
 
     except Exception as e:
-        logging.error(f"Error in process_lti_connection: {str(e)}")
+        logger.error(f"Error in process_lti_connection: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Add more endpoints as needed, such as update and delete
