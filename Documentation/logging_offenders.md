@@ -140,10 +140,17 @@ This document lists all violations of the centralized logging standard implement
 
 ### Additional Files Fixed:
 - `backend/lamb/completions/connectors/ollama.py` ✅ FIXED (removed manual basicConfig)
-- `backend/lamb/database_manager.py` ✅ FIXED (removed manual basicConfig)
+- `backend/lamb/database_manager.py` ✅ FIXED (removed manual basicConfig + **FIXED CRITICAL BUG** - replaced ~300 logging. references with logger.)
 - `backend/lamb/owi_bridge/owi_users.py` ✅ FIXED (removed manual logger setup)
 - `backend/lamb/creator_user_router.py` ✅ FIXED (removed manual basicConfig)
 - `backend/lamb/completions/connectors/openai.py` ✅ FIXED (removed redundant print statements, fixed multimodal logger)
+
+### Critical Bug Resolution:
+**🐛 CRITICAL BUG FIXED:** `NameError: name 'logging' is not defined` in `database_manager.py`
+- **Root Cause:** Manual `logging.` references remained after switching to centralized logging
+- **Impact:** Prevented container startup and application initialization
+- **Solution:** Replaced all 297 `logging.` calls with `logger.` calls
+- **Status:** ✅ RESOLVED - Application should now start successfully in containers
 
 ## Summary
 
