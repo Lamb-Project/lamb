@@ -202,8 +202,7 @@ async def get_models(request: Request):
             for assistant in assistants
         ]
     }
-    logging.info("Models: "+str(response_body))
-
+    
     # Generate Request ID and set headers
     request_id = f"req_{uuid.uuid4()}"
     # CORSMiddleware will set the correct Access-Control-Allow-Origin header.
