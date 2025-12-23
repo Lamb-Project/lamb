@@ -72,9 +72,7 @@ router.include_router(evaluaitor_router, prefix="/rubrics")
 from .prompt_templates_router import router as prompt_templates_router
 router.include_router(prompt_templates_router, prefix="/prompt-templates")
 
-# Include the assistant sharing router  
-from lamb.assistant_sharing_router import router as assistant_sharing_router
-router.include_router(assistant_sharing_router, prefix="/lamb")
+# REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 
 
 # Initialize security

@@ -616,7 +616,7 @@
     async function checkSharingPermission() {
         try {
             const response = await fetch(
-                getLambApiUrl('/lamb/v1/assistant-sharing/check-permission'),
+                getLambApiUrl('/creator/lamb/assistant-sharing/check-permission'),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`
@@ -643,7 +643,7 @@
         
         try {
             const response = await fetch(
-                getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${selectedAssistantData.id}`),
+                getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${selectedAssistantData.id}`),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`

@@ -39,7 +39,7 @@
         
         checkingPermission = true;
         try {
-            const apiUrl = getApiUrl('/lamb/v1/assistant-sharing/check-permission');
+            const apiUrl = getApiUrl('/creator/lamb/assistant-sharing/check-permission');
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -65,7 +65,7 @@
         loading = true;
         errorMessage = '';
         try {
-            const apiUrl = getApiUrl(`/lamb/v1/assistant-sharing/shares/${assistant.id}`);
+            const apiUrl = getApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`);
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -90,7 +90,7 @@
         
         loadingUsers = true;
         try {
-            const apiUrl = getApiUrl('/lamb/v1/assistant-sharing/organization-users');
+            const apiUrl = getApiUrl('/creator/lamb/assistant-sharing/organization-users');
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -116,7 +116,7 @@
         loading = true;
         errorMessage = '';
         try {
-            const apiUrl = getApiUrl(`/lamb/v1/assistant-sharing/lti-users/${assistant.id}`);
+            const apiUrl = getApiUrl(`/creator/lamb/assistant-sharing/lti-users/${assistant.id}`);
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -144,7 +144,7 @@
         successMessage = '';
         
         try {
-            const apiUrl = getApiUrl('/lamb/v1/assistant-sharing/share');
+            const apiUrl = getApiUrl('/creator/lamb/assistant-sharing/share');
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
@@ -189,7 +189,7 @@
         successMessage = '';
         
         try {
-            const apiUrl = getApiUrl('/lamb/v1/assistant-sharing/unshare');
+            const apiUrl = getApiUrl('/creator/lamb/assistant-sharing/unshare');
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {

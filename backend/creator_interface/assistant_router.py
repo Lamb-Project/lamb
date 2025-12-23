@@ -10,8 +10,9 @@ from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.owi_bridge.owi_model import OWIModel
 from creator_interface.openai_connect import OpenAIConnector
 from lamb.database_manager import LambDatabaseManager
-from lamb.assistant_router import update_assistant as core_update_assistant, get_assistant_with_publication as core_get_assistant_with_publication, soft_delete_assistant as core_soft_delete_assistant
-from lamb.organization_router import get_organization_assistant_defaults as core_get_assistant_defaults, update_organization_assistant_defaults as core_update_assistant_defaults
+# Replaced HTTP endpoint imports with service layer
+from lamb.services.assistant_service import AssistantService
+from lamb.services.organization_service import OrganizationService
 from typing import Optional, List, Dict, Any, Tuple, Union
 import re
 from .openai_connect import OpenAIConnector
@@ -1086,15 +1087,26 @@ async def update_assistant_proxy(assistant_id: int, request: Request):
         
         mock_request.json = async_json
 
-        logger.info(f"Calling core_update_assistant for assistant {assistant_id}")
-        # Call the core update function directly
-        result = await core_update_assistant(assistant_id, mock_request, creator_user.get('email'))
+        logger.info(f"Using AssistantService to update assistant {assistant_id}")
+        
+        # Initialize service
+        assistant_service = AssistantService()
+        
+        # Convert prepared body to Assistant object
+        from lamb.lamb_classes import Assistant
+        assistant_obj = Assistant(**new_body)
+        
+        # Update via service layer
+        success = assistant_service.update_assistant(assistant_id, assistant_obj)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found or update failed")
 
-        logger.info(f"Successfully updated assistant {assistant_id} via direct call.")
+        logger.info(f"Successfully updated assistant {assistant_id} via service layer.")
         # Construct the response according to the AssistantUpdateResponse model
         return {
             "assistant_id": assistant_id,
-            "message": result.get("message", "Assistant updated successfully")
+            "message": "Assistant updated successfully"
         }
 
     except HTTPException as he:
@@ -1188,10 +1200,15 @@ async def delete_assistant_proxy(assistant_id: int, request: Request):
         logger.info(f"User {creator_user['email']} authorized to delete assistant {assistant_id} (Is Owner: {is_owner}, Is Admin: {is_admin}).")
 
         # 3. Call the core soft delete function directly
-        logger.info(f"Calling core_soft_delete_assistant for assistant {assistant_id}")
-        result = await core_soft_delete_assistant(assistant_id, creator_user.get('email'))
+        logger.info(f"Using AssistantService to soft delete assistant {assistant_id}")
+        
+        # Initialize service  
+        assistant_service = AssistantService()
+        
+        # Soft delete via service layer
+        result = assistant_service.soft_delete_assistant_by_id(assistant_id)
 
-        logger.info(f"Successfully soft deleted assistant {assistant_id} via direct call.")
+        logger.info(f"Successfully soft deleted assistant {assistant_id} via service layer.")
         # Return the success message
         return result
 
@@ -1488,12 +1505,18 @@ async def export_assistant_proxy(assistant_id: int, request: Request):
 
         # 2. Fetch Assistant Data using direct function call
         logger.info(f"Fetching assistant {assistant_id} details via direct call for export.")
-        result = await core_get_assistant_with_publication(assistant_id, creator_user.get('email'))
-
-        # Handle core function errors
-        if not result or 'assistant' not in result:
+        # Initialize service
+        assistant_service = AssistantService()
+        
+        # Get assistant with publication data via service layer
+        assistant_data = assistant_service.get_assistant_with_publication_dict(assistant_id)
+        
+        # Handle not found
+        if not assistant_data:
             logger.warning(f"Assistant {assistant_id} not found during export.")
             raise HTTPException(status_code=404, detail="Assistant not found")
+        
+        result = {"assistant": assistant_data}
 
         assistant_data = result['assistant']
 
@@ -1724,9 +1747,10 @@ async def get_assistant_defaults_for_current_user(request: Request):
                     org_slug = organizations[0]['slug']
                     logger.debug(f"Using first organization from roles: {org_slug}")
 
-        # Call the core organization assistant defaults function directly
-        logger.info(f"Getting assistant defaults for organization {org_slug} via direct call")
-        result = await core_get_assistant_defaults(org_slug)
+        # Use OrganizationService to get defaults
+        logger.info(f"Getting assistant defaults for organization {org_slug} via service layer")
+        org_service = OrganizationService()
+        result = org_service.get_assistant_defaults(org_slug)
 
         return result
 
@@ -1748,7 +1772,13 @@ async def update_organization_assistant_defaults(slug: str, request: Request):
     try:
         # Call the core organization assistant defaults update function directly
         logger.info(f"Updating assistant defaults for organization {slug} via direct call")
-        result = await core_update_assistant_defaults(slug, request)
+        # Parse request body
+        body = await request.json()
+        assistant_defaults = body.get('assistant_defaults', body)
+        
+        # Use OrganizationService to update defaults
+        org_service = OrganizationService()
+        result = org_service.update_assistant_defaults(slug, assistant_defaults)
 
         return result
 

@@ -83,7 +83,7 @@
 
 	async function fetchCurrentShares() {
 		const response = await fetch(
-			getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${assistant.id}`),
+			getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
 			{
 				headers: {
 					'Authorization': `Bearer ${token}`
@@ -100,7 +100,7 @@
 
 	async function fetchOrganizationUsers() {
 		const response = await fetch(
-			getLambApiUrl('/lamb/v1/assistant-sharing/organization-users'),
+			getLambApiUrl('/creator/lamb/assistant-sharing/organization-users'),
 			{
 				headers: {
 					'Authorization': `Bearer ${token}`
@@ -163,7 +163,7 @@
 			const userIds = sharedUsers.map(u => u.id);
 			
 			const response = await fetch(
-				getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${assistant.id}`),
+				getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
 				{
 					method: 'PUT',
 					headers: {

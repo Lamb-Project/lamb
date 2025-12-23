@@ -81,8 +81,8 @@
         email: '',
         name: '',
         password: '',
-        enabled: true,
-        user_type: 'creator' // 'creator' or 'end_user'
+        enabled: undefined,
+        user_type: '' // 'creator' or 'end_user'
     });
     let isCreatingUser = $state(false);
     /** @type {string | null} */
@@ -583,8 +583,8 @@
             email: '',
             name: '',
             password: '',
-            enabled: true,
-            user_type: 'creator'
+            enabled: undefined,
+            user_type: ''
         };
         createUserError = null;
         createUserSuccess = false;
@@ -661,7 +661,7 @@
             }
 
             const response = await axios.put(
-                `${getLambApiUrl(`/lamb/v1/assistant-sharing/user-permission/${user.id}`)}?can_share=${canShare}`,
+                `${getLambApiUrl(`/creator/lamb/assistant-sharing/user-permission/${user.id}`)}?can_share=${canShare}`,
                 {},
                 {
                     headers: {
@@ -1137,7 +1137,7 @@
         for (const assistant of orgAssistants) {
             try {
                 const response = await axios.get(
-                    getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${assistant.id}`),
+                    getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
                     {
                         headers: {
                             'Authorization': `Bearer ${$user.token}`

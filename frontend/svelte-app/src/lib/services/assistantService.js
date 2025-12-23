@@ -744,7 +744,7 @@ export async function getSharedAssistants() {
 		// Get the base URL without /creator prefix for lamb endpoints
 		const config = getConfig();
 		const baseUrl = config.api.lambServer || 'http://localhost:9099';
-		const apiUrl = `${baseUrl}/lamb/v1/assistant-sharing/shared-with-me`;
+		const apiUrl = `${baseUrl}/creator/lamb/assistant-sharing/shared-with-me`;
 		console.log('Fetching shared assistants from:', apiUrl);
 
 		const response = await fetch(apiUrl, {

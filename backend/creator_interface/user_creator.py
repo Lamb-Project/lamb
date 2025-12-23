@@ -3,7 +3,8 @@ import os
 from typing import Optional, Dict, Any
 import config
 from lamb.database_manager import LambDatabaseManager
-from lamb.creator_user_router import create_creator_user as core_create_creator_user, verify_creator_user as core_verify_creator_user, list_creator_users as core_list_creator_users
+from lamb.services import CreatorUserService
+from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="API")
@@ -14,13 +15,18 @@ class UserCreatorManager:
         # Use LAMB_BACKEND_HOST for internal server-to-server requests
         self.pipelines_host = config.LAMB_BACKEND_HOST
         self.pipelines_bearer_token = config.API_KEY
+        
+        # Initialize services
+        self.creator_user_service = CreatorUserService()
+        self.owi_user_manager = OwiUserManager()
+        
         if not self.pipelines_host or not self.pipelines_bearer_token:
             raise ValueError(
                 "LAMB_BACKEND_HOST and API_KEY environment variables are required")
 
     async def update_user_password(self, email: str, new_password: str) -> Dict[str, Any]:
         """
-        Update an existing user's password
+        Update an existing user's password using OWI user manager directly
         
         Args:
             email: User's email address
@@ -30,57 +36,21 @@ class UserCreatorManager:
             Dict[str, Any]: Response containing success status and error information if any
         """
         try:
-            # Call OWI bridge to update password
-            async with httpx.AsyncClient() as client:
-                # First try with PUT method
-                response = await client.put(
-                    f"{self.pipelines_host}/lamb/v1/OWI/users/update_password",
-                    headers={
-                        "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": email,
-                        "new_password": new_password
-                    },
-                    timeout=30.0  # Add a reasonable timeout
-                )
-                
-                if response.status_code == 200:
-                    return {
-                        "success": True,
-                        "message": "Password updated successfully",
-                        "error": None
-                    }
-                # If PUT fails with method not allowed, try alternative endpoint
-                elif response.status_code == 405:
-                    logger.info(f"PUT method not allowed for update_password. Trying alternative endpoint.")
-                    
-                    # Try with an alternative endpoint that might be available
-                    alt_response = await client.post(
-                        f"{self.pipelines_host}/lamb/v1/OWI/users/password",
-                        headers={
-                            "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "email": email,
-                            "new_password": new_password
-                        },
-                        timeout=30.0
-                    )
-                    
-                    if alt_response.status_code == 200:
-                        return {
-                            "success": True,
-                            "message": "Password updated successfully via alternative endpoint",
-                            "error": None
-                        }
-                    error_detail = alt_response.json().get('detail', 'Failed to update password via alternative endpoint')
-                    return {"success": False, "error": error_detail, "data": None}
-                else:
-                    error_detail = response.json().get('detail', 'Failed to update password')
-                    return {"success": False, "error": error_detail, "data": None}
+            # Update password using OWI manager directly
+            success = self.owi_user_manager.update_user_password(email, new_password)
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": "Password updated successfully",
+                    "error": None
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Failed to update password",
+                    "data": None
+                }
                     
         except Exception as e:
             import traceback
@@ -90,7 +60,7 @@ class UserCreatorManager:
 
     async def create_user(self, email: str, name: str, password: str, role: str = "user", organization_id: int = None, user_type: str = "creator") -> Dict[str, Any]:
         """
-        Create a new creator user through the API
+        Create a new creator user using the service layer
         
         Args:
             email: User's email address
@@ -104,272 +74,174 @@ class UserCreatorManager:
             Dict[str, Any]: Response containing success status and error information if any
         """
         try:
-            # First, create the creator user in LAMB
-            async with httpx.AsyncClient() as client:
-                payload = {
-                    "email": email,
-                    "name": name,
-                    "password": password,
-                    "user_type": user_type
-                }
-                
-                # Add organization_id if provided
-                if organization_id is not None:
-                    payload["organization_id"] = organization_id
-                    
-                response = await client.post(
-                    f"{self.pipelines_host}/lamb/v1/creator_user/create",
-                    headers={
-                        "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json=payload
-                )
-
-                if response.status_code != 200:
-                    error_detail = response.json().get('detail', 'unknown_error')
-                    return {"success": False, "error": error_detail}
-                
-                # Extract user_id from response
-                user_id = response.json()
-                
-                # If role needs to be set to admin, we need to update the OWI user
-                if role == "admin":
-                    # Create or update the OWI user with admin role
-                    owi_response = await client.post(
-                        f"{self.pipelines_host}/lamb/v1/OWI/users",
-                        headers={
-                            "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "name": name,
-                            "email": email,
-                            "password": password,
-                            "role": "admin"
-                        }
-                    )
-                    
-                    if owi_response.status_code != 200:
-                        logger.warning(f"User created but failed to set admin role: {owi_response.text}")
+            # Create the creator user using service layer
+            user_id = self.creator_user_service.create_user(
+                email=email,
+                name=name,
+                password=password,
+                organization_id=organization_id,
+                user_type=user_type
+            )
+            
+            if user_id is None:
+                return {"success": False, "error": "User already exists"}
+            
+            # If role needs to be set to admin, update the OWI user role
+            if role == "admin":
+                # Get the OWI user and update their role
+                owi_user = self.owi_user_manager.get_user_by_email(email)
+                if owi_user:
+                    success = self.owi_user_manager.update_user_role(owi_user['id'], 'admin')
+                    if not success:
+                        logger.warning(f"User created but failed to set admin role for {email}")
                         return {
                             "success": True, 
                             "warning": "User created but failed to set admin role",
                             "error": None,
                             "user_id": user_id
                         }
-                
-                return {"success": True, "error": None, "user_id": user_id}
-
+                else:
+                    logger.warning(f"User created but OWI user not found for {email}")
+            
+            return {"success": True, "error": None, "user_id": user_id}
+            
+        except ValueError as e:
+            logger.error(f"Error during user creation: {str(e)}")
+            return {"success": False, "error": str(e)}
         except Exception as e:
-            logger.error(f"Error during user creation: {e}")
+            logger.error(f"Unexpected error during user creation: {str(e)}")
             return {"success": False, "error": "server_error"}
 
     async def verify_user(self, email: str, password: str) -> Dict[str, Any]:
         """
-        Verify user credentials and return user info with token and OWI launch URL
+        Verify user credentials and return user info with token and OWI launch URL using service layer
         
         Special handling for admin user:
         If the user is the admin (as defined in OWI system) but not yet a creator user,
         they will be automatically added as a creator user.
         """
         try:
-            # First verify the user normally
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.pipelines_host}/lamb/v1/creator_user/verify",
-                    headers={
-                        "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "email": email,
-                        "password": password
-                    }
-                )
-
-                # If verification failed, check if this is the admin user trying to log in
-                if response.status_code != 200:
-                    # Check if this is the admin user from OWI
-                    import config
-                    admin_email = config.OWI_ADMIN_EMAIL
+            # Try to verify using the service
+            user_info = self.creator_user_service.verify_user(email, password)
+            
+            # If verification failed, check if this is the admin user trying to log in
+            if not user_info:
+                import config
+                admin_email = config.OWI_ADMIN_EMAIL
+                
+                if email == admin_email:
+                    logger.info(f"Admin user {email} attempted login but is not a creator user. Checking OWI credentials...")
                     
-                    if email == admin_email:
-                        logger.info(f"Admin user {email} attempted login but is not a creator user. Checking OWI credentials...")
+                    # Verify against OWI directly
+                    owi_user = self.owi_user_manager.verify_user(email, password)
+                    
+                    if owi_user and owi_user.get('role') == 'admin':
+                        logger.info(f"Verified admin user {email}. Creating creator user account...")
                         
-                        # Verify against OWI directly to confirm admin credentials
-                        owi_verify_response = await client.post(
-                            f"{self.pipelines_host}/lamb/v1/OWI/users/verify",
-                            headers={
-                                "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                                "Content-Type": "application/json"
-                            },
-                            json={
-                                "email": email,
-                                "password": password
-                            }
+                        # Create a creator user for the admin
+                        user_id = self.creator_user_service.create_user(
+                            email=email,
+                            name=owi_user.get('name', 'Admin User'),
+                            password=password
                         )
                         
-                        if owi_verify_response.status_code == 200:
-                            owi_user_data = owi_verify_response.json().get('data', {})
-                            
-                            # Confirm this is actually the admin user
-                            if owi_user_data and owi_user_data.get('role') == 'admin':
-                                logger.info(f"Verified admin user {email}. Creating creator user account...")
-
-                                # Create a creator user for the admin
-                                create_response = await client.post(
-                                    f"{self.pipelines_host}/lamb/v1/creator_user/create",
-                                    headers={
-                                        "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                                        "Content-Type": "application/json"
-                                    },
-                                    json={
-                                        "email": email,
-                                        "name": owi_user_data.get('name', 'Admin User'),
-                                        "password": password
-                                    }
-                                )
-
-                                # If user creation succeeded or user already exists (409), try verification
-                                if create_response.status_code == 200:
-                                    logger.info(f"Successfully created creator user for admin {email}")
-                                elif create_response.status_code == 409:
-                                    logger.info(f"Creator user for admin {email} already exists, proceeding with verification")
-                                else:
-                                    logger.error(f"Failed to create creator user for admin: {create_response.text}")
-                                
-                                # Try to verify (works for both new and existing users)
-                                if create_response.status_code in [200, 409]:
-                                    response = await client.post(
-                                        f"{self.pipelines_host}/lamb/v1/creator_user/verify",
-                                        headers={
-                                            "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                                            "Content-Type": "application/json"
-                                        },
-                                        json={
-                                            "email": email,
-                                            "password": password
-                                        }
-                                    )
-
-                # Process the verification response (either original or after admin handling)
-                if response.status_code == 200:
-                    data = response.json()
-
-                    # Get OWI launch URL
-                    owi_response = await client.get(
-                        f"{self.pipelines_host}/lamb/v1/OWI/users/login/{email}",
-                        headers={
-                            "Authorization": f"Bearer {self.pipelines_bearer_token}"
-                        }
+                        if user_id:
+                            logger.info(f"Successfully created creator user for admin {email}")
+                            # Try verification again
+                            user_info = self.creator_user_service.verify_user(email, password)
+                        else:
+                            logger.error(f"Failed to create creator user for admin {email}")
+            
+            if user_info:
+                # Get OWI launch URL using manager directly
+                launch_url = self.owi_user_manager.get_login_url(email, user_info.get("name"))
+                logger.debug(f"Launch URL: {launch_url}")
+                
+                # Fetch organization role if user belongs to an organization
+                organization_role = None
+                db_manager = LambDatabaseManager()
+                creator_user = db_manager.get_creator_user_by_email(email)
+                
+                if creator_user and creator_user.get('organization_id'):
+                    organization_role = db_manager.get_user_organization_role(
+                        user_id=creator_user['id'],
+                        organization_id=creator_user['organization_id']
                     )
-
-                    launch_url = None
-                    if owi_response.status_code == 200:
-                        # The URL is returned directly as text
-                        launch_url = owi_response.text.strip('"')
-                    logger.debug(f"Launch URL: {launch_url}")
-
-                    # Fetch organization role if user belongs to an organization
-                    organization_role = None
-                    db_manager = LambDatabaseManager()
-                    creator_user = db_manager.get_creator_user_by_email(email)
-
-                    if creator_user and creator_user.get('organization_id'):
-                        organization_role = db_manager.get_user_organization_role(
-                            user_id=creator_user['id'],
-                            organization_id=creator_user['organization_id']
-                        )
-                        logger.debug(f"User {email} has organization role: {organization_role}")
-                    
-                    data_to_return = {
-                        "success": True,
-                        "data": {
-                            "token": data.get("token"),
-                            "name": data.get("name"),
-                            "email": data.get("email"),
-                            "launch_url": launch_url,
-                            "user_id": data.get("id"),
-                            "role": data.get("role", "user"),  # Include role from response, default to 'user'
-                            "user_type": data.get("user_type", "creator"),  # Include user_type from response
-                            "organization_role": organization_role  # Include organization role
-                        },
-                        "error": None
-                    }
-                    logger.debug(f"Data to return: {data_to_return}")
-                    return data_to_return
-                else:
-                    error_detail = response.json().get('detail', 'Invalid credentials')
-                    return {"success": False, "error": error_detail, "data": None}
-
+                    logger.debug(f"User {email} has organization role: {organization_role}")
+                
+                data_to_return = {
+                    "success": True,
+                    "data": {
+                        "token": user_info.get("token"),
+                        "name": user_info.get("name"),
+                        "email": user_info.get("email"),
+                        "launch_url": launch_url,
+                        "user_id": user_info.get("id"),
+                        "role": user_info.get("role", "user"),
+                        "user_type": user_info.get("user_type", "creator"),
+                        "organization_role": organization_role
+                    },
+                    "error": None
+                }
+                logger.debug(f"Data to return: {data_to_return}")
+                return data_to_return
+            else:
+                return {"success": False, "error": "Invalid credentials", "data": None}
+        
+        except ValueError as e:
+            # Account disabled
+            logger.error(f"ValueError during login: {str(e)}")
+            return {"success": False, "error": str(e), "data": None}
         except Exception as e:
             logger.error(f"Error during login: {e}")
             return {"success": False, "error": "server_error", "data": None}
     
     async def list_all_creator_users(self) -> Dict[str, Any]:
         """
-        Get a list of all creator users from the LAMB API and enrich with OWI role information
+        Get a list of all creator users using service layer and enrich with OWI role information
         
         Returns:
             Dict[str, Any]: Response containing list of users or error information
         """
         try:
-            async with httpx.AsyncClient() as client:
-                # Get basic creator user list from LAMB API
-                response = await client.get(
-                    f"{self.pipelines_host}/lamb/v1/creator_user/list",
-                    headers={
-                        "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                        "Content-Type": "application/json"
-                    }
-                )
-                
-                if response.status_code == 200:
-                    creator_users = response.json()
-                    logger.debug(f"Raw creator users from LAMB API: {creator_users}")
+            # Get creator users from service
+            creator_users = self.creator_user_service.list_users()
+            
+            if creator_users is None:
+                return {"success": False, "error": "Failed to retrieve users", "data": None}
+            
+            logger.debug(f"Raw creator users from service: {creator_users}")
+            
+            # Enrich with OWI role information using manager directly
+            for user in creator_users:
+                try:
+                    # Get OWI user info to determine role
+                    owi_user = self.owi_user_manager.get_user_by_email(user['email'])
                     
-                    # Now get each user's role from OWI for each creator user
-                    for user in creator_users:
-                        try:
-                            # Get OWI user info to determine role
-                            owi_response = await client.get(
-                                f"{self.pipelines_host}/lamb/v1/OWI/users/email/{user['email']}",
-                                headers={
-                                    "Authorization": f"Bearer {self.pipelines_bearer_token}",
-                                    "Content-Type": "application/json"
-                                }
-                            )
-                            
-                            if owi_response.status_code == 200:
-                                owi_user = owi_response.json()
-                                # Get role and ID from OWI user and add to creator user data
-                                user['role'] = owi_user.get('role', 'user')
-                                user['owi_id'] = owi_user.get('id', None)
-                                logger.debug(f"Found OWI user with role '{user['role']}' and ID '{user['owi_id']}' for email {user['email']}")
-                            else:
-                                # No OWI user found or other error
-                                user['role'] = 'user'  # Default role
-                                user['owi_id'] = None
-                                logger.debug(f"No OWI user found for email {user['email']}, using default role 'user'")
-                        except Exception as e:
-                            # Handle errors when fetching OWI user info
-                            user['role'] = 'user'  # Default role
-                            user['owi_id'] = None
-                            logger.error(f"Error fetching OWI role for user {user['email']}: {e}")
-                    
-                    # Debug log to see the enhanced structure
-                    logger.debug(f"Users list with roles being returned: {creator_users}")
-                    
-                    return {
-                        "success": True,
-                        "data": creator_users,
-                        "error": None
-                    }
-                else:
-                    error_detail = response.json().get("detail", "Failed to retrieve users")
-                    return {"success": False, "error": error_detail, "data": None}
-                    
+                    if owi_user:
+                        user['role'] = owi_user.get('role', 'user')
+                        user['owi_id'] = owi_user.get('id', None)
+                        logger.debug(f"Found OWI user with role '{user['role']}' and ID '{user['owi_id']}' for email {user['email']}")
+                    else:
+                        user['role'] = 'user'
+                        user['owi_id'] = None
+                        logger.debug(f"No OWI user found for email {user['email']}, using default role 'user'")
+                except Exception as e:
+                    user['role'] = 'user'
+                    user['owi_id'] = None
+                    logger.error(f"Error fetching OWI role for user {user['email']}: {e}")
+            
+            logger.debug(f"Users list with roles being returned: {creator_users}")
+            
+            return {
+                "success": True,
+                "data": creator_users,
+                "error": None
+            }
+            
+        except ValueError as e:
+            logger.error(f"Error listing creator users: {str(e)}")
+            return {"success": False, "error": str(e), "data": None}
         except Exception as e:
-            logger.error(f"Error listing creator users: {e}")
+            logger.error(f"Unexpected error listing creator users: {e}")
             return {"success": False, "error": "server_error", "data": None}

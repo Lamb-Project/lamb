@@ -16,18 +16,7 @@ import config
 from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
 from lamb.owi_bridge.owi_users import OwiUserManager
-from lamb.organization_router import (
-    create_organization as core_create_organization,
-    list_organizations as core_list_organizations,
-    get_organization as core_get_organization,
-    update_organization as core_update_organization,
-    delete_organization as core_delete_organization,
-    get_organization_config as core_get_organization_config,
-    update_organization_config as core_update_organization_config,
-    get_organization_usage as core_get_organization_usage,
-    export_organization as core_export_organization,
-    sync_system_organization as core_sync_organizations
-)
+from lamb.services import OrganizationService
 from schemas import BulkImportRequest, BulkUserActionRequest
 
 # Initialize router
@@ -3540,19 +3529,14 @@ async def get_organization_assistant_defaults(
         if not user_info:
             raise HTTPException(status_code=401, detail="Admin access required")
         
-        # Forward request to lamb API
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/assistant-defaults",
-                headers={"Authorization": f"Bearer {LAMB_BEARER_TOKEN}"}
-            )
-            
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Organization not found")
-            elif response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch assistant defaults")
-            
-            return response.json()
+        # Use OrganizationService instead of HTTP call
+        org_service = OrganizationService()
+        defaults = org_service.get_organization_assistant_defaults(slug)
+        
+        if defaults is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        return defaults
             
     except HTTPException:
         raise
@@ -3596,23 +3580,14 @@ async def update_organization_assistant_defaults(
         # Get request body
         body = await request.json()
         
-        # Forward request to lamb API (pass the body as-is)
-        async with httpx.AsyncClient() as client:
-            response = await client.put(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/assistant-defaults",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                },
-                json=body
-            )
-            
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Organization not found")
-            elif response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to update assistant defaults")
-            
-            return response.json()
+        # Use OrganizationService instead of HTTP call
+        org_service = OrganizationService()
+        updated_defaults = org_service.update_organization_assistant_defaults(slug, body)
+        
+        if updated_defaults is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        return {"success": True, "assistant_defaults": updated_defaults}
             
     except HTTPException:
         raise

@@ -49,7 +49,8 @@ export function getApiUrl(endpoint) {
 /**
  * Gets the full API URL for a given endpoint path UNDER the /lamb base.
  * This is used for endpoints that are not under /creator (e.g., /lamb/v1/*).
- * @param {string} endpoint - The API endpoint path (e.g., '/lamb/v1/assistant-sharing/check-permission').
+ * Note: Most endpoints should now go through /creator proxies.
+ * @param {string} endpoint - The API endpoint path (e.g., '/creator/lamb/assistant-sharing/check-permission').
  * @returns {string} The full API URL using lambServer config.
  */
 export function getLambApiUrl(endpoint) {
