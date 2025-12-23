@@ -68,8 +68,8 @@ def rag_processor(
             rubric_format = 'markdown'
 
         # Get rubric from database
-        from backend.lamb.evaluaitor.rubric_database import RubricDatabaseManager
-        from backend.lamb.evaluaitor.rubrics import format_rubric_as_markdown
+        from lamb.evaluaitor.rubric_database import RubricDatabaseManager
+        from lamb.evaluaitor.rubric_service import generate_rubric_markdown
 
         db_manager = RubricDatabaseManager()
 
@@ -100,7 +100,7 @@ def rag_processor(
             context = json.dumps(rubric_data, indent=2)
         else:
             # Format as markdown (default)
-            context = format_rubric_as_markdown(rubric_data)
+            context = generate_rubric_markdown(rubric_data)
 
         # Prepare source citation
         sources = [{

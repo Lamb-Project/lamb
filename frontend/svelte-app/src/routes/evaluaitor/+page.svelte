@@ -33,9 +33,10 @@
     // Add check for event.detail
     if (event.detail && typeof event.detail.rubricId === 'string') {
       const newRubricId = event.detail.rubricId;
-      console.log(`Rubric created with ID: ${newRubricId}, navigating to view page.`);
-      // Navigate to the newly created rubric's view page
-      goto(`${base}/evaluaitor/${newRubricId}`, { replaceState: true });
+      console.log(`Rubric created with ID: ${newRubricId}, navigating to list.`);
+      // Navigate back to the list view
+      currentView = 'list';
+      goto(`${base}/evaluaitor`, { replaceState: true });
     } else {
       console.error('handleRubricCreated received event without expected detail:', event);
     }
@@ -52,11 +53,12 @@
 
   function handleAIRubricCreated(event) {
     showAIModal = false;
-    // Navigate to the view page of the newly created rubric
+    // Navigate back to the list view
     if (event.detail && event.detail.rubricId) {
       const newRubricId = event.detail.rubricId;
-      console.log(`AI-generated rubric created: ${newRubricId}, navigating to view page.`);
-      goto(`${base}/evaluaitor/${newRubricId}`, { replaceState: true });
+      console.log(`AI-generated rubric created: ${newRubricId}, navigating to list.`);
+      currentView = 'list';
+      goto(`${base}/evaluaitor`, { replaceState: true });
     }
   }
 

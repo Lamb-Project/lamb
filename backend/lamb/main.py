@@ -163,10 +163,6 @@ app.include_router(mcp_router, prefix="/v1/mcp")  # Add the MCP router
 app.include_router(organization_router, prefix="/v1")  # Add the organization router
 app.include_router(assistant_sharing_router)  # Add the assistant sharing router
 
-# Evaluaitor (Rubrics) router
-from .evaluaitor.rubrics import router as evaluaitor_router
-app.include_router(evaluaitor_router, prefix="/v1/evaluaitor", tags=["Evaluaitor"])
-
 @app.get("/v1/lti_users")
 async def read_lti_users(request: Request):
     return templates.TemplateResponse("lti_users.html", {"request": request, "api_key": API_KEY})

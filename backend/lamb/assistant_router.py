@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from config import API_KEY  # Import API_KEY from config
 import config
+import logging
 from lamb.logging_config import get_logger
 from .owi_bridge.owi_group import OwiGroupManager
 from .owi_bridge.owi_users import OwiUserManager
