@@ -1925,3 +1925,80 @@ async def get_news(lang: str):
             status_code=500,
             detail=f"Internal server error while fetching news: {str(e)}"
         )
+
+
+@router.get(
+    "/lamb/assistant-sharing/shared-with-me",
+    tags=["Assistant Sharing"],
+    summary="Get Assistants Shared With Me",
+    description="""Returns a list of assistants that have been shared with the authenticated user.
+    
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/lamb/assistant-sharing/shared-with-me' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Success Response:
+```json
+{
+  "assistants": [
+    {
+      "id": 123,
+      "name": "1_Math Helper",
+      "description": "Assists with math problems",
+      "owner": "teacher@example.com",
+      "shared_at": "2025-12-23T10:00:00Z",
+      "shared_by_name": "John Doe",
+      "metadata": {...}
+    }
+  ]
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_shared_assistants(request: Request):
+    """
+    Get list of assistants shared with the current user.
+    """
+    try:
+        # Get creator user from auth header
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            logger.error("Unauthorized attempt to get shared assistants")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+        
+        user_id = creator_user.get('id')
+        user_email = creator_user.get('email')
+        logger.info(f"User {user_email} (ID: {user_id}) requesting shared assistants")
+        
+        # Use the assistant sharing service
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+        
+        # Get shared assistants
+        shared_assistants = sharing_service.get_shared_assistants(user_id)
+        
+        logger.info(f"Found {len(shared_assistants)} assistants shared with user {user_email}")
+        
+        return {
+            "assistants": shared_assistants
+        }
+    
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error getting shared assistants: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
