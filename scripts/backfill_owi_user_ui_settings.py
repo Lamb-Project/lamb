@@ -137,7 +137,8 @@ def main() -> int:
         description="Backfill Open WebUI user.settings UI flags (showUpdateToast/showChangelog) to false when missing"
     )
     parser.add_argument("--db-path", help="Path to the webui.db database")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what would change without writing")
     parser.add_argument(
         "--no-backup",
         action="store_true",
@@ -214,7 +215,8 @@ def main() -> int:
     print(f"Users updated: {Colors.GREEN}{updated}{Colors.NC}")
     print(f"Users unchanged: {Colors.GREEN}{unchanged}{Colors.NC}")
     if skipped_invalid:
-        print(f"Users skipped (invalid settings): {Colors.YELLOW}{skipped_invalid}{Colors.NC}")
+        print(
+            f"Users skipped (invalid settings): {Colors.YELLOW}{skipped_invalid}{Colors.NC}")
 
     return 0
 

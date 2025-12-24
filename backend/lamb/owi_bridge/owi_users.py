@@ -395,12 +395,13 @@ class OwiUserManager:
             # Check if user exists in OWI database
             user = self.db.get_user_by_email(email)
             if not user:
-                logger.warning(f"User with email {email} not found in OWI database (may only exist in LAMB)")
+                logger.warning(
+                    f"User with email {email} not found in OWI database (may only exist in LAMB)")
                 # Return True since there's nothing to delete in OWI - the user may only exist in LAMB
                 return True
 
             user_id = user.get('id')
-            
+
             # Prevent deletion of admin user (user ID 1)
             if user_id == "1":
                 logger.error(f"Cannot delete admin user (ID 1)")
@@ -414,22 +415,24 @@ class OwiUserManager:
 
             try:
                 cursor = conn.cursor()
-                
+
                 # Delete from auth table first (may or may not exist)
                 cursor.execute("DELETE FROM auth WHERE email = ?", (email,))
                 auth_deleted = cursor.rowcount
-                
+
                 # Delete from user table
                 cursor.execute("DELETE FROM user WHERE id = ?", (user_id,))
                 user_deleted = cursor.rowcount
-                
+
                 conn.commit()
 
                 if user_deleted > 0:
-                    logger.info(f"User {email} has been deleted successfully from OWI (auth: {auth_deleted > 0}, user: {user_deleted > 0})")
+                    logger.info(
+                        f"User {email} has been deleted successfully from OWI (auth: {auth_deleted > 0}, user: {user_deleted > 0})")
                     return True
                 else:
-                    logger.warning(f"User {email} record was not deleted (may have already been removed)")
+                    logger.warning(
+                        f"User {email} record was not deleted (may have already been removed)")
                     return True  # Return True anyway since the goal is achieved
 
             except Exception as e:
