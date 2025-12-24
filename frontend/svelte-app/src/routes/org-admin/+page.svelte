@@ -2727,40 +2727,54 @@
                                                     </span>
                                                 </div>
                                                 
-                                                {#if providerStatus.status === 'working'}
-                                                    <div class="text-sm text-gray-600 mb-2">
-                                                        <strong>{providerStatus.model_count}</strong> models available
-                                                        {#if providerStatus.enabled_models && providerStatus.enabled_models.length > 0}
-                                                            <span class="text-brand">• <strong>{providerStatus.enabled_models.length}</strong> selected</span>
-                                                            {#if providerStatus.default_model}
-                                                                <span class="text-brand">• Default: {providerStatus.default_model}</span>
-                                                            {/if}
-                                                        {:else}
-                                                            <span class="text-gray-500">• No models selected</span>
-                                                        {/if}
-                                                    </div>
-                                                    {#if providerStatus.models && providerStatus.models.length > 0}
-                                                        <div class="text-xs text-gray-500">
-                                                            <div class="max-h-20 overflow-y-auto">
-                                                                {#each providerStatus.models.slice(0, 10) as model}
-                                                                    <div class="py-1">{model}</div>
-                                                                {/each}
-                                                                {#if providerStatus.models.length > 10}
-                                                                    <div class="py-1 font-medium">...and {providerStatus.models.length - 10} more</div>
-                                                                {/if}
-                                                            </div>
+                                                {#if providerName === 'google'}
+                                                    <!-- Google: Display simplificado -->
+                                                    {#if providerStatus.status === 'working'}
+                                                        <div class="text-sm text-green-600">
+                                                            ✓ Connected - Image generation enabled
+                                                        </div>
+                                                    {:else if providerStatus.error}
+                                                        <div class="text-sm text-red-600">
+                                                            {providerStatus.error}
                                                         </div>
                                                     {/if}
-                                                {:else if providerStatus.error}
-                                                    <div class="text-sm text-red-600">
-                                                        {providerStatus.error}
-                                                    </div>
-                                                {/if}
-                                                
-                                                {#if providerStatus.api_base}
-                                                    <div class="text-xs text-gray-400 mt-2">
-                                                        {providerStatus.api_base}
-                                                    </div>
+                                                {:else}
+                                                    <!-- OpenAI/Ollama: Display completo -->
+                                                    {#if providerStatus.status === 'working'}
+                                                        <div class="text-sm text-gray-600 mb-2">
+                                                            <strong>{providerStatus.model_count}</strong> models available
+                                                            {#if providerStatus.enabled_models && providerStatus.enabled_models.length > 0}
+                                                                <span class="text-brand">• <strong>{providerStatus.enabled_models.length}</strong> selected</span>
+                                                                {#if providerStatus.default_model}
+                                                                    <span class="text-brand">• Default: {providerStatus.default_model}</span>
+                                                                {/if}
+                                                            {:else}
+                                                                <span class="text-gray-500">• No models selected</span>
+                                                            {/if}
+                                                        </div>
+                                                        {#if providerStatus.models && providerStatus.models.length > 0}
+                                                            <div class="text-xs text-gray-500">
+                                                                <div class="max-h-20 overflow-y-auto">
+                                                                    {#each providerStatus.models.slice(0, 10) as model}
+                                                                        <div class="py-1">{model}</div>
+                                                                    {/each}
+                                                                    {#if providerStatus.models.length > 10}
+                                                                        <div class="py-1 font-medium">...and {providerStatus.models.length - 10} more</div>
+                                                                    {/if}
+                                                                </div>
+                                                            </div>
+                                                        {/if}
+                                                    {:else if providerStatus.error}
+                                                        <div class="text-sm text-red-600">
+                                                            {providerStatus.error}
+                                                        </div>
+                                                    {/if}
+                                                    
+                                                    {#if providerStatus.api_base}
+                                                        <div class="text-xs text-gray-400 mt-2">
+                                                            {providerStatus.api_base}
+                                                        </div>
+                                                    {/if}
                                                 {/if}
                                             </div>
                                         {/each}
@@ -2769,7 +2783,7 @@
                                     {#if Object.keys(dashboardData.api_status.providers).length === 0}
                                         <div class="text-center py-8 text-gray-500">
                                             <p>No API providers configured</p>
-                                            <p class="text-sm mt-1">Configure OpenAI or Ollama below to get started</p>
+                                            <p class="text-sm mt-1">Configure OpenAI, Ollama, or Google below to get started</p>
                                         </div>
                                     {/if}
                                 </div>
@@ -2812,6 +2826,25 @@
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
                                             Custom OpenAI API endpoint. Leave empty to use default (https://api.openai.com/v1).
+                                        </p>
+                                    </div>
+                                    <div class="mt-4">
+                                        <label for="google-api-key" class="block text-sm font-medium text-gray-700">
+                                            Google API Key (Image Generation)
+                                        </label>
+                                        <input
+                                            type="password"
+                                            id="google-api-key"
+                                            bind:value={newApiSettings.google_api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                                            placeholder={apiSettings.google_api_key_set ? "••••••••••••••••" : "Enter Google API key"}
+                                            oninput={() => newApiSettings.google_api_key && addPendingChange('Google API key updated')}
+                                        >
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            Required for image generation with Banana connector. Get your key from 
+                                            <a href="https://aistudio.google.com/apikey" target="_blank" class="text-indigo-600 hover:underline">
+                                                Google AI Studio
+                                            </a>
                                         </p>
                                     </div>
 

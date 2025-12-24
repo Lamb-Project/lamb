@@ -58,7 +58,11 @@ class APIStatusChecker:
         if "ollama" in providers:
             results["summary"]["configured_count"] += 1
             check_tasks.append(self._check_ollama(providers["ollama"]))
-        
+
+        if "google" in providers:
+            results["summary"]["configured_count"] += 1
+            check_tasks.append(self._check_google(providers["google"]))
+    
         # Run all checks concurrently
         if check_tasks:
             provider_results = await asyncio.gather(*check_tasks, return_exceptions=True)
@@ -208,7 +212,83 @@ class APIStatusChecker:
                 "models": [],
                 "api_base": base_url
             }
-    
+
+    async def _check_google(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Check Google AI API connectivity for image generation
+        
+        Args:
+            config: Google configuration
+            
+        Returns:
+            Simplified status information for Google AI
+        """
+        api_key = config.get("api_key")
+        
+        if not api_key:
+            return {
+                "provider": "google",
+                "status": "not_configured",
+                "error": "No API key configured"
+            }
+        
+        try:
+            # Test usando la API REST directamente (más ligero que importar el SDK)
+            async with aiohttp.ClientSession() as session:
+                # Endpoint para listar modelos disponibles
+                url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    
+                    if response.status == 200:
+                        # Simplificado: solo confirmar que funciona
+                        return {
+                            "provider": "google",
+                            "status": "working"
+                        }
+                    elif response.status == 400:
+                        error_data = await response.json()
+                        error_msg = error_data.get("error", {}).get("message", "Invalid API key")
+                        return {
+                            "provider": "google",
+                            "status": "error",
+                            "error": f"400: {error_msg[:50]}"
+                        }
+                    elif response.status == 401:
+                        return {
+                            "provider": "google",
+                            "status": "error",
+                            "error": "401: Invalid API key"
+                        }
+                    elif response.status == 403:
+                        return {
+                            "provider": "google",
+                            "status": "error",
+                            "error": "403: Access denied"
+                        }
+                    else:
+                        return {
+                            "provider": "google",
+                            "status": "error",
+                            "error": f"HTTP {response.status}"
+                        }
+                        
+        except asyncio.TimeoutError:
+            return {
+                "provider": "google",
+                "status": "error",
+                "error": "Timeout"
+            }
+        except Exception as e:
+            return {
+                "provider": "google",
+                "status": "error",
+                "error": str(e)[:50]
+            }
+
     async def _check_ollama(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Check Ollama API connectivity and fetch available models

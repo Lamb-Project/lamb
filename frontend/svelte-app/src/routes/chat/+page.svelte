@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 	import { getLambApiUrl } from '$lib/config';
+	import { marked } from 'marked';
 	
 	/**
 	 * @typedef {Object} Message
@@ -33,6 +34,22 @@
 	// API base URL - get from config
 	const API_URL = getLambApiUrl('/v1');
 	const API_KEY = '0p3n-w3bu!';
+	
+	// Configure marked for safe rendering
+	marked.setOptions({
+		breaks: true,
+		gfm: true
+	});
+	
+	/**
+	 * Parse markdown content to HTML
+	 * @param {string} content - Markdown content
+	 * @returns {string} - HTML content
+	 */
+	function parseMarkdown(content) {
+		if (!content) return '';
+		return marked.parse(content);
+	}
 	
 	/**
 	 * Log message with timestamp
@@ -516,9 +533,15 @@
         <div class="h-96 overflow-y-auto border rounded p-3 space-y-3 bg-gray-50" id="chat-messages">
             {#each messages as message}
                 <div class="{message.role === 'user' ? 'text-right' : 'text-left'}">
-                    <div class="inline-block px-4 py-2 rounded-lg {message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'}">
-                        <!-- Display message content as plain text -->
-                        {message.content}
+                    <div class="inline-block px-4 py-2 rounded-lg max-w-[80%] {message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'}">
+                        <!-- Display message content - markdown for assistant, plain text for user -->
+                        {#if message.role === 'assistant'}
+                            <div class="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-2">
+                                {@html parseMarkdown(message.content)}
+                            </div>
+                        {:else}
+                            {message.content}
+                        {/if}
                         
                         <!-- Show indicator for streaming messages -->
                         {#if isStreaming && message.role === 'assistant' && message === messages[messages.length - 1]}
