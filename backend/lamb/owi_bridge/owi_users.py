@@ -1,4 +1,5 @@
 import uuid
+import json
 from passlib.context import CryptContext
 from typing import Optional, Dict
 import time
@@ -71,15 +72,32 @@ class OwiUserManager:
             current_time = int(time.time())
 
             profile_image_url = f"{PIPELINES_HOST}/static/img/lamb_icon.png"
+
+            # Open WebUI stores per-user UI preferences under settings.ui.
+            # If these values are missing, the frontend defaults them to true.
+            default_settings = {
+                "ui": {
+                    "showUpdateToast": False,
+                    "showChangelog": False,
+                }
+            }
+
             # Create user entry
             user_query = """
-                INSERT INTO user (id, name, email, role, profile_image_url, 
+                INSERT INTO user (id, name, email, role, profile_image_url, settings,
                                 created_at, updated_at, last_active_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             user_params = (
-                user_id, name, email, role, profile_image_url,  # Empty profile image URL
-                current_time, current_time, current_time
+                user_id,
+                name,
+                email,
+                role,
+                profile_image_url,
+                json.dumps(default_settings),
+                current_time,
+                current_time,
+                current_time,
             )
 
             # Create auth entry
