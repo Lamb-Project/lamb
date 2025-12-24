@@ -25,6 +25,7 @@ _LOG_SOURCES = [
     "RAG",
     "EVALUATOR",
     "OWI",
+    "LTI",
 ]
 
 SRC_LOG_LEVELS: dict[str, str] = {}

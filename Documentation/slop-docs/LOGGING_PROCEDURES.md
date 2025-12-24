@@ -60,7 +60,7 @@ logger.critical("Critical error affecting operation")
 
 ## Logging Components
 
-LAMB organizes logging into **six components** for fine-grained control:
+LAMB organizes logging into **seven components** for fine-grained control:
 
 | Component | Purpose | Use When |
 |-----------|---------|----------|
@@ -70,6 +70,7 @@ LAMB organizes logging into **six components** for fine-grained control:
 | **RAG** | RAG pipeline operations | Knowledge base queries, document retrieval, context generation |
 | **EVALUATOR** | Evaluation and grading | Assessment logic, rubric processing, scoring |
 | **OWI** | Open WebUI integration | OWI bridge operations, user sync, model management |
+| **LTI** | LTI integration | LTI launches, OAuth signature verification, LMS integration |
 
 ### Component Selection Guide
 
@@ -91,6 +92,9 @@ logger = get_logger(__name__, component="EVALUATOR")
 
 # Open WebUI integration
 logger = get_logger(__name__, component="OWI")
+
+# LTI integration (launches, OAuth, LMS)
+logger = get_logger(__name__, component="LTI")
 ```
 
 ---
@@ -394,6 +398,7 @@ GLOBAL_LOG_LEVEL=DEBUG
 GLOBAL_LOG_LEVEL=INFO
 API_LOG_LEVEL=DEBUG
 DB_LOG_LEVEL=DEBUG
+LTI_LOG_LEVEL=DEBUG
 ```
 
 #### Production (Clean)
@@ -406,6 +411,7 @@ GLOBAL_LOG_LEVEL=WARNING
 GLOBAL_LOG_LEVEL=WARNING
 OWI_LOG_LEVEL=INFO           # Monitor OWI integration
 API_LOG_LEVEL=INFO           # Monitor API traffic
+LTI_LOG_LEVEL=DEBUG          # Debug LTI OAuth issues
 ```
 
 ### Docker Compose Configuration
@@ -416,6 +422,7 @@ services:
       - GLOBAL_LOG_LEVEL=INFO
       - API_LOG_LEVEL=DEBUG
       - RAG_LOG_LEVEL=DEBUG
+      - LTI_LOG_LEVEL=DEBUG
     logging:
       driver: "json-file"
       options:
@@ -597,8 +604,8 @@ API_LOG_LEVEL=INFO        # But see API activity
 
 **Check component name:**
 ```python
-# Valid components: MAIN, API, DB, RAG, EVALUATOR, OWI
-logger = get_logger(__name__, component="API")  # Correct
+# Valid components: MAIN, API, DB, RAG, EVALUATOR, OWI, LTI
+logger = get_logger(__name__, component="LTI")  # Correct
 
 # Invalid:
 logger = get_logger(__name__, component="DATABASE")  # Wrong!
@@ -703,6 +710,7 @@ logger = get_logger(__name__, component="COMPONENT")
 - `RAG` - RAG pipeline
 - `EVALUATOR` - Evaluation logic
 - `OWI` - Open WebUI bridge
+- `LTI` - LTI integration
 
 ### Log Levels
 ```python
@@ -717,6 +725,7 @@ logger.critical("Crisis")    # Critical attention
 ```bash
 GLOBAL_LOG_LEVEL=WARNING     # All components
 API_LOG_LEVEL=DEBUG         # Override API component
+LTI_LOG_LEVEL=DEBUG         # Override LTI component
 ```
 
 ### Checklist for New Modules
