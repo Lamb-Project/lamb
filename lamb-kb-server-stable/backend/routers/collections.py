@@ -120,7 +120,7 @@ def _get_and_validate_collection(db: Session, collection_id: int):
         "embeddings_model": {
           "model": "default",
           "vendor": "default",
-          "endpoint":"default",
+          "api_endpoint":"default",
           "apikey": "default"
         }
         
@@ -128,7 +128,7 @@ def _get_and_validate_collection(db: Session, collection_id: int):
         # "embeddings_model": {
         #   "model": "text-embedding-3-small",
         #   "vendor": "openai",
-        #   "endpoint":"https://api.openai.com/v1/embeddings"
+        #   "api_endpoint":"https://api.openai.com/v1/embeddings"
         #   "apikey": "your-openai-key-here"
         # }
     '

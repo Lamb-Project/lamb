@@ -7,8 +7,10 @@ separating the business logic from the FastAPI route definitions.
 
 import json
 import os
+import signal
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
+from datetime import datetime
 from fastapi import HTTPException, status, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -25,8 +27,267 @@ from schemas.collection import (
 from database.connection import get_embedding_function
 from database.connection import get_chroma_client
 
+# Audit log configuration
+AUDIT_LOG_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data" / "audit_logs"
+AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+VALIDATION_AUDIT_LOG = AUDIT_LOG_DIR / "embeddings_validation.log"
+
+# Validation timeout in seconds
+VALIDATION_TIMEOUT = 30
+
+class TimeoutError(Exception):
+    """Custom timeout exception for validation."""
+    pass
+
+
+def timeout_handler(signum, frame):
+    """Signal handler for timeout."""
+    raise TimeoutError("Operation timed out")
+
+
 class CollectionsService:
     """Service for handling collection-related API endpoints."""
+    
+    @staticmethod
+    def _log_validation_audit(
+        success: bool,
+        embeddings_model: Dict[str, Any],
+        is_custom_config: bool,
+        dimensions: Optional[int] = None,
+        error: Optional[str] = None
+    ):
+        """
+        Log embeddings validation attempts to audit file.
+        
+        Args:
+            success: Whether validation succeeded
+            embeddings_model: The embeddings configuration
+            is_custom_config: True if custom config, False if env defaults
+            dimensions: Embedding dimensions if successful
+            error: Error message if failed
+        """
+        try:
+            timestamp = datetime.utcnow().isoformat()
+            vendor = embeddings_model.get("vendor", "unknown")
+            model = embeddings_model.get("model", "unknown")
+            api_endpoint = embeddings_model.get("api_endpoint", "")
+            config_source = "custom" if is_custom_config else "env_defaults"
+            
+            # Never log API keys
+            log_entry = {
+                "timestamp": timestamp,
+                "success": success,
+                "vendor": vendor,
+                "model": model,
+                "api_endpoint": api_endpoint,
+                "config_source": config_source,
+                "dimensions": dimensions,
+                "error": error[:200] if error else None  # Limit error length
+            }
+            
+            with open(VALIDATION_AUDIT_LOG, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+                
+        except Exception as e:
+            # Don't fail collection creation if audit logging fails
+            print(f"WARNING: Failed to write validation audit log: {str(e)}")
+    
+    @staticmethod
+    def _categorize_embedding_error(
+        error: Exception, 
+        vendor: str, 
+        model: str, 
+        api_endpoint: str,
+        config_source: str
+    ) -> str:
+        """
+        Categorize embedding validation errors into user-friendly messages.
+        
+        Returns detailed but safe error message (hides API keys).
+        
+        Args:
+            error: The exception that occurred
+            vendor: Embeddings vendor (openai, ollama, etc)
+            model: Model name
+            api_endpoint: API endpoint URL
+            config_source: "custom configuration" or "environment defaults"
+            
+        Returns:
+            User-friendly error message
+        """
+        error_msg = str(error).lower()
+        error_type = type(error).__name__
+        
+        # Timeout errors
+        if isinstance(error, TimeoutError) or "timeout" in error_msg:
+            endpoint_info = f"\nEndpoint: {api_endpoint}" if api_endpoint else ""
+            return (
+                f"Validation timeout for {vendor} embeddings ({config_source}).\n"
+                f"Model: {model}{endpoint_info}\n"
+                f"The embedding service took longer than {VALIDATION_TIMEOUT} seconds to respond.\n"
+                f"Please check if the service is running and responsive."
+            )
+        
+        # Authentication errors
+        if any(keyword in error_msg for keyword in ["401", "unauthorized", "api key", "authentication", "invalid_api_key"]):
+            return (
+                f"Authentication failed for {vendor} embeddings ({config_source}).\n"
+                f"Model: {model}\n"
+                f"Please check your API key is valid and has not expired.\n"
+                f"Original error: {error_type}"
+            )
+        
+        # Network/Connection errors
+        if any(keyword in error_msg for keyword in ["connection", "timeout", "network", "refused", "unreachable"]):
+            endpoint_info = f"\nEndpoint: {api_endpoint}" if api_endpoint else ""
+            return (
+                f"Network connection failed for {vendor} embeddings ({config_source}).\n"
+                f"Model: {model}{endpoint_info}\n"
+                f"Please check:\n"
+                f"  - Endpoint is reachable\n"
+                f"  - Network connectivity\n"
+                f"  - Firewall settings\n"
+                f"  - Service is running (for Ollama: 'ollama serve')\n"
+                f"Original error: {error_type}: {str(error)}"
+            )
+        
+        # Invalid model errors
+        if any(keyword in error_msg for keyword in ["model not found", "invalid model", "unknown model", "does not exist", "model_not_found"]):
+            extra_help = ""
+            if vendor.lower() == "ollama":
+                extra_help = "\n  - For Ollama: Run 'ollama list' to see available models\n  - Pull the model: 'ollama pull " + model + "'"
+            return (
+                f"Invalid model specified for {vendor} embeddings ({config_source}).\n"
+                f"Model: {model}\n"
+                f"Please check:\n"
+                f"  - Model name is correct\n"
+                f"  - Model is available on your {vendor} instance{extra_help}\n"
+                f"Original error: {error_type}"
+            )
+        
+        # Rate limit errors
+        if any(keyword in error_msg for keyword in ["429", "rate limit", "quota", "too many requests"]):
+            return (
+                f"Rate limit exceeded for {vendor} embeddings ({config_source}).\n"
+                f"Model: {model}\n"
+                f"Please check your API quota and try again later.\n"
+                f"Original error: {error_type}"
+            )
+        
+        # Generic error with safe details
+        endpoint_info = f"\nEndpoint: {api_endpoint}" if api_endpoint else ""
+        return (
+            f"Failed to validate {vendor} embeddings ({config_source}).\n"
+            f"Model: {model}{endpoint_info}\n"
+            f"Error: {error_type}: {str(error)[:200]}"  # Limit error message length
+        )
+    
+    @staticmethod
+    def validate_embeddings_config(
+        embeddings_model: Dict[str, Any],
+        is_custom_config: bool = False
+    ) -> Tuple[bool, Optional[str], Optional[int]]:
+        """
+        Validate embeddings configuration by testing with a real API call.
+        
+        This creates a test embedding to verify:
+        - API credentials are valid
+        - Endpoint is reachable
+        - Model exists and is accessible
+        - Configuration is correct
+        
+        Args:
+            embeddings_model: Dict with vendor, model, apikey, api_endpoint
+            is_custom_config: True if user provided custom values (not from .env)
+            
+        Returns:
+            Tuple of (success, error_message, embedding_dimension)
+            
+        Raises:
+            HTTPException with detailed error information if validation fails
+        """
+        vendor = embeddings_model.get("vendor", "unknown")
+        model = embeddings_model.get("model", "unknown")
+        api_endpoint = embeddings_model.get("api_endpoint", "")
+        
+        config_source = "custom configuration" if is_custom_config else "environment defaults"
+        
+        # Set up timeout alarm (Unix-like systems only)
+        timeout_supported = hasattr(signal, 'SIGALRM')
+        
+        try:
+            if timeout_supported:
+                # Set timeout alarm
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(VALIDATION_TIMEOUT)
+            
+            # Create temporary collection for validation
+            temp_collection = Collection(
+                id=-1, 
+                name="__validation_test__", 
+                owner="system", 
+                description="Temporary validation object", 
+                embeddings_model=json.dumps(embeddings_model)
+            )
+            
+            # Get embedding function
+            embedding_function = get_embedding_function(temp_collection)
+            
+            # Test with descriptive text
+            test_text = "Embeddings validation test for collection creation"
+            test_result = embedding_function([test_text])
+            
+            dimensions = len(test_result[0])
+            
+            print(f"INFO: [validate_embeddings] SUCCESS - {config_source}")
+            print(f"INFO:   Vendor: {vendor}, Model: {model}, Dimensions: {dimensions}")
+            if api_endpoint:
+                print(f"INFO:   Endpoint: {api_endpoint}")
+            
+            # Log successful validation to audit file
+            CollectionsService._log_validation_audit(
+                success=True,
+                embeddings_model=embeddings_model,
+                is_custom_config=is_custom_config,
+                dimensions=dimensions,
+                error=None
+            )
+            
+            return True, None, dimensions
+            
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            # Categorize error types
+            detailed_error = CollectionsService._categorize_embedding_error(
+                e, vendor, model, api_endpoint, config_source
+            )
+            
+            print(f"ERROR: [validate_embeddings] FAILED - {config_source}")
+            print(f"ERROR:   Vendor: {vendor}, Model: {model}")
+            if api_endpoint:
+                print(f"ERROR:   Endpoint: {api_endpoint}")
+            print(f"ERROR:   Error Type: {error_type}")
+            print(f"ERROR:   Error: {error_msg}")
+            
+            # Log failed validation to audit file
+            CollectionsService._log_validation_audit(
+                success=False,
+                embeddings_model=embeddings_model,
+                is_custom_config=is_custom_config,
+                dimensions=None,
+                error=f"{error_type}: {error_msg}"
+            )
+            
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detailed_error
+            )
+        finally:
+            if timeout_supported:
+                # Cancel the alarm
+                signal.alarm(0)
     
     @staticmethod
     def create_collection(
@@ -68,34 +329,32 @@ class CollectionsService:
             embeddings_model = {}
             if collection.embeddings_model:
                 # Get the model values from the request
-                # Note: Default values should already be resolved by main.py
+                # Note: Default values should already be resolved by router
                 model_info = collection.embeddings_model.model_dump()
                 
-                # We'll still validate the embeddings model configuration
-                try:
-                    # Create a temporary DB collection record for validation
-                    from database.models import Collection
-                    temp_collection = Collection(id=-1, name="temp_validation", 
-                                                owner="system", description="Validation only", 
-                                                embeddings_model=json.dumps(model_info))
-                    
-                    # No logging of API key details, only log the vendor and model
-                    if model_info.get('vendor', '').lower() == 'openai':
-                        print(f"DEBUG: [create_collection] Validating OpenAI embeddings with model: {model_info.get('model')}")
-                    
-                    # Try to create an embedding function with this configuration
-                    # This will validate if the embeddings model configuration is valid
-                    embedding_function = get_embedding_function(temp_collection)
-                    
-                    # Test the embedding function with a simple text
-                    test_result = embedding_function(["Test embedding validation"])
-                    print(f"INFO: Embeddings validation successful, dimensions: {len(test_result[0])}")
-                except Exception as emb_error:
-                    print(f"ERROR: Embeddings model validation failed: {str(emb_error)}")
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Embeddings model validation failed: {str(emb_error)}. Please check your configuration."
-                    )
+                # Determine if this is a custom config or using env defaults
+                # Check if any field was explicitly provided (not default/None/empty)
+                is_custom_config = any([
+                    model_info.get("vendor") not in [None, ""],
+                    model_info.get("model") not in [None, ""],
+                    model_info.get("apikey") not in [None, "", "default"],
+                    model_info.get("api_endpoint") not in [None, "", "default"]
+                ])
+                
+                print(f"INFO: [create_collection] Validating embeddings configuration")
+                print(f"INFO:   Config source: {'Custom' if is_custom_config else 'Environment defaults'}")
+                print(f"INFO:   Vendor: {model_info.get('vendor')}, Model: {model_info.get('model')}")
+                
+                # Validate the embeddings configuration with timeout and detailed error handling
+                # This will raise HTTPException if validation fails
+                # CRITICAL: We must validate because embeddings function cannot be changed after creation
+                success, error_msg, dimensions = CollectionsService.validate_embeddings_config(
+                    embeddings_model=model_info,
+                    is_custom_config=is_custom_config
+                )
+                
+                print(f"INFO: [create_collection] Validation successful, embedding dimensions: {dimensions}")
+                print(f"INFO: [create_collection] Collection will be created with immutable embeddings function")
                 
                 embeddings_model = model_info
             
