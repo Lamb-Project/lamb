@@ -30,8 +30,11 @@
     window.location.href = base + '/';
   }
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (optimized)
   function handleClickOutside(event) {
+    // Only check if menu is actually open to avoid unnecessary work
+    if (!toolsMenuOpen) return;
+    
     const toolsMenu = event.target.closest('.tools-menu');
     if (!toolsMenu) {
       toolsMenuOpen = false;
@@ -61,7 +64,6 @@
     const currentLocale = $locale;
     if (currentLocale) {
       localeLoaded = true;
-      console.log("Locale loaded via $effect:", currentLocale); // Optional: for debugging
     }
     // No cleanup function needed here as we're just reading the store
   });
@@ -116,7 +118,7 @@
           </a>
           {/if}
           
-          {#if $user.isLoggedIn && ($user.data?.role === 'admin' || $user.data?.organization_role === 'admin')} <!-- Org Admin link - only for admins -->
+          {#if $user.isLoggedIn && $user.data?.organization_role === 'admin' && $user.data?.role !== 'admin'} <!-- Org Admin link - only for org admins (not system admins) -->
           <a
             href="{base}/org-admin"
             class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname === base + '/org-admin' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
@@ -125,17 +127,18 @@
           </a>
           {/if}
           
-          <!-- Tools dropdown menu -->
+          <!-- Sources dropdown menu -->
           <div class="relative tools-menu h-full flex items-center">
             <button
+              type="button"
               onclick={() => toolsMenuOpen = !toolsMenuOpen}
-              class="inline-flex items-center h-full px-1 border-b-2 text-sm font-medium focus:outline-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/prompt-templates') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              class="inline-flex items-center h-full px-1 py-4 border-b-2 text-sm font-medium cursor-pointer select-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
               aria-disabled={!$user.isLoggedIn}
               aria-expanded={toolsMenuOpen}
               aria-haspopup="true"
             >
-              {localeLoaded ? $_('nav.tools', { default: 'Tools' }) : 'Tools'}
-              <svg class="ml-1 h-4 w-4 transition-transform duration-200 {toolsMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span class="pointer-events-none">{localeLoaded ? $_('nav.sources', { default: 'Sources of Knowledge' }) : 'Sources of Knowledge'}</span>
+              <svg class="ml-1 h-4 w-4 transition-transform duration-200 pointer-events-none {toolsMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
               </svg>
             </button>
@@ -149,13 +152,6 @@
                     class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/knowledgebases') ? 'bg-blue-50 text-[#2271b3]' : ''}"
                   >
                     {localeLoaded ? $_('knowledgeBases.title') : 'Knowledge Bases'}
-                  </a>
-                  <a
-                    href="{base}/prompt-templates"
-                    onclick={() => toolsMenuOpen = false}
-                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/prompt-templates') ? 'bg-blue-50 text-[#2271b3]' : ''}"
-                  >
-                    {localeLoaded ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
                   </a>
                   <a
                     href="{base}/evaluaitor"
@@ -173,30 +169,22 @@
       </div>
       
       <!-- User info and Language selector section -->
-      <div class="flex items-center">
+      <div class="flex items-center space-x-3">
         {#if $user.isLoggedIn}
-          <div class="flex items-center space-x-4">
+          <!-- User name and logout stacked vertically -->
+          <div class="flex flex-col items-end space-y-1">
             <span class="text-sm font-medium text-gray-700">{$user.name}</span>
-            {#if $user.owiUrl}
-              <a 
-                href={$user.owiUrl} 
-                target="_blank" 
-                class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                {localeLoaded ? $_('nav.openWebUI', { default: 'OpenWebUI' }) : 'OpenWebUI'}
-              </a>
-            {/if}
             <button
               onclick={logout}
-              class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+              class="inline-flex items-center justify-center px-2 py-1 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700"
             >
               {localeLoaded ? $_('auth.logout') : 'Logout'}
             </button>
           </div>
         {/if}
         
-        <!-- Explicitly add the Language selector div -->
-        <div class="ml-4">
+        <!-- Language selector -->
+        <div>
           <LanguageSelector />
         </div>
       </div>

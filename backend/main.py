@@ -40,14 +40,37 @@ import traceback
 import random
 
 from config import API_KEY, PIPELINES_DIR
-from creator_interface.main import router as creator_router
+from creator_interface.main import router as creator_router, start_news_cache_refresh_loop, stop_news_cache_refresh_loop
 from lamb.logging_config import get_logger
 
 # Set up centralized logging
 logger = get_logger(__name__, component="MAIN")
 multimodal_logger = get_logger('multimodal', component="MAIN")
 
-app = FastAPI(title="LAMB", description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
+# Lifespan context manager for startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    # Startup
+    logger.info("Starting LAMB application")
+    await start_news_cache_refresh_loop()
+    logger.info("News cache refresh loop started")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down LAMB application")
+    await stop_news_cache_refresh_loop()
+    logger.info("News cache refresh loop stopped")
+
+app = FastAPI(
+    title="LAMB",
+    description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org",
+    version="0.1.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+    lifespan=lifespan
+)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

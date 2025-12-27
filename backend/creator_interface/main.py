@@ -1,5 +1,5 @@
 from .setup_translations import setup_translations
-from fastapi import APIRouter, Request, Form, Response, HTTPException, File, UploadFile, Depends
+from fastapi import APIRouter, Request, Form, Response, HTTPException, File, UploadFile, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -21,6 +21,8 @@ import shutil
 from pydantic import BaseModel, EmailStr
 from fastapi import Body  # Import Body for request body definitions
 from lamb.logging_config import get_logger
+import time
+import asyncio
 
 # Set up logger for creator interface
 logger = get_logger(__name__, component="API")
@@ -37,6 +39,8 @@ LAMB_NEWS_DEFAULT_LANG = os.getenv('LAMB_NEWS_DEFAULT_LANG', 'en')
 # Cache configuration
 NEWS_CACHE_DIR = Path(__file__).parent.parent / 'static' / 'cache' / 'news'
 NEWS_CACHE_TIMEOUT = 5.0  # Timeout in seconds for fetching from origin
+NEWS_CACHE_REFRESH_INTERVAL = 3600  # Refresh cache every hour (in seconds)
+NEWS_SUPPORTED_LANGUAGES = ['en', 'es', 'ca', 'eu']  # Supported languages for news
 
 # Note: LAMB_WEB_HOST, LAMB_BACKEND_HOST, and LAMB_BEARER_TOKEN are configured in config.py
 # Other modules import from config module instead of reading these directly
@@ -49,6 +53,49 @@ db_manager = LambDatabaseManager()
 
 # Set up the router
 router = APIRouter()
+
+# Background task state
+_news_refresh_task = None
+
+async def start_news_cache_refresh_loop():
+    """Start the background task loop to refresh news cache hourly."""
+    global _news_refresh_task
+    if _news_refresh_task is not None:
+        logger.warning("News cache refresh loop already running")
+        return
+    
+    async def refresh_loop():
+        """Periodically refresh the news cache."""
+        logger.info("News cache refresh loop started")
+        # Initial cache population
+        await refresh_news_cache_background()
+        
+        # Periodic refresh
+        while True:
+            try:
+                await asyncio.sleep(NEWS_CACHE_REFRESH_INTERVAL)
+                await refresh_news_cache_background()
+            except asyncio.CancelledError:
+                logger.info("News cache refresh loop cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in news cache refresh loop: {e}")
+                # Continue despite errors
+    
+    _news_refresh_task = asyncio.create_task(refresh_loop())
+    logger.info("News cache refresh task created")
+
+async def stop_news_cache_refresh_loop():
+    """Stop the background news cache refresh loop."""
+    global _news_refresh_task
+    if _news_refresh_task is not None:
+        _news_refresh_task.cancel()
+        try:
+            await _news_refresh_task
+        except asyncio.CancelledError:
+            pass
+        _news_refresh_task = None
+        logger.info("News cache refresh loop stopped")
 
 # Include the assistant router
 router.include_router(assistant_router, prefix="/assistant")
@@ -205,6 +252,10 @@ def get_cache_file_path(lang: str) -> Path:
     """Get the cache file path for a specific language."""
     return NEWS_CACHE_DIR / f"{lang}.md"
 
+def get_cache_timestamp_path(lang: str) -> Path:
+    """Get the cache timestamp file path for a specific language."""
+    return NEWS_CACHE_DIR / f"{lang}.timestamp"
+
 def read_from_cache(lang: str) -> Optional[str]:
     """Read cached news content for a language."""
     cache_file = get_cache_file_path(lang)
@@ -216,17 +267,74 @@ def read_from_cache(lang: str) -> Optional[str]:
         logger.warning(f"Failed to read cache for language '{lang}': {e}")
     return None
 
+def get_cache_age(lang: str) -> Optional[float]:
+    """Get the age of cached content in seconds. Returns None if no cache exists."""
+    timestamp_file = get_cache_timestamp_path(lang)
+    try:
+        if timestamp_file.exists():
+            cache_time = float(timestamp_file.read_text(encoding='utf-8').strip())
+            return time.time() - cache_time
+    except Exception as e:
+        logger.warning(f"Failed to read cache timestamp for language '{lang}': {e}")
+    return None
+
+def is_cache_fresh(lang: str) -> bool:
+    """Check if cached content is fresh (less than refresh interval old)."""
+    age = get_cache_age(lang)
+    if age is None:
+        return False
+    return age < NEWS_CACHE_REFRESH_INTERVAL
+
 def write_to_cache(lang: str, content: str) -> bool:
-    """Write news content to cache for a language."""
+    """Write news content to cache for a language with timestamp."""
     try:
         NEWS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Write content
         cache_file = get_cache_file_path(lang)
         cache_file.write_text(content, encoding='utf-8')
+        
+        # Write timestamp
+        timestamp_file = get_cache_timestamp_path(lang)
+        timestamp_file.write_text(str(time.time()), encoding='utf-8')
+        
         logger.info(f"Cached news for language '{lang}'")
         return True
     except Exception as e:
         logger.error(f"Failed to write cache for language '{lang}': {e}")
         return False
+
+async def fetch_and_cache_news(lang: str) -> Optional[str]:
+    """Fetch news from origin and cache it. Returns content or None on failure."""
+    try:
+        news_url = f"{LAMB_NEWS_HOME.rstrip('/')}/news_{lang}.md"
+        logger.info(f"Fetching news from origin: {news_url}")
+        
+        async with httpx.AsyncClient(timeout=NEWS_CACHE_TIMEOUT) as client:
+            response = await client.get(news_url)
+            
+            if response.is_success and response.text and response.text.strip():
+                content = response.text
+                write_to_cache(lang, content)
+                logger.info(f"Successfully fetched and cached news for language '{lang}' ({len(content)} characters)")
+                return content
+            else:
+                logger.warning(f"Failed to fetch news for language '{lang}': HTTP {response.status_code}")
+                return None
+                
+    except Exception as e:
+        logger.warning(f"Error fetching news for language '{lang}': {e}")
+        return None
+
+async def refresh_news_cache_background():
+    """Background task to refresh news cache for all supported languages."""
+    logger.info("Starting background news cache refresh")
+    for lang in NEWS_SUPPORTED_LANGUAGES:
+        try:
+            await fetch_and_cache_news(lang)
+        except Exception as e:
+            logger.error(f"Error refreshing cache for language '{lang}': {e}")
+    logger.info("Completed background news cache refresh")
 
 
 @router.post(
@@ -1789,11 +1897,12 @@ async def get_current_user(request: Request):
     "/news/{lang}",
     tags=["News"],
     summary="Get News Content by Language",
-    description="""Fetches news content from a remote markdown file based on the specified language.
+    description="""Fetches news content from cache or remote markdown file based on the specified language.
 
 Supported languages: en, es, ca, eu (and other language codes)
 
-The content is fetched from: LAMB_NEWS_HOME/{lang}.md
+The content is fetched from: LAMB_NEWS_HOME/news_{lang}.md
+Cache is refreshed automatically every hour in the background.
 
 Example Request:
 ```bash
@@ -1818,8 +1927,8 @@ Example Success Response:
         500: {"model": ErrorResponse, "description": "Server error while fetching news"},
     },
 )
-async def get_news(lang: str):
-    """Get news content for a specific language from remote source with caching fallback"""
+async def get_news(lang: str, background_tasks: BackgroundTasks):
+    """Get news content for a specific language with cache-first strategy and background refresh"""
     try:
         # Validate language parameter (basic validation)
         if not lang or not lang.isalnum() or len(lang) > 10:
@@ -1828,94 +1937,45 @@ async def get_news(lang: str):
                 detail="Invalid language code. Must be alphanumeric and max 10 characters."
             )
 
-        # Construct the remote URL
-        news_url = f"{LAMB_NEWS_HOME.rstrip('/')}/news_{lang}.md"
-
-        # Try to fetch from origin with timeout
-        try:
-            logger.info(f"Fetching news from origin: {news_url}")
-            async with httpx.AsyncClient(timeout=NEWS_CACHE_TIMEOUT) as client:
-                response = await client.get(news_url)
-
-                if response.status_code == 404:
-                    logger.warning(f"News content not found for language '{lang}' at origin URL: {news_url}")
-                    # Origin doesn't have this language, try cache
-                    cached_content = read_from_cache(lang)
-                    if cached_content is not None:
-                        logger.info(f"Using cached news for language '{lang}'")
-                        return {
-                            "success": True,
-                            "content": cached_content,
-                            "lang": lang
-                        }
-                    else:
-                        raise HTTPException(
-                            status_code=404,
-                            detail=f"News content not found for language '{lang}'. No cached version available."
-                        )
-                elif not response.is_success:
-                    logger.error(f"Failed to fetch news from origin URL {news_url}: HTTP {response.status_code}")
-                    # Origin failed, try cache
-                    cached_content = read_from_cache(lang)
-                    if cached_content is not None:
-                        logger.info(f"Using cached news for language '{lang}' due to origin failure")
-                        return {
-                            "success": True,
-                            "content": cached_content,
-                            "lang": lang
-                        }
-                    else:
-                        raise HTTPException(
-                            status_code=500,
-                            detail=f"Failed to fetch news content from origin (HTTP {response.status_code}) and no cached version available."
-                        )
-
-                # Get the content from origin
-                content = response.text
-
-                if not content or not content.strip():
-                    logger.warning(f"Empty news content received for language '{lang}' from origin URL {news_url}")
-                    # Try cache instead
-                    cached_content = read_from_cache(lang)
-                    if cached_content is not None:
-                        logger.info(f"Using cached news for language '{lang}' due to empty origin response")
-                        return {
-                            "success": True,
-                            "content": cached_content,
-                            "lang": lang
-                        }
-                    else:
-                        # Return empty content rather than error for better UX
-                        content = ""
-
-                # Successfully fetched from origin, cache it
-                if content and write_to_cache(lang, content):
-                    logger.info(f"Cached fresh news content for language '{lang}'")
-
-                logger.info(f"Successfully fetched news content for language '{lang}' from origin URL {news_url} ({len(content)} characters)")
-
-                return {
-                    "success": True,
-                    "content": content,
-                    "lang": lang
-                }
-
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as network_error:
-            logger.warning(f"Network error fetching news from origin URL {news_url} for language '{lang}': {network_error}")
-            # Origin timed out or network error, try cache
+        # Check if we have fresh cached content
+        if is_cache_fresh(lang):
             cached_content = read_from_cache(lang)
             if cached_content is not None:
-                logger.info(f"Using cached news for language '{lang}' due to network error")
+                logger.info(f"Serving fresh cached news for language '{lang}' (age: {get_cache_age(lang):.0f}s)")
                 return {
                     "success": True,
                     "content": cached_content,
                     "lang": lang
                 }
-            else:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Unable to fetch news content from origin (network timeout/error) and no cached version available for language '{lang}'."
-                )
+        
+        # Cache is stale or doesn't exist - try to fetch from origin immediately
+        logger.info(f"Cache is stale or missing for language '{lang}', fetching from origin")
+        fresh_content = await fetch_and_cache_news(lang)
+        
+        if fresh_content is not None:
+            # Successfully fetched fresh content
+            return {
+                "success": True,
+                "content": fresh_content,
+                "lang": lang
+            }
+        
+        # Failed to fetch from origin, try to use stale cache
+        cached_content = read_from_cache(lang)
+        if cached_content is not None:
+            cache_age = get_cache_age(lang)
+            logger.info(f"Using stale cached news for language '{lang}' (age: {cache_age:.0f}s)")
+            return {
+                "success": True,
+                "content": cached_content,
+                "lang": lang
+            }
+        
+        # No cache and origin failed
+        raise HTTPException(
+            status_code=404,
+            detail=f"News content not found for language '{lang}' and no cached version available."
+        )
 
     except HTTPException:
         raise

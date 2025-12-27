@@ -17,9 +17,34 @@
     import { getConfig, getLambApiUrl } from '$lib/config'; // <<< Import config helper
     import { browser } from '$app/environment'; // <<< Import browser
     import { formatDateForTable } from '$lib/utils/dateHelpers'; // Import date formatting utility
+    // Import template store functions
+    import {
+        currentTab,
+        currentTemplates,
+        currentLoading,
+        userTemplates,
+        sharedTemplates,
+        loadAllUserTemplates,
+        loadAllSharedTemplates,
+        switchTab,
+        createTemplate,
+        updateTemplate,
+        deleteTemplate,
+        duplicateTemplate,
+        toggleSharing,
+        selectedTemplateIds,
+        toggleTemplateSelection,
+        clearSelection,
+        exportSelected,
+        templateError
+    } from '$lib/stores/templateStore';
+    import Pagination from '$lib/components/common/Pagination.svelte';
+    import FilterBar from '$lib/components/common/FilterBar.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
+    import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
 
     // --- State Management --- 
-    /** @type {'list' | 'create' | 'detail' | 'shared'} */
+    /** @type {'list' | 'create' | 'detail' | 'shared' | 'templates'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
@@ -90,6 +115,28 @@
         return selectedAssistantData.owner === $user.email;
     });
 
+    // --- Templates View State ---
+    let templatesView = $state('list'); // 'list' | 'create' | 'edit' | 'view'
+    let editingTemplate = $state(null);
+    let showDeleteTemplateModal = $state(false);
+    let templateToDelete = $state(null);
+    let templateFormData = $state({
+        name: '',
+        description: '',
+        system_prompt: '',
+        prompt_template: '',
+        is_shared: false
+    });
+    // Client-side filtering/sorting/pagination state for templates
+    let displayTemplates = $state([]);
+    let templatesSearchTerm = $state('');
+    let templatesSortBy = $state('updated_at');
+    let templatesSortOrder = $state('desc');
+    let templatesCurrentPage = $state(1);
+    let templatesItemsPerPage = $state(10);
+    let templatesTotalPages = $state(1);
+    let templatesTotalItems = $state(0);
+
     // --- Functions --- 
     /** Sets the view to the assistant creation form */
     function showCreateForm() {
@@ -118,6 +165,18 @@
         startEditMode = false;
         // Navigate to assistants path with shared view query param
         goto(`${base}/assistants?view=shared`, { replaceState: true });
+    }
+
+    /** Sets the view to templates */
+    function showTemplates() {
+        console.log("Navigating to templates view");
+        selectedAssistantData = null; // Clear any selected data
+        currentView = 'templates';
+        startEditMode = false;
+        // Navigate to assistants path with templates view query param
+        goto(`${base}/assistants?view=templates`, { replaceState: true });
+        // Load templates when switching to this view
+        loadAllUserTemplates();
     }
 
     /** Fetches assistant details */
@@ -231,6 +290,11 @@
                 if (currentView !== 'shared') {
                     console.log("URL indicates 'shared' view.");
                     showSharedAssistants();
+                }
+            } else if (viewParam === 'templates') {
+                if (currentView !== 'templates') {
+                    console.log("URL indicates 'templates' view.");
+                    showTemplates();
                 }
             } else if (viewParam === 'detail' && idParam) { 
                 const assistantId = parseInt(idParam, 10);
@@ -750,6 +814,14 @@
         >
             {currentLocale ? $_('assistants.sharedWithMeTab') : 'Shared with Me'}
         </button>
+        <!-- Prompt Templates View Button -->
+        <button
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 {currentView === 'templates' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
+            style={currentView === 'templates' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
+            onclick={showTemplates}
+        >
+            {currentLocale ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
+        </button>
         <!-- Create View Button -->
         <button
             class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md {currentView === 'create' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
@@ -758,6 +830,21 @@
         >
             {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
         </button>
+        <!-- OpenWebUI Tab (External Link) - Moved to the right -->
+        {#if $user.owiUrl}
+        <a
+            href={$user.owiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400 inline-flex items-center gap-1"
+        >
+            {currentLocale ? $_('nav.openWebUI', { default: 'OpenWebUI' }) : 'OpenWebUI'}
+            <!-- External link icon - larger size -->
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+        </a>
+        {/if}
         <!-- Detail View Tab (Only visible when active) -->
         {#if currentView === 'detail' && (selectedAssistantData || loadingDetail)}
              <div class="relative">
@@ -1306,6 +1393,11 @@
                on:export={handleExportRequest}
             />
         </div>
+    </div>
+{:else if currentView === 'templates'}
+    <!-- Prompt Templates View - Embedded content only -->
+    <div class="mt-6">
+        <PromptTemplatesContent />
     </div>
 {:else}
     <!-- Fallback for when currentView is not list, create, detail, or shared (should not happen) -->
