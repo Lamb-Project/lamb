@@ -10,8 +10,8 @@ from .database_manager import LambDatabaseManager
 from config import API_KEY  # Import the API_KEY from your config file
 from fastapi import APIRouter
 from .lti_users_router import router as lti_users_router
-from .owi_bridge.owi_router import router as owi_router
-from .owi_bridge.owi_users import OwiUserManager
+# REMOVED: owi_router - OWI endpoints removed for security (Dec 27, 2025)
+# OWI managers are still used internally as service classes
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -75,8 +75,8 @@ class UserPermissions(BaseModel):
 # REMOVED: creator_user_router (logic moved to CreatorUserService)
 # REMOVED: organization_router (logic moved to OrganizationService)
 # REMOVED: config_router (unused configuration management)
+# REMOVED: owi_router (security risk - Dec 27, 2025)
 app.include_router(lti_users_router, prefix="/v1/lti_users")
-app.include_router(owi_router, prefix="/v1/OWI")
 app.include_router(simple_lti_router)
 app.include_router(completions_router, prefix="/v1/completions")
 app.include_router(mcp_router, prefix="/v1/mcp")  # MCP protocol - KEEP (used by frontend)
@@ -89,37 +89,8 @@ async def read_lti_users(request: Request):
 async def read_simple_lti(request: Request):
     return templates.TemplateResponse("simple_lti.html", {"request": request, "api_key": API_KEY})
 
-# Direct test endpoint for role updates - bypassing router
-@app.post("/v1/OWI/users/direct-role-update")
-async def direct_role_update(request: Request):
-    import logging
-    logging.error("[DIRECT_ENDPOINT] Direct role update endpoint called")
-    try:
-        data = await request.json()
-        logging.error(f"[DIRECT_ENDPOINT] Request data: {data}")
-        
-        user_id = data.get('user_id')
-        new_role = data.get('role')
-        
-        if not user_id or not new_role:
-            logging.error(f"[DIRECT_ENDPOINT] Missing required fields. user_id: {user_id}, role: {new_role}")
-            return {"success": False, "message": "Missing required fields"}
-            
-        logging.error(f"[DIRECT_ENDPOINT] Attempting to update user {user_id} to role {new_role}")
-        
-        # Using the user_manager directly - bypassing all middleware
-        from .owi_bridge.owi_users import OwiUserManager
-        user_manager = OwiUserManager()
-        
-        result = user_manager.update_user_role(str(user_id), new_role)
-        logging.error(f"[DIRECT_ENDPOINT] Update result: {result}")
-        
-        return {"success": result, "message": "Role updated successfully" if result else "Failed to update role"}
-    except Exception as e:
-        import traceback
-        logging.error(f"[DIRECT_ENDPOINT] Exception: {type(e).__name__}: {str(e)}")
-        logging.error(f"[DIRECT_ENDPOINT] Traceback:\n{traceback.format_exc()}")
-        return {"success": False, "message": f"Error: {str(e)}"}
+# REMOVED: /v1/OWI/users/direct-role-update endpoint (security risk - Dec 27, 2025)
+# Role management now handled through creator_interface with proper authentication
 
 if __name__ == "__main__":
     import uvicorn

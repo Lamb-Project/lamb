@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation
 
-**Version:** 2.9
-**Last Updated:** December 17, 2025  
+**Version:** 3.0
+**Last Updated:** December 27, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 ---
@@ -25,10 +25,11 @@
 14. [Development Workflow](#14-development-workflow)
 15. [End User Feature](#15-end-user-feature)
 16. [User Blocking Feature](#16-user-blocking-feature)
-17. [Centralized Logging System](#17-centralized-logging-system)
-18. [Frontend UX Patterns & Best Practices](#18-frontend-ux-patterns--best-practices)
-19. [API Reference](#19-api-reference)
-20. [File Structure](#20-file-structure)
+17. [Chat Analytics Feature](#17-chat-analytics-feature)
+18. [Centralized Logging System](#18-centralized-logging-system)
+19. [Frontend UX Patterns & Best Practices](#19-frontend-ux-patterns--best-practices)
+20. [API Reference](#20-api-reference)
+21. [File Structure](#21-file-structure-summary)
 
 ---
 
@@ -163,15 +164,12 @@ LAMB employs a **two-tier API architecture**:
 
 | Router | Prefix | Purpose | File |
 |--------|--------|---------|------|
-| assistant_router | `/v1/assistant` | Assistant CRUD | `assistant_router.py` |
 | lti_users_router | `/v1/lti_users` | LTI user management | `lti_users_router.py` |
-| owi_router | `/v1/OWI` | OWI integration | `owi_bridge/owi_router.py` |
 | simple_lti_router | `/simple_lti` | LTI launch handling | `simple_lti/simple_lti_main.py` |
-| creator_user_router | `/v1/creator_user` | Creator user management | `creator_user_router.py` |
 | completions_router | `/v1/completions` | Completion generation | `completions/main.py` |
-| config_router | `/v1/config` | System configuration | `config_router.py` |
 | mcp_router | `/v1/mcp` | MCP endpoints | `mcp_router.py` |
-| organization_router | `/v1` | Organization management | `organization_router.py` |
+
+> **Security Note (Dec 2025):** OWI router endpoints (`/v1/OWI/*`) were removed for security reasons. OWI operations are now performed through internal service classes (`OwiUserManager`, `OwiGroupManager`, etc.) and are not exposed via HTTP endpoints.
 
 #### 3.1.4 Creator Interface API (`/backend/creator_interface/main.py`)
 
@@ -179,10 +177,13 @@ LAMB employs a **two-tier API architecture**:
 
 | Router | Prefix | Purpose | File |
 |--------|--------|---------|------|
-| assistant_router | `/creator/assistant` | Assistant operations (proxied) | `assistant_router.py` |
+| assistant_router | `/creator/assistant` | Assistant operations | `assistant_router.py` |
 | knowledges_router | `/creator/knowledgebases` | Knowledge Base operations | `knowledges_router.py` |
 | organization_router | `/creator/admin` | Organization management | `organization_router.py` |
+| analytics_router | `/creator/analytics` | Chat analytics and usage insights | `analytics_router.py` |
 | learning_assistant_proxy_router | `/creator` | Learning assistant proxy | `learning_assistant_proxy.py` |
+| evaluaitor_router | `/creator/rubrics` | Rubric management | `evaluaitor_router.py` |
+| prompt_templates_router | `/creator/prompt-templates` | Prompt template management | `prompt_templates_router.py` |
 
 **Direct Endpoints:**
 - `POST /creator/login` - User login
@@ -4075,9 +4076,291 @@ CREATE TABLE user_status_audit (
 
 ---
 
-## 17. Centralized Logging System
+## 17. Chat Analytics Feature
 
 ### 17.1 Overview
+
+The Chat Analytics feature provides assistant owners with insights into how their learning assistants are being used. It queries the Open WebUI database to extract and analyze chat conversations.
+
+**Key Features:**
+- View chat conversations for specific assistants
+- Usage statistics (total chats, unique users, messages)
+- Activity timeline visualization
+- Date range filtering
+- Privacy-respecting anonymization (configurable)
+
+**Added:** December 27, 2025
+
+### 17.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Creator Interface                         │
+│  GET /creator/analytics/assistant/{id}/chats                │
+│  GET /creator/analytics/assistant/{id}/stats                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  ChatAnalyticsService                        │
+│  backend/lamb/services/chat_analytics_service.py            │
+│  - get_chats_for_assistant()                                │
+│  - get_chat_detail()                                        │
+│  - get_assistant_stats()                                    │
+│  - get_assistant_timeline()                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Open WebUI Database (webui.db)                  │
+│  - chat table (conversations with JSON messages)            │
+│  - user table (user info for anonymization)                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 17.3 OWI Chat Table Structure
+
+The chat analytics service queries the Open WebUI `chat` table:
+
+```sql
+CREATE TABLE "chat" (
+    "id" VARCHAR(255) NOT NULL,
+    "user_id" VARCHAR(255) NOT NULL,
+    "title" TEXT NOT NULL,
+    "share_id" VARCHAR(255),
+    "archived" INTEGER NOT NULL,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    chat JSON,
+    pinned BOOLEAN,
+    meta JSON DEFAULT '{}' NOT NULL,
+    folder_id TEXT
+);
+```
+
+**Chat JSON Structure:**
+```json
+{
+  "models": ["lamb_assistant.{assistant_id}"],
+  "history": {
+    "messages": {
+      "msg-uuid-1": {
+        "id": "msg-uuid-1",
+        "role": "user",
+        "content": "User message text",
+        "timestamp": 1735300000
+      },
+      "msg-uuid-2": {
+        "id": "msg-uuid-2", 
+        "role": "assistant",
+        "content": "Assistant response text",
+        "timestamp": 1735300005
+      }
+    }
+  }
+}
+```
+
+### 17.4 API Endpoints
+
+#### 17.4.1 List Chats
+
+```http
+GET /creator/analytics/assistant/{assistant_id}/chats
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| start_date | datetime | No | Filter from date (ISO format) |
+| end_date | datetime | No | Filter until date (ISO format) |
+| page | int | No | Page number (default: 1) |
+| per_page | int | No | Items per page (default: 20, max: 100) |
+
+**Response:**
+```json
+{
+  "chats": [
+    {
+      "id": "493b9867-ce4d-497a-a174-8034065b3e1b",
+      "title": "Math Help",
+      "user_id": "User_001",
+      "user_name": "User_001",
+      "user_email": null,
+      "message_count": 8,
+      "created_at": "2025-12-27T10:30:00",
+      "updated_at": "2025-12-27T10:45:00"
+    }
+  ],
+  "total": 247,
+  "page": 1,
+  "per_page": 20,
+  "total_pages": 13
+}
+```
+
+#### 17.4.2 Get Chat Detail
+
+```http
+GET /creator/analytics/assistant/{assistant_id}/chats/{chat_id}
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "id": "493b9867-ce4d-497a-a174-8034065b3e1b",
+  "title": "Math Help",
+  "user": {
+    "id": "User_001",
+    "name": "User_001",
+    "email": null
+  },
+  "created_at": "2025-12-27T10:30:00",
+  "updated_at": "2025-12-27T10:45:00",
+  "messages": [
+    {
+      "id": "f498e761-6bb2-4fc4-9f63-4543ffb54cec",
+      "role": "user",
+      "content": "Can you help me understand quadratic equations?",
+      "timestamp": "2025-12-27T10:30:00"
+    },
+    {
+      "id": "ceefb82e-5154-4c32-b738-4b31a5cb90aa",
+      "role": "assistant",
+      "content": "Of course! Quadratic equations are...",
+      "timestamp": "2025-12-27T10:30:05"
+    }
+  ]
+}
+```
+
+#### 17.4.3 Get Statistics
+
+```http
+GET /creator/analytics/assistant/{assistant_id}/stats
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "assistant_id": 1,
+  "period": {
+    "start": null,
+    "end": null
+  },
+  "stats": {
+    "total_chats": 247,
+    "unique_users": 89,
+    "total_messages": 1456,
+    "avg_messages_per_chat": 5.9
+  }
+}
+```
+
+#### 17.4.4 Get Timeline
+
+```http
+GET /creator/analytics/assistant/{assistant_id}/timeline
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| period | string | No | Aggregation: "day", "week", "month" (default: day) |
+| start_date | datetime | No | Timeline from date |
+| end_date | datetime | No | Timeline until date |
+
+**Response:**
+```json
+{
+  "assistant_id": 1,
+  "period": "day",
+  "data": [
+    {"date": "2025-12-20", "chat_count": 12, "message_count": 67},
+    {"date": "2025-12-21", "chat_count": 15, "message_count": 89}
+  ]
+}
+```
+
+### 17.5 Privacy & Anonymization
+
+**Default Behavior:** User data is anonymized by default for privacy protection.
+
+**Anonymization:**
+- User IDs replaced with sequential identifiers ("User_001", "User_002", etc.)
+- User names follow same anonymization pattern
+- User email set to `null`
+- Chat content remains accessible (for quality assurance)
+
+**Organization Configuration:**
+Organizations can configure anonymization via `config.analytics.anonymize_users`:
+
+```json
+{
+  "config": {
+    "analytics": {
+      "anonymize_users": true
+    }
+  }
+}
+```
+
+### 17.6 Authorization
+
+**Access Control:**
+- Only assistant **owners** can view analytics
+- Checked via `assistant.owner == user.email`
+- Shared users cannot view analytics
+- Organization admins cannot override (by design)
+
+### 17.7 Frontend Integration
+
+**Location:** `frontend/svelte-app/src/lib/components/analytics/ChatAnalytics.svelte`
+
+**Features:**
+- Stats cards displaying key metrics
+- Simple bar chart for activity timeline (last 14 days)
+- Date range filter
+- Paginated chat list table
+- Chat detail modal with conversation view
+
+**Tab Integration:**
+The Analytics tab appears in the assistant detail view for owners:
+- Tabs: Properties | Edit | Share | Chat | **Analytics**
+- Only visible to assistant owners (`isOwner` check)
+
+### 17.8 Service Layer
+
+**File:** `backend/lamb/services/chat_analytics_service.py`
+
+**Class:** `ChatAnalyticsService`
+
+**Methods:**
+| Method | Purpose |
+|--------|---------|
+| `get_chats_for_assistant()` | List chats with pagination and filtering |
+| `get_chat_detail()` | Get full conversation with messages |
+| `get_assistant_stats()` | Calculate usage statistics |
+| `get_assistant_timeline()` | Aggregate activity over time |
+| `get_unique_models()` | List models used in chats |
+
+### 17.9 Security Notes
+
+**Removed Endpoints (Dec 2025):**
+The `/lamb/v1/OWI/*` endpoints were removed as they posed a security risk by exposing internal OWI database operations. Chat analytics functionality is now properly secured through:
+- User authentication (JWT token validation)
+- Ownership verification
+- Anonymization by default
+
+---
+
+## 18. Centralized Logging System
+
+### 18.1 Overview
 
 The LAMB backend implements a centralized logging system that eliminates code duplication, removes legacy utilities, and provides unified environment-based configuration for all logging operations.
 
@@ -4086,9 +4369,9 @@ The LAMB backend implements a centralized logging system that eliminates code du
 - **Fine-Grained Control:** Optional component-specific overrides for targeted debugging
 - **Container-Friendly:** All logs go to stdout for proper container log aggregation
 
-### 17.2 Architecture
+### 18.2 Architecture
 
-#### 17.2.1 Centralized Logging Module
+#### 18.2.1 Centralized Logging Module
 
 **Location:** `backend/lamb/logging_config.py`
 
@@ -4117,7 +4400,7 @@ logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL, force=True)
 
 The `force=True` parameter ensures this configuration overrides any prior logging configurations in the application.
 
-#### 17.2.2 Component-Based Log Levels
+#### 18.2.2 Component-Based Log Levels
 
 Six components are supported with fine-grained log level control:
 
@@ -4135,7 +4418,7 @@ If a component-specific log level is not set, the logger falls back to `GLOBAL_L
 - Global control with `GLOBAL_LOG_LEVEL` for all components
 - Selective override of specific components while others use the global level
 
-#### 17.2.3 get_logger() Function
+#### 18.2.3 get_logger() Function
 
 ```python
 def get_logger(name: str, component: str = "MAIN") -> logging.Logger:
@@ -4163,7 +4446,7 @@ def get_logger(name: str, component: str = "MAIN") -> logging.Logger:
 - Returns a properly configured logger instance
 - Supports inheritance from root logger configuration
 
-### 17.3 Environment Variables
+### 18.3 Environment Variables
 
 **Global Default Level:**
 ```bash
@@ -4182,9 +4465,9 @@ RAG_LOG_LEVEL=INFO         # Optional: Controls RAG pipeline logging
 EVALUATOR_LOG_LEVEL=WARNING # Optional: Controls evaluator logging
 OWI_LOG_LEVEL=WARNING      # Optional: Controls OWI integration logging
 ```
-### 17.5 Usage Examples
+### 18.5 Usage Examples
 
-#### 17.5.1 Basic Setup
+#### 18.5.1 Basic Setup
 
 **In any module:**
 ```python
@@ -4200,7 +4483,7 @@ logger = get_logger(__name__, component="DB")
 logger = get_logger(__name__, component="API")
 ```
 
-#### 17.5.2 Common Logging Patterns
+#### 18.5.2 Common Logging Patterns
 
 **Debug Information:**
 ```python
@@ -4226,7 +4509,7 @@ logger.error(f"Failed to connect to KB server: {error}")
 logger.error(f"LLM API error: {error}", exc_info=True)
 ```
 
-#### 17.5.3 Environment Configuration Examples
+#### 18.5.3 Environment Configuration Examples
 
 **Development (All DEBUG):**
 ```bash
@@ -4252,9 +4535,9 @@ API_LOG_LEVEL=INFO        # Watch API operations
 OWI_LOG_LEVEL=DEBUG       # Debug OWI integration issues
 ```
 
-### 17.6 Implementation Details
+### 18.6 Implementation Details
 
-#### 17.6.1 Core Configuration Module
+#### 18.6.1 Core Configuration Module
 
 **Source Code Reference:**
 ```python
@@ -4296,7 +4579,7 @@ def get_logger(name: str, component: str = "MAIN") -> logging.Logger:
     return logger
 ```
 
-#### 17.6.2 Recent Changes (Issue #149)
+#### 18.6.2 Recent Changes (Issue #149)
 
 **Pull Request #153** implemented centralized logging configuration and removed the legacy Timelog utility:
 
@@ -4318,9 +4601,9 @@ logger = get_logger(__name__, component="MAIN")
 logger.info("Processing message")
 ```
 
-### 17.7 Troubleshooting
+### 18.7 Troubleshooting
 
-#### 17.7.1 Common Issues
+#### 18.7.1 Common Issues
 
 **Logs Not Appearing:**
 ```bash
@@ -4347,7 +4630,7 @@ logger = get_logger(__name__, component="DB")  # Not "DATABASE"
 GLOBAL_LOG_LEVEL=INVALID  # Will fallback to WARNING
 ```
 
-#### 17.7.2 Container Deployment
+#### 18.7.2 Container Deployment
 
 **Docker Compose Logging:**
 ```yaml
@@ -4374,9 +4657,9 @@ docker-compose logs -f lamb-backend
 docker logs lamb-backend-1
 ```
 
-### 17.8 Integration Examples
+### 18.8 Integration Examples
 
-#### 17.8.1 Database Operations
+#### 18.8.1 Database Operations
 ```python
 # backend/lamb/database_manager.py
 from lamb.logging_config import get_logger
@@ -4394,7 +4677,7 @@ def execute_query(query, params=None):
         raise
 ```
 
-#### 17.8.2 API Endpoints
+#### 18.8.2 API Endpoints
 ```python
 # backend/creator_interface/main.py
 from lamb.logging_config import get_logger
@@ -4413,7 +4696,7 @@ async def list_assistants(request: Request):
         raise
 ```
 
-#### 17.8.3 RAG Pipeline
+#### 18.8.3 RAG Pipeline
 ```python
 # backend/lamb/completions/rag/simple_rag.py
 from lamb.logging_config import get_logger
@@ -4431,9 +4714,9 @@ def retrieve_documents(query, collection_id):
         raise
 ```
 
-## 18. Frontend UX Patterns & Best Practices
+## 19. Frontend UX Patterns & Best Practices
 
-### 18.1 Form Dirty State Tracking
+### 19.1 Form Dirty State Tracking
 
 **Problem:** Svelte 5's reactivity system can cause component props to change references frequently, even when the underlying data hasn't changed. In forms that react to prop changes by repopulating fields, this creates a critical UX issue where user edits are lost.
 
@@ -4531,11 +4814,11 @@ See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte` for
 - GitHub Issue #62: Language Model selection bug (fixed with this pattern)
 - See also Section 17.3 for complementary ID-based repopulation pattern
 
-### 18.2 Async Data Loading Race Conditions ⚠️ CRITICAL
+### 19.2 Async Data Loading Race Conditions ⚠️ CRITICAL
 
 **⚠️ WARNING:** Async data loading with Svelte 5's reactivity creates dangerous race conditions that can silently break user-facing functionality. This is a **critical pattern** that ALL developers must understand before implementing forms or components with async data dependencies.
 
-#### 18.2.1 The Problem
+#### 19.2.1 The Problem
 
 When restoring saved selections (checkboxes, multi-selects, etc.) that depend on a list fetched asynchronously, setting the selections **before** the list is loaded causes Svelte's binding directives (`bind:group`, `bind:value`) to fail silently.
 
@@ -4569,7 +4852,7 @@ function populateFormFields(data) {
 5. Checkboxes re-render, but Svelte **DOES NOT retroactively apply the bindings**
 6. Result: Checkboxes appear unchecked even though data says they should be checked
 
-#### 18.2.2 Why This Is Dangerous
+#### 19.2.2 Why This Is Dangerous
 
 **Silent Failure:**
 - No console errors
@@ -4590,7 +4873,7 @@ function populateFormFields(data) {
 - Network throttling required to reproduce reliably
 - Intermittent failures in production are the worst kind
 
-#### 18.2.3 Affected Svelte Directives
+#### 19.2.3 Affected Svelte Directives
 
 The following Svelte directives are vulnerable to async race conditions:
 
@@ -4611,7 +4894,7 @@ The following Svelte directives are vulnerable to async race conditions:
 </select>
 ```
 
-#### 18.2.4 The Correct Pattern: Load-Then-Select
+#### 19.2.4 The Correct Pattern: Load-Then-Select
 
 **Golden Rule:** **ALWAYS load the selectable options BEFORE setting the selected values.**
 
@@ -4642,7 +4925,7 @@ async function populateFormFields(data) {
 3. Set selections **after** await completes
 4. Handle loading states in UI
 
-#### 18.2.5 Alternative Pattern: Deferred Selection
+#### 19.2.5 Alternative Pattern: Deferred Selection
 
 If making the populate function async is not feasible, use a pending state:
 
@@ -4679,7 +4962,7 @@ $effect(() => {
 - More complex effect logic
 - Harder to reason about timing
 
-#### 18.2.6 Preemptive Loading Pattern
+#### 19.2.6 Preemptive Loading Pattern
 
 For forms that frequently need certain data, preload it:
 
@@ -4709,7 +4992,7 @@ onMount(() => {
 - Data is needed in >80% of use cases
 - User experience demands instant interactions
 
-#### 18.2.7 Implementation Checklist
+#### 19.2.7 Implementation Checklist
 
 When implementing forms with async data dependencies:
 
@@ -4740,7 +5023,7 @@ When implementing forms with async data dependencies:
 - [ ] Error states handled (empty lists, failed fetches)
 - [ ] No race conditions between multiple effects
 
-#### 18.2.8 Warning Signs in Code
+#### 19.2.8 Warning Signs in Code
 
 **🚨 RED FLAGS - These patterns indicate potential race conditions:**
 
@@ -4786,7 +5069,7 @@ $effect(() => {
 });
 ```
 
-#### 18.2.9 Real-World Incident Report
+#### 19.2.9 Real-World Incident Report
 
 **Issue #96: Knowledge Base Selection Race Condition**
 
@@ -4819,7 +5102,7 @@ $effect(() => {
 - Testing procedures documented
 - Example implementation in `AssistantForm.svelte` (post-fix)
 
-#### 18.2.10 Key Takeaways
+#### 19.2.10 Key Takeaways
 
 **For Developers:**
 1. **Never assume async operations complete instantly**
@@ -4848,11 +5131,11 @@ $effect(() => {
 
 ---
 
-### 18.3 Preventing Spurious Form Repopulation ⚠️ CRITICAL
+### 19.3 Preventing Spurious Form Repopulation ⚠️ CRITICAL
 
 **⚠️ WARNING:** Even with form dirty state tracking, calling `populateFormFields()` on every prop reference change can cause dropdown selections and other fields to be unexpectedly reset. This is a **critical pattern** that complements Section 17.1.
 
-#### 18.3.1 The Problem
+#### 19.3.1 The Problem
 
 Svelte 5's proxy-based reactivity causes prop references to change frequently, even when the underlying data hasn't changed. A naive `$effect` that repopulates on every reference change will overwrite user selections continuously.
 
@@ -4888,7 +5171,7 @@ $effect(() => {
 
 Dirty state tracking (`formDirty`) protects against overwrites **while the user is editing**. However, when `formDirty === false` (initial load, after save, after cancel), the form is still vulnerable to spurious repopulation from reference-only changes.
 
-#### 18.3.2 The Correct Pattern: ID-Based Repopulation
+#### 19.3.2 The Correct Pattern: ID-Based Repopulation
 
 **Golden Rule:** Only repopulate when there's a **meaningful change**, not just a reference change.
 
@@ -4927,7 +5210,7 @@ $effect(() => {
 3. **Skip Reference Changes:** Don't repopulate on proxy reference updates
 4. **Explicit Reverts Only:** User must explicitly cancel to trigger repopulation
 
-#### 18.3.3 When to Repopulate
+#### 19.3.3 When to Repopulate
 
 | Scenario | Should Repopulate? | Reason |
 |----------|-------------------|--------|
@@ -4938,7 +5221,7 @@ $effect(() => {
 | Parent component re-renders | ❌ NO | Unrelated to this form |
 | User switches away and back | ❌ NO | Form should retain state |
 
-#### 18.3.4 What Fields Are Affected
+#### 19.3.4 What Fields Are Affected
 
 Spurious repopulation affects **all bound form fields**, but is most visible in:
 
@@ -4950,7 +5233,7 @@ Spurious repopulation affects **all bound form fields**, but is most visible in:
 | **Text inputs** | Value resets | Moderate (if typing slowly) |
 | **Textareas** | Content replaced | Critical if actively editing |
 
-#### 18.3.5 Implementation Checklist
+#### 19.3.5 Implementation Checklist
 
 When implementing forms with prop-based data loading:
 
@@ -4973,7 +5256,7 @@ When implementing forms with prop-based data loading:
 - [ ] Open different item, verify form repopulates correctly
 - [ ] Click Cancel, verify form reverts to saved state
 
-#### 18.3.6 Warning Signs in Code
+#### 19.3.6 Warning Signs in Code
 
 **🚨 RED FLAGS - These patterns indicate potential spurious repopulation:**
 
@@ -5026,7 +5309,7 @@ async function handleSave() {
 }
 ```
 
-#### 18.3.7 Relationship to Other Patterns
+#### 19.3.7 Relationship to Other Patterns
 
 This pattern **complements** but is **distinct** from:
 
@@ -5059,7 +5342,7 @@ $effect(() => {
 });
 ```
 
-#### 18.3.8 Real-World Incident Reports
+#### 19.3.8 Real-World Incident Reports
 
 **November 2025: Double Repopulation Bug**
 
@@ -5076,7 +5359,7 @@ Even after implementing dirty state tracking (Issue #62 fix), the AssistantForm 
 - Svelte 5's reactivity is more aggressive than Svelte 4
 - Always test with deliberate delays to expose timing issues
 
-#### 18.3.9 Example Implementation
+#### 19.3.9 Example Implementation
 
 See `frontend/svelte-app/src/lib/components/assistants/AssistantForm.svelte`:
 
@@ -5101,7 +5384,7 @@ $effect(() => {
 });
 ```
 
-#### 18.3.10 Key Takeaways
+#### 19.3.10 Key Takeaways
 
 **For Developers:**
 1. **Reference changes ≠ data changes** in Svelte 5
@@ -5130,9 +5413,9 @@ $effect(() => {
 
 ---
 
-### 18.4 Other Frontend Best Practices
+### 19.4 Other Frontend Best Practices
 
-#### 18.4.1 Svelte 5 Reactivity Guidelines
+#### 19.4.1 Svelte 5 Reactivity Guidelines
 
 - Use `$state()` for component-local reactive values
 - Use `$derived()` for computed values
@@ -5140,14 +5423,14 @@ $effect(() => {
 - Prefer event handlers over reactive effects when possible
 - Always check if effect should run (guard conditions)
 
-#### 18.4.2 API Service Patterns
+#### 19.4.2 API Service Patterns
 
 - Centralize API calls in service modules (`lib/services/`)
 - Include authorization headers in all authenticated requests
 - Handle loading/error states consistently
 - Return structured responses: `{success, data?, error?}`
 
-#### 18.4.3 Store Management
+#### 19.4.3 Store Management
 
 - Use stores for shared state across components
 - Keep stores minimal and focused
@@ -5156,13 +5439,13 @@ $effect(() => {
 
 ---
 
-## 19. API Reference
+## 20. API Reference
 
 See PRD document and sections 5.1-5.3 for complete API documentation.
 
 ---
 
-## 20. File Structure Summary
+## 21. File Structure Summary
 
 ```
 /backend/

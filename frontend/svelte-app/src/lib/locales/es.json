@@ -225,6 +225,19 @@
       "successMessage": "¡Asistente '{name}' creado con éxito! Redirigiendo...",
       "unknownError": "Fallo al crear asistente: Error desconocido"
     },
+    "detail": {
+      "propertiesTab": "Propiedades",
+      "editTab": "Editar",
+      "shareTab": "Compartir",
+      "chatTab": "Chat",
+      "ltiTitle": "Detalles de Publicación LTI",
+      "ltiAssistantName": "Nombre del Asistente",
+      "ltiModelId": "ID del Modelo",
+      "ltiToolUrl": "URL de Herramienta",
+      "ltiConsumerKey": "Clave del Consumidor",
+      "ltiSecret": "Secreto",
+      "configuration": "Configuración"
+    },
     "table": {
       "name": "Nombre",
       "description": "Descripción",

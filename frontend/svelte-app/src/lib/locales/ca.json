@@ -225,6 +225,19 @@
       "successMessage": "Assistent '{name}' creat correctament! Redirigint...",
       "unknownError": "Error al crear assistent: Error desconegut"
     },
+    "detail": {
+      "propertiesTab": "Propietats",
+      "editTab": "Editar",
+      "shareTab": "Compartir",
+      "chatTab": "Xat",
+      "ltiTitle": "Detalls de Publicació LTI",
+      "ltiAssistantName": "Nom de l'Assistent",
+      "ltiModelId": "ID del Model",
+      "ltiToolUrl": "URL d'Eina",
+      "ltiConsumerKey": "Clau del Consumidor",
+      "ltiSecret": "Secret",
+      "configuration": "Configuració"
+    },
     "table": {
       "name": "Nom",
       "description": "Descripció",

@@ -6,8 +6,12 @@ from .assistant_service import AssistantService
 from .organization_service import OrganizationService
 from .creator_user_service import CreatorUserService
 from .assistant_sharing_service import AssistantSharingService
+from .chat_analytics_service import ChatAnalyticsService
 
-__all__ = ['AssistantService', 'OrganizationService', 'CreatorUserService', 'AssistantSharingService']
-
-__all__ = ['AssistantService', 'OrganizationService']
-
+__all__ = [
+    'AssistantService', 
+    'OrganizationService', 
+    'CreatorUserService', 
+    'AssistantSharingService',
+    'ChatAnalyticsService'
+]

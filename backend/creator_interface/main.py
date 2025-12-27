@@ -119,6 +119,10 @@ router.include_router(evaluaitor_router, prefix="/rubrics")
 from .prompt_templates_router import router as prompt_templates_router
 router.include_router(prompt_templates_router, prefix="/prompt-templates")
 
+# Include the analytics router
+from .analytics_router import router as analytics_router
+router.include_router(analytics_router, prefix="/analytics")
+
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 
 

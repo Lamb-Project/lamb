@@ -148,7 +148,14 @@
       "propertiesTab": "Properties",
       "editTab": "Edit",
       "shareTab": "Share",
-      "chatTab": "Chat"
+      "chatTab": "Chat",
+      "ltiTitle": "LTI Publish Details",
+      "ltiAssistantName": "Assistant Name",
+      "ltiModelId": "Model ID",
+      "ltiToolUrl": "Tool URL",
+      "ltiConsumerKey": "Consumer Key",
+      "ltiSecret": "Secret",
+      "configuration": "Configuration"
     },
     "sharing": {
       "title": "Shared Users",

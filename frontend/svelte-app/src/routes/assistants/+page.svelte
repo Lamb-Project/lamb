@@ -3,6 +3,7 @@
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
+    import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
     import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
@@ -58,7 +59,7 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- API Configuration State ---
@@ -909,6 +910,14 @@
                 {currentLocale ? $_('assistants.detail.chatWith', { default: 'with' }) : 'with'} {selectedAssistantData.name.replace(/^\d+_/, '')}
             {/if}
         </button>
+        {#if isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'analytics' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'analytics'}
+            >
+                {currentLocale ? $_('assistants.detail.analyticsTab', { default: 'Analytics' }) : 'Analytics'}
+            </button>
+        {/if}
     </div>
 
     <!-- Wrapper for Detail Content -->
@@ -1094,6 +1103,14 @@
                                 </h3>
                                 {console.log('Checking selectedAssistantData for LTI box:', selectedAssistantData)}
                                 <div class="space-y-1 text-sm text-blue-700 break-words">
+                                    <div>
+                                        <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiAssistantName', { default: 'Assistant Name' }) : 'Assistant Name'}:</span> 
+                                        <code class="ml-1 bg-blue-100 px-1 rounded">{selectedAssistantData.name}</code>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiModelId', { default: 'Model ID' }) : 'Model ID'}:</span> 
+                                        <code class="ml-1 bg-blue-100 px-1 rounded">{selectedAssistantData.id}</code>
+                                    </div>
                                     <div>
                                         <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiToolUrl', { default: 'Tool URL' }) : 'Tool URL'}:</span> 
                                         <code class="ml-1 bg-blue-100 px-1 rounded">{lambServerUrl}/lamb/v1/lti_users/lti</code>
@@ -1379,6 +1396,11 @@
                 <!-- Should not happen if configError is handled, but as fallback -->
                 <p>{currentLocale ? $_('assistants.chatLoadingConfig') : 'Loading chat configuration...'}</p>
             {/if}
+        {:else if detailSubView === 'analytics'}
+            <!-- Analytics Tab Content -->
+            <div class="px-6 py-4">
+                <ChatAnalytics assistant={selectedAssistantData} />
+            </div>
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->

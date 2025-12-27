@@ -143,6 +143,19 @@
       "successMessage": "'{name}' laguntzailea behar bezala sortu da! Birbideratzen...",
       "unknownError": "Errorea laguntzailea sortzean: Errore ezezaguna"
     },
+    "detail": {
+      "propertiesTab": "Propietateak",
+      "editTab": "Editatu",
+      "shareTab": "Partekatu",
+      "chatTab": "Txata",
+      "ltiTitle": "LTI Argitaratze Xehetasunak",
+      "ltiAssistantName": "Laguntzailearen Izena",
+      "ltiModelId": "Ereduaren IDa",
+      "ltiToolUrl": "Tresnaren URLa",
+      "ltiConsumerKey": "Kontsumitzailearen Gakoa",
+      "ltiSecret": "Sekretua",
+      "configuration": "Konfigurazioa"
+    },
     "table": {
       "name": "Izena",
       "description": "Deskribapena",

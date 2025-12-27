@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation - Essential Guide
 
-**Version:** 2.8
-**Last Updated:** December 9, 2025  
+**Version:** 2.9
+**Last Updated:** December 27, 2025  
 **Target Audience:** Developers, DevOps Engineers, AI Agents, Technical Architects
 
 > **Note:** This is a condensed version of the full architecture documentation. For detailed schemas, code examples, and implementation details, see [lamb_architecture.md](./lamb_architecture.md).
@@ -164,23 +164,24 @@ LAMB Core API (/lamb/v1)
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| assistant_router | `/v1/assistant` | Assistant CRUD |
-| completions_router | `/v1/completions` | Completion generation |
-| organization_router | `/v1` | Organization management |
 | lti_users_router | `/v1/lti_users` | LTI user management |
-| owi_router | `/v1/OWI` | OWI integration |
-| creator_user_router | `/v1/creator_user` | Creator user management |
-| config_router | `/v1/config` | System configuration |
+| simple_lti_router | `/simple_lti` | LTI launch handling |
+| completions_router | `/v1/completions` | Completion generation |
 | mcp_router | `/v1/mcp` | MCP endpoints |
+
+> **Note:** OWI router endpoints (`/v1/OWI/*`) were removed in Dec 2025 for security. OWI operations are now internal services only.
 
 ### Creator Interface API Routers
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| assistant_router | `/creator/assistant` | Assistant operations (proxied) |
+| assistant_router | `/creator/assistant` | Assistant operations |
 | knowledges_router | `/creator/knowledgebases` | Knowledge Base operations |
 | organization_router | `/creator/admin` | Organization management |
+| analytics_router | `/creator/analytics` | Chat analytics and usage insights |
 | learning_assistant_proxy_router | `/creator` | Learning assistant proxy |
+| evaluaitor_router | `/creator/rubrics` | Rubric management |
+| prompt_templates_router | `/creator/prompt-templates` | Prompt template management |
 
 **Key Direct Endpoints:**
 - `POST /creator/login` - User login
@@ -799,6 +800,35 @@ npm run dev
 
 ## 14. Special Features
 
+### Chat Analytics Feature
+
+**Purpose:** Provide assistant owners with insights into how their assistants are being used
+
+**Implementation:**
+- Service: `ChatAnalyticsService` in `/backend/lamb/services/`
+- Router: `/creator/analytics/*` endpoints
+- Frontend: Analytics tab in assistant detail view
+
+**API Endpoints:**
+- `GET /creator/analytics/assistant/{id}/chats` - List chats with filtering
+- `GET /creator/analytics/assistant/{id}/chats/{chat_id}` - Chat detail with messages
+- `GET /creator/analytics/assistant/{id}/stats` - Usage statistics
+- `GET /creator/analytics/assistant/{id}/timeline` - Activity timeline
+
+**Privacy:**
+- Organization-configurable anonymization (default: enabled)
+- User identifiers anonymized as "User_001", "User_002", etc.
+- Chat content always accessible to assistant owners
+- Only assistant owners can view analytics
+
+**Frontend Features:**
+- Stats cards (total chats, unique users, messages, avg/chat)
+- Activity timeline visualization (last 14 days)
+- Filterable chat list with pagination
+- Chat detail modal with full conversation view
+
+> 📖 **Extended:** See [Chat Analytics Project](./chat_analytics_project.md) for detailed implementation documentation.
+
 ### End User Feature
 
 **Purpose:** Restrict users to only consuming assistants (no creation)
@@ -1017,8 +1047,9 @@ async function save() {
 
 ## Additional Resources
 
-- **Full Architecture:** [lamb_architecture.md](./lamb_architecture.md) (4,764 lines)
+- **Full Architecture:** [lamb_architecture.md](./lamb_architecture.md)
 - **PRD:** [prd.md](./prd.md) - Product requirements and user stories
+- **Chat Analytics:** [chat_analytics_project.md](./chat_analytics_project.md) - Detailed analytics implementation
 - **Multi-Tool Specs:** 
   - [MULTI_TOOL_DEV_PLAN.md](./MULTI_TOOL_DEV_PLAN.md)
   - [MULTI_TOOL_ASSISTANT_BACKEND_SPEC.md](./MULTI_TOOL_ASSISTANT_BACKEND_SPEC.md)
@@ -1033,6 +1064,7 @@ async function save() {
 ---
 
 **Version History:**
+- 2.9 (Dec 27, 2025): Added Chat Analytics feature (Section 14), updated routers
 - 2.8 (Dec 9, 2025): Essential guide created from full documentation
 - See full architecture document for complete version history
 
