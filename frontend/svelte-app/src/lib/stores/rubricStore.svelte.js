@@ -200,6 +200,34 @@ class RubricStore {
   }
 
   /**
+   * Add a performance level to a specific criterion
+   * @param {string} criterionId - The criterion ID to add the level to
+   * @param {Object} levelData - The level data to add (score, label, description)
+   */
+  addLevelToCriterion(criterionId, levelData) {
+    if (!this.#rubric) return;
+
+    this.#saveToHistory();
+
+    const criteria = this.#rubric.criteria || [];
+    const criterion = criteria.find(c => c.id === criterionId);
+    if (!criterion) return;
+
+    if (!criterion.levels) {
+      criterion.levels = [];
+    }
+
+    // Generate unique ID for the level
+    const levelWithId = {
+      ...levelData,
+      id: this.#generateId('level')
+    };
+
+    criterion.levels.push(levelWithId);
+    this.#updateTimestamps();
+  }
+
+  /**
    * Update rubric metadata
    * @param {Object} metadata - The metadata updates
    */

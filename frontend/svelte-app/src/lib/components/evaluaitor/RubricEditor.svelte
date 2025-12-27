@@ -23,6 +23,9 @@
   let error = $state(null);
   let showAIChat = $state(false);
   let aiGenerating = $state(false);
+  let successMessage = $state(null);
+  let showSaveAsModal = $state(false);
+  let saveAsTitle = $state('');
 
   // Check if this is a new rubric (generated from template)
   let isNewRubric = $state(false);
@@ -89,6 +92,7 @@
     try {
       saving = true;
       error = null;
+      successMessage = null;
 
       // Prepare full rubric data for API
       const fullRubricData = {
@@ -102,8 +106,19 @@
 
       await updateRubric(rubricId, fullRubricData);
 
-      // Show success message (you could add a toast notification here)
-      console.log('Rubric saved successfully');
+      // Show success message
+      successMessage = 'Rubric updated';
+      
+      // Exit edit mode
+      isEditMode = false;
+      
+      // Reload rubric to ensure we have the latest data
+      await loadRubric();
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        successMessage = null;
+      }, 3000);
     } catch (err) {
       error = err.message || 'Failed to save rubric';
       console.error('Error saving rubric:', err);
@@ -127,30 +142,79 @@
       return;
     }
 
+    // Show modal to ask for new title
+    saveAsTitle = `${rubricData.title} (Copy)`;
+    showSaveAsModal = true;
+  }
+
+  // Confirm save as with the new title
+  async function confirmSaveAs() {
+    if (!saveAsTitle.trim()) {
+      error = 'Please enter a title for the new rubric';
+      return;
+    }
+
+    const rubricData = rubricStore.getRubricData();
+    
     try {
       saving = true;
       error = null;
+      successMessage = null;
 
-      // Modify title to indicate it's a version
+      // Create new rubric with the specified title
       const versionedData = {
         ...rubricData,
-        title: `${rubricData.title} (Copy)`,
+        title: saveAsTitle,
         metadata: {
           ...rubricData.metadata,
+          createdAt: new Date().toISOString(),
           modifiedAt: new Date().toISOString()
         }
       };
 
-      const newRubric = await createRubric(versionedData);
+      const response = await createRubric(versionedData);
 
-      // Navigate to the new rubric
-      goto(`/evaluaitor/${newRubric.rubricId}`);
+      console.log('Create rubric response:', response);
+
+      // Extract rubric ID from response
+      // Backend returns: { success: true, rubric: { rubric_id: "...", ... } }
+      const newRubricId = response.rubric?.rubric_id || response.rubricId || response.id;
+
+      console.log('New rubric ID:', newRubricId);
+      console.log('Current rubric ID (should be different):', rubricId);
+
+      if (!newRubricId) {
+        console.error('Failed to extract rubric ID from response:', response);
+        throw new Error('Failed to get new rubric ID from response');
+      }
+
+      // Close modal
+      showSaveAsModal = false;
+      saveAsTitle = '';
+
+      // Show success message
+      successMessage = 'Rubric saved as new version';
+
+      // Wait a moment for success message to be visible, then navigate to new rubric in VIEW mode
+      // Use window.location.href to force a full page reload and ensure we're in view mode
+      setTimeout(() => {
+        console.log('Navigating to new rubric:', `/evaluaitor/${newRubricId}`);
+        window.location.href = `/evaluaitor/${newRubricId}`;
+      }, 1500);
+
     } catch (err) {
       error = err.message || 'Failed to create new version';
       console.error('Error creating new version:', err);
     } finally {
       saving = false;
     }
+  }
+
+  // Cancel save as
+  function cancelSaveAs() {
+    showSaveAsModal = false;
+    saveAsTitle = '';
+    error = null;
   }
 
   // Handle AI generation
@@ -237,135 +301,238 @@
 </script>
 
 <div class="min-h-screen bg-gray-50">
-  <!-- Header -->
-  <div class="bg-white shadow">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex justify-between items-center py-4">
+  <!-- Success Toast -->
+  {#if successMessage}
+    <div class="fixed top-4 right-4 z-50 animate-fade-in">
+      <div class="bg-green-50 border border-green-200 rounded-md p-4 shadow-lg">
         <div class="flex items-center">
-          <button
-            onclick={handleBack}
-            class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
-            aria-label="Go back"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-          </button>
-          <div>
-            <h1 class="text-xl font-semibold text-gray-900">
-              {rubricStore.rubric?.title || 'Loading...'}
-            </h1>
-            <p class="text-sm text-gray-500">
-              {rubricStore.rubric?.description || ''}
-            </p>
           </div>
-        </div>
-
-        <div class="flex items-center space-x-3">
-          {#if isEditMode || isNewRubric}
-            <!-- EDIT MODE: Show action buttons -->
-            
-            <!-- Undo/Redo buttons -->
+          <div class="ml-3">
+            <p class="text-sm font-medium text-green-800">{successMessage}</p>
+          </div>
+          <div class="ml-auto pl-3">
             <button
-              onclick={handleUndo}
-              disabled={!rubricStore.canUndo}
-              class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Undo"
+              onclick={() => successMessage = null}
+              class="inline-flex text-green-400 hover:text-green-600"
             >
               <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
-              </svg>
-            </button>
-            <button
-              onclick={handleRedo}
-              disabled={!rubricStore.canRedo}
-              class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Redo"
-            >
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/>
-              </svg>
-            </button>
-
-            <!-- AI Chat Toggle -->
-            <button
-              onclick={() => showAIChat = !showAIChat}
-              class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4-4-4z"/>
-              </svg>
-              AI Assistant
-            </button>
-
-            {#if !isNewRubric}
-            <!-- Cancel Edit Button -->
-            <button
-              onclick={cancelEdit}
-              disabled={saving || loading}
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
-              Cancel Edit
             </button>
-            {/if}
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
 
-            <!-- Update/Save Button -->
+  <!-- Save As Modal -->
+  {#if showSaveAsModal}
+    <div class="fixed inset-0 z-50 overflow-y-auto">
+      <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div
+          class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+          onclick={cancelSaveAs}
+        ></div>
+
+        <!-- Modal panel -->
+        <div class="relative z-50 inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div>
+            <div class="mt-3 text-center sm:mt-0 sm:text-left">
+              <h3 class="text-lg leading-6 font-medium text-gray-900">
+                Save as New Rubric
+              </h3>
+              <div class="mt-4">
+                <label for="rubric-title" class="block text-sm font-medium text-gray-700">
+                  Rubric Title
+                </label>
+                <input
+                  id="rubric-title"
+                  type="text"
+                  bind:value={saveAsTitle}
+                  class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Enter new rubric title"
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') {
+                      confirmSaveAs();
+                    } else if (e.key === 'Escape') {
+                      cancelSaveAs();
+                    }
+                  }}
+                />
+                <p class="mt-2 text-sm text-gray-500">
+                  A new rubric will be created with this title.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
             <button
-              onclick={saveRubric}
-              disabled={saving || loading}
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onclick={confirmSaveAs}
+              disabled={saving || !saveAsTitle.trim()}
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {#if saving}
                 <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                {isNewRubric ? 'Saving...' : 'Updating...'}
+                Creating...
               {:else}
-                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                </svg>
-                {isNewRubric ? 'Save' : 'Update Rubric'}
+                Create Rubric
               {/if}
             </button>
-
-            <!-- Save as New Version -->
-            {#if !isNewRubric}
             <button
-              onclick={saveAsNewVersion}
-              disabled={saving || loading}
-              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onclick={cancelSaveAs}
+              disabled={saving}
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save as New Version
+              Cancel
             </button>
-            {/if}
-          {:else}
-            <!-- VIEW MODE: Show view label and edit button -->
-            
-            <!-- View Only Label/Badge -->
-            <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300">
-              <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
-              View Only
-            </span>
-
-            <!-- Edit Button -->
-            <button
-              onclick={enterEditMode}
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-              </svg>
-              Edit
-            </button>
-          {/if}
+          </div>
         </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Header -->
+  <div class="bg-white shadow">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="py-6">
+        <!-- Back button and status indicator -->
+        <div class="flex items-center justify-between mb-4">
+          <button
+            onclick={handleBack}
+            class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+            aria-label="Go back"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+
+          <!-- Status Badge and Action Buttons -->
+          <div class="flex items-center space-x-3">
+            {#if isEditMode || isNewRubric}
+              <!-- Edit Mode Indicator -->
+              <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                Editing Rubric
+              </span>
+              
+              <!-- Undo/Redo buttons -->
+              <button
+                onclick={handleUndo}
+                disabled={!rubricStore.canUndo}
+                class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Undo"
+              >
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+                </svg>
+              </button>
+              <button
+                onclick={handleRedo}
+                disabled={!rubricStore.canRedo}
+                class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Redo"
+              >
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"/>
+                </svg>
+              </button>
+
+              {#if !isNewRubric}
+              <!-- Cancel Edit Button -->
+              <button
+                onclick={cancelEdit}
+                disabled={saving || loading}
+                class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                Cancel
+              </button>
+              {/if}
+
+              <!-- Update/Save Button -->
+              <button
+                onclick={saveRubric}
+                disabled={saving || loading}
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {#if saving}
+                  <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {isNewRubric ? 'Saving...' : 'Updating...'}
+                {:else}
+                  <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  {isNewRubric ? 'Save' : 'Update Rubric'}
+                {/if}
+              </button>
+
+              <!-- Save as New Version -->
+              {#if !isNewRubric}
+              <button
+                onclick={saveAsNewVersion}
+                disabled={saving || loading}
+                class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save as New Version
+              </button>
+              {/if}
+            {:else}
+              <!-- VIEW MODE: Show view label and edit button -->
+              
+              <!-- View Only Label/Badge -->
+              <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300">
+                <svg class="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                View Only
+              </span>
+
+              <!-- Edit Button -->
+              <button
+                onclick={enterEditMode}
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+              >
+                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                Edit
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Rubric Title (Bigger) -->
+        <h1 class="text-3xl font-bold text-gray-900 mb-3">
+          {rubricStore.rubric?.title || 'Loading...'}
+        </h1>
+
+        <!-- Description (Wide box below title) -->
+        {#if rubricStore.rubric?.description}
+        <div class="bg-gray-50 border border-gray-200 rounded-md p-4">
+          <p class="text-sm text-gray-700 leading-relaxed">
+            {rubricStore.rubric.description}
+          </p>
+        </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -427,5 +594,19 @@
 </div>
 
 <style>
-  /* Custom styles if needed */
+  /* Toast animation */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(-1rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
 </style>
