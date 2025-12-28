@@ -37,8 +37,6 @@ Scripts not yet automated (run individually as needed):
 
 | Test File                | Purpose                        |
 | ------------------------ | ------------------------------ |
-| `create_org.js`          | Organization creation          |
-| `create_user.js`         | User creation                  |
 | `config_owui.js`         | Configure OpenWebUI connection |
 | `ingest_video.js`        | Video ingestion testing        |
 | `test_url_ingest.js`     | URL ingestion testing          |
