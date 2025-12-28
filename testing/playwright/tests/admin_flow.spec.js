@@ -18,21 +18,29 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await createButton.click();
 
     // Wait for the create user form/dialog to appear
-    await expect(page.getByRole("textbox", { name: /email\s*\*/i })).toBeVisible({
+    await expect(
+      page.getByRole("textbox", { name: /email\s*\*/i })
+    ).toBeVisible({
       timeout: 5_000,
     });
 
     // Fill in user details
     await page.getByRole("textbox", { name: /email\s*\*/i }).fill(userEmail);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(userName);
-    await page.getByRole("textbox", { name: /password\s*\*/i }).fill(userPassword);
+    await page
+      .getByRole("textbox", { name: /password\s*\*/i })
+      .fill(userPassword);
 
     // Select User Type: Creator (use the value, not the label)
-    const userTypeSelect = page.locator('select').filter({ hasText: 'Creator (Can create assistants)' });
+    const userTypeSelect = page
+      .locator("select")
+      .filter({ hasText: "Creator (Can create assistants)" });
     await userTypeSelect.selectOption("creator");
 
     // Ensure "User enabled" checkbox is checked
-    const userEnabledCheckbox = page.getByRole("checkbox", { name: /user enabled/i });
+    const userEnabledCheckbox = page.getByRole("checkbox", {
+      name: /user enabled/i,
+    });
     const isChecked = await userEnabledCheckbox.isChecked();
     if (!isChecked) {
       await userEnabledCheckbox.check();
@@ -46,9 +54,9 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await submitButton.click();
 
     // Wait for success message
-    await expect(
-      page.getByText(/user created successfully/i)
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/user created successfully/i)).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Verify user appears in the list
     await expect(page.getByText(userEmail)).toBeVisible({ timeout: 5_000 });
@@ -67,9 +75,11 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await createButton.click();
 
     // Wait for the create org form/dialog to appear
-    await expect(page.getByRole("textbox", { name: /slug\s*\*/i })).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(page.getByRole("textbox", { name: /slug\s*\*/i })).toBeVisible(
+      {
+        timeout: 5_000,
+      }
+    );
 
     // Fill in organization details
     await page.getByRole("textbox", { name: /slug\s*\*/i }).fill(orgSlug);
@@ -78,18 +88,18 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     // Select the admin user we just created
     const adminSelect = page.getByLabel(/organization admin\s*\*/i);
     await expect(adminSelect).toBeVisible({ timeout: 5_000 });
-    
+
     // Find and select the option that contains our user email (by text matching)
     // The option text format is: "username (email) - role"
     const userOptionText = `${userName} (${userEmail})`;
-    
+
     // Get all options and find the one containing our user
-    const options = await adminSelect.locator('option').all();
+    const options = await adminSelect.locator("option").all();
     let foundOption = false;
     for (const option of options) {
       const text = await option.textContent();
       if (text && text.includes(userEmail)) {
-        const value = await option.getAttribute('value');
+        const value = await option.getAttribute("value");
         if (value) {
           await adminSelect.selectOption(value);
           foundOption = true;
@@ -97,7 +107,7 @@ test.describe.serial("Admin flow (create user + create org)", () => {
         }
       }
     }
-    
+
     if (!foundOption) {
       throw new Error(`Could not find option for user: ${userEmail}`);
     }
@@ -148,7 +158,9 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await disableButton.click();
 
     // Wait for the confirmation modal to appear (it's not a dialog role, just a container)
-    await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/confirm disable/i)).toBeVisible({
+      timeout: 5_000,
+    });
 
     // Click the "Disable" button in the modal
     const confirmButton = page.getByRole("button", { name: /^disable$/i });
@@ -156,8 +168,12 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await confirmButton.click();
 
     // Wait for the modal to disappear and user status to change to "Disabled"
-    await expect(page.getByText(/confirm disable/i)).not.toBeVisible({ timeout: 10_000 });
-    await expect(userRow.getByText("Disabled")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/confirm disable/i)).not.toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(userRow.getByText("Disabled")).toBeVisible({
+      timeout: 10_000,
+    });
     console.log(`User "${userEmail}" successfully disabled.`);
   });
 
