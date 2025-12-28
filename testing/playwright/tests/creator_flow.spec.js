@@ -181,7 +181,9 @@ test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
     await expect(modal.getByText(/delete assistant/i)).toBeVisible();
 
     // Click the "Delete" button in the modal
-    const confirmDeleteButton = modal.getByRole("button", { name: /^delete$/i });
+    const confirmDeleteButton = modal.getByRole("button", {
+      name: /^delete$/i,
+    });
     await expect(confirmDeleteButton).toBeVisible({ timeout: 5_000 });
     await confirmDeleteButton.click();
 
