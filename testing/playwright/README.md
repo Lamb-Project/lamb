@@ -9,6 +9,7 @@ Automated browser tests for the LAMB platform.
 **Main flow:** `tests/creator_flow.spec.js` - Creates KB → ingests file → queries → creates assistant
 
 Run with:
+
 ```bash
 npm test          # Run all tests
 npm run test:ui   # Interactive mode
@@ -34,16 +35,16 @@ See [end_user_tests/README_END_USER_TESTS.md](end_user_tests/README_END_USER_TES
 
 Scripts not yet automated (run individually as needed):
 
-| Test File | Purpose |
-|-----------|---------|
-| `create_org.js` | Organization creation |
-| `create_user.js` | User creation |
-| `config_owui.js` | Configure OpenWebUI connection |
-| `remove_kb.js` | Test knowledge base deletion |
-| `ingest_video.js` | Video ingestion testing |
-| `test_url_ingest.js` | URL ingestion testing |
-| `test_youtube_titles.js` | YouTube title extraction |
-| `test_evaluaitor.js` | Evaluator/rubric testing |
+| Test File                | Purpose                        |
+| ------------------------ | ------------------------------ |
+| `create_org.js`          | Organization creation          |
+| `create_user.js`         | User creation                  |
+| `config_owui.js`         | Configure OpenWebUI connection |
+| `remove_kb.js`           | Test knowledge base deletion   |
+| `ingest_video.js`        | Video ingestion testing        |
+| `test_url_ingest.js`     | URL ingestion testing          |
+| `test_youtube_titles.js` | YouTube title extraction       |
+| `test_evaluaitor.js`     | Evaluator/rubric testing       |
 
 ## Installation
 
@@ -78,6 +79,7 @@ Environment variables:
 ### Individual Tests
 
 Manual scripts (not yet automated):
+
 ```bash
 node create_org.js http://localhost:5173
 node create_user.js http://localhost:5173
