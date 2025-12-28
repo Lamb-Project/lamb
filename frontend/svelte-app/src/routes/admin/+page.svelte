@@ -17,7 +17,7 @@
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
-    let currentView = $state('users'); // Changed default view to users
+    let currentView = $state('dashboard'); // Default view is dashboard
     let localeLoaded = $state(true); // Assume loaded for now
     
     // Current user data for self-disable prevention
@@ -103,6 +103,13 @@
     let changePasswordSuccess = $state(false);
     let selectedUserName = $state('');
 
+    // --- Dashboard System Stats State ---
+    /** @type {any | null} */
+    let systemStats = $state(null);
+    let isLoadingStats = $state(false);
+    /** @type {string | null} */
+    let statsError = $state(null);
+
     // --- Organizations Management State ---
     /** @type {Array<any>} */
     let organizations = $state([]);
@@ -175,6 +182,8 @@
     function showDashboard() {
         currentView = 'dashboard';
         goto(`${base}/admin`, { replaceState: true });
+        // Fetch system stats when dashboard is shown
+        fetchSystemStats();
     }
 
     function showUsers() {
@@ -743,6 +752,7 @@
                 console.log("URL indicates 'users' view.");
                 currentView = 'users';
                 fetchUsers(); // Always fetch when the view is users
+                fetchOrganizationsForUsers(); // Fetch organizations for filter dropdown
             } else if (viewParam === 'organizations') {
                 console.log("URL indicates 'organizations' view.");
                 currentView = 'organizations';
@@ -750,14 +760,18 @@
             } else {
                 console.log("URL indicates 'dashboard' view.");
                 currentView = 'dashboard';
+                fetchSystemStats(); // Fetch system stats for dashboard
             }
         });
 
         // Initial fetch if needed based on the current view
         if (currentView === 'users') {
             fetchUsers();
+            fetchOrganizationsForUsers(); // Fetch organizations for filter dropdown
         } else if (currentView === 'organizations') {
             fetchOrganizations();
+        } else if (currentView === 'dashboard') {
+            fetchSystemStats();
         }
     });
 
@@ -786,6 +800,53 @@
             return null;
         }
         return userData.token;
+    }
+
+    // Fetch system-wide statistics for dashboard
+    async function fetchSystemStats() {
+        if (isLoadingStats) {
+            console.log("Already loading stats, skipping duplicate request");
+            return;
+        }
+        
+        console.log("Fetching system statistics...");
+        isLoadingStats = true;
+        statsError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl('/admin/system-stats');
+            console.log(`Fetching stats from: ${apiUrl}`);
+
+            const response = await axios.get(apiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            console.log('System Stats Response:', response.data);
+            systemStats = response.data;
+        } catch (err) {
+            console.error('Error fetching system stats:', err);
+            if (axios.isAxiosError(err) && err.response?.status === 401) {
+                statsError = 'Access denied. Admin privileges required.';
+            } else if (axios.isAxiosError(err) && err.response?.status === 403) {
+                statsError = 'Admin privileges required to view system statistics.';
+            } else if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                statsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                statsError = err.message;
+            } else {
+                statsError = 'An unknown error occurred while fetching statistics.';
+            }
+            systemStats = null;
+        } finally {
+            isLoadingStats = false;
+        }
     }
 
     async function fetchUsers() {
@@ -904,6 +965,19 @@
     function handleUsersSortChange(event) {
         usersSortBy = event.detail.sortBy;
         usersSortOrder = event.detail.sortOrder;
+        applyUsersFilters();
+    }
+    
+    /** @param {string} column */
+    function handleColumnSort(column) {
+        if (usersSortBy === column) {
+            // Toggle order if clicking same column
+            usersSortOrder = usersSortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            // New column, default to ascending
+            usersSortBy = column;
+            usersSortOrder = 'asc';
+        }
         applyUsersFilters();
     }
     
@@ -1391,8 +1465,238 @@
     <!-- View Content -->
     {#if currentView === 'dashboard'}
         <div>
-            <h1 class="text-2xl font-semibold text-gray-800 mb-6">{localeLoaded ? $_('admin.dashboard.title', { default: 'Admin Dashboard' }) : 'Admin Dashboard'}</h1>
-            <p class="text-gray-600">{localeLoaded ? $_('admin.dashboard.welcome', { default: 'Welcome to the administration area. Use the tabs above to navigate.' }) : 'Welcome to the administration area. Use the tabs above to navigate.'}</p>
+            <h1 class="text-2xl font-semibold text-gray-800 mb-2">{localeLoaded ? $_('admin.dashboard.title', { default: 'System Dashboard' }) : 'System Dashboard'}</h1>
+            <p class="text-gray-500 mb-8 text-sm">{localeLoaded ? $_('admin.dashboard.welcome', { default: 'Overview of your LAMB platform statistics' }) : 'Overview of your LAMB platform statistics'}</p>
+            
+            {#if isLoadingStats}
+                <!-- Loading skeleton -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {#each Array(6) as _}
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-pulse">
+                            <div class="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
+                            <div class="h-10 bg-gray-200 rounded w-1/2 mb-4"></div>
+                            <div class="flex gap-4">
+                                <div class="h-3 bg-gray-200 rounded w-1/4"></div>
+                                <div class="h-3 bg-gray-200 rounded w-1/4"></div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            {:else if statsError}
+                <div class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-6" role="alert">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="font-medium">{statsError}</span>
+                    </div>
+                    <button 
+                        onclick={fetchSystemStats}
+                        class="mt-3 text-red-600 hover:text-red-800 underline text-sm"
+                    >
+                        Try again
+                    </button>
+                </div>
+            {:else if systemStats}
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Users Card -->
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-blue-600 uppercase tracking-wide">Users</h3>
+                            <div class="p-2 bg-blue-100 rounded-xl">
+                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.users.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-emerald-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                {systemStats.users.enabled} active
+                            </span>
+                            {#if systemStats.users.disabled > 0}
+                                <span class="text-gray-400 flex items-center gap-1">
+                                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                    {systemStats.users.disabled} disabled
+                                </span>
+                            {/if}
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-blue-100 flex gap-4 text-xs text-gray-500">
+                            <span>{systemStats.users.creators} creators</span>
+                            <span>{systemStats.users.end_users} end users</span>
+                        </div>
+                    </div>
+
+                    <!-- Organizations Card -->
+                    <div class="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl shadow-sm border border-violet-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-violet-600 uppercase tracking-wide">Organizations</h3>
+                            <div class="p-2 bg-violet-100 rounded-xl">
+                                <svg class="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.organizations.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-emerald-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                {systemStats.organizations.active} active
+                            </span>
+                            {#if systemStats.organizations.inactive > 0}
+                                <span class="text-gray-400 flex items-center gap-1">
+                                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                    {systemStats.organizations.inactive} inactive
+                                </span>
+                            {/if}
+                        </div>
+                    </div>
+
+                    <!-- Assistants Card -->
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl shadow-sm border border-emerald-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-emerald-600 uppercase tracking-wide">Assistants</h3>
+                            <div class="p-2 bg-emerald-100 rounded-xl">
+                                <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.assistants.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-emerald-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                {systemStats.assistants.published} published
+                            </span>
+                            <span class="text-amber-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-amber-400 rounded-full"></span>
+                                {systemStats.assistants.unpublished} drafts
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Knowledge Bases Card -->
+                    <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm border border-amber-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-amber-600 uppercase tracking-wide">Knowledge Bases</h3>
+                            <div class="p-2 bg-amber-100 rounded-xl">
+                                <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.knowledge_bases.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-cyan-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-cyan-500 rounded-full"></span>
+                                {systemStats.knowledge_bases.shared} shared
+                            </span>
+                            <span class="text-gray-400 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                {systemStats.knowledge_bases.total - systemStats.knowledge_bases.shared} private
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Rubrics Card -->
+                    <div class="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl shadow-sm border border-rose-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-rose-600 uppercase tracking-wide">Rubrics</h3>
+                            <div class="p-2 bg-rose-100 rounded-xl">
+                                <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.rubrics.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-rose-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-rose-500 rounded-full"></span>
+                                {systemStats.rubrics.public} public
+                            </span>
+                            <span class="text-gray-400 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                {systemStats.rubrics.total - systemStats.rubrics.public} private
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Templates Card -->
+                    <div class="bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl shadow-sm border border-slate-200 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-medium text-slate-600 uppercase tracking-wide">Prompt Templates</h3>
+                            <div class="p-2 bg-slate-200 rounded-xl">
+                                <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.templates.total}</div>
+                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                            <span class="text-slate-600 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-slate-500 rounded-full"></span>
+                                {systemStats.templates.shared} shared
+                            </span>
+                            <span class="text-gray-400 flex items-center gap-1">
+                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                {systemStats.templates.total - systemStats.templates.shared} private
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="mt-8 pt-8 border-t border-gray-200">
+                    <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Quick Actions</h3>
+                    <div class="flex flex-wrap gap-3">
+                        <button 
+                            onclick={showUsers}
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197"/>
+                            </svg>
+                            Manage Users
+                        </button>
+                        <button 
+                            onclick={showOrganizations}
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/>
+                            </svg>
+                            Manage Organizations
+                        </button>
+                        <button 
+                            onclick={fetchSystemStats}
+                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Refresh Stats
+                        </button>
+                    </div>
+                </div>
+            {:else}
+                <!-- Initial state - prompt to load -->
+                <div class="text-center py-12">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-gray-500 mb-4">Loading system statistics...</p>
+                    <button 
+                        onclick={fetchSystemStats}
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-hover transition-colors"
+                    >
+                        Load Statistics
+                    </button>
+                </div>
+            {/if}
         </div>
     {:else if currentView === 'users'}
         <!-- Users Management View -->
@@ -1460,16 +1764,9 @@
                     enabled: usersFilterEnabled,
                     organization: usersFilterOrg
                 }}
-                sortOptions={[
-                    { value: 'name', label: localeLoaded ? $_('admin.users.sortOptions.name', { default: 'Name' }) : 'Name' },
-                    { value: 'email', label: localeLoaded ? $_('admin.users.sortOptions.email', { default: 'Email' }) : 'Email' },
-                    { value: 'id', label: localeLoaded ? $_('admin.users.sortOptions.userId', { default: 'User ID' }) : 'User ID' }
-                ]}
-                sortBy={usersSortBy}
-                sortOrder={usersSortOrder}
+                showSort={false}
                 on:searchChange={handleUsersSearchChange}
                 on:filterChange={handleUsersFilterChange}
-                on:sortChange={handleUsersSortChange}
                 on:clearFilters={handleUsersClearFilters}
             />
             
@@ -1553,18 +1850,66 @@
                                 />
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                {localeLoaded ? $_('admin.users.table.name', { default: 'Name' }) : 'Name'}
+                                <button 
+                                    onclick={() => handleColumnSort('name')}
+                                    class="flex items-center gap-1 hover:text-brand-hover focus:outline-none group"
+                                >
+                                    {localeLoaded ? $_('admin.users.table.name', { default: 'Name' }) : 'Name'}
+                                    <span class="inline-flex flex-col {usersSortBy === 'name' ? 'text-brand' : 'text-gray-400 group-hover:text-gray-600'}">
+                                        {#if usersSortBy === 'name'}
+                                            {#if usersSortOrder === 'asc'}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                            {:else}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L10 13.586l3.293-3.293a1 1 0 011.414 0z"/></svg>
+                                            {/if}
+                                        {:else}
+                                            <svg class="w-4 h-4 opacity-0 group-hover:opacity-50" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                        {/if}
+                                    </span>
+                                </button>
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                {localeLoaded ? $_('admin.users.table.email', { default: 'Email' }) : 'Email'}
+                                <button 
+                                    onclick={() => handleColumnSort('email')}
+                                    class="flex items-center gap-1 hover:text-brand-hover focus:outline-none group"
+                                >
+                                    {localeLoaded ? $_('admin.users.table.email', { default: 'Email' }) : 'Email'}
+                                    <span class="inline-flex flex-col {usersSortBy === 'email' ? 'text-brand' : 'text-gray-400 group-hover:text-gray-600'}">
+                                        {#if usersSortBy === 'email'}
+                                            {#if usersSortOrder === 'asc'}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                            {:else}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L10 13.586l3.293-3.293a1 1 0 011.414 0z"/></svg>
+                                            {/if}
+                                        {:else}
+                                            <svg class="w-4 h-4 opacity-0 group-hover:opacity-50" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                        {/if}
+                                    </span>
+                                </button>
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
                                 {localeLoaded ? $_('admin.users.table.userType', { default: 'User Type' }) : 'User Type'}
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
-                                {localeLoaded ? $_('admin.users.table.organization', { default: 'Organization' }) : 'Organization'}
-                            </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden md:table-cell">
+                                <button 
+                                    onclick={() => handleColumnSort('organization.name')}
+                                    class="flex items-center gap-1 hover:text-brand-hover focus:outline-none group"
+                                >
+                                    {localeLoaded ? $_('admin.users.table.organization', { default: 'Organization' }) : 'Organization'}
+                                    <span class="inline-flex flex-col {usersSortBy === 'organization.name' ? 'text-brand' : 'text-gray-400 group-hover:text-gray-600'}">
+                                        {#if usersSortBy === 'organization.name'}
+                                            {#if usersSortOrder === 'asc'}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                            {:else}
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L10 13.586l3.293-3.293a1 1 0 011.414 0z"/></svg>
+                                            {/if}
+                                        {:else}
+                                            <svg class="w-4 h-4 opacity-0 group-hover:opacity-50" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L10 6.414l-3.293 3.293a1 1 0 01-1.414 0z"/></svg>
+                                        {/if}
+                                    </span>
+                                </button>
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider hidden lg:table-cell">
                                 {localeLoaded ? $_('admin.users.table.status', { default: 'Status' }) : 'Status'}
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
@@ -1600,32 +1945,31 @@
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                                             {localeLoaded ? $_('admin.users.filtersOptions.endUser', { default: 'End User' }) : 'End User'}
                                         </span>
+                                    {:else if user.organization_role === 'admin' || user.organization_role === 'owner'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                                            {localeLoaded ? $_('admin.users.tableValues.orgAdmin', { default: 'Org Admin' }) : 'Org Admin'}
+                                        </span>
                                     {:else}
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                             {localeLoaded ? $_('admin.users.filtersOptions.creator', { default: 'Creator' }) : 'Creator'}
                                         </span>
                                     {/if}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden lg:table-cell">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell">
                                     {#if user.organization}
-                                        <div class="flex items-center">
+                                        <div class="flex items-center flex-wrap gap-1">
                                             <span class="text-sm font-medium text-gray-900">{user.organization.name || '-'}</span>
                                             {#if user.organization.is_system}
-                                                <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
                                                     {localeLoaded ? $_('admin.users.tableValues.system', { default: 'System' }) : 'System'}
                                                 </span>
                                             {/if}
                                         </div>
-                                        {#if user.organization_role && user.organization_role !== 'member'}
-                                            <div class="text-xs text-gray-500">
-                                                {user.organization_role}
-                                            </div>
-                                        {/if}
                                     {:else}
                                         <span class="text-gray-400">{localeLoaded ? $_('admin.users.tableValues.noOrganization', { default: 'No Organization' }) : 'No Organization'}</span>
                                     {/if}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm hidden md:table-cell">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm hidden lg:table-cell">
                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                         {user.enabled 
                                             ? (localeLoaded ? $_('admin.users.filtersOptions.active', { default: 'Active' }) : 'Active')
@@ -1648,7 +1992,9 @@
                                     <button
                                         class={currentUserData && currentUserData.email === user.email && user.enabled 
                                             ? "text-gray-400 cursor-not-allowed" 
-                                            : "text-blue-600 hover:text-blue-800"}
+                                            : user.enabled 
+                                                ? "text-red-500 hover:text-red-700"
+                                                : "text-green-600 hover:text-green-800"}
                                         title={currentUserData && currentUserData.email === user.email && user.enabled 
                                             ? (localeLoaded ? $_('admin.users.actions.cannotDisableSelf', { default: 'You cannot disable your own account' }) : 'You cannot disable your own account')
                                             : (user.enabled 
@@ -1665,12 +2011,14 @@
                                         disabled={currentUserData && currentUserData.email === user.email && user.enabled}
                                     >
                                         {#if user.enabled}
+                                            <!-- User X icon (disable) - red -->
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
                                             </svg>
                                         {:else}
+                                            <!-- User check icon (enable) - green -->
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
                                             </svg>
                                         {/if}
                                     </button>
@@ -1682,17 +2030,15 @@
             </div>
             
             <!-- Pagination -->
-            {#if usersTotalPages > 1}
-                <Pagination
-                    currentPage={usersPage}
-                    totalPages={usersTotalPages}
-                    totalItems={usersTotalItems}
-                    itemsPerPage={usersPerPage}
-                    itemsPerPageOptions={[10, 25, 50, 100]}
-                    on:pageChange={handleUsersPageChange}
-                    on:itemsPerPageChange={handleUsersPerPageChange}
-                />
-            {/if}
+            <Pagination
+                currentPage={usersPage}
+                totalPages={usersTotalPages}
+                totalItems={usersTotalItems}
+                itemsPerPage={usersPerPage}
+                itemsPerPageOptions={[10, 25, 50, 100]}
+                on:pageChange={handleUsersPageChange}
+                on:itemsPerPageChange={handleUsersPerPageChange}
+            />
             {/if}
         {/if}
     {:else if currentView === 'organizations'}
