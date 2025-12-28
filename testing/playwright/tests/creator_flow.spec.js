@@ -150,4 +150,79 @@ test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
       timeout: 30_000,
     });
   });
+
+  test("Delete assistant", async ({ page }) => {
+    await page.goto("assistants");
+    await page.waitForLoadState("networkidle");
+
+    // Search for the assistant to ensure it's visible
+    const searchBox = page.locator('input[placeholder*="Search" i]');
+    if (await searchBox.count()) {
+      await searchBox.fill(assistantName);
+      await page.waitForTimeout(500);
+    }
+
+    // Find and click the delete button for the assistant
+    // The delete button should be in the actions column for the assistant row
+    const assistantRow = page.locator(`text=${assistantName}`).first();
+    await expect(assistantRow).toBeVisible({ timeout: 10_000 });
+
+    // Click the delete button (trash icon)
+    const deleteButton = page
+      .locator(`tr:has-text("${assistantName}")`)
+      .getByRole("button", { name: /delete/i })
+      .first();
+    await expect(deleteButton).toBeVisible({ timeout: 5_000 });
+    await deleteButton.click();
+
+    // Wait for the custom delete confirmation modal to appear
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(/delete assistant/i)).toBeVisible();
+
+    // Click the "Delete" button in the modal
+    const confirmDeleteButton = modal.getByRole("button", { name: /^delete$/i });
+    await expect(confirmDeleteButton).toBeVisible({ timeout: 5_000 });
+    await confirmDeleteButton.click();
+
+    // Wait for the modal to close and assistant to be removed from the list
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    await expect(assistantRow).not.toBeVisible({ timeout: 10_000 });
+    console.log(`Assistant "${assistantName}" successfully deleted.`);
+  });
+
+  test("Delete knowledge base", async ({ page }) => {
+    await page.goto("knowledgebases");
+    await page.waitForLoadState("networkidle");
+
+    // Search for the KB to ensure it's visible
+    const searchBox = page.locator('input[placeholder*="Search" i]');
+    if (await searchBox.count()) {
+      await searchBox.fill(kbName);
+      await page.waitForTimeout(500);
+    }
+
+    // Find the KB row
+    const kbRow = page.locator(`text=${kbName}`).first();
+    await expect(kbRow).toBeVisible({ timeout: 10_000 });
+
+    // Click the delete button
+    const deleteButton = page
+      .locator(`tr:has-text("${kbName}")`)
+      .getByRole("button", { name: /delete/i })
+      .first();
+    await expect(deleteButton).toBeVisible({ timeout: 5_000 });
+
+    // Set up dialog handler BEFORE clicking delete
+    page.once("dialog", async (dialog) => {
+      console.log("Confirm dialog:", dialog.message());
+      await dialog.accept();
+    });
+
+    await deleteButton.click();
+
+    // Wait for the KB to be removed from the list
+    await expect(kbRow).not.toBeVisible({ timeout: 10_000 });
+    console.log(`Knowledge base "${kbName}" successfully deleted.`);
+  });
 });

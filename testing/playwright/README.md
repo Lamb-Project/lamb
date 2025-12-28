@@ -40,7 +40,6 @@ Scripts not yet automated (run individually as needed):
 | `create_org.js`          | Organization creation          |
 | `create_user.js`         | User creation                  |
 | `config_owui.js`         | Configure OpenWebUI connection |
-| `remove_kb.js`           | Test knowledge base deletion   |
 | `ingest_video.js`        | Video ingestion testing        |
 | `test_url_ingest.js`     | URL ingestion testing          |
 | `test_youtube_titles.js` | YouTube title extraction       |
