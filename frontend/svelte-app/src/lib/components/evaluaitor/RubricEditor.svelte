@@ -318,6 +318,7 @@
             <button
               onclick={() => successMessage = null}
               class="inline-flex text-green-400 hover:text-green-600"
+              aria-label="Dismiss success message"
             >
               <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -337,6 +338,14 @@
         <div
           class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
           onclick={cancelSaveAs}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              cancelSaveAs();
+            }
+          }}
+          role="button"
+          aria-label="Close modal"
+          tabindex="-1"
         ></div>
 
         <!-- Modal panel -->

@@ -176,7 +176,7 @@
             <span class="text-sm font-medium text-gray-700">{$user.name}</span>
             <button
               onclick={logout}
-              class="inline-flex items-center justify-center px-2 py-1 border border-transparent text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700"
+              class="inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded text-white bg-red-600 hover:bg-red-700"
             >
               {localeLoaded ? $_('auth.logout') : 'Logout'}
             </button>

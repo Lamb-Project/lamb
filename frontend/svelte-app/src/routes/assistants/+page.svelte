@@ -798,7 +798,21 @@
 
 <!-- Tabs/View Navigation -->
 <div class="mb-6 border-b border-gray-200">
-    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+    <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+        <!-- Create View Button - Primary CTA, placed first -->
+        <button
+            class="whitespace-nowrap py-2.5 px-4 font-medium text-sm rounded-lg transition-all duration-150 inline-flex items-center gap-1.5 {currentView === 'create' ? 'bg-brand text-white shadow-md' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow-md'}"
+            style={currentView === 'create' ? 'background-color: #2271b3;' : ''}
+            onclick={showCreateForm}
+        >
+            <!-- Plus icon -->
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
+        </button>
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-1"></div>
         <!-- List View Button (Acts like a tab) -->
         <button
             class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 {currentView === 'list' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
@@ -822,14 +836,6 @@
             onclick={showTemplates}
         >
             {currentLocale ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
-        </button>
-        <!-- Create View Button -->
-        <button
-            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md {currentView === 'create' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
-            style={currentView === 'create' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
-            onclick={showCreateForm}
-        >
-            {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
         </button>
         <!-- OpenWebUI Tab (External Link) - Moved to the right -->
         {#if $user.owiUrl}
@@ -915,7 +921,7 @@
                 class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'analytics' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
                 onclick={() => detailSubView = 'analytics'}
             >
-                {currentLocale ? $_('assistants.detail.analyticsTab', { default: 'Analytics' }) : 'Analytics'}
+                {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
             </button>
         {/if}
     </div>

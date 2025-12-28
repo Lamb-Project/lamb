@@ -549,6 +549,14 @@
     "export": "Export",
     "search": "Search templates..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "chats",
+      "users": "users",
+      "messages": "messages",
+      "messagesPerChat": "messages per chat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Dashboard",

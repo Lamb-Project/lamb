@@ -544,6 +544,14 @@
     "export": "Exportar",
     "search": "Cercar plantilles..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "xats",
+      "users": "usuaris",
+      "messages": "missatges",
+      "messagesPerChat": "missatges per xat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Panell de Control",

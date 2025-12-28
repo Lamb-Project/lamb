@@ -551,6 +551,14 @@
     "export": "Esportatu",
     "search": "Bilatu txantiloiak..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "txat",
+      "users": "erabiltzaile",
+      "messages": "mezu",
+      "messagesPerChat": "mezu txat bakoitzeko"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Kontrol Panela",

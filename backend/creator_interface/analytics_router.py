@@ -204,10 +204,11 @@ async def list_assistant_chats(
     assistant_id: int,
     start_date: Optional[str] = Query(None, description="Filter from date (ISO format)"),
     end_date: Optional[str] = Query(None, description="Filter until date (ISO format)"),
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page")
 ):
-    """List all chats for an assistant with optional date filtering"""
+    """List all chats for an assistant with optional date and user filtering"""
     
     # Authenticate user
     auth_header = request.headers.get("Authorization", "")
@@ -238,6 +239,7 @@ async def list_assistant_chats(
         assistant_id=assistant_id,
         start_date=start_dt,
         end_date=end_dt,
+        user_id=user_id,
         page=page,
         per_page=per_page,
         anonymize_users=anonymize

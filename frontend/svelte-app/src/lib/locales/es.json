@@ -555,6 +555,14 @@
     "export": "Exportar",
     "search": "Buscar plantillas..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "chats",
+      "users": "usuarios",
+      "messages": "mensajes",
+      "messagesPerChat": "mensajes por chat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Panel de Control",
