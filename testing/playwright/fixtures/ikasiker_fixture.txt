@@ -1,0 +1,8 @@
+Convocatoria Ikasiker 2025/2026
+
+Resumen:
+- Se convocan 50 becas Ikasiker.
+- La duración es de 12 meses.
+- La fecha límite de solicitud es 2026-01-31.
+
+Este documento es un fixture pequeño para pruebas E2E.
