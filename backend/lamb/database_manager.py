@@ -58,7 +58,7 @@ class LambDatabaseManager:
                 self.create_database_and_tables()
                 logger.info(f"Created database at: {self.db_path}")
 #            logger.debug(f"Found database at: {self.db_path}")
-            
+
             # Always run migrations on initialization (handles existing databases)
             self.run_migrations()
 
@@ -101,9 +101,12 @@ class LambDatabaseManager:
                         updated_at INTEGER NOT NULL
                     )
                 """)
-                cursor.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_slug ON {self.table_prefix}organizations(slug)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_status ON {self.table_prefix}organizations(status)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_is_system ON {self.table_prefix}organizations(is_system)")
+                cursor.execute(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_slug ON {self.table_prefix}organizations(slug)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_status ON {self.table_prefix}organizations(status)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}organizations_is_system ON {self.table_prefix}organizations(is_system)")
                 logger.info(
                     f"Table '{self.table_prefix}organizations' created successfully")
 
@@ -122,9 +125,12 @@ class LambDatabaseManager:
                         UNIQUE(organization_id, user_id)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_org ON {self.table_prefix}organization_roles(organization_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_user ON {self.table_prefix}organization_roles(user_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_role ON {self.table_prefix}organization_roles(role)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_org ON {self.table_prefix}organization_roles(organization_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_user ON {self.table_prefix}organization_roles(user_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}org_roles_role ON {self.table_prefix}organization_roles(role)")
                 logger.info(
                     f"Table '{self.table_prefix}organization_roles' created successfully")
 
@@ -143,8 +149,10 @@ class LambDatabaseManager:
                         FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_org_date ON {self.table_prefix}usage_logs(organization_id, created_at)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_user_date ON {self.table_prefix}usage_logs(user_id, created_at)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_org_date ON {self.table_prefix}usage_logs(organization_id, created_at)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_user_date ON {self.table_prefix}usage_logs(user_id, created_at)")
                 logger.info(
                     f"Table '{self.table_prefix}usage_logs' created successfully")
 
@@ -185,7 +193,8 @@ class LambDatabaseManager:
                         UNIQUE(organization_id, name, owner)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistants_org ON {self.table_prefix}assistants(organization_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistants_org ON {self.table_prefix}assistants(organization_id)")
                 logger.info(
                     f"Table '{self.table_prefix}assistants' created successfully")
 
@@ -242,8 +251,10 @@ class LambDatabaseManager:
                         UNIQUE(assistant_id, shared_with_user_id)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
                 logger.info(
                     f"Table '{self.table_prefix}assistant_shares' created successfully")
 
@@ -263,8 +274,10 @@ class LambDatabaseManager:
                         UNIQUE(user_email)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org ON {self.table_prefix}Creator_users(organization_id)")
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org ON {self.table_prefix}Creator_users(organization_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
                 logger.info(
                     f"Table '{self.table_prefix}Creator_users' created successfully")
 
@@ -283,11 +296,11 @@ class LambDatabaseManager:
                         UNIQUE(organization_id, collection_name)
                     )
                 """)
-                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}collections_org ON {self.table_prefix}collections(organization_id)")
+                cursor.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}collections_org ON {self.table_prefix}collections(organization_id)")
                 logger.info(
                     f"Table '{self.table_prefix}collections' created successfully")
 
-            
                 # Create the config table
                 logger.debug("Creating config table")
                 cursor.execute(f"""
@@ -319,7 +332,7 @@ class LambDatabaseManager:
     def create_admin_user(self):
         """Create the system admin user in both OWI and LAMB systems"""
         owi_manager = OwiUserManager()
-        
+
         # Create or verify OWI admin user
         owi_user = owi_manager.get_user_by_email(config.OWI_ADMIN_EMAIL)
         if not owi_user:
@@ -333,19 +346,21 @@ class LambDatabaseManager:
         else:
             # Ensure the user has admin role in OWI
             if owi_user.get('role') != 'admin':
-                owi_manager.update_user_role_by_email(config.OWI_ADMIN_EMAIL, 'admin')
-                logger.info(f"Updated OWI user to admin role: {config.OWI_ADMIN_EMAIL}")
-        
+                owi_manager.update_user_role_by_email(
+                    config.OWI_ADMIN_EMAIL, 'admin')
+                logger.info(
+                    f"Updated OWI user to admin role: {config.OWI_ADMIN_EMAIL}")
+
         # Note: LAMB creator user will be created in initialize_system_organization
         # to ensure it's created with the correct organization_id
 
     def initialize_system_organization(self):
         """Initialize the system organization and admin user"""
         logger.info("Initializing system organization")
-        
+
         # Check if system organization exists
         system_org = self.get_organization_by_slug("lamb")
-        
+
         if not system_org:
             # Create system organization from environment
             system_org_id = self.create_system_organization()
@@ -356,19 +371,20 @@ class LambDatabaseManager:
             system_org_id = system_org['id']
             # Update system organization config from .env
             self.sync_system_org_with_env(system_org_id)
-            logger.info("System organization configuration updated from environment")
-        
+            logger.info(
+                "System organization configuration updated from environment")
+
         # Always ensure admin user exists and has proper roles
         self.ensure_system_admin(system_org_id)
-    
+
     def ensure_system_admin(self, system_org_id: int):
         """Ensure the system admin exists and has proper roles in both OWI and LAMB"""
         # First, ensure OWI admin exists
         self.create_admin_user()
-        
+
         # Check if LAMB creator user exists
         admin_user = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL)
-        
+
         if not admin_user:
             # Create LAMB creator user with system organization
             admin_user_id = self.create_creator_user(
@@ -378,64 +394,75 @@ class LambDatabaseManager:
                 organization_id=system_org_id
             )
             if admin_user_id:
-                logger.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
+                logger.info(
+                    f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
                 # Assign admin role in organization
                 self.assign_organization_role(
                     organization_id=system_org_id,
                     user_id=admin_user_id,
                     role="admin"
                 )
-                logger.info(f"Assigned admin role to user {admin_user_id} in system organization")
+                logger.info(
+                    f"Assigned admin role to user {admin_user_id} in system organization")
         else:
             # User exists, ensure they have correct organization and role
             admin_user_id = admin_user['id']
-            
+
             # Check and update organization if needed
             if admin_user.get('organization_id') != system_org_id:
                 self.update_user_organization(admin_user_id, system_org_id)
                 logger.info(f"Updated admin user organization to system org")
-            
+
             # Check and assign admin role if needed
-            current_role = self.get_user_organization_role(admin_user_id, system_org_id)
+            current_role = self.get_user_organization_role(
+                admin_user_id, system_org_id)
             if current_role != "admin":
                 self.assign_organization_role(
                     organization_id=system_org_id,
                     user_id=admin_user_id,
                     role="admin"
                 )
-                logger.info(f"Updated admin user role to 'admin' in system organization")
-    
+                logger.info(
+                    f"Updated admin user role to 'admin' in system organization")
+
     def run_migrations(self):
         """Run database migrations for schema updates"""
         logger.info("Running database migrations")
         connection = self.get_connection()
         if not connection:
-            logger.error("Could not establish database connection for migrations")
+            logger.error(
+                "Could not establish database connection for migrations")
             return
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Migration 1: Add user_type column to Creator_users if it doesn't exist
-                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                cursor.execute(
+                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
                 columns = [row[1] for row in cursor.fetchall()]
-                
+
                 if 'user_type' not in columns:
-                    logger.info("Adding user_type column to Creator_users table")
+                    logger.info(
+                        "Adding user_type column to Creator_users table")
                     cursor.execute(f"""
                         ALTER TABLE {self.table_prefix}Creator_users 
                         ADD COLUMN user_type TEXT NOT NULL DEFAULT 'creator' 
                         CHECK(user_type IN ('creator', 'end_user'))
                     """)
                     # Create index for user_type
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
-                    logger.info("Successfully added user_type column and index")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_type ON {self.table_prefix}Creator_users(user_type)")
+                    logger.info(
+                        "Successfully added user_type column and index")
                 else:
-                    logger.debug("user_type column already exists in Creator_users table")
+                    logger.debug(
+                        "user_type column already exists in Creator_users table")
 
                 # Migration 2: Create rubrics table if it doesn't exist
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}rubrics'")
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}rubrics'")
                 rubrics_table_exists = cursor.fetchone()
 
                 if not rubrics_table_exists:
@@ -460,18 +487,25 @@ class LambDatabaseManager:
                     """)
 
                     # Create indexes for performance
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_owner ON {self.table_prefix}rubrics(owner_email)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_org ON {self.table_prefix}rubrics(organization_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_rubric_id ON {self.table_prefix}rubrics(rubric_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_public ON {self.table_prefix}rubrics(is_public)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_showcase ON {self.table_prefix}rubrics(is_showcase)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_owner ON {self.table_prefix}rubrics(owner_email)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_org ON {self.table_prefix}rubrics(organization_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_rubric_id ON {self.table_prefix}rubrics(rubric_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_public ON {self.table_prefix}rubrics(is_public)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}rubrics_showcase ON {self.table_prefix}rubrics(is_showcase)")
 
-                    logger.info("Successfully created rubrics table and indexes")
+                    logger.info(
+                        "Successfully created rubrics table and indexes")
                 else:
                     logger.debug("rubrics table already exists")
 
                 # Migration 3: Create prompt_templates table if it doesn't exist
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}prompt_templates'")
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}prompt_templates'")
                 prompt_templates_table_exists = cursor.fetchone()
 
                 if not prompt_templates_table_exists:
@@ -496,18 +530,23 @@ class LambDatabaseManager:
                     """)
 
                     # Create indexes for performance
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_org_shared ON {self.table_prefix}prompt_templates(organization_id, is_shared)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_owner ON {self.table_prefix}prompt_templates(owner_email)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_name ON {self.table_prefix}prompt_templates(name)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_org_shared ON {self.table_prefix}prompt_templates(organization_id, is_shared)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_owner ON {self.table_prefix}prompt_templates(owner_email)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}prompt_templates_name ON {self.table_prefix}prompt_templates(name)")
 
-                    logger.info("Successfully created prompt_templates table and indexes")
+                    logger.info(
+                        "Successfully created prompt_templates table and indexes")
                 else:
                     logger.debug("prompt_templates table already exists")
 
                 # Migration 4: Add enabled column to Creator_users if it doesn't exist
-                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                cursor.execute(
+                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
                 columns = [row[1] for row in cursor.fetchall()]
-                
+
                 if 'enabled' not in columns:
                     logger.info("Adding enabled column to Creator_users table")
                     cursor.execute(f"""
@@ -515,13 +554,16 @@ class LambDatabaseManager:
                         ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1
                     """)
                     # Create index for performance
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_enabled ON {self.table_prefix}Creator_users(enabled)")
                     logger.info("Successfully added enabled column and index")
                 else:
-                    logger.debug("enabled column already exists in Creator_users table")
+                    logger.debug(
+                        "enabled column already exists in Creator_users table")
 
                 # Migration 5: Create kb_registry table if it doesn't exist
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}kb_registry'")
                 kb_registry_table_exists = cursor.fetchone()
 
                 if not kb_registry_table_exists:
@@ -543,16 +585,21 @@ class LambDatabaseManager:
                     """)
 
                     # Create indexes for performance
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_owner ON {self.table_prefix}kb_registry(owner_user_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_owner ON {self.table_prefix}kb_registry(owner_user_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_org_shared ON {self.table_prefix}kb_registry(organization_id, is_shared)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_registry_kb_id ON {self.table_prefix}kb_registry(kb_id)")
 
-                    logger.info("Successfully created kb_registry table and indexes")
+                    logger.info(
+                        "Successfully created kb_registry table and indexes")
                 else:
                     logger.debug("kb_registry table already exists")
 
                 # Migration 6: Create bulk_import_logs table if it doesn't exist
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}bulk_import_logs'")
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}bulk_import_logs'")
                 bulk_import_logs_table_exists = cursor.fetchone()
 
                 if not bulk_import_logs_table_exists:
@@ -575,15 +622,20 @@ class LambDatabaseManager:
                     """)
 
                     # Create indexes for performance
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_org ON {self.table_prefix}bulk_import_logs(organization_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_admin ON {self.table_prefix}bulk_import_logs(admin_user_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_created ON {self.table_prefix}bulk_import_logs(created_at)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_type ON {self.table_prefix}bulk_import_logs(operation_type)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_org ON {self.table_prefix}bulk_import_logs(organization_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_admin ON {self.table_prefix}bulk_import_logs(admin_user_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_created ON {self.table_prefix}bulk_import_logs(created_at)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}bulk_import_logs_type ON {self.table_prefix}bulk_import_logs(operation_type)")
 
-                    logger.info("Successfully created bulk_import_logs table and indexes")
+                    logger.info(
+                        "Successfully created bulk_import_logs table and indexes")
                 else:
                     logger.debug("bulk_import_logs table already exists")
-                
+
                 # Migration: Check if assistant_shares table exists
                 cursor.execute(f"""
                     SELECT name FROM sqlite_master 
@@ -604,19 +656,24 @@ class LambDatabaseManager:
                             UNIQUE(assistant_id, shared_with_user_id)
                         )
                     """)
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                    logger.info(f"Table '{self.table_prefix}assistant_shares' created successfully")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
+                    logger.info(
+                        f"Table '{self.table_prefix}assistant_shares' created successfully")
                 else:
                     logger.debug("assistant_shares table already exists")
 
                 # Migration 7: Create lamb_chats table for internal chat persistence
                 # This mirrors the OWI chat table structure for unified analytics
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lamb_chats'")
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lamb_chats'")
                 lamb_chats_table_exists = cursor.fetchone()
 
                 if not lamb_chats_table_exists:
-                    logger.info("Creating lamb_chats table for internal chat persistence")
+                    logger.info(
+                        "Creating lamb_chats table for internal chat persistence")
                     cursor.execute(f"""
                         CREATE TABLE {self.table_prefix}lamb_chats (
                             id TEXT PRIMARY KEY,
@@ -633,13 +690,19 @@ class LambDatabaseManager:
                     """)
 
                     # Create indexes for common query patterns
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user ON {self.table_prefix}lamb_chats(user_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_assistant ON {self.table_prefix}lamb_chats(assistant_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user_assistant ON {self.table_prefix}lamb_chats(user_id, assistant_id)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_updated ON {self.table_prefix}lamb_chats(updated_at)")
-                    cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_archived ON {self.table_prefix}lamb_chats(archived)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user ON {self.table_prefix}lamb_chats(user_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_assistant ON {self.table_prefix}lamb_chats(assistant_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_user_assistant ON {self.table_prefix}lamb_chats(user_id, assistant_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_updated ON {self.table_prefix}lamb_chats(updated_at)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lamb_chats_archived ON {self.table_prefix}lamb_chats(archived)")
 
-                    logger.info("Successfully created lamb_chats table and indexes")
+                    logger.info(
+                        "Successfully created lamb_chats table and indexes")
                 else:
                     logger.debug("lamb_chats table already exists")
 
@@ -648,12 +711,12 @@ class LambDatabaseManager:
         finally:
             if connection:
                 connection.close()
-    
+
     def create_system_organization(self) -> Optional[int]:
         """Create the 'lamb' system organization from .env configuration"""
         import os
         from datetime import datetime
-        
+
         config_data = {
             "version": "1.0",
             "metadata": {
@@ -678,25 +741,26 @@ class LambDatabaseManager:
                 }
             }
         }
-        
+
         # Seed assistant defaults from defaults.json
         try:
             config_data['assistant_defaults'] = self._load_assistant_defaults_from_file()
         except Exception as e:
-            logger.warning(f"Could not load assistant defaults for system org: {e}")
-        
+            logger.warning(
+                f"Could not load assistant defaults for system org: {e}")
+
         return self.create_organization(
             slug="lamb",
             name="LAMB System Organization",
             is_system=True,
             config=config_data
         )
-    
+
     def _load_providers_from_env(self) -> Dict[str, Any]:
         """Load provider configurations from environment variables"""
         import os
         providers = {}
-        
+
         # OpenAI configuration
         if os.getenv("OPENAI_API_KEY"):
             providers["openai"] = {
@@ -705,16 +769,16 @@ class LambDatabaseManager:
                 "models": os.getenv("OPENAI_MODELS", "").split(",") if os.getenv("OPENAI_MODELS") else [],
                 "default_model": os.getenv("OPENAI_MODEL") or config.OPENAI_MODEL
             }
-        
+
         # Ollama configuration
         if os.getenv("OLLAMA_BASE_URL"):
             providers["ollama"] = {
                 "base_url": os.getenv("OLLAMA_BASE_URL"),
                 "models": [os.getenv("OLLAMA_MODEL", "llama3.1")]
             }
-        
+
         return providers
-    
+
     def _load_kb_config_from_env(self) -> Dict[str, Any]:
         """Load knowledge base configuration from environment variables"""
         import os
@@ -722,7 +786,7 @@ class LambDatabaseManager:
             "server_url": os.getenv("LAMB_KB_SERVER", ""),
             "api_token": os.getenv("LAMB_KB_SERVER_TOKEN", "")
         }
-    
+
     def _load_features_from_env(self) -> Dict[str, Any]:
         """Load feature flags from environment variables"""
         import os
@@ -733,29 +797,30 @@ class LambDatabaseManager:
             "lti_publishing": True,
             "rag_enabled": True
         }
-        
+
         # Add signup key if signup is enabled and key is available
         signup_key = os.getenv("SIGNUP_SECRET_KEY")
         if features["signup_enabled"] and signup_key:
             features["signup_key"] = signup_key.strip()
-            
+
         return features
-    
+
     def _load_assistant_defaults_from_file(self) -> Dict[str, Any]:
         """Load assistant defaults from /backend/static/json/defaults.json"""
         import json
         import os
         from pathlib import Path
-        
+
         try:
             # Try multiple possible paths
             possible_paths = [
-                Path(__file__).parent.parent / "static" / "json" / "defaults.json",
+                Path(__file__).parent.parent /
+                "static" / "json" / "defaults.json",
                 Path("/opt/lamb_v4/backend/static/json/defaults.json"),
                 Path("static/json/defaults.json"),
                 Path("backend/static/json/defaults.json")
             ]
-            
+
             for path in possible_paths:
                 if path.exists():
                     with open(path, 'r') as f:
@@ -764,7 +829,7 @@ class LambDatabaseManager:
                         if 'config' in data:
                             return data['config']
                         return data
-            
+
             logger.warning("defaults.json not found, using minimal defaults")
             return {
                 "connector": "openai",
@@ -780,7 +845,7 @@ class LambDatabaseManager:
                 "prompt_processor": "simple_augment",
                 "rag_processor": "No RAG"
             }
-    
+
     def _ensure_assistant_defaults_in_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure assistant_defaults exists in config, merging with file defaults"""
         if 'assistant_defaults' not in config:
@@ -792,7 +857,7 @@ class LambDatabaseManager:
                 if key not in config['assistant_defaults']:
                     config['assistant_defaults'][key] = value
         return config
-    
+
     def sync_system_org_with_env(self, org_id: int):
         """Update system organization configuration from environment variables"""
         org = self.get_organization_by_id(org_id)
@@ -810,52 +875,58 @@ class LambDatabaseManager:
         try:
             config = self._ensure_assistant_defaults_in_config(config)
         except Exception as e:
-            logger.warning(f"Could not ensure assistant_defaults during system sync: {e}")
+            logger.warning(
+                f"Could not ensure assistant_defaults during system sync: {e}")
 
         # Sync global default model from environment
-        global_default_provider = os.getenv('GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
-        global_default_model = os.getenv('GLOBAL_DEFAULT_MODEL_NAME', '').strip()
-        
+        global_default_provider = os.getenv(
+            'GLOBAL_DEFAULT_MODEL_PROVIDER', '').strip()
+        global_default_model = os.getenv(
+            'GLOBAL_DEFAULT_MODEL_NAME', '').strip()
+
         if global_default_provider and global_default_model:
             if 'default' not in config['setups']:
                 config['setups']['default'] = {}
-            
+
             config['setups']['default']['global_default_model'] = {
                 "provider": global_default_provider,
                 "model": global_default_model
             }
-            logger.info(f"Synced global-default-model: {global_default_provider}/{global_default_model}")
-        
+            logger.info(
+                f"Synced global-default-model: {global_default_provider}/{global_default_model}")
+
         # Sync small fast model from environment
-        small_fast_provider = os.getenv('SMALL_FAST_MODEL_PROVIDER', '').strip()
+        small_fast_provider = os.getenv(
+            'SMALL_FAST_MODEL_PROVIDER', '').strip()
         small_fast_model = os.getenv('SMALL_FAST_MODEL_NAME', '').strip()
-        
+
         if small_fast_provider and small_fast_model:
             if 'default' not in config['setups']:
                 config['setups']['default'] = {}
-            
+
             config['setups']['default']['small_fast_model'] = {
                 "provider": small_fast_provider,
                 "model": small_fast_model
             }
-            logger.info(f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
+            logger.info(
+                f"Synced small-fast-model: {small_fast_provider}/{small_fast_model}")
 
         self.update_organization_config(org_id, config)
 
     # Organization Management Methods
-    
-    def create_organization(self, slug: str, name: str, is_system: bool = False, 
-                          config: Dict[str, Any] = None, status: str = "active") -> Optional[int]:
+
+    def create_organization(self, slug: str, name: str, is_system: bool = False,
+                            config: Dict[str, Any] = None, status: str = "active") -> Optional[int]:
         """Create a new organization"""
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Set default config if none provided
                 if config is None:
                     # Inherit from system organization baseline (includes assistant_defaults)
@@ -866,11 +937,13 @@ class LambDatabaseManager:
                         # Prefer system baseline when available
                         system_cfg = self.get_system_org_config_as_baseline()
                         if isinstance(system_cfg.get('assistant_defaults'), dict):
-                            config['assistant_defaults'] = system_cfg['assistant_defaults'].copy()
+                            config['assistant_defaults'] = system_cfg['assistant_defaults'].copy(
+                            )
                         else:
                             # Fallback to loading from file
-                            config['assistant_defaults'] = self._load_assistant_defaults_from_file()
-                    
+                            config['assistant_defaults'] = self._load_assistant_defaults_from_file(
+                            )
+
                     # Ensure both global models exist if not provided
                     if 'setups' in config and 'default' in config['setups']:
                         system_cfg = self.get_system_org_config_as_baseline()
@@ -878,37 +951,39 @@ class LambDatabaseManager:
                             # Inherit global_default_model
                             if 'global_default_model' not in config['setups']['default']:
                                 config['setups']['default']['global_default_model'] = system_cfg['setups']['default'].get(
-                                    'global_default_model', {"provider": "", "model": ""}
+                                    'global_default_model', {
+                                        "provider": "", "model": ""}
                                 )
                             # Inherit small_fast_model
                             if 'small_fast_model' not in config['setups']['default']:
                                 config['setups']['default']['small_fast_model'] = system_cfg['setups']['default'].get(
-                                    'small_fast_model', {"provider": "", "model": ""}
+                                    'small_fast_model', {
+                                        "provider": "", "model": ""}
                                 )
-                
+
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}organizations 
                     (slug, name, is_system, status, config, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (slug, name, is_system, status, json.dumps(config), now, now))
-                
+
                 org_id = cursor.lastrowid
                 logger.info(f"Organization '{name}' created with id: {org_id}")
                 return org_id
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error creating organization: {e}")
             return None
         finally:
             connection.close()
-    
-    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int, 
-                                     signup_enabled: bool = False, signup_key: str = None,
-                                     use_system_baseline: bool = True, 
-                                     config: Dict[str, Any] = None) -> Optional[int]:
+
+    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int,
+                                       signup_enabled: bool = False, signup_key: str = None,
+                                       use_system_baseline: bool = True,
+                                       config: Dict[str, Any] = None) -> Optional[int]:
         """
         Create a new organization with admin user assignment and signup configuration
-        
+
         Args:
             slug: URL-friendly organization identifier
             name: Organization display name
@@ -917,54 +992,58 @@ class LambDatabaseManager:
             signup_key: Unique signup key for organization-specific signup
             use_system_baseline: Whether to copy system org config as baseline
             config: Custom config (overrides system baseline if provided)
-        
+
         Returns:
             Organization ID if successful, None otherwise
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             # Validate signup key if provided
             if signup_key:
-                is_valid, error_msg = self.validate_signup_key_format(signup_key)
+                is_valid, error_msg = self.validate_signup_key_format(
+                    signup_key)
                 if not is_valid:
                     logger.error(f"Invalid signup key format: {error_msg}")
                     return None
-                
+
                 if not self.validate_signup_key_uniqueness(signup_key):
                     logger.error(f"Signup key '{signup_key}' already exists")
                     return None
-            
+
             # Validate that admin user exists and is in system organization
             admin_user = self.get_creator_user_by_id(admin_user_id)
             if not admin_user:
                 logger.error(f"Admin user {admin_user_id} not found")
                 return None
-            
+
             system_org = self.get_organization_by_slug("lamb")
             if not system_org or admin_user['organization_id'] != system_org['id']:
-                logger.error(f"Admin user {admin_user_id} is not in system organization")
+                logger.error(
+                    f"Admin user {admin_user_id} is not in system organization")
                 return None
-            
+
             # Check if user is currently an admin in the system organization
-            current_role = self.get_user_organization_role(admin_user_id, system_org['id'])
+            current_role = self.get_user_organization_role(
+                admin_user_id, system_org['id'])
             if current_role == "admin":
-                logger.error(f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
+                logger.error(
+                    f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
                 return None
-            
+
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Prepare organization configuration
                 if config is None:
                     if use_system_baseline:
                         config = self.get_system_org_config_as_baseline()
                     else:
                         config = self._get_default_org_config()
-                
+
                 # Configure signup settings
                 if 'features' not in config:
                     config['features'] = {}
@@ -973,59 +1052,62 @@ class LambDatabaseManager:
                     config['features']['signup_key'] = signup_key.strip()
                 elif 'signup_key' in config['features']:
                     del config['features']['signup_key']
-                
+
                 # Add creation metadata
                 if 'metadata' not in config:
                     config['metadata'] = {}
                 config['metadata']['admin_user_id'] = admin_user_id
                 config['metadata']['admin_user_email'] = admin_user['user_email']
                 config['metadata']['created_by_system_admin'] = True
-                
+
                 # Create organization
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}organizations 
                     (slug, name, is_system, status, config, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (slug, name, False, "active", json.dumps(config), now, now))
-                
+
                 org_id = cursor.lastrowid
                 logger.info(f"Organization '{name}' created with id: {org_id}")
-                
+
                 # Move admin user to new organization (inline to avoid connection conflicts)
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
                     SET organization_id = ?, updated_at = ?
                     WHERE id = ?
                 """, (org_id, now, admin_user_id))
-                
+
                 if cursor.rowcount == 0:
-                    logger.error(f"Failed to move admin user to new organization")
+                    logger.error(
+                        f"Failed to move admin user to new organization")
                     return None
-                
+
                 # Assign admin role to user in new organization (inline to avoid connection conflicts)
                 cursor.execute(f"""
                     INSERT OR REPLACE INTO {self.table_prefix}organization_roles
                     (organization_id, user_id, role, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?)
                 """, (org_id, admin_user_id, "admin", now, now))
-                
-                logger.info(f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
-                
-                logger.info(f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
+
+                logger.info(
+                    f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+
+                logger.info(
+                    f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
                 return org_id
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error creating organization with admin: {e}")
             return None
         finally:
             connection.close()
-    
+
     def get_organization_by_id(self, org_id: int) -> Optional[Dict[str, Any]]:
         """Get organization by ID"""
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -1034,11 +1116,11 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}organizations
                     WHERE id = ?
                 """, (org_id,))
-                
+
                 result = cursor.fetchone()
                 if not result:
                     return None
-                
+
                 return {
                     'id': result[0],
                     'slug': result[1],
@@ -1049,19 +1131,19 @@ class LambDatabaseManager:
                     'created_at': result[6],
                     'updated_at': result[7]
                 }
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error getting organization by ID: {e}")
             return None
         finally:
             connection.close()
-    
+
     def get_organization_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         """Get organization by slug"""
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -1070,11 +1152,11 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}organizations
                     WHERE slug = ?
                 """, (slug,))
-                
+
                 result = cursor.fetchone()
                 if not result:
                     return None
-                
+
                 return {
                     'id': result[0],
                     'slug': result[1],
@@ -1085,108 +1167,108 @@ class LambDatabaseManager:
                     'created_at': result[6],
                     'updated_at': result[7]
                 }
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error getting organization by slug: {e}")
             return None
         finally:
             connection.close()
-    
-    def update_organization(self, org_id: int, name: str = None, status: str = None, 
-                          config: Dict[str, Any] = None) -> bool:
+
+    def update_organization(self, org_id: int, name: str = None, status: str = None,
+                            config: Dict[str, Any] = None) -> bool:
         """Update organization details"""
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Build update query dynamically
                 updates = []
                 params = []
-                
+
                 if name is not None:
                     updates.append("name = ?")
                     params.append(name)
-                
+
                 if status is not None:
                     updates.append("status = ?")
                     params.append(status)
-                
+
                 if config is not None:
                     updates.append("config = ?")
                     params.append(json.dumps(config))
-                
+
                 updates.append("updated_at = ?")
                 params.append(now)
-                
+
                 params.append(org_id)
-                
+
                 query = f"""
                     UPDATE {self.table_prefix}organizations
                     SET {', '.join(updates)}
                     WHERE id = ?
                 """
-                
+
                 cursor.execute(query, params)
                 return cursor.rowcount > 0
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error updating organization: {e}")
             return False
         finally:
             connection.close()
-    
+
     def update_organization_config(self, org_id: int, config: Dict[str, Any]) -> bool:
         """Update organization configuration"""
         return self.update_organization(org_id, config=config)
-    
+
     def delete_organization(self, org_id: int) -> bool:
         """Delete an organization (cannot delete system organization)"""
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check if it's a system organization
                 cursor.execute(f"""
                     SELECT is_system FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
-                
+
                 result = cursor.fetchone()
                 if result and result[0]:
                     logger.error("Cannot delete system organization")
                     return False
-                
+
                 # Delete organization (cascade will handle related records)
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
-                
+
                 return cursor.rowcount > 0
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error deleting organization: {e}")
             return False
         finally:
             connection.close()
-    
+
     # Organization Migration Methods
-    
+
     def validate_migration(self, source_org_id: int, target_org_id: int) -> Dict[str, Any]:
         """
         Validate migration feasibility before execution.
-        
+
         Args:
             source_org_id: Source organization ID
             target_org_id: Target organization ID
-            
+
         Returns:
             Dict with validation results, conflicts, and resource counts
         """
@@ -1198,11 +1280,11 @@ class LambDatabaseManager:
                 "conflicts": {"assistants": [], "templates": []},
                 "resources": {}
             }
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check if organizations exist
                 cursor.execute(f"""
                     SELECT id, slug, is_system FROM {self.table_prefix}organizations WHERE id = ?
@@ -1215,7 +1297,7 @@ class LambDatabaseManager:
                         "conflicts": {"assistants": [], "templates": []},
                         "resources": {}
                     }
-                
+
                 if source_org[2]:  # is_system
                     return {
                         "can_migrate": False,
@@ -1223,7 +1305,7 @@ class LambDatabaseManager:
                         "conflicts": {"assistants": [], "templates": []},
                         "resources": {}
                     }
-                
+
                 cursor.execute(f"""
                     SELECT id, slug FROM {self.table_prefix}organizations WHERE id = ?
                 """, (target_org_id,))
@@ -1235,35 +1317,35 @@ class LambDatabaseManager:
                         "conflicts": {"assistants": [], "templates": []},
                         "resources": {}
                     }
-                
+
                 source_org_slug = source_org[1]
-                
+
                 # Count resources
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}Creator_users WHERE organization_id = ?
                 """, (source_org_id,))
                 user_count = cursor.fetchone()[0]
-                
+
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}assistants WHERE organization_id = ?
                 """, (source_org_id,))
                 assistant_count = cursor.fetchone()[0]
-                
+
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}prompt_templates WHERE organization_id = ?
                 """, (source_org_id,))
                 template_count = cursor.fetchone()[0]
-                
+
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}kb_registry WHERE organization_id = ?
                 """, (source_org_id,))
                 kb_count = cursor.fetchone()[0]
-                
+
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {self.table_prefix}usage_logs WHERE organization_id = ?
                 """, (source_org_id,))
                 log_count = cursor.fetchone()[0]
-                
+
                 # Detect assistant conflicts
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.owner
@@ -1284,7 +1366,7 @@ class LambDatabaseManager:
                         "owner": row[2],
                         "conflict_reason": "Target org already has assistant with same name and owner"
                     })
-                
+
                 # Detect template conflicts
                 cursor.execute(f"""
                     SELECT pt.id, pt.name, pt.owner_email
@@ -1305,7 +1387,7 @@ class LambDatabaseManager:
                         "owner_email": row[2],
                         "conflict_reason": "Target org already has template with same name and owner"
                     })
-                
+
                 return {
                     "can_migrate": True,
                     "conflicts": {
@@ -1322,7 +1404,7 @@ class LambDatabaseManager:
                     "source_org_slug": source_org_slug,
                     "estimated_time_seconds": max(10, (user_count + assistant_count + template_count) // 10)
                 }
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error validating migration: {e}")
             return {
@@ -1333,64 +1415,65 @@ class LambDatabaseManager:
             }
         finally:
             connection.close()
-    
+
     def migrate_users(self, source_org_id: int, target_org_id: int) -> int:
         """Migrate users from source to target organization"""
         connection = self.get_connection()
         if not connection:
             return 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
                     SET organization_id = ?, updated_at = ?
                     WHERE organization_id = ?
                 """, (target_org_id, now, source_org_id))
-                
+
                 migrated = cursor.rowcount
-                logger.info(f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
+                logger.info(
+                    f"Migrated {migrated} users from org {source_org_id} to {target_org_id}")
                 return migrated
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating users: {e}")
             raise
         finally:
             connection.close()
-    
+
     def migrate_roles(self, source_org_id: int, target_org_id: int, preserve_admin_roles: bool = False) -> int:
         """
         Migrate organization roles from source to target organization.
-        
+
         Args:
             source_org_id: Source organization ID
             target_org_id: Target organization ID
             preserve_admin_roles: If True, keep admin/owner roles. If False, downgrade to 'member'
-        
+
         Returns:
             Number of roles migrated
         """
         connection = self.get_connection()
         if not connection:
             return 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Get all roles from source org
                 cursor.execute(f"""
                     SELECT user_id, role FROM {self.table_prefix}organization_roles
                     WHERE organization_id = ?
                 """, (source_org_id,))
-                
+
                 roles = cursor.fetchall()
                 migrated = 0
-                
+
                 for user_id, role in roles:
                     # Determine target role
                     if preserve_admin_roles:
@@ -1401,7 +1484,7 @@ class LambDatabaseManager:
                             target_role = 'member'
                         else:
                             target_role = role  # Keep member as member
-                    
+
                     # Assign role in target organization
                     cursor.execute(f"""
                         INSERT OR REPLACE INTO {self.table_prefix}organization_roles
@@ -1409,64 +1492,67 @@ class LambDatabaseManager:
                         VALUES (?, ?, ?, ?, ?)
                     """, (target_org_id, user_id, target_role, now, now))
                     migrated += 1
-                
-                logger.info(f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
+
+                logger.info(
+                    f"Migrated {migrated} roles from org {source_org_id} to {target_org_id} (preserve_admin={preserve_admin_roles})")
                 return migrated
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating roles: {e}")
             raise
         finally:
             connection.close()
-    
-    def migrate_assistants(self, source_org_id: int, target_org_id: int, source_org_slug: str, 
-                          conflict_strategy: str = "rename") -> Dict[str, Any]:
+
+    def migrate_assistants(self, source_org_id: int, target_org_id: int, source_org_slug: str,
+                           conflict_strategy: str = "rename") -> Dict[str, Any]:
         """
         Migrate assistants from source to target organization with conflict resolution.
-        
+
         Args:
             source_org_id: Source organization ID
             target_org_id: Target organization ID
             source_org_slug: Source organization slug (for renaming)
             conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
-        
+
         Returns:
             Dict with count and renamed list
         """
         connection = self.get_connection()
         if not connection:
             return {"count": 0, "renamed": []}
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Get all assistants from source org
                 cursor.execute(f"""
                     SELECT id, name, owner FROM {self.table_prefix}assistants
                     WHERE organization_id = ?
                 """, (source_org_id,))
-                
+
                 assistants = cursor.fetchall()
                 migrated = 0
                 renamed = []
-                
+
                 for assistant_id, name, owner in assistants:
                     # Check for conflict
                     cursor.execute(f"""
                         SELECT COUNT(*) FROM {self.table_prefix}assistants
                         WHERE organization_id = ? AND name = ? AND owner = ?
                     """, (target_org_id, name, owner))
-                    
+
                     conflict_exists = cursor.fetchone()[0] > 0
-                    
+
                     if conflict_exists:
                         if conflict_strategy == "skip":
-                            logger.warning(f"Skipping assistant {name} (conflict detected)")
+                            logger.warning(
+                                f"Skipping assistant {name} (conflict detected)")
                             continue
                         elif conflict_strategy == "fail":
-                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                            raise ValueError(
+                                f"Conflict detected for assistant '{name}' owned by '{owner}'")
                         else:  # rename
                             new_name = f"{source_org_slug}_{name}"
                             cursor.execute(f"""
@@ -1474,73 +1560,77 @@ class LambDatabaseManager:
                                 SET organization_id = ?, name = ?, updated_at = ?
                                 WHERE id = ?
                             """, (target_org_id, new_name, now, assistant_id))
-                            renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                            renamed.append(
+                                {"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
                     else:
                         cursor.execute(f"""
                             UPDATE {self.table_prefix}assistants
                             SET organization_id = ?, updated_at = ?
                             WHERE id = ?
                         """, (target_org_id, now, assistant_id))
-                    
+
                     migrated += 1
-                
-                logger.info(f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+
+                logger.info(
+                    f"Migrated {migrated} assistants from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
                 return {"count": migrated, "renamed": renamed}
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating assistants: {e}")
             raise
         finally:
             connection.close()
-    
+
     def migrate_templates(self, source_org_id: int, target_org_id: int, source_org_slug: str,
-                         conflict_strategy: str = "rename") -> Dict[str, Any]:
+                          conflict_strategy: str = "rename") -> Dict[str, Any]:
         """
         Migrate prompt templates from source to target organization with conflict resolution.
-        
+
         Args:
             source_org_id: Source organization ID
             target_org_id: Target organization ID
             source_org_slug: Source organization slug (for renaming)
             conflict_strategy: "rename" (prefix with org slug), "skip", or "fail"
-        
+
         Returns:
             Dict with count and renamed list
         """
         connection = self.get_connection()
         if not connection:
             return {"count": 0, "renamed": []}
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Get all templates from source org
                 cursor.execute(f"""
                     SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
                     WHERE organization_id = ?
                 """, (source_org_id,))
-                
+
                 templates = cursor.fetchall()
                 migrated = 0
                 renamed = []
-                
+
                 for template_id, name, owner_email in templates:
                     # Check for conflict
                     cursor.execute(f"""
                         SELECT COUNT(*) FROM {self.table_prefix}prompt_templates
                         WHERE organization_id = ? AND name = ? AND owner_email = ?
                     """, (target_org_id, name, owner_email))
-                    
+
                     conflict_exists = cursor.fetchone()[0] > 0
-                    
+
                     if conflict_exists:
                         if conflict_strategy == "skip":
-                            logger.warning(f"Skipping template {name} (conflict detected)")
+                            logger.warning(
+                                f"Skipping template {name} (conflict detected)")
                             continue
                         elif conflict_strategy == "fail":
-                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                            raise ValueError(
+                                f"Conflict detected for template '{name}' owned by '{owner_email}'")
                         else:  # rename
                             new_name = f"{source_org_slug}_{name}"
                             cursor.execute(f"""
@@ -1548,92 +1638,96 @@ class LambDatabaseManager:
                                 SET organization_id = ?, name = ?, updated_at = ?
                                 WHERE id = ?
                             """, (target_org_id, new_name, now, template_id))
-                            renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                            renamed.append(
+                                {"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
                     else:
                         cursor.execute(f"""
                             UPDATE {self.table_prefix}prompt_templates
                             SET organization_id = ?, updated_at = ?
                             WHERE id = ?
                         """, (target_org_id, now, template_id))
-                    
+
                     migrated += 1
-                
-                logger.info(f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
+
+                logger.info(
+                    f"Migrated {migrated} templates from org {source_org_id} to {target_org_id} ({len(renamed)} renamed)")
                 return {"count": migrated, "renamed": renamed}
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating templates: {e}")
             raise
         finally:
             connection.close()
-    
+
     def migrate_kb_registry(self, source_org_id: int, target_org_id: int) -> int:
         """Migrate KB registry entries from source to target organization"""
         connection = self.get_connection()
         if not connection:
             return 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}kb_registry
                     SET organization_id = ?, updated_at = ?
                     WHERE organization_id = ?
                 """, (target_org_id, now, source_org_id))
-                
+
                 migrated = cursor.rowcount
-                logger.info(f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
+                logger.info(
+                    f"Migrated {migrated} KB registry entries from org {source_org_id} to {target_org_id}")
                 return migrated
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating KB registry: {e}")
             raise
         finally:
             connection.close()
-    
+
     def migrate_usage_logs(self, source_org_id: int, target_org_id: int) -> int:
         """Migrate usage logs from source to target organization"""
         connection = self.get_connection()
         if not connection:
             return 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}usage_logs
                     SET organization_id = ?
                     WHERE organization_id = ?
                 """, (target_org_id, source_org_id))
-                
+
                 migrated = cursor.rowcount
-                logger.info(f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
+                logger.info(
+                    f"Migrated {migrated} usage logs from org {source_org_id} to {target_org_id}")
                 return migrated
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error migrating usage logs: {e}")
             raise
         finally:
             connection.close()
-    
+
     def migrate_organization_comprehensive(self, source_org_id: int, target_org_id: int,
                                            source_org_slug: str, conflict_strategy: str = "rename",
                                            preserve_admin_roles: bool = False) -> Dict[str, Any]:
         """
         Comprehensive organization migration with transaction safety.
         All operations use the same connection for atomicity.
-        
+
         Args:
             source_org_id: Source organization ID
             target_org_id: Target organization ID
             source_org_slug: Source organization slug
             conflict_strategy: "rename", "skip", or "fail"
             preserve_admin_roles: Whether to preserve admin roles
-        
+
         Returns:
             Migration report dict
         """
@@ -1645,19 +1739,19 @@ class LambDatabaseManager:
                 "resources_migrated": {},
                 "conflicts_resolved": {}
             }
-        
+
         migration_report = {
             "success": False,
             "resources_migrated": {},
             "conflicts_resolved": {},
             "errors": []
         }
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # 1. Migrate users
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
@@ -1667,7 +1761,7 @@ class LambDatabaseManager:
                 users_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["users"] = users_migrated
                 logger.info(f"Migrated {users_migrated} users")
-                
+
                 # 2. Migrate roles
                 cursor.execute(f"""
                     SELECT user_id, role FROM {self.table_prefix}organization_roles
@@ -1676,7 +1770,8 @@ class LambDatabaseManager:
                 roles = cursor.fetchall()
                 roles_migrated = 0
                 for user_id, role in roles:
-                    target_role = role if preserve_admin_roles else ('member' if role in ['admin', 'owner'] else role)
+                    target_role = role if preserve_admin_roles else (
+                        'member' if role in ['admin', 'owner'] else role)
                     cursor.execute(f"""
                         INSERT OR REPLACE INTO {self.table_prefix}organization_roles
                         (organization_id, user_id, role, created_at, updated_at)
@@ -1685,7 +1780,7 @@ class LambDatabaseManager:
                     roles_migrated += 1
                 migration_report["resources_migrated"]["roles"] = roles_migrated
                 logger.info(f"Migrated {roles_migrated} roles")
-                
+
                 # 3. Migrate assistants
                 cursor.execute(f"""
                     SELECT id, name, owner FROM {self.table_prefix}assistants
@@ -1700,12 +1795,13 @@ class LambDatabaseManager:
                         WHERE organization_id = ? AND name = ? AND owner = ?
                     """, (target_org_id, name, owner))
                     conflict_exists = cursor.fetchone()[0] > 0
-                    
+
                     if conflict_exists:
                         if conflict_strategy == "skip":
                             continue
                         elif conflict_strategy == "fail":
-                            raise ValueError(f"Conflict detected for assistant '{name}' owned by '{owner}'")
+                            raise ValueError(
+                                f"Conflict detected for assistant '{name}' owned by '{owner}'")
                         else:  # rename
                             new_name = f"{source_org_slug}_{name}"
                             cursor.execute(f"""
@@ -1713,7 +1809,8 @@ class LambDatabaseManager:
                                 SET organization_id = ?, name = ?, updated_at = ?
                                 WHERE id = ?
                             """, (target_org_id, new_name, now, assistant_id))
-                            assistants_renamed.append({"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
+                            assistants_renamed.append(
+                                {"id": assistant_id, "old_name": name, "new_name": new_name, "owner": owner})
                     else:
                         cursor.execute(f"""
                             UPDATE {self.table_prefix}assistants
@@ -1722,9 +1819,11 @@ class LambDatabaseManager:
                         """, (target_org_id, now, assistant_id))
                     assistants_migrated += 1
                 migration_report["resources_migrated"]["assistants"] = assistants_migrated
-                migration_report["conflicts_resolved"]["assistants_renamed"] = len(assistants_renamed)
-                logger.info(f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
-                
+                migration_report["conflicts_resolved"]["assistants_renamed"] = len(
+                    assistants_renamed)
+                logger.info(
+                    f"Migrated {assistants_migrated} assistants ({len(assistants_renamed)} renamed)")
+
                 # 4. Migrate templates
                 cursor.execute(f"""
                     SELECT id, name, owner_email FROM {self.table_prefix}prompt_templates
@@ -1739,12 +1838,13 @@ class LambDatabaseManager:
                         WHERE organization_id = ? AND name = ? AND owner_email = ?
                     """, (target_org_id, name, owner_email))
                     conflict_exists = cursor.fetchone()[0] > 0
-                    
+
                     if conflict_exists:
                         if conflict_strategy == "skip":
                             continue
                         elif conflict_strategy == "fail":
-                            raise ValueError(f"Conflict detected for template '{name}' owned by '{owner_email}'")
+                            raise ValueError(
+                                f"Conflict detected for template '{name}' owned by '{owner_email}'")
                         else:  # rename
                             new_name = f"{source_org_slug}_{name}"
                             cursor.execute(f"""
@@ -1752,7 +1852,8 @@ class LambDatabaseManager:
                                 SET organization_id = ?, name = ?, updated_at = ?
                                 WHERE id = ?
                             """, (target_org_id, new_name, now, template_id))
-                            templates_renamed.append({"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
+                            templates_renamed.append(
+                                {"id": template_id, "old_name": name, "new_name": new_name, "owner_email": owner_email})
                     else:
                         cursor.execute(f"""
                             UPDATE {self.table_prefix}prompt_templates
@@ -1761,9 +1862,11 @@ class LambDatabaseManager:
                         """, (target_org_id, now, template_id))
                     templates_migrated += 1
                 migration_report["resources_migrated"]["templates"] = templates_migrated
-                migration_report["conflicts_resolved"]["templates_renamed"] = len(templates_renamed)
-                logger.info(f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
-                
+                migration_report["conflicts_resolved"]["templates_renamed"] = len(
+                    templates_renamed)
+                logger.info(
+                    f"Migrated {templates_migrated} templates ({len(templates_renamed)} renamed)")
+
                 # 5. Migrate KB registry
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}kb_registry
@@ -1773,7 +1876,7 @@ class LambDatabaseManager:
                 kbs_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["kbs"] = kbs_migrated
                 logger.info(f"Migrated {kbs_migrated} KB registry entries")
-                
+
                 # 6. Migrate usage logs
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}usage_logs
@@ -1783,13 +1886,14 @@ class LambDatabaseManager:
                 logs_migrated = cursor.rowcount
                 migration_report["resources_migrated"]["usage_logs"] = logs_migrated
                 logger.info(f"Migrated {logs_migrated} usage logs")
-                
+
                 # All migrations successful
                 migration_report["success"] = True
-                logger.info(f"Successfully migrated organization {source_org_id} to {target_org_id}")
-                
+                logger.info(
+                    f"Successfully migrated organization {source_org_id} to {target_org_id}")
+
                 return migration_report
-                
+
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error during migration: {error_msg}")
@@ -1799,17 +1903,17 @@ class LambDatabaseManager:
             raise
         finally:
             connection.close()
-    
+
     def list_organizations(self, status: str = None) -> List[Dict[str, Any]]:
         """List all organizations, optionally filtered by status"""
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 if status:
                     query = f"""
                         SELECT id, slug, name, is_system, status, config, created_at, updated_at
@@ -1825,7 +1929,7 @@ class LambDatabaseManager:
                         ORDER BY created_at DESC
                     """
                     cursor.execute(query)
-                
+
                 organizations = []
                 for row in cursor.fetchall():
                     organizations.append({
@@ -1838,50 +1942,51 @@ class LambDatabaseManager:
                         'created_at': row[6],
                         'updated_at': row[7]
                     })
-                
+
                 return organizations
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error listing organizations: {e}")
             return []
         finally:
             connection.close()
-    
+
     # Organization Role Management
-    
+
     def assign_organization_role(self, organization_id: int, user_id: int, role: str) -> bool:
         """Assign a role to a user in an organization"""
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Insert or update role
                 cursor.execute(f"""
                     INSERT OR REPLACE INTO {self.table_prefix}organization_roles
                     (organization_id, user_id, role, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?)
                 """, (organization_id, user_id, role, now, now))
-                
-                logger.info(f"Assigned role '{role}' to user {user_id} in organization {organization_id}")
+
+                logger.info(
+                    f"Assigned role '{role}' to user {user_id} in organization {organization_id}")
                 return True
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error assigning organization role: {e}")
             return False
         finally:
             connection.close()
-    
+
     def get_organization_users(self, organization_id: int) -> List[Dict[str, Any]]:
         """Get all users in an organization with their roles"""
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -1897,7 +2002,7 @@ class LambDatabaseManager:
                     WHERE u.organization_id = ?
                     ORDER BY joined_at
                 """, (organization_id, organization_id))
-                
+
                 users = []
                 for row in cursor.fetchall():
                     users.append({
@@ -1908,21 +2013,21 @@ class LambDatabaseManager:
                         'joined_at': row[4],
                         'user_type': row[5]
                     })
-                
+
                 return users
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error getting organization users: {e}")
             return []
         finally:
             connection.close()
-    
+
     def get_user_organizations(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all organizations a user belongs to"""
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -1934,7 +2039,7 @@ class LambDatabaseManager:
                     WHERE ur.user_id = ?
                     ORDER BY o.is_system DESC, o.name
                 """, (user_id,))
-                
+
                 results = cursor.fetchall()
                 organizations = []
                 for row in results:
@@ -1948,30 +2053,30 @@ class LambDatabaseManager:
                         'created_at': row[6],
                         'updated_at': row[7]
                     })
-                
+
                 return organizations
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error getting user organizations: {e}")
             return []
         finally:
             connection.close()
-    
+
     def get_user_organization_role(self, user_id: int, organization_id: int) -> Optional[str]:
         """
         Get the user's role in a specific organization
-        
+
         Args:
             user_id: LAMB creator user ID
             organization_id: Organization ID
-        
+
         Returns:
             Role string ('owner', 'admin', 'member') or None if not found
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -1980,80 +2085,80 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}organization_roles
                     WHERE user_id = ? AND organization_id = ?
                 """, (user_id, organization_id))
-                
+
                 result = cursor.fetchone()
                 return result[0] if result else None
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error getting user organization role: {e}")
             return None
         finally:
             connection.close()
-    
+
     def update_user_organization(self, user_id: int, organization_id: int) -> bool:
         """Update user's organization assignment"""
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
                     SET organization_id = ?, updated_at = ?
                     WHERE id = ?
                 """, (organization_id, now, user_id))
-                
+
                 return cursor.rowcount > 0
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error updating user organization: {e}")
             return False
         finally:
             connection.close()
-    
+
     def update_user_config(self, user_id: int, user_config: dict) -> bool:
         """
         Update user's configuration (stored as JSON).
-        
+
         Args:
             user_id: User ID to update
             user_config: Dictionary of user configuration
-            
+
         Returns:
             bool: True if update successful, False otherwise
         """
         import json as json_lib
-        
+
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 now = int(time.time())
-                
+
                 # Convert dict to JSON string
                 config_json = json_lib.dumps(user_config)
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}Creator_users
                     SET user_config = ?, updated_at = ?
                     WHERE id = ?
                 """, (config_json, now, user_id))
-                
+
                 return cursor.rowcount > 0
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error updating user config: {e}")
             return False
         finally:
             connection.close()
-    
+
     def _get_default_org_config(self) -> Dict[str, Any]:
         """Get default configuration for new organizations"""
         return {
@@ -2090,25 +2195,26 @@ class LambDatabaseManager:
                 }
             }
         }
-    
+
     def get_system_org_config_as_baseline(self) -> Dict[str, Any]:
         """Get system organization configuration to use as baseline for new organizations"""
         system_org = self.get_organization_by_slug("lamb")
         if not system_org:
-            logger.warning("System organization not found, using default config")
+            logger.warning(
+                "System organization not found, using default config")
             return self._get_default_org_config()
-        
+
         # Deep copy the system config and modify it for new organizations
         import copy
         baseline_config = copy.deepcopy(system_org['config'])
-        
+
         # Modify for non-system organizations
         baseline_config['metadata'] = {
             "description": "Organization created from system baseline",
             "system_managed": False,
             "created_from_system": True
         }
-        
+
         # Set reasonable limits (not unlimited like system org)
         baseline_config['limits'] = {
             "usage": {
@@ -2118,38 +2224,38 @@ class LambDatabaseManager:
                 "storage_gb": 10
             }
         }
-        
+
         # Disable signup by default (will be configured during creation)
         if 'features' not in baseline_config:
             baseline_config['features'] = {}
         baseline_config['features']['signup_enabled'] = False
         if 'signup_key' in baseline_config['features']:
             del baseline_config['features']['signup_key']
-        
+
         return baseline_config
-    
+
     def get_system_org_users(self) -> List[Dict[str, Any]]:
         """Get all users from the system organization ('lamb') for admin assignment"""
         system_org = self.get_organization_by_slug("lamb")
         if not system_org:
             logger.error("System organization not found")
             return []
-        
+
         return self.get_organization_users(system_org['id'])
-    
+
     def validate_signup_key_uniqueness(self, signup_key: str, exclude_org_id: Optional[int] = None) -> bool:
         """Validate that signup key is unique across all organizations"""
         if not signup_key or len(signup_key.strip()) == 0:
             return False
-        
+
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Search for existing signup key in all organization configs
                 if exclude_org_id:
                     cursor.execute(f"""
@@ -2160,72 +2266,74 @@ class LambDatabaseManager:
                     cursor.execute(f"""
                         SELECT id, config FROM {self.table_prefix}organizations
                     """)
-                
+
                 for row in cursor.fetchall():
                     org_id, config_json = row
                     try:
                         config = json.loads(config_json)
-                        existing_key = config.get('features', {}).get('signup_key')
+                        existing_key = config.get(
+                            'features', {}).get('signup_key')
                         if existing_key and existing_key.strip() == signup_key.strip():
-                            logger.warning(f"Signup key '{signup_key}' already exists in organization {org_id}")
+                            logger.warning(
+                                f"Signup key '{signup_key}' already exists in organization {org_id}")
                             return False
                     except json.JSONDecodeError:
                         continue
-                
+
                 return True
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error validating signup key uniqueness: {e}")
             return False
         finally:
             connection.close()
-    
+
     def validate_signup_key_format(self, signup_key: str) -> tuple[bool, str]:
         """Validate signup key format and return (is_valid, error_message)"""
         if not signup_key:
             return False, "Signup key is required"
-        
+
         signup_key = signup_key.strip()
-        
+
         # Minimum length requirement
         if len(signup_key) < 8:
             return False, "Signup key must be at least 8 characters long"
-        
+
         # Maximum length requirement
         if len(signup_key) > 64:
             return False, "Signup key must be no more than 64 characters long"
-        
+
         # Character validation - allow alphanumeric, hyphens, and underscores
         import re
         if not re.match(r'^[a-zA-Z0-9_-]+$', signup_key):
             return False, "Signup key can only contain letters, numbers, hyphens, and underscores"
-        
+
         # Must not start or end with hyphen or underscore
         if signup_key.startswith(('-', '_')) or signup_key.endswith(('-', '_')):
             return False, "Signup key cannot start or end with hyphen or underscore"
-        
+
         return True, ""
-    
+
     def get_organization_by_signup_key(self, signup_key: str) -> Optional[Dict[str, Any]]:
         """Find organization by signup key and return organization data if signup is enabled"""
         if not signup_key or len(signup_key.strip()) == 0:
             return None
-        
+
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Search for organization with matching signup key
                 cursor.execute(f"""
                     SELECT id, slug, name, is_system, status, config, created_at, updated_at 
                     FROM {self.table_prefix}organizations
                     WHERE status = 'active'
                 """)
-                
+
                 for row in cursor.fetchall():
                     org_id, slug, name, is_system, status, config_json, created_at, updated_at = row
                     try:
@@ -2233,10 +2341,11 @@ class LambDatabaseManager:
                         features = config.get('features', {})
                         existing_key = features.get('signup_key')
                         signup_enabled = features.get('signup_enabled', False)
-                        
+
                         # Check if this organization has the matching signup key and signup is enabled
                         if (existing_key and existing_key.strip() == signup_key.strip() and signup_enabled):
-                            logger.info(f"Found organization '{slug}' (ID: {org_id}) for signup key")
+                            logger.info(
+                                f"Found organization '{slug}' (ID: {org_id}) for signup key")
                             return {
                                 'id': org_id,
                                 'slug': slug,
@@ -2248,24 +2357,26 @@ class LambDatabaseManager:
                                 'updated_at': updated_at
                             }
                     except json.JSONDecodeError:
-                        logger.warning(f"Invalid JSON config for organization {org_id}")
+                        logger.warning(
+                            f"Invalid JSON config for organization {org_id}")
                         continue
-                
-                logger.info(f"No organization found for signup key '{signup_key}'")
+
+                logger.info(
+                    f"No organization found for signup key '{signup_key}'")
                 return None
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error finding organization by signup key: {e}")
             return None
         finally:
             connection.close()
-    
+
     def is_system_admin(self, user_email: str) -> bool:
         """
         Check if a user is a system admin by verifying:
         1. They have admin role in OWI
         2. They have admin role in the system organization ("lamb")
-        
+
         This handles the dual admin requirement in our evolving system.
         """
         try:
@@ -2274,26 +2385,28 @@ class LambDatabaseManager:
             owi_user = owi_manager.get_user_by_email(user_email)
             if not owi_user or owi_user.get('role') != 'admin':
                 return False
-            
+
             # Check LAMB system organization admin status
             creator_user = self.get_creator_user_by_email(user_email)
             if not creator_user:
                 return False
-            
+
             # Get system organization
             system_org = self.get_organization_by_slug("lamb")
             if not system_org:
                 logger.warning("System organization 'lamb' not found")
                 return False
-            
+
             # Check user's role in system organization
-            user_role = self.get_user_organization_role(creator_user['id'], system_org['id'])
+            user_role = self.get_user_organization_role(
+                creator_user['id'], system_org['id'])
             return user_role == 'admin'
-            
+
         except Exception as e:
-            logger.error(f"Error checking system admin status for {user_email}: {e}")
+            logger.error(
+                f"Error checking system admin status for {user_email}: {e}")
             return False
-    
+
     def is_organization_admin(self, user_email: str, organization_id: int) -> bool:
         """
         Check if a user is an admin or owner of a specific organization
@@ -2302,10 +2415,11 @@ class LambDatabaseManager:
             creator_user = self.get_creator_user_by_email(user_email)
             if not creator_user:
                 return False
-            
-            user_role = self.get_user_organization_role(creator_user['id'], organization_id)
+
+            user_role = self.get_user_organization_role(
+                creator_user['id'], organization_id)
             return user_role in ['admin', 'owner']
-            
+
         except Exception as e:
             logger.error(f"Error checking organization admin status: {e}")
             return False
@@ -2356,7 +2470,7 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
-            
+
     def get_creator_user_by_email(self, user_email: str) -> Optional[Dict[str, Any]]:
         """
         Get creator user details by email
@@ -2507,22 +2621,23 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return False
-            
+
         try:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(
-                    f"DELETE FROM {self.table_prefix}Creator_users WHERE id = ?", 
+                    f"DELETE FROM {self.table_prefix}Creator_users WHERE id = ?",
                     (user_id,)
                 )
-                
+
                 if cursor.rowcount > 0:
-                    logger.info(f"Creator user with id {user_id} deleted successfully from LAMB database")
+                    logger.info(
+                        f"Creator user with id {user_id} deleted successfully from LAMB database")
                     return True
                 else:
                     logger.warning(f"No creator user found with id {user_id}")
                     return False
-                    
+
         except Exception as e:
             logger.error(f"Error deleting creator user: {e}")
             return False
@@ -2533,10 +2648,10 @@ class LambDatabaseManager:
     def disable_user(self, user_id: int) -> bool:
         """
         Disable a user account
-        
+
         Args:
             user_id: User ID to disable
-            
+
         Returns:
             bool: True if successful, False if user not found or already disabled
         """
@@ -2544,26 +2659,26 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check current status
                 cursor.execute(
                     f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
                     (user_id,)
                 )
                 row = cursor.fetchone()
-                
+
                 if not row:
                     logger.warning(f"User {user_id} not found")
                     return False
-                
+
                 if row[0] == 0:  # Already disabled
                     logger.info(f"User {user_id} already disabled")
                     return False
-                
+
                 # Disable user
                 cursor.execute(
                     f"""UPDATE {self.table_prefix}Creator_users 
@@ -2573,7 +2688,7 @@ class LambDatabaseManager:
                 )
                 logger.info(f"Successfully disabled user {user_id}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error disabling user {user_id}: {e}")
             return False
@@ -2584,10 +2699,10 @@ class LambDatabaseManager:
     def enable_user(self, user_id: int) -> bool:
         """
         Enable a user account
-        
+
         Args:
             user_id: User ID to enable
-            
+
         Returns:
             bool: True if successful, False if user not found or already enabled
         """
@@ -2595,26 +2710,26 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check current status
                 cursor.execute(
                     f"SELECT enabled FROM {self.table_prefix}Creator_users WHERE id = ?",
                     (user_id,)
                 )
                 row = cursor.fetchone()
-                
+
                 if not row:
                     logger.warning(f"User {user_id} not found")
                     return False
-                
+
                 if row[0] == 1:  # Already enabled
                     logger.info(f"User {user_id} already enabled")
                     return False
-                
+
                 # Enable user
                 cursor.execute(
                     f"""UPDATE {self.table_prefix}Creator_users 
@@ -2624,7 +2739,7 @@ class LambDatabaseManager:
                 )
                 logger.info(f"Successfully enabled user {user_id}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error enabling user {user_id}: {e}")
             return False
@@ -2635,10 +2750,10 @@ class LambDatabaseManager:
     def is_user_enabled(self, user_id: int) -> bool:
         """
         Check if user account is enabled
-        
+
         Args:
             user_id: User ID to check
-            
+
         Returns:
             bool: True if enabled, False if disabled or not found
         """
@@ -2646,7 +2761,7 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return False
-        
+
         try:
             cursor = connection.cursor()
             cursor.execute(
@@ -2655,7 +2770,7 @@ class LambDatabaseManager:
             )
             row = cursor.fetchone()
             return row and row[0] == 1
-            
+
         except Exception as e:
             logger.error(f"Error checking user enabled status: {e}")
             return False
@@ -2666,10 +2781,10 @@ class LambDatabaseManager:
     def check_user_dependencies(self, user_id: int) -> Dict[str, Any]:
         """
         Check if a user has any dependencies (assistants or knowledge bases)
-        
+
         Args:
             user_id: User ID to check
-            
+
         Returns:
             Dict with:
                 - has_dependencies (bool): True if user has any dependencies
@@ -2688,10 +2803,10 @@ class LambDatabaseManager:
                 'assistants': [],
                 'kbs': []
             }
-        
+
         try:
             cursor = connection.cursor()
-            
+
             # Get user email for owner lookup
             cursor.execute(
                 f"SELECT user_email FROM {self.table_prefix}Creator_users WHERE id = ?",
@@ -2707,17 +2822,18 @@ class LambDatabaseManager:
                     'assistants': [],
                     'kbs': []
                 }
-            
+
             user_email = user_row[0]
-            
+
             # Check assistants owned by user (using owner = user_email)
             cursor.execute(
                 f"SELECT id, name FROM {self.table_prefix}assistants WHERE owner = ?",
                 (user_email,)
             )
-            assistants = [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
+            assistants = [{'id': row[0], 'name': row[1]}
+                          for row in cursor.fetchall()]
             assistant_count = len(assistants)
-            
+
             # Check knowledge bases owned by user
             cursor.execute(
                 f"SELECT kb_id, kb_name FROM {self.table_prefix}kb_registry WHERE owner_user_id = ?",
@@ -2725,11 +2841,12 @@ class LambDatabaseManager:
             )
             kbs = [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
             kb_count = len(kbs)
-            
+
             has_dependencies = assistant_count > 0 or kb_count > 0
-            
-            logger.info(f"User {user_id} has {assistant_count} assistants and {kb_count} KBs")
-            
+
+            logger.info(
+                f"User {user_id} has {assistant_count} assistants and {kb_count} KBs")
+
             return {
                 'has_dependencies': has_dependencies,
                 'assistant_count': assistant_count,
@@ -2737,7 +2854,7 @@ class LambDatabaseManager:
                 'assistants': assistants,
                 'kbs': kbs
             }
-            
+
         except Exception as e:
             logger.error(f"Error checking user dependencies: {e}")
             return {
@@ -2754,10 +2871,10 @@ class LambDatabaseManager:
     def delete_user_safe(self, user_id: int) -> Tuple[bool, Optional[str]]:
         """
         Safely delete a user after checking they are disabled and have no dependencies
-        
+
         Args:
             user_id: User ID to delete
-            
+
         Returns:
             Tuple of (success: bool, error_message: Optional[str])
         """
@@ -2765,58 +2882,63 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return False, "Database connection failed"
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check if user exists and is disabled
                 cursor.execute(
                     f"SELECT enabled, user_email, user_name FROM {self.table_prefix}Creator_users WHERE id = ?",
                     (user_id,)
                 )
                 user_row = cursor.fetchone()
-                
+
                 if not user_row:
                     logger.warning(f"User {user_id} not found")
                     return False, "User not found"
-                
+
                 is_enabled = user_row[0]
                 user_email = user_row[1]
                 user_name = user_row[2]
-                
+
                 # Safety check: user must be disabled
                 if is_enabled:
-                    logger.warning(f"Attempted to delete enabled user {user_id} ({user_email})")
+                    logger.warning(
+                        f"Attempted to delete enabled user {user_id} ({user_email})")
                     return False, "User must be disabled before deletion"
-                
+
                 # Check for dependencies
                 dependencies = self.check_user_dependencies(user_id)
-                
+
                 if dependencies['has_dependencies']:
                     error_parts = []
                     if dependencies['assistant_count'] > 0:
-                        error_parts.append(f"{dependencies['assistant_count']} assistant(s)")
+                        error_parts.append(
+                            f"{dependencies['assistant_count']} assistant(s)")
                     if dependencies['kb_count'] > 0:
-                        error_parts.append(f"{dependencies['kb_count']} knowledge base(s)")
-                    
+                        error_parts.append(
+                            f"{dependencies['kb_count']} knowledge base(s)")
+
                     error_msg = f"User has dependencies: {', '.join(error_parts)}. Please delete or reassign these resources first."
-                    logger.warning(f"Cannot delete user {user_id} ({user_email}): {error_msg}")
+                    logger.warning(
+                        f"Cannot delete user {user_id} ({user_email}): {error_msg}")
                     return False, error_msg
-                
+
                 # Safe to delete - user is disabled and has no dependencies
                 cursor.execute(
                     f"DELETE FROM {self.table_prefix}Creator_users WHERE id = ?",
                     (user_id,)
                 )
-                
+
                 if cursor.rowcount > 0:
-                    logger.info(f"Successfully deleted disabled user {user_id} ({user_email}, {user_name})")
+                    logger.info(
+                        f"Successfully deleted disabled user {user_id} ({user_email}, {user_name})")
                     return True, None
                 else:
                     logger.warning(f"No user deleted with id {user_id}")
                     return False, "User not found"
-                    
+
         except Exception as e:
             logger.error(f"Error deleting user {user_id}: {e}")
             return False, f"Database error: {str(e)}"
@@ -2827,10 +2949,10 @@ class LambDatabaseManager:
     def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
         """
         Disable multiple user accounts in a single transaction
-        
+
         Args:
             user_ids: List of user IDs to disable
-            
+
         Returns:
             Dict with success/failed lists and counts
         """
@@ -2838,14 +2960,14 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return {"success": [], "failed": user_ids, "already_disabled": []}
-        
+
         results = {"success": [], "failed": [], "already_disabled": []}
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 for user_id in user_ids:
                     try:
                         # Check if user exists and current status
@@ -2854,15 +2976,15 @@ class LambDatabaseManager:
                             (user_id,)
                         )
                         row = cursor.fetchone()
-                        
+
                         if not row:
                             results["failed"].append(user_id)
                             continue
-                        
+
                         if row[0] == 0:  # Already disabled
                             results["already_disabled"].append(user_id)
                             continue
-                        
+
                         # Disable user
                         cursor.execute(
                             f"""UPDATE {self.table_prefix}Creator_users 
@@ -2874,26 +2996,28 @@ class LambDatabaseManager:
                     except Exception as e:
                         logger.error(f"Error disabling user {user_id}: {e}")
                         results["failed"].append(user_id)
-                
-                logger.info(f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
-                
+
+                logger.info(
+                    f"Bulk disable: {len(results['success'])} successful, {len(results['failed'])} failed")
+
         except Exception as e:
             logger.error(f"Error in bulk disable: {e}")
             # Mark all as failed
-            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_disabled"] and uid not in results["failed"]])
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"]
+                                     and uid not in results["already_disabled"] and uid not in results["failed"]])
         finally:
             if connection:
                 connection.close()
-        
+
         return results
 
     def enable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
         """
         Enable multiple user accounts in a single transaction
-        
+
         Args:
             user_ids: List of user IDs to enable
-            
+
         Returns:
             Dict with success/failed lists and counts
         """
@@ -2901,14 +3025,14 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return {"success": [], "failed": user_ids, "already_enabled": []}
-        
+
         results = {"success": [], "failed": [], "already_enabled": []}
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 for user_id in user_ids:
                     try:
                         # Check if user exists and current status
@@ -2917,15 +3041,15 @@ class LambDatabaseManager:
                             (user_id,)
                         )
                         row = cursor.fetchone()
-                        
+
                         if not row:
                             results["failed"].append(user_id)
                             continue
-                        
+
                         if row[0] == 1:  # Already enabled
                             results["already_enabled"].append(user_id)
                             continue
-                        
+
                         # Enable user
                         cursor.execute(
                             f"""UPDATE {self.table_prefix}Creator_users 
@@ -2937,17 +3061,19 @@ class LambDatabaseManager:
                     except Exception as e:
                         logger.error(f"Error enabling user {user_id}: {e}")
                         results["failed"].append(user_id)
-                
-                logger.info(f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
-                
+
+                logger.info(
+                    f"Bulk enable: {len(results['success'])} successful, {len(results['failed'])} failed")
+
         except Exception as e:
             logger.error(f"Error in bulk enable: {e}")
             # Mark all as failed
-            results["failed"].extend([uid for uid in user_ids if uid not in results["success"] and uid not in results["already_enabled"] and uid not in results["failed"]])
+            results["failed"].extend([uid for uid in user_ids if uid not in results["success"]
+                                     and uid not in results["already_enabled"] and uid not in results["failed"]])
         finally:
             if connection:
                 connection.close()
-        
+
         return results
 
     def log_bulk_import(
@@ -2963,7 +3089,7 @@ class LambDatabaseManager:
     ) -> Optional[int]:
         """
         Log a bulk import operation to the database
-        
+
         Args:
             organization_id: Organization ID
             admin_user_id: ID of the admin performing the operation
@@ -2973,7 +3099,7 @@ class LambDatabaseManager:
             success_count: Number of successful operations
             failure_count: Number of failed operations
             details: Additional details as JSON dict
-            
+
         Returns:
             Log ID if successful, None if failed
         """
@@ -2981,12 +3107,12 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 cursor.execute(
                     f"""INSERT INTO {self.table_prefix}bulk_import_logs 
                         (organization_id, admin_user_id, admin_email, operation_type, 
@@ -3004,21 +3130,21 @@ class LambDatabaseManager:
                         current_time
                     )
                 )
-                
+
                 log_id = cursor.lastrowid
                 logger.info(
                     f"Logged bulk operation {operation_type} "
                     f"by {admin_email} (ID: {log_id})"
                 )
                 return log_id
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error logging bulk operation: {e}")
             return None
         finally:
             if connection:
                 connection.close()
-    
+
     def get_bulk_import_logs(
         self,
         organization_id: Optional[int] = None,
@@ -3028,13 +3154,13 @@ class LambDatabaseManager:
     ) -> List[Dict[str, Any]]:
         """
         Retrieve bulk import logs
-        
+
         Args:
             organization_id: Filter by organization (optional)
             admin_user_id: Filter by admin user (optional)
             limit: Maximum number of logs to return
             offset: Offset for pagination
-            
+
         Returns:
             List of log dicts
         """
@@ -3042,11 +3168,11 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Failed to get database connection")
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Build query with optional filters
                 query = f"""
                     SELECT 
@@ -3068,21 +3194,21 @@ class LambDatabaseManager:
                     WHERE 1=1
                 """
                 params = []
-                
+
                 if organization_id is not None:
                     query += " AND l.organization_id = ?"
                     params.append(organization_id)
-                
+
                 if admin_user_id is not None:
                     query += " AND l.admin_user_id = ?"
                     params.append(admin_user_id)
-                
+
                 query += " ORDER BY l.created_at DESC LIMIT ? OFFSET ?"
                 params.extend([limit, offset])
-                
+
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
-                
+
                 logs = []
                 for row in rows:
                     logs.append({
@@ -3099,9 +3225,9 @@ class LambDatabaseManager:
                         'organization_name': row[10],
                         'admin_name': row[11]
                     })
-                
+
                 return logs
-                
+
         except sqlite3.Error as e:
             logger.error(f"Error retrieving bulk import logs: {e}")
             return []
@@ -3294,7 +3420,7 @@ class LambDatabaseManager:
     def add_assistant(self, assistant: Assistant):
         """
         Add a new assistant to the database.
-        
+
         IMPORTANT: The database column 'api_callback' stores what is semantically 'metadata'.
         This mapping is handled by the Assistant model's property. DO NOT change the SQL column name.
         Deprecated fields (pre/post_retrieval_endpoint, RAG_endpoint) are stored as empty strings.
@@ -3311,14 +3437,15 @@ class LambDatabaseManager:
                         RAG_endpoint, RAG_Top_k, RAG_collections, pre_retrieval_endpoint, post_retrieval_endpoint,
                         created_at, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (assistant.organization_id, assistant.name, assistant.description, assistant.owner, 
+                    """, (assistant.organization_id, assistant.name, assistant.description, assistant.owner,
                           assistant.api_callback,  # This stores the metadata content
-                          assistant.system_prompt, assistant.prompt_template, 
+                          assistant.system_prompt, assistant.prompt_template,
                           "",  # RAG_endpoint - DEPRECATED, always empty
-                          assistant.RAG_Top_k, assistant.RAG_collections, 
+                          assistant.RAG_Top_k, assistant.RAG_collections,
                           "",  # pre_retrieval_endpoint - DEPRECATED, always empty
                           "",  # post_retrieval_endpoint - DEPRECATED, always empty
-                          int(time.time()),  # created_at (using time.time() since datetime was removed)
+                          # created_at (using time.time() since datetime was removed)
+                          int(time.time()),
                           int(time.time())))  # updated_at
                     logger.info(
                         f"Assistant {assistant.name} created with id: {cursor.lastrowid}")
@@ -3418,20 +3545,23 @@ class LambDatabaseManager:
 
                 # Get column names from the cursor description after execution
                 columns = [desc[0] for desc in cursor.description]
-                
+
                 assistant_dict = dict(zip(columns, result))
                 # Convert boolean flag back to Python boolean
-                assistant_dict['published'] = bool(assistant_dict.get('published'))
+                assistant_dict['published'] = bool(
+                    assistant_dict.get('published'))
                 # Handle null strings
                 if assistant_dict.get('oauth_consumer_name') == "null":
                     assistant_dict['oauth_consumer_name'] = None
                 # Map api_callback to metadata field for new API responses (Phase 1 refactor completion)
-                assistant_dict['metadata'] = assistant_dict.get('api_callback', '')
-                
+                assistant_dict['metadata'] = assistant_dict.get(
+                    'api_callback', '')
+
                 return assistant_dict
 
         except sqlite3.Error as e:
-            logger.error(f"Error getting assistant {assistant_id} with publication: {e}")
+            logger.error(
+                f"Error getting assistant {assistant_id} with publication: {e}")
             return None
         finally:
             connection.close()
@@ -3618,7 +3748,8 @@ class LambDatabaseManager:
                 for row in rows:
                     assistant_dict = dict(zip(columns, row))
                     # Convert boolean flag back to Python boolean
-                    assistant_dict['published'] = bool(assistant_dict.get('published'))
+                    assistant_dict['published'] = bool(
+                        assistant_dict.get('published'))
                     # Handle null strings
                     if assistant_dict.get('oauth_consumer_name') == "null":
                         assistant_dict['oauth_consumer_name'] = None
@@ -3642,7 +3773,8 @@ class LambDatabaseManager:
         try:
             with connection:
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT id, name, owner, api_callback FROM {assistants_table}")
+                cursor.execute(
+                    f"SELECT id, name, owner, api_callback FROM {assistants_table}")
                 rows = cursor.fetchall()
                 for row in rows:
                     assistants_list.append({
@@ -3658,8 +3790,6 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-
-            
     def get_assistants_by_owner_paginated(self, owner: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
         """Get a paginated list of assistants for an owner, including publication status."""
         connection = self.get_connection()
@@ -3705,47 +3835,50 @@ class LambDatabaseManager:
                 columns = [desc[0] for desc in cursor.description]
 
                 # --- Add Logging --- #
-                #logger.info(f"DB Query for owner '{owner}' (limit={limit}, offset={offset}) - Total Count: {total_count}")
-                #logger.debug(f"DB Query Raw Rows ({len(rows)}): {rows}")
+                # logger.info(f"DB Query for owner '{owner}' (limit={limit}, offset={offset}) - Total Count: {total_count}")
+                # logger.debug(f"DB Query Raw Rows ({len(rows)}): {rows}")
                 # --- End Logging --- #
 
                 for row in rows:
                     assistant_dict = dict(zip(columns, row))
                     # Convert boolean flag back to Python boolean
-                    assistant_dict['published'] = bool(assistant_dict.get('published'))
+                    assistant_dict['published'] = bool(
+                        assistant_dict.get('published'))
                     # Map api_callback to metadata field for new API responses (Phase 1 refactor completion)
-                    assistant_dict['metadata'] = assistant_dict.get('api_callback', '')
+                    assistant_dict['metadata'] = assistant_dict.get(
+                        'api_callback', '')
                     assistants_list.append(assistant_dict)
 
                 return assistants_list, total_count
 
         except sqlite3.Error as e:
-            logger.error(f"Error getting paginated assistants for owner {owner}: {e}")
-            return [], 0 # Return empty list and 0 count on error
+            logger.error(
+                f"Error getting paginated assistants for owner {owner}: {e}")
+            return [], 0  # Return empty list and 0 count on error
         finally:
             connection.close()
 
     def get_assistants_by_organization(self, organization_id: int) -> List[Dict[str, Any]]:
         """
         Get all assistants in an organization with publication status
-        
+
         Args:
             organization_id: ID of the organization
-            
+
         Returns:
             List of assistant dictionaries with publication info
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             assistants_table = self._get_table_name('assistants')
             published_table = self._get_table_name('assistant_publish')
-            
+
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get all assistants in organization with publication data
                 query = f"""
                     SELECT
@@ -3765,21 +3898,25 @@ class LambDatabaseManager:
                 """
                 cursor.execute(query, (organization_id,))
                 rows = cursor.fetchall()
-                
+
                 columns = [desc[0] for desc in cursor.description]
                 assistants_list = []
-                
+
                 for row in rows:
                     assistant_dict = dict(zip(columns, row))
-                    assistant_dict['published'] = bool(assistant_dict.get('published'))
-                    assistant_dict['metadata'] = assistant_dict.get('api_callback', '')
+                    assistant_dict['published'] = bool(
+                        assistant_dict.get('published'))
+                    assistant_dict['metadata'] = assistant_dict.get(
+                        'api_callback', '')
                     assistants_list.append(assistant_dict)
-                
-                logger.info(f"Retrieved {len(assistants_list)} assistants for organization {organization_id}")
+
+                logger.info(
+                    f"Retrieved {len(assistants_list)} assistants for organization {organization_id}")
                 return assistants_list
-                
+
         except sqlite3.Error as e:
-            logger.error(f"Error getting assistants for organization {organization_id}: {e}")
+            logger.error(
+                f"Error getting assistants for organization {organization_id}: {e}")
             return []
         finally:
             connection.close()
@@ -3856,7 +3993,7 @@ class LambDatabaseManager:
         return []
 
     def publish_assistant(self, assistant_id: int, assistant_name: str, assistant_owner: str,
-                          group_id: str, group_name: str, oauth_consumer_name: Optional[str]) -> bool: # Allow None for oauth_consumer_name
+                          group_id: str, group_name: str, oauth_consumer_name: Optional[str]) -> bool:  # Allow None for oauth_consumer_name
         """Publish an assistant. Uses INSERT OR REPLACE based on assistant_id primary key."""
         connection = self.get_connection()
         if connection:
@@ -3877,9 +4014,10 @@ class LambDatabaseManager:
             except sqlite3.Error as e:
                 # Specifically catch integrity errors for unique constraint violation
                 if "UNIQUE constraint failed" in str(e) and "oauth_consumer_name" in str(e):
-                     logger.error(f"Error publishing assistant {assistant_id}: OAuth Consumer Name '{oauth_consumer_name}' is already in use.")
-                     # Re-raise or return specific error? For now, just log and return False
-                     return False
+                    logger.error(
+                        f"Error publishing assistant {assistant_id}: OAuth Consumer Name '{oauth_consumer_name}' is already in use.")
+                    # Re-raise or return specific error? For now, just log and return False
+                    return False
                 logger.error(f"Error publishing assistant {assistant_id}: {e}")
                 return False
             finally:
@@ -3920,11 +4058,13 @@ class LambDatabaseManager:
                     if deleted_count > 0:
                         logger.info(f"Unpublished assistant {assistant_id}")
                     else:
-                        logger.warning(f"Attempted to unpublish assistant {assistant_id}, but no publication record was found.")
+                        logger.warning(
+                            f"Attempted to unpublish assistant {assistant_id}, but no publication record was found.")
                     # Return True if a record was deleted, False otherwise
                     return deleted_count > 0
             except sqlite3.Error as e:
-                logger.error(f"Error unpublishing assistant {assistant_id}: {e}")
+                logger.error(
+                    f"Error unpublishing assistant {assistant_id}: {e}")
                 return False
             finally:
                 connection.close()
@@ -4027,7 +4167,7 @@ class LambDatabaseManager:
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """
         Update an existing assistant in the database.
-        
+
         IMPORTANT: The database column 'api_callback' stores what is semantically 'metadata'.
         Deprecated fields are always set to empty strings regardless of input.
         """
@@ -4043,11 +4183,11 @@ class LambDatabaseManager:
                             RAG_Top_k = ?, RAG_collections = ?, pre_retrieval_endpoint = ?, 
                             post_retrieval_endpoint = ?
                         WHERE id = ?
-                    """, (assistant.name, assistant.description, assistant.owner, 
+                    """, (assistant.name, assistant.description, assistant.owner,
                           assistant.api_callback,  # This stores the metadata content
-                          assistant.system_prompt, assistant.prompt_template, 
+                          assistant.system_prompt, assistant.prompt_template,
                           "",  # RAG_endpoint - DEPRECATED, always empty
-                          assistant.RAG_Top_k, assistant.RAG_collections, 
+                          assistant.RAG_Top_k, assistant.RAG_collections,
                           "",  # pre_retrieval_endpoint - DEPRECATED, always empty
                           "",  # post_retrieval_endpoint - DEPRECATED, always empty
                           assistant_id))
@@ -4107,22 +4247,23 @@ class LambDatabaseManager:
 
                 # Get column names
                 columns = [col[0] for col in cursor.description]
-                
+
                 # Create a dictionary mapping column names to values
                 pub_record = dict(zip(columns, result))
-                
+
                 # Process oauth_consumer_name
                 if pub_record.get('oauth_consumer_name') == "null":
                     pub_record['oauth_consumer_name'] = None
-                    
+
                 return pub_record
 
         except sqlite3.Error as e:
-            logger.error(f"Error getting publication for assistant {assistant_id}: {e}")
+            logger.error(
+                f"Error getting publication for assistant {assistant_id}: {e}")
             return None
         finally:
             connection.close()
-            
+
     def get_creator_user_by_token(self, token: str) -> Optional[Dict[str, Any]]:
         """
         Get creator user details by JWT token
@@ -4186,7 +4327,7 @@ class LambDatabaseManager:
         finally:
             cursor.close()
             conn.close()
-            
+
     def get_collection_by_id(self, collection_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific collection by its ID"""
         conn = self.get_connection()
@@ -4344,7 +4485,7 @@ class LambDatabaseManager:
     def create_prompt_template(self, template_data: Dict[str, Any]) -> Optional[int]:
         """
         Create a new prompt template.
-        
+
         Args:
             template_data: Dictionary containing:
                 - organization_id: int
@@ -4355,7 +4496,7 @@ class LambDatabaseManager:
                 - prompt_template: str (optional)
                 - is_shared: bool (default False)
                 - metadata: dict (optional)
-        
+
         Returns:
             Template ID if successful, None otherwise
         """
@@ -4363,14 +4504,14 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Could not establish database connection")
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 metadata_json = json.dumps(template_data.get('metadata', {}))
-                
+
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}prompt_templates 
                     (organization_id, owner_email, name, description, system_prompt, 
@@ -4388,11 +4529,12 @@ class LambDatabaseManager:
                     current_time,
                     current_time
                 ))
-                
+
                 template_id = cursor.lastrowid
-                logger.info(f"Created prompt template '{template_data['name']}' with id: {template_id}")
+                logger.info(
+                    f"Created prompt template '{template_data['name']}' with id: {template_id}")
                 return template_id
-                
+
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error creating prompt template: {e}")
             return None
@@ -4405,18 +4547,18 @@ class LambDatabaseManager:
     def get_prompt_template_by_id(self, template_id: int, requester_email: str = None) -> Optional[Dict[str, Any]]:
         """
         Get a prompt template by ID.
-        
+
         Args:
             template_id: Template ID
             requester_email: Email of user requesting (to check ownership)
-        
+
         Returns:
             Dictionary with template data and owner info, or None if not found
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -4430,11 +4572,11 @@ class LambDatabaseManager:
                     LEFT JOIN {self.table_prefix}Creator_users cu ON pt.owner_email = cu.user_email
                     WHERE pt.id = ?
                 """, (template_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
                     return None
-                
+
                 template = {
                     'id': row[0],
                     'organization_id': row[1],
@@ -4450,37 +4592,37 @@ class LambDatabaseManager:
                     'owner_name': row[11],
                     'is_owner': requester_email == row[2] if requester_email else None
                 }
-                
+
                 return template
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting prompt template: {e}")
             return None
         finally:
             connection.close()
 
-    def get_user_prompt_templates(self, owner_email: str, organization_id: int, 
-                                   limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
+    def get_user_prompt_templates(self, owner_email: str, organization_id: int,
+                                  limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
         """
         Get prompt templates owned by a user.
-        
+
         Args:
             owner_email: Owner email
             organization_id: Organization ID
             limit: Number of results to return
             offset: Offset for pagination
-        
+
         Returns:
             Tuple of (list of templates, total count)
         """
         connection = self.get_connection()
         if not connection:
             return [], 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get total count
                 cursor.execute(f"""
                     SELECT COUNT(*) 
@@ -4488,7 +4630,7 @@ class LambDatabaseManager:
                     WHERE owner_email = ? AND organization_id = ?
                 """, (owner_email, organization_id))
                 total = cursor.fetchone()[0]
-                
+
                 # Get templates
                 cursor.execute(f"""
                     SELECT 
@@ -4502,7 +4644,7 @@ class LambDatabaseManager:
                     ORDER BY pt.updated_at DESC
                     LIMIT ? OFFSET ?
                 """, (owner_email, organization_id, limit, offset))
-                
+
                 templates = []
                 for row in cursor.fetchall():
                     templates.append({
@@ -4520,9 +4662,9 @@ class LambDatabaseManager:
                         'owner_name': row[11],
                         'is_owner': True
                     })
-                
+
                 return templates, total
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting user prompt templates: {e}")
             return [], 0
@@ -4530,27 +4672,27 @@ class LambDatabaseManager:
             connection.close()
 
     def get_organization_shared_templates(self, organization_id: int, requester_email: str,
-                                         limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
+                                          limit: int = 50, offset: int = 0) -> Tuple[List[Dict[str, Any]], int]:
         """
         Get shared prompt templates within an organization (excluding requester's own).
-        
+
         Args:
             organization_id: Organization ID
             requester_email: Email of user requesting (to exclude their templates)
             limit: Number of results to return
             offset: Offset for pagination
-        
+
         Returns:
             Tuple of (list of templates, total count)
         """
         connection = self.get_connection()
         if not connection:
             return [], 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get total count
                 cursor.execute(f"""
                     SELECT COUNT(*) 
@@ -4558,7 +4700,7 @@ class LambDatabaseManager:
                     WHERE organization_id = ? AND is_shared = 1 AND owner_email != ?
                 """, (organization_id, requester_email))
                 total = cursor.fetchone()[0]
-                
+
                 # Get templates
                 cursor.execute(f"""
                     SELECT 
@@ -4572,7 +4714,7 @@ class LambDatabaseManager:
                     ORDER BY pt.updated_at DESC
                     LIMIT ? OFFSET ?
                 """, (organization_id, requester_email, limit, offset))
-                
+
                 templates = []
                 for row in cursor.fetchall():
                     templates.append({
@@ -4590,9 +4732,9 @@ class LambDatabaseManager:
                         'owner_name': row[11],
                         'is_owner': False
                     })
-                
+
                 return templates, total
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting shared templates: {e}")
             return [], 0
@@ -4602,38 +4744,40 @@ class LambDatabaseManager:
     def update_prompt_template(self, template_id: int, updates: Dict[str, Any], owner_email: str) -> bool:
         """
         Update a prompt template (only owner can update).
-        
+
         Args:
             template_id: Template ID
             updates: Dictionary of fields to update
             owner_email: Email of owner (for authorization check)
-        
+
         Returns:
             True if successful, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Check ownership
                 cursor.execute(f"""
                     SELECT owner_email FROM {self.table_prefix}prompt_templates WHERE id = ?
                 """, (template_id,))
                 row = cursor.fetchone()
-                
+
                 if not row or row[0] != owner_email:
-                    logger.warning(f"User {owner_email} attempted to update template {template_id} without ownership")
+                    logger.warning(
+                        f"User {owner_email} attempted to update template {template_id} without ownership")
                     return False
-                
+
                 # Build update query
-                allowed_fields = ['name', 'description', 'system_prompt', 'prompt_template', 'is_shared', 'metadata']
+                allowed_fields = ['name', 'description', 'system_prompt',
+                                  'prompt_template', 'is_shared', 'metadata']
                 update_fields = []
                 values = []
-                
+
                 for field in allowed_fields:
                     if field in updates:
                         update_fields.append(f"{field} = ?")
@@ -4641,25 +4785,25 @@ class LambDatabaseManager:
                             values.append(json.dumps(updates[field]))
                         else:
                             values.append(updates[field])
-                
+
                 if not update_fields:
                     logger.warning("No valid fields to update")
                     return False
-                
+
                 # Add updated_at
                 update_fields.append("updated_at = ?")
                 values.append(int(time.time()))
                 values.append(template_id)
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}prompt_templates 
                     SET {', '.join(update_fields)}
                     WHERE id = ?
                 """, values)
-                
+
                 logger.info(f"Updated prompt template {template_id}")
                 return cursor.rowcount > 0
-                
+
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error updating prompt template: {e}")
             return False
@@ -4672,79 +4816,81 @@ class LambDatabaseManager:
     def delete_prompt_template(self, template_id: int, owner_email: str) -> bool:
         """
         Delete a prompt template (only owner can delete).
-        
+
         Args:
             template_id: Template ID
             owner_email: Email of owner (for authorization check)
-        
+
         Returns:
             True if successful, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}prompt_templates 
                     WHERE id = ? AND owner_email = ?
                 """, (template_id, owner_email))
-                
+
                 success = cursor.rowcount > 0
                 if success:
                     logger.info(f"Deleted prompt template {template_id}")
                 else:
-                    logger.warning(f"User {owner_email} attempted to delete template {template_id} without ownership")
-                
+                    logger.warning(
+                        f"User {owner_email} attempted to delete template {template_id} without ownership")
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error deleting prompt template: {e}")
             return False
         finally:
             connection.close()
 
-    def duplicate_prompt_template(self, template_id: int, new_owner_email: str, 
+    def duplicate_prompt_template(self, template_id: int, new_owner_email: str,
                                   new_organization_id: int, new_name: str = None) -> Optional[int]:
         """
         Duplicate a prompt template (create a copy for another user).
-        
+
         Args:
             template_id: Original template ID
             new_owner_email: Email of new owner
             new_organization_id: Organization ID for new template
             new_name: Optional new name (if None, adds "Copy of " prefix)
-        
+
         Returns:
             New template ID if successful, None otherwise
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get original template
                 cursor.execute(f"""
                     SELECT name, description, system_prompt, prompt_template, metadata
                     FROM {self.table_prefix}prompt_templates
                     WHERE id = ?
                 """, (template_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
-                    logger.error(f"Template {template_id} not found for duplication")
+                    logger.error(
+                        f"Template {template_id} not found for duplication")
                     return None
-                
+
                 # Create new template
                 current_time = int(time.time())
                 duplicate_name = new_name if new_name else f"Copy of {row[0]}"
-                
+
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}prompt_templates 
                     (organization_id, owner_email, name, description, system_prompt, 
@@ -4762,13 +4908,15 @@ class LambDatabaseManager:
                     current_time,
                     current_time
                 ))
-                
+
                 new_id = cursor.lastrowid
-                logger.info(f"Duplicated template {template_id} to new template {new_id}")
+                logger.info(
+                    f"Duplicated template {template_id} to new template {new_id}")
                 return new_id
-                
+
         except sqlite3.IntegrityError as e:
-            logger.error(f"Integrity error duplicating template (likely duplicate name): {e}")
+            logger.error(
+                f"Integrity error duplicating template (likely duplicate name): {e}")
             return None
         except sqlite3.Error as e:
             logger.error(f"Database error duplicating template: {e}")
@@ -4779,12 +4927,12 @@ class LambDatabaseManager:
     def toggle_template_sharing(self, template_id: int, owner_email: str, is_shared: bool) -> bool:
         """
         Toggle sharing status of a template.
-        
+
         Args:
             template_id: Template ID
             owner_email: Email of owner (for authorization check)
             is_shared: New sharing status
-        
+
         Returns:
             True if successful, False otherwise
         """
@@ -4797,7 +4945,7 @@ class LambDatabaseManager:
         """
         Register a KB in LAMB's registry.
         Called when KB is created or auto-registered on first access.
-        
+
         Args:
             kb_id: UUID from KB Server
             kb_name: Display name
@@ -4805,7 +4953,7 @@ class LambDatabaseManager:
             organization_id: Organization ID
             is_shared: Whether KB is shared with org (default: False)
             metadata: Optional metadata dict
-        
+
         Returns:
             Registry entry ID if successful, None otherwise
         """
@@ -4813,23 +4961,24 @@ class LambDatabaseManager:
         if not connection:
             logger.error("Could not establish database connection")
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
                 metadata_json = json.dumps(metadata or {})
-                
+
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}kb_registry 
                     (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (kb_id, kb_name, owner_user_id, organization_id, is_shared, metadata_json, current_time, current_time))
-                
+
                 registry_id = cursor.lastrowid
-                logger.info(f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
+                logger.info(
+                    f"Registered KB '{kb_name}' (ID: {kb_id}) in registry with id: {registry_id}")
                 return registry_id
-                
+
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error registering KB: {e}")
             return None
@@ -4842,17 +4991,17 @@ class LambDatabaseManager:
     def get_kb_registry_entry(self, kb_id: str) -> Optional[Dict[str, Any]]:
         """
         Get KB registry entry with owner info.
-        
+
         Args:
             kb_id: KB UUID
-        
+
         Returns:
             Registry entry dict or None
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -4865,11 +5014,11 @@ class LambDatabaseManager:
                     LEFT JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
                     WHERE kr.kb_id = ?
                 """, (kb_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
                     return None
-                
+
                 return {
                     'id': row[0],
                     'kb_id': row[1],
@@ -4883,7 +5032,7 @@ class LambDatabaseManager:
                     'owner_name': row[9],
                     'owner_email': row[10]
                 }
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting KB registry entry: {e}")
             return None
@@ -4893,18 +5042,18 @@ class LambDatabaseManager:
     def get_owned_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
         """
         Get KBs owned by user.
-        
+
         Args:
             user_id: User ID
             organization_id: Organization ID
-        
+
         Returns:
             List of KB registry entries owned by user
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -4918,24 +5067,26 @@ class LambDatabaseManager:
                     WHERE kr.organization_id = ? AND kr.owner_user_id = ?
                     ORDER BY kr.updated_at DESC
                 """, (organization_id, user_id))
-                
+
                 columns = [desc[0] for desc in cursor.description]
                 results = []
                 for row in cursor.fetchall():
                     result_dict = dict(zip(columns, row))
                     # Convert is_shared boolean
                     if isinstance(result_dict.get('is_shared'), int):
-                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                        result_dict['is_shared'] = bool(
+                            result_dict['is_shared'])
                     # Parse metadata JSON
                     if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
                         try:
-                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                            result_dict['metadata'] = json.loads(
+                                result_dict['metadata'])
                         except:
                             result_dict['metadata'] = {}
                     results.append(result_dict)
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting owned KBs: {e}")
             return []
@@ -4945,18 +5096,18 @@ class LambDatabaseManager:
     def get_shared_kbs(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
         """
         Get KBs shared in organization (excluding user's own).
-        
+
         Args:
             user_id: User ID (to exclude own KBs)
             organization_id: Organization ID
-        
+
         Returns:
             List of KB registry entries shared in org (not owned by user)
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -4972,24 +5123,26 @@ class LambDatabaseManager:
                     AND kr.owner_user_id != ?
                     ORDER BY kr.updated_at DESC
                 """, (organization_id, user_id))
-                
+
                 columns = [desc[0] for desc in cursor.description]
                 results = []
                 for row in cursor.fetchall():
                     result_dict = dict(zip(columns, row))
                     # Convert is_shared boolean
                     if isinstance(result_dict.get('is_shared'), int):
-                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                        result_dict['is_shared'] = bool(
+                            result_dict['is_shared'])
                     # Parse metadata JSON
                     if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
                         try:
-                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                            result_dict['metadata'] = json.loads(
+                                result_dict['metadata'])
                         except:
                             result_dict['metadata'] = {}
                     results.append(result_dict)
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting shared KBs: {e}")
             return []
@@ -5001,18 +5154,18 @@ class LambDatabaseManager:
         Get KBs accessible to user (owned OR shared in org).
         Mirrors template access pattern.
         NOTE: Consider using get_owned_kbs() and get_shared_kbs() separately for better UX.
-        
+
         Args:
             user_id: User ID
             organization_id: Organization ID
-        
+
         Returns:
             List of KB registry entries with owner info, ordered by ownership (owned first)
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -5027,24 +5180,26 @@ class LambDatabaseManager:
                     AND (kr.owner_user_id = ? OR kr.is_shared = TRUE)
                     ORDER BY kr.owner_user_id = ? DESC, kr.updated_at DESC
                 """, (organization_id, user_id, user_id))
-                
+
                 columns = [desc[0] for desc in cursor.description]
                 results = []
                 for row in cursor.fetchall():
                     result_dict = dict(zip(columns, row))
                     # Convert is_shared boolean
                     if isinstance(result_dict.get('is_shared'), int):
-                        result_dict['is_shared'] = bool(result_dict['is_shared'])
+                        result_dict['is_shared'] = bool(
+                            result_dict['is_shared'])
                     # Parse metadata JSON
                     if result_dict.get('metadata') and isinstance(result_dict['metadata'], str):
                         try:
-                            result_dict['metadata'] = json.loads(result_dict['metadata'])
+                            result_dict['metadata'] = json.loads(
+                                result_dict['metadata'])
                         except:
                             result_dict['metadata'] = {}
                     results.append(result_dict)
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting accessible KBs: {e}")
             return []
@@ -5055,38 +5210,38 @@ class LambDatabaseManager:
         """
         Check if user can access KB and return access level.
         Mirrors template access checking.
-        
+
         Args:
             kb_id: KB UUID
             user_id: User ID
-        
+
         Returns:
             (can_access, access_type) where access_type is 'owner', 'shared', or 'none'
         """
         entry = self.get_kb_registry_entry(kb_id)
-        
+
         if not entry:
             return (False, 'none')
-        
+
         # User is owner
         if entry['owner_user_id'] == user_id:
             return (True, 'owner')
-        
+
         # KB is shared in user's organization
         user = self.get_creator_user_by_id(user_id)
         if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
             return (True, 'shared')
-        
+
         return (False, 'none')
 
     def check_kb_used_by_other_users(self, kb_id: str, kb_owner_user_id: int) -> List[Dict[str, Any]]:
         """
         Check if a KB is used by assistants owned by other users.
-        
+
         Args:
             kb_id: KB UUID to check
             kb_owner_user_id: User ID of the KB owner
-        
+
         Returns:
             List of assistants using this KB (owned by other users).
             Empty list if KB is not used by other users or can be safely unshared.
@@ -5094,18 +5249,18 @@ class LambDatabaseManager:
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get KB owner's email
                 kb_owner = self.get_creator_user_by_id(kb_owner_user_id)
                 if not kb_owner:
                     return []
-                
+
                 kb_owner_email = kb_owner['user_email']
-                
+
                 # Find assistants that reference this KB in RAG_collections
                 # RAG_collections is comma-separated, so we need to check if kb_id appears in the string
                 # Only check assistants owned by users OTHER than the KB owner
@@ -5117,13 +5272,14 @@ class LambDatabaseManager:
                     AND a.owner != ?
                     AND u.id != ?
                 """
-                
+
                 # Use LIKE with wildcards to match KB ID in comma-separated list
                 # Match patterns: "kb_id", "kb_id,", ",kb_id", ",kb_id,"
                 kb_pattern = f"%{kb_id}%"
-                cursor.execute(query, (kb_pattern, kb_owner_email, kb_owner_user_id))
+                cursor.execute(
+                    query, (kb_pattern, kb_owner_email, kb_owner_user_id))
                 rows = cursor.fetchall()
-                
+
                 # Additional check: verify KB ID is actually in the list (not just substring match)
                 matching_assistants = []
                 for row in rows:
@@ -5135,9 +5291,10 @@ class LambDatabaseManager:
                         WHERE id = ?
                     """, (assistant_id,))
                     rag_result = cursor.fetchone()
-                    
+
                     if rag_result and rag_result[0]:
-                        collections = [c.strip() for c in rag_result[0].split(',') if c.strip()]
+                        collections = [c.strip()
+                                       for c in rag_result[0].split(',') if c.strip()]
                         if kb_id in collections:
                             matching_assistants.append({
                                 'id': assistant_id,
@@ -5145,9 +5302,9 @@ class LambDatabaseManager:
                                 'owner_email': owner_email,
                                 'owner_name': owner_name
                             })
-                
+
                 return matching_assistants
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error checking KB usage: {e}")
             return []
@@ -5156,37 +5313,37 @@ class LambDatabaseManager:
         """
         Toggle KB sharing status.
         Only owner can call this.
-        
+
         Args:
             kb_id: KB UUID
             is_shared: New sharing state
-        
+
         Returns:
             True if updated, False if not found
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}kb_registry 
                     SET is_shared = ?, updated_at = ?
                     WHERE kb_id = ?
                 """, (is_shared, current_time, kb_id))
-                
+
                 success = cursor.rowcount > 0
                 if success:
                     logger.info(f"Toggled KB {kb_id} sharing to {is_shared}")
                 else:
                     logger.warning(f"KB {kb_id} not found for sharing toggle")
-                
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error toggling KB sharing: {e}")
             return False
@@ -5197,18 +5354,18 @@ class LambDatabaseManager:
         """
         Update KB registry created_at timestamp.
         Used when auto-registering KBs to preserve original creation date.
-        
+
         Args:
             kb_id: KB UUID
             created_at: Unix timestamp (seconds since epoch)
-        
+
         Returns:
             True if updated, False if not found
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -5217,14 +5374,16 @@ class LambDatabaseManager:
                     SET created_at = ?
                     WHERE kb_id = ?
                 """, (created_at, kb_id))
-                
+
                 if cursor.rowcount > 0:
-                    logger.info(f"Updated created_at for KB {kb_id} to {created_at}")
+                    logger.info(
+                        f"Updated created_at for KB {kb_id} to {created_at}")
                     return True
                 else:
-                    logger.warning(f"KB {kb_id} not found in registry for created_at update")
+                    logger.warning(
+                        f"KB {kb_id} not found in registry for created_at update")
                     return False
-                    
+
         except sqlite3.Error as e:
             logger.error(f"Database error updating KB created_at: {e}")
             return False
@@ -5235,35 +5394,35 @@ class LambDatabaseManager:
         """
         Update cached KB name.
         Called when KB is renamed.
-        
+
         Args:
             kb_id: KB UUID
             kb_name: New KB name
-        
+
         Returns:
             True if updated, False if not found
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}kb_registry 
                     SET kb_name = ?, updated_at = ?
                     WHERE kb_id = ?
                 """, (kb_name, current_time, kb_id))
-                
+
                 success = cursor.rowcount > 0
                 if success:
                     logger.info(f"Updated KB {kb_id} name to '{kb_name}'")
-                
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error updating KB registry name: {e}")
             return False
@@ -5273,18 +5432,18 @@ class LambDatabaseManager:
     def get_all_kb_registry_entries(self) -> List[Dict[str, Any]]:
         """
         Get all KB registry entries (for migration operations).
-        
+
         Returns:
             List of all KB registry entries
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     SELECT 
                         kb_id, 
@@ -5297,12 +5456,12 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}kb_registry
                     ORDER BY created_at
                 """)
-                
+
                 rows = cursor.fetchall()
-                
+
                 if not rows:
                     return []
-                
+
                 entries = []
                 for row in rows:
                     entries.append({
@@ -5314,9 +5473,9 @@ class LambDatabaseManager:
                         'created_at': row[5],
                         'updated_at': row[6]
                     })
-                
+
                 return entries
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting KB registry entries: {e}")
             return []
@@ -5326,35 +5485,36 @@ class LambDatabaseManager:
     def update_assistant_name(self, assistant_id: int, new_name: str) -> bool:
         """
         Update assistant name (for migration operations).
-        
+
         Args:
             assistant_id: Assistant ID
             new_name: New assistant name
-        
+
         Returns:
             True if updated, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}assistants 
                     SET name = ?, updated_at = ?
                     WHERE id = ?
                 """, (new_name, current_time, assistant_id))
-                
+
                 success = cursor.rowcount > 0
                 if success:
-                    logger.info(f"Updated assistant {assistant_id} name to '{new_name}'")
-                
+                    logger.info(
+                        f"Updated assistant {assistant_id} name to '{new_name}'")
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error updating assistant name: {e}")
             return False
@@ -5365,32 +5525,32 @@ class LambDatabaseManager:
         """
         Delete KB registry entry.
         Called when KB is deleted.
-        
+
         Args:
             kb_id: KB UUID
-        
+
         Returns:
             True if deleted, False if not found
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}kb_registry 
                     WHERE kb_id = ?
                 """, (kb_id,))
-                
+
                 success = cursor.rowcount > 0
                 if success:
                     logger.info(f"Deleted KB registry entry for {kb_id}")
-                
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error deleting KB registry entry: {e}")
             return False
@@ -5398,111 +5558,114 @@ class LambDatabaseManager:
             connection.close()
 
     # Assistant Sharing Methods
-    
+
     def share_assistant(self, assistant_id: int, shared_with_user_id: int, shared_by_user_id: int) -> bool:
         """
         Share an assistant with another user in the same organization
-        
+
         Args:
             assistant_id: ID of the assistant to share
             shared_with_user_id: ID of the user to share with
             shared_by_user_id: ID of the user sharing the assistant
-            
+
         Returns:
             True if shared successfully, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
                 current_time = int(time.time())
-                
+
                 # Check if already shared
                 cursor.execute(f"""
                     SELECT id FROM {self.table_prefix}assistant_shares 
                     WHERE assistant_id = ? AND shared_with_user_id = ?
                 """, (assistant_id, shared_with_user_id))
-                
+
                 if cursor.fetchone():
-                    logger.info(f"Assistant {assistant_id} already shared with user {shared_with_user_id}")
+                    logger.info(
+                        f"Assistant {assistant_id} already shared with user {shared_with_user_id}")
                     return True
-                
+
                 # Add sharing record
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}assistant_shares 
                     (assistant_id, shared_with_user_id, shared_by_user_id, shared_at)
                     VALUES (?, ?, ?, ?)
                 """, (assistant_id, shared_with_user_id, shared_by_user_id, current_time))
-                
+
                 success = cursor.rowcount > 0
                 if success:
-                    logger.info(f"Shared assistant {assistant_id} with user {shared_with_user_id}")
-                
+                    logger.info(
+                        f"Shared assistant {assistant_id} with user {shared_with_user_id}")
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error sharing assistant: {e}")
             return False
         finally:
             connection.close()
-    
+
     def unshare_assistant(self, assistant_id: int, shared_with_user_id: int) -> bool:
         """
         Remove assistant sharing with a user
-        
+
         Args:
             assistant_id: ID of the assistant to unshare
             shared_with_user_id: ID of the user to remove sharing from
-            
+
         Returns:
             True if unshared successfully, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}assistant_shares 
                     WHERE assistant_id = ? AND shared_with_user_id = ?
                 """, (assistant_id, shared_with_user_id))
-                
+
                 success = cursor.rowcount > 0
                 if success:
-                    logger.info(f"Unshared assistant {assistant_id} from user {shared_with_user_id}")
-                
+                    logger.info(
+                        f"Unshared assistant {assistant_id} from user {shared_with_user_id}")
+
                 return success
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error unsharing assistant: {e}")
             return False
         finally:
             connection.close()
-    
+
     def get_assistant_shares(self, assistant_id: int) -> List[Dict[str, Any]]:
         """
         Get list of users an assistant is shared with
-        
+
         Args:
             assistant_id: ID of the assistant
-            
+
         Returns:
             List of share records with user information
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     SELECT 
                         s.id,
@@ -5521,7 +5684,7 @@ class LambDatabaseManager:
                     WHERE s.assistant_id = ?
                     ORDER BY s.shared_at DESC
                 """, (assistant_id,))
-                
+
                 shares = []
                 for row in cursor.fetchall():
                     shares.append({
@@ -5536,33 +5699,33 @@ class LambDatabaseManager:
                         'shared_by_email': row[8],
                         'shared_by_name': row[9]
                     })
-                
+
                 return shares
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting assistant shares: {e}")
             return []
         finally:
             connection.close()
-    
+
     def get_assistants_shared_with_user(self, user_id: int) -> List[Dict[str, Any]]:
         """
         Get list of assistants shared with a specific user
-        
+
         Args:
             user_id: ID of the user
-            
+
         Returns:
             List of assistants shared with the user
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     SELECT 
                         a.id,
@@ -5587,7 +5750,7 @@ class LambDatabaseManager:
                     WHERE s.shared_with_user_id = ?
                     ORDER BY s.shared_at DESC
                 """, (user_id,))
-                
+
                 assistants = []
                 for row in cursor.fetchall():
                     assistants.append({
@@ -5609,66 +5772,66 @@ class LambDatabaseManager:
                         'shared_by_name': row[15],
                         'is_shared': True  # Flag to indicate this is a shared assistant
                     })
-                
+
                 return assistants
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting shared assistants: {e}")
             return []
         finally:
             connection.close()
-    
+
     def is_assistant_shared_with_user(self, assistant_id: int, user_id: int) -> bool:
         """
         Check if an assistant is shared with a specific user
-        
+
         Args:
             assistant_id: ID of the assistant
             user_id: ID of the user
-            
+
         Returns:
             True if shared, False otherwise
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     SELECT id FROM {self.table_prefix}assistant_shares 
                     WHERE assistant_id = ? AND shared_with_user_id = ?
                 """, (assistant_id, user_id))
-                
+
                 return cursor.fetchone() is not None
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error checking assistant share: {e}")
             return False
         finally:
             connection.close()
-    
+
     def get_users_in_organization(self, organization_id: int, include_lti: bool = False) -> List[Dict[str, Any]]:
         """
         Get all users in an organization (for sharing UI)
-        
+
         Args:
             organization_id: ID of the organization
             include_lti: Whether to include LTI users (default False)
-            
+
         Returns:
             List of users in the organization
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Get regular creator and end users
                 cursor.execute(f"""
                     SELECT 
@@ -5683,7 +5846,7 @@ class LambDatabaseManager:
                     WHERE u.organization_id = ?
                     ORDER BY u.user_name
                 """, (organization_id,))
-                
+
                 users = []
                 for row in cursor.fetchall():
                     users.append({
@@ -5693,30 +5856,30 @@ class LambDatabaseManager:
                         'user_type': row[3],
                         'org_role': row[4] or 'member'
                     })
-                
+
                 return users
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting organization users: {e}")
             return []
         finally:
             connection.close()
-    
+
     def get_all_assistants(self) -> List[Dict[str, Any]]:
         """
         Get all assistants (for admin operations like OWI group sync)
-        
+
         Returns:
             List of all assistants
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 cursor.execute(f"""
                     SELECT 
                         id,
@@ -5738,7 +5901,7 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}assistants
                     ORDER BY created_at DESC
                 """)
-                
+
                 assistants = []
                 for row in cursor.fetchall():
                     assistants.append({
@@ -5759,26 +5922,26 @@ class LambDatabaseManager:
                         'group_id': row[14],
                         'group_name': row[15]
                     })
-                
+
                 return assistants
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting all assistants: {e}")
             return []
         finally:
             connection.close()
-    
+
     def user_can_access_rubric(self, rubric_id: str, user_id: int) -> bool:
         """
         Check if user has access to a rubric
-        
+
         Args:
             rubric_id: ID of the rubric
             user_id: ID of the user
-            
+
         Returns:
             True if user has access, False otherwise
-            
+
         Note: This is a placeholder implementation.
               Proper rubric sharing should be implemented when adding
               sharing permission checks to KB/template/rubric sharing.
@@ -5787,7 +5950,7 @@ class LambDatabaseManager:
         # This should be replaced with actual rubric access checking
         # when rubric sharing is implemented
         return True
-    
+
     def get_published_assistant_by_id(self, assistant_id: int) -> Optional[Dict[str, Any]]:
         """Alias for get_publication_by_assistant_id for consistency"""
         return self.get_publication_by_assistant_id(assistant_id)
@@ -5795,37 +5958,37 @@ class LambDatabaseManager:
     # =========================================================================
     # LAMB Internal Chat Methods (lamb_chats table)
     # =========================================================================
-    
+
     def create_lamb_chat(
-        self, 
-        chat_id: str, 
-        user_id: int, 
-        assistant_id: int, 
+        self,
+        chat_id: str,
+        user_id: int,
+        assistant_id: int,
         title: str = None
     ) -> Optional[Dict[str, Any]]:
         """
         Create a new internal chat record.
-        
+
         Args:
             chat_id: UUID for the chat (generated by caller)
             user_id: Creator user ID
             assistant_id: LAMB assistant ID
             title: Optional title (defaults to 'New Chat')
-            
+
         Returns:
             Created chat record or None on error
         """
         import time
-        
+
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             now = int(time.time())
             title = title or "New Chat"
             initial_chat = json.dumps({"history": {"messages": {}}})
-            
+
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
@@ -5833,9 +5996,10 @@ class LambDatabaseManager:
                     (id, user_id, assistant_id, title, created_at, updated_at, chat, archived)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 0)
                 """, (chat_id, user_id, assistant_id, title, now, now, initial_chat))
-                
-                logger.info(f"Created lamb_chat {chat_id} for user {user_id}, assistant {assistant_id}")
-                
+
+                logger.info(
+                    f"Created lamb_chat {chat_id} for user {user_id}, assistant {assistant_id}")
+
                 return {
                     "id": chat_id,
                     "user_id": user_id,
@@ -5846,7 +6010,7 @@ class LambDatabaseManager:
                     "chat": {"history": {"messages": {}}},
                     "archived": 0
                 }
-                
+
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error creating lamb_chat: {e}")
             return None
@@ -5855,21 +6019,21 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
-    
+
     def get_lamb_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a single chat record by ID.
-        
+
         Args:
             chat_id: UUID of the chat
-            
+
         Returns:
             Chat record with parsed JSON, or None if not found
         """
         connection = self.get_connection()
         if not connection:
             return None
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -5878,13 +6042,14 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}lamb_chats
                     WHERE id = ?
                 """, (chat_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
                     return None
-                
-                chat_data = json.loads(row[6]) if row[6] else {"history": {"messages": {}}}
-                
+
+                chat_data = json.loads(row[6]) if row[6] else {
+                    "history": {"messages": {}}}
+
                 return {
                     "id": row[0],
                     "user_id": row[1],
@@ -5895,16 +6060,16 @@ class LambDatabaseManager:
                     "chat": chat_data,
                     "archived": row[7]
                 }
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error getting lamb_chat {chat_id}: {e}")
             return None
         finally:
             connection.close()
-    
+
     def get_lamb_chats_for_user_assistant(
-        self, 
-        user_id: int, 
+        self,
+        user_id: int,
         assistant_id: int,
         include_archived: bool = False,
         limit: int = 50,
@@ -5912,27 +6077,27 @@ class LambDatabaseManager:
     ) -> List[Dict[str, Any]]:
         """
         Get list of chats for a user with a specific assistant.
-        
+
         Args:
             user_id: Creator user ID
             assistant_id: LAMB assistant ID
             include_archived: Whether to include archived chats
             limit: Maximum number of chats to return
             offset: Offset for pagination
-            
+
         Returns:
             List of chat summaries (without full message content)
         """
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 archived_filter = "" if include_archived else "AND archived = 0"
-                
+
                 cursor.execute(f"""
                     SELECT id, user_id, assistant_id, title, created_at, updated_at, chat, archived
                     FROM {self.table_prefix}lamb_chats
@@ -5940,13 +6105,15 @@ class LambDatabaseManager:
                     ORDER BY updated_at DESC
                     LIMIT ? OFFSET ?
                 """, (user_id, assistant_id, limit, offset))
-                
+
                 chats = []
                 for row in cursor.fetchall():
                     # Parse chat to get message count
-                    chat_data = json.loads(row[6]) if row[6] else {"history": {"messages": {}}}
-                    message_count = len(chat_data.get("history", {}).get("messages", {}))
-                    
+                    chat_data = json.loads(row[6]) if row[6] else {
+                        "history": {"messages": {}}}
+                    message_count = len(chat_data.get(
+                        "history", {}).get("messages", {}))
+
                     chats.append({
                         "id": row[0],
                         "user_id": row[1],
@@ -5957,67 +6124,68 @@ class LambDatabaseManager:
                         "message_count": message_count,
                         "archived": row[7]
                     })
-                
+
                 return chats
-                
+
         except sqlite3.Error as e:
-            logger.error(f"Database error getting lamb_chats for user {user_id}, assistant {assistant_id}: {e}")
+            logger.error(
+                f"Database error getting lamb_chats for user {user_id}, assistant {assistant_id}: {e}")
             return []
         finally:
             connection.close()
-    
+
     def update_lamb_chat(
-        self, 
-        chat_id: str, 
-        title: str = None, 
+        self,
+        chat_id: str,
+        title: str = None,
         chat_json: Dict = None,
         archived: int = None
     ) -> bool:
         """
         Update a chat record.
-        
+
         Args:
             chat_id: UUID of the chat
             title: New title (optional)
             chat_json: New chat JSON with messages (optional)
             archived: Archive status (optional)
-            
+
         Returns:
             True if updated successfully
         """
         import time
-        
+
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             # Build dynamic update
             updates = []
             params = []
-            
+
             if title is not None:
                 updates.append("title = ?")
                 params.append(title)
-            
+
             if chat_json is not None:
                 updates.append("chat = ?")
                 params.append(json.dumps(chat_json))
-            
+
             if archived is not None:
                 updates.append("archived = ?")
                 params.append(archived)
-            
+
             if not updates:
                 logger.warning(f"No updates provided for lamb_chat {chat_id}")
                 return False
-            
+
             # Always update updated_at
             updates.append("updated_at = ?")
             params.append(int(time.time()))
-            
+
             params.append(chat_id)
-            
+
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
@@ -6025,60 +6193,61 @@ class LambDatabaseManager:
                     SET {", ".join(updates)}
                     WHERE id = ?
                 """, tuple(params))
-                
+
                 if cursor.rowcount == 0:
-                    logger.warning(f"No lamb_chat found with id {chat_id} to update")
+                    logger.warning(
+                        f"No lamb_chat found with id {chat_id} to update")
                     return False
-                
+
                 logger.debug(f"Updated lamb_chat {chat_id}")
                 return True
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error updating lamb_chat {chat_id}: {e}")
             return False
         finally:
             connection.close()
-    
+
     def add_message_to_lamb_chat(
-        self, 
-        chat_id: str, 
+        self,
+        chat_id: str,
         message_id: str,
-        role: str, 
+        role: str,
         content: str,
         timestamp: int = None
     ) -> bool:
         """
         Add a message to an existing chat.
-        
+
         Args:
             chat_id: UUID of the chat
             message_id: UUID for the new message
             role: Message role ('user' or 'assistant')
             content: Message content
             timestamp: Unix timestamp (defaults to now)
-            
+
         Returns:
             True if message added successfully
         """
         import time
-        
+
         # Get current chat
         chat = self.get_lamb_chat(chat_id)
         if not chat:
             logger.error(f"Cannot add message: lamb_chat {chat_id} not found")
             return False
-        
+
         timestamp = timestamp or int(time.time())
-        
+
         # Get existing messages and find parent
         messages = chat.get("chat", {}).get("history", {}).get("messages", {})
-        
+
         # Find the last message to set as parent
         parent_id = None
         if messages:
             # Sort by timestamp to find last message
             sorted_msgs = sorted(
-                messages.items(), 
+                messages.items(),
                 key=lambda x: x[1].get("timestamp", 0)
             )
             if sorted_msgs:
@@ -6087,7 +6256,7 @@ class LambDatabaseManager:
                 if "childrenIds" not in messages[parent_id]:
                     messages[parent_id]["childrenIds"] = []
                 messages[parent_id]["childrenIds"].append(message_id)
-        
+
         # Create new message in OWI-compatible format
         new_message = {
             "id": message_id,
@@ -6097,31 +6266,31 @@ class LambDatabaseManager:
             "content": content,
             "timestamp": timestamp
         }
-        
+
         messages[message_id] = new_message
-        
+
         # Update chat with new messages
         chat_data = chat.get("chat", {})
         if "history" not in chat_data:
             chat_data["history"] = {}
         chat_data["history"]["messages"] = messages
-        
+
         return self.update_lamb_chat(chat_id, chat_json=chat_data)
-    
+
     def delete_lamb_chat(self, chat_id: str) -> bool:
         """
         Delete a chat record.
-        
+
         Args:
             chat_id: UUID of the chat
-            
+
         Returns:
             True if deleted successfully
         """
         connection = self.get_connection()
         if not connection:
             return False
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -6129,20 +6298,21 @@ class LambDatabaseManager:
                     DELETE FROM {self.table_prefix}lamb_chats
                     WHERE id = ?
                 """, (chat_id,))
-                
+
                 if cursor.rowcount == 0:
-                    logger.warning(f"No lamb_chat found with id {chat_id} to delete")
+                    logger.warning(
+                        f"No lamb_chat found with id {chat_id} to delete")
                     return False
-                
+
                 logger.info(f"Deleted lamb_chat {chat_id}")
                 return True
-                
+
         except sqlite3.Error as e:
             logger.error(f"Database error deleting lamb_chat {chat_id}: {e}")
             return False
         finally:
             connection.close()
-    
+
     def get_lamb_chats_for_assistant_analytics(
         self,
         assistant_id: int,
@@ -6170,19 +6340,19 @@ class LambDatabaseManager:
         connection = self.get_connection()
         if not connection:
             return []
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
-                
+
                 # Build WHERE clause
                 where_clauses = ["c.assistant_id = ?"]
                 params = [assistant_id]
-                
+
                 if start_date:
                     where_clauses.append("c.created_at >= ?")
                     params.append(start_date)
-                
+
                 if end_date:
                     where_clauses.append("c.created_at <= ?")
                     params.append(end_date)
@@ -6193,7 +6363,7 @@ class LambDatabaseManager:
 
                 where_sql = " AND ".join(where_clauses)
                 params.extend([limit, offset])
-                
+
                 cursor.execute(f"""
                     SELECT 
                         c.id,
@@ -6212,12 +6382,14 @@ class LambDatabaseManager:
                     ORDER BY c.created_at DESC
                     LIMIT ? OFFSET ?
                 """, tuple(params))
-                
+
                 chats = []
                 for row in cursor.fetchall():
-                    chat_data = json.loads(row[6]) if row[6] else {"history": {"messages": {}}}
-                    message_count = len(chat_data.get("history", {}).get("messages", {}))
-                    
+                    chat_data = json.loads(row[6]) if row[6] else {
+                        "history": {"messages": {}}}
+                    message_count = len(chat_data.get(
+                        "history", {}).get("messages", {}))
+
                     chats.append({
                         "id": row[0],
                         "user_id": row[1],
@@ -6231,29 +6403,30 @@ class LambDatabaseManager:
                         "user_email": row[9],
                         "source": "lamb_internal"  # Mark source for unified analytics
                     })
-                
+
                 return chats
-                
+
         except sqlite3.Error as e:
-            logger.error(f"Database error getting lamb_chats for analytics, assistant {assistant_id}: {e}")
+            logger.error(
+                f"Database error getting lamb_chats for analytics, assistant {assistant_id}: {e}")
             return []
         finally:
             connection.close()
-    
+
     def count_lamb_chats_for_assistant(self, assistant_id: int) -> int:
         """
         Get total count of chats for an assistant.
-        
+
         Args:
             assistant_id: LAMB assistant ID
-            
+
         Returns:
             Count of chats
         """
         connection = self.get_connection()
         if not connection:
             return 0
-        
+
         try:
             with connection:
                 cursor = connection.cursor()
@@ -6261,30 +6434,31 @@ class LambDatabaseManager:
                     SELECT COUNT(*) FROM {self.table_prefix}lamb_chats
                     WHERE assistant_id = ?
                 """, (assistant_id,))
-                
+
                 result = cursor.fetchone()
                 return result[0] if result else 0
-                
+
         except sqlite3.Error as e:
-            logger.error(f"Database error counting lamb_chats for assistant {assistant_id}: {e}")
+            logger.error(
+                f"Database error counting lamb_chats for assistant {assistant_id}: {e}")
             return 0
         finally:
             connection.close()
-    
+
     def generate_chat_title(self, first_message: str, max_length: int = 35) -> str:
         """
         Generate an auto-title from the first message content.
         Format: "First few words... - Dec 29 10:45"
-        
+
         Args:
             first_message: Content of the first message
             max_length: Maximum length for the message portion
-            
+
         Returns:
             Generated title string
         """
         from datetime import datetime
-        
+
         # Clean and truncate message
         clean_msg = first_message.strip().replace('\n', ' ')
         if len(clean_msg) > max_length:
@@ -6294,9 +6468,9 @@ class LambDatabaseManager:
             if last_space > max_length // 2:
                 truncated = truncated[:last_space]
             clean_msg = truncated + "..."
-        
+
         # Add timestamp
         now = datetime.now()
         timestamp = now.strftime("%b %d %H:%M")
-        
+
         return f"{clean_msg} - {timestamp}" if clean_msg else f"New Chat - {timestamp}"
