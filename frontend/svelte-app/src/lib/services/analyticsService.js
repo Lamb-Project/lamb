@@ -85,6 +85,7 @@ function getAuthHeaders() {
  * @param {string} [options.startDate] - Filter from date (ISO format)
  * @param {string} [options.endDate] - Filter until date (ISO format)
  * @param {string} [options.userId] - Filter by user ID
+ * @param {string} [options.searchContent] - Search for content in chat messages (supports SQLite wildcards % and _)
  * @param {number} [options.page=1] - Page number
  * @param {number} [options.perPage=20] - Items per page
  * @returns {Promise<ChatListResponse>}
@@ -94,14 +95,15 @@ export async function getAssistantChats(assistantId, options = {}) {
         throw new Error('This operation is only available in the browser');
     }
     
-    const { startDate, endDate, userId, page = 1, perPage = 20 } = options;
-    
+    const { startDate, endDate, userId, searchContent, page = 1, perPage = 20 } = options;
+
     const params = new URLSearchParams();
     params.append('page', page.toString());
     params.append('per_page', perPage.toString());
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (userId) params.append('user_id', userId);
+    if (searchContent) params.append('search_content', searchContent);
     
     const url = getApiUrl(`/analytics/assistant/${assistantId}/chats?${params.toString()}`);
     

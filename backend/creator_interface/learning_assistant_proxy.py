@@ -12,15 +12,16 @@ Security Features:
 - Audit trail for all assistant interactions
 """
 
-from fastapi import APIRouter, Request, HTTPException, Depends, Path
+from fastapi import APIRouter, Request, HTTPException, Depends, Path, Query
 from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .assistant_router import get_creator_user_from_token
 from lamb.completions.main import run_lamb_assistant
 from lamb.database_manager import LambDatabaseManager
+from lamb.services.lamb_chats_service import LambChatsService
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, AsyncGenerator
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Learning Assistant Proxy"])
 security = HTTPBearer()
 db_manager = LambDatabaseManager()
+chats_service = LambChatsService()
 
 
 def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
@@ -98,6 +100,53 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
         return False
 
 
+async def wrap_streaming_response_with_chat_save(
+    response_generator: AsyncGenerator,
+    chat_id: str,
+    chats_service: LambChatsService
+) -> AsyncGenerator:
+    """
+    Wrap a streaming response generator to capture the full content and save to chat.
+    Yields chunks as they come, then saves the complete response at the end.
+    """
+    full_content = []
+    
+    try:
+        async for chunk in response_generator:
+            yield chunk
+            
+            # Try to extract content from SSE chunk
+            if isinstance(chunk, bytes):
+                chunk_str = chunk.decode('utf-8')
+            else:
+                chunk_str = chunk
+            
+            # Parse SSE data lines
+            for line in chunk_str.split('\n'):
+                if line.startswith('data: ') and line != 'data: [DONE]':
+                    try:
+                        data = json.loads(line[6:])
+                        delta = data.get('choices', [{}])[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            full_content.append(content)
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        pass
+        
+        # After streaming completes, save the full response
+        if full_content and chat_id:
+            complete_response = ''.join(full_content)
+            try:
+                chats_service.add_assistant_response(chat_id, complete_response)
+                logger.debug(f"Saved streaming response to chat {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to save streaming response to chat {chat_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in streaming wrapper: {e}")
+        raise
+
+
 @router.post(
     "/assistant/{assistant_id}/chat/completions",
     summary="Chat with Learning Assistant",
@@ -112,6 +161,8 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
     - Assistant access control based on ownership/organization
     - Full streaming and non-streaming support
     - OpenAI-compatible request/response format
+    - **Chat persistence**: Include `chat_id` to continue an existing chat,
+      or omit to create a new one. Response includes `chat_id` for continuation.
     
     Example Request:
     ```bash
@@ -126,7 +177,7 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
     }'
     ```
     
-    Example Streaming Request:
+    Example with Chat Persistence:
     ```bash
     curl -X POST 'http://localhost:9099/creator/assistant/1/chat/completions' \\
     -H 'Authorization: Bearer <user_token>' \\
@@ -135,6 +186,7 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
       "messages": [
         {"role": "user", "content": "Tell me a story"}
       ],
+      "chat_id": "existing-chat-uuid",
       "stream": true
     }' --no-buffer
     ```
@@ -151,6 +203,11 @@ async def proxy_assistant_chat(
     
     This endpoint eliminates the need for exposed API keys by using proper user
     authentication while maintaining full OpenAI API compatibility.
+    
+    Chat Persistence:
+    - Include `chat_id` in request body to continue an existing chat
+    - Omit `chat_id` to create a new chat
+    - Response includes `chat_id` for the frontend to use in subsequent requests
     """
     try:
         # 1. Authenticate user
@@ -164,6 +221,7 @@ async def proxy_assistant_chat(
                 detail="Invalid authentication. Please check your token."
             )
         
+        user_id = creator_user.get('id')
         logger.info(f"User {creator_user['email']} requesting access to assistant {assistant_id}")
         
         # 2. Verify assistant access
@@ -191,14 +249,40 @@ async def proxy_assistant_chat(
                 detail="Missing 'messages' field in request body"
             )
         
-        # 5. Log the request for audit trail
+        # 5. Extract chat persistence parameters
+        chat_id = body.pop("chat_id", None)  # Remove from body before passing to LLM
+        persist_chat = body.pop("persist_chat", True)  # Default to persisting
+        
+        # 6. Get the latest user message for persistence
+        messages = body.get("messages", [])
+        latest_user_message = None
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                latest_user_message = msg.get("content", "")
+                break
+        
+        # 7. Save user message to chat (create new chat if needed)
+        if persist_chat and latest_user_message:
+            try:
+                result = chats_service.add_user_message_and_create_if_needed(
+                    user_id=user_id,
+                    assistant_id=assistant_id,
+                    content=latest_user_message,
+                    chat_id=chat_id
+                )
+                chat_id = result["chat_id"]
+                logger.debug(f"Saved user message to chat {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to save user message: {e}")
+                # Continue with completion even if chat persistence fails
+                chat_id = None
+        
+        # 8. Log the request for audit trail
         stream_mode = body.get("stream", False)
         logger.info(f"Processing {'streaming' if stream_mode else 'non-streaming'} "
                    f"completion for user {creator_user['email']} with assistant {assistant_id}")
         
-        # 6. Call internal completion system
-        # The run_lamb_assistant function handles all the processing and returns
-        # the appropriate response format (streaming or non-streaming)
+        # 9. Call internal completion system
         response = await run_lamb_assistant(
             request=body,
             assistant=assistant_id,
@@ -208,7 +292,48 @@ async def proxy_assistant_chat(
         logger.info(f"Successfully processed completion for user {creator_user['email']} "
                    f"with assistant {assistant_id}")
         
-        return response
+        # 10. Handle response based on streaming mode
+        if stream_mode and isinstance(response, StreamingResponse):
+            # Wrap streaming response to capture and save content
+            if persist_chat and chat_id:
+                wrapped_generator = wrap_streaming_response_with_chat_save(
+                    response.body_iterator,
+                    chat_id,
+                    chats_service
+                )
+                # Return new StreamingResponse with chat_id in headers
+                return StreamingResponse(
+                    wrapped_generator,
+                    media_type="text/event-stream",
+                    headers={"X-Chat-Id": chat_id} if chat_id else {}
+                )
+            return response
+        else:
+            # Non-streaming response - save assistant message directly
+            if persist_chat and chat_id:
+                try:
+                    # Extract content from response
+                    if isinstance(response, Response):
+                        response_body = json.loads(response.body.decode('utf-8'))
+                    else:
+                        response_body = response
+                    
+                    assistant_content = response_body.get('choices', [{}])[0].get('message', {}).get('content', '')
+                    if assistant_content:
+                        chats_service.add_assistant_response(chat_id, assistant_content)
+                        logger.debug(f"Saved assistant response to chat {chat_id}")
+                    
+                    # Add chat_id to response
+                    if isinstance(response_body, dict):
+                        response_body['chat_id'] = chat_id
+                        return Response(
+                            content=json.dumps(response_body),
+                            media_type="application/json"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to save assistant response: {e}")
+            
+            return response
         
     except HTTPException:
         # Re-raise HTTP exceptions (authentication, authorization, validation errors)

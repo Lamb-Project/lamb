@@ -45,6 +45,7 @@
     let startDate = $state('');
     let endDate = $state('');
     let selectedUserId = $state('');
+    let searchContent = $state('');
     let showFilters = $state(false);
     let uniqueUsers = $state([]);
     
@@ -55,7 +56,7 @@
     // Derived values
     let assistantId = $derived(assistant?.id);
     let assistantName = $derived(assistant?.name || 'Assistant');
-    let hasActiveFilters = $derived(startDate || endDate || selectedUserId);
+    let hasActiveFilters = $derived(startDate || endDate || selectedUserId || searchContent);
     // Only show timeline if we have at least 3 days with activity - otherwise it's not meaningful
     let hasTimelineData = $derived(
         timeline.length >= 3 && timeline.filter(t => t.chat_count > 0).length >= 2
@@ -83,7 +84,8 @@
                     perPage: itemsPerPage,
                     startDate: startDate || undefined,
                     endDate: endDate || undefined,
-                    userId: selectedUserId || undefined
+                    userId: selectedUserId || undefined,
+                    searchContent: searchContent || undefined
                 })
             ]);
             
@@ -135,6 +137,7 @@
         startDate = '';
         endDate = '';
         selectedUserId = '';
+        searchContent = '';
         showFilters = false;
         currentPage = 1;
         await loadData();
@@ -298,7 +301,7 @@
                     </span>
                     {#if hasActiveFilters}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                            {(startDate ? 1 : 0) + (endDate ? 1 : 0) + (selectedUserId ? 1 : 0)} active
+                            {(startDate ? 1 : 0) + (endDate ? 1 : 0) + (selectedUserId ? 1 : 0) + (searchContent ? 1 : 0)} active
                         </span>
                     {/if}
                 </div>
@@ -310,6 +313,44 @@
             <!-- Filter Controls (Collapsible) -->
             {#if showFilters}
                 <div class="px-4 pb-4 pt-2 border-t border-gray-100 bg-gray-50">
+                    <!-- Content Search - Full Width on Top -->
+                    <div class="w-full mb-4">
+                        <label for="content-search" class="block text-xs font-medium text-gray-600 mb-1">
+                            Search Content
+                        </label>
+                        <div class="flex gap-2">
+                            <input
+                                type="text"
+                                id="content-search"
+                                bind:value={searchContent}
+                                placeholder="Search in chat messages..."
+                                class="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            />
+                            <div class="flex gap-1">
+                                <button
+                                    type="button"
+                                    onclick={() => searchContent += '%'}
+                                    title="Insert wildcard (%) - matches any characters"
+                                    class="px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded text-gray-700"
+                                >
+                                    %
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick={() => searchContent += '_'}
+                                    title="Insert single char wildcard (_) - matches one character"
+                                    class="px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded text-gray-700"
+                                >
+                                _
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Use % for any characters, _ for single character
+                        </p>
+                    </div>
+
+                    <!-- Other Filters -->
                     <div class="flex flex-wrap items-end gap-4">
                         <!-- Date Range -->
                         <div class="flex gap-2 items-end">
@@ -337,7 +378,7 @@
                                 />
                             </div>
                         </div>
-                        
+
                         <!-- User Filter -->
                         {#if uniqueUsers.length > 0}
                             <div>
@@ -356,7 +397,7 @@
                                 </select>
                             </div>
                         {/if}
-                        
+
                         <!-- Action Buttons -->
                         <div class="flex gap-2">
                             <button
@@ -560,6 +601,7 @@
         </div>
     {/if}
 </div>
+
 
 
 

@@ -205,6 +205,7 @@ async def list_assistant_chats(
     start_date: Optional[str] = Query(None, description="Filter from date (ISO format)"),
     end_date: Optional[str] = Query(None, description="Filter until date (ISO format)"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    search_content: Optional[str] = Query(None, description="Search for content in chat messages (supports SQLite wildcards % and _)"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page")
 ):
@@ -240,6 +241,7 @@ async def list_assistant_chats(
         start_date=start_dt,
         end_date=end_dt,
         user_id=user_id,
+        search_content=search_content,
         page=page,
         per_page=per_page,
         anonymize_users=anonymize

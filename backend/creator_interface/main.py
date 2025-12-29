@@ -123,6 +123,10 @@ router.include_router(prompt_templates_router, prefix="/prompt-templates")
 from .analytics_router import router as analytics_router
 router.include_router(analytics_router, prefix="/analytics")
 
+# Include the chats router for internal chat persistence
+from .chats_router import router as chats_router
+router.include_router(chats_router, prefix="/chats")
+
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 
 
