@@ -3594,3 +3594,181 @@ async def update_organization_assistant_defaults(
     except Exception as e:
         logger.error(f"Error updating assistant defaults for {slug}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# System Statistics Response Model
+class SystemStatsResponse(BaseModel):
+    users: Dict[str, int] = Field(..., description="User statistics")
+    organizations: Dict[str, int] = Field(..., description="Organization statistics")
+    assistants: Dict[str, int] = Field(..., description="Assistant statistics")
+    knowledge_bases: Dict[str, int] = Field(..., description="Knowledge base statistics")
+    rubrics: Dict[str, int] = Field(..., description="Rubric statistics")
+    templates: Dict[str, int] = Field(..., description="Prompt template statistics")
+
+
+@router.get(
+    "/system-stats",
+    tags=["System Administration"],
+    summary="Get System-Wide Statistics",
+    description="""Get comprehensive statistics for the entire LAMB system including counts
+of users, organizations, assistants, knowledge bases, rubrics, and prompt templates.
+
+**Requires:** System administrator privileges
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/system-stats' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "users": {
+    "total": 150,
+    "enabled": 145,
+    "disabled": 5,
+    "creators": 50,
+    "end_users": 100
+  },
+  "organizations": {
+    "total": 10,
+    "active": 8,
+    "inactive": 2
+  },
+  "assistants": {
+    "total": 250,
+    "published": 120,
+    "unpublished": 130
+  },
+  "knowledge_bases": {
+    "total": 80,
+    "shared": 25
+  },
+  "rubrics": {
+    "total": 45,
+    "public": 15
+  },
+  "templates": {
+    "total": 60,
+    "shared": 20
+  }
+}
+```
+    """,
+    response_model=SystemStatsResponse,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"model": SystemStatsResponse, "description": "System statistics retrieved successfully"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "Admin privileges required"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def get_system_stats(request: Request):
+    """Get system-wide statistics for admin dashboard"""
+    try:
+        # Verify admin access
+        await verify_admin_access(request)
+        
+        connection = db_manager.get_connection()
+        if not connection:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            cursor = connection.cursor()
+            table_prefix = db_manager.table_prefix
+            
+            # User statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE enabled = 1")
+            enabled_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE user_type = 'creator'")
+            creator_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE user_type = 'end_user'")
+            end_users = cursor.fetchone()[0]
+            
+            # Organization statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}organizations")
+            total_orgs = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}organizations WHERE status = 'active'")
+            active_orgs = cursor.fetchone()[0]
+            
+            # Assistant statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}assistants")
+            total_assistants = cursor.fetchone()[0]
+            
+            # Published assistants are those with a valid entry in assistant_publish table
+            cursor.execute(f"""
+                SELECT COUNT(DISTINCT a.id) FROM {table_prefix}assistants a
+                INNER JOIN {table_prefix}assistant_publish p ON a.id = p.assistant_id
+                WHERE p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null'
+            """)
+            published_assistants = cursor.fetchone()[0]
+            
+            # Knowledge base statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}kb_registry")
+            total_kbs = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}kb_registry WHERE is_shared = 1")
+            shared_kbs = cursor.fetchone()[0]
+            
+            # Rubric statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}rubrics")
+            total_rubrics = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}rubrics WHERE is_public = 1")
+            public_rubrics = cursor.fetchone()[0]
+            
+            # Prompt template statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}prompt_templates")
+            total_templates = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}prompt_templates WHERE is_shared = 1")
+            shared_templates = cursor.fetchone()[0]
+            
+            return {
+                "users": {
+                    "total": total_users,
+                    "enabled": enabled_users,
+                    "disabled": total_users - enabled_users,
+                    "creators": creator_users,
+                    "end_users": end_users
+                },
+                "organizations": {
+                    "total": total_orgs,
+                    "active": active_orgs,
+                    "inactive": total_orgs - active_orgs
+                },
+                "assistants": {
+                    "total": total_assistants,
+                    "published": published_assistants,
+                    "unpublished": total_assistants - published_assistants
+                },
+                "knowledge_bases": {
+                    "total": total_kbs,
+                    "shared": shared_kbs
+                },
+                "rubrics": {
+                    "total": total_rubrics,
+                    "public": public_rubrics
+                },
+                "templates": {
+                    "total": total_templates,
+                    "shared": shared_templates
+                }
+            }
+            
+        finally:
+            connection.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting system stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

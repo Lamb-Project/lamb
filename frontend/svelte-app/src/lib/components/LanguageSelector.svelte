@@ -5,6 +5,9 @@
   import { setLocale } from '$lib/i18n';
   import { browser } from '$app/environment'; // Import browser check
 
+  /** @type {{ size?: 'normal' | 'small' }} */
+  let { size = 'normal' } = $props();
+
   let open = $state(false);
   let currentLang = $state('en');
 
@@ -48,12 +51,12 @@
 <div class="lang-selector relative">
   <button 
     onclick={() => open = !open}
-    class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+    class="inline-flex items-center border border-gray-300 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 {size === 'small' ? 'px-1.5 py-0.5 text-xs' : 'px-3 py-1 text-sm'}"
     aria-haspopup="true"
     aria-expanded={open}
   >
     {currentLang?.toUpperCase() ?? ''} 
-    <svg class="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+    <svg class="{size === 'small' ? 'ml-0.5 h-3 w-3' : 'ml-1 h-4 w-4'}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
     </svg>
   </button>

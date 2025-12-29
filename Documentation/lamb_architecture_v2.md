@@ -735,6 +735,7 @@ Student clicks LTI link in LMS
 
 ## 9. Frontend Architecture
 
+The project uses Svelte 5 , with Javascript and JSDOC ( NOT Typescript !!! repeat NOT Typescript!!! )
 ### 9.1 Structure
 
 ```

@@ -97,13 +97,13 @@
         </div>
         
         <!-- Navigation links -->
-        <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+        <div class="hidden sm:ml-4 sm:flex sm:items-center sm:gap-1">
           
           <!-- Restore dynamic class based on $page.url.pathname and $user -->
           <!-- Restore: aria-disabled={!$user.isLoggedIn} -->
           <a
             href="{base}/assistants"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname === base + '/assistants' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+            class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/assistants' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
             aria-disabled={!$user.isLoggedIn}
           >
             {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
@@ -112,7 +112,7 @@
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
           <a
             href="{base}/admin"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname === base + '/admin' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+            class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/admin' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
           >
             {localeLoaded ? $_('nav.admin', { default: 'Admin' }) : 'Admin'}
           </a>
@@ -121,7 +121,7 @@
           {#if $user.isLoggedIn && $user.data?.organization_role === 'admin' && $user.data?.role !== 'admin'} <!-- Org Admin link - only for org admins (not system admins) -->
           <a
             href="{base}/org-admin"
-            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium {$page.url.pathname === base + '/org-admin' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+            class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/org-admin' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
           >
             {localeLoaded ? $_('nav.orgAdmin', { default: 'Org Admin' }) : 'Org Admin'}
           </a>
@@ -132,7 +132,7 @@
             <button
               type="button"
               onclick={() => toolsMenuOpen = !toolsMenuOpen}
-              class="inline-flex items-center h-full px-1 py-4 border-b-2 text-sm font-medium cursor-pointer select-none {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              class="inline-flex items-center h-full px-2 py-4 border-b-2 text-sm font-medium cursor-pointer select-none whitespace-nowrap {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
               aria-disabled={!$user.isLoggedIn}
               aria-expanded={toolsMenuOpen}
               aria-haspopup="true"
@@ -169,23 +169,24 @@
       </div>
       
       <!-- User info and Language selector section -->
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
-          <!-- User name and logout stacked vertically -->
-          <div class="flex flex-col items-end space-y-1">
-            <span class="text-sm font-medium text-gray-700">{$user.name}</span>
+          <!-- Username -->
+          <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name}</span>
+        {/if}
+        
+        <!-- Logout and Language stacked vertically -->
+        <div class="flex flex-col items-end gap-0.5">
+          {#if $user.isLoggedIn}
             <button
               onclick={logout}
-              class="inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded text-white bg-red-600 hover:bg-red-700"
+              class="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700"
             >
               {localeLoaded ? $_('auth.logout') : 'Logout'}
             </button>
-          </div>
-        {/if}
-        
-        <!-- Language selector -->
-        <div>
-          <LanguageSelector />
+          {/if}
+          <!-- Language selector (smaller) -->
+          <LanguageSelector size="small" />
         </div>
       </div>
       
