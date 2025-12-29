@@ -2663,6 +2663,167 @@ class LambDatabaseManager:
             if connection:
                 connection.close()
 
+    def check_user_dependencies(self, user_id: int) -> Dict[str, Any]:
+        """
+        Check if a user has any dependencies (assistants or knowledge bases)
+        
+        Args:
+            user_id: User ID to check
+            
+        Returns:
+            Dict with:
+                - has_dependencies (bool): True if user has any dependencies
+                - assistant_count (int): Number of assistants owned by user
+                - kb_count (int): Number of knowledge bases owned by user
+                - assistants (List[Dict]): List of assistant names and IDs
+                - kbs (List[Dict]): List of KB names and IDs
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Failed to get database connection")
+            return {
+                'has_dependencies': False,
+                'assistant_count': 0,
+                'kb_count': 0,
+                'assistants': [],
+                'kbs': []
+            }
+        
+        try:
+            cursor = connection.cursor()
+            
+            # Get user email for owner lookup
+            cursor.execute(
+                f"SELECT user_email FROM {self.table_prefix}Creator_users WHERE id = ?",
+                (user_id,)
+            )
+            user_row = cursor.fetchone()
+            if not user_row:
+                logger.warning(f"User {user_id} not found")
+                return {
+                    'has_dependencies': False,
+                    'assistant_count': 0,
+                    'kb_count': 0,
+                    'assistants': [],
+                    'kbs': []
+                }
+            
+            user_email = user_row[0]
+            
+            # Check assistants owned by user (using owner = user_email)
+            cursor.execute(
+                f"SELECT id, name FROM {self.table_prefix}assistants WHERE owner = ?",
+                (user_email,)
+            )
+            assistants = [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
+            assistant_count = len(assistants)
+            
+            # Check knowledge bases owned by user
+            cursor.execute(
+                f"SELECT kb_id, kb_name FROM {self.table_prefix}kb_registry WHERE owner_user_id = ?",
+                (user_id,)
+            )
+            kbs = [{'id': row[0], 'name': row[1]} for row in cursor.fetchall()]
+            kb_count = len(kbs)
+            
+            has_dependencies = assistant_count > 0 or kb_count > 0
+            
+            logger.info(f"User {user_id} has {assistant_count} assistants and {kb_count} KBs")
+            
+            return {
+                'has_dependencies': has_dependencies,
+                'assistant_count': assistant_count,
+                'kb_count': kb_count,
+                'assistants': assistants,
+                'kbs': kbs
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking user dependencies: {e}")
+            return {
+                'has_dependencies': False,
+                'assistant_count': 0,
+                'kb_count': 0,
+                'assistants': [],
+                'kbs': []
+            }
+        finally:
+            if connection:
+                connection.close()
+
+    def delete_user_safe(self, user_id: int) -> Tuple[bool, Optional[str]]:
+        """
+        Safely delete a user after checking they are disabled and have no dependencies
+        
+        Args:
+            user_id: User ID to delete
+            
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Failed to get database connection")
+            return False, "Database connection failed"
+        
+        try:
+            with connection:
+                cursor = connection.cursor()
+                
+                # Check if user exists and is disabled
+                cursor.execute(
+                    f"SELECT enabled, user_email, user_name FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                user_row = cursor.fetchone()
+                
+                if not user_row:
+                    logger.warning(f"User {user_id} not found")
+                    return False, "User not found"
+                
+                is_enabled = user_row[0]
+                user_email = user_row[1]
+                user_name = user_row[2]
+                
+                # Safety check: user must be disabled
+                if is_enabled:
+                    logger.warning(f"Attempted to delete enabled user {user_id} ({user_email})")
+                    return False, "User must be disabled before deletion"
+                
+                # Check for dependencies
+                dependencies = self.check_user_dependencies(user_id)
+                
+                if dependencies['has_dependencies']:
+                    error_parts = []
+                    if dependencies['assistant_count'] > 0:
+                        error_parts.append(f"{dependencies['assistant_count']} assistant(s)")
+                    if dependencies['kb_count'] > 0:
+                        error_parts.append(f"{dependencies['kb_count']} knowledge base(s)")
+                    
+                    error_msg = f"User has dependencies: {', '.join(error_parts)}. Please delete or reassign these resources first."
+                    logger.warning(f"Cannot delete user {user_id} ({user_email}): {error_msg}")
+                    return False, error_msg
+                
+                # Safe to delete - user is disabled and has no dependencies
+                cursor.execute(
+                    f"DELETE FROM {self.table_prefix}Creator_users WHERE id = ?",
+                    (user_id,)
+                )
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Successfully deleted disabled user {user_id} ({user_email}, {user_name})")
+                    return True, None
+                else:
+                    logger.warning(f"No user deleted with id {user_id}")
+                    return False, "User not found"
+                    
+        except Exception as e:
+            logger.error(f"Error deleting user {user_id}: {e}")
+            return False, f"Database error: {str(e)}"
+        finally:
+            if connection:
+                connection.close()
+
     def disable_users_bulk(self, user_ids: List[int]) -> Dict[str, Any]:
         """
         Disable multiple user accounts in a single transaction

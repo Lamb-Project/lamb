@@ -114,3 +114,59 @@ export async function enableUsersBulk(token, userIds) {
   }
 }
 
+/**
+ * Check user dependencies (assistants and knowledge bases)
+ * @param {string} token - Authorization token
+ * @param {number} userId - User ID to check
+ * @returns {Promise<any>} - Promise resolving to dependencies info
+ */
+export async function checkUserDependencies(token, userId) {
+  try {
+    const response = await fetch(getApiUrl(`/admin/users/${userId}/dependencies`), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.detail || 'Failed to check user dependencies');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error checking user dependencies:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a disabled user (must have no dependencies)
+ * @param {string} token - Authorization token
+ * @param {number} userId - User ID to delete
+ * @returns {Promise<any>} - Promise resolving to operation result
+ */
+export async function deleteUser(token, userId) {
+  try {
+    const response = await fetch(getApiUrl(`/admin/users/${userId}`), {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.detail || 'Failed to delete user');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
+}
+

@@ -1849,6 +1849,171 @@ async def update_user_status_admin(
         logger.error(f"Error updating user status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
+@router.delete(
+    "/admin/users/{user_id}",
+    tags=["User Management"],
+    summary="Delete Disabled User",
+    description="""Delete a user account (admin only). For safety, the user must:
+1. Be disabled (enabled=false) before deletion
+2. Have no assistants or knowledge bases
+
+This prevents accidental deletion and ensures resources are properly handled.
+
+Example Request (Delete disabled user ID 2):
+```bash
+curl -X DELETE 'http://localhost:8000/creator/admin/users/2' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "success": true,
+  "message": "User deleted successfully",
+  "data": {
+    "user_id": "2"
+  }
+}
+```
+
+Example Error (User not disabled):
+```json
+{
+  "detail": "User must be disabled before deletion"
+}
+```
+
+Example Error (User has dependencies):
+```json
+{
+  "detail": "User has dependencies: 3 assistant(s), 2 knowledge base(s). Please delete or reassign these resources first."
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def delete_user_admin(
+    user_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Delete a disabled user with no dependencies (admin only)"""
+    try:
+        # Check if the requester is an admin
+        auth_header = f"Bearer {credentials.credentials}"
+        
+        if not is_admin_user(auth_header):
+            raise HTTPException(
+                status_code=403,
+                detail="Administrator privileges required"
+            )
+        
+        # Prevent users from deleting themselves
+        current_user = get_creator_user_from_token(auth_header)
+        if current_user and str(current_user.get('id')) == user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You cannot delete your own account"
+            )
+        
+        # Attempt safe deletion
+        db_manager = LambDatabaseManager()
+        success, error_message = db_manager.delete_user_safe(int(user_id))
+        
+        if not success:
+            raise HTTPException(
+                status_code=400,
+                detail=error_message or "Failed to delete user"
+            )
+        
+        logger.info(f"Admin successfully deleted user ID: {user_id}")
+        
+        return {
+            "success": True,
+            "message": "User deleted successfully",
+            "data": {
+                "user_id": user_id
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@router.get(
+    "/admin/users/{user_id}/dependencies",
+    tags=["User Management"],
+    summary="Check User Dependencies",
+    description="""Check if a user has any dependencies (assistants or knowledge bases).
+Useful for determining if a user can be safely deleted.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/users/2/dependencies' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Response (User has dependencies):
+```json
+{
+  "has_dependencies": true,
+  "assistant_count": 3,
+  "kb_count": 2,
+  "assistants": [
+    {"id": 1, "name": "Math Tutor"},
+    {"id": 2, "name": "Writing Assistant"},
+    {"id": 3, "name": "Science Helper"}
+  ],
+  "kbs": [
+    {"id": "uuid-123", "name": "Course Materials"},
+    {"id": "uuid-456", "name": "Research Papers"}
+  ]
+}
+```
+
+Example Response (User has no dependencies):
+```json
+{
+  "has_dependencies": false,
+  "assistant_count": 0,
+  "kb_count": 0,
+  "assistants": [],
+  "kbs": []
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def check_user_dependencies_admin(
+    user_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Check if a user has any dependencies (admin only)"""
+    try:
+        # Check if the requester is an admin
+        auth_header = f"Bearer {credentials.credentials}"
+        
+        if not is_admin_user(auth_header):
+            raise HTTPException(
+                status_code=403,
+                detail="Administrator privileges required"
+            )
+        
+        # Check dependencies
+        db_manager = LambDatabaseManager()
+        dependencies = db_manager.check_user_dependencies(int(user_id))
+        
+        return dependencies
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking user dependencies: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
 @router.get(
     "/user/current",
     tags=["User Management"],

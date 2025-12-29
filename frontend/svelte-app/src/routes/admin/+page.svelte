@@ -368,6 +368,67 @@
         }
     }
 
+    // --- Delete User Dialog Functions ---
+    let showDeleteConfirm = $state(false);
+    let deleteTargetUser = $state(/** @type {any | null} */ (null));
+    let userDependencies = $state(/** @type {any | null} */ (null));
+    let isCheckingDependencies = $state(false);
+
+    /**
+     * @param {any} user
+     */
+    async function showDeleteDialog(user) {
+        deleteTargetUser = user;
+        isCheckingDependencies = true;
+        showDeleteConfirm = true;
+        
+        // Check if user has dependencies
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+            
+            userDependencies = await adminService.checkUserDependencies(token, user.id);
+        } catch (error) {
+            console.error('Error checking user dependencies:', error);
+            userDependencies = null;
+        } finally {
+            isCheckingDependencies = false;
+        }
+    }
+
+    async function confirmDelete() {
+        if (!deleteTargetUser) return;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            await adminService.deleteUser(token, deleteTargetUser.id);
+            console.log(`User ${deleteTargetUser.email} deleted`);
+            alert(`User ${deleteTargetUser.name} has been deleted successfully.`);
+            
+            await fetchUsers(); // Refresh list
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error('Unknown error');
+            console.error('Failed to delete user:', error);
+            alert(`Error: ${error.message || 'Failed to delete user'}`);
+        } finally {
+            showDeleteConfirm = false;
+            deleteTargetUser = null;
+            userDependencies = null;
+        }
+    }
+
+    function closeDeleteDialog() {
+        showDeleteConfirm = false;
+        deleteTargetUser = null;
+        userDependencies = null;
+    }
+
     function openCreateOrgModal() {
         // Reset form state
         newOrg = {
@@ -1978,7 +2039,7 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <!-- Action buttons - Edit and Delete buttons removed -->
+                                    <!-- Action buttons -->
                                     <button 
                                         class="text-amber-600 hover:text-amber-800 mr-3" 
                                         title={localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Change Password' }) : 'Change Password'}
@@ -1991,10 +2052,10 @@
                                     </button>
                                     <button
                                         class={currentUserData && currentUserData.email === user.email && user.enabled 
-                                            ? "text-gray-400 cursor-not-allowed" 
+                                            ? "text-gray-400 cursor-not-allowed mr-3" 
                                             : user.enabled 
-                                                ? "text-red-500 hover:text-red-700"
-                                                : "text-green-600 hover:text-green-800"}
+                                                ? "text-red-500 hover:text-red-700 mr-3"
+                                                : "text-green-600 hover:text-green-800 mr-3"}
                                         title={currentUserData && currentUserData.email === user.email && user.enabled 
                                             ? (localeLoaded ? $_('admin.users.actions.cannotDisableSelf', { default: 'You cannot disable your own account' }) : 'You cannot disable your own account')
                                             : (user.enabled 
@@ -2022,6 +2083,19 @@
                                             </svg>
                                         {/if}
                                     </button>
+                                    <!-- Delete button - only shown for disabled users -->
+                                    {#if !user.enabled && !(currentUserData && currentUserData.email === user.email)}
+                                        <button
+                                            class="text-red-600 hover:text-red-900"
+                                            title="Delete User"
+                                            aria-label="Delete User"
+                                            onclick={() => showDeleteDialog(user)}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                            </svg>
+                                        </button>
+                                    {/if}
                                 </td>
                             </tr>
                         {/each}
@@ -2805,6 +2879,97 @@
                         class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                     >
                         Enable
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Delete User Confirmation Modal -->
+{#if showDeleteConfirm}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center mb-4">
+                    <svg class="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900">Delete User</h3>
+                </div>
+                <div class="mt-2 px-7 py-3">
+                    {#if isCheckingDependencies}
+                        <p class="text-sm text-gray-600">Checking user dependencies...</p>
+                    {:else if userDependencies}
+                        <p class="text-sm text-gray-700 mb-3">
+                            Are you sure you want to permanently delete <strong>{deleteTargetUser?.name}</strong> ({deleteTargetUser?.email})?
+                        </p>
+                        
+                        {#if userDependencies.has_dependencies}
+                            <div class="bg-red-50 border border-red-200 rounded p-3 mb-3">
+                                <p class="text-sm text-red-800 font-semibold mb-2">
+                                    ⚠️ Cannot delete user - has dependencies:
+                                </p>
+                                {#if userDependencies.assistant_count > 0}
+                                    <div class="mb-2">
+                                        <p class="text-sm text-red-700 font-medium">
+                                            {userDependencies.assistant_count} Assistant(s):
+                                        </p>
+                                        <ul class="text-xs text-red-600 list-disc list-inside ml-2">
+                                            {#each userDependencies.assistants.slice(0, 5) as assistant}
+                                                <li>{assistant.name}</li>
+                                            {/each}
+                                            {#if userDependencies.assistants.length > 5}
+                                                <li>... and {userDependencies.assistants.length - 5} more</li>
+                                            {/if}
+                                        </ul>
+                                    </div>
+                                {/if}
+                                {#if userDependencies.kb_count > 0}
+                                    <div>
+                                        <p class="text-sm text-red-700 font-medium">
+                                            {userDependencies.kb_count} Knowledge Base(s):
+                                        </p>
+                                        <ul class="text-xs text-red-600 list-disc list-inside ml-2">
+                                            {#each userDependencies.kbs.slice(0, 5) as kb}
+                                                <li>{kb.name}</li>
+                                            {/each}
+                                            {#if userDependencies.kbs.length > 5}
+                                                <li>... and {userDependencies.kbs.length - 5} more</li>
+                                            {/if}
+                                        </ul>
+                                    </div>
+                                {/if}
+                                <p class="text-xs text-red-700 mt-2">
+                                    Please delete or reassign these resources before deleting the user.
+                                </p>
+                            </div>
+                        {:else}
+                            <div class="bg-green-50 border border-green-200 rounded p-3 mb-3">
+                                <p class="text-sm text-green-800">
+                                    ✓ User has no dependencies and can be safely deleted.
+                                </p>
+                            </div>
+                        {/if}
+                        
+                        <p class="text-xs text-gray-600 mt-3">
+                            <strong>Note:</strong> This action cannot be undone.
+                        </p>
+                    {/if}
+                </div>
+                <div class="flex items-center justify-end gap-3 px-4 py-3">
+                    <button 
+                        onclick={closeDeleteDialog}
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onclick={confirmDelete}
+                        disabled={isCheckingDependencies || (userDependencies && userDependencies.has_dependencies)}
+                        class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Delete
                     </button>
                 </div>
             </div>
