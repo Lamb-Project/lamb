@@ -1,0 +1,165 @@
+services:
+  firecrawl:
+    build: https://github.com/firecrawl/firecrawl.git#main:apps/api
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${FIRECRAWL_INTERNAL_PORT:-3002}
+      EXTRACT_WORKER_PORT: ${FIRECRAWL_EXTRACT_WORKER_PORT:-3004}
+      WORKER_PORT: ${FIRECRAWL_WORKER_PORT:-3005}
+      NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
+      REDIS_URL: ${FIRECRAWL_REDIS_URL:-redis://firecrawl-redis:6379}
+      REDIS_RATE_LIMIT_URL: ${FIRECRAWL_REDIS_RATE_LIMIT_URL:-redis://firecrawl-redis:6379}
+      PLAYWRIGHT_MICROSERVICE_URL: ${FIRECRAWL_PLAYWRIGHT_URL:-http://firecrawl-playwright:3000/scrape}
+      POSTGRES_USER: ${FIRECRAWL_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${FIRECRAWL_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${FIRECRAWL_POSTGRES_DB:-postgres}
+      POSTGRES_HOST: ${FIRECRAWL_POSTGRES_HOST:-firecrawl-postgres}
+      POSTGRES_PORT: ${FIRECRAWL_POSTGRES_PORT:-5432}
+      USE_DB_AUTHENTICATION: ${FIRECRAWL_USE_DB_AUTHENTICATION:-false}
+      NUM_WORKERS_PER_QUEUE: ${FIRECRAWL_NUM_WORKERS_PER_QUEUE:-8}
+      CRAWL_CONCURRENT_REQUESTS: ${FIRECRAWL_CRAWL_CONCURRENT_REQUESTS:-10}
+      MAX_CONCURRENT_JOBS: ${FIRECRAWL_MAX_CONCURRENT_JOBS:-5}
+      BROWSER_POOL_SIZE: ${FIRECRAWL_BROWSER_POOL_SIZE:-5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      MODEL_NAME: ${MODEL_NAME}
+      MODEL_EMBEDDING_NAME: ${MODEL_EMBEDDING_NAME}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      BULL_AUTH_KEY: ${FIRECRAWL_BULL_AUTH_KEY:-CHANGEME}
+      TEST_API_KEY: ${FIRECRAWL_TEST_API_KEY}
+      SUPABASE_ANON_TOKEN: ${SUPABASE_ANON_TOKEN}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_TOKEN: ${SUPABASE_SERVICE_TOKEN}
+      SELF_HOSTED_WEBHOOK_URL: ${SELF_HOSTED_WEBHOOK_URL}
+      LOGGING_LEVEL: ${FIRECRAWL_LOGGING_LEVEL}
+      PROXY_SERVER: ${PROXY_SERVER}
+      PROXY_USERNAME: ${PROXY_USERNAME}
+      PROXY_PASSWORD: ${PROXY_PASSWORD}
+      SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
+      SEARXNG_ENGINES: ${SEARXNG_ENGINES}
+      SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
+      MAX_CPU: ${FIRECRAWL_MAX_CPU}
+      MAX_RAM: ${FIRECRAWL_MAX_RAM}
+    ports:
+      - "${FIRECRAWL_PORT:-3002}:${FIRECRAWL_INTERNAL_PORT:-3002}"
+    depends_on:
+      firecrawl-redis:
+        condition: service_started
+      firecrawl-playwright:
+        condition: service_started
+      firecrawl-rabbitmq:
+        condition: service_healthy
+      firecrawl-postgres:
+        condition: service_healthy
+    command: node dist/src/harness.js --start-docker
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    cpus: 4.0
+    mem_limit: 8G
+    memswap_limit: 8G
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const net=require('net');const port=process.env.PORT||3002;const s=net.createConnection({host:'127.0.0.1',port});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));\""]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    volumes:
+      - firecrawl-cache:/app/apps/api/.cache
+
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest
+    platform: linux/amd64
+    # If you prefer building locally, uncomment the line below and remove the image line.
+    # build: https://github.com/firecrawl/firecrawl.git#main:apps/playwright-service-ts
+    environment:
+      PORT: 3000
+      PROXY_SERVER: ${PROXY_SERVER}
+      PROXY_USERNAME: ${PROXY_USERNAME}
+      PROXY_PASSWORD: ${PROXY_PASSWORD}
+      BLOCK_MEDIA: ${BLOCK_MEDIA}
+      MAX_CONCURRENT_PAGES: ${FIRECRAWL_CRAWL_CONCURRENT_REQUESTS:-10}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    cpus: 2.0
+    mem_limit: 4G
+    memswap_limit: 4G
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=1g
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const net=require('net');const s=net.createConnection({host:'127.0.0.1',port:3000});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));\""]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+
+  firecrawl-redis:
+    image: redis:alpine
+    command: redis-server --bind 0.0.0.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    command: rabbitmq-server
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  firecrawl-postgres:
+    # Firecrawl's repo builds a custom image with pg_cron and init SQL.
+    build: https://github.com/firecrawl/firecrawl.git#main:apps/nuq-postgres
+    command: postgres -c log_min_messages=WARNING -c log_statement=none -c cron.log_run=off -c cron.log_statement=off
+    environment:
+      POSTGRES_USER: ${FIRECRAWL_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${FIRECRAWL_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${FIRECRAWL_POSTGRES_DB:-postgres}
+    volumes:
+      - firecrawl-postgres:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FIRECRAWL_POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  default:
+    name: lamb-${COMPOSE_PROJECT_NAME:-default}
+
+volumes:
+  firecrawl-postgres:
+  firecrawl-cache:

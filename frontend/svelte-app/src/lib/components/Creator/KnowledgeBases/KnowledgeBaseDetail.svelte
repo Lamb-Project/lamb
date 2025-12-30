@@ -65,9 +65,11 @@
     /** @type {File | null} */
     let selectedFile = $state(null);
     let uploading = $state(false);
+    let isSubmitting = false; // Synchronous lock for preventing rapid submissions
     /** @type {string} */
     let uploadError = $state('');
     let uploadSuccess = $state(false);
+    let lastSubmitTime = 0; // Track last submission time for debouncing
     
     // Initialization and cleanup
     onMount(() => {
@@ -274,13 +276,33 @@
     
     /** Uploads the selected file */
     async function uploadFile() {
+        // Guard: Prevent duplicate submissions - SET THIS FIRST!
+        if (uploading || isSubmitting) {
+            console.warn('Upload already in progress, ignoring duplicate submission');
+            return;
+        }
+        isSubmitting = true; // Synchronous lock - set immediately
+        uploading = true; // UI state - may update asynchronously
+        
         console.log('uploadFile called, selectedFile:', selectedFile?.name, 'selectedPlugin:', selectedIngestionPlugin?.name);
+        
+        // Guard: Debounce rapid submissions (within 1 second)
+        const now = Date.now();
+        if (now - lastSubmitTime < 1000) {
+            console.warn('Upload submission debounced (too soon after last submission)');
+            uploading = false; // Reset since we're aborting
+            isSubmitting = false;
+            return;
+        }
+        lastSubmitTime = now;
+        
         if (!selectedFile || !selectedIngestionPlugin) {
             uploadError = 'Please select a file and plugin.';
             console.warn('Upload aborted: missing file or plugin');
+            uploading = false; // Reset since we're aborting
+            isSubmitting = false;
             return;
         }
-        uploading = true;
         uploadError = '';
         uploadSuccess = false;
         console.log('Upload parameters:', { 
@@ -306,18 +328,39 @@
             }
         } finally {
             uploading = false;
+            isSubmitting = false;
         }
     }
     
     /** Runs the selected base ingestion plugin */
     async function runBaseIngestion() {
+        // Guard: Prevent duplicate submissions - SET THIS FIRST!
+        if (uploading || isSubmitting) {
+            console.warn('Ingestion already in progress, ignoring duplicate submission');
+            return;
+        }
+        isSubmitting = true; // Synchronous lock - set immediately
+        uploading = true; // UI state - may update asynchronously
+        
         console.log('runBaseIngestion called, selectedPlugin:', selectedIngestionPlugin?.name);
+        
+        // Guard: Debounce rapid submissions (within 1 second)
+        const now = Date.now();
+        if (now - lastSubmitTime < 1000) {
+            console.warn('Ingestion submission debounced (too soon after last submission)');
+            uploading = false; // Reset since we're aborting
+            isSubmitting = false;
+            return;
+        }
+        lastSubmitTime = now;
+        
         if (!selectedIngestionPlugin) {
             uploadError = 'Please select a plugin.'; // Changed error message
             console.warn('Ingestion aborted: missing plugin');
+            uploading = false; // Reset since we're aborting
+            isSubmitting = false;
             return;
         }
-        uploading = true;
         uploadError = '';
         uploadSuccess = false;
         console.log('Base ingestion parameters:', { 
@@ -344,6 +387,7 @@
             }
         } finally {
             uploading = false;
+            isSubmitting = false;
         }
     }
     
@@ -355,6 +399,8 @@
             runBaseIngestion();
         }
     }
+    
+
 </script>
 
 <div class="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -594,7 +640,15 @@
                             {:else if ingestionPlugins.length === 0}
                                  <div class="py-4 text-center"> <div class="text-gray-500"> {$_('knowledgeBases.fileUpload.noPlugins', { default: 'No ingestion plugins available.' })} </div> </div>
                             {:else}
-                                <form onsubmit={(e) => { e.preventDefault(); handleIngestSubmit(); }} class="space-y-6">
+                                <form onsubmit={(e) => { 
+                                    e.preventDefault(); 
+                                    // Prevent form submission if triggered by Enter key in an input field
+                                    if (e.submitter === null || e.submitter?.tagName === 'INPUT') {
+                                        console.log('Form submission blocked - triggered by Enter in input field');
+                                        return;
+                                    }
+                                    handleIngestSubmit(); 
+                                }} class="space-y-6">
                                     {#if isFilePlugin}
                                         {console.log('File input rendered because isFilePlugin is true.')}
                                         <div> <label for="file-upload-input-inline" class="block text-sm font-medium text-gray-700"> {$_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })} {#if acceptTypes}<span class="text-xs text-gray-500 ml-1">(Supported: {acceptTypes})</span>{/if} </label> <div class="mt-1 flex items-center"> <input id="file-upload-input-inline" type="file" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#2271b3] file:text-white hover:file:bg-[#195a91]" style="file:background-color: #2271b3;" onchange={handleFileSelect} accept={acceptTypes} /> </div> {#if selectedFile} <p class="mt-2 text-sm text-gray-500"> {selectedFile.name} ({formatFileSize(selectedFile.size)}) </p> {/if} </div>
