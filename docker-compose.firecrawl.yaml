@@ -63,7 +63,11 @@ services:
     mem_limit: 8G
     memswap_limit: 8G
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const net=require('net');const port=process.env.PORT||3002;const s=net.createConnection({host:'127.0.0.1',port});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "const net=require(''net'');const port=process.env.PORT||3002;const s=net.createConnection({host:''127.0.0.1'',port});s.on(''connect'',()=>process.exit(0));s.on(''error'',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));"',
+        ]
       interval: 10s
       timeout: 3s
       retries: 6
@@ -95,7 +99,11 @@ services:
     tmpfs:
       - /tmp/.cache:noexec,nosuid,size=1g
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const net=require('net');const s=net.createConnection({host:'127.0.0.1',port:3000});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));\""]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "const net=require(''net'');const s=net.createConnection({host:''127.0.0.1'',port:3000});s.on(''connect'',()=>process.exit(0));s.on(''error'',()=>process.exit(1));s.setTimeout(2000,()=>process.exit(1));"',
+        ]
       interval: 10s
       timeout: 3s
       retries: 6
