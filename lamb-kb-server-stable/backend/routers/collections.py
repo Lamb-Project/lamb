@@ -1,11 +1,13 @@
 import os
+import traceback
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, Form, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 import json # Needed for ingest-file params
 from typing import List, Dict, Any # Needed for background tasks and helper
 
 # Database imports
-from database.connection import get_db, get_chroma_client
+from database.connection import get_db, get_chroma_client, SessionLocal
 from database.service import CollectionService # Assuming this is the correct location
 from database.models import Collection # Import Collection model
 from database.models import FileRegistry, FileStatus # Needed for ingest background tasks
@@ -34,6 +36,360 @@ from services.query import QueryService
 
 # Dependency imports
 from dependencies import verify_token
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENHANCED BACKGROUND TASK FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _update_job_progress(db: Session, file_id: int, 
+                         current: int = None, total: int = None, 
+                         message: str = None):
+    """Helper to update progress fields for an ingestion job."""
+    file_reg = db.query(FileRegistry).filter(FileRegistry.id == file_id).first()
+    if file_reg:
+        if current is not None:
+            file_reg.progress_current = current
+        if total is not None:
+            file_reg.progress_total = total
+        if message is not None:
+            file_reg.progress_message = message
+        file_reg.updated_at = datetime.utcnow()
+        db.commit()
+
+
+def process_file_in_background_enhanced(file_path: str, plugin_name: str, params: dict, 
+                                        collection_id: int, file_registry_id: int):
+    """
+    Enhanced background task for processing files with full progress and error tracking.
+    
+    This function:
+    1. Updates job status to PROCESSING
+    2. Records processing_started_at
+    3. Updates progress during processing
+    4. Captures detailed error information on failure
+    5. Records processing_completed_at on completion
+    
+    Args:
+        file_path: Path to the file to process
+        plugin_name: Name of the ingestion plugin to use
+        params: Parameters for the plugin
+        collection_id: ID of the target collection
+        file_registry_id: ID of the file registry entry (job ID)
+    """
+    db_background = SessionLocal()
+    
+    try:
+        # Mark job as started
+        file_reg = db_background.query(FileRegistry).filter(
+            FileRegistry.id == file_registry_id
+        ).first()
+        
+        if not file_reg:
+            print(f"ERROR: [background_task] FileRegistry {file_registry_id} not found")
+            return
+        
+        # Check if job was cancelled before we started
+        if file_reg.status == FileStatus.CANCELLED:
+            print(f"INFO: [background_task] Job {file_registry_id} was cancelled, skipping")
+            return
+        
+        # Update to processing state
+        file_reg.status = FileStatus.PROCESSING
+        file_reg.processing_started_at = datetime.utcnow()
+        file_reg.progress_message = "Starting ingestion..."
+        file_reg.progress_current = 0
+        file_reg.progress_total = 0
+        file_reg.error_message = None
+        file_reg.error_details = None
+        db_background.commit()
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Extract OpenAI API key and collection info for plugins that need it
+        # ═══════════════════════════════════════════════════════════════════════════
+        collection = CollectionService.get_collection(db_background, collection_id)
+        if collection:
+            # Get collection owner and name
+            collection_owner = collection.owner if hasattr(collection, 'owner') else collection.get('owner', '')
+            collection_name = collection.name if hasattr(collection, 'name') else collection.get('name', '')
+            
+            # Add collection context to params
+            params['collection_owner'] = collection_owner
+            params['collection_name'] = collection_name
+            
+            # Extract embeddings config
+            embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
+            if isinstance(embeddings_config, str):
+                try:
+                    embeddings_config = json.loads(embeddings_config)
+                except json.JSONDecodeError:
+                    embeddings_config = {}
+            
+            # If collection uses OpenAI for embeddings, pass the API key to plugin
+            # This enables LLM-powered image descriptions in markitdown_plus_ingest
+            if embeddings_config.get("vendor") == "openai":
+                openai_key = embeddings_config.get("apikey")
+                if openai_key:
+                    params['openai_api_key'] = openai_key
+                    print(f"INFO: [background_task] Passing OpenAI API key to plugin for collection {collection_name}")
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        # Step 1: Process file with plugin
+        _update_job_progress(db_background, file_registry_id, 
+                            message="Converting document...")
+        
+        # Create a progress callback that updates the database
+        def plugin_progress_callback(current: int, total: int, message: str):
+            """Callback for plugins to report progress."""
+            _update_job_progress(db_background, file_registry_id,
+                                current=current, total=total, message=message)
+        
+        # Create a stats callback to capture processing statistics
+        captured_stats = {}
+        def stats_callback(stats: dict):
+            """Callback for plugins to report processing statistics."""
+            nonlocal captured_stats
+            captured_stats = stats
+        
+        try:
+            # Add callbacks to params so plugins can use them
+            params_with_callback = {
+                **params, 
+                'progress_callback': plugin_progress_callback,
+                'stats_callback': stats_callback
+            }
+            documents = IngestionService.ingest_file(
+                file_path=file_path,
+                plugin_name=plugin_name,
+                plugin_params=params_with_callback
+            )
+        except Exception as e:
+            # Capture conversion error
+            raise Exception(f"Document conversion failed: {str(e)}")
+        
+        # Check if cancelled during processing
+        db_background.refresh(file_reg)
+        if file_reg.status == FileStatus.CANCELLED:
+            print(f"INFO: [background_task] Job {file_registry_id} was cancelled during processing")
+            return
+        
+        # Step 2: Add documents to collection
+        total_docs = len(documents)
+        _update_job_progress(db_background, file_registry_id,
+                            current=0, total=total_docs,
+                            message=f"Adding {total_docs} chunks to collection...")
+        
+        try:
+            result = IngestionService.add_documents_to_collection(
+                db=db_background,
+                collection_id=collection_id,
+                documents=documents
+            )
+        except Exception as e:
+            raise Exception(f"Failed to add documents to collection: {str(e)}")
+        
+        # Step 3: Mark as completed
+        file_reg = db_background.query(FileRegistry).filter(
+            FileRegistry.id == file_registry_id
+        ).first()
+        
+        if file_reg and file_reg.status != FileStatus.CANCELLED:
+            file_reg.status = FileStatus.COMPLETED
+            file_reg.document_count = total_docs
+            file_reg.processing_completed_at = datetime.utcnow()
+            file_reg.progress_current = total_docs
+            file_reg.progress_total = total_docs
+            file_reg.progress_message = f"Completed: {total_docs} chunks added"
+            file_reg.error_message = None
+            file_reg.error_details = None
+            
+            # Save processing statistics if provided by plugin
+            if captured_stats:
+                file_reg.processing_stats = captured_stats
+                print(f"INFO: [background_task] Saved processing stats for job {file_registry_id}")
+            
+            db_background.commit()
+            
+            print(f"INFO: [background_task] Job {file_registry_id} completed successfully with {total_docs} chunks")
+            
+    except Exception as e:
+        # Capture error details
+        error_trace = traceback.format_exc()
+        error_msg = str(e)[:500]  # Truncate long messages
+        
+        print(f"ERROR: [background_task] Job {file_registry_id} failed: {error_msg}")
+        print(f"ERROR: [background_task] Traceback:\n{error_trace}")
+        
+        try:
+            file_reg = db_background.query(FileRegistry).filter(
+                FileRegistry.id == file_registry_id
+            ).first()
+            
+            if file_reg:
+                file_reg.status = FileStatus.FAILED
+                file_reg.processing_completed_at = datetime.utcnow()
+                file_reg.error_message = error_msg
+                file_reg.error_details = {
+                    "exception_type": type(e).__name__,
+                    "traceback": error_trace[-2000:],  # Last 2000 chars
+                    "file_path": file_path,
+                    "plugin_name": plugin_name,
+                    "stage": "unknown"
+                }
+                file_reg.progress_message = f"Failed: {error_msg[:100]}"
+                db_background.commit()
+        except Exception as db_error:
+            print(f"ERROR: [background_task] Could not update job status to FAILED: {str(db_error)}")
+            
+    finally:
+        db_background.close()
+
+
+def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, params: dict,
+                                        collection_id: int, file_registry_id: int, file_path: str):
+    """
+    Enhanced background task for processing URLs with full progress and error tracking.
+    
+    Similar to process_file_in_background_enhanced but for URL-based ingestion.
+    """
+    db_background = SessionLocal()
+    
+    try:
+        # Mark job as started
+        file_reg = db_background.query(FileRegistry).filter(
+            FileRegistry.id == file_registry_id
+        ).first()
+        
+        if not file_reg:
+            print(f"ERROR: [background_task] FileRegistry {file_registry_id} not found")
+            return
+        
+        # Check if job was cancelled
+        if file_reg.status == FileStatus.CANCELLED:
+            print(f"INFO: [background_task] Job {file_registry_id} was cancelled, skipping")
+            return
+        
+        # Update to processing state
+        file_reg.status = FileStatus.PROCESSING
+        file_reg.processing_started_at = datetime.utcnow()
+        file_reg.progress_message = f"Processing {len(urls)} URL(s)..."
+        file_reg.progress_current = 0
+        file_reg.progress_total = len(urls)
+        file_reg.error_message = None
+        file_reg.error_details = None
+        db_background.commit()
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # Extract OpenAI API key and collection info for plugins that need it
+        # ═══════════════════════════════════════════════════════════════════════════
+        collection = CollectionService.get_collection(db_background, collection_id)
+        if collection:
+            # Get collection owner and name
+            collection_owner = collection.owner if hasattr(collection, 'owner') else collection.get('owner', '')
+            collection_name = collection.name if hasattr(collection, 'name') else collection.get('name', '')
+            
+            # Add collection context to params
+            params['collection_owner'] = collection_owner
+            params['collection_name'] = collection_name
+            
+            # Extract embeddings config
+            embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
+            if isinstance(embeddings_config, str):
+                try:
+                    embeddings_config = json.loads(embeddings_config)
+                except json.JSONDecodeError:
+                    embeddings_config = {}
+            
+            # If collection uses OpenAI for embeddings, pass the API key to plugin
+            if embeddings_config.get("vendor") == "openai":
+                openai_key = embeddings_config.get("apikey")
+                if openai_key:
+                    params['openai_api_key'] = openai_key
+                    print(f"INFO: [background_task] Passing OpenAI API key to plugin for collection {collection_name}")
+        # ═══════════════════════════════════════════════════════════════════════════
+        
+        # Get the plugin instance
+        plugin = IngestionService.get_plugin(plugin_name)
+        if not plugin:
+            raise Exception(f"Plugin {plugin_name} not found")
+        
+        # Create a progress callback that updates the database
+        def plugin_progress_callback(current: int, total: int, message: str):
+            """Callback for plugins to report progress."""
+            _update_job_progress(db_background, file_registry_id,
+                                current=current, total=total, message=message)
+        
+        # Process URLs with progress callback
+        full_params = {**params, "urls": urls, "progress_callback": plugin_progress_callback}
+        
+        _update_job_progress(db_background, file_registry_id,
+                            message="Fetching and processing URLs...")
+        
+        documents = plugin.ingest(file_path=file_path, **full_params)
+        
+        # Check if cancelled
+        db_background.refresh(file_reg)
+        if file_reg.status == FileStatus.CANCELLED:
+            print(f"INFO: [background_task] Job {file_registry_id} was cancelled during processing")
+            return
+        
+        # Add documents to collection
+        total_docs = len(documents)
+        _update_job_progress(db_background, file_registry_id,
+                            current=0, total=total_docs,
+                            message=f"Adding {total_docs} chunks to collection...")
+        
+        result = IngestionService.add_documents_to_collection(
+            db=db_background,
+            collection_id=collection_id,
+            documents=documents
+        )
+        
+        # Mark as completed
+        file_reg = db_background.query(FileRegistry).filter(
+            FileRegistry.id == file_registry_id
+        ).first()
+        
+        if file_reg and file_reg.status != FileStatus.CANCELLED:
+            file_reg.status = FileStatus.COMPLETED
+            file_reg.document_count = total_docs
+            file_reg.processing_completed_at = datetime.utcnow()
+            file_reg.progress_current = total_docs
+            file_reg.progress_total = total_docs
+            file_reg.progress_message = f"Completed: {total_docs} chunks from {len(urls)} URL(s)"
+            db_background.commit()
+            
+            print(f"INFO: [background_task] Job {file_registry_id} completed with {total_docs} chunks")
+            
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        error_msg = str(e)[:500]
+        
+        print(f"ERROR: [background_task] Job {file_registry_id} failed: {error_msg}")
+        
+        try:
+            file_reg = db_background.query(FileRegistry).filter(
+                FileRegistry.id == file_registry_id
+            ).first()
+            
+            if file_reg:
+                file_reg.status = FileStatus.FAILED
+                file_reg.processing_completed_at = datetime.utcnow()
+                file_reg.error_message = error_msg
+                file_reg.error_details = {
+                    "exception_type": type(e).__name__,
+                    "traceback": error_trace[-2000:],
+                    "urls": urls,
+                    "plugin_name": plugin_name
+                }
+                file_reg.progress_message = f"Failed: {error_msg[:100]}"
+                db_background.commit()
+        except Exception as db_error:
+            print(f"ERROR: [background_task] Could not update status: {str(db_error)}")
+            
+    finally:
+        db_background.close()
+
 
 router = APIRouter(
     prefix="/collections",
@@ -431,80 +787,9 @@ async def ingest_url_to_collection(
             status=FileStatus.PROCESSING  # Set initial status to PROCESSING
         )
         
-        # Step 2: Schedule background task for processing and adding documents
-        def process_urls_in_background(urls: List[str], plugin_name: str, params: dict, 
-                                   collection_id: int, file_registry_id: int, file_path: str):
-            try:
-                # Create a new session for the background task
-                from database.connection import SessionLocal
-                db_background = SessionLocal()
-                
-                try:
-                    # Get the plugin instance
-                    plugin = IngestionService.get_plugin(plugin_name)
-                    if not plugin:
-                        # This should ideally not happen if already checked in the main thread,
-                        # but good to have a safeguard.
-                        print(f"ERROR: [background_task] Plugin {plugin_name} not found.")
-                        # Update file status to FAILED directly here or raise an exception
-                        # that the outer except block can catch to set status to FAILED.
-                        IngestionService.update_file_status(
-                            db_background, file_registry_id, FileStatus.FAILED
-                        )
-                        return
-
-                    # For url_ingest, call plugin.ingest() directly as it creates the file.
-                    # The `file_path` is where the plugin will write the content.
-                    # The `params` should contain `urls` and other chunking parameters.
-                    full_params = {**params, "urls": urls} # Ensure 'urls' is in params for the plugin
-                    
-                    print(f"DEBUG: [background_task] Calling {plugin_name}.ingest() directly for file: {file_path} with params: {full_params}")
-                    documents = plugin.ingest(file_path=file_path, **full_params)
-                    print(f"DEBUG: [background_task] {plugin_name}.ingest() returned {len(documents)} chunks.")
-                    
-                    # Step 2.2: Add documents to collection
-                    result = IngestionService.add_documents_to_collection(
-                        db=db_background,
-                        collection_id=collection_id,
-                        documents=documents
-                    )
-                    
-                    # Step 2.3: Update file registry with completed status and document count
-                    IngestionService.update_file_status(
-                        db=db_background, 
-                        file_id=file_registry_id, 
-                        status=FileStatus.COMPLETED
-                    )
-                    
-                    # Update document count
-                    file_reg = db_background.query(FileRegistry).filter(FileRegistry.id == file_registry_id).first()
-                    if file_reg:
-                        file_reg.document_count = len(documents)
-                        db_background.commit()
-                    
-                finally:
-                    db_background.close()
-                    
-            except Exception as e:
-                print(f"ERROR: [background_task] Failed to process URLs: {str(e)}")
-                # Update file status to FAILED
-                try:
-                    from database.connection import SessionLocal
-                    db_error = SessionLocal()
-                    try:
-                        IngestionService.update_file_status(
-                            db=db_error, 
-                            file_id=file_registry_id, 
-                            status=FileStatus.FAILED
-                        )
-                    finally:
-                        db_error.close()
-                except Exception as task_e: # Changed variable name to avoid conflict
-                    print(f"ERROR: [background_task] Could not update file status to FAILED: {str(task_e)}")
-        
-        # Add the task to background tasks
+        # Step 2: Schedule enhanced background task for processing
         background_tasks.add_task(
-            process_urls_in_background, 
+            process_urls_in_background_enhanced, 
             request.urls, 
             plugin_name, 
             request.plugin_params, 
@@ -720,66 +1005,9 @@ async def ingest_file_to_collection(
             status=FileStatus.PROCESSING  # Set initial status to PROCESSING
         )
         
-        # Step 3: Schedule background task for processing and adding documents
-        def process_file_in_background(file_path: str, plugin_name: str, params: dict, 
-                                     collection_id: int, file_registry_id: int):
-            try:
-                # Create a new session for the background task
-                from database.connection import SessionLocal
-                db_background = SessionLocal()
-                
-                try:
-                    # Step 3.1: Process file with plugin
-                    documents = IngestionService.ingest_file(
-                        file_path=file_path,
-                        plugin_name=plugin_name,
-                        plugin_params=params
-                    )
-                    
-                    # Step 3.2: Add documents to collection
-                    result = IngestionService.add_documents_to_collection(
-                        db=db_background,
-                        collection_id=collection_id,
-                        documents=documents
-                    )
-                    
-                    # Step 3.3: Update file registry with completed status and document count
-                    IngestionService.update_file_status(
-                        db=db_background, 
-                        file_id=file_registry_id, 
-                        status=FileStatus.COMPLETED
-                    )
-                    
-                    # Update document count
-                    file_reg = db_background.query(FileRegistry).filter(FileRegistry.id == file_registry_id).first()
-                    if file_reg:
-                        file_reg.document_count = len(documents)
-                        db_background.commit()
-                    
-                finally:
-                    db_background.close()
-                    
-            except Exception as e:
-                print(f"ERROR: [background_task] Failed to process file {file_path}: {str(e)}")
-
-                # Update file status to FAILED
-                try:
-                    from database.connection import SessionLocal
-                    db_error = SessionLocal()
-                    try:
-                        IngestionService.update_file_status(
-                            db=db_error, 
-                            file_id=file_registry_id, 
-                            status=FileStatus.FAILED
-                        )
-                    finally:
-                        db_error.close()
-                except Exception:
-                    print(f"ERROR: [background_task] Could not update file status to FAILED")
-        
-        # Add the task to background tasks
+        # Step 3: Schedule enhanced background task for processing
         background_tasks.add_task(
-            process_file_in_background, 
+            process_file_in_background_enhanced, 
             file_path, 
             plugin_name, 
             params, 
@@ -1102,77 +1330,16 @@ async def ingest_base_to_collection(
             status=FileStatus.PROCESSING
         )
         
-        # Step 2: Schedule background task for processing and adding documents
-        def process_base_in_background(plugin_name: str, params: dict, 
-                                   collection_id: int, file_registry_id: int, file_path: str):
-            try:
-                # Create a new session for the background task
-                from database.connection import SessionLocal
-                db_background = SessionLocal()
-                
-                try:
-                    # Get the plugin instance
-                    plugin = IngestionService.get_plugin(plugin_name)
-                    if not plugin:
-                        print(f"ERROR: [background_task] Plugin {plugin_name} not found.")
-                        IngestionService.update_file_status(
-                            db_background, file_registry_id, FileStatus.FAILED
-                        )
-                        return
-
-                    # Call plugin.ingest() directly
-                    print(f"DEBUG: [background_task] Calling {plugin_name}.ingest() for file: {file_path} with params: {params}")
-                    documents = plugin.ingest(file_path=file_path, **params)
-                    print(f"DEBUG: [background_task] {plugin_name}.ingest() returned {len(documents)} chunks.")
-                    
-                    # Add documents to collection
-                    result = IngestionService.add_documents_to_collection(
-                        db=db_background,
-                        collection_id=collection_id,
-                        documents=documents
-                    )
-                    
-                    # Update file registry with completed status and document count
-                    IngestionService.update_file_status(
-                        db=db_background, 
-                        file_id=file_registry_id, 
-                        status=FileStatus.COMPLETED
-                    )
-                    
-                    # Update document count
-                    file_reg = db_background.query(FileRegistry).filter(FileRegistry.id == file_registry_id).first()
-                    if file_reg:
-                        file_reg.document_count = len(documents)
-                        db_background.commit()
-                    
-                finally:
-                    db_background.close()
-                    
-            except Exception as e:
-                print(f"ERROR: [background_task] Failed to process content: {str(e)}")
-                # Update file status to FAILED
-                try:
-                    from database.connection import SessionLocal
-                    db_error = SessionLocal()
-                    try:
-                        IngestionService.update_file_status(
-                            db=db_error, 
-                            file_id=file_registry_id, 
-                            status=FileStatus.FAILED
-                        )
-                    finally:
-                        db_error.close()
-                except Exception as task_e:
-                    print(f"ERROR: [background_task] Could not update file status to FAILED: {str(task_e)}")
-        
-        # Add the task to background tasks
+        # Step 2: Schedule enhanced background task for processing
+        # Note: For base-ingest plugins, we use the file processing function
+        # since the plugin creates its own file
         background_tasks.add_task(
-            process_base_in_background, 
+            process_file_in_background_enhanced, 
+            str(file_path), 
             plugin_name, 
             request.plugin_params, 
             collection_id, 
-            file_registry.id,
-            str(file_path)
+            file_registry.id
         )
         
         # Return immediate response

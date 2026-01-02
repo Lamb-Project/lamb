@@ -1,7 +1,7 @@
 # LAMB Knowledge Base Server - Architecture Documentation
 
-**Version:** 1.0.0  
-**Last Updated:** December 22, 2025  
+**Version:** 1.1.0  
+**Last Updated:** December 30, 2025  
 **Target Audience:** Developers, System Integrators, DevOps Engineers
 
 ---
@@ -271,11 +271,18 @@ Manages connections to both databases:
 | `content_type` | VARCHAR(100) | MIME type |
 | `plugin_name` | VARCHAR(100) | Ingestion plugin used |
 | `plugin_params` | JSON | Plugin parameters used |
-| `status` | ENUM | `completed`, `processing`, `failed`, `deleted` |
+| `status` | ENUM | `completed`, `processing`, `failed`, `deleted`, `cancelled` |
 | `document_count` | INTEGER | Number of chunks created |
 | `created_at` | DATETIME | Creation timestamp |
 | `updated_at` | DATETIME | Last update timestamp |
 | `owner` | VARCHAR(255) | File owner |
+| `processing_started_at` | DATETIME | When processing began |
+| `processing_completed_at` | DATETIME | When processing finished |
+| `progress_current` | INTEGER | Current progress value (e.g., chunks processed) |
+| `progress_total` | INTEGER | Total expected value (e.g., total chunks) |
+| `progress_message` | VARCHAR(255) | Human-readable status message |
+| `error_message` | TEXT | Error description if failed |
+| `error_details` | JSON | Detailed error info (traceback, context) |
 
 ### 4.3 Visibility Enum
 
@@ -293,6 +300,19 @@ class FileStatus(str, Enum):
     PROCESSING = "processing"
     FAILED = "failed"
     DELETED = "deleted"
+    CANCELLED = "cancelled"  # Job cancelled by user
+```
+
+### 4.5 Ingestion Progress Model
+
+Progress tracking for asynchronous ingestion jobs:
+
+```python
+class IngestionProgress:
+    current: int       # Current progress value
+    total: int         # Total expected value
+    percentage: float  # Computed: (current/total) * 100
+    message: str       # Human-readable status (e.g., "Converting PDF...")
 ```
 
 ---
@@ -679,6 +699,145 @@ Authorization: Bearer {token}
 }
 ```
 
+### 5.6 Ingestion Status Endpoints
+
+These endpoints provide real-time monitoring of asynchronous ingestion jobs.
+
+#### List Ingestion Jobs
+```http
+GET /collections/{collection_id}/ingestion-jobs
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | - | Filter by status (`pending`, `processing`, `completed`, `failed`, `cancelled`) |
+| `limit` | int | 50 | Max results (1-200) |
+| `offset` | int | 0 | Pagination offset |
+| `sort_by` | string | `created_at` | Sort field (`created_at`, `updated_at`, `status`, `original_filename`) |
+| `sort_order` | string | `desc` | Sort order (`asc`, `desc`) |
+
+**Response:**
+```json
+{
+  "total": 25,
+  "items": [
+    {
+      "id": 101,
+      "collection_id": 1,
+      "original_filename": "report.pdf",
+      "status": "completed",
+      "document_count": 150,
+      "progress": {
+        "current": 150,
+        "total": 150,
+        "percentage": 100.0,
+        "message": "Completed successfully"
+      },
+      "processing_started_at": "2025-12-30T10:00:05Z",
+      "processing_completed_at": "2025-12-30T10:05:25Z",
+      "processing_duration_seconds": 320.0,
+      "error_message": null
+    }
+  ]
+}
+```
+
+#### Get Ingestion Job Status
+```http
+GET /collections/{collection_id}/ingestion-jobs/{job_id}
+Authorization: Bearer {token}
+```
+
+Returns detailed status of a specific ingestion job including progress, timing, and error details.
+
+**Response (Failed Job Example):**
+```json
+{
+  "id": 103,
+  "collection_id": 1,
+  "original_filename": "corrupted.pdf",
+  "status": "failed",
+  "document_count": 0,
+  "progress": {
+    "current": 0,
+    "total": 0,
+    "percentage": 0.0,
+    "message": "Failed: Invalid PDF format"
+  },
+  "processing_started_at": "2025-12-30T09:00:01Z",
+  "processing_completed_at": "2025-12-30T09:00:10Z",
+  "processing_duration_seconds": 9.0,
+  "error_message": "Invalid PDF format: Unable to extract text",
+  "error_details": {
+    "exception_type": "ValueError",
+    "traceback": "...",
+    "file_path": "/path/to/file.pdf",
+    "plugin_name": "markitdown_ingest"
+  }
+}
+```
+
+#### Get Ingestion Status Summary
+```http
+GET /collections/{collection_id}/ingestion-status
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "collection_id": 1,
+  "total_jobs": 15,
+  "by_status": {
+    "completed": 12,
+    "processing": 2,
+    "failed": 1,
+    "pending": 0,
+    "cancelled": 0
+  },
+  "recent_failures": [
+    {
+      "id": 103,
+      "original_filename": "corrupted.pdf",
+      "error_message": "Invalid PDF format",
+      "updated_at": "2025-12-30T09:00:15Z"
+    }
+  ]
+}
+```
+
+#### Retry Failed Ingestion Job
+```http
+POST /collections/{collection_id}/ingestion-jobs/{job_id}/retry
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+**Request Body (Optional):**
+```json
+{
+  "new_params": {
+    "chunk_size": 1200
+  }
+}
+```
+
+Re-queues a failed job for processing. Optionally override plugin parameters.
+
+**Response:** Returns the updated job with status `processing`.
+
+#### Cancel Processing Job
+```http
+POST /collections/{collection_id}/ingestion-jobs/{job_id}/cancel
+Authorization: Bearer {token}
+```
+
+Best-effort cancellation of an in-progress job. Updates status to `cancelled`.
+
+**Response:** Returns the updated job with status `cancelled`.
+
 ---
 
 ## 6. Plugin System
@@ -703,14 +862,24 @@ class IngestPlugin(abc.ABC):
     kind: str = "base"
     description: str = "Base plugin interface"
     supported_file_types: Set[str] = set()
+    supports_progress: bool = False  # Set True if plugin reports progress
     
     @abc.abstractmethod
     def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Ingest a file. kwargs may include 'progress_callback' for progress reporting.
+        """
         pass
     
     @abc.abstractmethod
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
         pass
+    
+    def report_progress(self, kwargs: dict, current: int, total: int, message: str):
+        """Helper to report progress if callback is available."""
+        callback = kwargs.get('progress_callback')
+        if callback:
+            callback(current, total, message)
 
 class QueryPlugin(abc.ABC):
     name: str = "base_query"
@@ -723,6 +892,26 @@ class QueryPlugin(abc.ABC):
     @abc.abstractmethod
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
         pass
+```
+
+**Progress Callback Usage:**
+
+Plugins that support progress reporting can call `self.report_progress()`:
+
+```python
+def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:
+    # Report start
+    self.report_progress(kwargs, 0, 4, "Starting conversion...")
+    
+    # ... do work ...
+    
+    # Report progress
+    self.report_progress(kwargs, 2, 4, "Processing chunks...")
+    
+    # ... finish work ...
+    
+    self.report_progress(kwargs, 4, 4, "Completed")
+    return chunks
 ```
 
 ### 6.2 Plugin Registration
@@ -1437,6 +1626,6 @@ curl -X POST 'http://localhost:9090/collections/1/query' \
 
 ---
 
-**Document Version:** 1.0.0  
-**Last Updated:** December 22, 2025  
+**Document Version:** 1.1.0  
+**Last Updated:** December 30, 2025  
 **Maintainers:** LAMB Development Team

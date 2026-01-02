@@ -1375,6 +1375,302 @@ class KBServerManager:
                 detail=f"Unable to connect to KB server: {str(req_err)}"
             )
 
+    # --- Ingestion Status API Methods --- #
+    
+    async def list_ingestion_jobs(
+        self, 
+        kb_id: str, 
+        creator_user: Dict[str, Any],
+        status: str = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "created_at",
+        sort_order: str = "desc"
+    ) -> Dict[str, Any]:
+        """
+        List ingestion jobs for a knowledge base.
+        
+        Args:
+            kb_id: Knowledge base ID
+            creator_user: Authenticated user information
+            status: Optional status filter
+            limit: Max items to return
+            offset: Items to skip
+            sort_by: Field to sort by
+            sort_order: Sort order (asc/desc)
+            
+        Returns:
+            Dict with total count and list of jobs
+        """
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
+        logger.info(f"Listing ingestion jobs for KB {kb_id}")
+        
+        # Build query params
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "sort_by": sort_by,
+            "sort_order": sort_order
+        }
+        if status:
+            params["status"] = status
+        
+        jobs_url = f"{kb_server_url}/collections/{kb_id}/ingestion-jobs"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    jobs_url,
+                    headers=self._get_auth_headers(kb_token),
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"Retrieved {len(data.get('items', []))} ingestion jobs")
+                    return data
+                elif response.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Knowledge base not found")
+                else:
+                    error_detail = self._extract_error_detail(response)
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"KB server error: {error_detail}"
+                    )
+                    
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to KB server: {e}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {e}")
+    
+    async def get_ingestion_job_status(
+        self,
+        kb_id: str,
+        job_id: int,
+        creator_user: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Get status of a specific ingestion job.
+        
+        Args:
+            kb_id: Knowledge base ID
+            job_id: Ingestion job ID
+            creator_user: Authenticated user information
+            
+        Returns:
+            Dict with job status information
+        """
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
+        logger.info(f"Getting ingestion job status: KB {kb_id}, Job {job_id}")
+        
+        job_url = f"{kb_server_url}/collections/{kb_id}/ingestion-jobs/{job_id}"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    job_url,
+                    headers=self._get_auth_headers(kb_token)
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Ensure job_id alias is set
+                    if 'id' in data and 'job_id' not in data:
+                        data['job_id'] = data['id']
+                    logger.info(f"Job {job_id} status: {data.get('status')}")
+                    return data
+                elif response.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Ingestion job not found")
+                else:
+                    error_detail = self._extract_error_detail(response)
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"KB server error: {error_detail}"
+                    )
+                    
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to KB server: {e}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {e}")
+    
+    async def get_ingestion_status_summary(
+        self,
+        kb_id: str,
+        creator_user: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Get summary of ingestion job statuses for a collection.
+        
+        Args:
+            kb_id: Knowledge base ID
+            creator_user: Authenticated user information
+            
+        Returns:
+            Dict with status summary
+        """
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
+        logger.info(f"Getting ingestion status summary for KB {kb_id}")
+        
+        status_url = f"{kb_server_url}/collections/{kb_id}/ingestion-status"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    status_url,
+                    headers=self._get_auth_headers(kb_token)
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"Status summary: {data.get('total_jobs', 0)} total jobs")
+                    return data
+                elif response.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Knowledge base not found")
+                else:
+                    error_detail = self._extract_error_detail(response)
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"KB server error: {error_detail}"
+                    )
+                    
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to KB server: {e}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {e}")
+    
+    async def retry_ingestion_job(
+        self,
+        kb_id: str,
+        job_id: int,
+        creator_user: Dict[str, Any],
+        override_params: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Retry a failed ingestion job.
+        
+        Args:
+            kb_id: Knowledge base ID
+            job_id: Ingestion job ID
+            creator_user: Authenticated user information
+            override_params: Optional params to override original
+            
+        Returns:
+            Dict with updated job information
+        """
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
+        logger.info(f"Retrying ingestion job: KB {kb_id}, Job {job_id}")
+        
+        retry_url = f"{kb_server_url}/collections/{kb_id}/ingestion-jobs/{job_id}/retry"
+        
+        # Build request body
+        body = {}
+        if override_params:
+            body["new_params"] = override_params
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    retry_url,
+                    headers=self._get_content_type_headers(kb_token),
+                    json=body if body else None
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'id' in data and 'job_id' not in data:
+                        data['job_id'] = data['id']
+                    logger.info(f"Job {job_id} queued for retry")
+                    return data
+                elif response.status_code == 400:
+                    raise HTTPException(status_code=400, detail="Only failed jobs can be retried")
+                elif response.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Ingestion job not found")
+                else:
+                    error_detail = self._extract_error_detail(response)
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"KB server error: {error_detail}"
+                    )
+                    
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to KB server: {e}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {e}")
+    
+    async def cancel_ingestion_job(
+        self,
+        kb_id: str,
+        job_id: int,
+        creator_user: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Cancel a pending or processing ingestion job.
+        
+        Args:
+            kb_id: Knowledge base ID
+            job_id: Ingestion job ID
+            creator_user: Authenticated user information
+            
+        Returns:
+            Dict with updated job information
+        """
+        kb_config = self._get_kb_config_for_user(creator_user)
+        kb_server_url = kb_config['url']
+        kb_token = kb_config['token']
+        
+        logger.info(f"Cancelling ingestion job: KB {kb_id}, Job {job_id}")
+        
+        cancel_url = f"{kb_server_url}/collections/{kb_id}/ingestion-jobs/{job_id}/cancel"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    cancel_url,
+                    headers=self._get_auth_headers(kb_token)
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'id' in data and 'job_id' not in data:
+                        data['job_id'] = data['id']
+                    logger.info(f"Job {job_id} cancelled")
+                    return data
+                elif response.status_code == 400:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Only pending or processing jobs can be cancelled"
+                    )
+                elif response.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Ingestion job not found")
+                else:
+                    error_detail = self._extract_error_detail(response)
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"KB server error: {error_detail}"
+                    )
+                    
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to KB server: {e}")
+            raise HTTPException(status_code=503, detail=f"Unable to connect to KB server: {e}")
+    
+    def _extract_error_detail(self, response) -> str:
+        """Helper to extract error detail from response"""
+        try:
+            error_data = response.json()
+            return error_data.get('detail', str(error_data))
+        except Exception:
+            return response.text or f"HTTP {response.status_code}"
+    
+    # --- End Ingestion Status API Methods --- #
+
     async def get_ingestion_plugins(self) -> Dict[str, Any]:
         """
         Get a list of available ingestion plugins and their parameters.
@@ -1548,30 +1844,50 @@ class KBServerManager:
                 )
                 
                 if ingest_response.status_code in [200, 201]:
-                    # Successfully ingested
+                    # Successfully ingested (or queued for processing)
                     ingest_data = ingest_response.json()
-                    logger.info(f"File {file.filename} ingested successfully using plugin {plugin_name}")
+                    logger.info(f"File {file.filename} ingestion initiated using plugin {plugin_name}")
                     logger.info(f"Ingest response: {ingest_data}")
                     
-                    # Build the result response
+                    # Determine status - KB server may return "processing" for async jobs
+                    response_status = ingest_data.get('status', 'success')
+                    if response_status == 'processing':
+                        status_message = "File uploaded, processing in background"
+                    else:
+                        status_message = f"File successfully ingested using plugin {plugin_name}"
+                    
+                    # Build the result response with file_registry_id for progress tracking
                     result = {
-                        "status": "success",
-                        "message": f"File successfully ingested using plugin {plugin_name}",
+                        "status": response_status,
+                        "message": status_message,
                         "file": {
-                            "id": str(ingest_data.get('id', 'unknown')),
+                            "id": str(ingest_data.get('id', ingest_data.get('file_registry_id', 'unknown'))),
                             "filename": file.filename,
                             "size": len(content),
                             "content_type": file.content_type or 'application/octet-stream',
                             "plugin_used": plugin_name
-                        }
+                        },
+                        # Include file_registry_id for frontend to poll status
+                        "file_registry_id": ingest_data.get('file_registry_id', ingest_data.get('id')),
+                        "collection_id": kb_id
                     }
                     
                     # Add any additional data from the ingest response
                     if isinstance(ingest_data, dict):
                         if 'documents' in ingest_data:
                             result['document_count'] = len(ingest_data.get('documents', []))
+                        if 'documents_added' in ingest_data:
+                            result['document_count'] = ingest_data.get('documents_added', 0)
                         if 'chunks' in ingest_data:
                             result['chunk_count'] = len(ingest_data.get('chunks', []))
+                        # Pass through original_filename if returned by KB server
+                        if 'original_filename' in ingest_data:
+                            result['original_filename'] = ingest_data['original_filename']
+                        # Pass through file URLs from new plugin
+                        if 'file_url' in ingest_data:
+                            result['file_url'] = ingest_data['file_url']
+                        if 'file_path' in ingest_data:
+                            result['file_path'] = ingest_data['file_path']
                     
                     return result
                 else:

@@ -112,7 +112,14 @@ class IngestionParameterDetail(BaseModel):
     description: Optional[str] = None
     default: Optional[Any] = None
     required: bool = False
-    enum: Optional[List[str]] = None # Seen in logged data for 'chunk_unit'
+    enum: Optional[List[str]] = None  # Allowed values for select/dropdown
+    enum_labels: Optional[Dict[str, str]] = None  # Human-readable labels for enum values
+    visible_when: Optional[Dict[str, List[str]]] = None  # Conditional visibility based on other param values
+    help_text: Optional[str] = None  # Additional help/guidance text
+    min: Optional[float] = None  # Minimum value for numeric inputs
+    max: Optional[float] = None  # Maximum value for numeric inputs
+    ui_hint: Optional[str] = None  # Hint for UI rendering (e.g., "slider", "select", "number")
+    applicable_to: Optional[List[str]] = None  # File types this parameter applies to
 
 # Update IngestionPlugin to use the correct key 'parameters' and its Dict structure
 class IngestionPlugin(BaseModel):
@@ -153,6 +160,66 @@ class BasePluginIngestRequest(BaseModel):
 
 class ErrorResponseDetail(BaseModel):
     detail: Union[str, Dict[str, Any]]
+
+
+# --- Ingestion Status API Models --- #
+
+class IngestionProgress(BaseModel):
+    """Progress information for an ingestion job"""
+    current: int = 0
+    total: int = 0
+    percentage: float = 0.0
+    message: str = ""
+
+class IngestionJobResponse(BaseModel):
+    """Response model for a single ingestion job"""
+    id: int
+    job_id: int  # Alias for id
+    collection_id: int
+    collection_name: Optional[str] = None
+    original_filename: str
+    file_path: Optional[str] = None
+    file_url: Optional[str] = None
+    file_size: Optional[int] = 0
+    content_type: Optional[str] = None
+    plugin_name: str
+    plugin_params: Optional[Dict[str, Any]] = {}
+    status: str  # pending, processing, completed, failed, cancelled, deleted
+    document_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    processing_started_at: Optional[str] = None
+    processing_completed_at: Optional[str] = None
+    processing_duration_seconds: Optional[float] = None
+    progress: Optional[IngestionProgress] = None
+    error_message: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
+    processing_stats: Optional[Dict[str, Any]] = None  # Detailed processing statistics (Jan 2026)
+    owner: Optional[str] = None
+
+class IngestionJobListResponse(BaseModel):
+    """Response model for listing ingestion jobs"""
+    total: int
+    items: List[IngestionJobResponse]
+    limit: int = 50
+    offset: int = 0
+    has_more: bool = False
+
+class IngestionStatusSummary(BaseModel):
+    """Summary of ingestion job statuses for a collection"""
+    collection_id: int
+    collection_name: Optional[str] = None
+    total_jobs: int = 0
+    by_status: Dict[str, int] = {}
+    currently_processing: int = 0
+    recent_failures: List[Dict[str, Any]] = []
+    oldest_processing_job: Optional[Dict[str, Any]] = None
+
+class RetryJobRequest(BaseModel):
+    """Request model for retrying a failed job"""
+    override_params: Optional[Dict[str, Any]] = None
+
+# --- End Ingestion Status API Models --- #
 
 # --- End Pydantic Models --- #
 
@@ -2083,4 +2150,376 @@ async def get_query_plugins(request: Request):
             status_code=500,
             detail=f"Internal server error getting query plugins: {str(e)}"
         )
+
+
+# --- Ingestion Status API Endpoints --- #
+
+@router.get(
+    "/kb/{kb_id}/ingestion-jobs",
+    response_model=Union[IngestionJobListResponse, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "Ingestion Status", "kb-server-connection"],
+    summary="List Ingestion Jobs",
+    description="""List all ingestion jobs for a knowledge base with filtering and pagination.
+    
+Query Parameters:
+- status: Filter by job status (pending, processing, completed, failed, cancelled)
+- limit: Max items to return (1-200, default 50)
+- offset: Items to skip for pagination
+- sort_by: Field to sort by (created_at, updated_at, status, original_filename)
+- sort_order: Sort order (asc, desc)
+
+Example Response:
+```json
+{
+  "total": 15,
+  "items": [
+    {
+      "id": 5,
+      "job_id": 5,
+      "original_filename": "report.pdf",
+      "status": "completed",
+      "document_count": 25,
+      "progress": {"current": 25, "total": 25, "percentage": 100.0, "message": "Completed"}
+    }
+  ],
+  "limit": 50,
+  "offset": 0,
+  "has_more": false
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "List of ingestion jobs or KB server status"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        404: {"model": ErrorResponseDetail, "description": "Knowledge Base not found"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "KB server offline"}
+    }
+)
+async def list_ingestion_jobs(
+    kb_id: str,
+    request: Request,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: str = "created_at",
+    sort_order: str = "desc"
+):
+    """List all ingestion jobs for a knowledge base"""
+    logger.info(f"Listing ingestion jobs for KB {kb_id}, status={status}, limit={limit}, offset={offset}")
+    
+    try:
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
+            return KnowledgeBaseServerOfflineResponse()
+        
+        # Check access to KB
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        if not can_access:
+            raise HTTPException(status_code=404, detail="Knowledge Base not found")
+        
+        # Get ingestion jobs from KB server
+        result = await kb_server_manager.list_ingestion_jobs(
+            kb_id=kb_id,
+            creator_user=creator_user,
+            status=status,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing ingestion jobs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error listing ingestion jobs: {str(e)}")
+
+
+@router.get(
+    "/kb/{kb_id}/ingestion-jobs/{job_id}",
+    response_model=Union[IngestionJobResponse, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "Ingestion Status", "kb-server-connection"],
+    summary="Get Ingestion Job Status",
+    description="""Get detailed status of a specific ingestion job. Use this for polling progress.
+    
+Example Response (Processing):
+```json
+{
+  "id": 5,
+  "job_id": 5,
+  "original_filename": "large_document.pdf",
+  "status": "processing",
+  "progress": {
+    "current": 67,
+    "total": 150,
+    "percentage": 44.67,
+    "message": "Adding chunks to collection..."
+  }
+}
+```
+
+Example Response (Failed):
+```json
+{
+  "id": 6,
+  "original_filename": "corrupted.pdf",
+  "status": "failed",
+  "error_message": "Document conversion failed: Invalid PDF format",
+  "error_details": {...}
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Ingestion job status or KB server status"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        404: {"model": ErrorResponseDetail, "description": "Job or KB not found"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "KB server offline"}
+    }
+)
+async def get_ingestion_job_status(
+    kb_id: str,
+    job_id: int,
+    request: Request
+):
+    """Get status of a specific ingestion job"""
+    logger.info(f"Getting ingestion job status: KB {kb_id}, Job {job_id}")
+    
+    try:
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
+            return KnowledgeBaseServerOfflineResponse()
+        
+        # Check access to KB
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        if not can_access:
+            raise HTTPException(status_code=404, detail="Knowledge Base not found")
+        
+        # Get job status from KB server
+        result = await kb_server_manager.get_ingestion_job_status(
+            kb_id=kb_id,
+            job_id=job_id,
+            creator_user=creator_user
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting ingestion job status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting ingestion job status: {str(e)}")
+
+
+@router.get(
+    "/kb/{kb_id}/ingestion-status",
+    response_model=Union[IngestionStatusSummary, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "Ingestion Status", "kb-server-connection"],
+    summary="Get Ingestion Status Summary",
+    description="""Get a summary of all ingestion jobs for a knowledge base.
+    
+Example Response:
+```json
+{
+  "collection_id": 1,
+  "total_jobs": 15,
+  "by_status": {
+    "completed": 12,
+    "processing": 2,
+    "failed": 1
+  },
+  "currently_processing": 2,
+  "recent_failures": [...]
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Ingestion status summary or KB server status"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        404: {"model": ErrorResponseDetail, "description": "KB not found"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "KB server offline"}
+    }
+)
+async def get_ingestion_status_summary(
+    kb_id: str,
+    request: Request
+):
+    """Get summary of ingestion job statuses for a collection"""
+    logger.info(f"Getting ingestion status summary for KB {kb_id}")
+    
+    try:
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
+            return KnowledgeBaseServerOfflineResponse()
+        
+        # Check access to KB
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        if not can_access:
+            raise HTTPException(status_code=404, detail="Knowledge Base not found")
+        
+        # Get status summary from KB server
+        result = await kb_server_manager.get_ingestion_status_summary(
+            kb_id=kb_id,
+            creator_user=creator_user
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting ingestion status summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting ingestion status summary: {str(e)}")
+
+
+@router.post(
+    "/kb/{kb_id}/ingestion-jobs/{job_id}/retry",
+    response_model=Union[IngestionJobResponse, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "Ingestion Status", "kb-server-connection"],
+    summary="Retry Failed Ingestion Job",
+    description="""Retry a failed ingestion job. Only jobs with status 'failed' can be retried.
+    
+Optionally provide override_params to use different plugin parameters.
+
+Example Request:
+```json
+{
+  "override_params": {
+    "chunk_size": 500
+  }
+}
+```
+
+Example Response:
+```json
+{
+  "id": 6,
+  "status": "pending",
+  "progress": {"message": "Queued for retry"}
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Job queued for retry"},
+        400: {"model": ErrorResponseDetail, "description": "Job cannot be retried"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        403: {"model": ErrorResponseDetail, "description": "Not authorized to retry"},
+        404: {"model": ErrorResponseDetail, "description": "Job or KB not found"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "KB server offline"}
+    }
+)
+async def retry_ingestion_job(
+    kb_id: str,
+    job_id: int,
+    request: Request,
+    body: Optional[RetryJobRequest] = None
+):
+    """Retry a failed ingestion job"""
+    logger.info(f"Retrying ingestion job: KB {kb_id}, Job {job_id}")
+    
+    try:
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
+            return KnowledgeBaseServerOfflineResponse()
+        
+        # Check access - only owner can retry
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        if not can_access:
+            raise HTTPException(status_code=404, detail="Knowledge Base not found")
+        if access_type != 'owner':
+            raise HTTPException(status_code=403, detail="Only KB owner can retry ingestion jobs")
+        
+        # Retry the job
+        override_params = body.override_params if body else None
+        result = await kb_server_manager.retry_ingestion_job(
+            kb_id=kb_id,
+            job_id=job_id,
+            creator_user=creator_user,
+            override_params=override_params
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrying ingestion job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrying ingestion job: {str(e)}")
+
+
+@router.post(
+    "/kb/{kb_id}/ingestion-jobs/{job_id}/cancel",
+    response_model=Union[IngestionJobResponse, KnowledgeBaseServerOfflineResponse],
+    tags=["Knowledge Base Management", "Ingestion Status", "kb-server-connection"],
+    summary="Cancel Ingestion Job",
+    description="""Cancel a pending or processing ingestion job.
+    
+Note: Cancellation is best-effort. The current processing step may complete before cancellation takes effect.
+
+Example Response:
+```json
+{
+  "id": 5,
+  "status": "cancelled",
+  "progress": {"message": "Cancelled by user"}
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Job cancelled"},
+        400: {"model": ErrorResponseDetail, "description": "Job cannot be cancelled"},
+        401: {"model": ErrorResponseDetail, "description": "Authentication failed"},
+        403: {"model": ErrorResponseDetail, "description": "Not authorized to cancel"},
+        404: {"model": ErrorResponseDetail, "description": "Job or KB not found"},
+        503: {"model": KnowledgeBaseServerOfflineResponse, "description": "KB server offline"}
+    }
+)
+async def cancel_ingestion_job(
+    kb_id: str,
+    job_id: int,
+    request: Request
+):
+    """Cancel a pending or processing ingestion job"""
+    logger.info(f"Cancelling ingestion job: KB {kb_id}, Job {job_id}")
+    
+    try:
+        creator_user = await authenticate_creator_user(request)
+        
+        if not await kb_server_manager.is_kb_server_available(creator_user):
+            return KnowledgeBaseServerOfflineResponse()
+        
+        # Check access - only owner can cancel
+        can_access, access_type = db_manager.user_can_access_kb(kb_id, creator_user['id'])
+        if not can_access:
+            raise HTTPException(status_code=404, detail="Knowledge Base not found")
+        if access_type != 'owner':
+            raise HTTPException(status_code=403, detail="Only KB owner can cancel ingestion jobs")
+        
+        # Cancel the job
+        result = await kb_server_manager.cancel_ingestion_job(
+            kb_id=kb_id,
+            job_id=job_id,
+            creator_user=creator_user
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling ingestion job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error cancelling ingestion job: {str(e)}")
+
+
+# --- End Ingestion Status API Endpoints --- #
 

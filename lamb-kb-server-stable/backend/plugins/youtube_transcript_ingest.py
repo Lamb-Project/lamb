@@ -247,6 +247,8 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
     Unlike file-based plugins, this can work with a remote resource. A placeholder
     file may still be supplied by the ingestion pipeline; its path is accepted but
     not required if `video_url` param is provided.
+    
+    Supports progress reporting for multi-video ingestion.
     """
 
     name = "youtube_transcript_ingest"
@@ -254,6 +256,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
     description = "Ingest YouTube video transcripts via yt-dlp with time-based chunking"
     # We allow providing a text file containing URLs; advertise txt support.
     supported_file_types = {"txt"}
+    supports_progress = True  # This plugin supports progress callbacks
 
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:  # noqa: D401
         return {
@@ -296,6 +299,15 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
         return urls
 
     def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:  # noqa: D401
+        """Ingest YouTube video transcripts.
+        
+        Args:
+            file_path: Path to optional text file containing URLs
+            **kwargs: Plugin parameters
+                      May include 'progress_callback' for progress reporting
+        Returns:
+            List of document chunks with metadata
+        """
         video_url: Optional[str] = kwargs.get("video_url")
         language: str = kwargs.get("language", "en")
         chunk_duration: float = float(kwargs.get("chunk_duration", 60))
@@ -313,16 +325,24 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                 "No video_url provided and no YouTube URLs found in file. Provide plugin param 'video_url' or upload a txt file containing URLs."
             )
 
+        # Report initial progress
+        self.report_progress(kwargs, 0, len(urls), f"Starting transcript extraction for {len(urls)} video(s)...")
+
         all_chunks: List[Dict[str, Any]] = []
-        for url in urls:
+        for url_idx, url in enumerate(urls):
             video_id = _parse_youtube_url(url)
             if not video_id:
+                self.report_progress(kwargs, url_idx + 1, len(urls), f"Skipped invalid URL: {url[:30]}...")
                 continue  # skip invalid
+            
+            self.report_progress(kwargs, url_idx, len(urls), f"Fetching transcript for video {video_id}...")
+            
             try:
                 pieces = _fetch_transcript(video_id, [language], proxy_url)
             except ValueError as e:
                 # Skip videos without transcripts or other extraction failures
                 if "No subtitles available" in str(e):
+                    self.report_progress(kwargs, url_idx + 1, len(urls), f"No subtitles for {video_id}, skipping...")
                     continue
                 else:
                     raise e
@@ -361,8 +381,13 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                     "text": cleaned_text,
                     "metadata": metadata,
                 })
+            
+            # Report progress after each video
+            self.report_progress(kwargs, url_idx + 1, len(urls), f"Processed video {video_id}: {total} chunks")
 
         if not all_chunks:
             raise ValueError("No chunks produced from provided YouTube URL(s).")
 
+        # Report completion
+        self.report_progress(kwargs, len(urls), len(urls), f"Completed: {len(all_chunks)} chunks from {len(urls)} video(s)")
         return all_chunks

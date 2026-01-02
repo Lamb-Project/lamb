@@ -207,17 +207,52 @@ def rag_processor(
                 logger.info(f"Collection {cid}: {status} - {doc_count} documents")
                 
                 # Extract file_urls and create source URLs
+                # Supports both legacy (file_url) and new (original_file_url, markdown_file_url) metadata
                 for doc in documents:
-                    if "metadata" in doc and "file_url" in doc["metadata"]:
-                        file_url = doc["metadata"]["file_url"]
-                        # Concatenate KB_SERVER_URL with file_url to create SOURCE URL
-                        source_url = f"{KB_SERVER_URL}{file_url}"
-                        # Add to sources list
-                        sources.append({
-                            "title": doc["metadata"].get("filename", "Unknown"),
-                            "url": source_url,
-                            "similarity": doc.get("similarity", 0)
-                        })
+                    if "metadata" in doc:
+                        metadata = doc["metadata"]
+                        
+                        # Determine the best source URL (prefer new fields from markitdown_plus_ingest)
+                        source_url = None
+                        original_url = None
+                        markdown_url = None
+                        images_folder = None
+                        
+                        # New metadata fields from markitdown_plus_ingest plugin
+                        if "original_file_url" in metadata:
+                            original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
+                        if "markdown_file_url" in metadata:
+                            markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
+                        if "images_folder_url" in metadata:
+                            images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
+                        
+                        # Legacy file_url field
+                        if "file_url" in metadata:
+                            source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
+                        
+                        # Prefer original_file_url for the main source, fall back to file_url
+                        main_url = original_url or source_url
+                        
+                        if main_url:
+                            source_entry = {
+                                "title": metadata.get("filename", metadata.get("original_filename", "Unknown")),
+                                "url": main_url,
+                                "similarity": doc.get("similarity", 0)
+                            }
+                            # Include additional URLs from new plugins
+                            if original_url:
+                                source_entry["original_url"] = original_url
+                            if markdown_url:
+                                source_entry["markdown_url"] = markdown_url
+                            if images_folder:
+                                source_entry["images_folder"] = images_folder
+                            # Include chunk metadata if available
+                            if "chunk_index" in metadata:
+                                source_entry["chunk_index"] = metadata["chunk_index"]
+                            if "page" in metadata:
+                                source_entry["page"] = metadata["page"]
+                            
+                            sources.append(source_entry)
                     
                     # Add the document content to contexts
                     if "data" in doc:

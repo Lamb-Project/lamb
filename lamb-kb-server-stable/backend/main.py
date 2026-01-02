@@ -95,6 +95,7 @@ from dependencies import verify_token
 
 # Import routers
 from routers import system, collections
+from routers import ingestion_status
 
 # Initialize databases on startup
 @app.on_event("startup")
@@ -109,6 +110,20 @@ async def startup_event():
     else:
         print("Databases initialized successfully.")
     
+    # Run database migrations
+    print("Checking database migrations...")
+    try:
+        from database.migrations.migration_add_ingestion_tracking import check_migration_status, run_migration
+        migration_status = check_migration_status()
+        if not migration_status.get("applied"):
+            print("Running migration: Add Ingestion Tracking Fields...")
+            run_migration()
+            print("Migration completed.")
+        else:
+            print("All migrations up to date.")
+    except Exception as e:
+        print(f"WARNING: Migration check failed: {e}")
+    
     # Discover ingestion plugins
     print("Discovering ingestion plugins...")
     discover_plugins("plugins")
@@ -120,6 +135,7 @@ async def startup_event():
 # Include routers
 app.include_router(system.router)
 app.include_router(collections.router)
+app.include_router(ingestion_status.router)
 
 # Configure static files
 static_dir = IngestionService.STATIC_DIR

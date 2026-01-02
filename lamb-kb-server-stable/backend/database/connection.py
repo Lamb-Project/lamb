@@ -10,7 +10,7 @@ from typing import Dict, Any, Union, Callable
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction, OllamaEmbeddingFunction
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
 from .models import Base, Collection, Visibility
@@ -140,12 +140,70 @@ def check_sqlite_schema() -> bool:
     return required_columns.issubset(collection_columns)
 
 
+def run_migrations() -> Dict[str, Any]:
+    """
+    Run database migrations to add new columns.
+    
+    This function safely adds new columns to existing tables without
+    affecting existing data. It checks if columns exist before adding them.
+    
+    Returns:
+        Dictionary with migration results and any errors
+    """
+    migration_results = {
+        "migrations_run": [],
+        "errors": []
+    }
+    
+    inspector = inspect(engine)
+    
+    # Check if file_registry table exists
+    if "file_registry" not in inspector.get_table_names():
+        return migration_results  # Table will be created by create_all()
+    
+    # Get existing columns in file_registry
+    existing_columns = {col["name"] for col in inspector.get_columns("file_registry")}
+    
+    # Migration: Add processing_stats column (Jan 2026)
+    if "processing_stats" not in existing_columns:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE file_registry ADD COLUMN processing_stats TEXT DEFAULT NULL"
+                ))
+                conn.commit()
+            migration_results["migrations_run"].append({
+                "migration": "add_processing_stats_column",
+                "table": "file_registry",
+                "status": "success",
+                "description": "Added processing_stats JSON column for detailed ingestion statistics"
+            })
+            print("INFO: [migration] Added processing_stats column to file_registry table")
+        except Exception as e:
+            error_msg = f"Failed to add processing_stats column: {str(e)}"
+            migration_results["errors"].append(error_msg)
+            print(f"ERROR: [migration] {error_msg}")
+    
+    return migration_results
+
+
 def init_databases() -> Dict[str, Any]:
-    """Initialize all databases and perform sanity checks."""
+    """Initialize all databases and perform sanity checks.
+    
+    This function:
+    1. Checks schema compatibility
+    2. Creates tables if they don't exist
+    3. Runs any pending migrations
+    4. Initializes ChromaDB
+    
+    Returns:
+        Dictionary with initialization status and any errors
+    """
     status = {
         "sqlite_initialized": False,
         "sqlite_schema_valid": False,
         "chromadb_initialized": False,
+        "migrations": {},
         "errors": []
     }
     
@@ -155,11 +213,22 @@ def init_databases() -> Dict[str, Any]:
         if not status["sqlite_schema_valid"]:
             status["errors"].append("SQLite schema is not compatible")
         
+        # Create tables first
         init_sqlite_db()
         status["sqlite_initialized"] = True
         
+        # Run migrations after tables exist
+        migration_results = run_migrations()
+        status["migrations"] = migration_results
+        if migration_results.get("errors"):
+            status["errors"].extend(migration_results["errors"])
+        
         status["chromadb_collections"] = len(chroma_client.list_collections())
         status["chromadb_initialized"] = True
+        
+        # Log migration summary
+        if migration_results.get("migrations_run"):
+            print(f"INFO: [init] Ran {len(migration_results['migrations_run'])} database migrations")
         
     except Exception as e:
         status["errors"].append(f"Error initializing databases: {str(e)}")

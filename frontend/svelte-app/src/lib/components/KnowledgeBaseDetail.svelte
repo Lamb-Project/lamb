@@ -1,6 +1,6 @@
 <script>
     import { onMount } from 'svelte';
-    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile } from '$lib/services/knowledgeBaseService';
+    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
     import { page } from '$app/stores';
     import axios from 'axios'; // Import axios
@@ -36,6 +36,84 @@
      * @property {string} filename
      * @property {string} [ingestion_timestamp]
      * @property {string} [source]
+     */
+
+    /**
+     * @typedef {Object} IngestionProgress
+     * @property {number} [current]
+     * @property {number} [total]
+     * @property {number} [percentage]
+     * @property {string} [message]
+     */
+
+    /**
+     * @typedef {Object} StageTiming
+     * @property {string} stage
+     * @property {number} duration_ms
+     * @property {string} message
+     * @property {string} [timestamp]
+     */
+
+    /**
+     * @typedef {Object} ChunkStats
+     * @property {number} count
+     * @property {number} avg_size
+     * @property {number} min_size
+     * @property {number} max_size
+     */
+
+    /**
+     * @typedef {Object} OutputFiles
+     * @property {string} [markdown_url]
+     * @property {string} [images_folder_url]
+     * @property {string} [original_file_url]
+     */
+
+    /**
+     * @typedef {Object} LLMCallDetail
+     * @property {string} image
+     * @property {number} duration_ms
+     * @property {boolean} success
+     * @property {number} [tokens_used]
+     * @property {string} [error]
+     */
+
+    /**
+     * @typedef {Object} ProcessingStats
+     * @property {number} content_length
+     * @property {number} images_extracted
+     * @property {number} images_with_llm_descriptions
+     * @property {LLMCallDetail[]} llm_calls
+     * @property {number} total_llm_duration_ms
+     * @property {string} [chunking_strategy]
+     * @property {ChunkStats} [chunk_stats]
+     * @property {StageTiming[]} stage_timings
+     * @property {OutputFiles} [output_files]
+     * @property {string} [markdown_preview]
+     */
+
+    /**
+     * @typedef {Object} IngestionJob
+     * @property {number} id
+     * @property {number} collection_id
+     * @property {string} original_filename
+     * @property {string} [file_path]
+     * @property {string} [file_url]
+     * @property {number} [file_size]
+     * @property {string} [content_type]
+     * @property {string} plugin_name
+     * @property {Object} [plugin_params]
+     * @property {'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted'} status
+     * @property {number} document_count
+     * @property {string} [created_at]
+     * @property {string} [updated_at]
+     * @property {string} [processing_started_at]
+     * @property {string} [processing_completed_at]
+     * @property {number} [processing_duration_seconds]
+     * @property {IngestionProgress} [progress]
+     * @property {string} [error_message]
+     * @property {Object} [error_details]
+     * @property {ProcessingStats} [processing_stats]
      */
 
     /**
@@ -76,6 +154,36 @@
     let selectedPluginIndex = $state(0);
     /** @type {Record<string, any>} */
     let pluginParams = $state({});
+    
+    // Derived: filter parameters that should be visible based on visible_when conditions
+    // We need to access the state snapshot to ensure reactivity when params change
+    let visibleParamKeys = $derived.by(() => {
+        // Get a plain object snapshot for reliable access
+        const params = $state.snapshot(pluginParams);
+        
+        if (!selectedPlugin?.parameters) return [];
+        const paramKeys = Object.keys(selectedPlugin.parameters).filter(name => !name.startsWith('_'));
+        
+        const result = paramKeys.filter(paramName => {
+            const paramDef = selectedPlugin.parameters[paramName];
+            // If no visible_when condition, always show
+            if (!paramDef.visible_when) {
+                return true;
+            }
+            // Check all conditions in visible_when
+            for (const [field, allowedValues] of Object.entries(paramDef.visible_when)) {
+                const currentValue = params[field];
+                // If the current value is not in the allowed values array, hide the parameter
+                if (!Array.isArray(allowedValues) || !allowedValues.includes(currentValue)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        
+        return result;
+    });
+    
     /** @type {File | null} */
     let selectedFile = $state(null);
     // Derived flag: treat only explicit 'file-ingest' as requiring a file. Other kinds (base-ingest, remote-ingest, etc.) run without file upload.
@@ -98,6 +206,18 @@
     let queryResult = $state(null);
     let queryLoading = $state(false);
     let queryError = $state('');
+
+    // State for ingestion jobs
+    /** @type {IngestionJob[]} */
+    let ingestionJobs = $state([]);
+    let loadingJobs = $state(false);
+    let jobsError = $state('');
+    
+    // State for job detail modal
+    /** @type {IngestionJob | null} */
+    let selectedJob = $state(null);
+    let showJobModal = $state(false);
+    let jobActionLoading = $state(false);
 
     // Initialization and cleanup
     onMount(() => {
@@ -186,6 +306,9 @@
             kb = data;
             console.log('Knowledge base details loaded:', kb);
             console.log('can_modify value:', kb?.can_modify, 'type:', typeof kb?.can_modify);
+            
+            // Fetch ingestion jobs alongside KB details
+            await loadIngestionJobs(id);
         } catch (/** @type {unknown} */ err) {
             console.error('Error loading knowledge base details:', err);
             error = err instanceof Error ? err.message : 'Failed to load knowledge base details';
@@ -195,6 +318,200 @@
         } finally {
             loading = false;
         }
+    }
+    
+    /**
+     * Load ingestion jobs for the knowledge base
+     * @param {string} id - Knowledge base ID
+     */
+    async function loadIngestionJobs(id) {
+        loadingJobs = true;
+        jobsError = '';
+        
+        try {
+            const response = await listIngestionJobs(id, { limit: 200, sort_by: 'created_at', sort_order: 'desc' });
+            ingestionJobs = response.items || [];
+            console.log('Ingestion jobs loaded:', ingestionJobs.length);
+        } catch (/** @type {unknown} */ err) {
+            console.error('Error loading ingestion jobs:', err);
+            jobsError = err instanceof Error ? err.message : 'Failed to load ingestion jobs';
+            ingestionJobs = [];
+        } finally {
+            loadingJobs = false;
+        }
+    }
+    
+    /**
+     * Get the most recent ingestion job for a file by filename
+     * @param {string} filename - The filename to search for
+     * @returns {IngestionJob | null} The most recent job for this file or null
+     */
+    function getJobForFile(filename) {
+        if (!ingestionJobs || ingestionJobs.length === 0) return null;
+        
+        // Find jobs matching this filename (most recent first since sorted by created_at desc)
+        const job = ingestionJobs.find(j => j.original_filename === filename);
+        return job || null;
+    }
+    
+    /**
+     * Get status badge color classes based on job status
+     * @param {'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'deleted' | string} status
+     * @returns {{ bg: string, text: string, ring: string }}
+     */
+    function getStatusColors(status) {
+        switch (status) {
+            case 'completed':
+                return { bg: 'bg-emerald-100', text: 'text-emerald-800', ring: 'ring-emerald-600/20' };
+            case 'processing':
+                return { bg: 'bg-blue-100', text: 'text-blue-800', ring: 'ring-blue-600/20' };
+            case 'pending':
+                return { bg: 'bg-amber-100', text: 'text-amber-800', ring: 'ring-amber-600/20' };
+            case 'failed':
+                return { bg: 'bg-red-100', text: 'text-red-800', ring: 'ring-red-600/20' };
+            case 'cancelled':
+                return { bg: 'bg-gray-100', text: 'text-gray-800', ring: 'ring-gray-600/20' };
+            case 'deleted':
+                return { bg: 'bg-slate-100', text: 'text-slate-600', ring: 'ring-slate-600/20' };
+            default:
+                return { bg: 'bg-gray-100', text: 'text-gray-600', ring: 'ring-gray-600/20' };
+        }
+    }
+    
+    /**
+     * Open job detail modal
+     * @param {IngestionJob} job
+     */
+    function openJobModal(job) {
+        selectedJob = job;
+        showJobModal = true;
+    }
+    
+    /**
+     * Close job detail modal
+     */
+    function closeJobModal() {
+        showJobModal = false;
+        selectedJob = null;
+    }
+    
+    /**
+     * Retry a failed job
+     * @param {number} jobId
+     */
+    async function handleRetryJob(jobId) {
+        if (!kbId) return;
+        jobActionLoading = true;
+        
+        try {
+            await retryIngestionJob(kbId, jobId);
+            // Refresh jobs after retry
+            await loadIngestionJobs(kbId);
+            closeJobModal();
+        } catch (/** @type {unknown} */ err) {
+            console.error('Error retrying job:', err);
+            alert(err instanceof Error ? err.message : 'Failed to retry job');
+        } finally {
+            jobActionLoading = false;
+        }
+    }
+    
+    /**
+     * Cancel a pending/processing job
+     * @param {number} jobId
+     */
+    async function handleCancelJob(jobId) {
+        if (!kbId) return;
+        if (!confirm('Cancel this ingestion job?')) return;
+        jobActionLoading = true;
+        
+        try {
+            await cancelIngestionJob(kbId, jobId);
+            // Refresh jobs after cancel
+            await loadIngestionJobs(kbId);
+            closeJobModal();
+        } catch (/** @type {unknown} */ err) {
+            console.error('Error cancelling job:', err);
+            alert(err instanceof Error ? err.message : 'Failed to cancel job');
+        } finally {
+            jobActionLoading = false;
+        }
+    }
+    
+    /**
+     * Refresh file statuses manually
+     */
+    async function refreshFileStatus() {
+        if (!kbId) return;
+        await loadIngestionJobs(kbId);
+    }
+    
+    /**
+     * Refresh the currently selected job's status
+     */
+    async function refreshSelectedJob() {
+        if (!kbId || !selectedJob) return;
+        jobActionLoading = true;
+        
+        try {
+            const updatedJob = await getIngestionJobStatus(kbId, selectedJob.id);
+            selectedJob = updatedJob;
+            // Also refresh the jobs list to keep it in sync
+            await loadIngestionJobs(kbId);
+        } catch (/** @type {unknown} */ err) {
+            console.error('Error refreshing job:', err);
+        } finally {
+            jobActionLoading = false;
+        }
+    }
+    
+    /**
+     * Format milliseconds to human readable duration
+     * @param {number} ms
+     * @returns {string}
+     */
+    function formatMilliseconds(ms) {
+        if (ms < 1000) return `${ms}ms`;
+        if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+        const minutes = Math.floor(ms / 60000);
+        const seconds = ((ms % 60000) / 1000).toFixed(0);
+        return `${minutes}m ${seconds}s`;
+    }
+    
+    /**
+     * Format number with thousands separator
+     * @param {number} num
+     * @returns {string}
+     */
+    function formatNumber(num) {
+        return num.toLocaleString();
+    }
+    
+    /**
+     * Format date string for display
+     * @param {string | undefined} dateStr
+     * @returns {string}
+     */
+    function formatDate(dateStr) {
+        if (!dateStr) return 'N/A';
+        try {
+            return new Date(dateStr).toLocaleString();
+        } catch {
+            return dateStr;
+        }
+    }
+    
+    /**
+     * Format duration in seconds to readable format
+     * @param {number | undefined} seconds
+     * @returns {string}
+     */
+    function formatDuration(seconds) {
+        if (seconds === undefined || seconds === null) return 'N/A';
+        if (seconds < 60) return `${seconds.toFixed(1)}s`;
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return `${mins}m ${secs}s`;
     }
     
     /**
@@ -276,10 +593,12 @@
             selectedPlugin = plugins[index];
             
             // Initialize parameters with defaults from the parameters object
+            // Skip underscore-prefixed parameters (informational only, not submitted)
             pluginParams = {};
             if (selectedPlugin && selectedPlugin.parameters) {
                 // Iterate over the parameters object
                 for (const paramName in selectedPlugin.parameters) {
+                    if (paramName.startsWith('_')) continue; // Skip info-only params
                     pluginParams[paramName] = selectedPlugin.parameters[paramName].default;
                 }
             }
@@ -325,6 +644,71 @@
             }
             console.log(`Updated param ${paramName} to:`, pluginParams[paramName]);
         }
+    }
+    
+    /**
+     * Check if a parameter should be visible based on visible_when conditions
+     * @param {IngestionParameterDetail} paramDef - The parameter definition
+     * @returns {boolean} Whether the parameter should be shown
+     */
+    function shouldShowParameter(paramDef) {
+        // If no visible_when condition, always show
+        if (!paramDef.visible_when) return true;
+        
+        // Check all conditions in visible_when
+        for (const [field, allowedValues] of Object.entries(paramDef.visible_when)) {
+            const currentValue = pluginParams[field];
+            // If the current value is not in the allowed values array, hide the parameter
+            if (!Array.isArray(allowedValues) || !allowedValues.includes(currentValue)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Check if a parameter controls visibility of other parameters (has dependents)
+     * @param {string} paramName - The parameter name to check
+     * @returns {boolean} Whether this parameter has dependent parameters
+     */
+    function hasVisibleWhenDependents(paramName) {
+        if (!selectedPlugin?.parameters) return false;
+        
+        for (const [, paramDef] of Object.entries(selectedPlugin.parameters)) {
+            if (paramDef.visible_when && paramName in paramDef.visible_when) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Get the label for an enum value using enum_labels if available
+     * @param {IngestionParameterDetail} paramDef - The parameter definition
+     * @param {string} enumValue - The raw enum value
+     * @returns {string} The display label
+     */
+    function getEnumLabel(paramDef, enumValue) {
+        if (paramDef.enum_labels && paramDef.enum_labels[enumValue]) {
+            return paramDef.enum_labels[enumValue];
+        }
+        return enumValue;
+    }
+    
+    /**
+     * Validate numeric input against min/max constraints
+     * @param {number} value - The input value
+     * @param {IngestionParameterDetail} paramDef - The parameter definition
+     * @returns {{ valid: boolean, message?: string }} Validation result
+     */
+    function validateNumericInput(value, paramDef) {
+        if (paramDef.min !== undefined && value < paramDef.min) {
+            return { valid: false, message: `Minimum value is ${paramDef.min}` };
+        }
+        if (paramDef.max !== undefined && value > paramDef.max) {
+            return { valid: false, message: `Maximum value is ${paramDef.max}` };
+        }
+        return { valid: true };
     }
     
     /**
@@ -632,6 +1016,34 @@
                     <!-- Files Panel -->
                     {#if activeTab === 'files'}
                         <div>
+                            <!-- Refresh button -->
+                            <div class="mb-4 flex items-center justify-between">
+                                <div class="text-sm text-gray-500">
+                                    {#if loadingJobs}
+                                        <span class="inline-flex items-center">
+                                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-[#2271b3]" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Loading status...
+                                        </span>
+                                    {:else if jobsError}
+                                        <span class="text-amber-600">⚠ {jobsError}</span>
+                                    {/if}
+                                </div>
+                                <button
+                                    type="button"
+                                    onclick={refreshFileStatus}
+                                    disabled={loadingJobs}
+                                    class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <svg class="h-4 w-4 mr-1.5 {loadingJobs ? 'animate-spin' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    {$_('knowledgeBases.detail.refreshStatus', { default: 'Refresh Status' })}
+                                </button>
+                            </div>
+                            
                              {#if kb.files && kb.files.length > 0}
                                 <div class="overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200">
@@ -646,6 +1058,9 @@
                                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                     {$_('knowledgeBases.detail.fileTypeColumn', { default: 'Type' })}
                                                 </th>
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    {$_('knowledgeBases.detail.fileStatusColumn', { default: 'Status' })}
+                                                </th>
                                                 <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                     {$_('knowledgeBases.detail.fileActionsColumn', { default: 'Actions' })}
                                                 </th>
@@ -653,6 +1068,8 @@
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             {#each kb.files as file (file.id)}
+                                                {@const job = getJobForFile(file.filename)}
+                                                {@const statusColors = job ? getStatusColors(job.status) : getStatusColors('unknown')}
                                                 <tr>
                                                     <td class="px-6 py-4 whitespace-nowrap">
                                                         <div class="flex items-center">
@@ -682,6 +1099,42 @@
                                                         <div class="text-sm text-gray-900">
                                                             {file.content_type || 'Unknown'}
                                                         </div>
+                                                    </td>
+                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                        {#if job}
+                                                            <button
+                                                                type="button"
+                                                                onclick={() => openJobModal(job)}
+                                                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset cursor-pointer hover:opacity-80 transition-opacity {statusColors.bg} {statusColors.text} {statusColors.ring}"
+                                                                title="Click for details"
+                                                            >
+                                                                {#if job.status === 'processing'}
+                                                                    <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                {:else if job.status === 'completed'}
+                                                                    <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                                                    </svg>
+                                                                {:else if job.status === 'failed'}
+                                                                    <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                                                    </svg>
+                                                                {:else if job.status === 'pending'}
+                                                                    <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                                                                    </svg>
+                                                                {/if}
+                                                                {job.status}
+                                                            </button>
+                                                        {:else if loadingJobs}
+                                                            <span class="text-xs text-gray-400 italic">Loading...</span>
+                                                        {:else}
+                                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-500/10">
+                                                                Unknown
+                                                            </span>
+                                                        {/if}
                                                     </td>
                                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                         {#if kb.can_modify === true}
@@ -773,85 +1226,146 @@
                                         </div>
                                     </div>
                                     
-                                    <!-- Plugin parameters -->
-                                    {#if selectedPlugin && selectedPlugin.parameters && Object.keys(selectedPlugin.parameters).length > 0}
+                                    <!-- Plugin warnings (parameters starting with _) -->
+                                    {#if selectedPlugin?.parameters}
+                                        {#each Object.entries(selectedPlugin.parameters).filter(([name]) => name.startsWith('_')) as [paramName, paramDef] (paramName)}
+                                            <div class="p-4 bg-amber-50 border border-amber-200 rounded-md">
+                                                <div class="flex items-start">
+                                                    <svg class="h-5 w-5 text-amber-400 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    <div>
+                                                        <h4 class="text-sm font-medium text-amber-800">
+                                                            {paramName.replace(/^_/, '').replace(/_/g, ' ')}
+                                                        </h4>
+                                                        <p class="mt-1 text-sm text-amber-700">
+                                                            {paramDef.description || paramDef.default || ''}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    {/if}
+                                    
+                                    <!-- Plugin parameters (excluding underscore-prefixed info params) -->
+                                    {#if selectedPlugin && selectedPlugin.parameters && visibleParamKeys.length > 0}
                                         <div class="space-y-4 border-t border-gray-200 pt-4">
                                             <h5 class="font-medium text-gray-700">
                                                 {$_('knowledgeBases.fileUpload.parametersLabel', { default: 'Plugin Parameters' })}
                                             </h5>
                                             
-                                            {#each Object.entries(selectedPlugin.parameters) as [paramName, paramDef] (paramName)}
-                                                <div>
-                                                    <label for={`param-${paramName}-inline`} class="block text-sm font-medium text-gray-700">
-                                                        {paramName}
-                                                        {paramDef.required ? ' *' : ''}
-                                                        {#if paramDef.description}
-                                                            <span class="text-xs text-gray-500 ml-1">({paramDef.description})</span>
-                                                        {/if}
-                                                    </label>
-                                                    <div class="mt-1">
-                                                        {#if paramDef.enum && Array.isArray(paramDef.enum)}
-                                                            <!-- Render as select dropdown if enum is present -->
-                                                            <select
-                                                                id={`param-${paramName}-inline`}
-                                                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
-                                                                value={pluginParams[paramName]}
-                                                                onchange={(e) => updateParamValue(paramName, e)}
-                                                            >
-                                                                {#each paramDef.enum as enumValue}
-                                                                    <option value={enumValue} selected={pluginParams[paramName] === enumValue}>
-                                                                        {enumValue}
-                                                                    </option>
-                                                                {/each}
-                                                            </select>
-                                                        {:else if paramDef.type === 'boolean'}
-                                                            <!-- Render as checkbox -->
-                                                            <div class="flex items-center">
+                                            {#each visibleParamKeys as paramName (paramName)}
+                                                {@const paramDef = selectedPlugin.parameters[paramName]}
+                                                    <!-- Parameter container with conditional indentation for dependent params -->
+                                                    <div class={paramDef.visible_when ? 'ml-6 pl-4 border-l-2 border-gray-200' : ''}>
+                                                        <!-- Parameter label with optional controller styling -->
+                                                        <label 
+                                                            for={`param-${paramName}-inline`} 
+                                                            class="block text-sm font-medium {hasVisibleWhenDependents(paramName) ? 'text-[#2271b3]' : 'text-gray-700'}"
+                                                        >
+                                                            {paramName}
+                                                            {paramDef.required ? ' *' : ''}
+                                                            {#if paramDef.description}
+                                                                <span class="text-xs text-gray-500 ml-1 font-normal">({paramDef.description})</span>
+                                                            {/if}
+                                                            {#if hasVisibleWhenDependents(paramName)}
+                                                                <span class="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-normal">
+                                                                    controls options
+                                                                </span>
+                                                            {/if}
+                                                        </label>
+                                                        
+                                                        <div class="mt-1">
+                                                            {#if paramDef.enum && Array.isArray(paramDef.enum)}
+                                                                <!-- Render as select dropdown if enum is present -->
+                                                                <select
+                                                                    id={`param-${paramName}-inline`}
+                                                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm {hasVisibleWhenDependents(paramName) ? 'border-[#2271b3] border-2' : ''}"
+                                                                    value={pluginParams[paramName]}
+                                                                    onchange={(e) => updateParamValue(paramName, e)}
+                                                                >
+                                                                    {#each paramDef.enum as enumValue}
+                                                                        <option value={enumValue} selected={pluginParams[paramName] === enumValue}>
+                                                                            {getEnumLabel(paramDef, enumValue)}
+                                                                        </option>
+                                                                    {/each}
+                                                                </select>
+                                                            {:else if paramDef.type === 'boolean'}
+                                                                <!-- Render as checkbox -->
+                                                                <div class="flex items-center">
+                                                                    <input
+                                                                        id={`param-${paramName}-inline`}
+                                                                        type="checkbox"
+                                                                        class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300 rounded"
+                                                                        checked={pluginParams[paramName] === true}
+                                                                        onchange={(e) => updateParamValue(paramName, e)}
+                                                                    />
+                                                                    <label for={`param-${paramName}-inline`} class="ml-2 block text-sm text-gray-900">
+                                                                        {paramDef.default ? 'Enabled' : 'Disabled'} by default
+                                                                    </label>
+                                                                </div>
+                                                            {:else if paramDef.type === 'integer' || paramDef.type === 'number'}
+                                                                <!-- Render as number input with min/max validation -->
                                                                 <input
                                                                     id={`param-${paramName}-inline`}
-                                                                    type="checkbox"
-                                                                    class="h-4 w-4 text-[#2271b3] focus:ring-[#2271b3] border-gray-300 rounded"
-                                                                    checked={pluginParams[paramName] === true}
+                                                                    type="number"
+                                                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
+                                                                    value={pluginParams[paramName]}
+                                                                    placeholder={paramDef.default !== undefined && paramDef.default !== null ? paramDef.default.toString() : ''}
+                                                                    min={paramDef.min}
+                                                                    max={paramDef.max}
                                                                     onchange={(e) => updateParamValue(paramName, e)}
                                                                 />
-                                                                <label for={`param-${paramName}-inline`} class="ml-2 block text-sm text-gray-900">
-                                                                    {paramDef.default ? 'Enabled' : 'Disabled'} by default
-                                                                </label>
-                                                            </div>
-                                                        {:else if paramDef.type === 'integer' || paramDef.type === 'number'}
-                                                            <!-- Render as number input -->
-                                                            <input
-                                                                id={`param-${paramName}-inline`}
-                                                                type="number"
-                                                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
-                                                                value={pluginParams[paramName]}
-                                                                placeholder={paramDef.default !== undefined && paramDef.default !== null ? paramDef.default.toString() : ''}
-                                                                onchange={(e) => updateParamValue(paramName, e)}
-                                                            />
-                                                        {:else if paramDef.type === 'array'}
-                                                             <!-- Render as textarea for arrays (e.g., URLs) -->
-                                                            <textarea
-                                                                id={`param-${paramName}-inline`}
-                                                                rows="3"
-                                                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
-                                                                value={Array.isArray(pluginParams[paramName]) ? pluginParams[paramName].join('\n') : pluginParams[paramName] || ''}
-                                                                placeholder={paramDef.description || 'Enter values, one per line'}
-                                                                onchange={(e) => updateParamValue(paramName, e)} 
-                                                            ></textarea>
-                                                            <p class="mt-1 text-xs text-gray-500">Enter values separated by new lines.</p>
-                                                        {:else}
-                                                             <!-- Render as text input for other types (string, etc.) -->
-                                                            <input
-                                                                id={`param-${paramName}-inline`}
-                                                                type="text"
-                                                                class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
-                                                                value={pluginParams[paramName]}
-                                                                placeholder={paramDef.default !== undefined && paramDef.default !== null ? paramDef.default.toString() : ''}
-                                                                onchange={(e) => updateParamValue(paramName, e)}
-                                                            />
+                                                                {#if paramDef.min !== undefined || paramDef.max !== undefined}
+                                                                    <p class="mt-1 text-xs text-gray-500">
+                                                                        {#if paramDef.min !== undefined && paramDef.max !== undefined}
+                                                                            Range: {paramDef.min} - {paramDef.max}
+                                                                        {:else if paramDef.min !== undefined}
+                                                                            Minimum: {paramDef.min}
+                                                                        {:else}
+                                                                            Maximum: {paramDef.max}
+                                                                        {/if}
+                                                                    </p>
+                                                                {/if}
+                                                            {:else if paramDef.type === 'array'}
+                                                                <!-- Render as textarea for arrays (e.g., URLs) -->
+                                                                <textarea
+                                                                    id={`param-${paramName}-inline`}
+                                                                    rows="3"
+                                                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
+                                                                    value={Array.isArray(pluginParams[paramName]) ? pluginParams[paramName].join('\n') : pluginParams[paramName] || ''}
+                                                                    placeholder={paramDef.description || 'Enter values, one per line'}
+                                                                    onchange={(e) => updateParamValue(paramName, e)} 
+                                                                ></textarea>
+                                                                <p class="mt-1 text-xs text-gray-500">Enter values separated by new lines.</p>
+                                                            {:else if paramDef.type === 'long-string'}
+                                                                <!-- Render as textarea for long strings -->
+                                                                <textarea
+                                                                    id={`param-${paramName}-inline`}
+                                                                    rows="4"
+                                                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
+                                                                    value={pluginParams[paramName] || ''}
+                                                                    placeholder={paramDef.default !== undefined && paramDef.default !== null ? paramDef.default.toString() : (paramDef.description || '')}
+                                                                    onchange={(e) => updateParamValue(paramName, e)}
+                                                                ></textarea>
+                                                            {:else}
+                                                                <!-- Render as text input for other types (string, etc.) -->
+                                                                <input
+                                                                    id={`param-${paramName}-inline`}
+                                                                    type="text"
+                                                                    class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-[#2271b3] focus:border-[#2271b3] sm:text-sm"
+                                                                    value={pluginParams[paramName]}
+                                                                    placeholder={paramDef.default !== undefined && paramDef.default !== null ? paramDef.default.toString() : ''}
+                                                                    onchange={(e) => updateParamValue(paramName, e)}
+                                                                />
+                                                            {/if}
+                                                        </div>
+                                                        
+                                                        <!-- Help text display -->
+                                                        {#if paramDef.help_text}
+                                                            <p class="mt-1 text-xs text-gray-500 italic">{paramDef.help_text}</p>
                                                         {/if}
                                                     </div>
-                                                </div>
                                             {/each}
                                         </div>
                                     {/if}
@@ -1029,4 +1543,380 @@
             {$_('knowledgeBases.detail.noData', { default: 'No knowledge base data available.' })}
         </div>
     {/if}
-</div> 
+</div>
+
+<!-- Job Detail Modal -->
+{#if showJobModal && selectedJob}
+    {@const colors = getStatusColors(selectedJob.status)}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div 
+        class="fixed inset-0 z-50 overflow-y-auto" 
+        aria-labelledby="modal-title" 
+        role="dialog" 
+        aria-modal="true"
+    >
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
+            <!-- Background overlay -->
+            <div 
+                class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+                aria-hidden="true"
+                onclick={closeJobModal}
+            ></div>
+
+            <!-- Modal panel -->
+            <div class="relative bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-2xl mx-4">
+                <!-- Modal header -->
+                <div class="bg-gray-50 px-4 py-4 sm:px-6 border-b border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <h3 class="text-lg leading-6 font-semibold text-gray-900" id="modal-title">
+                                {$_('knowledgeBases.detail.jobModal.title', { default: 'Ingestion Job Details' })}
+                            </h3>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset {colors.bg} {colors.text} {colors.ring}">
+                                {selectedJob.status}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onclick={closeJobModal}
+                            class="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#2271b3]"
+                        >
+                            <span class="sr-only">Close</span>
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Modal body -->
+                <div class="px-4 py-5 sm:px-6 max-h-[60vh] overflow-y-auto">
+                    <!-- File info -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">File Information</h4>
+                        <dl class="grid grid-cols-2 gap-x-4 gap-y-3">
+                            <div>
+                                <dt class="text-xs text-gray-500">Filename</dt>
+                                <dd class="mt-0.5 text-sm font-medium text-gray-900">{selectedJob.original_filename}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Size</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{selectedJob.file_size ? formatFileSize(selectedJob.file_size) : 'N/A'}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Content Type</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{selectedJob.content_type || 'N/A'}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Plugin</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{selectedJob.plugin_name}</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <!-- Processing info -->
+                    <div class="mb-6">
+                        <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Processing Details</h4>
+                        <dl class="grid grid-cols-2 gap-x-4 gap-y-3">
+                            <div>
+                                <dt class="text-xs text-gray-500">Job ID</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">#{selectedJob.id}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Documents Created</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{selectedJob.document_count || 0}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Created</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{formatDate(selectedJob.created_at)}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Duration</dt>
+                                <dd class="mt-0.5 text-sm text-gray-900">{formatDuration(selectedJob.processing_duration_seconds)}</dd>
+                            </div>
+                            {#if selectedJob.processing_started_at}
+                                <div>
+                                    <dt class="text-xs text-gray-500">Started</dt>
+                                    <dd class="mt-0.5 text-sm text-gray-900">{formatDate(selectedJob.processing_started_at)}</dd>
+                                </div>
+                            {/if}
+                            {#if selectedJob.processing_completed_at}
+                                <div>
+                                    <dt class="text-xs text-gray-500">Completed</dt>
+                                    <dd class="mt-0.5 text-sm text-gray-900">{formatDate(selectedJob.processing_completed_at)}</dd>
+                                </div>
+                            {/if}
+                        </dl>
+                    </div>
+
+                    <!-- Progress info (if available) -->
+                    {#if selectedJob.progress && selectedJob.status === 'processing'}
+                        <div class="mb-6">
+                            <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Progress</h4>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                                <div class="bg-[#2271b3] h-2.5 rounded-full transition-all duration-300" style="width: {selectedJob.progress.percentage || 0}%"></div>
+                            </div>
+                            <p class="text-sm text-gray-600">{selectedJob.progress.message || `${selectedJob.progress.current || 0} / ${selectedJob.progress.total || 0}`}</p>
+                        </div>
+                    {/if}
+
+                    <!-- Processing Statistics (only for completed jobs with stats) -->
+                    {#if selectedJob.processing_stats}
+                        {@const stats = selectedJob.processing_stats}
+                        <div class="mb-6">
+                            <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <svg class="h-4 w-4 text-[#2271b3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                </svg>
+                                Processing Statistics
+                            </h4>
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                                    <div>
+                                        <dt class="text-xs text-blue-600">Content Length</dt>
+                                        <dd class="font-medium text-blue-900">{formatNumber(stats.content_length)} characters</dd>
+                                    </div>
+                                    {#if stats.chunk_stats}
+                                        <div>
+                                            <dt class="text-xs text-blue-600">Chunks</dt>
+                                            <dd class="font-medium text-blue-900">{stats.chunk_stats.count} (avg {Math.round(stats.chunk_stats.avg_size)} chars)</dd>
+                                        </div>
+                                    {/if}
+                                    {#if stats.chunking_strategy}
+                                        <div>
+                                            <dt class="text-xs text-blue-600">Chunking Strategy</dt>
+                                            <dd class="font-medium text-blue-900">{stats.chunking_strategy}</dd>
+                                        </div>
+                                    {/if}
+                                    <div>
+                                        <dt class="text-xs text-blue-600">Images Extracted</dt>
+                                        <dd class="font-medium text-blue-900">{stats.images_extracted}</dd>
+                                    </div>
+                                    {#if stats.llm_calls && stats.llm_calls.length > 0}
+                                        <div>
+                                            <dt class="text-xs text-blue-600">LLM API Calls</dt>
+                                            <dd class="font-medium text-blue-900">{stats.llm_calls.length} ({stats.images_with_llm_descriptions} successful)</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs text-blue-600">Total LLM Time</dt>
+                                            <dd class="font-medium text-blue-900">{formatMilliseconds(stats.total_llm_duration_ms)}</dd>
+                                        </div>
+                                    {/if}
+                                </dl>
+
+                                <!-- LLM Call Details (expandable) -->
+                                {#if stats.llm_calls && stats.llm_calls.length > 0}
+                                    <details class="mt-3 text-xs">
+                                        <summary class="cursor-pointer text-blue-700 hover:text-blue-900 font-medium">Show LLM call details ({stats.llm_calls.length} calls)</summary>
+                                        <div class="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                                            {#each stats.llm_calls as call, i}
+                                                <div class="flex justify-between items-center bg-white/50 rounded px-2 py-1 {call.success ? '' : 'text-red-600'}">
+                                                    <span class="font-mono truncate flex-1">{call.image}</span>
+                                                    <span class="ml-2 whitespace-nowrap">
+                                                        {formatMilliseconds(call.duration_ms)}
+                                                        {#if call.tokens_used}
+                                                            <span class="text-blue-500 ml-1">({call.tokens_used} tokens)</span>
+                                                        {/if}
+                                                        {#if !call.success}
+                                                            <span class="text-red-500 ml-1">✗</span>
+                                                        {:else}
+                                                            <span class="text-green-500 ml-1">✓</span>
+                                                        {/if}
+                                                    </span>
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    </details>
+                                {/if}
+                            </div>
+                        </div>
+
+                        <!-- Processing Log / Stage Timings -->
+                        {#if stats.stage_timings && stats.stage_timings.length > 0}
+                            <div class="mb-6">
+                                <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Processing Log
+                                </h4>
+                                <div class="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                    <table class="min-w-full text-sm divide-y divide-gray-200">
+                                        <thead class="bg-gray-100">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Stage</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            {#each stats.stage_timings as stage}
+                                                <tr>
+                                                    <td class="px-3 py-2 font-medium text-gray-900 capitalize">{stage.stage.replace(/_/g, ' ')}</td>
+                                                    <td class="px-3 py-2 text-gray-600 font-mono">{formatMilliseconds(stage.duration_ms)}</td>
+                                                    <td class="px-3 py-2 text-gray-600">{stage.message}</td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        {/if}
+
+                        <!-- Output Files / Artifacts -->
+                        {#if stats.output_files && (stats.output_files.markdown_url || stats.output_files.images_folder_url || stats.output_files.original_file_url)}
+                            <div class="mb-6">
+                                <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                    <svg class="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    Output Artifacts
+                                </h4>
+                                <div class="flex flex-wrap gap-2">
+                                    {#if stats.output_files.markdown_url}
+                                        <a 
+                                            href={stats.output_files.markdown_url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors text-sm"
+                                        >
+                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                            </svg>
+                                            Markdown
+                                        </a>
+                                    {/if}
+                                    {#if stats.output_files.images_folder_url}
+                                        <a 
+                                            href={stats.output_files.images_folder_url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors text-sm"
+                                        >
+                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                            </svg>
+                                            Images ({stats.images_extracted})
+                                        </a>
+                                    {/if}
+                                    {#if stats.output_files.original_file_url}
+                                        <a 
+                                            href={stats.output_files.original_file_url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors text-sm"
+                                        >
+                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                            Original
+                                        </a>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
+
+                        <!-- Markdown Preview -->
+                        {#if stats.markdown_preview}
+                            <div class="mb-6">
+                                <details class="text-sm">
+                                    <summary class="cursor-pointer text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        Markdown Preview (first 2000 chars)
+                                    </summary>
+                                    <pre class="mt-2 whitespace-pre-wrap text-xs bg-gray-800 text-gray-100 p-4 rounded-lg overflow-x-auto max-h-64 font-mono leading-relaxed">{stats.markdown_preview}</pre>
+                                </details>
+                            </div>
+                        {/if}
+                    {/if}
+
+                    <!-- Error info (if failed) -->
+                    {#if selectedJob.status === 'failed' && (selectedJob.error_message || selectedJob.error_details)}
+                        <div class="mb-6">
+                            <h4 class="text-sm font-medium text-red-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                                </svg>
+                                Error Details
+                            </h4>
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                {#if selectedJob.error_message}
+                                    <p class="text-sm text-red-800 font-medium mb-2">{selectedJob.error_message}</p>
+                                {/if}
+                                {#if selectedJob.error_details}
+                                    <details class="text-xs">
+                                        <summary class="cursor-pointer text-red-700 hover:text-red-900 font-medium">Show technical details</summary>
+                                        <pre class="mt-2 whitespace-pre-wrap text-xs bg-red-100 text-red-900 p-3 rounded overflow-x-auto">{JSON.stringify(selectedJob.error_details, null, 2)}</pre>
+                                    </details>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
+
+                    <!-- Plugin parameters (collapsed by default) -->
+                    {#if selectedJob.plugin_params && Object.keys(selectedJob.plugin_params).length > 0}
+                        <div class="mb-4">
+                            <details class="text-sm">
+                                <summary class="cursor-pointer text-gray-500 hover:text-gray-700 font-medium">Plugin Parameters</summary>
+                                <pre class="mt-2 whitespace-pre-wrap text-xs bg-gray-50 text-gray-700 p-3 rounded overflow-x-auto">{JSON.stringify(selectedJob.plugin_params, null, 2)}</pre>
+                            </details>
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Modal footer -->
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200 gap-2">
+                    <!-- Refresh button -->
+                    <button
+                        type="button"
+                        onclick={refreshSelectedJob}
+                        disabled={jobActionLoading}
+                        class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] sm:w-auto sm:text-sm disabled:opacity-50"
+                        title="Refresh job status"
+                    >
+                        <svg class="h-4 w-4 {jobActionLoading ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                    </button>
+                    
+                    {#if selectedJob.status === 'failed' && kb?.can_modify === true}
+                        <button
+                            type="button"
+                            onclick={() => selectedJob && handleRetryJob(selectedJob.id)}
+                            disabled={jobActionLoading}
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-[#2271b3] text-base font-medium text-white hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                        >
+                            {#if jobActionLoading}
+                                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            {/if}
+                            Retry Ingestion
+                        </button>
+                    {/if}
+                    {#if (selectedJob.status === 'pending' || selectedJob.status === 'processing') && kb?.can_modify === true}
+                        <button
+                            type="button"
+                            onclick={() => selectedJob && handleCancelJob(selectedJob.id)}
+                            disabled={jobActionLoading}
+                            class="w-full inline-flex justify-center rounded-md border border-red-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                        >
+                            Cancel Job
+                        </button>
+                    {/if}
+                    <button
+                        type="button"
+                        onclick={closeJobModal}
+                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3] sm:mt-0 sm:w-auto sm:text-sm"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}

@@ -10,7 +10,7 @@ import inspect
 import os
 import pkgutil
 from enum import Enum, auto
-from typing import Dict, List, Type, Any, Optional, Set, Tuple, Union
+from typing import Dict, List, Type, Any, Optional, Set, Tuple, Union, Callable
 
 
 class ChunkUnit(str, Enum):
@@ -20,14 +20,48 @@ class ChunkUnit(str, Enum):
     LINE = "line"
 
 
+# Type alias for progress callback function
+# callback(current: int, total: int, message: str) -> None
+ProgressCallback = Callable[[int, int, str], None]
+
+
 class IngestPlugin(abc.ABC):
-    """Base class for ingestion plugins."""
+    """Base class for ingestion plugins.
+    
+    Plugins can optionally support progress reporting by checking for a
+    'progress_callback' in kwargs and calling it periodically.
+    
+    Progress callback signature:
+        progress_callback(current: int, total: int, message: str) -> None
+        
+    Example usage in plugin:
+        def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:
+            progress_callback = kwargs.get('progress_callback')
+            
+            # Report start
+            if progress_callback:
+                progress_callback(0, 100, "Starting conversion...")
+            
+            # ... do work ...
+            
+            # Report progress
+            if progress_callback:
+                progress_callback(50, 100, "Processing chunks...")
+            
+            # ... finish work ...
+            
+            return chunks
+    """
     
     # Plugin metadata
     name: str = "base"
     kind: str = "base"
     description: str = "Base plugin interface"
     supported_file_types: Set[str] = set()
+    
+    # Whether this plugin supports progress reporting
+    # Plugins that process multiple items (URLs, videos) should set this to True
+    supports_progress: bool = False
     
     @abc.abstractmethod
     def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:
@@ -36,6 +70,7 @@ class IngestPlugin(abc.ABC):
         Args:
             file_path: Path to the file to ingest
             **kwargs: Additional plugin-specific parameters
+                      May include 'progress_callback' for progress reporting
             
         Returns:
             A list of dictionaries, each containing:
@@ -52,6 +87,22 @@ class IngestPlugin(abc.ABC):
             A dictionary mapping parameter names to their specifications
         """
         pass
+    
+    def report_progress(self, kwargs: Dict[str, Any], current: int, total: int, message: str) -> None:
+        """Helper method to report progress if callback is available.
+        
+        Args:
+            kwargs: The kwargs dict passed to ingest()
+            current: Current progress value
+            total: Total expected value
+            message: Human-readable status message
+        """
+        callback = kwargs.get('progress_callback')
+        if callback and callable(callback):
+            try:
+                callback(current, total, message)
+            except Exception:
+                pass  # Don't let progress reporting break ingestion
 
 
 class PluginRegistry:

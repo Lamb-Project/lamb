@@ -24,11 +24,15 @@ from .base import IngestPlugin, PluginRegistry
 
 @PluginRegistry.register
 class MarkItDownIngestPlugin(IngestPlugin):
-    """Plugin for ingesting files by converting them to Markdown using MarkItDown and then applying LangChain chunking."""
+    """Plugin for ingesting files by converting them to Markdown using MarkItDown and then applying LangChain chunking.
+    
+    Supports progress reporting for document conversion stages.
+    """
     
     name = "markitdown_ingest"
     kind = "file-ingest"
     description = "Ingest various file formats by converting to Markdown using MarkItDown with configurable chunking"
+    supports_progress = True  # This plugin supports progress callbacks
 
     supported_file_types = {
         "pdf", "pptx", "docx", "xlsx", "xls", "mp3", "wav", "html", "csv", "json", "xml", "zip", "epub"
@@ -1217,6 +1221,7 @@ class MarkItDownIngestPlugin(IngestPlugin):
             chunk_overlap: Number of units to overlap between chunks (default: uses LangChain default)
             splitter_type: Type of LangChain splitter to use (default: RecursiveCharacterTextSplitter)
             file_url: URL to access the file (default: None)
+            progress_callback: Optional callback for progress reporting
             
         Returns:
             A list of dictionaries, each containing:
@@ -1245,6 +1250,9 @@ class MarkItDownIngestPlugin(IngestPlugin):
         file_extension = file_path_obj.suffix.lstrip(".")
         file_size = os.path.getsize(file_path)
         
+        # Report: Starting conversion (stage 1 of 4)
+        self.report_progress(kwargs, 0, 4, f"Converting {file_name} to Markdown...")
+        
         # Convert the file to Markdown using MarkItDown
         try:
             # Initialize MarkItDown with default settings
@@ -1256,6 +1264,9 @@ class MarkItDownIngestPlugin(IngestPlugin):
             
         except Exception as e:
             raise ValueError(f"Error converting file to Markdown: {str(e)}")
+        
+        # Report: Conversion complete (stage 2 of 4)
+        self.report_progress(kwargs, 1, 4, f"Conversion complete, generating HTML preview...")
         
         # Convert Markdown content to HTML
         try:
@@ -1316,6 +1327,9 @@ class MarkItDownIngestPlugin(IngestPlugin):
         if chunk_overlap is not None:
             base_metadata["chunk_overlap"] = chunk_overlap
         
+        # Report: Starting chunking (stage 3 of 4)
+        self.report_progress(kwargs, 2, 4, f"Splitting content into chunks...")
+        
         # Dynamically instantiate the selected LangChain splitter
         try:
             if splitter_type == "RecursiveCharacterTextSplitter":
@@ -1334,6 +1348,9 @@ class MarkItDownIngestPlugin(IngestPlugin):
             chunks = text_splitter.split_text(content)
         except Exception as e:
             raise ValueError(f"Error splitting content into chunks: {str(e)}")
+        
+        # Report: Chunks created (stage 4 of 4)
+        self.report_progress(kwargs, 3, 4, f"Created {len(chunks)} chunks, finalizing...")
         
         # Create result documents with metadata
         result = []
@@ -1359,4 +1376,7 @@ class MarkItDownIngestPlugin(IngestPlugin):
             # Optionally, re-raise the exception or handle it as a non-critical error
             # For now, we'll just print a warning and continue
 
+        # Report: Complete
+        self.report_progress(kwargs, 4, 4, f"Completed: {len(result)} chunks from {file_name}")
+        
         return result
