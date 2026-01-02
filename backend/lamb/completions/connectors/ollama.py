@@ -7,6 +7,7 @@ import asyncio
 import aiohttp # Import aiohttp
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
+from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 
 logger = get_logger(__name__, component="API")
 
@@ -74,6 +75,7 @@ def format_messages_for_ollama(messages: list) -> list:
         for msg in messages
     ]
 
+@traceable_llm_call(name="ollama_completion", run_type="llm", tags=["ollama", "lamb"])
 async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False): # Make async
     """
     Ollama connector that returns OpenAI-compatible responses
@@ -190,6 +192,20 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
             # Continue with original model if resolution fails
 
     print(f"🚀 [Ollama] Model: {resolved_model}{' (fallback)' if fallback_used else ''} | Config: {config_source} | Organization: {org_name} | URL: {base_url}")
+
+    # Add trace metadata if LangSmith tracing is enabled
+    if is_tracing_enabled():
+        add_trace_metadata("provider", "ollama")
+        add_trace_metadata("model", resolved_model)
+        add_trace_metadata("organization", org_name)
+        add_trace_metadata("assistant_owner", assistant_owner or "none")
+        add_trace_metadata("config_source", config_source)
+        add_trace_metadata("base_url", base_url)
+        add_trace_metadata("stream", stream)
+        add_trace_metadata("message_count", len(messages))
+        add_trace_metadata("use_small_fast_model", use_small_fast_model)
+        if fallback_used:
+            add_trace_metadata("fallback_used", True)
 
     # Store org default for potential runtime fallback
     org_default_for_fallback = None

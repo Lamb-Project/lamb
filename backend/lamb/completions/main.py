@@ -10,6 +10,7 @@ import requests
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
+from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
 
@@ -78,6 +79,7 @@ async def list_processors_and_connectors(
     }
 
 @router.post("/")
+@traceable_llm_call(name="lamb_completion_pipeline", run_type="chain", tags=["lamb", "completion"])
 async def create_completion(
     request: Dict[str, Any],
     assistant: int,  # now expect only an assistant id as int
@@ -95,8 +97,23 @@ async def create_completion(
         # Use helper functions to structure the process:
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Assistant details: {assistant_details}")
+        
+        # Add trace metadata for the assistant
+        if is_tracing_enabled():
+            add_trace_metadata("assistant_id", assistant)
+            add_trace_metadata("assistant_name", assistant_details.name)
+            add_trace_metadata("assistant_owner", assistant_details.owner)
+        
         plugin_config = parse_plugin_config(assistant_details)
         logger.debug(f"Plugin config: {plugin_config}")
+        
+        # Add trace metadata for plugins
+        if is_tracing_enabled():
+            add_trace_metadata("connector", plugin_config["connector"])
+            add_trace_metadata("llm", plugin_config["llm"])
+            add_trace_metadata("prompt_processor", plugin_config["prompt_processor"])
+            add_trace_metadata("rag_processor", plugin_config["rag_processor"])
+        
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)

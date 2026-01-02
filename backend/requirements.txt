@@ -37,6 +37,7 @@ psycopg2-binary==2.9.9
 # Observability
 langfuse==2.48.0
 ddtrace==2.9.2
+langsmith>=0.1.0
 
 # ML libraries
 torch==2.3.1
