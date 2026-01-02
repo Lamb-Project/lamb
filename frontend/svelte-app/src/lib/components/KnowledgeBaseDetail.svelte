@@ -250,6 +250,46 @@
         }
     });
     
+    // Auto-poll job status when modal is open and job is processing/pending
+    $effect(() => {
+        // Only poll if modal is open and job is in a non-terminal state
+        if (showJobModal && selectedJob && 
+            (selectedJob.status === 'processing' || selectedJob.status === 'pending')) {
+            
+            console.log('[Job Polling] Starting auto-refresh for job', selectedJob.id, 'status:', selectedJob.status);
+            
+            const pollInterval = setInterval(async () => {
+                if (!kbId || !selectedJob) {
+                    clearInterval(pollInterval);
+                    return;
+                }
+                
+                try {
+                    console.log('[Job Polling] Fetching status for job', selectedJob.id);
+                    const updatedJob = await getIngestionJobStatus(kbId, selectedJob.id);
+                    selectedJob = updatedJob;
+                    
+                    // Also refresh the jobs list
+                    await loadIngestionJobs(kbId);
+                    
+                    // Stop polling if job reached terminal state
+                    if (updatedJob.status === 'completed' || updatedJob.status === 'failed' || updatedJob.status === 'cancelled') {
+                        console.log('[Job Polling] Job reached terminal state:', updatedJob.status);
+                        clearInterval(pollInterval);
+                    }
+                } catch (err) {
+                    console.error('[Job Polling] Error fetching job status:', err);
+                }
+            }, 2000); // Poll every 2 seconds
+            
+            // Cleanup when effect reruns or component unmounts
+            return () => {
+                console.log('[Job Polling] Stopping auto-refresh');
+                clearInterval(pollInterval);
+            };
+        }
+    });
+    
     /**
      * Function to change active tab
      * @param {'files' | 'ingest' | 'query'} tabName - The name of the tab to select

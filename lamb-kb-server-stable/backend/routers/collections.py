@@ -125,13 +125,17 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
                 except json.JSONDecodeError:
                     embeddings_config = {}
             
-            # If collection uses OpenAI for embeddings, pass the API key to plugin
-            # This enables LLM-powered image descriptions in markitdown_plus_ingest
+            # Pass OpenAI API key to plugin for LLM-powered image descriptions
+            # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":
                 openai_key = embeddings_config.get("apikey")
                 if openai_key:
                     params['openai_api_key'] = openai_key
-                    print(f"INFO: [background_task] Passing OpenAI API key to plugin for collection {collection_name}")
+                    print(f"INFO: [background_task] Collection uses OpenAI - API key available for LLM image descriptions")
+                else:
+                    print(f"INFO: [background_task] Collection uses OpenAI but no API key configured")
+            else:
+                print(f"INFO: [background_task] Collection uses {embeddings_config.get('vendor', 'unknown')} - LLM image descriptions disabled (will use basic mode)")
         # ═══════════════════════════════════════════════════════════════════════════
         
         # Step 1: Process file with plugin
@@ -144,12 +148,23 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             _update_job_progress(db_background, file_registry_id,
                                 current=current, total=total, message=message)
         
-        # Create a stats callback to capture processing statistics
+        # Create a stats callback to capture AND save processing statistics in real-time
         captured_stats = {}
         def stats_callback(stats: dict):
-            """Callback for plugins to report processing statistics."""
+            """Callback for plugins to report processing statistics - saves immediately to DB."""
             nonlocal captured_stats
             captured_stats = stats
+            # Save to database immediately so frontend can see progress
+            try:
+                file_reg_update = db_background.query(FileRegistry).filter(
+                    FileRegistry.id == file_registry_id
+                ).first()
+                if file_reg_update and file_reg_update.status != FileStatus.CANCELLED:
+                    file_reg_update.processing_stats = stats
+                    db_background.commit()
+                    print(f"INFO: [background_task] Updated processing stats for job {file_registry_id} (stages: {len(stats.get('stage_timings', []))})")
+            except Exception as e:
+                print(f"WARNING: [background_task] Failed to save interim stats: {e}")
         
         try:
             # Add callbacks to params so plugins can use them
@@ -300,12 +315,17 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
                 except json.JSONDecodeError:
                     embeddings_config = {}
             
-            # If collection uses OpenAI for embeddings, pass the API key to plugin
+            # Pass OpenAI API key to plugin for LLM-powered image descriptions
+            # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":
                 openai_key = embeddings_config.get("apikey")
                 if openai_key:
                     params['openai_api_key'] = openai_key
-                    print(f"INFO: [background_task] Passing OpenAI API key to plugin for collection {collection_name}")
+                    print(f"INFO: [background_task] Collection uses OpenAI - API key available for LLM image descriptions")
+                else:
+                    print(f"INFO: [background_task] Collection uses OpenAI but no API key configured")
+            else:
+                print(f"INFO: [background_task] Collection uses {embeddings_config.get('vendor', 'unknown')} - LLM image descriptions disabled (will use basic mode)")
         # ═══════════════════════════════════════════════════════════════════════════
         
         # Get the plugin instance

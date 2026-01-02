@@ -43,6 +43,15 @@ from .base import IngestPlugin, PluginRegistry
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Try to import pymupdf for PDF image extraction
+try:
+    import fitz  # pymupdf
+    PYMUPDF_AVAILABLE = True
+    logger.info("[markitdown_plus] pymupdf available for PDF image extraction")
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    logger.warning("[markitdown_plus] pymupdf not available - PDF images will not be extracted")
+
 # URL prefix for static files
 STATIC_URL_PREFIX = os.getenv("HOME_URL", "http://localhost:9090") + "/static"
 
@@ -391,6 +400,177 @@ class MarkItDownPlusPlugin(IngestPlugin):
         images_url_prefix = f"{STATIC_URL_PREFIX}/{owner}/{collection_name}/{base_name}"
         logger.info(f"[markitdown_plus] Created images directory: {images_dir}")
         return images_dir, images_url_prefix
+    
+    def _extract_pdf_with_images(self, file_path: Path, owner: str, collection_name: str,
+                                  image_mode: str = "basic",
+                                  openai_client: Optional[Any] = None,
+                                  stats_tracker: Optional['ProcessingStatsTracker'] = None,
+                                  kwargs: Optional[Dict] = None,
+                                  stats_callback: Optional[Callable] = None) -> Tuple[str, int]:
+        """Extract text and images from PDF using pymupdf.
+        
+        This method extracts both text and images from each page of a PDF,
+        inserting image references at the end of each page's content.
+        
+        Args:
+            file_path: Path to the PDF file
+            owner: Collection owner for image storage path
+            collection_name: Collection name for image storage path
+            image_mode: "none", "basic", or "llm"
+            openai_client: OpenAI client for LLM descriptions
+            stats_tracker: Optional tracker for recording statistics
+            kwargs: Original kwargs for progress reporting
+            
+        Returns:
+            Tuple of (markdown content with images, total image count)
+        """
+        kwargs = kwargs or {}
+        
+        if not PYMUPDF_AVAILABLE:
+            logger.warning("[markitdown_plus] pymupdf not available, falling back to markitdown")
+            self.report_progress(kwargs, 1, 5, "⚠️ pymupdf not available - no image extraction")
+            return None, 0
+        
+        try:
+            doc = fitz.open(str(file_path))
+        except Exception as e:
+            logger.error(f"[markitdown_plus] Failed to open PDF with pymupdf: {e}")
+            self.report_progress(kwargs, 1, 5, f"⚠️ Failed to open PDF: {str(e)[:50]}")
+            return None, 0
+        
+        num_pages = len(doc)
+        logger.info(f"[markitdown_plus] 🔍 PYMUPDF: Opening PDF with {num_pages} pages")
+        print(f"INFO: [markitdown_plus] 🔍 PYMUPDF ACTIVE: Extracting from {num_pages} pages, image_mode={image_mode}")
+        self.report_progress(kwargs, 1, 5, f"📄 Using pymupdf for {num_pages}-page PDF (image_mode: {image_mode})")
+        
+        # Create images directory
+        images_dir, images_url_prefix = self._create_images_directory(file_path, owner, collection_name)
+        logger.info(f"[markitdown_plus] 📁 Images directory: {images_dir}")
+        
+        markdown_parts = []
+        total_images = 0
+        llm_calls_made = 0
+        
+        for page_num in range(num_pages):
+            page = doc[page_num]
+            
+            # Add page marker
+            markdown_parts.append(f"\n<!-- Page {page_num + 1} -->\n")
+            
+            # Extract text from page
+            page_text = page.get_text("text")
+            if page_text.strip():
+                markdown_parts.append(page_text.strip())
+            
+            # Extract images from page (only if not "none" mode)
+            if image_mode != "none":
+                image_list = page.get_images(full=True)
+                page_images = []
+                
+                if image_list:
+                    logger.info(f"[markitdown_plus] Page {page_num + 1}: found {len(image_list)} images")
+                
+                for img_index, img_info in enumerate(image_list):
+                    xref = img_info[0]  # Image reference number
+                    
+                    try:
+                        # Extract image
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
+                        
+                        # Skip very small images (likely icons/decorations)
+                        if len(image_bytes) < 1000:
+                            logger.debug(f"[markitdown_plus] Skipping small image ({len(image_bytes)} bytes)")
+                            continue
+                        
+                        total_images += 1
+                        img_filename = f"page{page_num + 1}_img{img_index + 1}.{image_ext}"
+                        img_path = images_dir / img_filename
+                        
+                        # Save image to disk
+                        with open(img_path, "wb") as f:
+                            f.write(image_bytes)
+                        
+                        logger.info(f"[markitdown_plus] ✅ Saved image: {img_filename} ({len(image_bytes):,} bytes)")
+                        print(f"INFO: [markitdown_plus] ✅ Extracted image #{total_images}: {img_filename}")
+                        
+                        # Record image extraction in stats
+                        if stats_tracker:
+                            stats_tracker.stage_timings.append({
+                                "stage": "image_extracted",
+                                "duration_ms": 0,
+                                "message": f"📷 Image #{total_images}: {img_filename} ({len(image_bytes):,} bytes)",
+                                "timestamp": datetime.utcnow().isoformat() + "Z"
+                            })
+                            stats_tracker.images_extracted = total_images
+                            # Report to UI every 10 images
+                            if total_images % 10 == 0:
+                                if stats_callback and callable(stats_callback):
+                                    try:
+                                        stats_callback(stats_tracker.to_dict())
+                                    except:
+                                        pass
+                        
+                        # Generate description
+                        if image_mode == "llm" and openai_client:
+                            self.report_progress(kwargs, 1, 5, f"🤖 LLM describing image {total_images}: {img_filename}")
+                            llm_calls_made += 1
+                        
+                        description = self._generate_image_description(
+                            img_path, 
+                            f"Image from page {page_num + 1}",
+                            openai_client, 
+                            image_mode,
+                            stats_tracker
+                        )
+                        
+                        img_url = f"{images_url_prefix}/{img_filename}"
+                        page_images.append(f"![{description}]({img_url})")
+                        
+                    except Exception as e:
+                        logger.warning(f"[markitdown_plus] Failed to extract image {xref} from page {page_num + 1}: {e}")
+                        continue
+                
+                # Add images at end of page content
+                if page_images:
+                    markdown_parts.append("\n\n**Images from this page:**\n")
+                    for img_ref in page_images:
+                        markdown_parts.append(f"\n{img_ref}\n")
+            
+            # Record page processing in stats (every page)
+            if stats_tracker and image_mode != "none":
+                page_img_count = len(page_images) if 'page_images' in dir() else 0
+                if page_img_count > 0:
+                    stats_tracker.stage_timings.append({
+                        "stage": "page_processed",
+                        "duration_ms": 0,
+                        "message": f"📄 Page {page_num + 1}/{num_pages}: {page_img_count} images extracted",
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    })
+            
+            # Report progress every 10 pages (to progress callback)
+            if (page_num + 1) % 10 == 0:
+                self.report_progress(kwargs, 1, 5, f"📖 Processed {page_num + 1}/{num_pages} pages, {total_images} images...")
+        
+        doc.close()
+        
+        # Final progress report
+        summary = f"📊 PDF extracted: {num_pages} pages, {total_images} images"
+        if llm_calls_made > 0:
+            summary += f", {llm_calls_made} LLM calls"
+        logger.info(f"[markitdown_plus] {summary}")
+        print(f"INFO: [markitdown_plus] {summary}")
+        self.report_progress(kwargs, 1, 5, summary)
+        
+        # Update stats tracker
+        if stats_tracker:
+            stats_tracker.images_extracted = total_images
+        
+        markdown_content = "\n".join(markdown_parts)
+        logger.info(f"[markitdown_plus] PDF extraction complete: {len(markdown_content)} chars, {total_images} images")
+        
+        return markdown_content, total_images
     
     def _generate_image_description(self, image_path: Path, alt_text: str, 
                                      openai_client: Optional[Any] = None,
@@ -838,10 +1018,14 @@ class MarkItDownPlusPlugin(IngestPlugin):
         collection_name = params.get("collection_name", "")
         stats_callback = kwargs.get("stats_callback")
         
-        # === STAGE 1: CONVERT ===
-        self.report_progress(kwargs, 0, 5, f"Starting document conversion...")
-        stats.start_stage("conversion")
-        self.report_progress(kwargs, 1, 5, f"Converting {file_name} to Markdown...")
+        # Helper to report stats during processing (for real-time updates)
+        def report_stats_now():
+            """Report current stats to callback for real-time UI updates."""
+            if stats_callback and callable(stats_callback):
+                try:
+                    stats_callback(stats.to_dict())
+                except Exception as e:
+                    logger.debug(f"[markitdown_plus] Failed to report interim stats: {e}")
         
         # Prepare OpenAI client if needed
         openai_client = None
@@ -849,47 +1033,118 @@ class MarkItDownPlusPlugin(IngestPlugin):
             if openai_api_key:
                 openai_client = self._get_openai_client(openai_api_key)
                 if not openai_client:
-                    logger.warning("[markitdown_plus] Failed to create OpenAI client, using 'none' mode")
-                    image_mode = "none"
+                    logger.warning("[markitdown_plus] Failed to create OpenAI client, falling back to 'basic' mode")
+                    image_mode = "basic"
+                    # Record in stats for UI
+                    stats.stage_timings.append({
+                        "stage": "warning",
+                        "duration_ms": 0,
+                        "message": "⚠️ OpenAI client failed - using basic image descriptions",
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    })
             else:
-                logger.warning("[markitdown_plus] LLM mode needs API key, using 'none' mode")
-                image_mode = "none"
-        
-        try:
-            md = MarkItDown()
-            result = md.convert(file_path)
-            content = result.text_content
-            stats.content_length = len(content)
-            logger.info(f"[markitdown_plus] Converted {file_name}, length: {len(content)}")
-        except Exception as e:
-            logger.error(f"[markitdown_plus] Conversion error: {e}")
-            raise ValueError(f"Error converting file: {str(e)}")
-        
-        stats.end_stage(f"{file_extension.upper()} → Markdown ({len(content):,} chars)")
-        
-        # === STAGE 2: PROCESS IMAGES ===
-        self.report_progress(kwargs, 2, 5, f"Processing images...")
-        stats.start_stage("image_extraction")
+                logger.warning("[markitdown_plus] LLM mode requested but no API key (collection doesn't use OpenAI) - using 'basic' mode")
+                image_mode = "basic"
+                # Record in stats for UI
+                stats.stage_timings.append({
+                    "stage": "info",
+                    "duration_ms": 0,
+                    "message": "ℹ️ Collection doesn't use OpenAI - using basic image descriptions (images still extracted)",
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                })
         
         images_extracted = 0
         images_folder_url = ""
-        if collection_owner and collection_name and image_mode != "none":
-            content, images_extracted, images_folder_url = self._extract_and_process_images(
-                content, file_path_obj, collection_owner, collection_name,
-                mode=image_mode, openai_client=openai_client, stats_tracker=stats
-            )
         
-        stats.images_extracted = images_extracted
+        # === PDF SPECIAL HANDLING ===
+        # For PDFs, use pymupdf to extract BOTH text AND images with proper positioning
+        is_pdf = file_extension.lower() == "pdf"
+        use_pymupdf_for_pdf = is_pdf and PYMUPDF_AVAILABLE and collection_owner and collection_name
         
-        # Build stage message
-        if images_extracted > 0:
-            if image_mode == "llm" and stats.images_with_llm_descriptions > 0:
-                img_msg = f"Extracted {images_extracted} images ({stats.images_with_llm_descriptions} with LLM descriptions)"
+        if use_pymupdf_for_pdf:
+            # === STAGE 1+2: PDF EXTRACTION (text + images combined) ===
+            self.report_progress(kwargs, 0, 5, f"🚀 Starting PDF extraction with pymupdf (image_mode: {image_mode})...")
+            stats.start_stage("pdf_extraction")
+            self.report_progress(kwargs, 1, 5, f"📄 Extracting {file_name} with pymupdf...")
+            
+            try:
+                content, images_extracted = self._extract_pdf_with_images(
+                    file_path_obj, collection_owner, collection_name,
+                    image_mode=image_mode, openai_client=openai_client,
+                    stats_tracker=stats, kwargs=kwargs, stats_callback=stats_callback
+                )
+                
+                if content is None:
+                    # Fallback to markitdown if pymupdf extraction failed
+                    logger.warning("[markitdown_plus] pymupdf extraction failed, falling back to markitdown")
+                    use_pymupdf_for_pdf = False
+                else:
+                    stats.content_length = len(content)
+                    
+                    # Build images folder URL if images were extracted
+                    if images_extracted > 0:
+                        base_name = file_path_obj.stem
+                        images_folder_url = f"{STATIC_URL_PREFIX}/{collection_owner}/{collection_name}/{base_name}"
+                    
+                    # Build stage message
+                    if images_extracted > 0:
+                        if image_mode == "llm" and stats.images_with_llm_descriptions > 0:
+                            extract_msg = f"PDF extracted: {len(content):,} chars, {images_extracted} images ({stats.images_with_llm_descriptions} LLM)"
+                        else:
+                            extract_msg = f"PDF extracted: {len(content):,} chars, {images_extracted} images"
+                    else:
+                        extract_msg = f"PDF extracted: {len(content):,} chars, no images"
+                    
+                    stats.end_stage(extract_msg)
+                    logger.info(f"[markitdown_plus] {extract_msg}")
+                    report_stats_now()  # Update UI with PDF extraction results
+                    
+            except Exception as e:
+                logger.error(f"[markitdown_plus] PDF extraction error: {e}")
+                use_pymupdf_for_pdf = False
+        
+        # === STANDARD FLOW: markitdown conversion + image processing ===
+        if not use_pymupdf_for_pdf:
+            # === STAGE 1: CONVERT ===
+            self.report_progress(kwargs, 0, 5, f"Starting document conversion...")
+            stats.start_stage("conversion")
+            self.report_progress(kwargs, 1, 5, f"Converting {file_name} to Markdown...")
+            
+            try:
+                md = MarkItDown()
+                result = md.convert(file_path)
+                content = result.text_content
+                stats.content_length = len(content)
+                logger.info(f"[markitdown_plus] Converted {file_name}, length: {len(content)}")
+            except Exception as e:
+                logger.error(f"[markitdown_plus] Conversion error: {e}")
+                raise ValueError(f"Error converting file: {str(e)}")
+            
+            stats.end_stage(f"{file_extension.upper()} → Markdown ({len(content):,} chars)")
+            report_stats_now()  # Update UI after conversion
+            
+            # === STAGE 2: PROCESS IMAGES ===
+            self.report_progress(kwargs, 2, 5, f"Processing images...")
+            stats.start_stage("image_extraction")
+            
+            if collection_owner and collection_name and image_mode != "none":
+                content, images_extracted, images_folder_url = self._extract_and_process_images(
+                    content, file_path_obj, collection_owner, collection_name,
+                    mode=image_mode, openai_client=openai_client, stats_tracker=stats
+                )
+            
+            stats.images_extracted = images_extracted
+            
+            # Build stage message
+            if images_extracted > 0:
+                if image_mode == "llm" and stats.images_with_llm_descriptions > 0:
+                    img_msg = f"Extracted {images_extracted} images ({stats.images_with_llm_descriptions} with LLM descriptions)"
+                else:
+                    img_msg = f"Extracted {images_extracted} images"
             else:
-                img_msg = f"Extracted {images_extracted} images"
-        else:
-            img_msg = "No images extracted" if image_mode == "none" else "No images found"
-        stats.end_stage(img_msg)
+                img_msg = "No images extracted" if image_mode == "none" else "No images found"
+            stats.end_stage(img_msg)
+            report_stats_now()  # Update UI after image extraction
         
         # If LLM calls were made, record separate stage for clarity
         if stats.llm_calls:
@@ -950,6 +1205,7 @@ class MarkItDownPlusPlugin(IngestPlugin):
         # Calculate chunk statistics
         stats.calculate_chunk_stats(chunks)
         stats.end_stage(f"{len(chunks)} chunks ({chunking_mode})")
+        report_stats_now()  # Update UI after chunking
         
         logger.info(f"[markitdown_plus] Created {len(chunks)} chunks")
         

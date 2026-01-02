@@ -7,6 +7,8 @@ chromadb>=0.6.3
 sentence-transformers>=2.2.2
 python-multipart
 markitdown[all]>=0.1.0
+# PDF image extraction (markitdown's pdfminer only extracts text)
+pymupdf>=1.24.0
 flask>=2.3.0
 requests>=2.31.0
 firecrawl-py==4.8.0
