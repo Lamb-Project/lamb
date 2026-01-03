@@ -236,7 +236,7 @@ test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
     if (!ASSISTANT_ID) {
       throw new Error("ASSISTANT_ID must be set in the tests/.env file.");
     }
-    const targetUrl = `assistants?view=detail&id=${ASSISTANT_ID}`; 
+    const targetUrl = `assistants?view=detail&id=${ASSISTANT_ID}`;
 
     await page.goto(targetUrl);
     await page.waitForLoadState("networkidle");
@@ -260,5 +260,4 @@ test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
     await page.waitForTimeout(5_000);
     await expect(page.getByText(/190/)).toBeVisible({ timeout: 60_000 });
   });
-
 });
