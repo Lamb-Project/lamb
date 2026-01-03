@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 module.exports = async (config) => {
-  const baseURL = config.projects[0]?.use?.baseURL || 'http://localhost:5173/';
+  const baseURL = config.projects[0]?.use?.baseURL || 'http://localhost:9099/';
   const email = process.env.LOGIN_EMAIL || 'admin@owi.com';
   const password = process.env.LOGIN_PASSWORD || 'admin';
 
