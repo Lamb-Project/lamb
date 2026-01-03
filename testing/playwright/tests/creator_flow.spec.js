@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const path = require("path");
+// Load .env explicitly and silence tips/logging via quiet: true
+require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
 test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
   const kbName = `pw_kb_${Date.now()}`;
@@ -227,4 +229,36 @@ test.describe.serial("Creator flow (KB + ingest + query + assistant)", () => {
     await expect(kbRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Knowledge base "${kbName}" successfully deleted.`);
   });
+
+  test("Assistant chat responds with expected answer", async ({ page }) => {
+    // Read assistant id from environment (must be set in tests/.env)
+    const ASSISTANT_ID = process.env.ASSISTANT_ID || "";
+    if (!ASSISTANT_ID) {
+      throw new Error("ASSISTANT_ID must be set in the tests/.env file.");
+    }
+    const targetUrl = `assistants?view=detail&id=${ASSISTANT_ID}`; 
+
+    await page.goto(targetUrl);
+    await page.waitForLoadState("networkidle");
+
+    // Click the Chat tab (fuzzy match)
+    const chatTab = page.getByText(/Chat with/i).first();
+    await expect(chatTab).toBeVisible({ timeout: 10_000 });
+    await chatTab.click();
+
+    // Wait for chat input
+    const input = page.getByPlaceholder(/Type your message/i);
+    await expect(input).toBeVisible({ timeout: 10_000 });
+
+    // Type the question and send
+    await input.fill("Cuántas becas se convocan?");
+    const send = page.getByRole("button", { name: /^Send$/ });
+    await expect(send).toBeVisible({ timeout: 5_000 });
+    await send.click();
+
+    // Wait for answer to appear (short wait then longer timeout check)
+    await page.waitForTimeout(5_000);
+    await expect(page.getByText(/190/)).toBeVisible({ timeout: 60_000 });
+  });
+
 });

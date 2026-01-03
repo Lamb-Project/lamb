@@ -2,6 +2,7 @@
   "name": "lamb-playwright",
   "private": true,
   "dependencies": {
+    "dotenv": "^17.2.3",
     "playwright": "^1.55.0"
   },
   "devDependencies": {
