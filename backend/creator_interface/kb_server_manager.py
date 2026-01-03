@@ -90,27 +90,40 @@ class KBServerManager:
         
     async def is_kb_server_available(self, creator_user: Dict[str, Any] = None):
         """Check if KB server is available by making a simple request"""
-        if not self.kb_server_configured:
-            logger.warning("KB server not configured (LAMB_KB_SERVER env var missing or empty)")
-            return False
-        
-        # Get KB config for user (or use global if no user provided)
+        # Resolve KB config for user (preferred) or global (fallback).
+        # NOTE: We cannot rely on the env-only KB_SERVER_CONFIGURED flag here,
+        # because some deployments provide KB config only via organization config.
+        kb_server_url: Optional[str] = None
+        kb_token: Optional[str] = None
         if creator_user:
-            kb_config = self._get_kb_config_for_user(creator_user)
-            kb_server_url = kb_config['url']
+            try:
+                kb_config = self._get_kb_config_for_user(creator_user)
+                kb_server_url = kb_config.get('url')
+                kb_token = kb_config.get('token')
+            except Exception as e:
+                logger.warning(f"KB server config resolution failed for user: {e}")
+                return False
         else:
             kb_server_url = self.global_kb_server_url
+            kb_token = self.global_kb_server_token
+
+        if not kb_server_url or not str(kb_server_url).strip():
+            logger.warning("KB server URL not configured")
+            return False
             
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{kb_server_url}/health")
+                headers = self._get_auth_headers(kb_token) if kb_token else None
+                response = await client.get(f"{kb_server_url}/health", headers=headers)
                 if response.status_code == 200:
                     return True
                 else:
-                    logger.warning(f"KB server returned non-200 status: {response.status_code}")
+                    logger.warning(
+                        f"KB server healthcheck returned non-200 status: {response.status_code} (url={kb_server_url})"
+                    )
                     return False
         except Exception as e:
-            logger.warning(f"KB server connectivity check failed: {str(e)}")
+            logger.warning(f"KB server connectivity check failed (url={kb_server_url}): {str(e)}")
             return False
             
     def _get_auth_headers(self, kb_token: str):

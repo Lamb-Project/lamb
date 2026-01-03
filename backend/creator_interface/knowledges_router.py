@@ -24,6 +24,9 @@ from .kb_server_manager import KBServerManager
 # --- Pydantic Models for Knowledges Router --- #
 
 class KnowledgeBaseServerOfflineResponse(BaseModel):
+    # Important: forbid extra keys so this model doesn't accidentally match
+    # successful responses in Union[...] response_model validation.
+    model_config = {"extra": "forbid"}
     status: str = "error"
     message: str = "Knowledge Base server offline"
     kb_server_available: bool = False
@@ -169,7 +172,7 @@ class IngestionProgress(BaseModel):
     current: int = 0
     total: int = 0
     percentage: float = 0.0
-    message: str = ""
+    message: Optional[str] = ""
 
 class IngestionJobResponse(BaseModel):
     """Response model for a single ingestion job"""

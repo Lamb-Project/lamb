@@ -91,7 +91,10 @@ class OrganizationConfigResolver:
         org_config = self.organization.get('config', {})
         setups = org_config.get('setups', {})
         setup = setups.get(self.setup_name, {})
-        kb_config = setup.get("knowledge_base", {})
+        # Support both current and legacy shapes.
+        # - Newer docs/configs: org_config.kb_server.{url, api_key}
+        # - Older configs: setups[setup_name].knowledge_base.{server_url, api_token}
+        kb_config = setup.get("knowledge_base", {}) or org_config.get("kb_server", {})
         
         # Fallback to env vars for system org
         if not kb_config and self.organization.get('is_system', False):
@@ -99,8 +102,17 @@ class OrganizationConfigResolver:
                 "server_url": os.getenv('LAMB_KB_SERVER') or (config.OWI_BASE_URL.replace(':8080', ':9090') if hasattr(config, 'OWI_BASE_URL') else None),
                 "api_token": os.getenv('LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
             }
-            
-        return kb_config
+
+        # Normalize keys so callers can rely on server_url/api_token.
+        if kb_config:
+            server_url = kb_config.get("server_url") or kb_config.get("url")
+            api_token = kb_config.get("api_token") or kb_config.get("api_key") or kb_config.get("token")
+            return {
+                "server_url": server_url,
+                "api_token": api_token,
+            }
+
+        return {}
     
     def get_feature_flag(self, feature: str) -> bool:
         """Get feature flag value"""
