@@ -584,8 +584,11 @@ async def create_collection(
         if api_endpoint:  # Only add if not None
             resolved_config["api_endpoint"] = api_endpoint
             
-        # Log the resolved configuration
-        print(f"INFO: [router.create_collection] Resolved embeddings config: {resolved_config}")
+        # Log the resolved configuration, but never log secrets
+        safe_config = dict(resolved_config)
+        if "apikey" in safe_config:
+            safe_config["apikey"] = "[PROVIDED]" if safe_config.get("apikey") else "[MISSING]"
+        print(f"INFO: [router.create_collection] Resolved embeddings config: {safe_config}")
         
         # Replace default values with resolved values in the collection object
         collection.embeddings_model = EmbeddingsModel(**resolved_config)

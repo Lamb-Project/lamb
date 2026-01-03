@@ -530,8 +530,15 @@ class KBServerManager:
                     # Successfully created
                     
                     collection_response = response.json()
-                    kb_id = collection_response.get('id')
+                    kb_id_raw = collection_response.get('id')
+                    kb_id = str(kb_id_raw) if kb_id_raw is not None else ""
                     logger.info(f"KB server created collection with ID: {kb_id}")
+
+                    if not kb_id:
+                        raise HTTPException(
+                            status_code=502,
+                            detail="KB server returned success but no collection id"
+                        )
                     
                     # Register in LAMB registry for sharing
                     try:

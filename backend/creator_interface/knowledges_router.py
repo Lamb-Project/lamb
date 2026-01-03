@@ -610,7 +610,7 @@ async def create_knowledge_base(
                 # Fix the response to match KnowledgeBaseCreateResponse model
                 # Ensure kb_id and name are included
                 return {
-                    "kb_id": result.get("kb_id", ""),
+                    "kb_id": str(result.get("kb_id", "")),
                     "name": result.get("name", kb_data.name),
                     "status": "success",
                     "message": result.get("message", "Knowledge base created successfully")
