@@ -105,23 +105,30 @@ def helper_get_assistant_id(model: str):
                 detail=f"Assistant not found: {model}"
             )
 
-def helper_get_all_assistants(filter_deleted: bool = False):
+def helper_get_all_assistants(filter_deleted: bool = False, filter_unpublished: bool = False):
     """
     Get all assistants from the database.
     If filter_deleted is True, it will exclude deleted assistants.
+    If filter_unpublished is True, it will exclude unpublished assistants.
     """
-    logger.debug(f"Getting all assistants with filter_deleted: {filter_deleted}")
+    logger.debug(f"Getting all assistants with filter_deleted: {filter_deleted}, filter_unpublished: {filter_unpublished}")
     db = db_manager.LambDatabaseManager()
     assistants = db.get_list_of_assitants_id_and_name()
-    if filter_deleted:
+    
+    if filter_deleted or filter_unpublished:
         unfiltered_assistants = assistants
         assistants = []
         for assistant in unfiltered_assistants:
-            if assistant.get("owner") != "deleted_assistant@owi.com":
-                assistants.append(assistant)
-                logger.debug(f"Including assistant: {assistant.get('name')}, owner: {assistant.get('owner')}")
-            else:
+            # Filter deleted assistants
+            if filter_deleted and assistant.get("owner") == "deleted_assistant@owi.com":
                 logger.debug(f"Excluding deleted assistant: {assistant.get('name')}")
+                continue
+            # Filter unpublished assistants
+            if filter_unpublished and not assistant.get("published"):
+                logger.debug(f"Excluding unpublished assistant: {assistant.get('name')}")
+                continue
+            assistants.append(assistant)
+            logger.debug(f"Including assistant: {assistant.get('name')}, owner: {assistant.get('owner')}, published: {assistant.get('published')}")
     return assistants
 
 

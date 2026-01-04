@@ -206,9 +206,8 @@ async def get_models(request: Request):
     ```
     """
   
-    assistants = helper_get_all_assistants(filter_deleted=True)
-    
-    # Filter out deleted assistants
+    # Only return published assistants (not deleted, not unpublished)
+    assistants = helper_get_all_assistants(filter_deleted=True, filter_unpublished=True)
     
     # Prepare response body
     response_body = {

@@ -3764,24 +3764,34 @@ class LambDatabaseManager:
             connection.close()
 
     def get_list_of_assitants_id_and_name(self):
-        """Get list of assistants providing only id and name"""
+        """Get list of assistants providing only id, name, owner, api_callback, and published status"""
         connection = self.get_connection()
         if not connection:
             return []
         assistants_list = []
         assistants_table = self._get_table_name('assistants')
+        published_table = self._get_table_name('assistant_publish')
         try:
             with connection:
                 cursor = connection.cursor()
-                cursor.execute(
-                    f"SELECT id, name, owner, api_callback FROM {assistants_table}")
+                cursor.execute(f"""
+                    SELECT 
+                        a.id, a.name, a.owner, a.api_callback,
+                        CASE 
+                            WHEN p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null' THEN 1 
+                            ELSE 0 
+                        END as published
+                    FROM {assistants_table} a
+                    LEFT JOIN {published_table} p ON a.id = p.assistant_id
+                """)
                 rows = cursor.fetchall()
                 for row in rows:
                     assistants_list.append({
                         'id': row[0],
                         'name': row[1],
                         'owner': row[2],
-                        'api_callback': row[3]
+                        'api_callback': row[3],
+                        'published': bool(row[4])
                     })
                 return assistants_list
         except sqlite3.Error as e:
