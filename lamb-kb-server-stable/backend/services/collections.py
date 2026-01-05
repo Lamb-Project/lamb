@@ -8,7 +8,7 @@ separating the business logic from the FastAPI route definitions.
 import json
 import os
 import signal
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 from pathlib import Path
 from datetime import datetime
 from fastapi import HTTPException, status, Depends, Query
@@ -47,6 +47,77 @@ def timeout_handler(signum, frame):
 
 class CollectionsService:
     """Service for handling collection-related API endpoints."""
+    
+    @staticmethod
+    def _sanitize_embeddings_model(embeddings_model: Any) -> Dict[str, Any]:
+        """
+        Sanitize embeddings model by removing sensitive API keys before sending to frontend.
+        
+        Converts:
+            {"model": "x", "vendor": "y", "api_endpoint": "z", "apikey": "secret"}
+        To:
+            {"model": "x", "vendor": "y", "api_endpoint": "z", "apikey_configured": true}
+        
+        Args:
+            embeddings_model: Raw embeddings model dict or JSON string
+            
+        Returns:
+            Sanitized embeddings model dict with apikey replaced by apikey_configured boolean
+        """
+        # Handle JSON string input
+        if isinstance(embeddings_model, str):
+            try:
+                embeddings_model = json.loads(embeddings_model)
+            except (json.JSONDecodeError, TypeError):
+                return {"model": "unknown", "vendor": "unknown", "apikey_configured": False}
+        
+        # Handle None or non-dict
+        if not isinstance(embeddings_model, dict):
+            return {"model": "unknown", "vendor": "unknown", "apikey_configured": False}
+        
+        # Create sanitized copy
+        sanitized = {
+            "model": embeddings_model.get("model", "unknown"),
+            "vendor": embeddings_model.get("vendor", "unknown"),
+            "api_endpoint": embeddings_model.get("api_endpoint"),
+            "apikey_configured": bool(embeddings_model.get("apikey"))  # Convert to boolean
+        }
+        
+        return sanitized
+    
+    @staticmethod
+    def _sanitize_collection(collection: Any) -> Dict[str, Any]:
+        """
+        Sanitize a collection object before returning to frontend.
+        Removes API keys from embeddings_model.
+        
+        Args:
+            collection: Collection object (SQLAlchemy model or dict)
+            
+        Returns:
+            Sanitized collection dict
+        """
+        # Convert to dict if it's a model object
+        if hasattr(collection, '__dict__'):
+            # SQLAlchemy model - extract relevant fields
+            coll_dict = {
+                "id": collection.id,
+                "name": collection.name,
+                "description": collection.description,
+                "visibility": collection.visibility.value if hasattr(collection.visibility, 'value') else str(collection.visibility),
+                "owner": collection.owner,
+                "creation_date": collection.creation_date,
+                "embeddings_model": CollectionsService._sanitize_embeddings_model(collection.embeddings_model)
+            }
+        elif isinstance(collection, dict):
+            coll_dict = dict(collection)
+            coll_dict["embeddings_model"] = CollectionsService._sanitize_embeddings_model(
+                coll_dict.get("embeddings_model", {})
+            )
+        else:
+            return collection  # Return as-is if unknown type
+        
+        return coll_dict
     
     @staticmethod
     def _log_validation_audit(
@@ -383,7 +454,8 @@ class CollectionsService:
                     detail="Collection was created but ChromaDB UUID was not stored"
                 )
             
-            return db_collection
+            # SECURITY: Sanitize response to remove API keys before returning
+            return CollectionsService._sanitize_collection(db_collection)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -441,9 +513,14 @@ class CollectionsService:
             query = query.filter(Collection.visibility == visibility_enum)
         total = query.count()
         
+        # SECURITY: Sanitize all collections to remove API keys before returning
+        sanitized_collections = [
+            CollectionsService._sanitize_collection(c) for c in collections
+        ]
+        
         return {
             "total": total,
-            "items": collections
+            "items": sanitized_collections
         }
     
     @staticmethod
@@ -458,7 +535,7 @@ class CollectionsService:
             db: Database session
             
         Returns:
-            Collection details
+            Collection details (sanitized - no API keys)
             
         Raises:
             HTTPException: If collection not found
@@ -469,7 +546,8 @@ class CollectionsService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Collection with ID {collection_id} not found"
             )
-        return collection
+        # SECURITY: Sanitize response to remove API keys before returning
+        return CollectionsService._sanitize_collection(collection)
     
     @staticmethod
     def list_files(

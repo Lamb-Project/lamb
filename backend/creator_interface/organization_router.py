@@ -207,6 +207,108 @@ async def verify_admin_access(request: Request) -> str:
     
     return auth_header
 
+
+def sanitize_org_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SECURITY: Remove sensitive API keys from organization config before sending to frontend.
+    
+    Transforms API key fields to boolean indicators:
+        "api_key": "sk-xxx" -> "api_key_configured": true
+        "apikey": "xxx" -> "apikey_configured": true
+    
+    Args:
+        config: Raw organization configuration dict
+        
+    Returns:
+        Sanitized config dict with API keys replaced by boolean indicators
+    """
+    import copy
+    
+    if not config or not isinstance(config, dict):
+        return config
+    
+    safe_config = copy.deepcopy(config)
+    
+    # Sanitize provider API keys in setups
+    if 'setups' in safe_config:
+        for setup_name, setup in safe_config['setups'].items():
+            if not isinstance(setup, dict):
+                continue
+            providers = setup.get('providers', {})
+            if not isinstance(providers, dict):
+                continue
+            for provider_name, provider_config in providers.items():
+                if not isinstance(provider_config, dict):
+                    continue
+                # Handle 'api_key' field
+                if 'api_key' in provider_config:
+                    provider_config['api_key_configured'] = bool(provider_config['api_key'])
+                    del provider_config['api_key']
+                # Handle 'apikey' field (alternate spelling)
+                if 'apikey' in provider_config:
+                    provider_config['apikey_configured'] = bool(provider_config['apikey'])
+                    del provider_config['apikey']
+    
+    # Sanitize KB server API key
+    if 'kb_server' in safe_config and isinstance(safe_config['kb_server'], dict):
+        kb_server = safe_config['kb_server']
+        if 'api_key' in kb_server:
+            kb_server['api_key_configured'] = bool(kb_server['api_key'])
+            del kb_server['api_key']
+        if 'apikey' in kb_server:
+            kb_server['apikey_configured'] = bool(kb_server['apikey'])
+            del kb_server['apikey']
+        # Also handle 'api_token' for KB server
+        if 'api_token' in kb_server:
+            kb_server['api_token_configured'] = bool(kb_server['api_token'])
+            del kb_server['api_token']
+    
+    # Sanitize features signup key (sensitive for organization access)
+    if 'features' in safe_config and isinstance(safe_config['features'], dict):
+        features = safe_config['features']
+        if 'signup_key' in features:
+            features['signup_key_configured'] = bool(features['signup_key'])
+            del features['signup_key']
+    
+    return safe_config
+
+
+def sanitize_organization(org: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SECURITY: Sanitize a full organization object before sending to frontend.
+    
+    Args:
+        org: Raw organization dict with config field
+        
+    Returns:
+        Organization dict with sanitized config
+    """
+    import copy
+    
+    if not org or not isinstance(org, dict):
+        return org
+    
+    safe_org = copy.deepcopy(org)
+    
+    if 'config' in safe_org:
+        safe_org['config'] = sanitize_org_config(safe_org['config'])
+    
+    return safe_org
+
+
+def sanitize_organizations_list(orgs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    SECURITY: Sanitize a list of organization objects.
+    
+    Args:
+        orgs: List of raw organization dicts
+        
+    Returns:
+        List of organization dicts with sanitized configs
+    """
+    return [sanitize_organization(org) for org in orgs]
+
+
 # Organization CRUD endpoints
 
 @router.get(
@@ -368,7 +470,8 @@ async def list_organizations(
         # Call database manager directly (same as core function)
         logger.info(f"Listing organizations with status filter: {status}")
         organizations = db_manager.list_organizations(status=status)
-        return organizations
+        # SECURITY: Sanitize all organization configs before sending to frontend
+        return sanitize_organizations_list(organizations)
             
     except HTTPException:
         raise
@@ -457,7 +560,8 @@ async def create_organization(
 
         # Get created organization
         org = db_manager.get_organization_by_id(org_id)
-        return org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(org)
             
     except HTTPException:
         raise
@@ -576,13 +680,14 @@ async def create_organization_enhanced(
         if not org:
             raise HTTPException(status_code=500, detail="Organization created but could not retrieve details")
         
+        # SECURITY: Sanitize config before sending to frontend
         return OrganizationResponse(
             id=org['id'],
             slug=org['slug'],
             name=org['name'],
             is_system=org['is_system'],
             status=org['status'],
-            config=org['config'],
+            config=sanitize_org_config(org['config']),
             created_at=org['created_at'],
             updated_at=org['updated_at']
         )
@@ -648,7 +753,8 @@ async def get_organization(
         if not org:
             raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
 
-        return org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(org)
             
     except HTTPException:
         raise
@@ -733,7 +839,8 @@ async def update_organization(
 
         # Get updated organization
         updated_org = db_manager.get_organization_by_id(org['id'])
-        return updated_org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(updated_org)
             
     except HTTPException:
         raise
@@ -1089,7 +1196,8 @@ async def get_organization_config(
         if not org:
             raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
 
-        return org['config']
+        # SECURITY: Sanitize config to remove API keys before sending to frontend
+        return sanitize_org_config(org['config'])
             
     except HTTPException:
         raise
@@ -1166,7 +1274,9 @@ async def update_organization_config(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update configuration")
 
-        return {"message": "Configuration updated successfully", "config": config_data}
+        # SECURITY: Do not echo back the full config with API keys
+        # Return sanitized version instead
+        return {"message": "Configuration updated successfully", "config": sanitize_org_config(config_data)}
             
     except HTTPException:
         raise
