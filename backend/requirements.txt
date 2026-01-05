@@ -21,8 +21,7 @@ mcp==1.14.0
 # AI libraries
 openai==1.35.3
 anthropic==0.28.0
-google-genai>=1.0.0  # New Google Gen AI SDK (uses "from google import genai")
-# google-generativeai==0.7.2  # Old SDK - kept for reference, no longer needed
+google-genai==1.56.0
 vertexai==1.60.0
 
 # Database
