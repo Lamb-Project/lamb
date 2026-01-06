@@ -14,7 +14,7 @@ services:
       - GLOBAL_LOG_LEVEL=WARNING
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
-      - pip-cache:/root/.cache/pip 
+      - pip-cache:/root/.cache/pip
     ports:
       - "8080:8080"
     depends_on:
@@ -52,14 +52,14 @@ services:
     working_dir: ${LAMB_PROJECT_PATH}/lamb-kb-server-stable/backend
     environment:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
-      - PIP_CACHE_DIR=/root/.cache/pip 
+      - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=WARNING
       - LAMB_KB_LOG_LEVEL=WARNING
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
-      - pip-cache:/root/.cache/pip 
+      - pip-cache:/root/.cache/pip
     ports:
       - "9090:9090"
     command: >
@@ -82,7 +82,7 @@ services:
       - ${LAMB_PROJECT_PATH}/backend/.env
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
-      - pip-cache:/root/.cache/pip 
+      - pip-cache:/root/.cache/pip
     ports:
       - "9099:9099"
     depends_on:
