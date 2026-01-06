@@ -11,6 +11,7 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - DEFAULT_USER_ROLE=user
+      - GLOBAL_LOG_LEVEL=WARNING
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip 
@@ -54,6 +55,8 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip 
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - GLOBAL_LOG_LEVEL=WARNING
+      - LAMB_KB_LOG_LEVEL=WARNING
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip 
@@ -74,6 +77,7 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - GLOBAL_LOG_LEVEL=WARNING
     env_file:
       - ${LAMB_PROJECT_PATH}/backend/.env
     volumes:

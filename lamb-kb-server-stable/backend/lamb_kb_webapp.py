@@ -22,9 +22,14 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import uuid
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging (respect GLOBAL_LOG_LEVEL or LAMB_KB_LOG_LEVEL)
+log_levels = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
+log_level = os.getenv("LAMB_KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING")).upper()
+if log_level not in log_levels:
+    log_level = "WARNING"
+logging.basicConfig(level=getattr(logging, log_level), format='%(asctime)s - %(levelname)s - %(message)s', force=True)
 logger = logging.getLogger(__name__)
+logger.info(f"Starting Lamb KB webapp with effective log level: {log_level}")
 
 # Load environment variables
 load_dotenv()
