@@ -3,7 +3,9 @@
 name: Remote deploy on push
 
 on:
-  push: {}
+  push:
+    branches:
+      - dev
 
 jobs:
   ssh-deploy:

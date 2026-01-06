@@ -3,6 +3,12 @@
     import { onMount } from 'svelte';
     import { marked } from 'marked';
 
+    // Action to focus element on mount (avoids a11y autofocus warning)
+    /** @param {HTMLElement} node */
+    function focusOnMount(node) {
+        node.focus();
+    }
+
     /**
      * @typedef {Object} Message
      * @property {string} id - Unique ID for the message
@@ -617,13 +623,13 @@
             <div class="flex-grow min-w-0">
                 {#if isEditingTitle}
                     <input
-                        type="text"
-                        bind:value={editTitleInput}
-                        onblur={() => updateChatTitle()}
-                        onkeydown={(e) => { if (e.key === 'Enter') updateChatTitle(); if (e.key === 'Escape') isEditingTitle = false; }}
-                        class="w-full px-2 py-1 text-lg font-semibold text-gray-700 border border-blue-500 rounded focus:outline-none"
-                        autofocus
-                    />
+                       type="text"
+                       bind:value={editTitleInput}
+                       onblur={() => updateChatTitle()}
+                       onkeydown={(e) => { if (e.key === 'Enter') updateChatTitle(); if (e.key === 'Escape') isEditingTitle = false; }}
+                       class="w-full px-2 py-1 text-lg font-semibold text-gray-700 border border-blue-500 rounded focus:outline-none"
+                       use:focusOnMount
+                   />
                 {:else}
                     <button
                         onclick={() => { if (currentChatId) { editTitleInput = currentChatTitle; isEditingTitle = true; } }}

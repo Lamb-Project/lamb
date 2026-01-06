@@ -11,11 +11,19 @@ from pydantic import BaseModel, Field
 
 
 class EmbeddingsModel(BaseModel):
-    """Schema for embeddings model configuration."""
+    """Schema for embeddings model configuration (internal use, includes sensitive data)."""
     model: str = Field(..., description="Name or path of the embeddings model")
     vendor: str = Field(..., description="Vendor of the embeddings model (e.g., 'ollama', 'local', 'openai')")
     api_endpoint: Optional[str] = Field(None, description="Custom API endpoint URL")
     apikey: Optional[str] = Field(None, description="API key for the endpoint if required")
+
+
+class EmbeddingsModelSafe(BaseModel):
+    """Schema for embeddings model response (SAFE - no API keys exposed to frontend)."""
+    model: str = Field(..., description="Name or path of the embeddings model")
+    vendor: str = Field(..., description="Vendor of the embeddings model (e.g., 'ollama', 'local', 'openai')")
+    api_endpoint: Optional[str] = Field(None, description="Custom API endpoint URL")
+    apikey_configured: bool = Field(False, description="Whether an API key is configured (key value hidden)")
 
 
 class CollectionBase(BaseModel):
@@ -46,11 +54,11 @@ class CollectionUpdate(BaseModel):
 
 
 class CollectionResponse(CollectionBase):
-    """Schema for collection response."""
+    """Schema for collection response (SAFE - uses EmbeddingsModelSafe, no API keys exposed)."""
     id: int = Field(..., description="Unique identifier of the collection")
     owner: str = Field(..., description="Owner of the collection")
     creation_date: datetime = Field(..., description="Creation date of the collection")
-    embeddings_model: EmbeddingsModel = Field(..., description="Embeddings model configuration")
+    embeddings_model: EmbeddingsModelSafe = Field(..., description="Embeddings model configuration (API key hidden)")
 
     class Config:
         """Pydantic config for collection response."""
@@ -58,7 +66,7 @@ class CollectionResponse(CollectionBase):
 
 
 class CollectionList(BaseModel):
-    """Schema for list of collections response."""
+    """Schema for list of collections response (SAFE - no API keys exposed)."""
     total: int = Field(..., description="Total number of collections matching filters")
     items: List[CollectionResponse] = Field(..., description="List of collections")
 

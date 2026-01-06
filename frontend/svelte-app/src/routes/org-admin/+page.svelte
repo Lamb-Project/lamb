@@ -2713,7 +2713,17 @@
                         <!-- API Configuration Tab -->
                         {#if settingsSubView === 'api'}
                         <!-- API Status Overview -->
-                        {#if dashboardData && dashboardData.api_status}
+                        {#if isLoadingDashboard}
+                            <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+                                <div class="px-4 py-5 sm:p-6">
+                                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">API Status Overview</h3>
+                                    <div class="flex items-center justify-center py-8">
+                                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                        <span class="text-gray-500">Checking API connections...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        {:else if dashboardData && dashboardData.api_status}
                             <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
                                 <div class="px-4 py-5 sm:p-6">
                                     <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">API Status Overview</h3>
@@ -2744,6 +2754,28 @@
                                                             <span class="text-gray-500">• No models selected</span>
                                                         {/if}
                                                     </div>
+                                                    
+                                                    <!-- Warning message (e.g., needs model selection) -->
+                                                    {#if providerStatus.warning}
+                                                        <div class="bg-yellow-50 border border-yellow-200 rounded p-2 mb-2">
+                                                            <div class="flex items-start">
+                                                                <span class="text-yellow-500 mr-2">⚠️</span>
+                                                                <span class="text-sm text-yellow-800">{providerStatus.warning}</span>
+                                                            </div>
+                                                            {#if providerStatus.needs_model_selection}
+                                                                <div class="mt-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        class="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded"
+                                                                        onclick={() => openModelModal(providerName, providerStatus.models || [])}
+                                                                    >
+                                                                        Select Models →
+                                                                    </button>
+                                                                </div>
+                                                            {/if}
+                                                        </div>
+                                                    {/if}
+                                                    
                                                     {#if providerStatus.models && providerStatus.models.length > 0}
                                                         <div class="text-xs text-gray-500">
                                                             <div class="max-h-20 overflow-y-auto">
@@ -2757,9 +2789,29 @@
                                                         </div>
                                                     {/if}
                                                 {:else if providerStatus.error}
-                                                    <div class="text-sm text-red-600">
-                                                        {providerStatus.error}
+                                                    <div class="text-sm text-red-600 mb-2">
+                                                        <strong>Error:</strong> {providerStatus.error}
                                                     </div>
+                                                    {#if providerStatus.error_code}
+                                                        <div class="text-xs text-gray-500">
+                                                            Error code: {providerStatus.error_code}
+                                                        </div>
+                                                    {/if}
+                                                    <!-- Show models if available even on error (e.g., model test failed but list succeeded) -->
+                                                    {#if providerStatus.models && providerStatus.models.length > 0}
+                                                        <div class="mt-2 pt-2 border-t border-gray-200">
+                                                            <div class="text-xs text-gray-600 mb-1">
+                                                                <strong>{providerStatus.model_count}</strong> models available (connection works, but test failed)
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded"
+                                                                onclick={() => openModelModal(providerName, providerStatus.models || [])}
+                                                            >
+                                                                Manage Models →
+                                                            </button>
+                                                        </div>
+                                                    {/if}
                                                 {/if}
                                                 
                                                 {#if providerStatus.api_base}
@@ -2777,6 +2829,16 @@
                                             <p class="text-sm mt-1">Configure OpenAI or Ollama below to get started</p>
                                         </div>
                                     {/if}
+                                </div>
+                            </div>
+                        {:else}
+                            <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+                                <div class="px-4 py-5 sm:p-6">
+                                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">API Status Overview</h3>
+                                    <div class="text-center py-8 text-gray-500">
+                                        <p>API status not available</p>
+                                        <p class="text-sm mt-1">Configure your API settings below, then save to check connection status</p>
+                                    </div>
                                 </div>
                             </div>
                         {/if}
@@ -2841,7 +2903,74 @@
                                             Configure which models are available to users in your organization
                                         </p>
                                         
-                                        {#if apiSettings.available_models && Object.keys(apiSettings.available_models || {}).length > 0}
+                                        <!-- Show loading state while checking API status -->
+                                        {#if isLoadingDashboard}
+                                            <div class="border rounded-lg p-6 bg-gray-50">
+                                                <div class="flex items-center justify-center">
+                                                    <div class="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-brand mr-3"></div>
+                                                    <span class="text-gray-500">Loading available models...</span>
+                                                </div>
+                                            </div>
+                                        <!-- Use fresh models from API status check (dashboardData) as primary source -->
+                                        {:else if dashboardData?.api_status?.providers && Object.keys(dashboardData.api_status.providers).length > 0}
+                                            {#each Object.entries(dashboardData.api_status.providers) as [providerName, providerStatus]}
+                                                {@const freshModels = providerStatus.models || []}
+                                                <div class="mb-6 border rounded-lg p-4">
+                                                    <div class="flex items-center justify-between mb-3">
+                                                        <h4 class="font-medium text-gray-900 capitalize">{providerName}</h4>
+                                                        <button
+                                                            type="button"
+                                                            class="bg-brand hover:bg-brand-hover px-3 py-1 text-sm text-white rounded"
+                                                            onclick={() => openModelModal(providerName, freshModels)}
+                                                        >
+                                                            Manage Models
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    <div class="text-sm text-gray-600 mb-2">
+                                                        <strong>{newApiSettings.selected_models?.[providerName]?.length || 0}</strong> of {freshModels.length} models enabled
+                                                    </div>
+                                                    
+                                                    <div class="bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
+                                                        {#if newApiSettings.selected_models?.[providerName]?.length > 0}
+                                                            <div class="flex flex-wrap gap-1">
+                                                                {#each newApiSettings.selected_models[providerName] as model}
+                                                                    <span class="inline-block px-2 py-1 text-xs bg-brand/10 text-brand rounded">
+                                                                        {model}
+                                                                    </span>
+                                                                {/each}
+                                                            </div>
+                                                        {:else}
+                                                            <p class="text-gray-500 text-sm italic">No models enabled</p>
+                                                        {/if}
+                                                    </div>
+
+                                                    <!-- Default Model Selection - uses selected_models which user can choose from fresh models -->
+                                                    {#if newApiSettings.selected_models?.[providerName]?.length > 0}
+                                                        <div class="mt-3">
+                                                            <label for="default-model-{providerName}" class="block text-sm font-medium text-gray-700 mb-2">
+                                                                Default Model
+                                                            </label>
+                                                            <select
+                                                                id="default-model-{providerName}"
+                                                                bind:value={newApiSettings.default_models[providerName]}
+                                                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                                onchange={() => addPendingChange(`Default model changed for ${providerName}`)}
+                                                            >
+                                                                <option value="">Select a default model...</option>
+                                                                {#each newApiSettings.selected_models[providerName] as model}
+                                                                    <option value={model}>{model}</option>
+                                                                {/each}
+                                                            </select>
+                                                            <p class="mt-1 text-xs text-gray-500">
+                                                                This model will be used as the default when creating new assistants for this provider.
+                                                            </p>
+                                                        </div>
+                                                    {/if}
+                                                </div>
+                                            {/each}
+                                        {:else if apiSettings.available_models && Object.keys(apiSettings.available_models || {}).length > 0}
+                                            <!-- Fallback to cached apiSettings if dashboard not loaded -->
                                             {#each Object.entries(apiSettings.available_models) as [providerName, models]}
                                                 <div class="mb-6 border rounded-lg p-4">
                                                     <div class="flex items-center justify-between mb-3">
@@ -2857,6 +2986,7 @@
                                                     
                                                     <div class="text-sm text-gray-600 mb-2">
                                                         <strong>{newApiSettings.selected_models?.[providerName]?.length || 0}</strong> of {models.length} models enabled
+                                                        <span class="text-yellow-600 text-xs ml-2">(cached - refresh to get latest)</span>
                                                     </div>
                                                     
                                                     <div class="bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
@@ -2898,8 +3028,14 @@
                                                 </div>
                                             {/each}
                                         {:else}
-                                            <div class="text-center py-8 text-gray-500">
-                                                <p>No API providers configured or available.</p>
+                                            <div class="border rounded-lg p-6 bg-gray-50">
+                                                <div class="text-center text-gray-500">
+                                                    <svg class="mx-auto h-10 w-10 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                                    </svg>
+                                                    <p class="font-medium">No API providers configured</p>
+                                                    <p class="text-sm mt-1">Enter your API credentials above and save to see available models</p>
+                                                </div>
                                             </div>
                                         {/if}
                                     </div>
