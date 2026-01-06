@@ -13,13 +13,13 @@ PyJWT[crypto]
 
 requests==2.32.2
 aiohttp==3.9.5
-httpx>=0.27.0,<0.28.0
+httpx==0.28.1
 
 # MCP (Model Context Protocol) libraries
 mcp==1.14.0
 
 # AI libraries
-openai==1.35.3
+openai==2.14.0
 anthropic==0.28.0
 google-genai==1.56.0
 vertexai==1.60.0
