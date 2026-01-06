@@ -514,8 +514,37 @@ class KBServerManager:
                 }
             }
             
-            # Log the final data being sent to the KB server
-            logger.info(f"Sending collection data to KB server: {collection_data}")
+            # Attempt to resolve organization-specific OpenAI key and endpoint so KB server
+            # can use per-organization credentials instead of the global KB env var.
+            try:
+                from lamb.completions.org_config_resolver import OrganizationConfigResolver
+                resolver = OrganizationConfigResolver(creator_user.get('email'))
+                openai_cfg = resolver.get_provider_config('openai') or {}
+                org_apikey = openai_cfg.get('api_key') or openai_cfg.get('api_key')
+                org_base = openai_cfg.get('base_url') or openai_cfg.get('api_base')
+                if org_apikey:
+                    collection_data['embeddings_model']['apikey'] = org_apikey
+                    collection_data['embeddings_model']['vendor'] = 'openai'
+                    # Set api_endpoint to embeddings endpoint if base_url present
+                    if org_base:
+                        if org_base.endswith('/embeddings'):
+                            collection_data['embeddings_model']['api_endpoint'] = org_base
+                        else:
+                            collection_data['embeddings_model']['api_endpoint'] = org_base.rstrip('/') + '/embeddings'
+                    logger.info("Using organization-specific OpenAI API key for KB creation (kept secret)")
+            except Exception as e:
+                logger.info(f"No organization-specific OpenAI config found or failed to resolve: {e}. Falling back to KB server env")
+
+            # Log the final data being sent to the KB server (do NOT log secrets)
+            safe_collection_data = dict(collection_data)
+            try:
+                if 'embeddings_model' in safe_collection_data:
+                    safe_collection_data['embeddings_model'] = dict(safe_collection_data['embeddings_model'])
+                    if 'apikey' in safe_collection_data['embeddings_model']:
+                        safe_collection_data['embeddings_model']['apikey'] = '[PROVIDED]' if safe_collection_data['embeddings_model']['apikey'] != 'default' else '[MISSING]'
+            except Exception:
+                pass
+            logger.info(f"Sending collection data to KB server: {safe_collection_data}")
             
             try:
                 # Send request to KB server
