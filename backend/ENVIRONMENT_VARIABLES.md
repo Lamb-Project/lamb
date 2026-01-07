@@ -197,6 +197,19 @@ These variables are used for initial admin account setup:
 - **`OPENAI_BASE_URL`** - Default: `https://api.openai.com/v1`
 - **`OPENAI_MODEL`** - Default: `gpt-4o-mini`
 
+### Google Gemini Image Generation
+
+These variables configure the `banana_img` connector for Gemini image generation:
+
+- **`GEMINI_API_KEY`** or **`GOOGLE_API_KEY`** - API key for Google Gen AI
+- **`GEMINI_MODELS`** - Comma-separated list of available Gemini image generation models
+  - Default: `gemini-2.5-flash-image-preview,gemini-3-pro-image-preview`
+  - Use actual Google API model names (no aliases)
+- **`GEMINI_DEFAULT_MODEL`** - Default model when assistant specifies an invalid model
+  - Default: `gemini-2.5-flash-image-preview`
+
+**Note:** Model names should match the actual Google Gen AI API model IDs. Check [Google's AI documentation](https://ai.google.dev/models) for current model availability.
+
 ## Example .env File
 
 ```bash
@@ -228,6 +241,11 @@ GLOBAL_LOG_LEVEL=WARNING
 # EVALUATOR_LOG_LEVEL=
 # OWI_LOG_LEVEL=
 OLLAMA_BASE_URL=http://localhost:11434
+
+# Gemini Image Generation (optional)
+# GEMINI_API_KEY=your-google-api-key
+GEMINI_MODELS=gemini-2.5-flash-image-preview,gemini-3-pro-image-preview
+GEMINI_DEFAULT_MODEL=gemini-2.5-flash-image-preview
 ```
 
 ## Docker Compose Configuration

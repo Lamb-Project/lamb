@@ -143,6 +143,7 @@
     function showCreateForm() {
         console.log("Navigating to create form");
         selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
         currentView = 'create';
         startEditMode = false; // Ensure not starting in edit for create
         // Navigate to assistants path with query param
@@ -162,6 +163,7 @@
     function showSharedAssistants() {
         console.log("Navigating to shared assistants view");
         selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
         currentView = 'shared';
         startEditMode = false;
         // Navigate to assistants path with shared view query param
@@ -172,6 +174,7 @@
     function showTemplates() {
         console.log("Navigating to templates view");
         selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
         currentView = 'templates';
         startEditMode = false;
         // Navigate to assistants path with templates view query param
@@ -1200,6 +1203,27 @@
                                             {:else}
                                                 <span class="text-gray-500">
                                                     {currentLocale ? $_('assistants.form.vision.disabled', { default: 'Disabled' }) : 'Disabled'}
+                                                </span>
+                                            {/if}
+                                        </div>
+                                    </div>
+
+                                    <!-- Image Generation Capability -->
+                                    <div>
+                                        <div class="font-medium text-gray-700 mb-1">
+                                            Image Generation
+                                        </div>
+                                        <div class="bg-white border border-gray-200 p-2 rounded">
+                                            {#if apiCallback.capabilities?.image_generation}
+                                                <span class="inline-flex items-center text-green-800">
+                                                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                    </svg>
+                                                    Enabled
+                                                </span>
+                                            {:else}
+                                                <span class="text-gray-500">
+                                                    Disabled
                                                 </span>
                                             {/if}
                                         </div>

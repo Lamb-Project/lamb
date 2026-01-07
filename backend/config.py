@@ -90,6 +90,12 @@ OWI_ADMIN_PASSWORD = os.getenv('OWI_ADMIN_PASSWORD')
 if not OWI_ADMIN_PASSWORD:
     raise ValueError("OWI_ADMIN_PASSWORD environment variable is required")
 
+# Google Gemini Image Generation Configuration
+# GEMINI_MODELS: Comma-separated list of available Gemini image generation models
+# GEMINI_DEFAULT_MODEL: Default model to use when assistant specifies an invalid model
+GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
+GEMINI_MODELS = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
+
 # Validate required environment variables
 required_vars = ['LAMB_DB_PATH', 'OWI_PATH']
 missing_vars = [var for var in required_vars if not os.getenv(var)]

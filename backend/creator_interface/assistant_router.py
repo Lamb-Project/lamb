@@ -557,6 +557,23 @@ async def create_assistant_directly(request: Request):
 
             # Create or update OWI model with group permissions
             created_at_ts = int(time.time())
+            
+            # Extract capabilities from assistant metadata
+            owi_capabilities = {"vision": False, "citations": True}  # Defaults
+            try:
+                metadata_str = new_body.get("metadata") or new_body.get("api_callback", "")
+                if metadata_str:
+                    metadata = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+                    assistant_capabilities = metadata.get("capabilities", {})
+                    # Map assistant capabilities to OWI model capabilities
+                    owi_capabilities["vision"] = assistant_capabilities.get("vision", False)
+                    # Include image_generation if the assistant has it enabled
+                    if assistant_capabilities.get("image_generation", False):
+                        owi_capabilities["image_generation"] = True
+                    logger.info(f"Extracted capabilities for OWI model: {owi_capabilities}")
+            except (json.JSONDecodeError, AttributeError) as e:
+                logger.warning(f"Could not parse assistant metadata for capabilities: {e}. Using defaults.")
+            
             model_created = owi_model_manager.create_model_api(
                 token=admin_token,
                 model_id=owi_model_id,
@@ -566,7 +583,7 @@ async def create_assistant_directly(request: Request):
                 owned_by="lamb_v4", # System owner
                 description=new_body.get("description", ""),
                 suggestion_prompts=None,
-                capabilities={"vision": False, "citations": True}, # Default capabilities
+                capabilities=owi_capabilities,
                 params={}
             )
 

@@ -28,6 +28,11 @@ async def list_processors_and_connectors(
     """
     List available Prompt Processors, Connectors, and RAG processors with their supported features
     Organization-aware: returns models enabled for the user's organization if authenticated
+    
+    Extended response includes:
+    - Connector metadata (description, capabilities)
+    - Model metadata (display_name, description, capabilities, forced_capabilities)
+    - Backward compatible: available_llms still returns list of model IDs
     """
     pps = load_plugins('pps')
     connectors = load_plugins('connectors')
@@ -51,6 +56,17 @@ async def list_processors_and_connectors(
     for connector_name, connector_module in connectors.items():
         module = importlib.import_module(f"lamb.completions.connectors.{connector_name}")
         available_llms = []
+        models_with_metadata = []
+        connector_metadata = {}
+        
+        # Get connector metadata if available
+        if hasattr(module, 'get_connector_metadata'):
+            try:
+                connector_metadata = module.get_connector_metadata()
+            except Exception as e:
+                logger.warning(f"Could not get connector metadata for {connector_name}: {e}")
+        
+        # Get available LLMs
         if hasattr(module, 'get_available_llms'):
             get_llms_func = getattr(module, 'get_available_llms')
             
@@ -67,10 +83,36 @@ async def list_processors_and_connectors(
                 else:
                     available_llms = get_llms_func()
         
+        # Get models with full metadata if available (extended API)
+        if hasattr(module, 'get_available_llms_with_metadata'):
+            try:
+                get_meta_func = getattr(module, 'get_available_llms_with_metadata')
+                if asyncio.iscoroutinefunction(get_meta_func):
+                    models_with_metadata = await get_meta_func(assistant_owner=assistant_owner)
+                else:
+                    models_with_metadata = get_meta_func(assistant_owner=assistant_owner)
+            except TypeError:
+                try:
+                    if asyncio.iscoroutinefunction(get_meta_func):
+                        models_with_metadata = await get_meta_func()
+                    else:
+                        models_with_metadata = get_meta_func()
+                except Exception as e:
+                    logger.warning(f"Could not get model metadata for {connector_name}: {e}")
+            except Exception as e:
+                logger.warning(f"Could not get model metadata for {connector_name}: {e}")
+        
+        # Build connector info (backward compatible + extended)
         connector_info[connector_name] = {
             "name": connector_name,
-            "available_llms": available_llms
+            "available_llms": available_llms,  # Backward compatible: list of model IDs
         }
+        
+        # Add extended metadata if available
+        if connector_metadata:
+            connector_info[connector_name]["metadata"] = connector_metadata
+        if models_with_metadata:
+            connector_info[connector_name]["models"] = models_with_metadata
     
     return {
         "prompt_processors": list(pps.keys()),

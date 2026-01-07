@@ -1,3 +1,14 @@
+"""
+Gemini Image Connector (banana_img)
+
+Google Gemini image generation connector supporting text-to-image and image-to-image generation.
+Connector ID kept as 'banana_img' for backward compatibility with existing assistants.
+
+Model Configuration:
+- Models are loaded from GEMINI_MODELS env var (comma-separated list)
+- Default model is set via GEMINI_DEFAULT_MODEL env var
+- Model names should be the actual Google API model IDs (no aliases)
+"""
 import json
 import os
 import logging
@@ -19,22 +30,288 @@ import config
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-def get_available_llms(assistant_owner: Optional[str] = None):
+# ============================================================================
+# CONNECTOR METADATA
+# ============================================================================
+
+CONNECTOR_METADATA = {
+    "id": "banana_img",
+    "name": "Gemini Image",
+    "description": "Google Gemini image generation connector. Supports text-to-image and image-to-image generation with multimodal capabilities.",
+    "provider": "Google",
+    "version": "2.1",
+    "capabilities": {
+        "text_generation": False,
+        "image_generation": True,
+        "vision_input": True,
+    }
+}
+
+# ============================================================================
+# MODEL CONFIGURATION FROM ENVIRONMENT
+# ============================================================================
+
+# Load available models from environment (comma-separated list)
+# These should be the actual Google API model IDs
+_GEMINI_MODELS_RAW = getattr(config, 'GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
+GEMINI_MODELS = [m.strip() for m in _GEMINI_MODELS_RAW.split(',') if m.strip()]
+
+# Default model when assistant specifies an invalid/unknown model
+GEMINI_DEFAULT_MODEL = getattr(config, 'GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
+
+# All Gemini image models support vision input for image-to-image generation
+# This is a simplification - if a model doesn't support it, the API will return an error
+def model_supports_image_input(model: str) -> bool:
     """
-    Return available image generation models for this connector
+    Check if a model supports image input for image-to-image generation.
+    Currently all Gemini image models support this.
+    """
+    return model in GEMINI_MODELS
+
+
+def get_connector_metadata() -> Dict[str, Any]:
+    """
+    Return connector metadata including description and capabilities
+    
+    Returns:
+        Dict with connector metadata
+    """
+    return CONNECTOR_METADATA.copy()
+
+
+def get_available_llms(assistant_owner: Optional[str] = None) -> List[str]:
+    """
+    Return available image generation models for this connector.
+    Models are loaded from GEMINI_MODELS environment variable.
 
     Args:
-        assistant_owner: Optional assistant owner email to get org-specific models
+        assistant_owner: Optional assistant owner email (unused, kept for interface compatibility)
+        
+    Returns:
+        List of model IDs (actual Google API model names)
     """
-    # Google Gen AI image generation models (as of Dec 2024)
-    # Gemini models use generate_content API (may work with free tier)
-    # Imagen models use generate_images API (requires billing)
-    return [
-        "gemini-2.5-flash-image-preview",    # Gemini 2.5 Flash preview (cheapest, uses generate_content)
-        "gemini-2.5-flash-image",            # Gemini 2.5 Flash with image generation (uses generate_content)
-        "imagen-4.0-fast-generate-001",      # Imagen 4 Fast - requires billing (uses generate_images)
-        "imagen-4.0-generate-001",           # Imagen 4 - requires billing (uses generate_images)
-    ]
+    return GEMINI_MODELS.copy()
+
+
+def get_available_llms_with_metadata(assistant_owner: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Return available models with metadata (for extended API).
+    Since we use actual API model names, metadata is minimal.
+    
+    Args:
+        assistant_owner: Optional assistant owner email (unused, kept for interface compatibility)
+        
+    Returns:
+        List of model metadata dictionaries
+    """
+    models = []
+    for model_id in GEMINI_MODELS:
+        model_info = {
+            "id": model_id,
+            "display_name": model_id,  # Use actual model name as display name
+            "description": f"Google Gemini image generation model: {model_id}",
+            "capabilities": {
+                "text_generation": True,
+                "image_generation": True,
+                "vision_input": True,
+            },
+            "forced_capabilities": {
+                "image_generation": True,
+            },
+        }
+        models.append(model_info)
+    return models
+
+
+def has_images_in_messages(messages: List[Dict[str, Any]]) -> bool:
+    """
+    Check if any message contains image content
+    
+    Args:
+        messages: List of message dictionaries
+        
+    Returns:
+        bool: True if any message contains images
+    """
+    logger.debug(f"Checking {len(messages)} messages for images")
+    
+    for i, message in enumerate(messages):
+        content = message.get('content', [])
+        logger.debug(f"Message {i}: role={message.get('role')}, content_type={type(content).__name__}")
+        
+        if isinstance(content, list):
+            # Multimodal format
+            for j, item in enumerate(content):
+                item_type = item.get('type')
+                if item_type == 'image_url':
+                    logger.info(f"🖼️ Found image_url in message {i}, item {j}")
+                    return True
+                elif item_type == 'image':
+                    logger.info(f"🖼️ Found image in message {i}, item {j}")
+                    return True
+        elif isinstance(content, str):
+            # Legacy text format - no images
+            continue
+    
+    logger.debug("No images detected in any messages")
+    return False
+
+
+def extract_images_from_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Extract all images from messages
+    
+    Args:
+        messages: List of message dictionaries
+        
+    Returns:
+        List of image info dictionaries with 'url' and 'mime_type' keys
+    """
+    images = []
+    
+    for message in messages:
+        content = message.get('content', [])
+        
+        if isinstance(content, list):
+            for item in content:
+                if item.get('type') == 'image_url':
+                    image_url = item.get('image_url', {})
+                    url = image_url.get('url', '')
+                    if url:
+                        # Detect mime type from URL or data URI
+                        mime_type = _detect_mime_type(url)
+                        images.append({
+                            'url': url,
+                            'mime_type': mime_type
+                        })
+                        logger.debug(f"Extracted image: {url[:50]}..., mime_type={mime_type}")
+    
+    logger.info(f"📸 Extracted {len(images)} image(s) from messages")
+    return images
+
+
+def _detect_mime_type(url: str) -> str:
+    """
+    Detect MIME type from URL or data URI
+    
+    Args:
+        url: Image URL or data URI
+        
+    Returns:
+        MIME type string (defaults to image/jpeg)
+    """
+    if url.startswith('data:'):
+        # Extract from data URI: data:image/png;base64,...
+        try:
+            mime_part = url.split(';')[0]
+            return mime_part.replace('data:', '')
+        except:
+            pass
+    
+    # Check file extension
+    url_lower = url.lower()
+    if '.png' in url_lower:
+        return 'image/png'
+    elif '.gif' in url_lower:
+        return 'image/gif'
+    elif '.webp' in url_lower:
+        return 'image/webp'
+    elif '.jpg' in url_lower or '.jpeg' in url_lower:
+        return 'image/jpeg'
+    
+    # Default to JPEG
+    return 'image/jpeg'
+
+
+def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
+    """
+    Validate image URLs in messages
+    
+    Args:
+        messages: Messages to validate
+        
+    Returns:
+        List of validation error messages (empty if all valid)
+    """
+    errors = []
+    
+    for message in messages:
+        content = message.get('content', [])
+        if isinstance(content, list):
+            for item in content:
+                if item.get('type') == 'image_url':
+                    image_url = item.get('image_url', {})
+                    url = image_url.get('url', '')
+                    
+                    # Basic URL validation
+                    if not url:
+                        errors.append("Empty image URL found")
+                        continue
+                    
+                    # Check if it's a data URL or HTTP URL
+                    if not (url.startswith('http://') or url.startswith('https://') or url.startswith('data:')):
+                        errors.append(f"Invalid image URL format: {url[:50]}...")
+                    
+                    # Basic size check for data URLs (rough estimate)
+                    if url.startswith('data:'):
+                        try:
+                            base64_part = url.split(',')[1]
+                            estimated_bytes = len(base64_part) * 6 // 8
+                            if estimated_bytes > 20 * 1024 * 1024:  # 20MB limit
+                                errors.append("Image data too large (>20MB)")
+                        except:
+                            errors.append("Invalid base64 image data")
+    
+    return errors
+
+
+async def _load_image_for_gemini(image_info: Dict[str, Any]) -> Optional[types.Part]:
+    """
+    Load an image and convert it to Gemini Part format
+    
+    Args:
+        image_info: Dictionary with 'url' and 'mime_type' keys
+        
+    Returns:
+        types.Part object or None if failed
+    """
+    import aiohttp
+    
+    url = image_info.get('url', '')
+    mime_type = image_info.get('mime_type', 'image/jpeg')
+    
+    try:
+        if url.startswith('data:'):
+            # Base64 data URI
+            logger.debug(f"Loading image from data URI (mime_type={mime_type})")
+            base64_part = url.split(',')[1] if ',' in url else url
+            image_bytes = base64.b64decode(base64_part)
+            return types.Part(inline_data=types.Blob(data=image_bytes, mime_type=mime_type))
+        
+        elif url.startswith('http://') or url.startswith('https://'):
+            # HTTP URL - fetch the image
+            logger.debug(f"Fetching image from URL: {url[:50]}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        image_bytes = await response.read()
+                        # Update mime type from response if available
+                        content_type = response.headers.get('Content-Type', mime_type)
+                        if '/' in content_type:
+                            mime_type = content_type.split(';')[0].strip()
+                        return types.Part(inline_data=types.Blob(data=image_bytes, mime_type=mime_type))
+                    else:
+                        logger.error(f"Failed to fetch image: HTTP {response.status}")
+                        return None
+        else:
+            logger.error(f"Unsupported image URL format: {url[:50]}...")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error loading image: {e}")
+        return None
+
+
 
 def _maybe_stream_response(response_dict: Dict[str, Any], stream: bool):
     """
@@ -294,11 +571,17 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     
     logger.info("🖼️ NOT a title request - proceeding with IMAGE GENERATION")
     
-    # Validate model name early
+    # Validate model name - use actual API model names from env config
     available_models = get_available_llms(assistant_owner)
-    model = llm or "gemini-2.5-flash-image-preview"  # Default to cheapest Gemini model
+    model = llm or GEMINI_DEFAULT_MODEL
     logger.info(f"🖼️ Model validation: requested='{model}', available={available_models}")
     
+    # If model not in available list, fall back to default model
+    if model not in available_models:
+        logger.warning(f"⚠️ Model '{model}' not in available models, falling back to default: {GEMINI_DEFAULT_MODEL}")
+        model = GEMINI_DEFAULT_MODEL
+    
+    # Final validation - ensure default model is valid
     if model not in available_models:
         error_msg = (
             f"Invalid model '{model}' for image generation.\n\n"
@@ -423,6 +706,54 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         }
         return _maybe_stream_response(error_response, original_stream)
 
+    # Check for image inputs (image-to-image generation)
+    has_input_images = has_images_in_messages(messages)
+    input_images = []
+    
+    if has_input_images:
+        logger.info("🖼️ Image input detected - checking model support for image-to-image generation")
+        
+        # Check if model supports image input
+        if not model_supports_image_input(model):
+            error_msg = (
+                f"❌ Model '{model}' does not support image input.\n\n"
+                f"For image-to-image generation (editing, style transfer, etc.), please use one of these models:\n"
+                + "\n".join(f"  • {m}" for m in GEMINI_MODELS) +
+                f"\n\nAlternatively, remove the input image to use text-to-image generation."
+            )
+            logger.error(error_msg)
+            error_response = {
+                "id": f"chatcmpl-error_{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": error_msg
+                        },
+                        "finish_reason": "stop"
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+            }
+            return _maybe_stream_response(error_response, original_stream)
+        
+        # Validate image URLs
+        validation_errors = validate_image_urls(messages)
+        if validation_errors:
+            logger.warning(f"⚠️ Image validation warnings: {validation_errors}")
+        
+        # Extract images for later processing
+        input_images = extract_images_from_messages(messages)
+        logger.info(f"✅ {len(input_images)} input image(s) ready for image-to-image generation")
+
     # Extract generation parameters from body
     generation_config = _extract_generation_config(body)
     
@@ -513,52 +844,106 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
             }
             return _maybe_stream_response(error_response, original_stream)
 
-        # Generate images using Google Gen AI
-        # Two different APIs:
-        # - Imagen models (imagen-*) use generate_images()
-        # - Gemini image models (gemini-*-image*) use generate_content()
+        # Generate images using Google Gen AI (Gemini models)
+        # Two modes supported:
+        # - With image input: multimodal generate_content (image-to-image)
+        # - Without image input: text-only generate_content (text-to-image)
         try:
-            is_gemini_model = 'gemini' in model.lower() and 'image' in model.lower()
+            # All models in this connector use the generate_content API
+            # Model name is used directly - no alias translation needed
+            api_model_id = model
             
-            if is_gemini_model:
-                # Gemini image models use generate_content API
-                logger.info(f"🔄 Using generate_content API for Gemini model: {model}")
+            if input_images:
+                    # IMAGE-TO-IMAGE: Build multimodal content with images + text
+                    logger.info(f"🔄 Using generate_content API for IMAGE-TO-IMAGE with model: {api_model_id}")
+                    logger.info(f"📸 Processing {len(input_images)} input image(s)")
+                    
+                    # Build content parts: images first, then text prompt
+                    content_parts = []
+                    
+                    # Load and add input images
+                    for img_info in input_images:
+                        image_part = await _load_image_for_gemini(img_info)
+                        if image_part:
+                            content_parts.append(image_part)
+                            logger.debug(f"✅ Added input image to content")
+                        else:
+                            logger.warning(f"⚠️ Failed to load input image: {img_info.get('url', 'unknown')[:50]}...")
+                    
+                    # Add text prompt
+                    content_parts.append(types.Part(text=prompt))
+                    
+                    if not content_parts:
+                        raise ValueError("Failed to build multimodal content - no valid parts")
+                    
+                    logger.info(f"📦 Built multimodal content with {len(content_parts)} parts")
+                    
+                    # Call generate_content with multimodal input
+                    response = client.models.generate_content(
+                        model=api_model_id,
+                        contents=content_parts
+                    )
+            else:
+                # TEXT-TO-IMAGE: Simple text prompt
+                logger.info(f"🔄 Using generate_content API for TEXT-TO-IMAGE with model: {api_model_id}")
                 response = client.models.generate_content(
-                    model=model,
+                    model=api_model_id,
                     contents=prompt
                 )
-                # Extract images from response
-                generated_images = []
+            
+            # Extract images from response
+            generated_images = []
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'inline_data'):
+                                generated_images.append(part.inline_data)
+            
+            if not generated_images:
+                # Check if response contains text instead (model might not have generated an image)
+                text_response = ""
                 if hasattr(response, 'candidates') and response.candidates:
                     for candidate in response.candidates:
                         if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
                             for part in candidate.content.parts:
-                                if hasattr(part, 'inline_data'):
-                                    generated_images.append(part.inline_data)
+                                if hasattr(part, 'text') and part.text:
+                                    text_response += part.text
                 
-                if not generated_images:
-                    raise ValueError("No images generated by Gemini model - response contained no image data")
+                if text_response:
+                    # Model returned text instead of image - return it as response
+                    logger.warning(f"⚠️ Model returned text instead of image: {text_response[:100]}...")
+                    text_response_dict = {
+                        "id": f"chatcmpl-text_{int(time.time())}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": text_response
+                                },
+                                "finish_reason": "stop"
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": len(prompt.split()),
+                            "completion_tokens": len(text_response.split()),
+                            "total_tokens": len(prompt.split()) + len(text_response.split())
+                        }
+                    }
+                    return _maybe_stream_response(text_response_dict, original_stream)
                 
-                # Create a mock response object with generated_images attribute
-                class MockResponse:
-                    def __init__(self, images):
-                        self.generated_images = images
-                
-                response = MockResponse(generated_images)
-            else:
-                # Imagen models use generate_images API
-                logger.info(f"🔄 Using generate_images API for Imagen model: {model}")
-                image_config = types.GenerateImagesConfig(
-                    number_of_images=generation_config["number_of_images"],
-                    aspect_ratio=generation_config["aspect_ratio"],
-                    output_mime_type=generation_config["output_mime_type"],
-                )
-                
-                response = client.models.generate_images(
-                    model=model,
-                    prompt=prompt,
-                    config=image_config,
-                )
+                raise ValueError("No images generated - response contained no image data")
+            
+            # Create a mock response object with generated_images attribute
+            class MockResponse:
+                def __init__(self, images):
+                    self.generated_images = images
+            
+            response = MockResponse(generated_images)
         except Exception as gen_error:
             error_type = type(gen_error).__name__
             error_msg = (
@@ -610,9 +995,8 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 # Get mime type early (needed for output format)
                 mime_type = 'image/png'  # default
                 
-                # Handle two different response formats:
-                # 1. Imagen: generated_image.image (has .image attribute)
-                # 2. Gemini: generated_image is inline_data (has .data and .mime_type)
+                # Handle Gemini response format:
+                # - inline_data with .data and .mime_type attributes
                 pil_image = None
                 
                 # Get mime type if available
@@ -636,30 +1020,15 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                         logger.warning(f"as_image() failed: {e}, trying data attribute")
                 
                 if pil_image is None:
-                    # Try using data attribute or image attribute
-                    if hasattr(generated_image, 'image'):
-                        # Imagen format
-                        image_data = generated_image.image
-                        if hasattr(image_data, '_pil_image'):
-                            pil_image = image_data._pil_image
-                        elif hasattr(image_data, 'data'):
-                            # Decode base64 image data
-                            image_bytes = base64.b64decode(image_data.data)
-                            pil_image = Image.open(BytesIO(image_bytes))
-                        else:
-                            # Try to use as_image() method if available
-                            pil_image = image_data
-                    elif hasattr(generated_image, 'data'):
-                        # Gemini format (inline_data) - fallback to manual decoding
+                    # Gemini format - use data attribute
+                    if hasattr(generated_image, 'data'):
                         logger.debug(f"Processing Gemini inline_data format (manual decode)")
                         data_value = generated_image.data
                         
                         # Handle different data types
                         if isinstance(data_value, bytes):
-                            # Already bytes, use directly
                             image_bytes = data_value
                         elif isinstance(data_value, str):
-                            # Try base64 decode
                             try:
                                 image_bytes = base64.b64decode(data_value)
                             except Exception as decode_error:
