@@ -1,2 +1,4 @@
 playwright_updated/node_modules
 playwright/node_modules
+.env
+

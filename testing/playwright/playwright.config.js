@@ -1,4 +1,6 @@
 // @ts-check
+require('dotenv').config();
+
 const { defineConfig } = require('@playwright/test');
 
 const baseURL = process.env.BASE_URL || 'http://localhost:9099/';
