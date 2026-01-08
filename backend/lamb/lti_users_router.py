@@ -325,9 +325,11 @@ async def process_lti_connection(request: Request):
         # Get protocol from X-Forwarded-Proto header, or use actual request scheme
         proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
         host = request.headers.get("Host", request.url.hostname)
-        # Use the full path from the request without prepending anything
-        # since the path already contains the complete route
-        base_url = f"{proto}://{host}{request.url.path}"
+        prefix = request.headers.get('X-Forwarded-Prefix', '')
+        
+        ## Use the full path from the request without prepending anything
+        ## since the path already contains the complete route
+        base_url = f"{proto}://{host}{prefix}{request.url.path}"
 
         # Debug logging to match consumer format
         logger.debug(f"DEBUG: Constructed launch_url: {base_url}")
