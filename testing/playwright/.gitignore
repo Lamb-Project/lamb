@@ -1,5 +1,5 @@
 session_data.json
-node_modules/*
+node_modules
 package-lock.json
 *.png
 
