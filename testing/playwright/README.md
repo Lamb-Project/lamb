@@ -6,7 +6,13 @@ Automated browser tests for the LAMB platform.
 
 ### Automated Test Suite (Playwright Test)
 
-**Main flow:** `tests/creator_flow.spec.js` - Creates KB → ingests file → queries → creates assistant
+| Test File | Description |
+|-----------|-------------|
+| `tests/admin_flow.spec.js` | Admin operations: Create user, create org, disable user, delete org |
+| `tests/creator_flow.spec.js` | Creator flow: Create KB → ingest file → query → create assistant |
+| `tests/assistant_sharing_flow.spec.js` | **NEW** Assistant sharing: Create users/org → share assistant → verify access |
+
+See `tests/ASSISTANT_SHARING_FLOW.md` for detailed test documentation.
 
 Run with:
 
