@@ -9,7 +9,8 @@ test.describe.serial("Admin flow (create user + create org)", () => {
   const orgName = `PW Org ${timestamp}`;
 
   test("Create user as admin", async ({ page }) => {
-    await page.goto("org-admin?view=users");
+    // Use system admin view (not org-admin)
+    await page.goto("admin?view=users");
     await page.waitForLoadState("networkidle");
 
     // Click "Create User" button
@@ -24,6 +25,12 @@ test.describe.serial("Admin flow (create user + create org)", () => {
       timeout: 5_000,
     });
 
+    // Wait for organization dropdown to finish loading (important for remote sites)
+    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    await expect(orgSelect).toBeVisible({ timeout: 10_000 });
+    // Wait until "Loading" text disappears
+    await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
+
     // Fill in user details
     await page.getByRole("textbox", { name: /email\s*\*/i }).fill(userEmail);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(userName);
@@ -31,20 +38,9 @@ test.describe.serial("Admin flow (create user + create org)", () => {
       .getByRole("textbox", { name: /password\s*\*/i })
       .fill(userPassword);
 
-    // Select User Type: Creator (use the value, not the label)
-    const userTypeSelect = page
-      .locator("select")
-      .filter({ hasText: "Creator (Can create assistants)" });
+    // Select User Type: Creator
+    const userTypeSelect = page.getByRole("combobox", { name: /user type/i });
     await userTypeSelect.selectOption("creator");
-
-    // Ensure "User enabled" checkbox is checked
-    const userEnabledCheckbox = page.getByRole("checkbox", {
-      name: /user enabled/i,
-    });
-    const isChecked = await userEnabledCheckbox.isChecked();
-    if (!isChecked) {
-      await userEnabledCheckbox.check();
-    }
 
     // Submit the form
     const submitButton = page
@@ -55,11 +51,16 @@ test.describe.serial("Admin flow (create user + create org)", () => {
 
     // Wait for success message
     await expect(page.getByText(/user created successfully/i)).toBeVisible({
-      timeout: 10_000,
+      timeout: 15_000,
     });
 
-    // Verify user appears in the list
-    await expect(page.getByText(userEmail)).toBeVisible({ timeout: 5_000 });
+    // Verify user appears in the list (may need to search)
+    const searchBox = page.locator('input[placeholder*="Search" i]');
+    if (await searchBox.count()) {
+      await searchBox.fill(userEmail);
+      await page.waitForTimeout(500);
+    }
+    await expect(page.getByText(userEmail)).toBeVisible({ timeout: 10_000 });
     console.log(`User "${userName}" (${userEmail}) successfully created.`);
   });
 
@@ -85,13 +86,26 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     await page.getByRole("textbox", { name: /slug\s*\*/i }).fill(orgSlug);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(orgName);
 
-    // Select the admin user we just created
-    const adminSelect = page.getByLabel(/organization admin\s*\*/i);
-    await expect(adminSelect).toBeVisible({ timeout: 5_000 });
-
-    // Find and select the option that contains our user email (by text matching)
-    // The option text format is: "username (email) - role"
-    const userOptionText = `${userName} (${userEmail})`;
+    // Wait for admin dropdown to load
+    const adminSelect = page.getByRole("combobox", { name: /organization admin\s*\*/i });
+    await expect(adminSelect).toBeVisible({ timeout: 10_000 });
+    
+    // Wait for options to load (more than just the placeholder)
+    await page.waitForFunction(
+      () => {
+        const selects = document.querySelectorAll('select');
+        for (const select of selects) {
+          if (select.options && select.options.length > 1) {
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 15_000 }
+    ).catch(() => {
+      // Fallback: just wait a bit
+      return page.waitForTimeout(3000);
+    });
 
     // Get all options and find the one containing our user
     const options = await adminSelect.locator("option").all();
@@ -109,11 +123,13 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     }
 
     if (!foundOption) {
-      throw new Error(`Could not find option for user: ${userEmail}`);
+      // List available options for debugging
+      const availableOptions = [];
+      for (const option of options) {
+        availableOptions.push(await option.textContent());
+      }
+      throw new Error(`Could not find option for user: ${userEmail}. Available: ${availableOptions.join(', ')}`);
     }
-
-    // Optional: Toggle MCP Enabled if needed (depends on your requirements)
-    // await page.getByRole('checkbox', { name: /mcp enabled/i }).click();
 
     // Submit the form
     const submitButton = page
@@ -125,10 +141,10 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     // Wait for success message
     await expect(
       page.getByText(/organization created successfully/i)
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 15_000 });
 
     // Verify organization appears in the list
-    await expect(page.getByText(orgSlug)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(orgSlug)).toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${orgName}" (${orgSlug}) successfully created.`);
   });
 

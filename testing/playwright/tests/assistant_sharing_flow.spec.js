@@ -39,6 +39,11 @@ test.describe.serial("Assistant Sharing Flow", () => {
       page.getByRole("textbox", { name: /email\s*\*/i })
     ).toBeVisible({ timeout: 5_000 });
 
+    // Wait for organization dropdown to finish loading (important for remote sites)
+    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    await expect(orgSelect).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
+
     // Fill in user details
     await page.getByRole("textbox", { name: /email\s*\*/i }).fill(testUser1Email);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(testUser1Name);
@@ -59,11 +64,16 @@ test.describe.serial("Assistant Sharing Flow", () => {
 
     // Wait for success message
     await expect(page.getByText(/user created successfully/i)).toBeVisible({
-      timeout: 10_000,
+      timeout: 15_000,
     });
 
-    // Verify user appears in the list
-    await expect(page.getByText(testUser1Email)).toBeVisible({ timeout: 5_000 });
+    // Verify user appears in the list (may need to search)
+    const searchBox = page.locator('input[placeholder*="Search" i]');
+    if (await searchBox.count()) {
+      await searchBox.fill(testUser1Email);
+      await page.waitForTimeout(500);
+    }
+    await expect(page.getByText(testUser1Email)).toBeVisible({ timeout: 10_000 });
     console.log(`User "${testUser1Name}" (${testUser1Email}) successfully created.`);
   });
 
@@ -85,9 +95,22 @@ test.describe.serial("Assistant Sharing Flow", () => {
     await page.getByRole("textbox", { name: /slug\s*\*/i }).fill(orgSlug);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(orgName);
 
-    // Select the admin user we just created
+    // Wait for admin dropdown to load
     const adminSelect = page.getByRole("combobox", { name: /organization admin\s*\*/i });
-    await expect(adminSelect).toBeVisible({ timeout: 5_000 });
+    await expect(adminSelect).toBeVisible({ timeout: 10_000 });
+    
+    // Wait for options to load (more than just the placeholder)
+    await page.waitForFunction(
+      (selector) => {
+        const select = document.querySelector(selector);
+        return select && select.options && select.options.length > 1;
+      },
+      'select[name*="admin"], [aria-label*="Organization Admin"]',
+      { timeout: 15_000 }
+    ).catch(() => {
+      // Fallback: just wait a bit
+      return page.waitForTimeout(3000);
+    });
 
     // Find and select the option that contains our user email
     const options = await adminSelect.locator("option").all();
@@ -105,7 +128,12 @@ test.describe.serial("Assistant Sharing Flow", () => {
     }
 
     if (!foundOption) {
-      throw new Error(`Could not find option for user: ${testUser1Email}`);
+      // List available options for debugging
+      const availableOptions = [];
+      for (const option of options) {
+        availableOptions.push(await option.textContent());
+      }
+      throw new Error(`Could not find option for user: ${testUser1Email}. Available: ${availableOptions.join(', ')}`);
     }
 
     // Submit the form
@@ -118,10 +146,10 @@ test.describe.serial("Assistant Sharing Flow", () => {
     // Wait for success message
     await expect(
       page.getByText(/organization created successfully/i)
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 15_000 });
 
     // Verify organization appears in the list
-    await expect(page.getByText(orgSlug)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(orgSlug)).toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${orgName}" (${orgSlug}) successfully created.`);
   });
 
@@ -139,6 +167,11 @@ test.describe.serial("Assistant Sharing Flow", () => {
       page.getByRole("textbox", { name: /email\s*\*/i })
     ).toBeVisible({ timeout: 5_000 });
 
+    // Wait for organization dropdown to finish loading (important for remote sites)
+    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    await expect(orgSelect).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
+
     // Fill in user details
     await page.getByRole("textbox", { name: /email\s*\*/i }).fill(testUser2Email);
     await page.getByRole("textbox", { name: /name\s*\*/i }).fill(testUser2Name);
@@ -148,11 +181,7 @@ test.describe.serial("Assistant Sharing Flow", () => {
     const userTypeSelect = page.getByRole("combobox", { name: /user type/i });
     await userTypeSelect.selectOption("creator");
 
-    // Select the organization we created
-    const orgSelect = page.getByRole("combobox", { name: /organization/i });
-    await expect(orgSelect).toBeVisible({ timeout: 5_000 });
-    
-    // Find and select the option that contains our org name
+    // Find and select the organization we created
     const options = await orgSelect.locator("option").all();
     let foundOption = false;
     for (const option of options) {
@@ -180,11 +209,16 @@ test.describe.serial("Assistant Sharing Flow", () => {
 
     // Wait for success message
     await expect(page.getByText(/user created successfully/i)).toBeVisible({
-      timeout: 10_000,
+      timeout: 15_000,
     });
 
-    // Verify user appears in the list
-    await expect(page.getByText(testUser2Email)).toBeVisible({ timeout: 5_000 });
+    // Verify user appears in the list (may need to search)
+    const searchBox = page.locator('input[placeholder*="Search" i]');
+    if (await searchBox.count()) {
+      await searchBox.fill(testUser2Email);
+      await page.waitForTimeout(500);
+    }
+    await expect(page.getByText(testUser2Email)).toBeVisible({ timeout: 10_000 });
     console.log(`User "${testUser2Name}" (${testUser2Email}) successfully created.`);
   });
 
