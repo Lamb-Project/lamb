@@ -69,11 +69,10 @@ jobs:
               echo "Playwright report deployed at: https://${{ secrets.SERVER_HOST }}/playwright/html/latest/index.html"
               echo "Archive: https://${{ secrets.SERVER_HOST }}/playwright/html/$TIMESTAMP/index.html"
 
-              # Cleanup old archives older than 30 minutes (TEST MODE: listing only)
+              # Cleanup old archives older than 7 days
               if [ -d "$DEST_ROOT" ]; then
-                echo "Cleaning up Playwright reports in $DEST_ROOT older than 30 minutes (TEST MODE: listing candidates, no deletion)..."
-                # List directories older than 30 minutes; don't delete yet
-                find "$DEST_ROOT" -maxdepth 1 -mindepth 1 -type d -name '2*' -mmin +30 -print -exec echo "Would remove:" {} \;
+                echo "Cleaning up Playwright reports in $DEST_ROOT older than 7 days..."
+                find "$DEST_ROOT" -maxdepth 1 -mindepth 1 -type d -name '2*' -mtime +7 -print -exec rm -rf {} \;
               fi
             else
               echo "Playwright report not found in $REPORT_SRC"
