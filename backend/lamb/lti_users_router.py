@@ -184,6 +184,8 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
                     detail="No published assistant found for this oauth_consumer_name"
                 )
 
+            logger.info(f"published assistant {published_assistant}")
+
             # Create new LTI user
             lti_user = LTIUser(
                 assistant_id=str(published_assistant['assistant_id']),
@@ -220,10 +222,16 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
 
             # Add user to OWI group
 
-            group_name = published_assistant['group_id']
-            group_id = owi_group_manager.get_group_by_name(group_name)['id']
+            group_name = published_assistant.get('group_id')
+            group_obj = owi_group_manager.get_group_by_name(group_name)
+            if not group_obj:
+                logger.error(f"Group not found in OWI for group name: {group_name}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to find group '{group_name}' in OWI")
 
+            group_id = group_obj.get('id')
             if not group_id:
+                logger.error(f"Group found but missing id for group name: {group_name} - group_obj: {group_obj}")
                 raise HTTPException(
                     status_code=500, detail="Failed to get group id")
 
