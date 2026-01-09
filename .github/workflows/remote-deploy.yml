@@ -31,3 +31,33 @@ jobs:
             set -e
             cd /opt/lamb-test
             git pull
+            cd testing/playwright
+
+            # Run tests but keep the exit code so we can always collect the HTML report
+            set +e
+            FORCE_RELOGIN=true npm test
+            TEST_EXIT_CODE=$?
+            set -e
+
+            REPORT_SRC=playwright-report
+            DEST_ROOT=/var/www/playwright/html
+
+            if [ -d "$REPORT_SRC" ]; then
+              TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+              DEST="$DEST_ROOT/$TIMESTAMP"
+
+              # Try creating and copying without sudo first, fall back to sudo if needed
+              mkdir -p "$DEST" || sudo mkdir -p "$DEST"
+              cp -r "$REPORT_SRC"/* "$DEST"/ || sudo cp -r "$REPORT_SRC"/* "$DEST"/
+
+              # Update 'latest' symlink (atomic)
+              ln -sfn "$DEST" "$DEST_ROOT/latest" || sudo ln -sfn "$DEST" "$DEST_ROOT/latest"
+
+              echo "Playwright report deployed at: https://${{ secrets.SERVER_HOST }}/playwright/html/latest/index.html"
+              echo "Archive: https://${{ secrets.SERVER_HOST }}/playwright/html/$TIMESTAMP/index.html"
+            else
+              echo "Playwright report not found in $REPORT_SRC"
+            fi
+
+            # Fail the job if tests failed
+            exit $TEST_EXIT_CODE
