@@ -55,10 +55,9 @@ test.describe.serial("Assistant Sharing Flow", () => {
 
     // Leave organization as default (system org) - don't select any org
 
-    // Submit the form
-    const submitButton = page
-      .locator("form")
-      .getByRole("button", { name: /create user/i });
+    // Submit the form (note: form uses div, not <form> element)
+    const formContainer = page.locator('text=Create New User').locator('..');
+    const submitButton = formContainer.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -136,10 +135,9 @@ test.describe.serial("Assistant Sharing Flow", () => {
       throw new Error(`Could not find option for user: ${testUser1Email}. Available: ${availableOptions.join(', ')}`);
     }
 
-    // Submit the form
-    const submitButton = page
-      .locator("form")
-      .getByRole("button", { name: /create organization/i });
+    // Submit the form (note: form uses div, not <form> element)
+    const formContainer = page.locator('text=Create New Organization').locator('..');
+    const submitButton = formContainer.getByRole("button", { name: /^create organization$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -200,10 +198,9 @@ test.describe.serial("Assistant Sharing Flow", () => {
       throw new Error(`Could not find organization option: ${orgName}`);
     }
 
-    // Submit the form
-    const submitButton = page
-      .locator("form")
-      .getByRole("button", { name: /create user/i });
+    // Submit the form (note: form uses div, not <form> element)
+    const formContainer = page.locator('text=Create New User').locator('..');
+    const submitButton = formContainer.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 

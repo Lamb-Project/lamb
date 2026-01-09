@@ -42,10 +42,10 @@ test.describe.serial("Admin flow (create user + create org)", () => {
     const userTypeSelect = page.getByRole("combobox", { name: /user type/i });
     await userTypeSelect.selectOption("creator");
 
-    // Submit the form
-    const submitButton = page
-      .locator("form")
-      .getByRole("button", { name: /create user/i });
+    // Submit the form (note: form uses div, not <form> element)
+    // Find the submit button in the Create New User dialog (not the header button)
+    const formContainer = page.locator('text=Create New User').locator('..');
+    const submitButton = formContainer.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -131,10 +131,10 @@ test.describe.serial("Admin flow (create user + create org)", () => {
       throw new Error(`Could not find option for user: ${userEmail}. Available: ${availableOptions.join(', ')}`);
     }
 
-    // Submit the form
-    const submitButton = page
-      .locator("form")
-      .getByRole("button", { name: /create organization/i });
+    // Submit the form (note: form uses div, not <form> element)
+    // Find the submit button in the Create Organization dialog (not the header button)
+    const formContainer = page.locator('text=Create New Organization').locator('..');
+    const submitButton = formContainer.getByRole("button", { name: /^create organization$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
