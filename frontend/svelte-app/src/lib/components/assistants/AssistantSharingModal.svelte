@@ -63,15 +63,15 @@
 				fetchOrganizationUsers()
 			]);
 
-			// Split org users into shared and available
-			const sharedUserIds = new Set(currentShares.map(s => s.user_id));
+			// Split org users into shared and available (using email as identifier)
+			const sharedUserEmails = new Set(currentShares.map(s => s.user_email));
 			
 			sharedUsers = orgUsers
-				.filter(u => sharedUserIds.has(u.id))
+				.filter(u => sharedUserEmails.has(u.email))
 				.sort((a, b) => a.name.localeCompare(b.name));
 			
 			availableUsers = orgUsers
-				.filter(u => !sharedUserIds.has(u.id))
+				.filter(u => !sharedUserEmails.has(u.email))
 				.sort((a, b) => a.name.localeCompare(b.name));
 
 		} catch (error) {
@@ -119,22 +119,22 @@
 		return response.json();
 	}
 
-	// Move selected available users to shared
+	// Move selected available users to shared (using email as identifier)
 	function moveToShared() {
 		if (selectedAvailable.length === 0) return;
 		
-		const toMove = availableUsers.filter(u => selectedAvailable.includes(u.id));
-		availableUsers = availableUsers.filter(u => !selectedAvailable.includes(u.id));
+		const toMove = availableUsers.filter(u => selectedAvailable.includes(u.email));
+		availableUsers = availableUsers.filter(u => !selectedAvailable.includes(u.email));
 		sharedUsers = [...sharedUsers, ...toMove].sort((a, b) => a.name.localeCompare(b.name));
 		selectedAvailable = [];
 	}
 
-	// Move selected shared users to available
+	// Move selected shared users to available (using email as identifier)
 	function moveToAvailable() {
 		if (selectedShared.length === 0) return;
 		
-		const toMove = sharedUsers.filter(u => selectedShared.includes(u.id));
-		sharedUsers = sharedUsers.filter(u => !selectedShared.includes(u.id));
+		const toMove = sharedUsers.filter(u => selectedShared.includes(u.email));
+		sharedUsers = sharedUsers.filter(u => !selectedShared.includes(u.email));
 		availableUsers = [...availableUsers, ...toMove].sort((a, b) => a.name.localeCompare(b.name));
 		selectedShared = [];
 	}
@@ -160,7 +160,7 @@
 		successMessage = '';
 
 		try {
-			const userIds = sharedUsers.map(u => u.id);
+			const userEmails = sharedUsers.map(u => u.email);
 			
 			const response = await fetch(
 				getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${assistant.id}`),
@@ -170,7 +170,7 @@
 						'Authorization': `Bearer ${token}`,
 						'Content-Type': 'application/json'
 					},
-					body: JSON.stringify({ user_ids: userIds })
+					body: JSON.stringify({ user_emails: userEmails })
 				}
 			);
 
@@ -194,21 +194,21 @@
 		}
 	}
 
-	// Toggle checkbox selection
-	function toggleShared(userId) {
-		if (selectedShared.includes(userId)) {
-			selectedShared = selectedShared.filter(id => id !== userId);
+	// Toggle checkbox selection (using email as identifier)
+	function toggleShared(userEmail) {
+		if (selectedShared.includes(userEmail)) {
+			selectedShared = selectedShared.filter(email => email !== userEmail);
 		} else {
-			selectedShared = [...selectedShared, userId];
+			selectedShared = [...selectedShared, userEmail];
 		}
 		console.log('Selected shared users:', selectedShared);
 	}
 
-	function toggleAvailable(userId) {
-		if (selectedAvailable.includes(userId)) {
-			selectedAvailable = selectedAvailable.filter(id => id !== userId);
+	function toggleAvailable(userEmail) {
+		if (selectedAvailable.includes(userEmail)) {
+			selectedAvailable = selectedAvailable.filter(email => email !== userEmail);
 		} else {
-			selectedAvailable = [...selectedAvailable, userId];
+			selectedAvailable = [...selectedAvailable, userEmail];
 		}
 		console.log('Selected available users:', selectedAvailable);
 	}
@@ -251,12 +251,12 @@
 						class="search-input"
 					/>
 					<div class="user-list">
-						{#each filteredShared as user (user.id)}
+						{#each filteredShared as user (user.email)}
 							<label class="user-item">
 								<input
 									type="checkbox"
-									checked={selectedShared.includes(user.id)}
-									onchange={() => toggleShared(user.id)}
+									checked={selectedShared.includes(user.email)}
+									onchange={() => toggleShared(user.email)}
 								/>
 								<div class="user-info">
 									<div class="user-name">{user.name}</div>
@@ -313,12 +313,12 @@
 						class="search-input"
 					/>
 					<div class="user-list">
-						{#each filteredAvailable as user (user.id)}
+						{#each filteredAvailable as user (user.email)}
 							<label class="user-item">
 								<input
 									type="checkbox"
-									checked={selectedAvailable.includes(user.id)}
-									onchange={() => toggleAvailable(user.id)}
+									checked={selectedAvailable.includes(user.email)}
+									onchange={() => toggleAvailable(user.email)}
 								/>
 								<div class="user-info">
 									<div class="user-name">{user.name}</div>

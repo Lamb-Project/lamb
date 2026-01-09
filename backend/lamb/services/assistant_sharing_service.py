@@ -200,6 +200,70 @@ class AssistantSharingService:
         # Return updated shares list
         return self.get_assistant_shares(assistant_id)
 
+    def update_assistant_shares_by_email(
+        self, 
+        assistant_id: int, 
+        user_emails: List[str], 
+        current_user_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Update the complete share list for an assistant using user emails.
+        Backend calculates additions and removals, then syncs to OWI group.
+        Accepts the desired final state of shared user emails.
+        """
+        # Check if assistant exists
+        assistant = self.db_manager.get_assistant_by_id(assistant_id)
+        if not assistant:
+            raise ValueError("Assistant not found")
+
+        # Resolve emails to user IDs
+        user_ids = []
+        not_found_emails = []
+        for email in user_emails:
+            user = self.db_manager.get_creator_user_by_email(email)
+            if user:
+                user_ids.append(user['id'])
+            else:
+                not_found_emails.append(email)
+        
+        if not_found_emails:
+            logger.warning(f"Users not found for emails: {not_found_emails}")
+
+        # Get current shares
+        current_shares = self.db_manager.get_assistant_shares(assistant_id)
+        current_user_ids = {share['shared_with_user_id'] for share in current_shares}
+
+        # Calculate diff
+        desired_user_ids = set(user_ids)
+        to_add = desired_user_ids - current_user_ids
+        to_remove = current_user_ids - desired_user_ids
+
+        # Apply changes
+        added = 0
+        removed = 0
+
+        for uid in to_add:
+            try:
+                self.db_manager.share_assistant(assistant_id, uid, current_user_id)
+                added += 1
+            except Exception as e:
+                logger.error(f"Error sharing assistant {assistant_id} with user {uid}: {e}")
+
+        for uid in to_remove:
+            try:
+                self.db_manager.unshare_assistant(assistant_id, uid)
+                removed += 1
+            except Exception as e:
+                logger.error(f"Error unsharing assistant {assistant_id} from user {uid}: {e}")
+
+        # Sync to OWI group once (single atomic operation)
+        self._sync_assistant_to_owi_group(assistant_id)
+
+        logger.info(f"Updated shares for assistant {assistant_id}: +{added}, -{removed}")
+
+        # Return updated shares list
+        return self.get_assistant_shares(assistant_id)
+
     def get_shared_assistants(self, user_id: int) -> List[Dict[str, Any]]:
         """
         Get list of assistants shared with current user

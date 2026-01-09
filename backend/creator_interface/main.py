@@ -15,9 +15,10 @@ import os
 from fastapi.staticfiles import StaticFiles
 import httpx
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List
 from .user_creator import UserCreatorManager
 from .assistant_router import is_admin_user
+from .organization_router import is_organization_admin
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
 from .assistant_router import router as assistant_router, get_creator_user_from_token
@@ -278,6 +279,33 @@ class NewsResponse(BaseModel):
     success: bool = True
     content: str
     lang: str
+
+
+# Assistant Sharing Models
+class UpdateSharesRequest(BaseModel):
+    """Request body for updating assistant shares"""
+    user_emails: List[str]
+
+
+class ShareUserResponse(BaseModel):
+    """Response model for a shared user"""
+    user_email: str
+    user_name: str
+    shared_at: int
+    shared_by_name: str
+
+
+class OrganizationUserResponse(BaseModel):
+    """Response model for organization user in sharing UI"""
+    email: str
+    name: str
+    user_type: str
+
+
+class SharingPermissionResponse(BaseModel):
+    """Response model for sharing permission check"""
+    can_share: bool
+    message: str = ""
 
 # --- End Pydantic Models ---
 
@@ -2298,6 +2326,361 @@ async def get_shared_assistants(request: Request):
         raise he
     except Exception as e:
         logger.error(f"Error getting shared assistants: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/lamb/assistant-sharing/check-permission",
+    tags=["Assistant Sharing"],
+    summary="Check Sharing Permission",
+    description="""Check if the current user has permission to share assistants.
+
+Sharing requires BOTH:
+1. Organization has sharing_enabled = true (org-level setting)
+2. User has can_share = true in their config (user-level setting, defaults to true)
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/lamb/assistant-sharing/check-permission' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Response (can share):
+```json
+{
+  "can_share": true,
+  "message": "User has sharing permission"
+}
+```
+
+Example Response (cannot share):
+```json
+{
+  "can_share": false,
+  "message": "Sharing is disabled for your organization"
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    response_model=SharingPermissionResponse,
+    responses={
+        401: {"description": "Invalid authentication"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def check_sharing_permission_endpoint(request: Request):
+    """Check if sharing is enabled for current user's organization"""
+    try:
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            logger.error("Unauthorized attempt to check sharing permission")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+
+        user_id = creator_user.get('id')
+        user_email = creator_user.get('email')
+        logger.info(f"User {user_email} checking sharing permission")
+
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+
+        can_share = sharing_service.check_sharing_permission(user_id)
+
+        message = "User has sharing permission" if can_share else "Sharing is disabled for your organization or user"
+        logger.info(f"User {user_email} sharing permission: {can_share}")
+
+        return SharingPermissionResponse(can_share=can_share, message=message)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error checking sharing permission: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/lamb/assistant-sharing/organization-users",
+    tags=["Assistant Sharing"],
+    summary="Get Organization Users for Sharing",
+    description="""Get list of users in the current user's organization for the sharing UI.
+Returns users excluding the current user, sorted alphabetically by name.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/lamb/assistant-sharing/organization-users' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Response:
+```json
+[
+  {"email": "jane@example.com", "name": "Jane Smith", "user_type": "creator"},
+  {"email": "bob@example.com", "name": "Bob Wilson", "user_type": "creator"}
+]
+```
+    """,
+    dependencies=[Depends(security)],
+    response_model=List[OrganizationUserResponse],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "Sharing not enabled for organization"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_organization_users_endpoint(request: Request):
+    """Get list of users in current user's organization for sharing UI"""
+    try:
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            logger.error("Unauthorized attempt to get organization users")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+
+        user_id = creator_user.get('id')
+        user_email = creator_user.get('email')
+        logger.info(f"User {user_email} requesting organization users for sharing")
+
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+
+        # Check if sharing is enabled
+        if not sharing_service.check_sharing_permission(user_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Sharing is not enabled for your organization"
+            )
+
+        users = sharing_service.get_organization_users(user_id)
+        logger.info(f"Found {len(users)} organization users for sharing UI")
+
+        return users
+
+    except HTTPException as he:
+        raise he
+    except ValueError as e:
+        logger.error(f"Error getting organization users: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting organization users: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/lamb/assistant-sharing/shares/{assistant_id}",
+    tags=["Assistant Sharing"],
+    summary="Get Assistant Shares",
+    description="""Get list of users an assistant is shared with.
+Only the assistant owner or organization admin can view this information.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/lamb/assistant-sharing/shares/123' \\
+-H 'Authorization: Bearer <user_token>'
+```
+
+Example Response:
+```json
+[
+  {
+    "user_email": "jane@example.com",
+    "user_name": "Jane Smith",
+    "shared_at": 1730908800,
+    "shared_by_name": "John Doe"
+  }
+]
+```
+    """,
+    dependencies=[Depends(security)],
+    response_model=List[ShareUserResponse],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "Only owner or org admin can view shares"},
+        404: {"description": "Assistant not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_assistant_shares_endpoint(request: Request, assistant_id: int):
+    """Get list of users an assistant is shared with"""
+    try:
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            logger.error("Unauthorized attempt to get assistant shares")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+
+        user_id = creator_user.get('id')
+        user_email = creator_user.get('email')
+        logger.info(f"User {user_email} requesting shares for assistant {assistant_id}")
+
+        # Get assistant to check ownership
+        assistant = db_manager.get_assistant_by_id(assistant_id)
+        if not assistant:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Check authorization: owner or org admin
+        is_owner = assistant.owner == user_email
+        auth_header = request.headers.get("Authorization")
+        is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
+
+        if not is_owner and not is_org_admin:
+            logger.warning(f"User {user_email} denied access to shares for assistant {assistant_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="Only the assistant owner or organization admin can view sharing settings"
+            )
+
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+
+        shares = sharing_service.get_assistant_shares(assistant_id)
+        logger.info(f"Found {len(shares)} shares for assistant {assistant_id}")
+
+        return shares
+
+    except HTTPException as he:
+        raise he
+    except ValueError as e:
+        logger.error(f"Error getting assistant shares: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting assistant shares: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.put(
+    "/lamb/assistant-sharing/shares/{assistant_id}",
+    tags=["Assistant Sharing"],
+    summary="Update Assistant Shares",
+    description="""Update the list of users an assistant is shared with.
+Accepts the desired final state of shared user emails. The backend calculates
+additions and removals, then syncs to OWI groups.
+
+Only the assistant owner or organization admin can update shares.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:9099/creator/lamb/assistant-sharing/shares/123' \\
+-H 'Authorization: Bearer <user_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"user_emails": ["jane@example.com", "bob@example.com"]}'
+```
+
+Example Response:
+```json
+[
+  {
+    "user_email": "jane@example.com",
+    "user_name": "Jane Smith",
+    "shared_at": 1730908800,
+    "shared_by_name": "John Doe"
+  },
+  {
+    "user_email": "bob@example.com",
+    "user_name": "Bob Wilson",
+    "shared_at": 1730908900,
+    "shared_by_name": "John Doe"
+  }
+]
+```
+    """,
+    dependencies=[Depends(security)],
+    response_model=List[ShareUserResponse],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "Only owner or org admin can manage shares / Sharing not enabled"},
+        404: {"description": "Assistant not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def update_assistant_shares_endpoint(
+    request: Request, 
+    assistant_id: int, 
+    shares_request: UpdateSharesRequest
+):
+    """Update the list of users an assistant is shared with"""
+    try:
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            logger.error("Unauthorized attempt to update assistant shares")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+
+        user_id = creator_user.get('id')
+        user_email = creator_user.get('email')
+        logger.info(f"User {user_email} updating shares for assistant {assistant_id}")
+
+        # Get assistant to check ownership
+        assistant = db_manager.get_assistant_by_id(assistant_id)
+        if not assistant:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Check authorization: owner or org admin
+        is_owner = assistant.owner == user_email
+        auth_header = request.headers.get("Authorization")
+        is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
+
+        if not is_owner and not is_org_admin:
+            logger.warning(f"User {user_email} denied update shares for assistant {assistant_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="Only the assistant owner or organization admin can manage sharing"
+            )
+
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+
+        # Check if sharing is enabled (when adding shares)
+        if len(shares_request.user_emails) > 0 and not sharing_service.check_sharing_permission(user_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Sharing is not enabled for your organization"
+            )
+
+        # Update shares using emails
+        updated_shares = sharing_service.update_assistant_shares_by_email(
+            assistant_id=assistant_id,
+            user_emails=shares_request.user_emails,
+            current_user_id=user_id
+        )
+
+        logger.info(f"Updated shares for assistant {assistant_id}: now shared with {len(updated_shares)} users")
+
+        return updated_shares
+
+    except HTTPException as he:
+        raise he
+    except ValueError as e:
+        logger.error(f"Error updating assistant shares: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        logger.error(f"Permission error updating assistant shares: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating assistant shares: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
