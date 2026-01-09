@@ -33,6 +33,19 @@ jobs:
             git pull
             cd testing/playwright
 
+            # Ensure nvm (and node/npm installed via nvm) is loaded for non-interactive SSH sessions
+            export NVM_DIR="$HOME/.nvm"
+            if [ -s "$NVM_DIR/nvm.sh" ]; then
+              . "$NVM_DIR/nvm.sh"
+            fi
+
+            # Diagnostics to help debug missing npm in CI
+            echo "Remote user: $(whoami)"
+            echo "Remote HOME: $HOME"
+            echo "Remote PATH: $PATH"
+            command -v npm && echo "npm found at: $(command -v npm)" || echo "npm not found"
+            command -v node && echo "node found at: $(command -v node)" || echo "node not found"
+
             # Run tests but keep the exit code so we can always collect the HTML report
             set +e
             FORCE_RELOGIN=true npm test
