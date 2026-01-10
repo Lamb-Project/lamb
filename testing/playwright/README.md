@@ -8,9 +8,12 @@ Automated browser tests for the LAMB platform.
 
 | Test File | Description |
 |-----------|-------------|
-| `tests/admin_flow.spec.js` | Admin operations: Create user, create org, disable user, delete org |
+| `tests/admin_and_sharing_flow.spec.js` | Combined admin & sharing flow: user/org CRUD + assistant sharing |
 | `tests/creator_flow.spec.js` | Creator flow: Create KB → ingest file → query → create assistant |
-| `tests/assistant_sharing_flow.spec.js` | **NEW** Assistant sharing: Create users/org → share assistant → verify access |
+
+The `admin_and_sharing_flow.spec.js` includes 14 tests covering:
+- **Part 1 (Admin)**: Create user, create org, disable user, delete org
+- **Part 2 (Sharing)**: Create users/org, create assistant, share, verify access, cleanup
 
 See `tests/ASSISTANT_SHARING_FLOW.md` for detailed test documentation.
 

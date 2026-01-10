@@ -506,18 +506,28 @@
 
     // --- Form Handling ---
     /**
-     * @param {Event} e - The form submission event
+     * @param {SubmitEvent} e - The form submission event
      */
     async function handleCreateUser(e) {
         e.preventDefault();
         
+        // Read values directly from DOM via FormData (more reliable with automated testing)
+        const form = /** @type {HTMLFormElement} */ (e.target);
+        const formDataObj = new FormData(form);
+        const email = /** @type {string} */ (formDataObj.get('email') || '').toString().trim();
+        const name = /** @type {string} */ (formDataObj.get('name') || '').toString().trim();
+        const password = /** @type {string} */ (formDataObj.get('password') || '').toString();
+        const role = /** @type {string} */ (formDataObj.get('role') || 'user').toString();
+        const userTypeFromForm = /** @type {string} */ (formDataObj.get('user_type') || 'creator').toString();
+        const organizationId = formDataObj.get('organization_id');
+        
         // Basic form validation
-        if (!newUser.email || !newUser.name || !newUser.password) {
+        if (!email || !name || !password) {
             createUserError = localeLoaded ? $_('admin.users.errors.fillRequired', { default: 'Please fill in all required fields.' }) : 'Please fill in all required fields.';
             return;
         }
         
-        if (!newUser.email.includes('@')) {
+        if (!email.includes('@')) {
             createUserError = localeLoaded ? $_('admin.users.errors.invalidEmail', { default: 'Please enter a valid email address.' }) : 'Please enter a valid email address.';
             return;
         }
@@ -533,17 +543,17 @@
             
             // Construct form data in URL-encoded format
             const formData = new URLSearchParams();
-            formData.append('email', newUser.email);
-            formData.append('name', newUser.name);
-            formData.append('password', newUser.password);
-            formData.append('role', newUser.role);
+            formData.append('email', email);
+            formData.append('name', name);
+            formData.append('password', password);
+            formData.append('role', role);
             // Ensure admin users have user_type='creator'
-            const userType = newUser.role === 'admin' ? 'creator' : newUser.user_type;
+            const userType = role === 'admin' ? 'creator' : userTypeFromForm;
             formData.append('user_type', userType);
             
             // Add organization_id if selected
-            if (newUser.organization_id) {
-                formData.append('organization_id', String(newUser.organization_id));
+            if (organizationId && organizationId !== 'null' && organizationId !== '') {
+                formData.append('organization_id', String(organizationId));
             }
             
             const apiUrl = getApiUrl('/admin/users/create');
@@ -669,37 +679,47 @@
 
     /**
      * Handle organization creation form submission
-     * @param {Event} e - The form submission event
+     * @param {SubmitEvent} e - The form submission event
      */
     async function handleCreateOrganization(e) {
         e.preventDefault();
         
+        // Read values directly from DOM via FormData (more reliable with automated testing)
+        const form = /** @type {HTMLFormElement} */ (e.target);
+        const formDataObj = new FormData(form);
+        const slug = /** @type {string} */ (formDataObj.get('org_slug') || '').toString().trim();
+        const name = /** @type {string} */ (formDataObj.get('org_name') || '').toString().trim();
+        const adminUserId = /** @type {string} */ (formDataObj.get('admin_user_id') || '').toString();
+        const signupEnabled = formDataObj.get('signup_enabled') === 'on';
+        const signupKey = /** @type {string} */ (formDataObj.get('signup_key') || '').toString();
+        const useSystemBaseline = formDataObj.get('use_system_baseline') === 'on';
+        
         // Basic form validation
-        if (!newOrg.slug || !newOrg.name) {
+        if (!slug || !name) {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.fillRequired', { default: 'Please fill in all required fields.' }) : 'Please fill in all required fields.';
             return;
         }
         
         // Validate admin user selection
-        if (!newOrg.admin_user_id) {
+        if (!adminUserId || adminUserId === 'null') {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.selectAdmin', { default: 'Please select an admin user for the organization.' }) : 'Please select an admin user for the organization.';
             return;
         }
         
         // Validate slug format (URL-friendly)
-        if (!/^[a-z0-9-]+$/.test(newOrg.slug)) {
+        if (!/^[a-z0-9-]+$/.test(slug)) {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.slugInvalid', { default: 'Slug must contain only lowercase letters, numbers, and hyphens.' }) : 'Slug must contain only lowercase letters, numbers, and hyphens.';
             return;
         }
         
         // Validate signup key if signup is enabled
-        if (newOrg.signup_enabled && (!newOrg.signup_key || newOrg.signup_key.trim().length < 8)) {
+        if (signupEnabled && (!signupKey || signupKey.trim().length < 8)) {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyLength', { default: 'Signup key must be at least 8 characters long when signup is enabled.' }) : 'Signup key must be at least 8 characters long when signup is enabled.';
             return;
         }
         
         // Validate signup key format if provided
-        if (newOrg.signup_key && !/^[a-zA-Z0-9_-]+$/.test(newOrg.signup_key)) {
+        if (signupKey && !/^[a-zA-Z0-9_-]+$/.test(signupKey)) {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyInvalid', { default: 'Signup key can only contain letters, numbers, hyphens, and underscores.' }) : 'Signup key can only contain letters, numbers, hyphens, and underscores.';
             return;
         }
@@ -719,12 +739,12 @@
             
             // Prepare the payload
             const payload = {
-                slug: newOrg.slug,
-                name: newOrg.name,
-                admin_user_id: parseInt(newOrg.admin_user_id),
-                signup_enabled: newOrg.signup_enabled,
-                signup_key: newOrg.signup_enabled ? newOrg.signup_key.trim() : null,
-                use_system_baseline: newOrg.use_system_baseline
+                slug: slug,
+                name: name,
+                admin_user_id: parseInt(adminUserId),
+                signup_enabled: signupEnabled,
+                signup_key: signupEnabled ? signupKey.trim() : null,
+                use_system_baseline: useSystemBaseline
             };
             
             console.log('Organization creation payload:', payload);
@@ -2365,6 +2385,7 @@
                             <input 
                                 type="email" 
                                 id="email" 
+                                name="email"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.email} 
                                 required 
@@ -2378,6 +2399,7 @@
                             <input 
                                 type="text" 
                                 id="name" 
+                                name="name"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.name} 
                                 required 
@@ -2391,6 +2413,7 @@
                             <input 
                                 type="password" 
                                 id="password" 
+                                name="password"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.password} 
                                 required 
@@ -2403,6 +2426,7 @@
                             </label>
                             <select 
                                 id="role" 
+                                name="role"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.role}
                                 onchange={(e) => {
@@ -2424,6 +2448,7 @@
                             </label>
                             <select 
                                 id="user_type" 
+                                name="user_type"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.user_type}
                                 disabled={newUser.role === 'admin'}
@@ -2447,6 +2472,7 @@
                             {:else}
                                 <select 
                                     id="organization" 
+                                    name="organization_id"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                     bind:value={newUser.organization_id}
                                 >
@@ -2520,6 +2546,7 @@
                                 <input 
                                     type="text" 
                                     id="org_slug" 
+                                    name="org_slug"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                     bind:value={newOrg.slug} 
                                     required 
@@ -2538,6 +2565,7 @@
                                 <input 
                                     type="text" 
                                     id="org_name" 
+                                    name="org_name"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                     bind:value={newOrg.name} 
                                     required 
@@ -2557,6 +2585,7 @@
                             {:else}
                                 <select 
                                     id="admin_user"
+                                    name="admin_user_id"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                                     bind:value={newOrg.admin_user_id}
                                     required
@@ -2580,7 +2609,7 @@
                             </label>
                             <div id="signup_config_section" class="mb-3">
                                 <label class="flex items-center">
-                                    <input type="checkbox" bind:checked={newOrg.signup_enabled} class="mr-2">
+                                    <input type="checkbox" name="signup_enabled" bind:checked={newOrg.signup_enabled} class="mr-2">
                                     <span class="text-sm">Enable organization-specific signup</span>
                                 </label>
                             </div>
@@ -2591,6 +2620,7 @@
                                     <input 
                                         type="text" 
                                         id="signup_key"
+                                        name="signup_key"
                                         class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                         bind:value={newOrg.signup_key} 
                                         required={newOrg.signup_enabled}
@@ -2609,7 +2639,7 @@
                         <!-- System Baseline Option -->
                         <div class="mb-4 text-left">
                             <label class="flex items-center">
-                                <input type="checkbox" bind:checked={newOrg.use_system_baseline} class="mr-2">
+                                <input type="checkbox" name="use_system_baseline" bind:checked={newOrg.use_system_baseline} class="mr-2">
                                 <span class="text-sm">Copy system organization configuration as baseline</span>
                             </label>
                             <p class="text-gray-500 text-xs italic mt-1">

@@ -1033,18 +1033,27 @@
     }
 
     /**
-     * @param {Event} e
+     * @param {SubmitEvent} e
      */
     async function handleCreateUser(e) {
         e.preventDefault();
 
+        // Read values directly from DOM via FormData (more reliable with automated testing)
+        const form = /** @type {HTMLFormElement} */ (e.target);
+        const formDataObj = new FormData(form);
+        const email = /** @type {string} */ (formDataObj.get('email') || '').toString().trim();
+        const name = /** @type {string} */ (formDataObj.get('name') || '').toString().trim();
+        const password = /** @type {string} */ (formDataObj.get('password') || '').toString();
+        const userType = /** @type {string} */ (formDataObj.get('user_type') || 'creator').toString();
+        const enabled = formDataObj.get('enabled') === 'on';
+
         // Basic form validation
-        if (!newUser.email || !newUser.name || !newUser.password) {
+        if (!email || !name || !password) {
             createUserError = 'Please fill in all required fields.';
             return;
         }
 
-        if (!newUser.email.includes('@')) {
+        if (!email.includes('@')) {
             createUserError = 'Please enter a valid email address.';
             return;
         }
@@ -1062,11 +1071,11 @@
             console.log(`Creating user at: ${apiUrl}`);
 
             const response = await axios.post(apiUrl, {
-                email: newUser.email,
-                name: newUser.name,
-                password: newUser.password,
-                enabled: newUser.enabled,
-                user_type: newUser.user_type
+                email: email,
+                name: name,
+                password: password,
+                enabled: enabled,
+                user_type: userType
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -3506,6 +3515,7 @@
                             <input 
                                 type="email" 
                                 id="email" 
+                                name="email"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.email} 
                                 required 
@@ -3519,6 +3529,7 @@
                             <input 
                                 type="text" 
                                 id="name" 
+                                name="name"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.name} 
                                 required 
@@ -3532,6 +3543,7 @@
                             <input 
                                 type="password" 
                                 id="password" 
+                                name="password"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.password} 
                                 required 
@@ -3544,6 +3556,7 @@
                             </label>
                             <select 
                                 id="user_type" 
+                                name="user_type"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 bind:value={newUser.user_type}
                             >
@@ -3557,6 +3570,7 @@
                                 <input 
                                     type="checkbox" 
                                     id="enabled" 
+                                    name="enabled"
                                     bind:checked={newUser.enabled}
                                     class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                 />
