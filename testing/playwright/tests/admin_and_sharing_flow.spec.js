@@ -184,13 +184,13 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     // Wait for the confirmation modal
     await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
 
-    // Click the "Disable" button in the modal
-    const confirmButton = page.getByRole("button", { name: /^disable$/i });
+    // Click the "Disable" button in the modal (scope to overlay)
+    const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
     await confirmButton.click();
 
     // Wait for modal to disappear and status to change
-    await expect(page.getByText(/confirm disable/i)).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
     await expect(userRow.getByText("Disabled")).toBeVisible({ timeout: 10_000 });
     console.log(`User "${adminTestUserEmail}" successfully disabled.`);
   });
@@ -791,9 +791,9 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       if (await disableButton.count()) {
         await disableButton.click();
         await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.getByRole("button", { name: /^disable$/i });
+        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.getByText(/confirm disable/i)).not.toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
       }
     }
 
@@ -809,9 +809,9 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       if (await disableButton.count()) {
         await disableButton.click();
         await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.getByRole("button", { name: /^disable$/i });
+        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.getByText(/confirm disable/i)).not.toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
       }
     }
 
