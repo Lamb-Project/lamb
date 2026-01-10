@@ -497,6 +497,19 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
   });
 
   test("9. Sharing: Share assistant with second user", async ({ page }) => {
+    // Login as first user (assistant owner) - each test starts with global auth state
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Logout" }).click();
+    await page.waitForSelector("#email", { timeout: 30_000 });
+    await page.fill("#email", sharingUser1Email);
+    await page.fill("#password", sharingPassword);
+    await Promise.all([
+      page.waitForLoadState("networkidle").catch(() => {}),
+      page.click('button[type="submit"], form button')
+    ]);
+    await page.waitForTimeout(2000);
+
     // Find and view the assistant
     await page.goto("assistants");
     await page.waitForLoadState("networkidle");
@@ -657,6 +670,19 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
   });
 
   test("12. Sharing: Delete test assistant", async ({ page }) => {
+    // Login as first user (assistant owner) - each test starts with global auth state
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Logout" }).click();
+    await page.waitForSelector("#email", { timeout: 30_000 });
+    await page.fill("#email", sharingUser1Email);
+    await page.fill("#password", sharingPassword);
+    await Promise.all([
+      page.waitForLoadState("networkidle").catch(() => {}),
+      page.click('button[type="submit"], form button')
+    ]);
+    await page.waitForTimeout(2000);
+
     await page.goto("assistants");
     await page.waitForLoadState("networkidle");
 
