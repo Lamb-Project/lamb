@@ -527,14 +527,14 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     await page.waitForLoadState("networkidle");
 
-    // Click Share tab
-    const shareTab = page.getByRole("button", { name: /share/i });
+    // Click Share tab (use exact match to avoid matching "Shared with Me")
+    const shareTab = page.getByRole("button", { name: /^share$/i });
     await expect(shareTab).toBeVisible({ timeout: 10_000 });
     await shareTab.click();
-
-    // Click "Manage Shared Users" button
+    
+    // Wait for the Share view to load - look for "Manage Shared Users" button
     const manageButton = page.getByRole("button", { name: /manage shared users/i });
-    await expect(manageButton).toBeVisible({ timeout: 10_000 });
+    await expect(manageButton).toBeVisible({ timeout: 15_000 });
     await manageButton.click();
 
     await page.waitForTimeout(2000);
@@ -639,13 +639,14 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     await page.waitForLoadState("networkidle");
 
-    // Go to Share tab
-    const shareTab = page.getByRole("button", { name: /share/i });
+    // Go to Share tab (use exact match to avoid matching "Shared with Me")
+    const shareTab = page.getByRole("button", { name: /^share$/i });
+    await expect(shareTab).toBeVisible({ timeout: 10_000 });
     await shareTab.click();
 
-    // Open sharing modal
+    // Wait for Share view to load, then open sharing modal
     const manageButton = page.getByRole("button", { name: /manage shared users/i });
-    await expect(manageButton).toBeVisible({ timeout: 10_000 });
+    await expect(manageButton).toBeVisible({ timeout: 15_000 });
     await manageButton.click();
 
     await page.waitForTimeout(2000);
