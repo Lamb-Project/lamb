@@ -483,15 +483,17 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     // The app navigates back to the assistants list
     await page.waitForURL(/\/assistants(\?.*)?$/, { timeout: 30_000 });
 
-    // Verify assistant was created
+    // Verify assistant was created (search by timestamp since backend transforms name)
+    // Backend adds user_id prefix and converts to lowercase with underscores
     const searchBox = page.locator('input[placeholder*="Search" i]');
     if (await searchBox.count()) {
-      await searchBox.fill(assistantName);
+      await searchBox.fill(timestamp2.toString());
       await page.waitForTimeout(500);
     }
 
-    await expect(page.getByText(assistantName).first()).toBeVisible({ timeout: 30_000 });
-    console.log(`Assistant "${assistantName}" successfully created.`);
+    // Look for the timestamp in the table (appears in transformed name)
+    await expect(page.getByText(timestamp2.toString()).first()).toBeVisible({ timeout: 30_000 });
+    console.log(`Assistant with timestamp "${timestamp2}" successfully created.`);
   });
 
   test("9. Sharing: Share assistant with second user", async ({ page }) => {
@@ -501,12 +503,12 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     const searchBox = page.locator('input[placeholder*="Search" i]');
     if (await searchBox.count()) {
-      await searchBox.fill(assistantName);
+      await searchBox.fill(timestamp2.toString());
       await page.waitForTimeout(500);
     }
 
-    // Click View button for the assistant
-    const assistantRow = page.locator(`tr:has-text("${assistantName}")`);
+    // Click View button for the assistant (search by timestamp since backend transforms name)
+    const assistantRow = page.locator(`tr:has-text("${timestamp2}")`);
     await expect(assistantRow).toBeVisible({ timeout: 10_000 });
     await assistantRow.getByRole("button", { name: /view/i }).first().click();
 
@@ -580,8 +582,9 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       { timeout: 10_000 }
     ).catch(() => null);
 
-    await expect(page.getByText(assistantName).first()).toBeVisible({ timeout: 30_000 });
-    console.log(`Shared assistant "${assistantName}" visible to ${sharingUser2Email}`);
+    // Search by timestamp since backend transforms assistant name
+    await expect(page.getByText(timestamp2.toString()).first()).toBeVisible({ timeout: 30_000 });
+    console.log(`Shared assistant with timestamp "${timestamp2}" visible to ${sharingUser2Email}`);
   });
 
   test("11. Sharing: Remove sharing and cleanup", async ({ page }) => {
@@ -612,12 +615,12 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     const searchBox = page.locator('input[placeholder*="Search" i]');
     if (await searchBox.count()) {
-      await searchBox.fill(assistantName);
+      await searchBox.fill(timestamp2.toString());
       await page.waitForTimeout(500);
     }
 
-    // View the assistant
-    const assistantRow = page.locator(`tr:has-text("${assistantName}")`);
+    // View the assistant (search by timestamp since backend transforms name)
+    const assistantRow = page.locator(`tr:has-text("${timestamp2}")`);
     await expect(assistantRow).toBeVisible({ timeout: 10_000 });
     await assistantRow.getByRole("button", { name: /view/i }).first().click();
 
@@ -659,12 +662,12 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     const searchBox = page.locator('input[placeholder*="Search" i]');
     if (await searchBox.count()) {
-      await searchBox.fill(assistantName);
+      await searchBox.fill(timestamp2.toString());
       await page.waitForTimeout(500);
     }
 
-    // Find and delete the assistant
-    const assistantRow = page.locator(`tr:has-text("${assistantName}")`);
+    // Find and delete the assistant (search by timestamp since backend transforms name)
+    const assistantRow = page.locator(`tr:has-text("${timestamp2}")`);
     await expect(assistantRow).toBeVisible({ timeout: 10_000 });
 
     const deleteButton = assistantRow.getByRole("button", { name: /delete/i }).first();
@@ -682,7 +685,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     // Wait for deletion
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(assistantRow).not.toBeVisible({ timeout: 10_000 });
-    console.log(`Assistant "${assistantName}" deleted.`);
+    console.log(`Assistant with timestamp "${timestamp2}" deleted.`);
   });
 
   test("13. Sharing: Delete test organization (as system admin)", async ({ page }) => {
