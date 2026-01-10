@@ -424,25 +424,24 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     console.log(`User "${sharingUser2Name}" (${sharingUser2Email}) successfully created.`);
   });
 
-  test("8. Sharing: Login as first user and create an assistant", async ({ page, context }) => {
-    // Clear existing auth state and re-login as the new user
-    await context.clearCookies();
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+  test("8. Sharing: Login as first user and create an assistant", async ({ page }) => {
+    // Use the app's logout feature to properly sign out
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    
+    // Click logout button
+    await page.getByRole("button", { name: "Logout" }).click();
+    
+    // Wait for login form to appear
+    await page.waitForSelector("#email", { timeout: 30_000 });
 
     // Login as the first test user
-    await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
-
-    await page.waitForSelector("#email", { timeout: 30_000 });
     await page.fill("#email", sharingUser1Email);
     await page.fill("#password", sharingPassword);
 
     await Promise.all([
       page.waitForLoadState("networkidle").catch(() => {}),
-      page.click("form > button")
+      page.click('button[type="submit"], form button')
     ]);
 
     await page.waitForTimeout(2000);
@@ -549,24 +548,24 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     console.log(`Assistant shared with ${sharingUser2Email}`);
   });
 
-  test("10. Sharing: Verify shared assistant appears for second user", async ({ page, context }) => {
-    // Clear auth and login as second user
-    await context.clearCookies();
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-
+  test("10. Sharing: Verify shared assistant appears for second user", async ({ page }) => {
+    // Use the app's logout feature to properly sign out
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
-
+    await page.waitForLoadState("networkidle");
+    
+    // Click logout button
+    await page.getByRole("button", { name: "Logout" }).click();
+    
+    // Wait for login form to appear
     await page.waitForSelector("#email", { timeout: 30_000 });
+
+    // Login as the second test user
     await page.fill("#email", sharingUser2Email);
     await page.fill("#password", sharingPassword);
 
     await Promise.all([
       page.waitForLoadState("networkidle").catch(() => {}),
-      page.click("form > button")
+      page.click('button[type="submit"], form button')
     ]);
 
     await page.waitForTimeout(2000);
@@ -585,24 +584,24 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     console.log(`Shared assistant "${assistantName}" visible to ${sharingUser2Email}`);
   });
 
-  test("11. Sharing: Remove sharing and cleanup", async ({ page, context }) => {
-    // Login back as first user (owner)
-    await context.clearCookies();
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-
+  test("11. Sharing: Remove sharing and cleanup", async ({ page }) => {
+    // Use the app's logout feature to properly sign out
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
-
+    await page.waitForLoadState("networkidle");
+    
+    // Click logout button
+    await page.getByRole("button", { name: "Logout" }).click();
+    
+    // Wait for login form to appear
     await page.waitForSelector("#email", { timeout: 30_000 });
+
+    // Login back as first user (owner)
     await page.fill("#email", sharingUser1Email);
     await page.fill("#password", sharingPassword);
 
     await Promise.all([
       page.waitForLoadState("networkidle").catch(() => {}),
-      page.click("form > button")
+      page.click('button[type="submit"], form button')
     ]);
 
     await page.waitForTimeout(2000);
@@ -686,28 +685,28 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     console.log(`Assistant "${assistantName}" deleted.`);
   });
 
-  test("13. Sharing: Delete test organization (as system admin)", async ({ page, context }) => {
-    // Re-login as system admin
-    await context.clearCookies();
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-
+  test("13. Sharing: Delete test organization (as system admin)", async ({ page }) => {
+    // Use the app's logout feature to properly sign out
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("networkidle");
+    
+    // Click logout button
+    await page.getByRole("button", { name: "Logout" }).click();
+    
+    // Wait for login form to appear
+    await page.waitForSelector("#email", { timeout: 30_000 });
 
     // Use admin credentials from env or defaults
     const adminEmail = process.env.LOGIN_EMAIL || "admin@owi.com";
     const adminPassword = process.env.LOGIN_PASSWORD || "admin";
 
-    await page.waitForSelector("#email", { timeout: 30_000 });
+    // Re-login as system admin
     await page.fill("#email", adminEmail);
     await page.fill("#password", adminPassword);
 
     await Promise.all([
       page.waitForLoadState("networkidle").catch(() => {}),
-      page.click("form > button")
+      page.click('button[type="submit"], form button')
     ]);
 
     await page.waitForTimeout(1500);
