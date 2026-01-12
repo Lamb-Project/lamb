@@ -702,7 +702,7 @@
                                     </div>
                                 {:else}
                                     {#if renderMarkdown}
-                                        <div class="prose prose-sm">{@html marked(message.content)}</div>
+                                        <div class="prose prose-sm {message.role === 'user' ? 'prose-invert' : ''}">{@html marked(message.content)}</div>
                                     {:else}
                                         <p class="whitespace-pre-wrap">{message.content}</p>
                                     {/if}
