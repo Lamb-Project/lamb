@@ -32,7 +32,8 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="TRACING")
 
 # Check if LangSmith tracing is enabled
-LANGSMITH_ENABLED = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+LANGSMITH_ENABLED = os.getenv(
+    "LANGCHAIN_TRACING_V2", "false").lower() == "true"
 
 # Try to import langsmith, but don't fail if not available
 try:
@@ -45,7 +46,8 @@ try:
     _get_current_run_tree = getattr(_langsmith, "get_current_run_tree", None)
 
     if traceable is None or Client is None:
-        raise ImportError("LangSmith is installed but required symbols are missing")
+        raise ImportError(
+            "LangSmith is installed but required symbols are missing")
 
     LANGSMITH_AVAILABLE = True
 
@@ -53,10 +55,12 @@ try:
     if LANGSMITH_ENABLED:
         langsmith_client = Client()
         logger.info("✅ LangSmith tracing is ENABLED")
-        logger.info(f"   Project: {os.getenv('LANGCHAIN_PROJECT', 'lamb-assistants')}")
+        logger.info(
+            f"   Project: {os.getenv('LANGCHAIN_PROJECT', 'lamb-assistants')}")
     else:
         langsmith_client = None
-        logger.info("ℹ️  LangSmith tracing is DISABLED (set LANGCHAIN_TRACING_V2=true to enable)")
+        logger.info(
+            "ℹ️  LangSmith tracing is DISABLED (set LANGCHAIN_TRACING_V2=true to enable)")
 
 except ImportError:
     LANGSMITH_AVAILABLE = False
@@ -64,7 +68,8 @@ except ImportError:
     Client = None
     _get_current_run_tree = None
     langsmith_client = None
-    logger.warning("⚠️  LangSmith not installed or incompatible. Install with: pip install langsmith")
+    logger.warning(
+        "⚠️  LangSmith not installed or incompatible. Install with: pip install langsmith")
 
 
 def traceable_llm_call(
@@ -99,7 +104,7 @@ def traceable_llm_call(
         # If LangSmith is not available or not enabled, return original function
         if not LANGSMITH_AVAILABLE or not LANGSMITH_ENABLED or traceable is None:
             return func
-        
+
         # Build traceable kwargs
         trace_kwargs = {
             "run_type": run_type,
@@ -112,17 +117,17 @@ def traceable_llm_call(
             trace_kwargs["metadata"] = metadata
         if tags:
             trace_kwargs["tags"] = tags
-            
+
         # Apply langsmith traceable decorator
         return traceable(**trace_kwargs)(func)  # type: ignore
-    
+
     return decorator
 
 
 def get_langsmith_client() -> Optional[Any]:
     """
     Get the LangSmith client instance if available and enabled.
-    
+
     Returns:
         LangSmith Client instance or None if not available/enabled
     """
@@ -132,7 +137,7 @@ def get_langsmith_client() -> Optional[Any]:
 def is_tracing_enabled() -> bool:
     """
     Check if LangSmith tracing is currently enabled.
-    
+
     Returns:
         True if tracing is enabled and available, False otherwise
     """
@@ -142,14 +147,14 @@ def is_tracing_enabled() -> bool:
 def add_trace_metadata(key: str, value: Any) -> None:
     """
     Add metadata to the current trace context (if tracing is enabled).
-    
+
     Args:
         key: Metadata key
         value: Metadata value
     """
     if not is_tracing_enabled():
         return
-        
+
     try:
         run = _get_current_run_tree() if _get_current_run_tree else None
         if run:
@@ -161,13 +166,13 @@ def add_trace_metadata(key: str, value: Any) -> None:
 def add_trace_tags(*tags: str) -> None:
     """
     Add tags to the current trace context (if tracing is enabled).
-    
+
     Args:
         *tags: Tags to add to the current trace
     """
     if not is_tracing_enabled():
         return
-        
+
     try:
         run = _get_current_run_tree() if _get_current_run_tree else None
         if run:
@@ -182,7 +187,7 @@ def add_trace_tags(*tags: str) -> None:
 def log_trace_info(message: str, **kwargs) -> None:
     """
     Log a message with trace context if available.
-    
+
     Args:
         message: Log message
         **kwargs: Additional key-value pairs to log
@@ -195,5 +200,5 @@ def log_trace_info(message: str, **kwargs) -> None:
                 return
         except Exception:
             pass
-    
+
     logger.debug(message, extra=kwargs)
