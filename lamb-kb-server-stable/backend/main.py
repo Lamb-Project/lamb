@@ -155,6 +155,35 @@ app.add_middleware(
 # Ingestion Plugin Endpoints
 
 @app.get(
+    "/config/ingestion",
+    summary="Get ingestion configuration",
+    description="""Get configuration values for ingestion monitoring.
+    
+    Returns configuration such as:
+    - refresh_rate: How often (in seconds) the frontend should poll job status
+    
+    Example:
+    ```bash
+    curl -X GET 'http://localhost:9090/config/ingestion'
+    ```
+    """,
+    tags=["Configuration"],
+    responses={
+        200: {"description": "Configuration values"}
+    }
+)
+async def get_ingestion_config():
+    """Get ingestion configuration values.
+    
+    Returns:
+        Dictionary with configuration values
+    """
+    return {
+        "refresh_rate": int(os.getenv("INGESTION_JOB_REFRESH_RATE", "3"))
+    }
+
+
+@app.get(
     "/ingestion/plugins",
     response_model=List[IngestionPluginInfo],
     summary="List ingestion plugins",

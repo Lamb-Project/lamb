@@ -4,6 +4,15 @@
 
 New API endpoints for monitoring the status and progress of asynchronous document ingestion jobs. This enhancement provides real-time visibility into file processing, error tracking, and progress reporting.
 
+### Real-Time Progress Monitoring
+
+The ingestion status API supports real-time progress updates with a configurable polling interval. The frontend automatically polls job status during document ingestion, displaying:
+- **Progress percentage** during all processing phases
+- **Chunk counter** ("X / Y chunks added") during the collection insertion phase
+- **Real-time messages** from the backend (e.g., "Crawling https://...", "Adding chunks to collection...")
+
+The polling refresh rate can be configured via the `INGESTION_JOB_REFRESH_RATE` environment variable (default: 3 seconds, values in seconds).
+
 ## Problem
 
 Currently, when files are ingested asynchronously via `/ingest-file`, `/ingest-url`, or `/ingest-base`, clients have no way to:
@@ -125,13 +134,24 @@ Database migration automatically adds new columns on server startup. Existing re
 - `backend/database/models.py` - New FileRegistry fields, CANCELLED status
 - `backend/database/migrations/migration_add_ingestion_tracking.py` - Schema migration
 - `backend/schemas/files.py` - New response schemas
-- `backend/routers/ingestion_status.py` - New router (to be created)
-- `backend/routers/collections.py` - Enhanced background tasks with progress callbacks
+- `backend/routers/ingestion_status.py` - New router
+- `backend/routers/collections.py` - Enhanced background tasks with progress callbacks during chunk addition
+- `backend/services/ingestion.py` - Real-time progress updates during document batch processing
 - `backend/plugins/base.py` - Progress callback support
-- `backend/plugins/url_ingest.py` - Progress reporting
+- `backend/plugins/url_ingest.py` - Progress reporting for URL crawling
 - `backend/plugins/youtube_transcript_ingest.py` - Progress reporting
-- `backend/plugins/markitdown-ingest-plugin.py` - Progress reporting
-- `backend/main.py` - Include new router
+- `backend/plugins/markitdown_plus_ingest.py` - Progress reporting
+- `backend/main.py` - Include new router and `/config/ingestion` endpoint
+- `backend/creator_interface/main.py` - Added `/config/ingestion` endpoint for frontend configuration
+- `frontend/svelte-app/src/lib/services/knowledgeBaseService.js` - Added `getIngestionConfig()` function
+- `frontend/svelte-app/src/lib/components/KnowledgeBaseDetail.svelte` - Real-time job polling and enhanced progress UI
+
+## Frontend Features
+
+- **Auto-polling**: Automatically polls job status when modal is open and job is processing/pending
+- **Smart progress display**: Shows percentage during all phases, chunk counter only during collection insertion
+- **Configuration endpoint**: Fetches polling interval from backend `/config/ingestion` endpoint
+- **Responsive UI**: Progress bar updates in real-time, stops polling when job reaches terminal state
 
 ## Testing
 
@@ -139,6 +159,8 @@ Database migration automatically adds new columns on server startup. Existing re
 - [ ] Poll `/ingestion-jobs/{id}` to see progress updates
 - [ ] Verify completed jobs show duration and chunk count
 - [ ] Test with intentionally corrupted file to verify error capture
+- [ ] Verify frontend polling uses `INGESTION_JOB_REFRESH_RATE` from environment
+- [ ] Test with various plugins to verify progress callback integration
 - [ ] Test retry endpoint on failed job
 - [ ] Test cancel endpoint on long-running job
 
