@@ -240,8 +240,44 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
 
     return errors
 
-@traceable_llm_call(name="openai_completion", run_type="llm", tags=["openai", "lamb"])
-async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False):
+def _reduce_sse_chunks_to_text(chunks: Any) -> dict:
+    if not isinstance(chunks, list):
+        return {"output": chunks}
+
+    accumulated_text: list[str] = []
+    for item in chunks:
+        if not isinstance(item, str) or not item.startswith("data: "):
+            continue
+
+        payload = item[len("data: "):].strip()
+        if not payload or payload == "[DONE]":
+            continue
+
+        try:
+            obj = json.loads(payload)
+        except Exception:
+            continue
+
+        try:
+            choices = obj.get("choices") or []
+            if not choices:
+                continue
+            delta = (choices[0] or {}).get("delta") or {}
+            if not isinstance(delta, dict):
+                continue
+            content = delta.get("content")
+            if isinstance(content, str) and content:
+                accumulated_text.append(content)
+        except Exception:
+            continue
+
+    return {
+        "text": "".join(accumulated_text),
+        "chunk_count": len(chunks),
+    }
+
+
+async def _llm_connect_impl(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
 
@@ -298,6 +334,7 @@ Returns:
                of the LLM's response as they arrive.
     Dict: If `stream=False`, the complete LLM response as a dictionary.
     """
+
 
     # --- Helper function for VISION stream generation ---
     async def _generate_vision_stream(vision_client: AsyncOpenAI, vision_params: dict):
@@ -726,3 +763,70 @@ Returns:
         response = await _make_api_call_with_fallback(params) # Use helper with fallback
         logger.debug(f"Direct response created")
         return response.model_dump()
+
+
+@traceable_llm_call(
+    name="openai_completion",
+    run_type="llm",
+    tags=["openai", "lamb"],
+    reduce_fn=_reduce_sse_chunks_to_text,
+)
+async def _llm_connect_stream(
+    messages: list,
+    body: Dict[str, Any] = None,
+    llm: str = None,
+    assistant_owner: Optional[str] = None,
+    use_small_fast_model: bool = False,
+):
+    return await _llm_connect_impl(
+        messages,
+        stream=True,
+        body=body,
+        llm=llm,
+        assistant_owner=assistant_owner,
+        use_small_fast_model=use_small_fast_model,
+    )
+
+
+@traceable_llm_call(name="openai_completion", run_type="llm", tags=["openai", "lamb"])
+async def _llm_connect_nonstream(
+    messages: list,
+    body: Dict[str, Any] = None,
+    llm: str = None,
+    assistant_owner: Optional[str] = None,
+    use_small_fast_model: bool = False,
+):
+    return await _llm_connect_impl(
+        messages,
+        stream=False,
+        body=body,
+        llm=llm,
+        assistant_owner=assistant_owner,
+        use_small_fast_model=use_small_fast_model,
+    )
+
+
+async def llm_connect(
+    messages: list,
+    stream: bool = False,
+    body: Dict[str, Any] = None,
+    llm: str = None,
+    assistant_owner: Optional[str] = None,
+    use_small_fast_model: bool = False,
+):
+    if stream:
+        return await _llm_connect_stream(
+            messages,
+            body=body,
+            llm=llm,
+            assistant_owner=assistant_owner,
+            use_small_fast_model=use_small_fast_model,
+        )
+
+    return await _llm_connect_nonstream(
+        messages,
+        body=body,
+        llm=llm,
+        assistant_owner=assistant_owner,
+        use_small_fast_model=use_small_fast_model,
+    )

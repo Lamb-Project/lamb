@@ -36,9 +36,19 @@ LANGSMITH_ENABLED = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
 
 # Try to import langsmith, but don't fail if not available
 try:
-    from langsmith import traceable, Client
+    import langsmith as _langsmith
+
+    # Some LangSmith versions expose symbols dynamically via __getattr__, so
+    # `from langsmith import traceable` can fail even when traceable exists.
+    traceable = getattr(_langsmith, "traceable", None)
+    Client = getattr(_langsmith, "Client", None)
+    _get_current_run_tree = getattr(_langsmith, "get_current_run_tree", None)
+
+    if traceable is None or Client is None:
+        raise ImportError("LangSmith is installed but required symbols are missing")
+
     LANGSMITH_AVAILABLE = True
-    
+
     # Initialize LangSmith client if enabled
     if LANGSMITH_ENABLED:
         langsmith_client = Client()
@@ -47,13 +57,14 @@ try:
     else:
         langsmith_client = None
         logger.info("ℹ️  LangSmith tracing is DISABLED (set LANGCHAIN_TRACING_V2=true to enable)")
-        
+
 except ImportError:
     LANGSMITH_AVAILABLE = False
     traceable = None
     Client = None
+    _get_current_run_tree = None
     langsmith_client = None
-    logger.warning("⚠️  LangSmith not installed. Install with: pip install langsmith")
+    logger.warning("⚠️  LangSmith not installed or incompatible. Install with: pip install langsmith")
 
 
 def traceable_llm_call(
@@ -63,28 +74,26 @@ def traceable_llm_call(
     tags: Optional[list] = None,
     **kwargs
 ) -> Callable:
-    """
-    Decorator for tracing LLM calls with LangSmith.
-    
+    """Decorator for tracing LLM calls with LangSmith.
+
     This is a wrapper around langsmith.traceable that only applies tracing
     when LANGCHAIN_TRACING_V2 is enabled. If tracing is disabled or langsmith
     is not installed, functions execute normally without tracing overhead.
-    
+
     Args:
         name: Name for the traced operation (default: function name)
         run_type: Type of run - "llm", "chain", "tool", "retriever", etc.
         metadata: Additional metadata to attach to the trace
         tags: Tags for categorizing the trace
         **kwargs: Additional arguments passed to langsmith.traceable
-        
+
     Returns:
         Decorated function that traces execution when enabled
-        
+
     Example:
         @traceable_llm_call(name="openai_completion", tags=["openai", "gpt-4"])
         async def call_openai(messages, model):
-            # Your LLM call here
-            pass
+            ...
     """
     def decorator(func: Callable) -> Callable:
         # If LangSmith is not available or not enabled, return original function
@@ -96,7 +105,7 @@ def traceable_llm_call(
             "run_type": run_type,
             **kwargs
         }
-        
+
         if name:
             trace_kwargs["name"] = name
         if metadata:
@@ -142,8 +151,7 @@ def add_trace_metadata(key: str, value: Any) -> None:
         return
         
     try:
-        from langsmith import get_current_run_tree
-        run = get_current_run_tree()
+        run = _get_current_run_tree() if _get_current_run_tree else None
         if run:
             run.metadata[key] = value
     except Exception as e:
@@ -161,8 +169,7 @@ def add_trace_tags(*tags: str) -> None:
         return
         
     try:
-        from langsmith import get_current_run_tree
-        run = get_current_run_tree()
+        run = _get_current_run_tree() if _get_current_run_tree else None
         if run:
             if not run.tags:
                 run.tags = []
@@ -182,8 +189,7 @@ def log_trace_info(message: str, **kwargs) -> None:
     """
     if is_tracing_enabled():
         try:
-            from langsmith import get_current_run_tree
-            run = get_current_run_tree()
+            run = _get_current_run_tree() if _get_current_run_tree else None
             if run:
                 logger.debug(f"[Trace {run.id}] {message}", extra=kwargs)
                 return
