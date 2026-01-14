@@ -3,7 +3,6 @@ Rubric Service - Business Logic Layer
 Contains reusable functions for rubric operations, separate from HTTP endpoints.
 """
 
-import logging
 import json
 import uuid
 import time
@@ -12,10 +11,10 @@ from datetime import datetime
 
 from .rubric_database import RubricDatabaseManager
 from .rubric_validator import RubricValidator
+from lamb.logging_config import get_logger
 
 # Set up logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__, component="EVALUATOR")
 
 
 # Helper functions
