@@ -26,7 +26,8 @@ services:
       python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
       mkdir -p data && \
-      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload"
+      LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
+      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload --log-level $$LOG_LEVEL --no-access-log"
   openwebui-build:
     image: node:20-alpine
     working_dir: ${LAMB_PROJECT_PATH}/open-webui
@@ -56,7 +57,7 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=WARNING
-      - LAMB_KB_LOG_LEVEL=WARNING
+      - KB_LOG_LEVEL=WARNING
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
@@ -67,7 +68,8 @@ services:
       pip install -r requirements.txt && \
       mkdir -p static && \
       (test -f .env || cp .env.example .env) && \
-      python start.py"
+      LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
+      uvicorn main:app --host 0.0.0.0 --port 9090 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
     image: python:3.11-slim
     working_dir: ${LAMB_PROJECT_PATH}/backend
@@ -95,7 +97,8 @@ services:
     command: >
       sh -lc "python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
-      uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload"
+      LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
+      uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload --log-level $$LOG_LEVEL --no-access-log"
   frontend:
     image: node:20-alpine
     working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
