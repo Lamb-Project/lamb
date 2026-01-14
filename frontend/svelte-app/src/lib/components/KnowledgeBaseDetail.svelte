@@ -1,6 +1,6 @@
 <script>
     import { onMount } from 'svelte';
-    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus } from '$lib/services/knowledgeBaseService';
+    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus, getIngestionConfig } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
     import { page } from '$app/stores';
     import axios from 'axios'; // Import axios
@@ -218,11 +218,23 @@
     let selectedJob = $state(null);
     let showJobModal = $state(false);
     let jobActionLoading = $state(false);
+    
+    // Polling configuration
+    let pollingRefreshRate = $state(3000); // Default 3 seconds, will be fetched from backend
 
     // Initialization and cleanup
     onMount(() => {
         console.log('KnowledgeBaseDetail mounted, kbId:', kbId);
         previousKbId = kbId; // Initialize previousKbId
+        
+        // Fetch polling configuration
+        getIngestionConfig().then(config => {
+            pollingRefreshRate = config.refresh_rate * 1000; // Convert to milliseconds
+            console.log('Polling refresh rate set to:', pollingRefreshRate, 'ms');
+        }).catch(err => {
+            console.error('Failed to fetch ingestion config, using default:', err);
+        });
+        
         return () => {
             console.log('KnowledgeBaseDetail unmounted');
         };
@@ -280,7 +292,7 @@
                 } catch (err) {
                     console.error('[Job Polling] Error fetching job status:', err);
                 }
-            }, 2000); // Poll every 2 seconds
+            }, pollingRefreshRate); // Use configured refresh rate from backend
             
             // Cleanup when effect reruns or component unmounts
             return () => {
@@ -1690,13 +1702,39 @@
                     </div>
 
                     <!-- Progress info (if available) -->
-                    {#if selectedJob.progress && selectedJob.status === 'processing'}
+                    {#if selectedJob.progress && (selectedJob.status === 'processing' || selectedJob.status === 'pending')}
                         <div class="mb-6">
                             <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Progress</h4>
+            
+                            <!-- Chunks progress - only show if total > 1  -->
+                            {#if (selectedJob.progress.total ?? 0) > 1}
+                                <div class="flex justify-between items-center text-sm mb-2">
+                                    <span class="text-gray-700 font-medium">
+                                        {selectedJob.progress.current || 0} / {selectedJob.progress.total || 0} chunks added
+                                    </span>
+                                    <span class="text-gray-600">
+                                        {(selectedJob.progress.percentage || 0).toFixed(1)}%
+                                    </span>
+                                </div>
+                            {:else}
+                                <!-- During URL crawling/conversion phase, just show percentage if available -->
+                                {#if selectedJob.progress.percentage > 0}
+                                    <div class="flex justify-between items-center text-sm mb-2">
+                                        <span class="text-gray-700 font-medium">Progress</span>
+                                        <span class="text-gray-600">
+                                            {(selectedJob.progress.percentage || 0).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                {/if}
+                            {/if}
+                            
+                            <!-- Progress bar -->
                             <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
                                 <div class="bg-[#2271b3] h-2.5 rounded-full transition-all duration-300" style="width: {selectedJob.progress.percentage || 0}%"></div>
                             </div>
-                            <p class="text-sm text-gray-600">{selectedJob.progress.message || `${selectedJob.progress.current || 0} / ${selectedJob.progress.total || 0}`}</p>
+                            
+                            <!-- Progress message -->
+                            <p class="text-sm text-gray-600 italic">{selectedJob.progress.message || 'Processing...'}</p>
                         </div>
                     {/if}
 

@@ -198,7 +198,8 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             result = IngestionService.add_documents_to_collection(
                 db=db_background,
                 collection_id=collection_id,
-                documents=documents
+                documents=documents,
+                file_registry_id=file_registry_id
             )
         except Exception as e:
             raise Exception(f"Failed to add documents to collection: {str(e)}")
@@ -362,7 +363,8 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
         result = IngestionService.add_documents_to_collection(
             db=db_background,
             collection_id=collection_id,
-            documents=documents
+            documents=documents,
+            file_registry_id=file_registry_id
         )
         
         # Mark as completed
