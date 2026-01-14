@@ -3,6 +3,12 @@
     import { onMount } from 'svelte';
     import { marked } from 'marked';
 
+    // Configure marked to preserve line breaks (converts \n to <br>)
+    marked.setOptions({
+        breaks: true,      // Convert single newlines to <br>
+        gfm: true          // GitHub Flavored Markdown (tables, strikethrough, etc.)
+    });
+
     // Action to focus element on mount (avoids a11y autofocus warning)
     /** @param {HTMLElement} node */
     function focusOnMount(node) {
