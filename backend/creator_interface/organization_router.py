@@ -3641,7 +3641,7 @@ async def get_organization_assistant_defaults(
         
         # Use OrganizationService instead of HTTP call
         org_service = OrganizationService()
-        defaults = org_service.get_organization_assistant_defaults(slug)
+        defaults = org_service.get_assistant_defaults(slug)
         
         if defaults is None:
             raise HTTPException(status_code=404, detail="Organization not found")
@@ -3692,7 +3692,7 @@ async def update_organization_assistant_defaults(
         
         # Use OrganizationService instead of HTTP call
         org_service = OrganizationService()
-        updated_defaults = org_service.update_organization_assistant_defaults(slug, body)
+        updated_defaults = org_service.update_assistant_defaults(slug, body)
         
         if updated_defaults is None:
             raise HTTPException(status_code=404, detail="Organization not found")
