@@ -187,6 +187,7 @@
         url: '',
         api_key: '',
         embedding_model: '',
+        embedding_api_key: '',
         collection_defaults: {
             chunk_size: 1000,
             chunk_overlap: 200
@@ -203,6 +204,30 @@
     let showKbAdvanced = $state(false);
     /** @type {boolean} */
     let showKbApiKey = $state(false);
+    /** @type {boolean} */
+    let showEmbeddingApiKey = $state(false);
+    
+    // KB server embeddings config state
+    /** @type {any} */
+    let kbEmbeddingsConfig = $state({
+        vendor: '',
+        model: '',
+        api_endpoint: '',
+        apikey_configured: false,
+        apikey_masked: '',
+        config_source: 'env'
+    });
+    let isLoadingKbEmbeddingsConfig = $state(false);
+    /** @type {string | null} */
+    let kbEmbeddingsConfigError = $state(null);
+    let isUpdatingKbEmbeddingsConfig = $state(false);
+    let showApplyToAllKbConfirmation = $state(false);
+    let isApplyingToAllKb = $state(false);
+    /** @type {string | null} */
+    let applyToAllKbResult = $state(null);
+    let applyToAllKbChecked = $state(false);
+    let embeddingApiKeyOriginal = $state('');
+    let embeddingApiKeyDirty = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -1440,11 +1465,15 @@
                 url: kbSettings.url || '',
                 api_key: '', // Never populate with actual key
                 embedding_model: kbSettings.embedding_model || '',
+                embedding_api_key: '', // Will be populated from KB server config
                 collection_defaults: kbSettings.collection_defaults || {
                     chunk_size: 1000,
                     chunk_overlap: 200
                 }
             };
+            
+            // Fetch embeddings config from KB server
+            await fetchKbEmbeddingsConfig();
         } catch (err) {
             console.error('Error fetching KB settings:', err);
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
@@ -1581,6 +1610,205 @@
                 kbSettingsError = 'Failed to update KB settings.';
             }
         }
+    }
+
+        /**
+     * Fetch the current embeddings configuration from the KB server
+     */
+    async function fetchKbEmbeddingsConfig() {
+        isLoadingKbEmbeddingsConfig = true;
+        kbEmbeddingsConfigError = null;
+
+        try {
+            if (!kbSettings.url) {
+                kbEmbeddingsConfig = {
+                    vendor: '',
+                    model: '',
+                    api_endpoint: '',
+                    apikey_configured: false,
+                    apikey_masked: '',
+                    config_source: 'env'
+                };
+                return;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`), {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            kbEmbeddingsConfig = response.data;
+
+            // Initialize embedding API key form field with masked key if configured
+            if (kbEmbeddingsConfig.apikey_configured && kbEmbeddingsConfig.apikey_masked) {
+                // Store the masked key for display purposes and dirty tracking
+                newKbSettings.embedding_api_key = kbEmbeddingsConfig.apikey_masked;
+                embeddingApiKeyOriginal = kbEmbeddingsConfig.apikey_masked;
+            } else {
+                // No key configured
+                newKbSettings.embedding_api_key = '';
+                embeddingApiKeyOriginal = '';
+            }
+            
+            // Reset dirty state and checkbox when loading fresh config
+            embeddingApiKeyDirty = false;
+            applyToAllKbChecked = false;
+
+        } catch (err) {
+            console.error('Error fetching KB embeddings config:', err);
+            // Don't show error to user - this is optional configuration
+            kbEmbeddingsConfigError = null;
+            kbEmbeddingsConfig = {
+                vendor: '',
+                model: '',
+                api_endpoint: '',
+                apikey_configured: false,
+                apikey_masked: '',
+                config_source: 'env'
+            };
+        } finally {
+            isLoadingKbEmbeddingsConfig = false;
+        }
+    }
+
+    /**
+     * Update the embeddings configuration on the KB server
+     */
+    /**
+     * Update the embeddings configuration on the KB server.
+     * @param {{ applyToAll?: boolean }} [options]
+     */
+    async function updateKbEmbeddingsConfig({ applyToAll = false } = {}) {
+        kbEmbeddingsConfigError = null;
+        isUpdatingKbEmbeddingsConfig = true;
+
+        try {
+            if (!newKbSettings.url && !kbSettings.url) {
+                throw new Error('KB server URL is not configured');
+            }
+
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Build payload with only provided fields
+            /** @type {any} */
+            const payload = {};
+
+            if (newKbSettings.embedding_api_key &&
+                newKbSettings.embedding_api_key !== kbEmbeddingsConfig.apikey_masked) {
+                payload.apikey = newKbSettings.embedding_api_key;
+
+                // Add flag to apply to all KB collections only after explicit confirmation
+                if (applyToAll) {
+                    payload.apply_to_all_kb = true;
+                }
+            }
+
+            // Add other fields from current config to preserve them
+            if (kbEmbeddingsConfig.vendor) {
+                payload.vendor = kbEmbeddingsConfig.vendor;
+            }
+            if (kbEmbeddingsConfig.model) {
+                payload.model = kbEmbeddingsConfig.model;
+            }
+            if (kbEmbeddingsConfig.api_endpoint) {
+                payload.api_endpoint = kbEmbeddingsConfig.api_endpoint;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.put(
+                getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`),
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Refresh the config to get updated state
+            await fetchKbEmbeddingsConfig();
+
+            // Capture bulk update result for UI display
+            if (response.data?.bulk_update) {
+                const bulk = response.data.bulk_update;
+                applyToAllKbResult = `Updated ${bulk.updated} of ${bulk.total} collections`;
+            } else {
+                applyToAllKbResult = null;
+            }
+
+            // Show success message
+            kbSettingsSuccess = true;
+            
+            // Handle bulk update results
+            if (response.data?.bulk_update) {
+                const bulkResult = response.data.bulk_update;
+                const message = `KB server embeddings configuration updated. ` +
+                    (bulkResult.updated > 0 
+                        ? `Applied new API key to ${bulkResult.updated} of ${bulkResult.total} knowledge base collections.` 
+                        : 'No existing collections needed updating.');
+                addPendingChange(message);
+            } else {
+                addPendingChange('KB server embeddings configuration updated');
+            }
+
+            // Reset apply-to-all checkbox after a successful save
+            applyToAllKbChecked = false;
+
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                kbSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error updating KB embeddings config:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbEmbeddingsConfigError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbEmbeddingsConfigError = err.message;
+            } else {
+                kbEmbeddingsConfigError = 'Failed to update embeddings configuration. Make sure the KB server is accessible.';
+            }
+        } finally {
+            isUpdatingKbEmbeddingsConfig = false;
+        }
+    }
+
+    async function saveKbEmbeddingsConfig() {
+        // If user requested a bulk update, require explicit confirmation.
+        if (applyToAllKbChecked && embeddingApiKeyDirty) {
+            showApplyToAllKbConfirmation = true;
+            return;
+        }
+
+        await updateKbEmbeddingsConfig({ applyToAll: false });
+    }
+
+    async function confirmApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
+        isApplyingToAllKb = true;
+        try {
+            await updateKbEmbeddingsConfig({ applyToAll: true });
+        } finally {
+            isApplyingToAllKb = false;
+        }
+    }
+
+    function cancelApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
     }
 
     async function updateSignupSettings() {
@@ -3345,6 +3573,120 @@
                                     </div>
 
                                     {#if showKbAdvanced}
+                                    <!-- Embedding API Key (NEW - at top of advanced options) -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label for="kb-embedding-api-key" class="block text-sm font-medium text-gray-700">
+                                                Embedding API Key (Optional)
+                                                <span class="ml-1 text-gray-400 cursor-help" title="Set or update the API key used for embeddings (e.g., OpenAI). Requires KB Server connection to be configured first.">ℹ️</span>
+                                            </label>
+                                            {#if kbEmbeddingsConfig.apikey_configured || newKbSettings.embedding_api_key}
+                                            <button
+                                                type="button"
+                                                class="text-sm text-brand hover:text-brand-hover"
+                                                onclick={() => showEmbeddingApiKey = !showEmbeddingApiKey}
+                                            >
+                                                {showEmbeddingApiKey ? 'Hide' : 'Show'} API Key
+                                            </button>
+                                            {/if}
+                                        </div>
+
+                                        {#if !kbSettings.url}
+                                        <!-- Warning when KB server is not configured -->
+                                        <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <span class="text-blue-600 mr-2">ℹ️</span>
+                                                <div class="flex-1">
+                                                    <p class="text-sm text-blue-800 font-medium">KB Server Connection Required</p>
+                                                    <p class="mt-1 text-xs text-blue-700">
+                                                        Before setting an embedding API key, you must first configure and save the KB Server URL and API Key above, then click "Update KB Settings".
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+
+                                        <input
+                                            type={showEmbeddingApiKey ? 'text' : 'password'}
+                                            id="kb-embedding-api-key"
+                                            bind:value={newKbSettings.embedding_api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            placeholder={kbEmbeddingsConfig.apikey_configured ? '••••••••••••••••••••••••••••' : 'Enter embedding API key'}
+                                            disabled={!kbSettings.url}
+                                            oninput={() => {
+                                                kbTestResult = null;
+                                                // Auto-show API key when user starts typing
+                                                if (newKbSettings.embedding_api_key && !showEmbeddingApiKey) {
+                                                    showEmbeddingApiKey = true;
+                                                }
+                                                // Track if field is dirty (different from original)
+                                                embeddingApiKeyDirty = newKbSettings.embedding_api_key !== embeddingApiKeyOriginal;
+                                            }}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            {#if kbEmbeddingsConfig.apikey_configured}
+                                                API key is currently set on KB server ({kbEmbeddingsConfig.config_source === 'file' ? 'persisted config' : 'from env vars'}). {showEmbeddingApiKey ? 'You can view it above.' : 'Click "Show API Key" to view or leave empty to keep existing.'}
+                                            {:else}
+                                                Enter the API key for embeddings service (e.g., OpenAI). This will be set on the KB server.
+                                            {/if}
+                                        </p>
+                                        
+                                        <!-- Conditional: Bulk Update Checkbox (only show when key is dirty) -->
+                                        {#if embeddingApiKeyDirty}
+                                        <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <input
+                                                    id="apply-to-all-kb"
+                                                    type="checkbox"
+                                                    bind:checked={applyToAllKbChecked}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded mt-0.5"
+                                                >
+                                                <div class="ml-3">
+                                                    <label for="apply-to-all-kb" class="block text-sm font-medium text-gray-900 cursor-pointer">
+                                                        Apply this key to all existing knowledge bases in this organization
+                                                    </label>
+                                                    <p class="mt-1 text-xs text-yellow-700 flex items-start">
+                                                        <span class="mr-1">⚠️</span>
+                                                        <span>This will update the embedding API key for all knowledge base collections. Use this when rotating API keys.</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+                                        
+                                        <div class="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onclick={saveKbEmbeddingsConfig}
+                                                class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isUpdatingKbEmbeddingsConfig || !newKbSettings.embedding_api_key || !kbSettings.url}
+                                                title={!kbSettings.url ? 'Please save KB Server connection first' : !newKbSettings.embedding_api_key ? 'Please enter an API key' : 'Save embedding API key to KB server'}
+                                            >
+                                                {isUpdatingKbEmbeddingsConfig ? '🔄 Saving...' : '💾 Save to KB Server'}
+                                            </button>
+                                            {#if kbEmbeddingsConfig.config_source === 'file'}
+                                                <button
+                                                    type="button"
+                                                    class="text-sm text-gray-500 hover:text-gray-700 underline"
+                                                    onclick={async () => {
+                                                        if (confirm('Reset to environment variables? This will remove the persisted configuration.')) {
+                                                            await updateKbEmbeddingsConfig();
+                                                        }
+                                                    }}
+                                                >
+                                                    Reset to Env
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        {#if kbEmbeddingsConfigError}
+                                            <p class="mt-1 text-sm text-red-600">{kbEmbeddingsConfigError}</p>
+                                        {/if}
+
+                                        {#if applyToAllKbResult}
+                                            <p class="mt-2 text-sm text-green-700">{applyToAllKbResult}</p>
+                                        {/if}
+                                    </div>
+
                                     <!-- Embedding Model -->
                                     <div>
                                         <label for="kb-embedding-model" class="block text-sm font-medium text-gray-700">Embedding Model (Optional)</label>
@@ -3486,6 +3828,55 @@
         </div>
     </main>
 </div>
+
+<!-- Apply Embedding Key To All KBs Confirmation Modal -->
+{#if showApplyToAllKbConfirmation}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+
+                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
+                    Apply embedding API key to all knowledge bases?
+                </h3>
+
+                <div class="mt-4 text-center">
+                    <p class="text-sm text-gray-600">
+                        This will update the embedding API key for <strong>all existing KB collections</strong> in this organization.
+                    </p>
+                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
+                        <p class="text-sm text-gray-700">
+                            Use this when rotating keys. Model/vendor/endpoint are unchanged — only the key is updated.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between mt-6 gap-3">
+                    <button
+                        type="button"
+                        onclick={cancelApplyToAllKb}
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onclick={confirmApplyToAllKb}
+                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
+                    >
+                        {isApplyingToAllKb ? 'Applying...' : 'Apply to All KBs'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <!-- Create User Modal -->
 {#if isCreateUserModalOpen}

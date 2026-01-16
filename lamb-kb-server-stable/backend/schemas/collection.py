@@ -75,3 +75,28 @@ class CollectionList(BaseModel):
 class CollectionCreateResponse(BaseModel):
     """Response schema when creating a collection, returning only the ID."""
     id: int = Field(..., description="Unique identifier of the newly created collection")
+
+
+class EmbeddingsModelPartial(BaseModel):
+    """Schema for partial embeddings model updates (all fields optional)."""
+    model: Optional[str] = Field(None, description="Name or path of the embeddings model")
+    vendor: Optional[str] = Field(None, description="Vendor of the embeddings model (e.g., 'ollama', 'local', 'openai')")
+    api_endpoint: Optional[str] = Field(None, description="Custom API endpoint URL")
+    apikey: Optional[str] = Field(None, description="API key for the endpoint if required")
+
+
+class BulkUpdateEmbeddingsRequest(BaseModel):
+    """Schema for bulk updating embeddings API key for all collections of an owner."""
+    embeddings_model: EmbeddingsModelPartial = Field(
+        ...,
+        description="New embeddings model configuration (only apikey will be updated)"
+    )
+
+
+class BulkUpdateEmbeddingsResponse(BaseModel):
+    """Schema for bulk update response."""
+    total: int = Field(..., description="Total number of collections for the owner")
+    updated: int = Field(..., description="Number of collections successfully updated")
+    failed: int = Field(..., description="Number of collections that failed to update")
+    collections: List[Dict[str, Any]] = Field(..., description="List of updated collection IDs and names")
+    error: Optional[str] = Field(None, description="Error message if the operation failed")

@@ -3265,6 +3265,204 @@ async def update_kb_settings(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get(
+    "/org-admin/settings/kb/embeddings-config",
+    tags=["Organization Admin - Settings"],
+    summary="Get KB Server Embeddings Configuration",
+    description="""Get the current embeddings configuration from the Knowledge Base server.
+    
+This endpoint proxies the request to the KB server's /config/embeddings endpoint.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/settings/kb/embeddings-config' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "vendor": "openai",
+  "model": "text-embedding-3-small",
+  "api_endpoint": "https://api.openai.com/v1/embeddings",
+  "apikey_configured": true,
+  "apikey_masked": "sk-proj-********************************OuIbNA",
+  "config_source": "env"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def get_kb_embeddings_config(request: Request, org: Optional[str] = None):
+    """Get KB server embeddings configuration (proxied to KB server)"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        # Get KB server config
+        config = organization.get('config', {})
+        kb_server = config.get('kb_server', {})
+        kb_url = kb_server.get('url', '')
+        
+        if not kb_url:
+            raise HTTPException(
+                status_code=400,
+                detail="KB server URL not configured"
+            )
+        
+        # Proxy request to KB server
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{kb_url}/config/embeddings",
+                headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"KB server returned error: {response.text}"
+                )
+            
+            return response.json()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting KB embeddings config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class KbEmbeddingsConfigUpdate(BaseModel):
+    """Schema for updating KB server embeddings configuration"""
+    vendor: Optional[str] = Field(None, description="Embeddings vendor")
+    model: Optional[str] = Field(None, description="Model name")
+    api_endpoint: Optional[str] = Field(None, description="API endpoint URL")
+    apikey: Optional[str] = Field(None, description="API key for the embeddings service")
+    apply_to_all_kb: Optional[bool] = Field(False, description="Apply this API key to all existing KB collections")
+
+
+@router.put(
+    "/org-admin/settings/kb/embeddings-config",
+    tags=["Organization Admin - Settings"],
+    summary="Update KB Server Embeddings Configuration",
+    description="""Update the embeddings configuration on the Knowledge Base server.
+    
+This endpoint proxies the request to the KB server's PUT /config/embeddings endpoint.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/kb/embeddings-config' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"apikey": "sk-new-key-here"}'
+```
+
+Example Success Response:
+```json
+{
+  "message": "Embeddings configuration updated successfully"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def update_kb_embeddings_config(
+    request: Request,
+    config_update: KbEmbeddingsConfigUpdate,
+    org: Optional[str] = None
+):
+    """Update KB server embeddings configuration (proxied to KB server)"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        # Get KB server config
+        config = organization.get('config', {})
+        kb_server = config.get('kb_server', {})
+        kb_url = kb_server.get('url', '')
+        
+        if not kb_url:
+            raise HTTPException(
+                status_code=400,
+                detail="KB server URL not configured"
+            )
+        
+        # Build payload with only provided fields
+        payload = {}
+        if config_update.vendor is not None:
+            payload['vendor'] = config_update.vendor
+        if config_update.model is not None:
+            payload['model'] = config_update.model
+        if config_update.api_endpoint is not None:
+            payload['api_endpoint'] = config_update.api_endpoint
+        if config_update.apikey is not None:
+            payload['apikey'] = config_update.apikey
+        if config_update.apply_to_all_kb is not None:
+            payload['apply_to_all_kb'] = config_update.apply_to_all_kb
+        
+        # Proxy request to KB server
+        async with httpx.AsyncClient() as client:
+            # First, update the config
+            response = await client.put(
+                f"{kb_url}/config/embeddings",
+                json=payload,
+                headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"KB server returned error: {response.text}"
+                )
+            
+            # If apply_to_all_kb is True, also update all existing KB collections
+            bulk_update_result = None
+            if config_update.apply_to_all_kb and config_update.apikey:
+                bulk_response = await client.put(
+                    f"{kb_url}/collections/owner/{organization['id']}/embeddings",
+                    json={
+                        "embeddings_model": {
+                            "apikey": config_update.apikey
+                        }
+                    },
+                    headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+                )
+                
+                if bulk_response.status_code == 200:
+                    bulk_update_result = bulk_response.json()
+                    logger.info(f"Organization admin {admin_info['user_email']} applied new API key to {bulk_update_result.get('updated', 0)} KB collections")
+                else:
+                    logger.warning(f"Bulk update failed with status {bulk_response.status_code}: {bulk_response.text}")
+            
+            logger.info(f"Organization admin {admin_info['user_email']} updated KB server embeddings config")
+            return {
+                "message": "Embeddings configuration updated successfully",
+                "bulk_update": bulk_update_result
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating KB embeddings config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # ORGANIZATION ADMIN ASSISTANT MANAGEMENT ENDPOINTS
 # These endpoints allow organization admins to view and manage access to 
