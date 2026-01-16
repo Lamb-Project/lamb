@@ -187,6 +187,7 @@
         url: '',
         api_key: '',
         embedding_model: '',
+        embedding_api_key: '',
         collection_defaults: {
             chunk_size: 1000,
             chunk_overlap: 200
@@ -203,6 +204,27 @@
     let showKbAdvanced = $state(false);
     /** @type {boolean} */
     let showKbApiKey = $state(false);
+    /** @type {boolean} */
+    let showEmbeddingApiKey = $state(false);
+    
+    // KB server embeddings config state
+    /** @type {any} */
+    let kbEmbeddingsConfig = $state({
+        vendor: '',
+        model: '',
+        api_endpoint: '',
+        apikey_configured: false,
+        apikey_masked: '',
+        config_source: 'env'
+    });
+    let isLoadingKbEmbeddingsConfig = $state(false);
+    /** @type {string | null} */
+    let kbEmbeddingsConfigError = $state(null);
+    let isUpdatingKbEmbeddingsConfig = $state(false);
+    let showApplyToAllKbConfirmation = $state(false);
+    let isApplyingToAllKb = $state(false);
+    /** @type {string | null} */
+    let applyToAllKbResult = $state(null);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -1440,11 +1462,15 @@
                 url: kbSettings.url || '',
                 api_key: '', // Never populate with actual key
                 embedding_model: kbSettings.embedding_model || '',
+                embedding_api_key: '', // Will be populated from KB server config
                 collection_defaults: kbSettings.collection_defaults || {
                     chunk_size: 1000,
                     chunk_overlap: 200
                 }
             };
+            
+            // Fetch embeddings config from KB server
+            await fetchKbEmbeddingsConfig();
         } catch (err) {
             console.error('Error fetching KB settings:', err);
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
@@ -1580,6 +1606,138 @@
             } else {
                 kbSettingsError = 'Failed to update KB settings.';
             }
+        }
+    }
+
+        /**
+     * Fetch the current embeddings configuration from the KB server
+     */
+    async function fetchKbEmbeddingsConfig() {
+        isLoadingKbEmbeddingsConfig = true;
+        kbEmbeddingsConfigError = null;
+
+        try {
+            if (!kbSettings.url) {
+                kbEmbeddingsConfig = {
+                    vendor: '',
+                    model: '',
+                    api_endpoint: '',
+                    apikey_configured: false,
+                    apikey_masked: '',
+                    config_source: 'env'
+                };
+                return;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`), {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            kbEmbeddingsConfig = response.data;
+
+            if (kbEmbeddingsConfig.apikey_configured && kbEmbeddingsConfig.apikey_masked) {
+                newKbSettings.embedding_api_key = kbEmbeddingsConfig.apikey_masked;
+            }
+
+        } catch (err) {
+            console.error('Error fetching KB embeddings config:', err);
+            // Don't show error to user - this is optional configuration
+            kbEmbeddingsConfigError = null;
+            kbEmbeddingsConfig = {
+                vendor: '',
+                model: '',
+                api_endpoint: '',
+                apikey_configured: false,
+                apikey_masked: '',
+                config_source: 'env'
+            };
+        } finally {
+            isLoadingKbEmbeddingsConfig = false;
+        }
+    }
+
+    /**
+     * Update the embeddings configuration on the KB server
+     */
+    async function updateKbEmbeddingsConfig() {
+        kbEmbeddingsConfigError = null;
+        isUpdatingKbEmbeddingsConfig = true;
+
+        try {
+            if (!kbSettings.url) {
+                throw new Error('KB server URL is not configured');
+            }
+
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Build payload with only provided fields
+            const payload = {};
+
+            if (newKbSettings.embedding_api_key &&
+                newKbSettings.embedding_api_key !== kbEmbeddingsConfig.apikey_masked) {
+                payload.apikey = newKbSettings.embedding_api_key;
+            }
+
+            // Add other fields from current config to preserve them
+            if (kbEmbeddingsConfig.vendor) {
+                payload.vendor = kbEmbeddingsConfig.vendor;
+            }
+            if (kbEmbeddingsConfig.model) {
+                payload.model = kbEmbeddingsConfig.model;
+            }
+            if (kbEmbeddingsConfig.api_endpoint) {
+                payload.api_endpoint = kbEmbeddingsConfig.api_endpoint;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.put(
+                getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`),
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Refresh the config to get updated state
+            await fetchKbEmbeddingsConfig();
+
+            // Show success message
+            kbSettingsSuccess = true;
+            addPendingChange('KB server embeddings configuration updated');
+
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                kbSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error updating KB embeddings config:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbEmbeddingsConfigError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbEmbeddingsConfigError = err.message;
+            } else {
+                kbEmbeddingsConfigError = 'Failed to update embeddings configuration. Make sure the KB server is accessible.';
+            }
+        } finally {
+            isUpdatingKbEmbeddingsConfig = false;
         }
     }
 
@@ -3345,6 +3503,69 @@
                                     </div>
 
                                     {#if showKbAdvanced}
+                                    <!-- Embedding API Key (NEW - at top of advanced options) -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label for="kb-embedding-api-key" class="block text-sm font-medium text-gray-700">Embedding API Key (Optional)</label>
+                                            {#if kbEmbeddingsConfig.apikey_configured || newKbSettings.embedding_api_key}
+                                            <button
+                                                type="button"
+                                                class="text-sm text-brand hover:text-brand-hover"
+                                                onclick={() => showEmbeddingApiKey = !showEmbeddingApiKey}
+                                            >
+                                                {showEmbeddingApiKey ? 'Hide' : 'Show'} API Key
+                                            </button>
+                                            {/if}
+                                        </div>
+                                        <input
+                                            type={showEmbeddingApiKey ? 'text' : 'password'}
+                                            id="kb-embedding-api-key"
+                                            bind:value={newKbSettings.embedding_api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand"
+                                            placeholder={kbEmbeddingsConfig.apikey_configured ? '••••••••••••••••••••••••••••' : 'Enter embedding API key'}
+                                            oninput={() => {
+                                                kbTestResult = null;
+                                                // Auto-show API key when user starts typing
+                                                if (newKbSettings.embedding_api_key && !showEmbeddingApiKey) {
+                                                    showEmbeddingApiKey = true;
+                                                }
+                                            }}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            {#if kbEmbeddingsConfig.apikey_configured}
+                                                API key is currently set on KB server ({kbEmbeddingsConfig.config_source === 'file' ? 'persisted config' : 'from env vars'}). {showEmbeddingApiKey ? 'You can view it above.' : 'Click "Show API Key" to view or leave empty to keep existing.'}
+                                            {:else}
+                                                Enter the API key for embeddings service (e.g., OpenAI). This will be set on the KB server.
+                                            {/if}
+                                        </p>
+                                        <div class="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onclick={updateKbEmbeddingsConfig}
+                                                class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded disabled:opacity-50"
+                                                disabled={isUpdatingKbEmbeddingsConfig || !newKbSettings.embedding_api_key}
+                                            >
+                                                {isUpdatingKbEmbeddingsConfig ? '🔄 Saving...' : '💾 Save to KB Server'}
+                                            </button>
+                                            {#if kbEmbeddingsConfig.config_source === 'file'}
+                                                <button
+                                                    type="button"
+                                                    class="text-sm text-gray-500 hover:text-gray-700 underline"
+                                                    onclick={async () => {
+                                                        if (confirm('Reset to environment variables? This will remove the persisted configuration.')) {
+                                                            await updateKbEmbeddingsConfig();
+                                                        }
+                                                    }}
+                                                >
+                                                    Reset to Env
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        {#if kbEmbeddingsConfigError}
+                                            <p class="mt-1 text-sm text-red-600">{kbEmbeddingsConfigError}</p>
+                                        {/if}
+                                    </div>
+
                                     <!-- Embedding Model -->
                                     <div>
                                         <label for="kb-embedding-model" class="block text-sm font-medium text-gray-700">Embedding Model (Optional)</label>
