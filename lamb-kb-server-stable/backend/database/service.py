@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
+from sqlalchemy.orm.attributes import flag_modified
 
 from .models import Collection, Visibility
 from .connection import get_db, get_chroma_client, get_embedding_function, get_embedding_function_by_params
@@ -253,19 +254,19 @@ class CollectionService:
     @staticmethod
     def delete_collection(db: Session, collection_id: int) -> bool:
         """Delete a collection from both SQLite and ChromaDB.
-        
+
         Args:
             db: SQLAlchemy database session
             collection_id: ID of the collection to delete
-            
+
         Returns:
             True if deleted successfully, False otherwise
         """
         db_collection = db.query(Collection).filter(Collection.id == collection_id).first()
-        
+
         if not db_collection:
             return False
-        
+
         # Delete from ChromaDB
         collection_name = db_collection.name
         chroma_client = get_chroma_client()
@@ -273,9 +274,96 @@ class CollectionService:
             chroma_client.delete_collection(collection_name)
         except Exception as e:
             print(f"Error deleting ChromaDB collection: {e}")
-        
+
         # Delete from SQLite
         db.delete(db_collection)
         db.commit()
-        
+
         return True
+
+    @staticmethod
+    def bulk_update_embeddings_apikey(
+        db: Session,
+        owner: str,
+        apikey: str
+    ) -> Dict[str, Any]:
+        """Bulk update embeddings API key for all collections of an owner.
+
+        Args:
+            db: SQLAlchemy database session
+            owner: Owner identifier (e.g., organization ID)
+            apikey: New API key to set for all collections
+
+        Returns:
+            Dictionary with update results:
+                - total: Total number of collections for the owner
+                - updated: Number of collections successfully updated
+                - failed: Number of collections that failed to update
+                - collections: List of updated collection IDs and names
+        """
+        # Get all collections for the owner
+        collections = db.query(Collection).filter(Collection.owner == owner).all()
+
+        if not collections:
+            return {
+                "total": 0,
+                "updated": 0,
+                "failed": 0,
+                "collections": []
+            }
+
+        updated_count = 0
+        failed_count = 0
+        updated_collections = []
+
+        for collection in collections:
+            try:
+                # Get current embeddings_model config
+                current_conf = collection.embeddings_model
+                if isinstance(current_conf, str):
+                    current_conf = json.loads(current_conf)
+                elif current_conf is None:
+                    current_conf = {}
+
+                # Update the API key
+                current_conf['apikey'] = apikey
+
+                # Save back to database (serialize to JSON if needed)
+                if isinstance(collection.embeddings_model, str):
+                    collection.embeddings_model = json.dumps(current_conf)
+                else:
+                    collection.embeddings_model = current_conf
+                
+                # Flag the column as modified so SQLAlchemy tracks the change
+                flag_modified(collection, "embeddings_model")
+                
+                updated_collections.append({
+                    "id": collection.id,
+                    "name": collection.name
+                })
+                updated_count += 1
+
+            except Exception as e:
+                print(f"ERROR: [bulk_update_embeddings_apikey] Failed to update collection {collection.id}: {str(e)}")
+                failed_count += 1
+
+        # Commit all changes at once
+        try:
+            db.commit()
+        except Exception as e:
+            print(f"ERROR: [bulk_update_embeddings_apikey] Failed to commit changes: {str(e)}")
+            db.rollback()
+            return {
+                "total": len(collections),
+                "updated": 0,
+                "failed": len(collections),
+                "collections": [],
+                "error": str(e)
+            }
+
+        return {
+            "total": len(collections),
+            "updated": updated_count,
+            "failed": failed_count,
+            "collections": updated_collections
+        }

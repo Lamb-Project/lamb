@@ -959,3 +959,27 @@ class CollectionsService:
             "removed_files": removed_files,
             "status": "deleted"
         }
+
+    @staticmethod
+    def bulk_update_embeddings_apikey(
+        db: Session,
+        owner: str,
+        apikey: str
+    ) -> Dict[str, Any]:
+        """Bulk update embeddings API key for all collections of an owner.
+
+        This is a wrapper method that delegates to the database service layer.
+
+        Args:
+            db: SQLAlchemy database session
+            owner: Owner identifier (e.g., organization ID)
+            apikey: New API key to set for all collections
+
+        Returns:
+            Dictionary with update results from the database service
+        """
+        return DBCollectionService.bulk_update_embeddings_apikey(
+            db=db,
+            owner=owner,
+            apikey=apikey
+        )
