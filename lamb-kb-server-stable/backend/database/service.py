@@ -88,7 +88,7 @@ class CollectionService:
                 description=description,
                 owner=owner,
                 visibility=visibility,
-                embeddings_model=json.dumps(embeddings_model),
+                embeddings_model=embeddings_model,  # SQLAlchemy JSON column handles serialization
                 chromadb_uuid=str(chroma_collection.id)
             )
             db.add(db_collection)
@@ -320,6 +320,8 @@ class CollectionService:
             try:
                 # Get current embeddings_model config
                 current_conf = collection.embeddings_model
+                original_was_string = isinstance(current_conf, str)
+                
                 if isinstance(current_conf, str):
                     current_conf = json.loads(current_conf)
                 elif current_conf is None:
@@ -328,8 +330,8 @@ class CollectionService:
                 # Update the API key
                 current_conf['apikey'] = apikey
 
-                # Save back to database (serialize to JSON if needed)
-                if isinstance(collection.embeddings_model, str):
+                # Save back to database (preserve the original storage format)
+                if original_was_string:
                     collection.embeddings_model = json.dumps(current_conf)
                 else:
                     collection.embeddings_model = current_conf

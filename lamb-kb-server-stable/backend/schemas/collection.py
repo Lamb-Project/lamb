@@ -77,9 +77,17 @@ class CollectionCreateResponse(BaseModel):
     id: int = Field(..., description="Unique identifier of the newly created collection")
 
 
+class EmbeddingsModelPartial(BaseModel):
+    """Schema for partial embeddings model updates (all fields optional)."""
+    model: Optional[str] = Field(None, description="Name or path of the embeddings model")
+    vendor: Optional[str] = Field(None, description="Vendor of the embeddings model (e.g., 'ollama', 'local', 'openai')")
+    api_endpoint: Optional[str] = Field(None, description="Custom API endpoint URL")
+    apikey: Optional[str] = Field(None, description="API key for the endpoint if required")
+
+
 class BulkUpdateEmbeddingsRequest(BaseModel):
     """Schema for bulk updating embeddings API key for all collections of an owner."""
-    embeddings_model: EmbeddingsModel = Field(
+    embeddings_model: EmbeddingsModelPartial = Field(
         ...,
         description="New embeddings model configuration (only apikey will be updated)"
     )
