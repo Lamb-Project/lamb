@@ -225,6 +225,9 @@
     let isApplyingToAllKb = $state(false);
     /** @type {string | null} */
     let applyToAllKbResult = $state(null);
+    let applyToAllKbChecked = $state(false);
+    let embeddingApiKeyOriginal = $state('');
+    let embeddingApiKeyDirty = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -1645,9 +1648,20 @@
 
             kbEmbeddingsConfig = response.data;
 
+            // Initialize embedding API key form field with masked key if configured
             if (kbEmbeddingsConfig.apikey_configured && kbEmbeddingsConfig.apikey_masked) {
+                // Store the masked key for display purposes and dirty tracking
                 newKbSettings.embedding_api_key = kbEmbeddingsConfig.apikey_masked;
+                embeddingApiKeyOriginal = kbEmbeddingsConfig.apikey_masked;
+            } else {
+                // No key configured
+                newKbSettings.embedding_api_key = '';
+                embeddingApiKeyOriginal = '';
             }
+            
+            // Reset dirty state and checkbox when loading fresh config
+            embeddingApiKeyDirty = false;
+            applyToAllKbChecked = false;
 
         } catch (err) {
             console.error('Error fetching KB embeddings config:', err);
@@ -1689,6 +1703,11 @@
             if (newKbSettings.embedding_api_key &&
                 newKbSettings.embedding_api_key !== kbEmbeddingsConfig.apikey_masked) {
                 payload.apikey = newKbSettings.embedding_api_key;
+                
+                // Add flag to apply to all KB collections if checkbox is checked
+                if (applyToAllKbChecked) {
+                    payload.apply_to_all_kb = true;
+                }
             }
 
             // Add other fields from current config to preserve them
@@ -1704,7 +1723,7 @@
 
             // Use LAMB backend proxy endpoint instead of calling KB server directly
             const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
-            await axios.put(
+            const response = await axios.put(
                 getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`),
                 payload,
                 {
@@ -1720,7 +1739,18 @@
 
             // Show success message
             kbSettingsSuccess = true;
-            addPendingChange('KB server embeddings configuration updated');
+            
+            // Handle bulk update results
+            if (response.data?.bulk_update) {
+                const bulkResult = response.data.bulk_update;
+                const message = `KB server embeddings configuration updated. ` +
+                    (bulkResult.updated > 0 
+                        ? `Applied new API key to ${bulkResult.updated} of ${bulkResult.total} knowledge base collections.` 
+                        : 'No existing collections needed updating.');
+                addPendingChange(message);
+            } else {
+                addPendingChange('KB server embeddings configuration updated');
+            }
 
             // Clear success message after 3 seconds
             setTimeout(() => {
@@ -3529,6 +3559,8 @@
                                                 if (newKbSettings.embedding_api_key && !showEmbeddingApiKey) {
                                                     showEmbeddingApiKey = true;
                                                 }
+                                                // Track if field is dirty (different from original)
+                                                embeddingApiKeyDirty = newKbSettings.embedding_api_key !== embeddingApiKeyOriginal;
                                             }}
                                         >
                                         <p class="mt-1 text-sm text-gray-500">
@@ -3538,6 +3570,30 @@
                                                 Enter the API key for embeddings service (e.g., OpenAI). This will be set on the KB server.
                                             {/if}
                                         </p>
+                                        
+                                        <!-- Conditional: Bulk Update Checkbox (only show when key is dirty) -->
+                                        {#if embeddingApiKeyDirty}
+                                        <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <input
+                                                    id="apply-to-all-kb"
+                                                    type="checkbox"
+                                                    bind:checked={applyToAllKbChecked}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded mt-0.5"
+                                                >
+                                                <div class="ml-3">
+                                                    <label for="apply-to-all-kb" class="block text-sm font-medium text-gray-900 cursor-pointer">
+                                                        Apply this key to all existing knowledge bases in this organization
+                                                    </label>
+                                                    <p class="mt-1 text-xs text-yellow-700 flex items-start">
+                                                        <span class="mr-1">⚠️</span>
+                                                        <span>This will update the embedding API key for all knowledge base collections. Use this when rotating API keys.</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+                                        
                                         <div class="mt-2 flex gap-2">
                                             <button
                                                 type="button"

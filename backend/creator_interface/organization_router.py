@@ -3346,6 +3346,7 @@ class KbEmbeddingsConfigUpdate(BaseModel):
     model: Optional[str] = Field(None, description="Model name")
     api_endpoint: Optional[str] = Field(None, description="API endpoint URL")
     apikey: Optional[str] = Field(None, description="API key for the embeddings service")
+    apply_to_all_kb: Optional[bool] = Field(False, description="Apply this API key to all existing KB collections")
 
 
 @router.put(
@@ -3412,9 +3413,12 @@ async def update_kb_embeddings_config(
             payload['api_endpoint'] = config_update.api_endpoint
         if config_update.apikey is not None:
             payload['apikey'] = config_update.apikey
+        if config_update.apply_to_all_kb is not None:
+            payload['apply_to_all_kb'] = config_update.apply_to_all_kb
         
         # Proxy request to KB server
         async with httpx.AsyncClient() as client:
+            # First, update the config
             response = await client.put(
                 f"{kb_url}/config/embeddings",
                 json=payload,
@@ -3427,8 +3431,30 @@ async def update_kb_embeddings_config(
                     detail=f"KB server returned error: {response.text}"
                 )
             
+            # If apply_to_all_kb is True, also update all existing KB collections
+            bulk_update_result = None
+            if config_update.apply_to_all_kb and config_update.apikey:
+                bulk_response = await client.put(
+                    f"{kb_url}/collections/owner/{organization['id']}/embeddings",
+                    json={
+                        "embeddings_model": {
+                            "apikey": config_update.apikey
+                        }
+                    },
+                    headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+                )
+                
+                if bulk_response.status_code == 200:
+                    bulk_update_result = bulk_response.json()
+                    logger.info(f"Organization admin {admin_info['user_email']} applied new API key to {bulk_update_result.get('updated', 0)} KB collections")
+                else:
+                    logger.warning(f"Bulk update failed with status {bulk_response.status_code}: {bulk_response.text}")
+            
             logger.info(f"Organization admin {admin_info['user_email']} updated KB server embeddings config")
-            return {"message": "Embeddings configuration updated successfully"}
+            return {
+                "message": "Embeddings configuration updated successfully",
+                "bulk_update": bulk_update_result
+            }
             
     except HTTPException:
         raise
