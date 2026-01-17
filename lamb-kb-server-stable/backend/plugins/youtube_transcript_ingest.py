@@ -37,6 +37,8 @@ import re
 import os
 from typing import Dict, List, Any, Optional, Iterable
 from datetime import datetime
+import random
+import time
 
 try:
     import yt_dlp
@@ -180,15 +182,34 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             if not subtitle_url:
                 # Take the first available format
                 subtitle_url = available_subs[0]['url']
+            
+            # Backoff retry limit and a more "legit" header to mimic actual browser and not requests.get()'s bot scraper
+            max_retries = 3
+            headers = { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
 
-            # Download and parse the subtitle file
+            # Try to download and parse the subtitle file
             import requests
-            response = requests.get(subtitle_url, proxies={
-                                    'http': proxy_url, 'https': proxy_url} if proxy_url else None)
-            response.raise_for_status()
-
-            return _parse_vtt_content(response.text)
-
+            for attempt in range(max_retries):
+                try:
+                    # Pass the proxy configuration if provided in plugin_params
+                    proxies = {'http': proxy_url, 'https': proxy_url} if proxy_url else None
+                    
+                    response = requests.get(subtitle_url, headers=headers, proxies=proxies, timeout=15)
+                    response.raise_for_status()
+                    return _parse_vtt_content(response.text)
+                    
+                except requests.exceptions.HTTPError as e:
+                    # Check specifically for Rate Limiting
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        # Backoff: 10s, 20s, 40s + random jitter seconds
+                        wait_time = (2 ** attempt) * 10 + random.uniform(0, 5)
+                        print(f"DEBUG: Rate limited (429). Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    raise ValueError(f"Failed to download subtitle: {e}")
+            
         except Exception as e:
             raise ValueError(f"Failed to extract subtitles: {e}")
 
@@ -336,6 +357,10 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
 
         all_chunks: List[Dict[str, Any]] = []
         for url_idx, url in enumerate(urls):
+
+            if url_idx > 0:     # delay only after first ingest
+                time.sleep(random.uniform(4, 11))       # min delay and max delay adjustable
+            
             video_id = _parse_youtube_url(url)
             if not video_id:
                 self.report_progress(
