@@ -89,7 +89,8 @@ def _clean_text(text: str) -> str:
 def _chunk_transcript(pieces: List[Dict[str, Any]], chunk_duration: float) -> List[Dict[str, Any]]:
     """Group transcript pieces into chunks not exceeding target duration."""
     chunks: List[Dict[str, Any]] = []
-    current = {"start": 0.0, "end": 0.0, "text_parts": [], "original_text_parts": []}
+    current = {"start": 0.0, "end": 0.0,
+               "text_parts": [], "original_text_parts": []}
 
     for p in pieces:
         raw_text = p.get("text", "")
@@ -104,7 +105,8 @@ def _chunk_transcript(pieces: List[Dict[str, Any]], chunk_duration: float) -> Li
 
         if current["end"] - current["start"] >= chunk_duration:
             chunks.append(current)
-            current = {"start": 0.0, "end": 0.0, "text_parts": [], "original_text_parts": []}
+            current = {"start": 0.0, "end": 0.0,
+                       "text_parts": [], "original_text_parts": []}
 
     if current["text_parts"]:
         chunks.append(current)
@@ -127,22 +129,22 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
         'quiet': True,
         'no_warnings': True,
     }
-    
+
     if proxy_url:
         ydl_opts['proxy'] = proxy_url
 
     # Try to extract subtitles using yt-dlp
     video_url = f"https://www.youtube.com/watch?v={video_id}"
-    
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             # Extract video info and subtitles
             info = ydl.extract_info(video_url, download=False)
-            
+
             # Get available subtitles
             subtitles = info.get('subtitles', {})
             automatic_captions = info.get('automatic_captions', {})
-            
+
             # Try requested languages first, then fall back to English, then any available
             available_subs = None
             for lang in languages:
@@ -152,7 +154,7 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
                 elif lang in automatic_captions:
                     available_subs = automatic_captions[lang]
                     break
-            
+
             # Fallback to English if requested language not found
             if not available_subs:
                 if 'en' in subtitles:
@@ -164,28 +166,29 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
                     all_subs = {**subtitles, **automatic_captions}
                     if all_subs:
                         available_subs = list(all_subs.values())[0]
-            
+
             if not available_subs:
                 raise ValueError("No subtitles available for this video")
-            
+
             # Find the best subtitle format (prefer vtt, then srv3, then others)
             subtitle_url = None
             for sub in available_subs:
                 if sub['ext'] == 'vtt':
                     subtitle_url = sub['url']
                     break
-            
+
             if not subtitle_url:
                 # Take the first available format
                 subtitle_url = available_subs[0]['url']
-            
+
             # Download and parse the subtitle file
             import requests
-            response = requests.get(subtitle_url, proxies={'http': proxy_url, 'https': proxy_url} if proxy_url else None)
+            response = requests.get(subtitle_url, proxies={
+                                    'http': proxy_url, 'https': proxy_url} if proxy_url else None)
             response.raise_for_status()
-            
+
             return _parse_vtt_content(response.text)
-            
+
         except Exception as e:
             raise ValueError(f"Failed to extract subtitles: {e}")
 
@@ -193,20 +196,21 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
 def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
     """Parse VTT subtitle content into transcript pieces."""
     import re
-    
+
     pieces = []
     lines = vtt_content.split('\n')
-    
+
     i = 0
     while i < len(lines):
         line = lines[i].strip()
-        
+
         # Look for timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
-        timestamp_match = re.match(r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})', line)
+        timestamp_match = re.match(
+            r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})', line)
         if timestamp_match:
             start_time = _timestamp_to_seconds(timestamp_match.group(1))
             end_time = _timestamp_to_seconds(timestamp_match.group(2))
-            
+
             # Collect text lines until we hit an empty line or another timestamp
             text_lines = []
             i += 1
@@ -217,7 +221,7 @@ def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
                 if text_line:
                     text_lines.append(text_line)
                 i += 1
-            
+
             if text_lines:
                 pieces.append({
                     'text': ' '.join(text_lines),
@@ -226,7 +230,7 @@ def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
                 })
         else:
             i += 1
-    
+
     return pieces
 
 
@@ -247,7 +251,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
     Unlike file-based plugins, this can work with a remote resource. A placeholder
     file may still be supplied by the ingestion pipeline; its path is accepted but
     not required if `video_url` param is provided.
-    
+
     Supports progress reporting for multi-video ingestion.
     """
 
@@ -300,7 +304,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
 
     def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:  # noqa: D401
         """Ingest YouTube video transcripts.
-        
+
         Args:
             file_path: Path to optional text file containing URLs
             **kwargs: Plugin parameters
@@ -312,7 +316,8 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
         language: str = kwargs.get("language", "en")
         chunk_duration: float = float(kwargs.get("chunk_duration", 60))
         proxy_url: Optional[str] = kwargs.get("proxy_url")
-        file_url: str = kwargs.get("file_url", "")  # supplied by ingestion service
+        # supplied by ingestion service
+        file_url: str = kwargs.get("file_url", "")
 
         urls: List[str] = []
         if video_url:
@@ -326,23 +331,27 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
             )
 
         # Report initial progress
-        self.report_progress(kwargs, 0, len(urls), f"Starting transcript extraction for {len(urls)} video(s)...")
+        self.report_progress(kwargs, 0, len(
+            urls), f"Starting transcript extraction for {len(urls)} video(s)...")
 
         all_chunks: List[Dict[str, Any]] = []
         for url_idx, url in enumerate(urls):
             video_id = _parse_youtube_url(url)
             if not video_id:
-                self.report_progress(kwargs, url_idx + 1, len(urls), f"Skipped invalid URL: {url[:30]}...")
+                self.report_progress(
+                    kwargs, url_idx + 1, len(urls), f"Skipped invalid URL: {url[:30]}...")
                 continue  # skip invalid
-            
-            self.report_progress(kwargs, url_idx, len(urls), f"Fetching transcript for video {video_id}...")
-            
+
+            self.report_progress(kwargs, url_idx, len(
+                urls), f"Fetching transcript for video {video_id}...")
+
             try:
                 pieces = _fetch_transcript(video_id, [language], proxy_url)
             except ValueError as e:
                 # Skip videos without transcripts or other extraction failures
                 if "No subtitles available" in str(e):
-                    self.report_progress(kwargs, url_idx + 1, len(urls), f"No subtitles for {video_id}, skipping...")
+                    self.report_progress(
+                        kwargs, url_idx + 1, len(urls), f"No subtitles for {video_id}, skipping...")
                     continue
                 else:
                     raise e
@@ -356,8 +365,10 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
             for idx, c in enumerate(chunk_objs):
                 cleaned_text = " ".join(c["text_parts"]).strip()
                 original_text = " ".join(c["original_text_parts"]).strip()
-                start_ts = _seconds_to_timestamp(c["start"]) if c["start"] else "00:00:00,000"
-                end_ts = _seconds_to_timestamp(c["end"]) if c["end"] else start_ts
+                start_ts = _seconds_to_timestamp(
+                    c["start"]) if c["start"] else "00:00:00,000"
+                end_ts = _seconds_to_timestamp(
+                    c["end"]) if c["end"] else start_ts
 
                 # Generate YouTube URL with timestamp using standard format
                 # Use youtu.be format with ?t= parameter for clean URLs
@@ -386,13 +397,16 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                     "text": cleaned_text,
                     "metadata": metadata,
                 })
-            
+
             # Report progress after each video
-            self.report_progress(kwargs, url_idx + 1, len(urls), f"Processed video {video_id}: {total} chunks")
+            self.report_progress(kwargs, url_idx + 1, len(urls),
+                                 f"Processed video {video_id}: {total} chunks")
 
         if not all_chunks:
-            raise ValueError("No chunks produced from provided YouTube URL(s).")
+            raise ValueError(
+                "No chunks produced from provided YouTube URL(s).")
 
         # Report completion
-        self.report_progress(kwargs, len(urls), len(urls), f"Completed: {len(all_chunks)} chunks from {len(urls)} video(s)")
+        self.report_progress(kwargs, len(urls), len(
+            urls), f"Completed: {len(all_chunks)} chunks from {len(urls)} video(s)")
         return all_chunks
