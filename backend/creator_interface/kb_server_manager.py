@@ -1366,8 +1366,9 @@ class KBServerManager:
                     
                     return {
                         "message": "File deleted successfully",
-                        "knowledge_base_id": kb_id,
-                        "file_id": file_id
+                        "kb_id": kb_id,
+                        "file_id": file_id,
+                        "status": "success"
                     }
                 elif delete_response.status_code == 404:
                     logger.error(f"File {file_id} not found in knowledge base {kb_id}")
