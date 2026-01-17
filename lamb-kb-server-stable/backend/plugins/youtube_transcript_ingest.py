@@ -359,9 +359,14 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                 start_ts = _seconds_to_timestamp(c["start"]) if c["start"] else "00:00:00,000"
                 end_ts = _seconds_to_timestamp(c["end"]) if c["end"] else start_ts
 
+                # Generate YouTube URL with timestamp using standard format
+                # Use youtu.be format with ?t= parameter for clean URLs
+                timestamp_seconds = int(c["start"])
+                youtube_url_with_timestamp = f"https://youtu.be/{video_id}?t={timestamp_seconds}"
+
                 metadata = {
                     "ingestion_plugin": self.name,
-                    "source_url": f"{url}&t={int(c['start'])}",
+                    "source_url": youtube_url_with_timestamp,
                     "video_id": video_id,
                     "language": language,
                     "chunk_index": idx,

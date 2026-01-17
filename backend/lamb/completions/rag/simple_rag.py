@@ -212,11 +212,17 @@ def rag_processor(
                     if "metadata" in doc:
                         metadata = doc["metadata"]
                         
-                        # Determine the best source URL (prefer new fields from markitdown_plus_ingest)
+                        # Determine the best source URL (prefer remote sources like YouTube with timestamps)
                         source_url = None
                         original_url = None
                         markdown_url = None
                         images_folder = None
+                        remote_source_url = None
+                        
+                        # Remote source URL (YouTube videos with timestamps, etc.)
+                        # This takes priority as it contains the exact timestamp
+                        if "source_url" in metadata:
+                            remote_source_url = metadata["source_url"]
                         
                         # New metadata fields from markitdown_plus_ingest plugin
                         if "original_file_url" in metadata:
@@ -230,8 +236,8 @@ def rag_processor(
                         if "file_url" in metadata:
                             source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
                         
-                        # Prefer original_file_url for the main source, fall back to file_url
-                        main_url = original_url or source_url
+                        # Priority: remote_source_url (YouTube) > original_file_url > file_url
+                        main_url = remote_source_url or original_url or source_url
                         
                         if main_url:
                             source_entry = {
