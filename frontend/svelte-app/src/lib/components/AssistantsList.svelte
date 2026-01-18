@@ -12,8 +12,8 @@
   // Import new components and utilities
   import Pagination from './common/Pagination.svelte';
   import FilterBar from './common/FilterBar.svelte';
-    import DeleteConfirmationModal from './modals/DeleteConfirmationModal.svelte';
-    import { processListData } from '$lib/utils/listHelpers';
+  import ConfirmationModal from './modals/ConfirmationModal.svelte';
+  import { processListData } from '$lib/utils/listHelpers';
     import { formatDateForTable } from '$lib/utils/dateHelpers';
 
     // State for the delete confirmation modal
@@ -38,18 +38,19 @@
         try {
             await deleteAssistant(deleteTarget.id);
             await loadAllAssistants(); // Refresh the list automatically
+            showDeleteModal = false;
+            deleteTarget = { id: null, name: '', published: false };
         } catch (err) {
             console.error('Error deleting assistant:', err);
             // Optional: show error to user
         } finally {
             isDeleting = false;
-            showDeleteModal = false;
-            deleteTarget = { id: null, name: '', published: false };
         }
     }
 
     // Handler to cancel deletion from the modal
     function handleDeleteCancel() {
+        if (isDeleting) return;
         showDeleteModal = false;
         deleteTarget = { id: null, name: '', published: false };
     }
@@ -543,14 +544,6 @@
                                         >
                                             {@html IconDelete}
                                         </button>
-<!-- Delete Confirmation Modal -->
-<DeleteConfirmationModal
-    isOpen={showDeleteModal}
-    assistantName={deleteTarget.name}
-    isDeleting={isDeleting}
-    on:confirm={handleDeleteConfirm}
-    on:close={handleDeleteCancel}
-/>
                                     {/if}
                                 </div>
                                 <div class="text-xs text-gray-400 mt-2">ID: {assistant.id}</div>
@@ -637,3 +630,15 @@
         {/if}
     {/if}
 </div>
+
+<!-- Delete Confirmation Modal (rendered once, outside the loop) -->
+<ConfirmationModal
+    bind:isOpen={showDeleteModal}
+    bind:isLoading={isDeleting}
+    title={localeLoaded ? $_('assistants.deleteModal.title', { default: 'Delete Assistant' }) : 'Delete Assistant'}
+    message={localeLoaded ? $_('assistants.deleteModal.confirmation', { values: { name: deleteTarget.name }, default: `Are you sure you want to delete the assistant "${deleteTarget.name}"? This action cannot be undone.` }) : `Are you sure you want to delete the assistant "${deleteTarget.name}"? This action cannot be undone.`}
+    confirmText={localeLoaded ? $_('assistants.deleteModal.confirmButton', { default: 'Delete' }) : 'Delete'}
+    variant="danger"
+    onconfirm={handleDeleteConfirm}
+    oncancel={handleDeleteCancel}
+/>

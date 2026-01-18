@@ -6,7 +6,7 @@
     import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
-    import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte'; // Generic confirmation modal
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores'; // Import page store to read URL params
     import { getAssistantById, createAssistant, deleteAssistant, setAssistantPublishStatus } from '$lib/services/assistantService'; // Import service
@@ -1458,20 +1458,21 @@
 
 
 <!-- Delete Confirmation Modal -->
-{#if isDeleteModalOpen}
-   <DeleteConfirmationModal
-       bind:isOpen={isDeleteModalOpen}
-       assistantName={assistantToDeleteName || ''}
-       bind:isDeleting={isDeletingAssistant}
-       on:confirm={handleDeleteConfirm}
-       on:close={() => {
-           isDeleteModalOpen = false;
-           assistantToDeleteId = null;
-           assistantToDeleteName = null;
-           deleteError = ''; // Clear errors on close
-       }}
-   />
-{/if}
+<ConfirmationModal
+    bind:isOpen={isDeleteModalOpen}
+    bind:isLoading={isDeletingAssistant}
+    title={currentLocale ? $_('assistants.deleteModal.title', { default: 'Delete Assistant' }) : 'Delete Assistant'}
+    message={currentLocale ? $_('assistants.deleteModal.confirmation', { values: { name: assistantToDeleteName || '' }, default: `Are you sure you want to delete the assistant "${assistantToDeleteName}"? This action cannot be undone.` }) : `Are you sure you want to delete the assistant "${assistantToDeleteName}"? This action cannot be undone.`}
+    confirmText={currentLocale ? $_('assistants.deleteModal.confirmButton', { default: 'Delete' }) : 'Delete'}
+    variant="danger"
+    onconfirm={handleDeleteConfirm}
+    oncancel={() => {
+        isDeleteModalOpen = false;
+        assistantToDeleteId = null;
+        assistantToDeleteName = null;
+        deleteError = ''; // Clear errors on close
+    }}
+/>
 
 <!-- Loading state for detail view -->
 {#if loadingDetail}

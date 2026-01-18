@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 1.2  
+**Document Version:** 1.5  
 **Date:** January 18, 2026  
 **Status:** Phase 1 Complete - Phase 2 In Progress
 
@@ -8,6 +8,9 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.5 | 2026-01-18 | Migrated `AssistantsList.svelte` and `assistants/+page.svelte` delete modals to use generic `ConfirmationModal`. Deleted redundant `DeleteConfirmationModal.svelte`. Fixed modal placement (moved outside loop). |
+| 1.4 | 2026-01-18 | Created `useLocaleReady.js` utility. Simplified locale tracking pattern using `$derived`. Updated `ConfirmationModal` to use new pattern. |
+| 1.3 | 2026-01-18 | Phase 2 started. Created generic `ConfirmationModal.svelte` component. Migrated `PromptTemplatesContent.svelte` and `prompt-templates/+page.svelte` delete modals. |
 | 1.2 | 2026-01-18 | Completed Phase 1. Removed orphaned `AssistantAccessManager` feature (component, page, service functions). Investigation revealed it was superseded by `AssistantSharingModal`. |
 | 1.1 | 2026-01-18 | Initial analysis complete, Phase 1 quick wins implemented |
 
@@ -392,7 +395,8 @@ This document outlines a comprehensive refactoring plan for the LAMB frontend (`
 | `lib/components/evaluaitor/RubricAIGenerationModal.svelte` | ✅ Analyzed | Clean |
 | `lib/components/evaluaitor/RubricAIChat.svelte` | ✅ Analyzed | Clean |
 | **modals/** | | |
-| `lib/components/modals/DeleteConfirmationModal.svelte` | ✅ Analyzed | Clean |
+| `lib/components/modals/ConfirmationModal.svelte` | ✅ Analyzed | Generic confirmation modal (NEW) |
+| ~~`lib/components/modals/DeleteConfirmationModal.svelte`~~ | ❌ **REMOVED** | Replaced by generic ConfirmationModal |
 | `lib/components/modals/CreateKnowledgeBaseModal.svelte` | ✅ Analyzed | Clean |
 | `lib/components/modals/TemplateSelectModal.svelte` | ✅ Analyzed | Clean |
 | **promptTemplates/** | | |
@@ -600,6 +604,7 @@ Some components use:
 | `AssistantSharing.svelte` | May overlap with `AssistantSharingModal.svelte` | Consolidate or clarify purpose |
 | ~~`chat/+page.svelte`~~ | ~~Has hardcoded `API_KEY`~~ | ✅ REMOVED in Phase 1 |
 | ~~`AssistantAccessManager.svelte`~~ | ~~Orphaned feature~~ | ✅ REMOVED in Phase 1 |
+| ~~`DeleteConfirmationModal.svelte`~~ | ~~Redundant with ConfirmationModal~~ | ✅ REMOVED in Phase 2 |
 
 ---
 
@@ -1020,12 +1025,41 @@ export async function navigateToAdmin(page, view = 'dashboard') {
 | 1.11 | Remove `/org-admin/assistants/+page.svelte` (redundant page) | ✅ **DONE** | None |
 | 1.12 | Remove `getAssistantAccess`/`updateAssistantAccess` from `organizationService.js` | ✅ **DONE** | None |
 
-### Phase 2: Pattern Standardization
+### Phase 2: Pattern Standardization - IN PROGRESS
 
-1. Create generic `ConfirmationModal.svelte`
-3. Replace specific delete/disable modals with generic one
-4. Standardize modal open/close patterns
-5. Extract locale-checking into composable
+| # | Task | Status | UI Impact |
+|---|------|--------|-----------|
+| 2.1 | Create generic `ConfirmationModal.svelte` | ✅ **DONE** | None (new component) |
+| 2.2 | Migrate `PromptTemplatesContent.svelte` delete modal | ✅ **DONE** | Delete confirmation now uses standard modal |
+| 2.3 | Migrate `prompt-templates/+page.svelte` delete modal | ✅ **DONE** | Delete confirmation standardization |
+| 2.4 | Create `useLocaleReady` utility | ✅ **DONE** | None (utility + pattern documentation) |
+| 2.5 | Migrate `AssistantsList.svelte` delete modal | ✅ **DONE** | Delete confirmation now uses standard modal |
+| 2.6 | Migrate `assistants/+page.svelte` delete modal | ✅ **DONE** | Delete confirmation standardization |
+| 2.7 | Delete redundant `DeleteConfirmationModal.svelte` | ✅ **DONE** | None (component removed) |
+| 2.8 | Standardize remaining modal patterns | ⏳ Pending | Consistency improvements |
+
+#### New Utility: `useLocaleReady.js`
+
+Created `$lib/utils/useLocaleReady.js` with helpers for locale state tracking.
+
+**Recommended Pattern (Svelte 5):**
+```javascript
+// Simple: use $derived for reactive locale tracking
+let localeLoaded = $derived(!!$locale);
+
+// Or inline in templates:
+{$locale ? $_('key') : 'fallback'}
+```
+
+**Old Pattern (deprecated):**
+```javascript
+// Verbose subscription pattern - avoid this
+let localeLoaded = $state(false);
+$effect(() => {
+    const unsub = locale.subscribe(v => localeLoaded = !!v);
+    return unsub;
+});
+```
 
 ### Phase 3: Admin Page Refactoring (5-7 days)
 
