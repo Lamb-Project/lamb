@@ -5,7 +5,6 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
-    import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     // BulkUserImport component not yet implemented
@@ -34,8 +33,6 @@
     let assistantsLoaded = $state(false); // Track if assistants have been loaded at least once
     /** @type {string | null} */
     let assistantsError = $state(null);
-    let selectedAssistant = $state(null);
-    let showAccessModal = $state(false);
     let assistantsSearchQuery = $state('');
     let assistantsFilterPublished = $state('all');
     
@@ -1205,15 +1202,6 @@
         loadAssistantShareCounts();
     }
 
-    function closeAccessModal() {
-        showAccessModal = false;
-        selectedAssistant = null;
-    }
-
-    function handleAccessUpdated() {
-        // Optionally reload assistants
-        fetchAssistants();
-    }
 
     function formatDate(timestamp) {
         if (!timestamp) return 'N/A';
@@ -4417,13 +4405,6 @@
     </div>
 {/if}
 
-<!-- Assistant Access Manager Modal -->
-<AssistantAccessManager
-    assistant={selectedAssistant}
-    bind:show={showAccessModal}
-    on:close={closeAccessModal}
-    on:updated={handleAccessUpdated}
-/>
 
 <!-- Assistant Sharing Modal -->
 {#if showSharingModal && modalAssistant}
