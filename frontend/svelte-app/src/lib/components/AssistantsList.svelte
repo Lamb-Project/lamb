@@ -4,7 +4,7 @@
   import { goto } from '$app/navigation';
   import { createEventDispatcher } from 'svelte';
   import { user } from '$lib/stores/userStore';
-  import { getAssistants, getSharedAssistants, deleteAssistant, downloadAssistant, unpublishAssistant } from '$lib/services/assistantService';
+  import { getAssistants, getSharedAssistants, deleteAssistant, downloadAssistant } from '$lib/services/assistantService';
   import { base } from '$app/paths';
   import { browser } from '$app/environment';
   import { _, locale } from '$lib/i18n';
@@ -283,30 +283,6 @@
     goto(targetUrl); 
   }
   
-  /** @param {{ detail: { assistantId: number; groupId: string | null | undefined; ownerEmail: string } }} event */
-  async function handleUnpublish(event) { 
-      const assistantId = Number(event.detail.assistantId);
-      const { groupId, ownerEmail } = event.detail;
-      if (!groupId || !ownerEmail) {
-          alert(localeLoaded ? $_('assistants.unpublishErrorMissingData') : 'Cannot unpublish: Missing group ID or owner email.');
-          return;
-      }
-      const assistantToUnpublish = allAssistants.find(a => a.id === assistantId);
-      const confirmMessage = localeLoaded ? $_('assistants.unpublishConfirm', { values: { name: assistantToUnpublish?.name || assistantId } }) : `Are you sure you want to unpublish assistant ${assistantId}?`;
-      if (confirm(confirmMessage)) {
-          try {
-              await unpublishAssistant(assistantId.toString(), groupId, ownerEmail);
-              await loadAllAssistants();
-              alert(localeLoaded ? $_('assistants.unpublishSuccess') : 'Assistant unpublished successfully!');
-          } catch (err) {
-              console.error('Error unpublishing assistant:', err);
-              const errorMsg = err instanceof Error ? err.message : 'Failed to unpublish assistant';
-              error = errorMsg;
-              alert(localeLoaded ? $_('assistants.unpublishError', { values: { error: errorMsg } }) : `Error: ${errorMsg}`);
-          }
-      }
-  }
-  
   // --- Helper Functions ---
   /** @param {string | undefined | null} jsonString */
   function parseMetadata(jsonString) {
@@ -325,7 +301,6 @@
   const IconDelete = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>`;
   const IconRefresh = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
   const IconExport = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>`;
-  const IconUnpublish = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75c-.621 0-1.125-.504-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>`;
 </script>
 
 <!-- Container for the list -->
@@ -530,13 +505,8 @@
                                     >
                                         {@html IconExport}
                                     </button>
-                                    <!-- Publish/Unpublish Button -->
-                                    {#if assistant.published}
-                                        <button onclick={() => handleUnpublish({ detail: { assistantId: assistant.id, groupId: assistant.group_id, ownerEmail: assistant.owner } })} title={localeLoaded ? $_('assistants.actions.unpublish', { default: 'Unpublish' }) : 'Unpublish'} class="text-yellow-600 hover:text-yellow-900 p-1 rounded hover:bg-yellow-100 transition-colors duration-150">
-                                            {@html IconUnpublish}
-                                        </button>
-                                    {:else}
-                                        <!-- Delete Button (Only show if not published) -->
+                                    <!-- Delete Button (Only show if not published - published assistants must be unpublished from detail view first) -->
+                                    {#if !assistant.published}
                                         <button 
                                             onclick={() => handleDelete(assistant)}
                                             title={localeLoaded ? $_('assistants.actions.delete', { default: 'Delete' }) : 'Delete'} 
