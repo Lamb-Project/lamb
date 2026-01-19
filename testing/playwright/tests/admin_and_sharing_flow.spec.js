@@ -181,16 +181,18 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(disableButton).toBeVisible({ timeout: 5_000 });
     await disableButton.click();
 
-    // Wait for the confirmation modal
-    await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
+    // Wait for the confirmation modal (UserActionModal shows "Disable User Account")
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
 
-    // Click the "Disable" button in the modal (scope to overlay)
-    const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+    // Click the "Disable" button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^disable$/i });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
     await confirmButton.click();
 
     // Wait for modal to disappear and status to change
-    await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(userRow.getByText("Disabled")).toBeVisible({ timeout: 10_000 });
     console.log(`User "${adminTestUserEmail}" successfully disabled.`);
   });
@@ -790,10 +792,13 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       const disableButton = userRow.getByRole("button", { name: /disable/i }).first();
       if (await disableButton.count()) {
         await disableButton.click();
-        await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+        // Wait for UserActionModal to appear
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: 5_000 });
+        await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
+        const confirmButton = modal.getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+        await expect(modal).not.toBeVisible({ timeout: 10_000 });
       }
     }
 
@@ -808,10 +813,13 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       const disableButton = userRow.getByRole("button", { name: /disable/i }).first();
       if (await disableButton.count()) {
         await disableButton.click();
-        await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+        // Wait for UserActionModal to appear
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: 5_000 });
+        await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
+        const confirmButton = modal.getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+        await expect(modal).not.toBeVisible({ timeout: 10_000 });
       }
     }
 
