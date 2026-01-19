@@ -18,7 +18,8 @@
     
     // Import admin components
     import AdminDashboard from '$lib/components/admin/AdminDashboard.svelte';
-    import AdminUserForm from '$lib/components/admin/AdminUserForm.svelte';
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -2083,92 +2084,25 @@
     {/if}
 </div>
 
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    {localeLoaded ? $_('admin.users.password.title', { default: 'Change Password' }) : 'Change Password'}
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    {localeLoaded 
-                        ? $_('admin.users.password.subtitle', { default: 'Set a new password for' }) 
-                        : 'Set a new password for'} {selectedUserName}
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{localeLoaded ? $_('admin.users.password.success', { default: 'Password changed successfully!' }) : 'Password changed successfully!'}</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.password.email', { default: 'Email' }) : 'Email'}
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-500 bg-gray-100 leading-tight" 
-                                value={passwordChangeData.email} 
-                                disabled
-                                readonly
-                            />
-                        </div>
-                        
-                        <div class="mb-6 text-left">
-                            <label for="new_password" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.password.newPassword', { default: 'New Password' }) : 'New Password'} *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new_password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                {localeLoaded ? $_('admin.users.password.hint', { default: 'At least 8 characters recommended' }) : 'At least 8 characters recommended'}
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                {localeLoaded ? $_('admin.users.password.cancel', { default: 'Cancel' }) : 'Cancel'}
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword 
-                                    ? (localeLoaded ? $_('admin.users.password.changing', { default: 'Changing...' }) : 'Changing...') 
-                                    : (localeLoaded ? $_('admin.users.password.change', { default: 'Change Password' }) : 'Change Password')}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={selectedUserName}
+    userEmail={passwordChangeData.email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    {localeLoaded}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
-<!-- Create User Modal -->
-<AdminUserForm
+<!-- Create User Modal (Shared Component) -->
+<UserForm
     isOpen={isCreateUserModalOpen}
+    isSuperAdmin={true}
     {newUser}
     organizations={organizationsForUsers}
     isLoadingOrganizations={isLoadingOrganizationsForUsers}

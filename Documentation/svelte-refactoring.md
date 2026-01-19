@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 2.2  
+**Document Version:** 2.3  
 **Date:** January 19, 2026  
 **Status:** Phase 1 Complete - Phase 2 Complete - Phase 3 In Progress
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.3 | 2026-01-19 | **Pivoted to shared components architecture.** Created `shared/UserForm.svelte` and `shared/ChangePasswordModal.svelte`. Both `admin/` and `org-admin/` now use same components with role-awareness via `isSuperAdmin` prop. Total reduction: 585 lines across both pages. |
 | 2.2 | 2026-01-19 | Extracted `AdminUserForm.svelte` from `admin/+page.svelte` (-143 lines). Total reduction: 365 lines. |
 | 2.1 | 2026-01-19 | Phase 3 started. Created `admin/` components folder. Extracted `AdminDashboard.svelte` from `admin/+page.svelte` (-222 lines). |
 | 2.0 | 2026-01-19 | Migrated all admin page `confirm()` dialogs: `admin/+page.svelte` (delete org), `org-admin/+page.svelte` (reset KB config). Removed dead code for old bulk enable/disable handlers. **All native `confirm()` dialogs eliminated!** |
@@ -1075,21 +1076,32 @@ $effect(() => {
 });
 ```
 
-### Phase 3: Admin Page Refactoring
+### Phase 3: Admin Page Refactoring (Shared Components Architecture)
 
-**Goal:** Reduce `admin/+page.svelte` from 3,292 lines to ~1,500 lines by extracting sub-components.
+**Goal:** Create shared components that work for BOTH `admin/+page.svelte` AND `org-admin/+page.svelte`.
 
-| # | Task | Status | Lines Saved |
-|---|------|--------|-------------|
-| 3.1 | Extract `AdminDashboard.svelte` | ✅ **DONE** | -222 lines |
-| 3.2 | Extract `AdminUserList.svelte` | ⏳ Pending | ~350 lines |
-| 3.3 | Extract `AdminUserForm.svelte` | ✅ **DONE** | -143 lines |
-| 3.4 | Extract `AdminOrgList.svelte` | ⏳ Pending | ~300 lines |
-| 3.5 | Extract `AdminOrgForm.svelte` | ⏳ Pending | ~250 lines |
-| 3.6 | Update Playwright tests | ⏳ Pending | N/A |
-| 3.7 | Add component-specific tests | ⏳ Pending | N/A |
+**Key Insight:** Admin and org-admin share ~80% of their UI code. Instead of extracting components for admin only, we create role-aware shared components that eliminate duplication.
 
-**Current Progress:** `admin/+page.svelte` is now 2,927 lines (from 3,292 original, -365 total).
+#### Shared Components (lib/components/admin/shared/)
+
+| # | Component | Status | Lines Saved | Used By |
+|---|-----------|--------|-------------|---------|
+| 3.1 | `UserForm.svelte` | ✅ **DONE** | -247 combined | admin, org-admin |
+| 3.2 | `ChangePasswordModal.svelte` | ✅ **DONE** | -117 combined | admin, org-admin |
+| 3.3 | `UserTable.svelte` | ⏳ Pending | ~600 combined | admin, org-admin |
+| 3.4 | `BulkActionsModal.svelte` | ⏳ Pending | ~200 combined | admin, org-admin |
+
+#### Admin-Only Components (lib/components/admin/)
+
+| # | Component | Status | Lines Saved |
+|---|-----------|--------|-------------|
+| 3.5 | `AdminDashboard.svelte` | ✅ **DONE** | -222 lines |
+| 3.6 | `OrgForm.svelte` | ⏳ Pending | ~300 lines |
+
+**Current Progress:**
+- `admin/+page.svelte`: 3,292 → 2,861 lines (**-431 lines, -13%**)
+- `org-admin/+page.svelte`: 4,365 → 4,211 lines (**-154 lines, -4%**)
+- **Total combined reduction: 585 lines**
 
 ### Phase 4: KnowledgeBase Detail Refactoring
 

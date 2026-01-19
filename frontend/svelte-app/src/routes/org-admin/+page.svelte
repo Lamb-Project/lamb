@@ -13,6 +13,10 @@
     import * as adminService from '$lib/services/adminService';
     import { processListData } from '$lib/utils/listHelpers';
     import { getLambApiUrl } from '$lib/config';
+    
+    // Import shared admin components
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -3780,190 +3784,32 @@
     </div>
 {/if}
 
-<!-- Create User Modal -->
-{#if isCreateUserModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Create New User
-                </h3>
-                
-                {#if createUserSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">User created successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateUser}>
-                        {#if createUserError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createUserError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                Email *
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.email} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
-                                Name *
-                            </label>
-                            <input 
-                                type="text" 
-                                id="name" 
-                                name="name"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.name} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
-                                Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.password} 
-                                required 
-                            />
-                        </div>
+<!-- Create User Modal (Shared Component) -->
+<UserForm
+    isOpen={isCreateUserModalOpen}
+    isSuperAdmin={false}
+    {newUser}
+    isCreating={isCreatingUser}
+    error={createUserError}
+    success={createUserSuccess}
+    onSubmit={handleCreateUser}
+    onClose={closeCreateUserModal}
+    onUserChange={(user) => { newUser = user; }}
+/>
 
-                        <div class="mb-4 text-left">
-                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
-                                User Type
-                            </label>
-                            <select 
-                                id="user_type" 
-                                name="user_type"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.user_type}
-                            >
-                                <option value="creator">Creator (Can create assistants)</option>
-                                <option value="end_user">End User (Redirects to Open WebUI)</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-6 text-left">
-                            <div class="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="enabled" 
-                                    name="enabled"
-                                    bind:checked={newUser.enabled}
-                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label for="enabled" class="ml-2 block text-sm text-gray-900">
-                                    User enabled
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateUserModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingUser}
-                            >
-                                {#if isCreatingUser}
-                                    Creating...
-                                {:else}
-                                    Create User
-                                {/if}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Change Password
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    Set a new password for {passwordChangeData.user_name} ({passwordChangeData.user_email})
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">Password changed successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="new-password" class="block text-gray-700 text-sm font-bold mb-2">
-                                New Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new-password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                At least 8 characters recommended
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword ? 'Changing...' : 'Change Password'}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={passwordChangeData.user_name}
+    userEmail={passwordChangeData.user_email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
 <!-- Disable User Modal (formerly Delete User Modal) -->
 {#if isDeleteUserModalOpen && userToDelete}
