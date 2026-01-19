@@ -214,24 +214,26 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     }
 
     // Find the org row
-    const orgRow = page.locator(`text=${adminTestOrgSlug}`).first();
+    const orgRow = page.locator(`tr:has-text("${adminTestOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Handle confirmation dialog
-    page.once("dialog", async (dialog) => {
-      console.log("Confirm dialog:", dialog.message());
-      await dialog.accept();
-    });
-
     // Click delete
-    const deleteButton = page
-      .locator(`tr:has-text("${adminTestOrgSlug}")`)
-      .getByRole("button", { name: /delete/i })
-      .first();
+    const deleteButton = orgRow.getByRole("button", { name: /delete/i }).first();
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for the org to be removed
+    // Wait for the confirmation modal to appear
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(/delete organization/i)).toBeVisible({ timeout: 5_000 });
+
+    // Click the Delete button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^delete$/i });
+    await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    await confirmButton.click();
+
+    // Wait for modal to close and org to be removed
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(orgRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${adminTestOrgSlug}" successfully deleted.`);
   });
@@ -773,18 +775,23 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const orgRow = page.locator(`tr:has-text("${sharingOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Handle confirmation dialog
-    page.once("dialog", async (dialog) => {
-      console.log("Confirm dialog:", dialog.message());
-      await dialog.accept();
-    });
-
     // Click delete
     const deleteButton = orgRow.getByRole("button", { name: /delete/i }).first();
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for org to be removed
+    // Wait for the confirmation modal to appear
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(/delete organization/i)).toBeVisible({ timeout: 5_000 });
+
+    // Click the Delete button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^delete$/i });
+    await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    await confirmButton.click();
+
+    // Wait for modal to close and org to be removed
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(orgRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${sharingOrgSlug}" deleted.`);
   });
