@@ -18,18 +18,14 @@ const defaultConfig = {
     }
 };
 
-// Function to safely get the config
-// Export this function so stores can access the full config if needed
+/**
+ * Safely retrieves the runtime config from window.LAMB_CONFIG or falls back to defaults.
+ * @returns {typeof defaultConfig} The configuration object.
+ */
 export function getConfig() {
-    console.log('[DEBUG] getConfig: Checking for window.LAMB_CONFIG');
     if (browser && window.LAMB_CONFIG) {
-        console.log('[DEBUG] getConfig: Found window.LAMB_CONFIG:', JSON.stringify(window.LAMB_CONFIG, null, 2));
-        // Merge with default to ensure all keys exist?
-        // Or assume window.LAMB_CONFIG is complete
         return window.LAMB_CONFIG;
     }
-    // Provide a default or throw an error if config is essential
-    console.log('[DEBUG] getConfig: window.LAMB_CONFIG not found. Returning default.');
     console.warn('LAMB_CONFIG not found on window, using default.');
     return defaultConfig;
 }

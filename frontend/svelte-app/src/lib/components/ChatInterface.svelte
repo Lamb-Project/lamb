@@ -2,6 +2,7 @@
     import { writable } from 'svelte/store';
     import { onMount } from 'svelte';
     import { marked } from 'marked';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
     // Configure marked to preserve line breaks (converts \n to <br>)
     marked.setOptions({
@@ -67,6 +68,12 @@
     let isEditingTitle = $state(false);
     let editTitleInput = $state('');
     let showSidebar = $state(true);
+    
+    // --- Delete Chat Modal State ---
+    let showDeleteChatModal = $state(false);
+    /** @type {string|null} */
+    let chatToDeleteId = $state(null);
+    let isDeletingChat = $state(false);
 
     // --- Helper Functions ---
     /**
@@ -246,17 +253,27 @@
     }
 
     /**
-     * Delete a chat
+     * Open delete chat confirmation modal
      * @param {string} chatId
      */
-    async function deleteChat(chatId) {
-        if (!confirm('Are you sure you want to delete this chat?')) return;
+    function deleteChat(chatId) {
+        chatToDeleteId = chatId;
+        showDeleteChatModal = true;
+    }
+    
+    /**
+     * Confirm chat deletion
+     */
+    async function confirmDeleteChat() {
+        if (!chatToDeleteId || isDeletingChat) return;
+        isDeletingChat = true;
         
-        logWithTime(`Deleting chat ${chatId}`);
+        const deletingChatId = chatToDeleteId;
+        logWithTime(`Deleting chat ${deletingChatId}`);
         
         try {
             const response = await fetch(
-                `${apiUrl}/creator/chats/${chatId}`,
+                `${apiUrl}/creator/chats/${deletingChatId}`,
                 {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${userToken}` }
@@ -264,15 +281,28 @@
             );
             
             if (response.ok) {
-                chatList = chatList.filter(c => c.id !== chatId);
-                if (currentChatId === chatId) {
+                chatList = chatList.filter(c => c.id !== deletingChatId);
+                if (currentChatId === deletingChatId) {
                     startNewChat();
                 }
                 logWithTime('Chat deleted');
+                showDeleteChatModal = false;
+                chatToDeleteId = null;
             }
         } catch (error) {
             console.error('Error deleting chat:', error);
+        } finally {
+            isDeletingChat = false;
         }
+    }
+    
+    /**
+     * Cancel delete chat modal
+     */
+    function cancelDeleteChat() {
+        if (isDeletingChat) return;
+        showDeleteChatModal = false;
+        chatToDeleteId = null;
     }
 
     // --- API Calls ---
@@ -755,6 +785,18 @@
         </div>
     </div>
 </div>
+
+<!-- Delete Chat Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteChatModal}
+    bind:isLoading={isDeletingChat}
+    title="Delete Chat"
+    message="Are you sure you want to delete this chat? This action cannot be undone."
+    confirmText="Delete"
+    variant="danger"
+    onconfirm={confirmDeleteChat}
+    oncancel={cancelDeleteChat}
+/>
 
 <style>
     .chat-max-height {

@@ -5,14 +5,19 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
-    import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
     // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
     import { processListData } from '$lib/utils/listHelpers';
     import { getLambApiUrl } from '$lib/config';
+    
+    // Import shared admin components
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -34,8 +39,6 @@
     let assistantsLoaded = $state(false); // Track if assistants have been loaded at least once
     /** @type {string | null} */
     let assistantsError = $state(null);
-    let selectedAssistant = $state(null);
-    let showAccessModal = $state(false);
     let assistantsSearchQuery = $state('');
     let assistantsFilterPublished = $state('all');
     
@@ -108,6 +111,15 @@
     let isDeletingUser = $state(false);
     /** @type {string | null} */
     let deleteUserError = $state(null);
+    
+    // Single user enable/disable modal states
+    let showSingleUserDisableModal = $state(false);
+    let showSingleUserEnableModal = $state(false);
+    /** @type {any} */
+    let userToToggle = $state(null);
+    let isTogglingUser = $state(false);
+    /** @type {string | null} */
+    let toggleUserError = $state(null);
     
     // Bulk enable/disable modal states
     let isBulkDisableModalOpen = $state(false);
@@ -228,6 +240,9 @@
     let applyToAllKbChecked = $state(false);
     let embeddingApiKeyOriginal = $state('');
     let embeddingApiKeyDirty = $state(false);
+    
+    // Reset KB embeddings config modal state
+    let showResetKbConfigModal = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -616,27 +631,40 @@
         isCreateUserModalOpen = true;
     }
 
-    // User enable/disable functions
-    async function toggleUserStatus(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
+    // User enable/disable functions - show modal first
+    function toggleUserStatus(user) {
         // Prevent users from disabling themselves
-        if (userData && userData.email === user.email && !newStatus) {
+        if (userData && userData.email === user.email && !user.enabled === false) {
             return;
         }
-
+        
+        userToToggle = user;
+        toggleUserError = null;
+        
+        if (user.enabled) {
+            showSingleUserDisableModal = true;
+        } else {
+            showSingleUserEnableModal = true;
+        }
+    }
+    
+    async function confirmToggleUserEnable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
         try {
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${user.id}`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Enabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
-                enabled: newStatus
+                enabled: true
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -644,28 +672,91 @@
                 }
             });
 
-            console.log(`User ${action} response:`, response.data);
+            console.log('User enable response:', response.data);
 
             // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === user.id);
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
             if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = newStatus;
+                orgUsers[userIndex].enabled = true;
                 orgUsers = [...orgUsers]; // Trigger reactivity
             }
+            
+            showSingleUserEnableModal = false;
+            userToToggle = null;
 
         } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
+            console.error('Error enabling user:', err);
             
-            let errorMessage = `Failed to ${action} user.`;
+            let errorMessage = 'Failed to enable user.';
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
                 errorMessage = err.response.data.detail;
             } else if (err instanceof Error) {
                 errorMessage = err.message;
             }
             
-            // Log error but don't show alert - could add a toast notification here
-            console.error(errorMessage);
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
         }
+    }
+    
+    async function confirmToggleUserDisable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Disabling user ${userToToggle.email} at: ${apiUrl}`);
+
+            const response = await axios.put(apiUrl, {
+                enabled: false
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('User disable response:', response.data);
+
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
+            if (userIndex !== -1) {
+                orgUsers[userIndex].enabled = false;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+            }
+            
+            showSingleUserDisableModal = false;
+            userToToggle = null;
+
+        } catch (err) {
+            console.error('Error disabling user:', err);
+            
+            let errorMessage = 'Failed to disable user.';
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                errorMessage = err.response.data.detail;
+            } else if (err instanceof Error) {
+                errorMessage = err.message;
+            }
+            
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
+        }
+    }
+    
+    function closeSingleUserModal() {
+        showSingleUserDisableModal = false;
+        showSingleUserEnableModal = false;
+        userToToggle = null;
+        toggleUserError = null;
     }
 
     // --- Sharing Permission Functions ---
@@ -884,94 +975,8 @@
         }
     }
 
-    // Bulk user actions
-    async function handleBulkEnable() {
-        const usersToEnable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToEnable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Enable ${usersToEnable.length} selected user(s)?`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.enableUsersBulk(token, usersToEnable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true};
-                }
-                return u;
-            });
-            
-            alert(`Successfully enabled ${result.enabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk enable error:', err);
-            alert('Bulk enable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
-    
-    async function handleBulkDisable() {
-        const usersToDisable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToDisable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Disable ${usersToDisable.length} selected user(s)? They will not be able to log in.`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, usersToDisable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false};
-                }
-                return u;
-            });
-            
-            alert(`Successfully disabled ${result.disabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk disable error:', err);
-            alert('Bulk disable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
+    // NOTE: Bulk enable/disable actions now use modal-based approach
+    // See openBulkEnableModal/openBulkDisableModal and confirmBulkEnable/confirmBulkDisable
 
     function closeCreateUserModal() {
         isCreateUserModalOpen = false;
@@ -1205,15 +1210,6 @@
         loadAssistantShareCounts();
     }
 
-    function closeAccessModal() {
-        showAccessModal = false;
-        selectedAssistant = null;
-    }
-
-    function handleAccessUpdated() {
-        // Optionally reload assistants
-        fetchAssistants();
-    }
 
     function formatDate(timestamp) {
         if (!timestamp) return 'N/A';
@@ -3668,11 +3664,7 @@
                                                 <button
                                                     type="button"
                                                     class="text-sm text-gray-500 hover:text-gray-700 underline"
-                                                    onclick={async () => {
-                                                        if (confirm('Reset to environment variables? This will remove the persisted configuration.')) {
-                                                            await updateKbEmbeddingsConfig();
-                                                        }
-                                                    }}
+                                                    onclick={() => { showResetKbConfigModal = true; }}
                                                 >
                                                     Reset to Env
                                                 </button>
@@ -3878,373 +3870,92 @@
     </div>
 {/if}
 
-<!-- Create User Modal -->
-{#if isCreateUserModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Create New User
-                </h3>
-                
-                {#if createUserSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">User created successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateUser}>
-                        {#if createUserError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createUserError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                Email *
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.email} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
-                                Name *
-                            </label>
-                            <input 
-                                type="text" 
-                                id="name" 
-                                name="name"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.name} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
-                                Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.password} 
-                                required 
-                            />
-                        </div>
+<!-- Create User Modal (Shared Component) -->
+<UserForm
+    isOpen={isCreateUserModalOpen}
+    isSuperAdmin={false}
+    {newUser}
+    isCreating={isCreatingUser}
+    error={createUserError}
+    success={createUserSuccess}
+    onSubmit={handleCreateUser}
+    onClose={closeCreateUserModal}
+    onUserChange={(user) => { newUser = user; }}
+/>
 
-                        <div class="mb-4 text-left">
-                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
-                                User Type
-                            </label>
-                            <select 
-                                id="user_type" 
-                                name="user_type"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.user_type}
-                            >
-                                <option value="creator">Creator (Can create assistants)</option>
-                                <option value="end_user">End User (Redirects to Open WebUI)</option>
-                            </select>
-                        </div>
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={passwordChangeData.user_name}
+    userEmail={passwordChangeData.user_email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
-                        <div class="mb-6 text-left">
-                            <div class="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="enabled" 
-                                    name="enabled"
-                                    bind:checked={newUser.enabled}
-                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label for="enabled" class="ml-2 block text-sm text-gray-900">
-                                    User enabled
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateUserModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingUser}
-                            >
-                                {#if isCreatingUser}
-                                    Creating...
-                                {:else}
-                                    Create User
-                                {/if}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Disable User Modal - from delete button (Shared Component) -->
+<UserActionModal
+    isOpen={isDeleteUserModalOpen && userToDelete !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToDelete}
+    isProcessing={isDeletingUser}
+    error={deleteUserError}
+    onConfirm={confirmDeleteUser}
+    onClose={closeDeleteUserModal}
+/>
 
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Change Password
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    Set a new password for {passwordChangeData.user_name} ({passwordChangeData.user_email})
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">Password changed successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="new-password" class="block text-gray-700 text-sm font-bold mb-2">
-                                New Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new-password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                At least 8 characters recommended
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword ? 'Changing...' : 'Change Password'}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Single User Disable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserDisableModal && userToToggle !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserDisable}
+    onClose={closeSingleUserModal}
+/>
 
-<!-- Disable User Modal (formerly Delete User Modal) -->
-{#if isDeleteUserModalOpen && userToDelete}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable User Account
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable the account for
-                    </p>
-                    <p class="text-base font-semibold text-gray-900 mt-2">
-                        {userToDelete.name}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-1">
-                        ({userToDelete.email})
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            <strong>Note:</strong> The user will not be able to log in, but their resources (assistants, templates, rubrics) will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
+<!-- Single User Enable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserEnableModal && userToToggle !== null}
+    action="enable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserEnable}
+    onClose={closeSingleUserModal}
+/>
 
-                {#if deleteUserError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{deleteUserError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeDeleteUserModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmDeleteUser}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
-                    >
-                        {isDeletingUser ? 'Disabling...' : 'Disable User'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Bulk Disable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkDisableModalOpen}
+    action="disable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkDisable}
+    onClose={closeBulkDisableModal}
+/>
 
-<!-- Bulk Disable Users Modal -->
-{#if isBulkDisableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will not be able to log in, but their resources will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
-
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkDisableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkDisable}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Disabling...' : 'Disable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Bulk Enable Users Modal -->
-{#if isBulkEnableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Success Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Enable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to enable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-green-50 border-l-4 border-green-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will be able to log in and access the system.
-                        </p>
-                    </div>
-                </div>
-
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkEnableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkEnable}
-                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Enabling...' : 'Enable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Bulk Enable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkEnableModalOpen}
+    action="enable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkEnable}
+    onClose={closeBulkEnableModal}
+/>
 
 <!-- Model Selection Modal -->
 {#if isModelModalOpen}
@@ -4417,13 +4128,6 @@
     </div>
 {/if}
 
-<!-- Assistant Access Manager Modal -->
-<AssistantAccessManager
-    assistant={selectedAssistant}
-    bind:show={showAccessModal}
-    on:close={closeAccessModal}
-    on:updated={handleAccessUpdated}
-/>
 
 <!-- Assistant Sharing Modal -->
 {#if showSharingModal && modalAssistant}
@@ -4434,6 +4138,20 @@
         onSaved={handleSharingModalSaved}
     />
 {/if}
+
+<!-- Reset KB Embeddings Config Modal -->
+<ConfirmationModal
+    bind:isOpen={showResetKbConfigModal}
+    title="Reset KB Configuration"
+    message="Reset to environment variables? This will remove the persisted configuration and use the defaults from your environment settings."
+    confirmText="Reset"
+    variant="warning"
+    onconfirm={async () => {
+        await updateKbEmbeddingsConfig();
+        showResetKbConfigModal = false;
+    }}
+    oncancel={() => { showResetKbConfigModal = false; }}
+/>
 
 <style>
     /* Custom scrollbar styles */
