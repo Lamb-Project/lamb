@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 2.1  
+**Document Version:** 2.2  
 **Date:** January 19, 2026  
 **Status:** Phase 1 Complete - Phase 2 Complete - Phase 3 In Progress
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.2 | 2026-01-19 | Extracted `AdminUserForm.svelte` from `admin/+page.svelte` (-143 lines). Total reduction: 365 lines. |
 | 2.1 | 2026-01-19 | Phase 3 started. Created `admin/` components folder. Extracted `AdminDashboard.svelte` from `admin/+page.svelte` (-222 lines). |
 | 2.0 | 2026-01-19 | Migrated all admin page `confirm()` dialogs: `admin/+page.svelte` (delete org), `org-admin/+page.svelte` (reset KB config). Removed dead code for old bulk enable/disable handlers. **All native `confirm()` dialogs eliminated!** |
 | 1.9 | 2026-01-19 | Migrated remaining `confirm()` dialogs: `ChatInterface.svelte` (delete chat), `RubricTable.svelte` (remove criterion/level), `RubricEditor.svelte` (discard changes). Phase 2 complete. |
@@ -1082,13 +1083,13 @@ $effect(() => {
 |---|------|--------|-------------|
 | 3.1 | Extract `AdminDashboard.svelte` | ✅ **DONE** | -222 lines |
 | 3.2 | Extract `AdminUserList.svelte` | ⏳ Pending | ~350 lines |
-| 3.3 | Extract `AdminUserForm.svelte` | ⏳ Pending | ~200 lines |
+| 3.3 | Extract `AdminUserForm.svelte` | ✅ **DONE** | -143 lines |
 | 3.4 | Extract `AdminOrgList.svelte` | ⏳ Pending | ~300 lines |
 | 3.5 | Extract `AdminOrgForm.svelte` | ⏳ Pending | ~250 lines |
 | 3.6 | Update Playwright tests | ⏳ Pending | N/A |
 | 3.7 | Add component-specific tests | ⏳ Pending | N/A |
 
-**Current Progress:** `admin/+page.svelte` is now 3,070 lines (from 3,292).
+**Current Progress:** `admin/+page.svelte` is now 2,927 lines (from 3,292 original, -365 total).
 
 ### Phase 4: KnowledgeBase Detail Refactoring
 
