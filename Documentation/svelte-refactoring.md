@@ -1,13 +1,14 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 1.8  
+**Document Version:** 1.9  
 **Date:** January 19, 2026  
-**Status:** Phase 1 Complete - Phase 2 In Progress
+**Status:** Phase 1 Complete - Phase 2 Complete
 
 ### Changelog
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.9 | 2026-01-19 | Migrated remaining `confirm()` dialogs: `ChatInterface.svelte` (delete chat), `RubricTable.svelte` (remove criterion/level), `RubricEditor.svelte` (discard changes). Phase 2 complete. |
 | 1.8 | 2026-01-19 | Removed redundant unpublish functionality from `AssistantsList.svelte` (now only in detail view). Cleaned up unused `unpublishAssistant` import and `IconUnpublish`. |
 | 1.7 | 2026-01-19 | Migrated `KnowledgeBaseDetail.svelte` delete file and cancel job confirmations from native `confirm()` to `ConfirmationModal`. Added Playwright test `kb_detail_modals.spec.js`. Fixed Vite warning about mixed dynamic/static imports in `assistantService.js`. |
 | 1.6 | 2026-01-19 | Migrated `KnowledgeBasesList.svelte` delete confirmation from native `confirm()` to `ConfirmationModal`. Added Playwright test `kb_delete_modal.spec.js`. |
@@ -1043,7 +1044,10 @@ export async function navigateToAdmin(page, view = 'dashboard') {
 | 2.8.2 | Migrate `KnowledgeBaseDetail.svelte` `confirm()` dialogs | ✅ **DONE** | File delete, cancel job now use standard modals |
 | 2.8.3 | Fix mixed dynamic/static imports warning | ✅ **DONE** | Converted dynamic imports to static in prompt templates |
 | 2.8.4 | Remove `AssistantsList.svelte` unpublish (moved to detail view) | ✅ **DONE** | Removed redundant unpublish from list |
-| 2.8.5 | Migrate remaining `confirm()` dialogs | ⏳ Pending | Various components |
+| 2.8.5 | Migrate `ChatInterface.svelte` delete chat | ✅ **DONE** | Delete chat now uses standard modal |
+| 2.8.6 | Migrate `RubricTable.svelte` remove criterion/level | ✅ **DONE** | Rubric editing now uses standard modals |
+| 2.8.7 | Migrate `RubricEditor.svelte` discard changes | ✅ **DONE** | Discard changes now uses standard modal |
+| 2.8.8 | Migrate admin page `confirm()` dialogs | ⏳ Pending (low priority) | Admin-only: org delete, user enable/disable |
 
 #### New Utility: `useLocaleReady.js`
 

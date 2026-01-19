@@ -13,6 +13,7 @@
   import RubricTable from './RubricTable.svelte';
   import RubricMetadataForm from './RubricMetadataForm.svelte';
   import RubricAIChat from './RubricAIChat.svelte';
+  import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
   // Props
   let { rubricId } = $props();
@@ -32,6 +33,9 @@
 
   // Check if we're in edit mode - default to false (view mode)
   let isEditMode = $state(false);
+  
+  // Discard changes confirmation modal
+  let showDiscardModal = $state(false);
 
   // Check URL params for edit mode
   $effect(() => {
@@ -46,12 +50,21 @@
     isEditMode = true;
   }
 
-  // Cancel edit mode (reload rubric to discard changes)
+  // Open discard changes modal
   function cancelEdit() {
-    if (confirm('Discard all changes and exit edit mode?')) {
-      loadRubric(); // Reload from backend to discard changes
-      isEditMode = false;
-    }
+    showDiscardModal = true;
+  }
+  
+  // Confirm discard changes
+  function confirmDiscard() {
+    loadRubric(); // Reload from backend to discard changes
+    isEditMode = false;
+    showDiscardModal = false;
+  }
+  
+  // Cancel discard
+  function cancelDiscard() {
+    showDiscardModal = false;
   }
 
   // Load rubric data
@@ -601,6 +614,17 @@
     {/if}
   </div>
 </div>
+
+<!-- Discard Changes Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDiscardModal}
+    title="Discard Changes"
+    message="Are you sure you want to discard all changes and exit edit mode? Any unsaved changes will be lost."
+    confirmText="Discard"
+    variant="warning"
+    onconfirm={confirmDiscard}
+    oncancel={cancelDiscard}
+/>
 
 <style>
   /* Toast animation */
