@@ -217,15 +217,14 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const orgRow = page.locator(`tr:has-text("${adminTestOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Click delete
-    const deleteButton = orgRow.getByRole("button", { name: /delete/i }).first();
+    // Click delete button (named "Delete Organization")
+    const deleteButton = orgRow.getByRole("button", { name: /delete organization/i });
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for the confirmation modal to appear
-    const modal = page.getByRole("dialog");
+    // Wait for the confirmation modal to appear (dialog named "Delete Organization")
+    const modal = page.getByRole("dialog", { name: /delete organization/i });
     await expect(modal).toBeVisible({ timeout: 5_000 });
-    await expect(modal.getByText(/delete organization/i)).toBeVisible({ timeout: 5_000 });
 
     // Click the Delete button in the modal
     const confirmButton = modal.getByRole("button", { name: /^delete$/i });
@@ -775,15 +774,14 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const orgRow = page.locator(`tr:has-text("${sharingOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Click delete
-    const deleteButton = orgRow.getByRole("button", { name: /delete/i }).first();
+    // Click delete button (named "Delete Organization")
+    const deleteButton = orgRow.getByRole("button", { name: /delete organization/i });
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for the confirmation modal to appear
-    const modal = page.getByRole("dialog");
+    // Wait for the confirmation modal to appear (dialog named "Delete Organization")
+    const modal = page.getByRole("dialog", { name: /delete organization/i });
     await expect(modal).toBeVisible({ timeout: 5_000 });
-    await expect(modal.getByText(/delete organization/i)).toBeVisible({ timeout: 5_000 });
 
     // Click the Delete button in the modal
     const confirmButton = modal.getByRole("button", { name: /^delete$/i });
