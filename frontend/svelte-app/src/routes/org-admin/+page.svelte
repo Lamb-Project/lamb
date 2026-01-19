@@ -112,6 +112,15 @@
     /** @type {string | null} */
     let deleteUserError = $state(null);
     
+    // Single user enable/disable modal states
+    let showSingleUserDisableModal = $state(false);
+    let showSingleUserEnableModal = $state(false);
+    /** @type {any} */
+    let userToToggle = $state(null);
+    let isTogglingUser = $state(false);
+    /** @type {string | null} */
+    let toggleUserError = $state(null);
+    
     // Bulk enable/disable modal states
     let isBulkDisableModalOpen = $state(false);
     let isBulkEnableModalOpen = $state(false);
@@ -622,27 +631,40 @@
         isCreateUserModalOpen = true;
     }
 
-    // User enable/disable functions
-    async function toggleUserStatus(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
+    // User enable/disable functions - show modal first
+    function toggleUserStatus(user) {
         // Prevent users from disabling themselves
-        if (userData && userData.email === user.email && !newStatus) {
+        if (userData && userData.email === user.email && !user.enabled === false) {
             return;
         }
-
+        
+        userToToggle = user;
+        toggleUserError = null;
+        
+        if (user.enabled) {
+            showSingleUserDisableModal = true;
+        } else {
+            showSingleUserEnableModal = true;
+        }
+    }
+    
+    async function confirmToggleUserEnable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
         try {
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${user.id}`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Enabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
-                enabled: newStatus
+                enabled: true
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -650,28 +672,91 @@
                 }
             });
 
-            console.log(`User ${action} response:`, response.data);
+            console.log('User enable response:', response.data);
 
             // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === user.id);
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
             if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = newStatus;
+                orgUsers[userIndex].enabled = true;
                 orgUsers = [...orgUsers]; // Trigger reactivity
             }
+            
+            showSingleUserEnableModal = false;
+            userToToggle = null;
 
         } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
+            console.error('Error enabling user:', err);
             
-            let errorMessage = `Failed to ${action} user.`;
+            let errorMessage = 'Failed to enable user.';
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
                 errorMessage = err.response.data.detail;
             } else if (err instanceof Error) {
                 errorMessage = err.message;
             }
             
-            // Log error but don't show alert - could add a toast notification here
-            console.error(errorMessage);
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
         }
+    }
+    
+    async function confirmToggleUserDisable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Disabling user ${userToToggle.email} at: ${apiUrl}`);
+
+            const response = await axios.put(apiUrl, {
+                enabled: false
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('User disable response:', response.data);
+
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
+            if (userIndex !== -1) {
+                orgUsers[userIndex].enabled = false;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+            }
+            
+            showSingleUserDisableModal = false;
+            userToToggle = null;
+
+        } catch (err) {
+            console.error('Error disabling user:', err);
+            
+            let errorMessage = 'Failed to disable user.';
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                errorMessage = err.response.data.detail;
+            } else if (err instanceof Error) {
+                errorMessage = err.message;
+            }
+            
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
+        }
+    }
+    
+    function closeSingleUserModal() {
+        showSingleUserDisableModal = false;
+        showSingleUserEnableModal = false;
+        userToToggle = null;
+        toggleUserError = null;
     }
 
     // --- Sharing Permission Functions ---
@@ -3812,7 +3897,7 @@
     onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
 />
 
-<!-- Disable User Modal (Shared Component) -->
+<!-- Disable User Modal - from delete button (Shared Component) -->
 <UserActionModal
     isOpen={isDeleteUserModalOpen && userToDelete !== null}
     action="disable"
@@ -3822,6 +3907,30 @@
     error={deleteUserError}
     onConfirm={confirmDeleteUser}
     onClose={closeDeleteUserModal}
+/>
+
+<!-- Single User Disable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserDisableModal && userToToggle !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserDisable}
+    onClose={closeSingleUserModal}
+/>
+
+<!-- Single User Enable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserEnableModal && userToToggle !== null}
+    action="enable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserEnable}
+    onClose={closeSingleUserModal}
 />
 
 <!-- Bulk Disable Users Modal (Shared Component) -->
