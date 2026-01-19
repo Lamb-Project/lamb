@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 1.9  
+**Document Version:** 2.0  
 **Date:** January 19, 2026  
 **Status:** Phase 1 Complete - Phase 2 Complete
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.0 | 2026-01-19 | Migrated all admin page `confirm()` dialogs: `admin/+page.svelte` (delete org), `org-admin/+page.svelte` (reset KB config). Removed dead code for old bulk enable/disable handlers. **All native `confirm()` dialogs eliminated!** |
 | 1.9 | 2026-01-19 | Migrated remaining `confirm()` dialogs: `ChatInterface.svelte` (delete chat), `RubricTable.svelte` (remove criterion/level), `RubricEditor.svelte` (discard changes). Phase 2 complete. |
 | 1.8 | 2026-01-19 | Removed redundant unpublish functionality from `AssistantsList.svelte` (now only in detail view). Cleaned up unused `unpublishAssistant` import and `IconUnpublish`. |
 | 1.7 | 2026-01-19 | Migrated `KnowledgeBaseDetail.svelte` delete file and cancel job confirmations from native `confirm()` to `ConfirmationModal`. Added Playwright test `kb_detail_modals.spec.js`. Fixed Vite warning about mixed dynamic/static imports in `assistantService.js`. |
@@ -1047,7 +1048,7 @@ export async function navigateToAdmin(page, view = 'dashboard') {
 | 2.8.5 | Migrate `ChatInterface.svelte` delete chat | ✅ **DONE** | Delete chat now uses standard modal |
 | 2.8.6 | Migrate `RubricTable.svelte` remove criterion/level | ✅ **DONE** | Rubric editing now uses standard modals |
 | 2.8.7 | Migrate `RubricEditor.svelte` discard changes | ✅ **DONE** | Discard changes now uses standard modal |
-| 2.8.8 | Migrate admin page `confirm()` dialogs | ⏳ Pending (low priority) | Admin-only: org delete, user enable/disable |
+| 2.8.8 | Migrate admin page `confirm()` dialogs | ✅ **DONE** | Delete org, reset KB config now use modals |
 
 #### New Utility: `useLocaleReady.js`
 

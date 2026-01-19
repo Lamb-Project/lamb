@@ -7,6 +7,7 @@
     import { user } from '$lib/stores/userStore';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
     // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
@@ -225,6 +226,9 @@
     let applyToAllKbChecked = $state(false);
     let embeddingApiKeyOriginal = $state('');
     let embeddingApiKeyDirty = $state(false);
+    
+    // Reset KB embeddings config modal state
+    let showResetKbConfigModal = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -881,94 +885,8 @@
         }
     }
 
-    // Bulk user actions
-    async function handleBulkEnable() {
-        const usersToEnable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToEnable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Enable ${usersToEnable.length} selected user(s)?`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.enableUsersBulk(token, usersToEnable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true};
-                }
-                return u;
-            });
-            
-            alert(`Successfully enabled ${result.enabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk enable error:', err);
-            alert('Bulk enable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
-    
-    async function handleBulkDisable() {
-        const usersToDisable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToDisable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Disable ${usersToDisable.length} selected user(s)? They will not be able to log in.`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, usersToDisable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false};
-                }
-                return u;
-            });
-            
-            alert(`Successfully disabled ${result.disabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk disable error:', err);
-            alert('Bulk disable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
+    // NOTE: Bulk enable/disable actions now use modal-based approach
+    // See openBulkEnableModal/openBulkDisableModal and confirmBulkEnable/confirmBulkDisable
 
     function closeCreateUserModal() {
         isCreateUserModalOpen = false;
@@ -3656,11 +3574,7 @@
                                                 <button
                                                     type="button"
                                                     class="text-sm text-gray-500 hover:text-gray-700 underline"
-                                                    onclick={async () => {
-                                                        if (confirm('Reset to environment variables? This will remove the persisted configuration.')) {
-                                                            await updateKbEmbeddingsConfig();
-                                                        }
-                                                    }}
+                                                    onclick={() => { showResetKbConfigModal = true; }}
                                                 >
                                                     Reset to Env
                                                 </button>
@@ -4415,6 +4329,20 @@
         onSaved={handleSharingModalSaved}
     />
 {/if}
+
+<!-- Reset KB Embeddings Config Modal -->
+<ConfirmationModal
+    bind:isOpen={showResetKbConfigModal}
+    title="Reset KB Configuration"
+    message="Reset to environment variables? This will remove the persisted configuration and use the defaults from your environment settings."
+    confirmText="Reset"
+    variant="warning"
+    onconfirm={async () => {
+        await updateKbEmbeddingsConfig();
+        showResetKbConfigModal = false;
+    }}
+    oncancel={() => { showResetKbConfigModal = false; }}
+/>
 
 <style>
     /* Custom scrollbar styles */

@@ -9,6 +9,7 @@
     import { getApiUrl } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     
     // Import filtering/pagination components
     import Pagination from '$lib/components/common/Pagination.svelte';
@@ -116,6 +117,12 @@
     let isLoadingOrganizations = $state(false);
     /** @type {string | null} */
     let organizationsError = $state(null);
+    
+    // Delete organization modal state
+    let showDeleteOrgModal = $state(false);
+    /** @type {string | null} */
+    let orgToDelete = $state(null);
+    let isDeletingOrg = $state(false);
 
     // --- Create Organization Modal State ---
     let isCreateOrgModalOpen = $state(false);
@@ -1312,12 +1319,20 @@
     }
 
     /**
+     * Open delete organization confirmation modal
      * @param {string} slug - Organization slug
      */
-    async function deleteOrganization(slug) {
-        if (!confirm(`Are you sure you want to delete organization '${slug}'? This action cannot be undone.`)) {
-            return;
-        }
+    function deleteOrganization(slug) {
+        orgToDelete = slug;
+        showDeleteOrgModal = true;
+    }
+    
+    /**
+     * Confirm organization deletion
+     */
+    async function confirmDeleteOrganization() {
+        if (!orgToDelete || isDeletingOrg) return;
+        isDeletingOrg = true;
         
         try {
             const token = getAuthToken();
@@ -1325,7 +1340,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/admin/organizations/${slug}`);
+            const apiUrl = getApiUrl(`/admin/organizations/${orgToDelete}`);
             console.log(`Deleting organization at: ${apiUrl}`);
 
             const response = await axios.delete(apiUrl, {
@@ -1339,8 +1354,12 @@
             // Refresh organizations list
             fetchOrganizations();
             
+            // Close modal and reset state
+            showDeleteOrgModal = false;
+            orgToDelete = null;
+            
             // Show success message
-            alert(`Organization '${slug}' deleted successfully!`);
+            alert(`Organization deleted successfully!`);
         } catch (err) {
             console.error('Error deleting organization:', err);
             let errorMessage = 'Failed to delete organization.';
@@ -1352,7 +1371,18 @@
             }
             
             alert(`Error: ${errorMessage}`);
+        } finally {
+            isDeletingOrg = false;
         }
+    }
+    
+    /**
+     * Cancel organization deletion
+     */
+    function cancelDeleteOrganization() {
+        if (isDeletingOrg) return;
+        showDeleteOrgModal = false;
+        orgToDelete = null;
     }
 
     // --- Migration Modal State ---
@@ -3245,6 +3275,18 @@
         </div>
     </div>
 {/if}
+
+<!-- Delete Organization Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteOrgModal}
+    bind:isLoading={isDeletingOrg}
+    title="Delete Organization"
+    message={`Are you sure you want to delete organization '${orgToDelete}'? This action cannot be undone and will remove all associated data.`}
+    confirmText="Delete"
+    variant="danger"
+    onconfirm={confirmDeleteOrganization}
+    oncancel={cancelDeleteOrganization}
+/>
 
 <style>
     /* Add specific styles if needed, though Tailwind should cover most */
