@@ -53,7 +53,8 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const emailInput = modal.locator('input[name="email"]');
     await expect(emailInput).toBeVisible({ timeout: 5_000 });
 
-    // Wait for organization dropdown to finish loading
+    // Wait for organization dropdown to finish loading - scope to modal to avoid ambiguity
+    const modal = page.locator('.fixed.inset-0');
     const orgSelect = modal.getByRole("combobox", { name: /organization/i });
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
