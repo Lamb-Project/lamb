@@ -17,6 +17,7 @@
     // Import shared admin components
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -3811,188 +3812,41 @@
     onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
 />
 
-<!-- Disable User Modal (formerly Delete User Modal) -->
-{#if isDeleteUserModalOpen && userToDelete}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable User Account
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable the account for
-                    </p>
-                    <p class="text-base font-semibold text-gray-900 mt-2">
-                        {userToDelete.name}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-1">
-                        ({userToDelete.email})
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            <strong>Note:</strong> The user will not be able to log in, but their resources (assistants, templates, rubrics) will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
+<!-- Disable User Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isDeleteUserModalOpen && userToDelete !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToDelete}
+    isProcessing={isDeletingUser}
+    error={deleteUserError}
+    onConfirm={confirmDeleteUser}
+    onClose={closeDeleteUserModal}
+/>
 
-                {#if deleteUserError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{deleteUserError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeDeleteUserModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmDeleteUser}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
-                    >
-                        {isDeletingUser ? 'Disabling...' : 'Disable User'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Bulk Disable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkDisableModalOpen}
+    action="disable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkDisable}
+    onClose={closeBulkDisableModal}
+/>
 
-<!-- Bulk Disable Users Modal -->
-{#if isBulkDisableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will not be able to log in, but their resources will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
-
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkDisableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkDisable}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Disabling...' : 'Disable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Bulk Enable Users Modal -->
-{#if isBulkEnableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Success Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Enable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to enable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-green-50 border-l-4 border-green-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will be able to log in and access the system.
-                        </p>
-                    </div>
-                </div>
-
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkEnableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkEnable}
-                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Enabling...' : 'Enable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Bulk Enable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkEnableModalOpen}
+    action="enable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkEnable}
+    onClose={closeBulkEnableModal}
+/>
 
 <!-- Model Selection Modal -->
 {#if isModelModalOpen}

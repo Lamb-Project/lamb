@@ -20,6 +20,7 @@
     import AdminDashboard from '$lib/components/admin/AdminDashboard.svelte';
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -2431,89 +2432,29 @@
     </div>
 {/if}
 
-<!-- Disable User Confirmation Modal -->
-{#if showDisableConfirm}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex items-center mb-4">
-                    <svg class="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                    </svg>
-                    <h3 class="text-lg font-medium text-gray-900">Confirm Disable</h3>
-                </div>
-                <div class="mt-2 px-7 py-3">
-                    <p class="text-sm text-gray-700">
-                        {#if actionType === 'single'}
-                            Are you sure you want to disable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
-                        {:else}
-                            Are you sure you want to disable <strong>{selectedUsers.length}</strong> user(s)?
-                        {/if}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-3">
-                        Disabled users will not be able to login, but their published assistants and shared resources will remain available.
-                    </p>
-                </div>
-                <div class="flex items-center justify-end gap-3 px-4 py-3">
-                    <button 
-                        onclick={() => showDisableConfirm = false}
-                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onclick={confirmDisable}
-                        class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Disable
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Disable User Confirmation Modal (Shared Component) -->
+<UserActionModal
+    isOpen={showDisableConfirm}
+    action="disable"
+    isBulk={actionType === 'bulk'}
+    targetUser={actionType === 'single' ? targetUser : null}
+    selectedCount={selectedUsers.length}
+    {localeLoaded}
+    onConfirm={confirmDisable}
+    onClose={() => { showDisableConfirm = false; }}
+/>
 
-<!-- Enable User Confirmation Modal -->
-{#if showEnableConfirm}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex items-center mb-4">
-                    <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <h3 class="text-lg font-medium text-gray-900">Confirm Enable</h3>
-                </div>
-                <div class="mt-2 px-7 py-3">
-                    <p class="text-sm text-gray-700">
-                        {#if actionType === 'single'}
-                            Are you sure you want to enable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
-                        {:else}
-                            Are you sure you want to enable <strong>{selectedUsers.length}</strong> user(s)?
-                        {/if}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-3">
-                        Enabled users will be able to login and access the system.
-                    </p>
-                </div>
-                <div class="flex items-center justify-end gap-3 px-4 py-3">
-                    <button 
-                        onclick={() => showEnableConfirm = false}
-                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onclick={confirmEnable}
-                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Enable
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Enable User Confirmation Modal (Shared Component) -->
+<UserActionModal
+    isOpen={showEnableConfirm}
+    action="enable"
+    isBulk={actionType === 'bulk'}
+    targetUser={actionType === 'single' ? targetUser : null}
+    selectedCount={selectedUsers.length}
+    {localeLoaded}
+    onConfirm={confirmEnable}
+    onClose={() => { showEnableConfirm = false; }}
+/>
 
 <!-- Delete User Confirmation Modal -->
 {#if showDeleteConfirm}

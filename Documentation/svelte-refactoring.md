@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 2.3  
+**Document Version:** 2.4  
 **Date:** January 19, 2026  
 **Status:** Phase 1 Complete - Phase 2 Complete - Phase 3 In Progress
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.4 | 2026-01-19 | Added `shared/UserActionModal.svelte` for enable/disable confirmations (single + bulk). Total reduction now: 790 lines combined (-24% from admin, -7% from org-admin). |
 | 2.3 | 2026-01-19 | **Pivoted to shared components architecture.** Created `shared/UserForm.svelte` and `shared/ChangePasswordModal.svelte`. Both `admin/` and `org-admin/` now use same components with role-awareness via `isSuperAdmin` prop. Total reduction: 585 lines across both pages. |
 | 2.2 | 2026-01-19 | Extracted `AdminUserForm.svelte` from `admin/+page.svelte` (-143 lines). Total reduction: 365 lines. |
 | 2.1 | 2026-01-19 | Phase 3 started. Created `admin/` components folder. Extracted `AdminDashboard.svelte` from `admin/+page.svelte` (-222 lines). |
@@ -1086,10 +1087,10 @@ $effect(() => {
 
 | # | Component | Status | Lines Saved | Used By |
 |---|-----------|--------|-------------|---------|
-| 3.1 | `UserForm.svelte` | ✅ **DONE** | -247 combined | admin, org-admin |
-| 3.2 | `ChangePasswordModal.svelte` | ✅ **DONE** | -117 combined | admin, org-admin |
-| 3.3 | `UserTable.svelte` | ⏳ Pending | ~600 combined | admin, org-admin |
-| 3.4 | `BulkActionsModal.svelte` | ⏳ Pending | ~200 combined | admin, org-admin |
+| 3.1 | `UserForm.svelte` | ✅ **DONE** | ~140 combined | admin, org-admin |
+| 3.2 | `ChangePasswordModal.svelte` | ✅ **DONE** | ~130 combined | admin, org-admin |
+| 3.3 | `UserActionModal.svelte` | ✅ **DONE** | ~205 combined | admin, org-admin |
+| 3.4 | `UserTable.svelte` | ❌ **SKIPPED** | N/A | Tables too different between contexts |
 
 #### Admin-Only Components (lib/components/admin/)
 
@@ -1099,9 +1100,9 @@ $effect(() => {
 | 3.6 | `OrgForm.svelte` | ⏳ Pending | ~300 lines |
 
 **Current Progress:**
-- `admin/+page.svelte`: 3,292 → 2,861 lines (**-431 lines, -13%**)
-- `org-admin/+page.svelte`: 4,365 → 4,211 lines (**-154 lines, -4%**)
-- **Total combined reduction: 585 lines**
+- `admin/+page.svelte`: 3,292 → 2,802 lines (**-490 lines, -15%**)
+- `org-admin/+page.svelte`: 4,365 → 4,065 lines (**-300 lines, -7%**)
+- **Total combined reduction: 790 lines**
 
 ### Phase 4: KnowledgeBase Detail Refactoring
 
