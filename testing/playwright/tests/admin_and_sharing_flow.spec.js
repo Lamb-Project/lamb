@@ -45,27 +45,32 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form/dialog to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
 
     // Wait for organization dropdown to finish loading
-    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    const orgSelect = modal.getByRole("combobox", { name: /organization/i });
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(adminTestUserEmail);
-    await page.locator('input#name').fill(adminTestUserName);
-    await page.locator('input#password').fill(adminTestPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(adminTestUserEmail);
+    await modal.locator('input[name="name"]').fill(adminTestUserName);
+    await modal.locator('input[name="password"]').fill(adminTestPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Submit the form - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit the form - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -253,27 +258,32 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
 
     // Wait for organization dropdown to finish loading
-    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    const orgSelect = modal.getByRole("combobox", { name: /organization/i });
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(sharingUser1Email);
-    await page.locator('input#name').fill(sharingUser1Name);
-    await page.locator('input#password').fill(sharingPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(sharingUser1Email);
+    await modal.locator('input[name="name"]').fill(sharingUser1Name);
+    await modal.locator('input[name="password"]').fill(sharingPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Submit - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -370,26 +380,31 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // Wait for organization dropdown to finish loading (use CSS selector to target form dropdown, not filter)
-    const orgSelect = page.locator('select#organization');
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
+
+    // Wait for organization dropdown to finish loading
+    const orgSelect = modal.locator('select[name="organization_id"]');
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(sharingUser2Email);
-    await page.locator('input#name').fill(sharingUser2Name);
-    await page.locator('input#password').fill(sharingPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(sharingUser2Email);
+    await modal.locator('input[name="name"]').fill(sharingUser2Name);
+    await modal.locator('input[name="password"]').fill(sharingPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Find and select the organization we created (use CSS selector to avoid matching filter dropdown)
+    // Find and select the organization we created
     const options = await orgSelect.locator("option").all();
     let foundOption = false;
     for (const option of options) {
@@ -408,8 +423,8 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       throw new Error(`Could not find organization option: ${sharingOrgName}`);
     }
 
-    // Submit - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
