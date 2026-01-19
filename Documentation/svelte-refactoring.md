@@ -1,6 +1,6 @@
 # LAMB Frontend Refactoring Plan
 
-**Document Version:** 1.6  
+**Document Version:** 1.7  
 **Date:** January 19, 2026  
 **Status:** Phase 1 Complete - Phase 2 In Progress
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.7 | 2026-01-19 | Migrated `KnowledgeBaseDetail.svelte` delete file and cancel job confirmations from native `confirm()` to `ConfirmationModal`. Added Playwright test `kb_detail_modals.spec.js`. Fixed Vite warning about mixed dynamic/static imports in `assistantService.js`. |
 | 1.6 | 2026-01-19 | Migrated `KnowledgeBasesList.svelte` delete confirmation from native `confirm()` to `ConfirmationModal`. Added Playwright test `kb_delete_modal.spec.js`. |
 | 1.5 | 2026-01-18 | Migrated `AssistantsList.svelte` and `assistants/+page.svelte` delete modals to use generic `ConfirmationModal`. Deleted redundant `DeleteConfirmationModal.svelte`. Fixed modal placement (moved outside loop). |
 | 1.4 | 2026-01-18 | Created `useLocaleReady.js` utility. Simplified locale tracking pattern using `$derived`. Updated `ConfirmationModal` to use new pattern. |
@@ -1038,9 +1039,10 @@ export async function navigateToAdmin(page, view = 'dashboard') {
 | 2.6 | Migrate `assistants/+page.svelte` delete modal | ✅ **DONE** | Delete confirmation standardization |
 | 2.7 | Delete redundant `DeleteConfirmationModal.svelte` | ✅ **DONE** | None (component removed) |
 | 2.8.1 | Migrate `KnowledgeBasesList.svelte` delete `confirm()` to modal | ✅ **DONE** | KB delete now uses standard modal |
-| 2.8.2 | Migrate `KnowledgeBaseDetail.svelte` `confirm()` dialogs | ⏳ Pending | File delete, cancel job confirmations |
-| 2.8.3 | Migrate `AssistantsList.svelte` unpublish `confirm()` | ⏳ Pending | Unpublish confirmation |
-| 2.8.4 | Migrate remaining `confirm()` dialogs | ⏳ Pending | Various components |
+| 2.8.2 | Migrate `KnowledgeBaseDetail.svelte` `confirm()` dialogs | ✅ **DONE** | File delete, cancel job now use standard modals |
+| 2.8.3 | Fix mixed dynamic/static imports warning | ✅ **DONE** | Converted dynamic imports to static in prompt templates |
+| 2.8.4 | Migrate `AssistantsList.svelte` unpublish `confirm()` | ⏳ Pending | Unpublish confirmation |
+| 2.8.5 | Migrate remaining `confirm()` dialogs | ⏳ Pending | Various components |
 
 #### New Utility: `useLocaleReady.js`
 

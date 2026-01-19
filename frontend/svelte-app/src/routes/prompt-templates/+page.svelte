@@ -31,6 +31,7 @@
   import FilterBar from '$lib/components/common/FilterBar.svelte';
   import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
   import { processListData } from '$lib/utils/listHelpers';
+  import { getAssistants } from '$lib/services/assistantService';
   
   // View state
   let view = $state('list'); // 'list' | 'create' | 'edit' | 'view'
@@ -240,7 +241,6 @@
   // Import from assistant
   async function handleImportFromAssistant() {
     // Load user's assistants
-    const { getAssistants } = await import('$lib/services/assistantService');
     try {
       const response = await getAssistants(100, 0);
       userAssistants = response.assistants || [];

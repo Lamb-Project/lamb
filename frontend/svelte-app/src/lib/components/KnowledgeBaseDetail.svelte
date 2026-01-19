@@ -6,6 +6,7 @@
     import axios from 'axios'; // Import axios
     import { getApiUrl } from '$lib/config'; // Import getApiUrl
     import { browser } from '$app/environment'; // Import browser
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     
     /** 
      * @typedef {import('$lib/services/knowledgeBaseService').IngestionPlugin} IngestionPlugin
@@ -218,6 +219,18 @@
     let selectedJob = $state(null);
     let showJobModal = $state(false);
     let jobActionLoading = $state(false);
+    
+    // State for delete file confirmation modal
+    let showDeleteFileModal = $state(false);
+    /** @type {{ id: string|null, filename: string }} */
+    let deleteFileTarget = $state({ id: null, filename: '' });
+    let isDeletingFile = $state(false);
+    
+    // State for cancel job confirmation modal
+    let showCancelJobModal = $state(false);
+    /** @type {number|null} */
+    let cancelJobTarget = $state(null);
+    let isCancellingJob = $state(false);
     
     // Polling configuration
     let pollingRefreshRate = $state(3000); // Default 3 seconds, will be fetched from backend
@@ -469,25 +482,45 @@
     }
     
     /**
-     * Cancel a pending/processing job
+     * Open the cancel job confirmation modal
      * @param {number} jobId
      */
-    async function handleCancelJob(jobId) {
+    function handleCancelJob(jobId) {
         if (!kbId) return;
-        if (!confirm('Cancel this ingestion job?')) return;
-        jobActionLoading = true;
+        cancelJobTarget = jobId;
+        showCancelJobModal = true;
+    }
+    
+    /**
+     * Confirm cancellation of the job
+     */
+    async function confirmCancelJob() {
+        if (!kbId || !cancelJobTarget || isCancellingJob) return;
+        isCancellingJob = true;
         
         try {
-            await cancelIngestionJob(kbId, jobId);
+            await cancelIngestionJob(kbId, cancelJobTarget);
             // Refresh jobs after cancel
             await loadIngestionJobs(kbId);
+            showCancelJobModal = false;
+            cancelJobTarget = null;
             closeJobModal();
         } catch (/** @type {unknown} */ err) {
             console.error('Error cancelling job:', err);
-            alert(err instanceof Error ? err.message : 'Failed to cancel job');
+            error = err instanceof Error ? err.message : 'Failed to cancel job';
+            setTimeout(() => { error = ''; }, 5000);
         } finally {
-            jobActionLoading = false;
+            isCancellingJob = false;
         }
+    }
+    
+    /**
+     * Cancel the cancel job modal
+     */
+    function cancelCancelJobModal() {
+        if (isCancellingJob) return;
+        showCancelJobModal = false;
+        cancelJobTarget = null;
     }
     
     /**
@@ -587,22 +620,45 @@
     }
     
     /**
-     * Handle file delete
+     * Open the delete file confirmation modal
      * @param {string} fileId - ID of the file to delete
+     * @param {string} [filename] - Optional filename for display
      */
-    async function handleDeleteFile(fileId) {
+    function handleDeleteFile(fileId, filename = '') {
         if (!kbId) return;
-        if (!confirm($_('knowledgeBases.detail.confirmDelete', { default: 'Delete this file and its embeddings? This cannot be undone.' }))) {
-            return;
-        }
+        deleteFileTarget = { id: fileId, filename: filename || fileId };
+        showDeleteFileModal = true;
+    }
+    
+    /**
+     * Confirm deletion of the file
+     */
+    async function confirmDeleteFile() {
+        if (!kbId || !deleteFileTarget.id || isDeletingFile) return;
+        isDeletingFile = true;
+        
         try {
-            await deleteKnowledgeBaseFile(kbId, fileId, true);
+            await deleteKnowledgeBaseFile(kbId, deleteFileTarget.id, true);
             // Refresh list
             await loadKnowledgeBase(kbId);
+            showDeleteFileModal = false;
+            deleteFileTarget = { id: null, filename: '' };
         } catch (err) {
             console.error('Failed to delete file', err);
-            alert(err instanceof Error ? err.message : 'File deletion failed');
+            error = err instanceof Error ? err.message : 'File deletion failed';
+            setTimeout(() => { error = ''; }, 5000);
+        } finally {
+            isDeletingFile = false;
         }
+    }
+    
+    /**
+     * Cancel the delete file modal
+     */
+    function cancelDeleteFileModal() {
+        if (isDeletingFile) return;
+        showDeleteFileModal = false;
+        deleteFileTarget = { id: null, filename: '' };
     }
 
     // --- Ingestion Functions (Moved from Modal) ---
@@ -1191,7 +1247,7 @@
                                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                         {#if kb.can_modify === true}
                                                         <button 
-                                                            onclick={() => handleDeleteFile(file.id)}
+                                                            onclick={() => handleDeleteFile(file.id, file.filename)}
                                                             class="text-red-600 hover:text-red-900"
                                                         >
                                                             {$_('knowledgeBases.detail.fileDeleteButton', { default: 'Delete' })}
@@ -1998,3 +2054,27 @@
         </div>
     </div>
 {/if}
+
+<!-- Delete File Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteFileModal}
+    bind:isLoading={isDeletingFile}
+    title={$_('knowledgeBases.detail.deleteFileTitle', { default: 'Delete File' })}
+    message={$_('knowledgeBases.detail.confirmDeleteFile', { values: { filename: deleteFileTarget.filename }, default: `Delete file "${deleteFileTarget.filename}" and all its embeddings? This action cannot be undone.` })}
+    confirmText={$_('common.delete', { default: 'Delete' })}
+    variant="danger"
+    onconfirm={confirmDeleteFile}
+    oncancel={cancelDeleteFileModal}
+/>
+
+<!-- Cancel Job Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showCancelJobModal}
+    bind:isLoading={isCancellingJob}
+    title={$_('knowledgeBases.detail.cancelJobTitle', { default: 'Cancel Ingestion Job' })}
+    message={$_('knowledgeBases.detail.confirmCancelJob', { default: 'Are you sure you want to cancel this ingestion job? The job will be stopped and any progress will be lost.' })}
+    confirmText={$_('common.cancel', { default: 'Cancel Job' })}
+    variant="warning"
+    onconfirm={confirmCancelJob}
+    oncancel={cancelCancelJobModal}
+/>
