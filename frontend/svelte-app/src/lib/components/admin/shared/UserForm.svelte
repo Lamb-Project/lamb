@@ -105,12 +105,12 @@
                         
                         <!-- Email Field -->
                         <div class="mb-4 text-left">
-                            <label for="user-email" class="block text-gray-700 text-sm font-bold mb-2">
+                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
                                 {localeLoaded ? $_('admin.users.create.email', { default: 'Email' }) : 'Email'} *
                             </label>
                             <input 
                                 type="email" 
-                                id="user-email" 
+                                id="email" 
                                 name="email"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 value={newUser.email}
@@ -121,12 +121,12 @@
                         
                         <!-- Name Field -->
                         <div class="mb-4 text-left">
-                            <label for="user-name" class="block text-gray-700 text-sm font-bold mb-2">
+                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
                                 {localeLoaded ? $_('admin.users.create.name', { default: 'Name' }) : 'Name'} *
                             </label>
                             <input 
                                 type="text" 
-                                id="user-name" 
+                                id="name" 
                                 name="name"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 value={newUser.name}
@@ -137,12 +137,12 @@
                         
                         <!-- Password Field -->
                         <div class="mb-4 text-left">
-                            <label for="user-password" class="block text-gray-700 text-sm font-bold mb-2">
+                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
                                 {localeLoaded ? $_('admin.users.create.password', { default: 'Password' }) : 'Password'} *
                             </label>
                             <input 
                                 type="password" 
-                                id="user-password" 
+                                id="password" 
                                 name="password"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 value={newUser.password}
@@ -154,11 +154,11 @@
                         <!-- Role Field - Super Admin Only -->
                         {#if isSuperAdmin}
                             <div class="mb-4 text-left">
-                                <label for="user-role" class="block text-gray-700 text-sm font-bold mb-2">
+                                <label for="role" class="block text-gray-700 text-sm font-bold mb-2">
                                     {localeLoaded ? $_('admin.users.create.role', { default: 'Role' }) : 'Role'}
                                 </label>
                                 <select 
-                                    id="user-role" 
+                                    id="role" 
                                     name="role"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                     value={newUser.role || 'user'}
@@ -172,11 +172,11 @@
 
                         <!-- User Type Field -->
                         <div class="mb-4 text-left">
-                            <label for="user-type" class="block text-gray-700 text-sm font-bold mb-2">
+                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
                                 {localeLoaded ? $_('admin.users.create.userType', { default: 'User Type' }) : 'User Type'}
                             </label>
                             <select 
-                                id="user-type" 
+                                id="user_type" 
                                 name="user_type"
                                 class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                 value={newUser.user_type || 'creator'}
@@ -194,7 +194,7 @@
                         <!-- Organization Field - Super Admin Only -->
                         {#if isSuperAdmin}
                             <div class="mb-4 text-left">
-                                <label for="user-organization" class="block text-gray-700 text-sm font-bold mb-2">
+                                <label for="organization" class="block text-gray-700 text-sm font-bold mb-2">
                                     {localeLoaded ? $_('admin.users.create.organization', { default: 'Organization' }) : 'Organization'}
                                 </label>
                                 {#if isLoadingOrganizations}
@@ -203,7 +203,7 @@
                                     <div class="text-red-500 text-sm">{organizationsError}</div>
                                 {:else}
                                     <select 
-                                        id="user-organization" 
+                                        id="organization" 
                                         name="organization_id"
                                         class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
                                         value={newUser.organization_id ?? ''}
@@ -235,13 +235,13 @@
                                 <div class="flex items-center">
                                     <input 
                                         type="checkbox" 
-                                        id="user-enabled" 
+                                        id="enabled" 
                                         name="enabled"
                                         checked={newUser.enabled !== false}
                                         onchange={(e) => updateField('enabled', /** @type {HTMLInputElement} */ (e.target).checked)}
                                         class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                     />
-                                    <label for="user-enabled" class="ml-2 block text-sm text-gray-900">
+                                    <label for="enabled" class="ml-2 block text-sm text-gray-900">
                                         {localeLoaded ? $_('admin.users.create.enabled', { default: 'User enabled' }) : 'User enabled'}
                                     </label>
                                 </div>
