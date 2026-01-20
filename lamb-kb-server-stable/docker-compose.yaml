@@ -24,22 +24,6 @@ services:
     extra_hosts:
     - "host.docker.internal:host-gateway"
 
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "8501:8501"
-    environment:
-      - API_BASE_URL=http://127.0.0.1:9090
-      - API_TOKEN=0p3n-w3bu!
-    depends_on:
-      - backend
-    network_mode: "host"
-    extra_hosts:
-    - "host.docker.internal:host-gateway"
-
 volumes:
   kb-data:
     name: lamb-kb-data
