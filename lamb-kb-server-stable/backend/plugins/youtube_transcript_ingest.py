@@ -128,6 +128,9 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
         'skip_download': True,
         'quiet': True,
         'no_warnings': True,
+        # Request SRT format subtitles
+        'subtitlesformat': 'srt',
+        'convert_subs': 'srt',
     }
 
     if proxy_url:
@@ -201,10 +204,10 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             if not available_subs:
                 raise ValueError("No subtitles available for this video")
 
-            # Find the best subtitle format (prefer vtt, then srv3, then others)
+            # Find the best subtitle format (prefer srt, then others)
             subtitle_url = None
             for sub in available_subs:
-                if sub['ext'] == 'vtt':
+                if sub['ext'] == 'srt':
                     subtitle_url = sub['url']
                     break
 
@@ -240,30 +243,30 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             raise ValueError(f"Failed to extract subtitles: {e}")
 
 
-def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
-    """Parse VTT subtitle content into transcript pieces."""
+def _parse_srt_content(srt_content: str) -> List[Dict[str, Any]]:
+    """Parse SRT subtitle content into transcript pieces."""
     import re
 
     pieces = []
-    lines = vtt_content.split('\n')
+    lines = srt_content.split('\n')
 
     i = 0
     while i < len(lines):
         line = lines[i].strip()
 
-        # Look for timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
+        # Look for timestamp lines (SRT format: 00:00:00,000 --> 00:00:00,000)
         timestamp_match = re.match(
-            r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})', line)
+            r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})', line)
         if timestamp_match:
-            start_time = _timestamp_to_seconds(timestamp_match.group(1))
-            end_time = _timestamp_to_seconds(timestamp_match.group(2))
+            start_time = _srt_timestamp_to_seconds(timestamp_match.group(1))
+            end_time = _srt_timestamp_to_seconds(timestamp_match.group(2))
 
             # Collect text lines until we hit an empty line or another timestamp
             text_lines = []
             i += 1
-            while i < len(lines) and lines[i].strip() and not re.match(r'\d{2}:\d{2}:\d{2}\.\d{3}', lines[i]):
+            while i < len(lines) and lines[i].strip() and not re.match(r'\d{2}:\d{2}:\d{2},\d{3}', lines[i]):
                 text_line = lines[i].strip()
-                # Remove VTT formatting tags
+                # Remove SRT formatting tags
                 text_line = re.sub(r'<[^>]+>', '', text_line)
                 if text_line:
                     text_lines.append(text_line)
@@ -281,10 +284,10 @@ def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
     return pieces
 
 
-def _timestamp_to_seconds(timestamp: str) -> float:
-    """Convert VTT timestamp (HH:MM:SS.mmm) to seconds."""
+def _srt_timestamp_to_seconds(timestamp: str) -> float:
+    """Convert SRT timestamp (HH:MM:SS,mmm) to seconds."""
     import re
-    match = re.match(r'(\d{2}):(\d{2}):(\d{2})\.(\d{3})', timestamp)
+    match = re.match(r'(\d{2}):(\d{2}):(\d{2}),(\d{3})', timestamp)
     if match:
         hours, minutes, seconds, milliseconds = map(int, match.groups())
         return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000
