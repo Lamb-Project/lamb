@@ -156,9 +156,9 @@ open-webui/Pipfile
 open-webui/data/*
 open-webui/open_webui/data/*
 open-webui/.webui_secret_key
-lamb-kb-server-stable/backend/data/chromadb/
-lamb-kb-server-stable/backend/static/
-lamb-kb-server-stable/backend/.env
+lamb-kb-server-stable/data/chromadb/
+lamb-kb-server-stable/static/
+lamb-kb-server-stable/.env
 Documentation/test-scripts/package-lock.json
 testing/package-lock.json
 testing/playwright/test-results/.last-run.json
