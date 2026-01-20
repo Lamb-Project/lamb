@@ -1,0 +1,26 @@
+fastapi>=0.103.1
+uvicorn>=0.23.2
+pydantic>=2.4.2,<2.11
+python-dotenv>=1.0.0
+sqlalchemy>=2.0.0
+chromadb>=0.6.3
+sentence-transformers>=2.2.2
+python-multipart
+markitdown[all]>=0.1.0
+# PDF image extraction (markitdown's pdfminer only extracts text)
+pymupdf>=1.24.0
+flask>=2.3.0
+requests>=2.31.0
+firecrawl-py==4.8.0
+langchain-text-splitters>=0.3.0,<0.4.0
+ollama
+openai>=1.0.0
+# Additional dependencies used in plugins
+# Removed duplicate firecrawl line (already pinned above)
+# pathlib and uuid are in the Python standard library; no need to install separately.
+markdown2
+# YouTube video and subtitle extraction
+yt-dlp>=2025.11.12
+langchain-community
+beautifulsoup4
+lxml
