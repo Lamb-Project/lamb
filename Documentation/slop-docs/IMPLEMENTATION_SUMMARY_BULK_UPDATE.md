@@ -71,20 +71,20 @@ async def bulk_update_embeddings_apikey(
 
 ## Files Modified
 
-1. `/opt/lamb/lamb-kb-server-stable/backend/database/service.py`
+1. `/opt/lamb/lamb-kb-server-stable/database/service.py`
    - Added `bulk_update_embeddings_apikey()` method to `CollectionService`
 
-2. `/opt/lamb/lamb-kb-server-stable/backend/schemas/collection.py`
+2. `/opt/lamb/lamb-kb-server-stable/schemas/collection.py`
    - Added `BulkUpdateEmbeddingsRequest` schema
    - Added `BulkUpdateEmbeddingsResponse` schema
 
-3. `/opt/lamb/lamb-kb-server-stable/backend/routers/collections.py`
+3. `/opt/lamb/lamb-kb-server-stable/routers/collections.py`
    - Added imports for new schemas
    - Added PUT endpoint handler
 
 ## Files Created
 
-1. `/opt/lamb/lamb-kb-server-stable/backend/test_bulk_update_embeddings.py`
+1. `/opt/lamb/lamb-kb-server-stable/test_bulk_update_embeddings.py`
    - Test script to demonstrate endpoint usage
 
 2. `/opt/lamb/lamb-kb-server-stable/BULK_UPDATE_EMBEDDINGS_API.md`
@@ -127,7 +127,7 @@ curl -X PUT 'http://localhost:9090/collections/owner/1/embeddings' \
 To verify the changes were applied to the database:
 
 ```bash
-sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections 
    WHERE owner='1' 
@@ -190,7 +190,7 @@ To use this feature:
 
 1. **Start the KB Server:**
    ```bash
-   cd /opt/lamb/lamb-kb-server-stable/backend
+   cd /opt/lamb/lamb-kb-server-stable
    python start.py
    ```
 

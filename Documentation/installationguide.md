@@ -97,7 +97,7 @@ Note: The working Open WebUI version used in this setup is v0.5.6. If you build 
 1.  **Navigate to the correct directory:**
 
     ```bash
-    cd $LAMB_PROJECT_PATH/lamb-kb-server-stable/backend
+    cd $LAMB_PROJECT_PATH/lamb-kb-server-stable
     ```
 
 2.  **Create and activate the Python virtual environment:**
@@ -273,7 +273,7 @@ PORT=8080 ./dev.sh
 ```
 
 ```bash
-cd $LAMB_PROJECT_PATH/lamb-kb-server-stable/backend
+cd $LAMB_PROJECT_PATH/lamb-kb-server-stable
 source .venv/bin/activate
 python start.py
 ```
@@ -294,7 +294,7 @@ Optional: start all in the background (logs go to .dev.log in each folder):
 
 ```bash
 (cd $LAMB_PROJECT_PATH/open-webui/backend && source .venv/bin/activate && PORT=8080 ./dev.sh > .dev.log 2>&1 &)
-(cd $LAMB_PROJECT_PATH/lamb-kb-server-stable/backend && source .venv/bin/activate && python start.py > .dev.log 2>&1 &)
+(cd $LAMB_PROJECT_PATH/lamb-kb-server-stable && source .venv/bin/activate && python start.py > .dev.log 2>&1 &)
 (cd $LAMB_PROJECT_PATH/backend && source .venv/bin/activate && ./dev.sh > .dev.log 2>&1 &)
 (cd $LAMB_PROJECT_PATH/frontend/svelte-app && . "$HOME/.nvm/nvm.sh" && nvm use --lts=iron >/dev/null && npm run dev -- --host 0.0.0.0 > .dev.log 2>&1 &)
 ```
@@ -312,7 +312,7 @@ View logs when started in background:
 
 ```bash
 tail -n 100 -f $LAMB_PROJECT_PATH/open-webui/backend/.dev.log
-tail -n 100 -f $LAMB_PROJECT_PATH/lamb-kb-server-stable/backend/.dev.log
+tail -n 100 -f $LAMB_PROJECT_PATH/lamb-kb-server-stable/.dev.log
 tail -n 100 -f $LAMB_PROJECT_PATH/backend/.dev.log
 tail -n 100 -f $LAMB_PROJECT_PATH/frontend/svelte-app/.dev.log
 ```

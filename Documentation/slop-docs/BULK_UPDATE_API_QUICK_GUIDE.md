@@ -17,12 +17,12 @@ curl -s -X PUT 'http://localhost:9090/collections/owner/1/embeddings' \
 
 ```bash
 # Before
-sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections WHERE owner='1' ORDER BY id;"
 
 # After
-sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections WHERE owner='1' ORDER BY id;"
 ```
@@ -53,7 +53,7 @@ curl -s -X GET 'http://localhost:9090/collections?owner=1&skip=0&limit=10' \
 ## Test Script
 
 ```bash
-cd /opt/lamb/lamb-kb-server-stable/backend
+cd /opt/lamb/lamb-kb-server-stable
 python test_bulk_update_embeddings.py
 ```
 

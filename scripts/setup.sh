@@ -25,11 +25,11 @@ else
     echo "✅ backend/.env exists"
 fi
 
-if [ ! -f "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env" ]; then
+if [ ! -f "$PROJECT_ROOT/lamb-kb-server-stable/.env" ]; then
     echo "⚠️  KB server .env not found. Creating from example..."
-    cp "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env.example" \
-       "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env"
-    echo "✅ Created lamb-kb-server-stable/backend/.env"
+    cp "$PROJECT_ROOT/lamb-kb-server-stable/.env.example" \
+       "$PROJECT_ROOT/lamb-kb-server-stable/.env"
+    echo "✅ Created lamb-kb-server-stable/.env"
 else
     echo "✅ KB server .env exists"
 fi
@@ -38,11 +38,11 @@ fi
 echo ""
 echo "🔍 Validating .env files for common issues..."
 
-if grep -q "host\.docker\.internalt" "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env" 2>/dev/null; then
+if grep -q "host\.docker\.internalt" "$PROJECT_ROOT/lamb-kb-server-stable/.env" 2>/dev/null; then
     echo "⚠️  Found typo in KB server .env: 'host.docker.internalt'"
     echo "   Fixing automatically..."
     sed -i.bak 's/host\.docker\.internalt/host.docker.internal/g' \
-        "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env"
+        "$PROJECT_ROOT/lamb-kb-server-stable/.env"
     echo "✅ Fixed: host.docker.internal"
 fi
 

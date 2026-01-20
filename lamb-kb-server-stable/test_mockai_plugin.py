@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 # Add backend to path
-sys.path.append('/opt/lamb-project/lamb/lamb-kb-server-stable/backend')
+sys.path.append('/opt/lamb-project/lamb/lamb-kb-server-stable')
 
 from plugins.mockai_json_ingest import MockAIJSONIngestPlugin
 

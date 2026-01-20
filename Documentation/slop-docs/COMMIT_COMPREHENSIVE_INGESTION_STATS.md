@@ -26,7 +26,7 @@ This commit introduces comprehensive processing statistics tracking for document
 
 ### LAMB KB Server - Database Layer
 
-#### `lamb-kb-server-stable/backend/database/models.py` (+190 lines)
+#### `lamb-kb-server-stable/database/models.py` (+190 lines)
 - Added `processing_stats` JSON column to `FileRegistry` model
 - Comprehensive schema documentation for the JSON structure:
   ```python
@@ -47,7 +47,7 @@ This commit introduces comprehensive processing statistics tracking for document
   ```
 - Updated `to_dict()` and `to_job_dict()` methods to include `processing_stats`
 
-#### `lamb-kb-server-stable/backend/database/connection.py` (+73 lines)
+#### `lamb-kb-server-stable/database/connection.py` (+73 lines)
 - Added `run_migrations()` function for automatic schema migrations at startup
 - Implemented migration for `processing_stats` column (Jan 2026)
 - Uses SQLAlchemy's `text()` for raw SQL execution
@@ -56,7 +56,7 @@ This commit introduces comprehensive processing statistics tracking for document
 
 ### LAMB KB Server - API Schema
 
-#### `lamb-kb-server-stable/backend/schemas/files.py` (+611 lines)
+#### `lamb-kb-server-stable/schemas/files.py` (+611 lines)
 - Added comprehensive Pydantic models for processing statistics:
 
 | Model | Description |
@@ -72,7 +72,7 @@ This commit introduces comprehensive processing statistics tracking for document
 
 ### LAMB KB Server - Routers
 
-#### `lamb-kb-server-stable/backend/routers/collections.py` (+567 lines, significant refactoring)
+#### `lamb-kb-server-stable/routers/collections.py` (+567 lines, significant refactoring)
 - Added `stats_callback` mechanism in `process_file_in_background_enhanced()`
 - Background processor now:
   - Creates `stats_callback` closure to capture processing stats
@@ -91,7 +91,7 @@ This commit introduces comprehensive processing statistics tracking for document
       file_reg.processing_stats = captured_stats
   ```
 
-#### `lamb-kb-server-stable/backend/routers/ingestion_status.py` (NEW FILE)
+#### `lamb-kb-server-stable/routers/ingestion_status.py` (NEW FILE)
 - New router for ingestion status API endpoints
 - Endpoints:
   - `GET /collections/{id}/ingestion-jobs` - List jobs with filtering/pagination
@@ -103,7 +103,7 @@ This commit introduces comprehensive processing statistics tracking for document
 
 ### LAMB KB Server - Plugins
 
-#### `lamb-kb-server-stable/backend/plugins/markitdown_plus_ingest.py` (NEW FILE, 1033 lines)
+#### `lamb-kb-server-stable/plugins/markitdown_plus_ingest.py` (NEW FILE, 1033 lines)
 - **Version 1.3.0** - Enhanced plugin with comprehensive stats tracking
 
 **New `ProcessingStatsTracker` class (lines 50-153):**
@@ -134,7 +134,7 @@ class ProcessingStatsTracker:
 - `_extract_and_process_images()` - Accepts `stats_tracker` parameter
 - `ingest()` - Full stats tracking with `stats_callback` support
 
-#### `lamb-kb-server-stable/backend/plugins/base.py` (+55 lines)
+#### `lamb-kb-server-stable/plugins/base.py` (+55 lines)
 - Enhanced `IngestPlugin` base class
 - Added `get_parameters()` method for plugin parameter introspection
 - Added `report_progress()` helper for progress callback support
@@ -145,13 +145,13 @@ class ProcessingStatsTracker:
   - `help_text`: Additional help text for UI
   - `applicable_to`: File types this parameter applies to
 
-#### `lamb-kb-server-stable/backend/plugins/markitdown-ingest-plugin.py` (+22 lines)
+#### `lamb-kb-server-stable/plugins/markitdown-ingest-plugin.py` (+22 lines)
 - Updated to use new parameter specification format
 
-#### `lamb-kb-server-stable/backend/plugins/url_ingest.py` (+13 lines)
+#### `lamb-kb-server-stable/plugins/url_ingest.py` (+13 lines)
 - Updated to use new parameter specification format
 
-#### `lamb-kb-server-stable/backend/plugins/youtube_transcript_ingest.py` (+27 lines)
+#### `lamb-kb-server-stable/plugins/youtube_transcript_ingest.py` (+27 lines)
 - Updated to use new parameter specification format
 
 ### LAMB Backend - Proxy Layer
