@@ -144,28 +144,59 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             # Get available subtitles
             subtitles = info.get('subtitles', {})
             automatic_captions = info.get('automatic_captions', {})
+            native_lang = info.get('language')
 
             # Try requested languages first, then fall back to English, then any available
             available_subs = None
+            selected_lang_code = None
+            is_translated = False       # because if true then error 429 is likely
+
             for lang in languages:
+                # Check for manual subtitles (safe)
                 if lang in subtitles:
                     available_subs = subtitles[lang]
+                    selected_lang_code = lang
+                    is_translated = False
                     break
-                elif lang in automatic_captions:
+                
+                # Check for original automatic captions (also safe)
+                orig_key = f"{lang}-orig"
+                if orig_key in automatic_captions:
+                    available_subs = automatic_captions[orig_key]
+                    selected_lang_code = orig_key
+                    is_translated = False
+                    break
+                
+                # Check for auto-translated captions (Error 429 likely)
+                if lang in automatic_captions:
                     available_subs = automatic_captions[lang]
+                    selected_lang_code = lang
+                    # If it lacks -orig and isn't the native language, it's certainly translated
+                    is_translated = (lang != native_lang)
                     break
 
             # Fallback to English if requested language not found
             if not available_subs:
                 if 'en' in subtitles:
                     available_subs = subtitles['en']
+                    selected_lang_code = 'en'
+                    is_translated = False
+                elif 'en-orig' in automatic_captions:
+                    available_subs = automatic_captions['en-orig']
+                    selected_lang_code = 'en-orig'
+                    is_translated = False
                 elif 'en' in automatic_captions:
                     available_subs = automatic_captions['en']
+                    selected_lang_code = 'en'
+                    is_translated = (native_lang != 'en')
                 else:
                     # Take the first available subtitle
                     all_subs = {**subtitles, **automatic_captions}
                     if all_subs:
-                        available_subs = list(all_subs.values())[0]
+                        first_key = list(all_subs.keys())[0]
+                        available_subs = all_subs[first_key]
+                        selected_lang_code = first_key
+                        is_translated = not (first_key.endswith('-orig') or first_key in subtitles)
 
             if not available_subs:
                 raise ValueError("No subtitles available for this video")
@@ -185,9 +216,25 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             import requests
             response = requests.get(subtitle_url, proxies={
                                     'http': proxy_url, 'https': proxy_url} if proxy_url else None)
+            
+            # Handling for 429 error if machine-translated subtitles are requested
+            if response.status_code == 429:
+                raise ValueError(
+                    f"YouTube rate-limited this request (429). "
+                    f"This usually happens when requesting auto-translated subtitles ('{selected_lang_code}') "
+                    f"for a video natively in '{native_lang}'."
+                ) 
+
             response.raise_for_status()
 
-            return _parse_vtt_content(response.text)
+            return {    # still returning pieces, adding metadata, useful for frontend user-facing warning to work
+                "pieces": _parse_vtt_content(response.text),
+                "metadata": {
+                    "is_translated": is_translated,
+                    "native_lang": native_lang,
+                    "selected_lang_code": selected_lang_code
+                }
+            }
 
         except Exception as e:
             raise ValueError(f"Failed to extract subtitles: {e}")
@@ -345,13 +392,29 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
             self.report_progress(kwargs, url_idx, len(
                 urls), f"Fetching transcript for video {video_id}...")
 
-            try:
-                pieces = _fetch_transcript(video_id, [language], proxy_url)
+            try:    
+                result = _fetch_transcript(video_id, [language], proxy_url)
+                pieces = result["pieces"]
+                meta_info = result["metadata"]      # not var metadata as seen below, just info about translation
+
+                # If machine-translated, issue a warning
+                if meta_info["is_translated"]:
+                    warning_msg = (
+                        f"WARNING: Requested language '{language}' requires YouTube Auto-Translation "
+                        f"for video {video_id} (Native: '{meta_info['native_lang']}'). "
+                        "This frequently triggers '429 Too Many Requests' errors. "
+                        f"Consider requesting '{meta_info['native_lang']}' instead for better stability."
+                    )
+                    self.report_progress(kwargs, url_idx, len(urls), warning_msg)
+
             except ValueError as e:
                 # Skip videos without transcripts or other extraction failures
                 if "No subtitles available" in str(e):
                     self.report_progress(
                         kwargs, url_idx + 1, len(urls), f"No subtitles for {video_id}, skipping...")
+                    continue
+                elif "429" in str(e):
+                    self.report_progress(kwargs, url_idx + 1, len(urls), f"Error: {str(e)}")
                     continue
                 else:
                     raise e
