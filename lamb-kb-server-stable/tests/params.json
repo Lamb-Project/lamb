@@ -1,0 +1,76 @@
+{
+  "api": {
+    "base_url": "http://localhost:9090",
+    "api_key": "0p3n-w3bu!"
+  },
+  "collection": {
+    "name": "test-collection",
+    "description": "Test collection for API testing",
+    "owner": "test-user",
+    "visibility": "private",
+    "embeddings_model": {
+      "model": "default",
+      "vendor": "default",
+      "api_endpoint": "default",
+      "apikey": "default"
+    }
+  },
+  "test_files": [
+    {
+      "path": "test_files/test1.txt",
+      "content": "This is a test document for character-based chunking. It contains information about artificial intelligence and machine learning techniques. Neural networks are a subset of machine learning methods that are inspired by the human brain. They consist of layers of interconnected neurons that process information. Deep learning is a subfield of machine learning that uses multiple layers of neural networks to extract high-level features from raw input data. Reinforcement learning is another approach where an agent learns to make decisions by interacting with an environment and receiving rewards or penalties.",
+      "plugin": "simple_ingest",
+      "params": {
+        "chunk_size": 100,
+        "chunk_unit": "char",
+        "chunk_overlap": 20
+      }
+    },
+    {
+      "path": "test_files/test2.txt",
+      "content": "Natural language processing (NLP) is a field of artificial intelligence that focuses on the interaction between computers and humans through natural language. The ultimate objective of NLP is to enable computers to read, understand, and derive meaning from human languages in a valuable way. NLP combines computational linguistics, machine learning, and deep learning to process human language in text or voice data. Some common NLP tasks include sentiment analysis, named entity recognition, part-of-speech tagging, machine translation, and question answering systems.",
+      "plugin": "simple_ingest",
+      "params": {
+        "chunk_size": 20,
+        "chunk_unit": "word",
+        "chunk_overlap": 5
+      }
+    },
+    {
+      "path": "test_files/test3.txt",
+      "content": "Computer Vision\nComputer vision is an interdisciplinary field that deals with how computers can gain high-level understanding from digital images or videos.\nThe field aims to automate tasks that the human visual system can do.\nComputer vision tasks include methods for acquiring, processing, analyzing and understanding digital images.\nIt also includes extraction of high-dimensional data from the real world to produce numerical or symbolic information.\nObjects of interest can be recognized using various machine learning algorithms.\nImage classification, object detection, and semantic segmentation are common computer vision tasks.\nDeep learning models like convolutional neural networks (CNNs) have revolutionized computer vision.\nApplications of computer vision include autonomous vehicles, facial recognition, medical image analysis, and augmented reality.",
+      "plugin": "simple_ingest",
+      "params": {
+        "chunk_size": 3,
+        "chunk_unit": "line",
+        "chunk_overlap": 1
+      }
+    }
+  ],
+  "queries": [
+    {
+      "query_text": "How do neural networks work?",
+      "plugin": "simple_query",
+      "params": {
+        "top_k": 3,
+        "threshold": 0.5
+      }
+    },
+    {
+      "query_text": "What is natural language processing?",
+      "plugin": "simple_query",
+      "params": {
+        "top_k": 3,
+        "threshold": 0.5
+      }
+    },
+    {
+      "query_text": "Explain computer vision applications",
+      "plugin": "simple_query",
+      "params": {
+        "top_k": 3,
+        "threshold": 0.5
+      }
+    }
+  ]
+}
