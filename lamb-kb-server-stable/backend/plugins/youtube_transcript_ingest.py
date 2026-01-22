@@ -231,7 +231,7 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             response.raise_for_status()
 
             return {    # still returning pieces, adding metadata, useful for frontend user-facing warning to work
-                "pieces": _parse_vtt_content(response.text),
+                "pieces": _parse_srt_content(response.text),
                 "metadata": {
                     "is_translated": is_translated,
                     "native_lang": native_lang,
