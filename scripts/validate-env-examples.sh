@@ -11,8 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Check KB server .env.example
-echo "Checking: lamb-kb-server-stable/.env.example"
-KB_ENV_FILE="$PROJECT_ROOT/lamb-kb-server-stable/.env.example"
+echo "Checking: lamb-kb-server-stable/backend/.env.example"
+KB_ENV_FILE="$PROJECT_ROOT/lamb-kb-server-stable/backend/.env.example"
 
 if [ ! -f "$KB_ENV_FILE" ]; then
     echo "❌ ERROR: File not found: $KB_ENV_FILE"

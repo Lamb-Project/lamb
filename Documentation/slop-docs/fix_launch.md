@@ -20,7 +20,7 @@ This document addresses critical issues discovered during fresh LAMB deployments
 
 **Problem:**
 ```bash
-# In /lamb-kb-server-stable/.env
+# In /lamb-kb-server-stable/backend/.env
 EMBEDDINGS_ENDPOINT=http://host.docker.internalt:11434/api/embeddings
 #                                          ^ typo here
 ```
@@ -115,7 +115,7 @@ Create `.env.example` validation to catch typos:
 echo "Validating .env.example files..."
 
 # Check KB server .env.example
-if grep -q "host\.docker\.internalt" lamb-kb-server-stable/.env.example; then
+if grep -q "host\.docker\.internalt" lamb-kb-server-stable/backend/.env.example; then
     echo "❌ ERROR: Typo found in KB server .env.example"
     echo "   Found: host.docker.internalt (should be: host.docker.internal)"
     exit 1
@@ -166,11 +166,11 @@ else
     echo "✅ backend/.env exists"
 fi
 
-if [ ! -f "$PROJECT_ROOT/lamb-kb-server-stable/.env" ]; then
+if [ ! -f "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env" ]; then
     echo "⚠️  KB server .env not found. Creating from example..."
-    cp "$PROJECT_ROOT/lamb-kb-server-stable/.env.example" \
-       "$PROJECT_ROOT/lamb-kb-server-stable/.env"
-    echo "✅ Created lamb-kb-server-stable/.env"
+    cp "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env.example" \
+       "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env"
+    echo "✅ Created lamb-kb-server-stable/backend/.env"
 else
     echo "✅ KB server .env exists"
 fi
@@ -179,11 +179,11 @@ fi
 echo ""
 echo "🔍 Validating .env files for common issues..."
 
-if grep -q "host\.docker\.internalt" "$PROJECT_ROOT/lamb-kb-server-stable/.env" 2>/dev/null; then
+if grep -q "host\.docker\.internalt" "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env" 2>/dev/null; then
     echo "⚠️  Found typo in KB server .env: 'host.docker.internalt'"
     echo "   Fixing automatically..."
     sed -i.bak 's/host\.docker\.internalt/host.docker.internal/g' \
-        "$PROJECT_ROOT/lamb-kb-server-stable/.env"
+        "$PROJECT_ROOT/lamb-kb-server-stable/backend/.env"
     echo "✅ Fixed: host.docker.internal"
 fi
 
@@ -405,7 +405,7 @@ If you prefer manual setup, follow these steps carefully:
 **Step 1: Create .env files**
 ```bash
 cp backend/.env.example backend/.env
-cp lamb-kb-server-stable/.env.example lamb-kb-server-stable/.env
+cp lamb-kb-server-stable/backend/.env.example lamb-kb-server-stable/backend/.env
 ```
 
 **Step 2: Create frontend config**
@@ -416,7 +416,7 @@ cp frontend/svelte-app/static/config.js.sample frontend/svelte-app/static/config
 **Step 3: Validate configuration**
 ```bash
 # Check for common typos in KB server .env
-grep "host.docker.internal" lamb-kb-server-stable/.env
+grep "host.docker.internal" lamb-kb-server-stable/backend/.env
 # Should show: EMBEDDINGS_ENDPOINT=http://host.docker.internal:11434/api/embeddings
 ```
 
@@ -475,7 +475,7 @@ docker restart lamb-openwebui
 ### If KB server connection fails
 ```bash
 # Check configuration
-grep EMBEDDINGS_ENDPOINT lamb-kb-server-stable/.env
+grep EMBEDDINGS_ENDPOINT lamb-kb-server-stable/backend/.env
 
 # Test connectivity
 docker exec lamb-kb-server python -c "import requests; print(requests.get('http://localhost:9090/health').json())"

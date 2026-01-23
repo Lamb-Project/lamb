@@ -24,7 +24,7 @@ Examples:
 
 Configuration:
  - By default, looks for Chroma persistence at:
-       lamb-kb-server-stable/data/chromadb
+       lamb-kb-server-stable/backend/data/chromadb
  - Override with env var CHROMA_DB_PATH or CLI flag --chroma-path
 """
 from __future__ import annotations

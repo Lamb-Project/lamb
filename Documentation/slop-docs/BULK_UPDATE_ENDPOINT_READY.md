@@ -33,20 +33,20 @@ curl -X PUT 'http://localhost:9090/collections/owner/1/embeddings' \
 
 ## Files Modified
 
-✅ `/opt/lamb/lamb-kb-server-stable/database/service.py`
+✅ `/opt/lamb/lamb-kb-server-stable/backend/database/service.py`
    - Added `CollectionService.bulk_update_embeddings_apikey()` method
 
-✅ `/opt/lamb/lamb-kb-server-stable/schemas/collection.py`
+✅ `/opt/lamb/lamb-kb-server-stable/backend/schemas/collection.py`
    - Added `BulkUpdateEmbeddingsRequest` schema
    - Added `BulkUpdateEmbeddingsResponse` schema
 
-✅ `/opt/lamb/lamb-kb-server-stable/routers/collections.py`
+✅ `/opt/lamb/lamb-kb-server-stable/backend/routers/collections.py`
    - Added PUT endpoint handler
    - Updated imports
 
 ## Files Created
 
-✅ `/opt/lamb/lamb-kb-server-stable/test_bulk_update_embeddings.py`
+✅ `/opt/lamb/lamb-kb-server-stable/backend/test_bulk_update_embeddings.py`
    - Test script to demonstrate endpoint usage
 
 ✅ `/opt/lamb/lamb-kb-server-stable/BULK_UPDATE_EMBEDDINGS_API.md`
@@ -75,7 +75,7 @@ Code verification:
 
 ### 1. Start the KB Server
 ```bash
-cd /opt/lamb/lamb-kb-server-stable
+cd /opt/lamb/lamb-kb-server-stable/backend
 python start.py
 ```
 
@@ -93,7 +93,7 @@ curl -X PUT 'http://localhost:9090/collections/owner/1/embeddings' \
 
 ### 3. Verify with SQLite
 ```bash
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections WHERE owner='1' ORDER BY id;"
 ```

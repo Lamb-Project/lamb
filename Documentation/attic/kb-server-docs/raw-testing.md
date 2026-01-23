@@ -5,7 +5,7 @@ This document shows how to use raw CLI commands to inspect the association betwe
 ## 1. List Tables in the Database
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db ".tables"
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db ".tables"
 ```
 **Result:**
 ```
@@ -17,12 +17,12 @@ collections    file_registry
 ## 2. Find All Entries for `ikasiker.pdf` in `file_registry`
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db "SELECT * FROM file_registry WHERE original_filename LIKE '%ikasiker%';"
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db "SELECT * FROM file_registry WHERE original_filename LIKE '%ikasiker%';"
 ```
 **Result (truncated):**
 ```
-1|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:37:05.578969|2025-09-22 15:59:40.270709|1
-2|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/static/1/convocatoria_ikasiker/f44edfae99574815b07ed09b03dc954b.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/f44edfae99574815b07ed09b03dc954b.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:49:52.813922|2025-09-22 16:01:05.575182|1
+1|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/backend/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:37:05.578969|2025-09-22 15:59:40.270709|1
+2|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/backend/static/1/convocatoria_ikasiker/f44edfae99574815b07ed09b03dc954b.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/f44edfae99574815b07ed09b03dc954b.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:49:52.813922|2025-09-22 16:01:05.575182|1
 ... (other entries)
 ```
 
@@ -31,11 +31,11 @@ sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db "SELECT * FROM fi
 ## 3. Find the Entry for a Specific Hash-Named File
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db "SELECT * FROM file_registry WHERE file_path LIKE '%a4b140223a3b4a399eca83f023e538a0.pdf%';"
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db "SELECT * FROM file_registry WHERE file_path LIKE '%a4b140223a3b4a399eca83f023e538a0.pdf%';"
 ```
 **Result:**
 ```
-1|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:37:05.578969|2025-09-22 15:59:40.270709|1
+1|1|ikasiker.pdf|/opt/lamb/lamb-kb-server-stable/backend/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|http://localhost:9090/static/1/convocatoria_ikasiker/a4b140223a3b4a399eca83f023e538a0.pdf|336782|application/pdf|markitdown_ingest|{...}|DELETED|94|2025-09-22 08:37:05.578969|2025-09-22 15:59:40.270709|1
 ```
 
 ---
@@ -50,7 +50,7 @@ sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db "SELECT * FROM fi
 ## 5. Additional: List Recent Files
 
 ```sh
-ls -lt /opt/lamb/lamb-kb-server-stable/static/1/convocatoria_ikasiker/
+ls -lt /opt/lamb/lamb-kb-server-stable/backend/static/1/convocatoria_ikasiker/
 ```
 
 ---
@@ -58,7 +58,7 @@ ls -lt /opt/lamb/lamb-kb-server-stable/static/1/convocatoria_ikasiker/
 ## 6. Additional: Check Collection Info for the File
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db "SELECT * FROM collections WHERE id IN (SELECT collection_id FROM file_registry WHERE original_filename LIKE '%ikasiker%');"
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db "SELECT * FROM collections WHERE id IN (SELECT collection_id FROM file_registry WHERE original_filename LIKE '%ikasiker%');"
 ```
 
 ---
@@ -119,27 +119,27 @@ Embeddings and segments are stored in a separate SQLite database used by ChromaD
 1. Confirm the collection and chroma UUID in the KB SQLite:
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
   "SELECT id,name,chromadb_uuid,embeddings_model FROM collections WHERE id=1;"
 ```
 
 2. Show Chroma collections (to verify UUID exists in chroma):
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM collection_metadata;"
 ```
 
 3. List Chroma segments and find those tied to the collection UUID:
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM segments;"
 # visually locate the row(s) where the last column equals the collection UUID (38a183d6-...)
 ```
 
 4. Show embeddings that belong to the metadata segment (replace segment id if different):
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM embeddings WHERE segment_id='8b0612b6-01e3-4d8d-a20a-7bb040961600' LIMIT 50;"
 ```
 
@@ -151,21 +151,21 @@ sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
 5. Inspect embedding metadata for a specific embedding id (example uses the first embedding_id you saw: c59da807ab9b4f19807b8943196dd2b3):
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM embedding_metadata WHERE embedding_id='c59da807ab9b4f19807b8943196dd2b3';"
 ```
 
 Or search metadata values containing "ikasiker" or the hash:
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM embedding_metadata WHERE str_value LIKE '%ikasiker%' OR str_value LIKE '%a4b140223a3b4a399eca83f023e538a0%';"
 ```
 
 6. Inspect embedding_metadata keys useful for mapping:
 
 ```sh
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/chromadb/chroma.sqlite3 \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/chromadb/chroma.sqlite3 \
   "SELECT * FROM embedding_metadata WHERE key IN ('document_id','file_url','file_size','chunk_count','embedding_model','embedding_vendor') LIMIT 200;"
 ```
 

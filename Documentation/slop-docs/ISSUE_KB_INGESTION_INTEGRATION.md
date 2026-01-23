@@ -200,7 +200,7 @@ GET /creator/knowledgebases/kb/{kb_id}/ingestion-status
 
 - KB Server Ingestion API Client Guide: `lamb-kb-server-stable/Docs/ingestion-api-client-guide.md`
 - KB Server Ingestion Status API: `lamb-kb-server-stable/Docs/ingestion-status-api.md`
-- markitdown_plus_ingest Plugin: `lamb-kb-server-stable/plugins/markitdown_plus_ingest.py`
+- markitdown_plus_ingest Plugin: `lamb-kb-server-stable/backend/plugins/markitdown_plus_ingest.py`
 - LAMB Architecture: `Documentation/lamb_architecture_v2.md`
 
 ## Labels

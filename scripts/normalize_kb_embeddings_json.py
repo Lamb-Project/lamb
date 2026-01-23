@@ -14,7 +14,7 @@ import sqlite3
 import json
 import sys
 
-DB_PATH = "/opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db"
+DB_PATH = "/opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db"
 
 def normalize_embeddings_json():
     """Normalize all double-encoded embeddings_model JSON in collections table."""

@@ -460,7 +460,7 @@ WARNING: KB Server returned 401 for KB 13, skipping
    docker exec lamb-kb-server-stable-backend-1 env | grep -i token
 
    # Or check the KB Server's .env file
-   docker exec lamb-kb-server-stable-backend-1 cat /opt/lamb/lamb-kb-server-stable/.env | grep KB_TOKEN
+   docker exec lamb-kb-server-stable-backend-1 cat /opt/lamb/lamb-kb-server-stable/backend/.env | grep KB_TOKEN
    ```
 
 3. **Test KB Server authentication manually**:

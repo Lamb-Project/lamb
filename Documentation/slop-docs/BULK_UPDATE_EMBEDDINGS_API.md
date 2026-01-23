@@ -154,7 +154,7 @@ Expected response (API key status is hidden):
 ### 2. Verify current API keys in SQLite (optional)
 
 ```bash
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections 
    WHERE owner='1' 
@@ -200,7 +200,7 @@ Expected response:
 ### 4. Verify the update in SQLite
 
 ```bash
-sqlite3 /opt/lamb/lamb-kb-server-stable/data/lamb-kb-server.db \
+sqlite3 /opt/lamb/lamb-kb-server-stable/backend/data/lamb-kb-server.db \
   "SELECT id,name,json_extract(embeddings_model,'$.apikey') AS apikey 
    FROM collections 
    WHERE owner='1' 
@@ -333,13 +333,13 @@ The endpoint uses the `CollectionService.bulk_update_embeddings_apikey()` method
 
 ## Testing
 
-A test script is provided at `/opt/lamb/lamb-kb-server-stable/test_bulk_update_embeddings.py`.
+A test script is provided at `/opt/lamb/lamb-kb-server-stable/backend/test_bulk_update_embeddings.py`.
 
 To run the test:
 
 ```bash
 # Start the server
-cd /opt/lamb/lamb-kb-server-stable
+cd /opt/lamb/lamb-kb-server-stable/backend
 python start.py
 
 # In another terminal, run the test
