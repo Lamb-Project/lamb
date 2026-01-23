@@ -16,7 +16,7 @@ services:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       openwebui-build:
         condition: service_completed_successfully
@@ -62,7 +62,7 @@ services:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     command: >
       sh -lc "python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
@@ -86,7 +86,7 @@ services:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
     ports:
-      - "9099:9099"
+      - "127.0.0.1:9099:9099"
     depends_on:
       openwebui:
         condition: service_started
