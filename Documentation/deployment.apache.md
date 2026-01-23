@@ -55,9 +55,9 @@ File: `/etc/apache2/sites-available/lamb-ssl.conf`
     ProxyPass /creator/ http://localhost:9099/creator/
     ProxyPassReverse /creator/ http://localhost:9099/creator/
 
-    # Proxy /api/* to backend
-    ProxyPass /api/ http://localhost:9099/api/
-    ProxyPassReverse /api/ http://localhost:9099/api/
+    # Proxy /api/* to backend (with prefix stripping)
+    ProxyPass /api/ http://localhost:9099/
+    ProxyPassReverse /api/ http://localhost:9099/
 
     # Proxy /lamb/* to backend (with prefix stripping)
     ProxyPass /lamb/ http://localhost:9099/

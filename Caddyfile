@@ -10,6 +10,7 @@ lamb.yourdomain.com {
     }
 
     handle /api/* {
+        uri strip_prefix /api
         reverse_proxy backend:9099
     }
 
