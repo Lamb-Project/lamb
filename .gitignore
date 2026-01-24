@@ -109,6 +109,7 @@ lerna-debug.log*
 # Testing
 coverage/
 .nyc_output/
+.pytest_cache/
 
 # Temporary files
 *.tmp
