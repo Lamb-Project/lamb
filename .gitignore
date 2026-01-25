@@ -109,6 +109,7 @@ lerna-debug.log*
 # Testing
 coverage/
 .nyc_output/
+.pytest_cache/
 
 # Temporary files
 *.tmp
@@ -157,8 +158,8 @@ open-webui/data/*
 open-webui/open_webui/data/*
 open-webui/.webui_secret_key
 lamb-kb-server-stable/backend/data/chromadb/
-lamb-kb-server-stable/backend/static/
-lamb-kb-server-stable/backend/.env
+static/
+data/
 Documentation/test-scripts/package-lock.json
 testing/package-lock.json
 testing/playwright/test-results/.last-run.json
