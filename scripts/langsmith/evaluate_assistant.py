@@ -111,7 +111,7 @@ def similarity_score_evaluator(run: Run, example: Example) -> dict:
     
     # Build the prompt according to LangSmith structure
     system_prompt = """You are an expert at comparing two answers.
-You are assessing a similarity between the reference and the submission output, given an input question as context."""
+You are assessing a similarity between the reference and the submission output, given an input question as context. Similarity will have a high score if the answers are very close in meaning and low score if they are very different. Both answers may contain additional information, but focus on the core answer to the question. Both answers must be in the same language as the question."""
     
     user_prompt = f"""Please grade the following example according to the above instructions:
 
@@ -129,14 +129,12 @@ You are assessing a similarity between the reference and the submission output, 
 </reference_outputs>
 </example>
 
-IMPORTANT: You must end your response with exactly this format:
-Grade:X
-where X is a number from 1 to 10 indicating the similarity score."""
+IMPORTANT: Your response MUST be in the format "Grade:X",where X is a number from 1 to 10 indicating the similarity score."""
     
     try:
-        # Call the LLM judge (gpt-4o-mini)
+        # Call the LLM judge (gpt-4.1)
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -146,9 +144,9 @@ where X is a number from 1 to 10 indicating the similarity score."""
         
         # Get the response
         judge_response = response.choices[0].message.content
-
+        print(f"Judge response: {judge_response}")
         # Extract the numeric score in "Grade:X" format
-        score_match = re.search(r'Grade:\s*([1-9]|10)', judge_response, re.IGNORECASE)
+        score_match = re.search(r'Grade:\s*(10|[1-9])', judge_response, re.IGNORECASE)
         
         if score_match:
             score = int(score_match.group(1))
