@@ -2,6 +2,12 @@
 Rubric RAG Processor
 Retrieves rubric and injects as context for assessment-focused assistants
 Supports both markdown and JSON formats for LLM context
+
+Uses evaluation-optimized formats that include:
+- Scoring instructions explaining how level scores (4,3,2,1) work
+- Weight explanations (percentages summing to 100%)
+- Score calculation formula
+- Expected output format for the evaluation
 """
 
 import json
@@ -16,7 +22,13 @@ def rag_processor(
     request: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Retrieve rubric and format as context (markdown or JSON)
+    Retrieve rubric and format as evaluation context (markdown or JSON)
+    
+    Uses evaluation-optimized formats that help the LLM understand:
+    - How to interpret performance level scores
+    - How to apply criterion weights (percentages)
+    - How to calculate the final weighted score
+    - What output format to use for the evaluation
 
     Args:
         messages: List of conversation messages
@@ -25,7 +37,7 @@ def rag_processor(
 
     Returns:
         Dict with:
-            - "context": str (formatted rubric as markdown or JSON)
+            - "context": str (formatted rubric with evaluation instructions)
             - "sources": List[Dict] (rubric metadata for citation)
     """
     try:
@@ -69,7 +81,10 @@ def rag_processor(
 
         # Get rubric from database
         from lamb.evaluaitor.rubric_database import RubricDatabaseManager
-        from lamb.evaluaitor.rubric_service import generate_rubric_markdown
+        from lamb.evaluaitor.rubric_service import (
+            generate_rubric_evaluation_markdown,
+            generate_rubric_evaluation_json
+        )
 
         db_manager = RubricDatabaseManager()
 
@@ -94,13 +109,13 @@ def rag_processor(
         if isinstance(rubric_data, str):
             rubric_data = json.loads(rubric_data)
 
-        # Format according to user preference
+        # Format according to user preference using evaluation-optimized formats
         if rubric_format == 'json':
-            # Format as JSON string
-            context = json.dumps(rubric_data, indent=2)
+            # Format as JSON with evaluation instructions wrapper
+            context = generate_rubric_evaluation_json(rubric_data)
         else:
-            # Format as markdown (default)
-            context = generate_rubric_markdown(rubric_data)
+            # Format as markdown with scoring instructions (default)
+            context = generate_rubric_evaluation_markdown(rubric_data)
 
         # Prepare source citation
         sources = [{
@@ -111,7 +126,7 @@ def rag_processor(
             "format": rubric_format
         }]
 
-        logger.info(f"Successfully retrieved rubric {rubric_id} as {rubric_format} context")
+        logger.info(f"Successfully retrieved rubric {rubric_id} as {rubric_format} evaluation context")
 
         return {
             "context": context,

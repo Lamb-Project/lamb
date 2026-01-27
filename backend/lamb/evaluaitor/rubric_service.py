@@ -696,3 +696,266 @@ def generate_rubric_markdown(rubric_data: Dict[str, Any]) -> str:
 
     return "\n".join(lines)
 
+
+def generate_rubric_evaluation_markdown(rubric_data: Dict[str, Any]) -> str:
+    """
+    Generate Markdown representation of a rubric optimized for LLM evaluation context.
+    Includes scoring instructions, formulas, and expected output format.
+    
+    This format is specifically designed to help an LLM understand how to:
+    - Interpret performance levels and their score values
+    - Apply criterion weights (percentages)
+    - Calculate the final weighted score
+    - Structure its evaluation output
+    
+    Args:
+        rubric_data: Rubric JSON data
+        
+    Returns:
+        Markdown string with evaluation instructions
+    """
+    lines = []
+    
+    # Extract key values
+    title = rubric_data.get('title', 'Untitled Rubric')
+    description = rubric_data.get('description', '')
+    metadata = rubric_data.get('metadata', {})
+    scoring_type = rubric_data.get('scoringType', 'points')
+    max_score = rubric_data.get('maxScore', 10)
+    criteria = rubric_data.get('criteria', [])
+    
+    # Determine max level score from the rubric
+    max_level_score = 4  # default
+    if criteria and criteria[0].get('levels'):
+        level_scores = [level.get('score', 0) for level in criteria[0]['levels']]
+        if level_scores:
+            max_level_score = max(level_scores)
+    
+    # Calculate scaling factor
+    scaling_factor = max_score / max_level_score if max_level_score > 0 else 1
+    
+    # Header
+    lines.append(f"# EVALUATION RUBRIC: {title}")
+    lines.append("")
+    
+    # Context
+    if description:
+        lines.append(f"**Purpose:** {description}")
+        lines.append("")
+    
+    if metadata.get('subject') or metadata.get('gradeLevel'):
+        context_parts = []
+        if metadata.get('subject'):
+            context_parts.append(f"Subject: {metadata['subject']}")
+        if metadata.get('gradeLevel'):
+            context_parts.append(f"Grade Level: {metadata['gradeLevel']}")
+        lines.append(" | ".join(context_parts))
+        lines.append("")
+    
+    lines.append("---")
+    lines.append("")
+    
+    # SCORING INSTRUCTIONS SECTION
+    lines.append("## SCORING INSTRUCTIONS")
+    lines.append("")
+    lines.append("You are evaluating student work using this rubric. Follow these steps:")
+    lines.append("")
+    
+    # Step 1: Evaluate criteria
+    lines.append("### Step 1: Evaluate Each Criterion")
+    lines.append("")
+    lines.append("For each criterion below, read the student work and select the performance level")
+    lines.append("that best describes it. Each level has a **score value** (higher = better):")
+    lines.append("")
+    
+    # Get unique levels from first criterion to show score meanings
+    if criteria and criteria[0].get('levels'):
+        for level in sorted(criteria[0]['levels'], key=lambda x: x.get('score', 0), reverse=True):
+            score = level.get('score', 0)
+            label = level.get('label', f'Level {score}')
+            lines.append(f"- **{score}** = {label}")
+    lines.append("")
+    
+    # Step 2: Weights
+    lines.append("### Step 2: Apply Weights")
+    lines.append("")
+    lines.append("Each criterion has a **weight** expressed as a percentage. All weights sum to 100%.")
+    lines.append("The weight indicates the relative importance of each criterion in the final score.")
+    lines.append("")
+    
+    # Step 3: Calculate
+    lines.append("### Step 3: Calculate Final Score")
+    lines.append("")
+    lines.append("Use this formula:")
+    lines.append("")
+    lines.append("```")
+    lines.append(f"Final Score = Σ (level_score × weight% / 100) × {scaling_factor:.2f}")
+    lines.append("```")
+    lines.append("")
+    lines.append(f"Where {scaling_factor:.2f} = maxScore ({max_score}) ÷ max_level_score ({max_level_score})")
+    lines.append("")
+    lines.append(f"**Maximum possible score: {max_score}** (Scoring type: {scoring_type})")
+    lines.append("")
+    
+    lines.append("---")
+    lines.append("")
+    
+    # CRITERIA OVERVIEW TABLE
+    lines.append("## CRITERIA OVERVIEW")
+    lines.append("")
+    lines.append("| Criterion | Weight (%) | What it Evaluates |")
+    lines.append("|-----------|------------|-------------------|")
+    
+    for criterion in criteria:
+        name = criterion.get('name', 'Unnamed')
+        weight = criterion.get('weight', 0)
+        desc = criterion.get('description', '')
+        lines.append(f"| {name} | {weight}% | {desc} |")
+    
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    
+    # DETAILED PERFORMANCE LEVELS
+    lines.append("## PERFORMANCE LEVELS BY CRITERION")
+    lines.append("")
+    
+    for i, criterion in enumerate(criteria, 1):
+        name = criterion.get('name', 'Unnamed')
+        weight = criterion.get('weight', 0)
+        desc = criterion.get('description', '')
+        
+        lines.append(f"### {i}. {name}")
+        lines.append(f"**Weight: {weight}%** — {desc}")
+        lines.append("")
+        lines.append("| Score | Level | Description |")
+        lines.append("|-------|-------|-------------|")
+        
+        # Sort levels by score descending (highest first)
+        levels = sorted(criterion.get('levels', []), key=lambda x: x.get('score', 0), reverse=True)
+        for level in levels:
+            score = level.get('score', 0)
+            label = level.get('label', '')
+            level_desc = level.get('description', '')
+            lines.append(f"| {score} | {label} | {level_desc} |")
+        
+        lines.append("")
+    
+    lines.append("---")
+    lines.append("")
+    
+    # EXPECTED OUTPUT FORMAT
+    lines.append("## EXPECTED OUTPUT FORMAT")
+    lines.append("")
+    lines.append("Structure your evaluation as follows:")
+    lines.append("")
+    lines.append("### Criterion Evaluations")
+    lines.append("For each criterion, provide:")
+    lines.append("- **[Criterion Name]**: [Selected Level Label] (Score: X/{})".format(max_level_score))
+    lines.append("- **Justification**: Brief explanation referencing specific aspects of the student work")
+    lines.append("")
+    lines.append("### Score Calculation")
+    lines.append("Show your calculation:")
+    lines.append("```")
+    for criterion in criteria:
+        name = criterion.get('name', 'Criterion')
+        weight = criterion.get('weight', 0)
+        lines.append(f"- {name}: [score] × {weight/100:.2f} × {scaling_factor:.2f} = [points]")
+    lines.append(f"- TOTAL: [sum] / {max_score}")
+    lines.append("```")
+    lines.append("")
+    lines.append("### Overall Feedback")
+    lines.append("Provide constructive feedback highlighting strengths and areas for improvement.")
+    lines.append("")
+    
+    return "\n".join(lines)
+
+
+def generate_rubric_evaluation_json(rubric_data: Dict[str, Any]) -> str:
+    """
+    Generate JSON representation of a rubric optimized for LLM evaluation context.
+    Wraps the rubric data with scoring instructions and expected output format.
+    
+    This format is specifically designed to help an LLM understand how to:
+    - Interpret performance levels and their score values
+    - Apply criterion weights (percentages)
+    - Calculate the final weighted score
+    - Structure its evaluation output
+    
+    Args:
+        rubric_data: Rubric JSON data
+        
+    Returns:
+        JSON string with evaluation instructions wrapper
+    """
+    # Extract key values
+    max_score = rubric_data.get('maxScore', 10)
+    scoring_type = rubric_data.get('scoringType', 'points')
+    criteria = rubric_data.get('criteria', [])
+    
+    # Determine max level score from the rubric
+    max_level_score = 4  # default
+    level_score_meanings = {}
+    
+    if criteria and criteria[0].get('levels'):
+        levels = criteria[0]['levels']
+        level_scores = [level.get('score', 0) for level in levels]
+        if level_scores:
+            max_level_score = max(level_scores)
+        
+        # Build level score meanings from first criterion (assuming consistent across criteria)
+        for level in sorted(levels, key=lambda x: x.get('score', 0), reverse=True):
+            score = level.get('score', 0)
+            label = level.get('label', f'Level {score}')
+            level_score_meanings[str(score)] = label
+    
+    # Calculate scaling factor
+    scaling_factor = max_score / max_level_score if max_level_score > 0 else 1
+    
+    # Build the evaluation context wrapper
+    evaluation_context = {
+        "evaluation_instructions": {
+            "purpose": "Use this rubric to evaluate student work. For each criterion, select the performance level that best matches the student's work based on the level descriptions.",
+            "scoring_system": {
+                "level_scores": level_score_meanings,
+                "level_score_meaning": f"Each performance level has a score value from 1 (lowest) to {max_level_score} (highest). Assign the score of the level that best matches the student work.",
+                "weights": {
+                    "meaning": "Each criterion has a weight expressed as a percentage. Weights indicate relative importance and sum to 100%.",
+                    "sum_to": 100
+                },
+                "formula": {
+                    "description": "Calculate final score using weighted average scaled to maxScore",
+                    "formula": f"final_score = Σ(criterion_score × criterion_weight / 100) × {scaling_factor:.2f}",
+                    "scaling_factor": round(scaling_factor, 2),
+                    "scaling_explanation": f"maxScore ({max_score}) ÷ max_level_score ({max_level_score}) = {scaling_factor:.2f}"
+                },
+                "max_score": max_score,
+                "scoring_type": scoring_type
+            },
+            "expected_output": {
+                "format": "structured evaluation",
+                "required_sections": [
+                    {
+                        "name": "criterion_evaluations",
+                        "description": "For each criterion: selected level label, score value, and justification"
+                    },
+                    {
+                        "name": "score_calculation", 
+                        "description": "Show the math: each criterion's contribution and the total"
+                    },
+                    {
+                        "name": "total_score",
+                        "description": f"Final calculated score out of {max_score}"
+                    },
+                    {
+                        "name": "overall_feedback",
+                        "description": "Constructive feedback highlighting strengths and areas for improvement"
+                    }
+                ]
+            }
+        },
+        "rubric": rubric_data
+    }
+    
+    return json.dumps(evaluation_context, indent=2, ensure_ascii=False)
+
