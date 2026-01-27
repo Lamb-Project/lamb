@@ -9,15 +9,16 @@ from langsmith import evaluate, Client, wrappers
 from langsmith.schemas import Run, Example
 from openai import OpenAI
 
-# Load environment variables from backend
+# Load environment variables from lamb-kb-server-stable backend
 project_root = Path(__file__).parent.parent.parent
+load_dotenv(project_root / "lamb-kb-server-stable" / "backend" / ".env")
 load_dotenv(project_root / "backend" / ".env")
 
-# Configuration
-API_BASE_URL = "http://localhost:9099"
-JWT_TOKEN = "your_jwt_token_here"  # Replace with your actual JWT token
-ASSISTANT_ID = 1  # Replace with your actual assistant ID
-DATASET_NAME = "dbizi dataset"
+# Configuration - Load from environment variables
+API_BASE_URL = os.getenv("API_BASE_URL")
+JWT_TOKEN = os.getenv("JWT_TOKEN")
+ASSISTANT_ID = int(os.getenv("ASSISTANT_ID"))
+DATASET_NAME = os.getenv("DATASET_NAME")
 
 # Initialize OpenAI client for the evaluator
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
