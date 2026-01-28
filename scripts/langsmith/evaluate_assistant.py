@@ -19,6 +19,7 @@ API_BASE_URL = os.getenv("API_BASE_URL")
 JWT_TOKEN = os.getenv("JWT_TOKEN")
 ASSISTANT_ID = int(os.getenv("ASSISTANT_ID"))
 DATASET_NAME = os.getenv("DATASET_NAME")
+EVALUATOR_MODEL = os.getenv("EVALUATOR_MODEL", "gpt-4.1")
 
 # Initialize OpenAI client for the evaluator
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -133,9 +134,9 @@ You are assessing a similarity between the reference and the submission output, 
 IMPORTANT: Your response MUST be in the format "Grade:X",where X is a number from 1 to 10 indicating the similarity score."""
     
     try:
-        # Call the LLM judge (gpt-4.1)
+        # Call the LLM judge
         response = openai_client.chat.completions.create(
-            model="gpt-4.1",
+            model=EVALUATOR_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
