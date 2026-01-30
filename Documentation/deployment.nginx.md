@@ -32,9 +32,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Proxy /api/* al backend
+    # Proxy /api/* al backend (with prefix stripping)
     location /api/ {
-        proxy_pass http://127.0.0.1:9099/api/;
+        proxy_pass http://127.0.0.1:9099/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -42,7 +42,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Proxy /lamb/* al backend (quitando el prefijo)
+    # Proxy /lamb/* al backend (with prefix stripping)
     location /lamb/ {
         proxy_pass http://127.0.0.1:9099/;
         proxy_http_version 1.1;

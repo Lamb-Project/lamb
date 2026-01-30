@@ -9,13 +9,15 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from .knowledgebase_classes import KnowledgeBaseCreate, KnowledgeBaseUpdate
 from utils.name_sanitizer import sanitize_name
+from lamb.logging_config import get_logger
+
+# Load environment variables early so we can read module-specific env vars
+load_dotenv()
 
 # Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Load environment variables
-load_dotenv()
+# Use KB_LOG_LEVEL if set, otherwise fall back to GLOBAL_LOG_LEVEL, then WARNING
+logger = get_logger(__name__)
+logger.setLevel(os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING")).upper())
 
 # Get environment variables
 LAMB_KB_SERVER = os.getenv('LAMB_KB_SERVER', None)
@@ -1364,8 +1366,9 @@ class KBServerManager:
                     
                     return {
                         "message": "File deleted successfully",
-                        "knowledge_base_id": kb_id,
-                        "file_id": file_id
+                        "kb_id": kb_id,
+                        "file_id": file_id,
+                        "status": "success"
                     }
                 elif delete_response.status_code == 404:
                     logger.error(f"File {file_id} not found in knowledge base {kb_id}")

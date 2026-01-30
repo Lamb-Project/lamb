@@ -16,7 +16,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from .models import Base, Collection, Visibility
 
 # Database paths
-DATA_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data"
+DATA_DIR = Path(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))) / "data"
 SQLITE_DB_PATH = DATA_DIR / "lamb-kb-server.db"
 CHROMA_DB_PATH = DATA_DIR / "chromadb"
 
@@ -26,7 +27,8 @@ CHROMA_DB_PATH.mkdir(exist_ok=True)
 
 # Create SQLite engine
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={
+                       "check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create ChromaDB client
@@ -42,14 +44,20 @@ chroma_client = chromadb.PersistentClient(
 def get_embedding_function_by_params(vendor: str, model_name: str, api_key: str = "", api_endpoint: str = ""):
     """Get an embedding function based on vendor and model parameters."""
     vendor = vendor.lower()
-    
+
     if vendor in ("ollama", "local"):
         return OllamaEmbeddingFunction(
             url=api_endpoint or "http://localhost:11434",
             model_name=model_name
         )
-    
+
     elif vendor == "openai":
+        # Fall back to EMBEDDINGS_APIKEY from .env if api_key is not provided
+        if not api_key:
+            from dotenv import load_dotenv
+            load_dotenv()
+            api_key = os.getenv("EMBEDDINGS_APIKEY", "")
+
         kwargs = {"api_key": api_key, "model_name": model_name}
         if api_endpoint:
             # If api_endpoint ends with '/embeddings', strip it for OpenAIEmbeddingFunction
@@ -57,7 +65,7 @@ def get_embedding_function_by_params(vendor: str, model_name: str, api_key: str 
                 api_endpoint = api_endpoint[:-len("/embeddings")]
             kwargs["api_base"] = api_endpoint
         return OpenAIEmbeddingFunction(**kwargs)
-    
+
     else:
         raise ValueError(f"Unsupported embedding vendor: {vendor}")
 
@@ -84,7 +92,7 @@ def init_sqlite_db() -> None:
 def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str, Any]]) -> Callable:
     """Get the embedding function for a collection by its ID or Collection object."""
     db = next(get_db())
-    
+
     try:
         # Handle dict case first
         if isinstance(collection_id_or_obj, dict):
@@ -98,23 +106,27 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
                 )
             collection_id = collection_id_or_obj.get('id')
             if not collection_id:
-                raise ValueError("Collection dictionary must contain an 'id' field")
-            collection = db.query(Collection).filter(Collection.id == collection_id).first()
+                raise ValueError(
+                    "Collection dictionary must contain an 'id' field")
+            collection = db.query(Collection).filter(
+                Collection.id == collection_id).first()
         # Handle Collection object case
         elif isinstance(collection_id_or_obj, Collection):
             collection = collection_id_or_obj
         # Handle integer ID case
         elif isinstance(collection_id_or_obj, int):
-            collection = db.query(Collection).filter(Collection.id == collection_id_or_obj).first()
+            collection = db.query(Collection).filter(
+                Collection.id == collection_id_or_obj).first()
         else:
             raise ValueError(f"Expected Collection object, dictionary or ID")
-            
+
         if not collection:
             raise ValueError(f"Collection not found")
-            
+
         # Extract embedding configuration
-        embedding_config = json.loads(collection.embeddings_model) if isinstance(collection.embeddings_model, str) else collection.embeddings_model
-        
+        embedding_config = json.loads(collection.embeddings_model) if isinstance(
+            collection.embeddings_model, str) else collection.embeddings_model
+
         # Use the helper function to get the actual embedding function
         return get_embedding_function_by_params(
             embedding_config.get("vendor"),
@@ -122,7 +134,7 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
             embedding_config.get("apikey"),
             embedding_config.get("api_endpoint")
         )
-        
+
     finally:
         db.close()
 
@@ -130,23 +142,25 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
 def check_sqlite_schema() -> bool:
     """Check if the SQLite database schema is compatible."""
     inspector = inspect(engine)
-    
+
     if "collections" not in inspector.get_table_names():
         return True
-    
-    collection_columns = {col["name"] for col in inspector.get_columns("collections")}
-    required_columns = {"id", "name", "description", "creation_date", "owner", "visibility", "embeddings_model"}
-    
+
+    collection_columns = {col["name"]
+                          for col in inspector.get_columns("collections")}
+    required_columns = {"id", "name", "description",
+                        "creation_date", "owner", "visibility", "embeddings_model"}
+
     return required_columns.issubset(collection_columns)
 
 
 def run_migrations() -> Dict[str, Any]:
     """
     Run database migrations to add new columns.
-    
+
     This function safely adds new columns to existing tables without
     affecting existing data. It checks if columns exist before adding them.
-    
+
     Returns:
         Dictionary with migration results and any errors
     """
@@ -154,16 +168,17 @@ def run_migrations() -> Dict[str, Any]:
         "migrations_run": [],
         "errors": []
     }
-    
+
     inspector = inspect(engine)
-    
+
     # Check if file_registry table exists
     if "file_registry" not in inspector.get_table_names():
         return migration_results  # Table will be created by create_all()
-    
+
     # Get existing columns in file_registry
-    existing_columns = {col["name"] for col in inspector.get_columns("file_registry")}
-    
+    existing_columns = {col["name"]
+                        for col in inspector.get_columns("file_registry")}
+
     # Migration: Add processing_stats column (Jan 2026)
     if "processing_stats" not in existing_columns:
         try:
@@ -178,24 +193,25 @@ def run_migrations() -> Dict[str, Any]:
                 "status": "success",
                 "description": "Added processing_stats JSON column for detailed ingestion statistics"
             })
-            print("INFO: [migration] Added processing_stats column to file_registry table")
+            print(
+                "INFO: [migration] Added processing_stats column to file_registry table")
         except Exception as e:
             error_msg = f"Failed to add processing_stats column: {str(e)}"
             migration_results["errors"].append(error_msg)
             print(f"ERROR: [migration] {error_msg}")
-    
+
     return migration_results
 
 
 def init_databases() -> Dict[str, Any]:
     """Initialize all databases and perform sanity checks.
-    
+
     This function:
     1. Checks schema compatibility
     2. Creates tables if they don't exist
     3. Runs any pending migrations
     4. Initializes ChromaDB
-    
+
     Returns:
         Dictionary with initialization status and any errors
     """
@@ -206,31 +222,32 @@ def init_databases() -> Dict[str, Any]:
         "migrations": {},
         "errors": []
     }
-    
+
     try:
         status["sqlite_schema_valid"] = check_sqlite_schema()
-        
+
         if not status["sqlite_schema_valid"]:
             status["errors"].append("SQLite schema is not compatible")
-        
+
         # Create tables first
         init_sqlite_db()
         status["sqlite_initialized"] = True
-        
+
         # Run migrations after tables exist
         migration_results = run_migrations()
         status["migrations"] = migration_results
         if migration_results.get("errors"):
             status["errors"].extend(migration_results["errors"])
-        
+
         status["chromadb_collections"] = len(chroma_client.list_collections())
         status["chromadb_initialized"] = True
-        
+
         # Log migration summary
         if migration_results.get("migrations_run"):
-            print(f"INFO: [init] Ran {len(migration_results['migrations_run'])} database migrations")
-        
+            print(
+                f"INFO: [init] Ran {len(migration_results['migrations_run'])} database migrations")
+
     except Exception as e:
         status["errors"].append(f"Error initializing databases: {str(e)}")
-    
+
     return status

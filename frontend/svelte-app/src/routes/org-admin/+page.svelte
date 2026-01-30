@@ -5,14 +5,19 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
-    import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
     // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
     import { processListData } from '$lib/utils/listHelpers';
     import { getLambApiUrl } from '$lib/config';
+    
+    // Import shared admin components
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -34,8 +39,6 @@
     let assistantsLoaded = $state(false); // Track if assistants have been loaded at least once
     /** @type {string | null} */
     let assistantsError = $state(null);
-    let selectedAssistant = $state(null);
-    let showAccessModal = $state(false);
     let assistantsSearchQuery = $state('');
     let assistantsFilterPublished = $state('all');
     
@@ -108,6 +111,15 @@
     let isDeletingUser = $state(false);
     /** @type {string | null} */
     let deleteUserError = $state(null);
+    
+    // Single user enable/disable modal states
+    let showSingleUserDisableModal = $state(false);
+    let showSingleUserEnableModal = $state(false);
+    /** @type {any} */
+    let userToToggle = $state(null);
+    let isTogglingUser = $state(false);
+    /** @type {string | null} */
+    let toggleUserError = $state(null);
     
     // Bulk enable/disable modal states
     let isBulkDisableModalOpen = $state(false);
@@ -187,6 +199,7 @@
         url: '',
         api_key: '',
         embedding_model: '',
+        embedding_api_key: '',
         collection_defaults: {
             chunk_size: 1000,
             chunk_overlap: 200
@@ -203,6 +216,33 @@
     let showKbAdvanced = $state(false);
     /** @type {boolean} */
     let showKbApiKey = $state(false);
+    /** @type {boolean} */
+    let showEmbeddingApiKey = $state(false);
+    
+    // KB server embeddings config state
+    /** @type {any} */
+    let kbEmbeddingsConfig = $state({
+        vendor: '',
+        model: '',
+        api_endpoint: '',
+        apikey_configured: false,
+        apikey_masked: '',
+        config_source: 'env'
+    });
+    let isLoadingKbEmbeddingsConfig = $state(false);
+    /** @type {string | null} */
+    let kbEmbeddingsConfigError = $state(null);
+    let isUpdatingKbEmbeddingsConfig = $state(false);
+    let showApplyToAllKbConfirmation = $state(false);
+    let isApplyingToAllKb = $state(false);
+    /** @type {string | null} */
+    let applyToAllKbResult = $state(null);
+    let applyToAllKbChecked = $state(false);
+    let embeddingApiKeyOriginal = $state('');
+    let embeddingApiKeyDirty = $state(false);
+    
+    // Reset KB embeddings config modal state
+    let showResetKbConfigModal = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -591,27 +631,40 @@
         isCreateUserModalOpen = true;
     }
 
-    // User enable/disable functions
-    async function toggleUserStatus(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
+    // User enable/disable functions - show modal first
+    function toggleUserStatus(user) {
         // Prevent users from disabling themselves
-        if (userData && userData.email === user.email && !newStatus) {
+        if (userData && userData.email === user.email && !user.enabled === false) {
             return;
         }
-
+        
+        userToToggle = user;
+        toggleUserError = null;
+        
+        if (user.enabled) {
+            showSingleUserDisableModal = true;
+        } else {
+            showSingleUserEnableModal = true;
+        }
+    }
+    
+    async function confirmToggleUserEnable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
         try {
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${user.id}`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Enabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
-                enabled: newStatus
+                enabled: true
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -619,28 +672,91 @@
                 }
             });
 
-            console.log(`User ${action} response:`, response.data);
+            console.log('User enable response:', response.data);
 
             // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === user.id);
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
             if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = newStatus;
+                orgUsers[userIndex].enabled = true;
                 orgUsers = [...orgUsers]; // Trigger reactivity
             }
+            
+            showSingleUserEnableModal = false;
+            userToToggle = null;
 
         } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
+            console.error('Error enabling user:', err);
             
-            let errorMessage = `Failed to ${action} user.`;
+            let errorMessage = 'Failed to enable user.';
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
                 errorMessage = err.response.data.detail;
             } else if (err instanceof Error) {
                 errorMessage = err.message;
             }
             
-            // Log error but don't show alert - could add a toast notification here
-            console.error(errorMessage);
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
         }
+    }
+    
+    async function confirmToggleUserDisable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Disabling user ${userToToggle.email} at: ${apiUrl}`);
+
+            const response = await axios.put(apiUrl, {
+                enabled: false
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('User disable response:', response.data);
+
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
+            if (userIndex !== -1) {
+                orgUsers[userIndex].enabled = false;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+            }
+            
+            showSingleUserDisableModal = false;
+            userToToggle = null;
+
+        } catch (err) {
+            console.error('Error disabling user:', err);
+            
+            let errorMessage = 'Failed to disable user.';
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                errorMessage = err.response.data.detail;
+            } else if (err instanceof Error) {
+                errorMessage = err.message;
+            }
+            
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
+        }
+    }
+    
+    function closeSingleUserModal() {
+        showSingleUserDisableModal = false;
+        showSingleUserEnableModal = false;
+        userToToggle = null;
+        toggleUserError = null;
     }
 
     // --- Sharing Permission Functions ---
@@ -859,94 +975,8 @@
         }
     }
 
-    // Bulk user actions
-    async function handleBulkEnable() {
-        const usersToEnable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToEnable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Enable ${usersToEnable.length} selected user(s)?`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.enableUsersBulk(token, usersToEnable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true};
-                }
-                return u;
-            });
-            
-            alert(`Successfully enabled ${result.enabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk enable error:', err);
-            alert('Bulk enable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
-    
-    async function handleBulkDisable() {
-        const usersToDisable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToDisable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Disable ${usersToDisable.length} selected user(s)? They will not be able to log in.`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, usersToDisable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false};
-                }
-                return u;
-            });
-            
-            alert(`Successfully disabled ${result.disabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk disable error:', err);
-            alert('Bulk disable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
+    // NOTE: Bulk enable/disable actions now use modal-based approach
+    // See openBulkEnableModal/openBulkDisableModal and confirmBulkEnable/confirmBulkDisable
 
     function closeCreateUserModal() {
         isCreateUserModalOpen = false;
@@ -1180,15 +1210,6 @@
         loadAssistantShareCounts();
     }
 
-    function closeAccessModal() {
-        showAccessModal = false;
-        selectedAssistant = null;
-    }
-
-    function handleAccessUpdated() {
-        // Optionally reload assistants
-        fetchAssistants();
-    }
 
     function formatDate(timestamp) {
         if (!timestamp) return 'N/A';
@@ -1440,11 +1461,15 @@
                 url: kbSettings.url || '',
                 api_key: '', // Never populate with actual key
                 embedding_model: kbSettings.embedding_model || '',
+                embedding_api_key: '', // Will be populated from KB server config
                 collection_defaults: kbSettings.collection_defaults || {
                     chunk_size: 1000,
                     chunk_overlap: 200
                 }
             };
+            
+            // Fetch embeddings config from KB server
+            await fetchKbEmbeddingsConfig();
         } catch (err) {
             console.error('Error fetching KB settings:', err);
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
@@ -1581,6 +1606,205 @@
                 kbSettingsError = 'Failed to update KB settings.';
             }
         }
+    }
+
+        /**
+     * Fetch the current embeddings configuration from the KB server
+     */
+    async function fetchKbEmbeddingsConfig() {
+        isLoadingKbEmbeddingsConfig = true;
+        kbEmbeddingsConfigError = null;
+
+        try {
+            if (!kbSettings.url) {
+                kbEmbeddingsConfig = {
+                    vendor: '',
+                    model: '',
+                    api_endpoint: '',
+                    apikey_configured: false,
+                    apikey_masked: '',
+                    config_source: 'env'
+                };
+                return;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`), {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            kbEmbeddingsConfig = response.data;
+
+            // Initialize embedding API key form field with masked key if configured
+            if (kbEmbeddingsConfig.apikey_configured && kbEmbeddingsConfig.apikey_masked) {
+                // Store the masked key for display purposes and dirty tracking
+                newKbSettings.embedding_api_key = kbEmbeddingsConfig.apikey_masked;
+                embeddingApiKeyOriginal = kbEmbeddingsConfig.apikey_masked;
+            } else {
+                // No key configured
+                newKbSettings.embedding_api_key = '';
+                embeddingApiKeyOriginal = '';
+            }
+            
+            // Reset dirty state and checkbox when loading fresh config
+            embeddingApiKeyDirty = false;
+            applyToAllKbChecked = false;
+
+        } catch (err) {
+            console.error('Error fetching KB embeddings config:', err);
+            // Don't show error to user - this is optional configuration
+            kbEmbeddingsConfigError = null;
+            kbEmbeddingsConfig = {
+                vendor: '',
+                model: '',
+                api_endpoint: '',
+                apikey_configured: false,
+                apikey_masked: '',
+                config_source: 'env'
+            };
+        } finally {
+            isLoadingKbEmbeddingsConfig = false;
+        }
+    }
+
+    /**
+     * Update the embeddings configuration on the KB server
+     */
+    /**
+     * Update the embeddings configuration on the KB server.
+     * @param {{ applyToAll?: boolean }} [options]
+     */
+    async function updateKbEmbeddingsConfig({ applyToAll = false } = {}) {
+        kbEmbeddingsConfigError = null;
+        isUpdatingKbEmbeddingsConfig = true;
+
+        try {
+            if (!newKbSettings.url && !kbSettings.url) {
+                throw new Error('KB server URL is not configured');
+            }
+
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Build payload with only provided fields
+            /** @type {any} */
+            const payload = {};
+
+            if (newKbSettings.embedding_api_key &&
+                newKbSettings.embedding_api_key !== kbEmbeddingsConfig.apikey_masked) {
+                payload.apikey = newKbSettings.embedding_api_key;
+
+                // Add flag to apply to all KB collections only after explicit confirmation
+                if (applyToAll) {
+                    payload.apply_to_all_kb = true;
+                }
+            }
+
+            // Add other fields from current config to preserve them
+            if (kbEmbeddingsConfig.vendor) {
+                payload.vendor = kbEmbeddingsConfig.vendor;
+            }
+            if (kbEmbeddingsConfig.model) {
+                payload.model = kbEmbeddingsConfig.model;
+            }
+            if (kbEmbeddingsConfig.api_endpoint) {
+                payload.api_endpoint = kbEmbeddingsConfig.api_endpoint;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.put(
+                getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`),
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Refresh the config to get updated state
+            await fetchKbEmbeddingsConfig();
+
+            // Capture bulk update result for UI display
+            if (response.data?.bulk_update) {
+                const bulk = response.data.bulk_update;
+                applyToAllKbResult = `Updated ${bulk.updated} of ${bulk.total} collections`;
+            } else {
+                applyToAllKbResult = null;
+            }
+
+            // Show success message
+            kbSettingsSuccess = true;
+            
+            // Handle bulk update results
+            if (response.data?.bulk_update) {
+                const bulkResult = response.data.bulk_update;
+                const message = `KB server embeddings configuration updated. ` +
+                    (bulkResult.updated > 0 
+                        ? `Applied new API key to ${bulkResult.updated} of ${bulkResult.total} knowledge base collections.` 
+                        : 'No existing collections needed updating.');
+                addPendingChange(message);
+            } else {
+                addPendingChange('KB server embeddings configuration updated');
+            }
+
+            // Reset apply-to-all checkbox after a successful save
+            applyToAllKbChecked = false;
+
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                kbSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error updating KB embeddings config:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbEmbeddingsConfigError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbEmbeddingsConfigError = err.message;
+            } else {
+                kbEmbeddingsConfigError = 'Failed to update embeddings configuration. Make sure the KB server is accessible.';
+            }
+        } finally {
+            isUpdatingKbEmbeddingsConfig = false;
+        }
+    }
+
+    async function saveKbEmbeddingsConfig() {
+        // If user requested a bulk update, require explicit confirmation.
+        if (applyToAllKbChecked && embeddingApiKeyDirty) {
+            showApplyToAllKbConfirmation = true;
+            return;
+        }
+
+        await updateKbEmbeddingsConfig({ applyToAll: false });
+    }
+
+    async function confirmApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
+        isApplyingToAllKb = true;
+        try {
+            await updateKbEmbeddingsConfig({ applyToAll: true });
+        } finally {
+            isApplyingToAllKb = false;
+        }
+    }
+
+    function cancelApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
     }
 
     async function updateSignupSettings() {
@@ -3345,6 +3569,116 @@
                                     </div>
 
                                     {#if showKbAdvanced}
+                                    <!-- Embedding API Key (NEW - at top of advanced options) -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label for="kb-embedding-api-key" class="block text-sm font-medium text-gray-700">
+                                                Embedding API Key (Optional)
+                                                <span class="ml-1 text-gray-400 cursor-help" title="Set or update the API key used for embeddings (e.g., OpenAI). Requires KB Server connection to be configured first.">ℹ️</span>
+                                            </label>
+                                            {#if kbEmbeddingsConfig.apikey_configured || newKbSettings.embedding_api_key}
+                                            <button
+                                                type="button"
+                                                class="text-sm text-brand hover:text-brand-hover"
+                                                onclick={() => showEmbeddingApiKey = !showEmbeddingApiKey}
+                                            >
+                                                {showEmbeddingApiKey ? 'Hide' : 'Show'} API Key
+                                            </button>
+                                            {/if}
+                                        </div>
+
+                                        {#if !kbSettings.url}
+                                        <!-- Warning when KB server is not configured -->
+                                        <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <span class="text-blue-600 mr-2">ℹ️</span>
+                                                <div class="flex-1">
+                                                    <p class="text-sm text-blue-800 font-medium">KB Server Connection Required</p>
+                                                    <p class="mt-1 text-xs text-blue-700">
+                                                        Before setting an embedding API key, you must first configure and save the KB Server URL and API Key above, then click "Update KB Settings".
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+
+                                        <input
+                                            type={showEmbeddingApiKey ? 'text' : 'password'}
+                                            id="kb-embedding-api-key"
+                                            bind:value={newKbSettings.embedding_api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            placeholder={kbEmbeddingsConfig.apikey_configured ? '••••••••••••••••••••••••••••' : 'Enter embedding API key'}
+                                            disabled={!kbSettings.url}
+                                            oninput={() => {
+                                                kbTestResult = null;
+                                                // Auto-show API key when user starts typing
+                                                if (newKbSettings.embedding_api_key && !showEmbeddingApiKey) {
+                                                    showEmbeddingApiKey = true;
+                                                }
+                                                // Track if field is dirty (different from original)
+                                                embeddingApiKeyDirty = newKbSettings.embedding_api_key !== embeddingApiKeyOriginal;
+                                            }}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            {#if kbEmbeddingsConfig.apikey_configured}
+                                                API key is currently set on KB server ({kbEmbeddingsConfig.config_source === 'file' ? 'persisted config' : 'from env vars'}). {showEmbeddingApiKey ? 'You can view it above.' : 'Click "Show API Key" to view or leave empty to keep existing.'}
+                                            {:else}
+                                                Enter the API key for embeddings service (e.g., OpenAI). This will be set on the KB server.
+                                            {/if}
+                                        </p>
+                                        
+                                        <!-- Conditional: Bulk Update Checkbox (only show when key is dirty) -->
+                                        {#if embeddingApiKeyDirty}
+                                        <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <input
+                                                    id="apply-to-all-kb"
+                                                    type="checkbox"
+                                                    bind:checked={applyToAllKbChecked}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded mt-0.5"
+                                                >
+                                                <div class="ml-3">
+                                                    <label for="apply-to-all-kb" class="block text-sm font-medium text-gray-900 cursor-pointer">
+                                                        Apply this key to all existing knowledge bases in this organization
+                                                    </label>
+                                                    <p class="mt-1 text-xs text-yellow-700 flex items-start">
+                                                        <span class="mr-1">⚠️</span>
+                                                        <span>This will update the embedding API key for all knowledge base collections. Use this when rotating API keys.</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+                                        
+                                        <div class="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onclick={saveKbEmbeddingsConfig}
+                                                class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isUpdatingKbEmbeddingsConfig || !newKbSettings.embedding_api_key || !kbSettings.url}
+                                                title={!kbSettings.url ? 'Please save KB Server connection first' : !newKbSettings.embedding_api_key ? 'Please enter an API key' : 'Save embedding API key to KB server'}
+                                            >
+                                                {isUpdatingKbEmbeddingsConfig ? '🔄 Saving...' : '💾 Save to KB Server'}
+                                            </button>
+                                            {#if kbEmbeddingsConfig.config_source === 'file'}
+                                                <button
+                                                    type="button"
+                                                    class="text-sm text-gray-500 hover:text-gray-700 underline"
+                                                    onclick={() => { showResetKbConfigModal = true; }}
+                                                >
+                                                    Reset to Env
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        {#if kbEmbeddingsConfigError}
+                                            <p class="mt-1 text-sm text-red-600">{kbEmbeddingsConfigError}</p>
+                                        {/if}
+
+                                        {#if applyToAllKbResult}
+                                            <p class="mt-2 text-sm text-green-700">{applyToAllKbResult}</p>
+                                        {/if}
+                                    </div>
+
                                     <!-- Embedding Model -->
                                     <div>
                                         <label for="kb-embedding-model" class="block text-sm font-medium text-gray-700">Embedding Model (Optional)</label>
@@ -3487,249 +3821,48 @@
     </main>
 </div>
 
-<!-- Create User Modal -->
-{#if isCreateUserModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Create New User
-                </h3>
-                
-                {#if createUserSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">User created successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateUser}>
-                        {#if createUserError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createUserError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                Email *
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.email} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
-                                Name *
-                            </label>
-                            <input 
-                                type="text" 
-                                id="name" 
-                                name="name"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.name} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
-                                Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.password} 
-                                required 
-                            />
-                        </div>
-
-                        <div class="mb-4 text-left">
-                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
-                                User Type
-                            </label>
-                            <select 
-                                id="user_type" 
-                                name="user_type"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.user_type}
-                            >
-                                <option value="creator">Creator (Can create assistants)</option>
-                                <option value="end_user">End User (Redirects to Open WebUI)</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-6 text-left">
-                            <div class="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="enabled" 
-                                    name="enabled"
-                                    bind:checked={newUser.enabled}
-                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label for="enabled" class="ml-2 block text-sm text-gray-900">
-                                    User enabled
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateUserModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingUser}
-                            >
-                                {#if isCreatingUser}
-                                    Creating...
-                                {:else}
-                                    Create User
-                                {/if}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Change Password
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    Set a new password for {passwordChangeData.user_name} ({passwordChangeData.user_email})
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">Password changed successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="new-password" class="block text-gray-700 text-sm font-bold mb-2">
-                                New Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new-password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                At least 8 characters recommended
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword ? 'Changing...' : 'Change Password'}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Disable User Modal (formerly Delete User Modal) -->
-{#if isDeleteUserModalOpen && userToDelete}
+<!-- Apply Embedding Key To All KBs Confirmation Modal -->
+{#if showApplyToAllKbConfirmation}
     <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
         <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <!-- Warning Icon -->
                 <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
                     <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                 </div>
-                
-                <!-- Modal Header -->
+
                 <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable User Account
+                    Apply embedding API key to all knowledge bases?
                 </h3>
-                
-                <!-- Modal Content -->
+
                 <div class="mt-4 text-center">
                     <p class="text-sm text-gray-600">
-                        Are you sure you want to disable the account for
-                    </p>
-                    <p class="text-base font-semibold text-gray-900 mt-2">
-                        {userToDelete.name}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-1">
-                        ({userToDelete.email})
+                        This will update the embedding API key for <strong>all existing KB collections</strong> in this organization.
                     </p>
                     <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
                         <p class="text-sm text-gray-700">
-                            <strong>Note:</strong> The user will not be able to log in, but their resources (assistants, templates, rubrics) will remain accessible to other users.
+                            Use this when rotating keys. Model/vendor/endpoint are unchanged — only the key is updated.
                         </p>
                     </div>
                 </div>
 
-                {#if deleteUserError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{deleteUserError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
                 <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeDeleteUserModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
+                    <button
+                        type="button"
+                        onclick={cancelApplyToAllKb}
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
                     >
                         Cancel
                     </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmDeleteUser}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
+                    <button
+                        type="button"
+                        onclick={confirmApplyToAllKb}
+                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
                     >
-                        {isDeletingUser ? 'Disabling...' : 'Disable User'}
+                        {isApplyingToAllKb ? 'Applying...' : 'Apply to All KBs'}
                     </button>
                 </div>
             </div>
@@ -3737,123 +3870,92 @@
     </div>
 {/if}
 
-<!-- Bulk Disable Users Modal -->
-{#if isBulkDisableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will not be able to log in, but their resources will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
+<!-- Create User Modal (Shared Component) -->
+<UserForm
+    isOpen={isCreateUserModalOpen}
+    isSuperAdmin={false}
+    {newUser}
+    isCreating={isCreatingUser}
+    error={createUserError}
+    success={createUserSuccess}
+    onSubmit={handleCreateUser}
+    onClose={closeCreateUserModal}
+    onUserChange={(user) => { newUser = user; }}
+/>
 
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkDisableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkDisable}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Disabling...' : 'Disable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={passwordChangeData.user_name}
+    userEmail={passwordChangeData.user_email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
-<!-- Bulk Enable Users Modal -->
-{#if isBulkEnableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Success Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Enable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to enable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-green-50 border-l-4 border-green-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will be able to log in and access the system.
-                        </p>
-                    </div>
-                </div>
+<!-- Disable User Modal - from delete button (Shared Component) -->
+<UserActionModal
+    isOpen={isDeleteUserModalOpen && userToDelete !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToDelete}
+    isProcessing={isDeletingUser}
+    error={deleteUserError}
+    onConfirm={confirmDeleteUser}
+    onClose={closeDeleteUserModal}
+/>
 
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkEnableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkEnable}
-                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Enabling...' : 'Enable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Single User Disable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserDisableModal && userToToggle !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserDisable}
+    onClose={closeSingleUserModal}
+/>
+
+<!-- Single User Enable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserEnableModal && userToToggle !== null}
+    action="enable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserEnable}
+    onClose={closeSingleUserModal}
+/>
+
+<!-- Bulk Disable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkDisableModalOpen}
+    action="disable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkDisable}
+    onClose={closeBulkDisableModal}
+/>
+
+<!-- Bulk Enable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkEnableModalOpen}
+    action="enable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkEnable}
+    onClose={closeBulkEnableModal}
+/>
 
 <!-- Model Selection Modal -->
 {#if isModelModalOpen}
@@ -4026,13 +4128,6 @@
     </div>
 {/if}
 
-<!-- Assistant Access Manager Modal -->
-<AssistantAccessManager
-    assistant={selectedAssistant}
-    bind:show={showAccessModal}
-    on:close={closeAccessModal}
-    on:updated={handleAccessUpdated}
-/>
 
 <!-- Assistant Sharing Modal -->
 {#if showSharingModal && modalAssistant}
@@ -4043,6 +4138,20 @@
         onSaved={handleSharingModalSaved}
     />
 {/if}
+
+<!-- Reset KB Embeddings Config Modal -->
+<ConfirmationModal
+    bind:isOpen={showResetKbConfigModal}
+    title="Reset KB Configuration"
+    message="Reset to environment variables? This will remove the persisted configuration and use the defaults from your environment settings."
+    confirmText="Reset"
+    variant="warning"
+    onconfirm={async () => {
+        await updateKbEmbeddingsConfig();
+        showResetKbConfigModal = false;
+    }}
+    oncancel={() => { showResetKbConfigModal = false; }}
+/>
 
 <style>
     /* Custom scrollbar styles */

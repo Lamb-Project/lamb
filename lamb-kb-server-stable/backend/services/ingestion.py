@@ -325,7 +325,8 @@ class IngestionService:
         db: Session,
         collection_id: int,
         documents: List[Dict[str, Any]],
-        embeddings_function: Optional[Any] = None
+        embeddings_function: Optional[Any] = None,
+        file_registry_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """Add documents to a collection.
         
@@ -338,6 +339,7 @@ class IngestionService:
             collection_id: ID of the collection
             documents: List of document chunks with metadata
             embeddings_function: Optional custom embeddings function (IGNORED - will always use collection config)
+            file_registry_id: Optional ID of the file registry entry for progress updates
             
         Returns:
             Status information about the ingestion
@@ -513,6 +515,7 @@ class IngestionService:
             
             # Add documents in smaller batches for better error handling and progress tracking
             batch_size = 5
+            total_docs = len(ids)
             
             for i in range(0, len(ids), batch_size):
                 batch_end = min(i + batch_size, len(ids))
@@ -530,6 +533,19 @@ class IngestionService:
                 
                 batch_end_time = time.time()
                 print(f"DEBUG: [add_documents_to_collection] Batch {i//batch_size + 1} completed in {batch_end_time - batch_start_time:.2f} seconds")
+                
+                # Update progress in database if file_registry_id is provided
+                if file_registry_id:
+                    from database.models import FileRegistry
+                    
+                    file_reg = db.query(FileRegistry).filter(FileRegistry.id == file_registry_id).first()
+                    if file_reg:
+                        file_reg.progress_current = batch_end
+                        file_reg.progress_total = total_docs
+                        file_reg.progress_message = f"Adding chunks to collection... ({batch_end}/{total_docs})"
+                        file_reg.updated_at = datetime.utcnow()
+                        db.commit()
+                        print(f"DEBUG: [add_documents_to_collection] Updated progress: {batch_end}/{total_docs}")
             
             end_time = time.time()
             print(f"DEBUG: [add_documents_to_collection] ChromaDB add operation completed in {end_time - start_time:.2f} seconds")

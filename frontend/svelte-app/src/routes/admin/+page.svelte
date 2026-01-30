@@ -9,11 +9,19 @@
     import { getApiUrl } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     
     // Import filtering/pagination components
     import Pagination from '$lib/components/common/Pagination.svelte';
     import FilterBar from '$lib/components/common/FilterBar.svelte';
     import { processListData } from '$lib/utils/listHelpers';
+    
+    // Import admin components
+    import AdminDashboard from '$lib/components/admin/AdminDashboard.svelte';
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
+    import OrgForm from '$lib/components/admin/OrgForm.svelte';
 
     // --- State Management ---
     /** @type {'dashboard' | 'users' | 'organizations'} */
@@ -116,51 +124,16 @@
     let isLoadingOrganizations = $state(false);
     /** @type {string | null} */
     let organizationsError = $state(null);
+    
+    // Delete organization modal state
+    let showDeleteOrgModal = $state(false);
+    /** @type {string | null} */
+    let orgToDelete = $state(null);
+    let isDeletingOrg = $state(false);
 
     // --- Create Organization Modal State ---
+    // Note: Form state is now managed by OrgForm component
     let isCreateOrgModalOpen = $state(false);
-    let newOrg = $state({
-        slug: '',
-        name: '',
-        admin_user_id: null,
-        signup_enabled: false,
-        signup_key: '',
-        use_system_baseline: true,
-        config: {
-            version: "1.0",
-            setups: {
-                default: {
-                    name: "Default Setup",
-                    providers: {},
-                    knowledge_base: {}
-                }
-            },
-            features: {
-                rag_enabled: true,
-                lti_publishing: true,
-                signup_enabled: false
-            },
-            limits: {
-                usage: {
-                    tokens_per_month: 1000000,
-                    max_assistants: 100,
-                    max_assistants_per_user: 10,
-                    storage_gb: 10
-                }
-            }
-        }
-    });
-    let isCreatingOrg = $state(false);
-    /** @type {string | null} */
-    let createOrgError = $state(null);
-    let createOrgSuccess = $state(false);
-
-    // --- System Org Users for Admin Selection ---
-    /** @type {Array<{id: number, email: string, name: string, role: string, joined_at: number}>} */
-    let systemOrgUsers = $state([]);
-    let isLoadingSystemUsers = $state(false);
-    /** @type {string | null} */
-    let systemUsersError = $state(null);
 
     // --- View Organization Config Modal State ---
     let isViewConfigModalOpen = $state(false);
@@ -430,50 +403,12 @@
     }
 
     function openCreateOrgModal() {
-        // Reset form state
-        newOrg = {
-            slug: '',
-            name: '',
-            admin_user_id: null,
-            signup_enabled: false,
-            signup_key: '',
-            use_system_baseline: true,
-            config: {
-                version: "1.0",
-                setups: {
-                    default: {
-                        name: "Default Setup",
-                        providers: {},
-                        knowledge_base: {}
-                    }
-                },
-                features: {
-                    rag_enabled: true,
-                    lti_publishing: true,
-                    signup_enabled: false
-                },
-                limits: {
-                    usage: {
-                        tokens_per_month: 1000000,
-                        max_assistants: 100,
-                        max_assistants_per_user: 10,
-                        storage_gb: 10
-                    }
-                }
-            }
-        };
-        createOrgError = null;
-        createOrgSuccess = false;
+        // Form state is now managed by OrgForm component
         isCreateOrgModalOpen = true;
-        
-        // Fetch system org users for admin selection
-        fetchSystemOrgUsers();
     }
 
     function closeCreateOrgModal() {
         isCreateOrgModalOpen = false;
-        // Clear any previous state
-        createOrgError = null;
     }
 
     /**
@@ -674,111 +609,6 @@
             }
         } finally {
             isChangingPassword = false;
-        }
-    }
-
-    /**
-     * Handle organization creation form submission
-     * @param {SubmitEvent} e - The form submission event
-     */
-    async function handleCreateOrganization(e) {
-        e.preventDefault();
-        
-        // Read values directly from DOM via FormData (more reliable with automated testing)
-        const form = /** @type {HTMLFormElement} */ (e.target);
-        const formDataObj = new FormData(form);
-        const slug = /** @type {string} */ (formDataObj.get('org_slug') || '').toString().trim();
-        const name = /** @type {string} */ (formDataObj.get('org_name') || '').toString().trim();
-        const adminUserId = /** @type {string} */ (formDataObj.get('admin_user_id') || '').toString();
-        const signupEnabled = formDataObj.get('signup_enabled') === 'on';
-        const signupKey = /** @type {string} */ (formDataObj.get('signup_key') || '').toString();
-        const useSystemBaseline = formDataObj.get('use_system_baseline') === 'on';
-        
-        // Basic form validation
-        if (!slug || !name) {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.fillRequired', { default: 'Please fill in all required fields.' }) : 'Please fill in all required fields.';
-            return;
-        }
-        
-        // Validate admin user selection
-        if (!adminUserId || adminUserId === 'null') {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.selectAdmin', { default: 'Please select an admin user for the organization.' }) : 'Please select an admin user for the organization.';
-            return;
-        }
-        
-        // Validate slug format (URL-friendly)
-        if (!/^[a-z0-9-]+$/.test(slug)) {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.slugInvalid', { default: 'Slug must contain only lowercase letters, numbers, and hyphens.' }) : 'Slug must contain only lowercase letters, numbers, and hyphens.';
-            return;
-        }
-        
-        // Validate signup key if signup is enabled
-        if (signupEnabled && (!signupKey || signupKey.trim().length < 8)) {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyLength', { default: 'Signup key must be at least 8 characters long when signup is enabled.' }) : 'Signup key must be at least 8 characters long when signup is enabled.';
-            return;
-        }
-        
-        // Validate signup key format if provided
-        if (signupKey && !/^[a-zA-Z0-9_-]+$/.test(signupKey)) {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.signupKeyInvalid', { default: 'Signup key can only contain letters, numbers, hyphens, and underscores.' }) : 'Signup key can only contain letters, numbers, hyphens, and underscores.';
-            return;
-        }
-        
-        createOrgError = null;
-        isCreatingOrg = true;
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error(localeLoaded ? $_('admin.organizations.errors.authTokenNotFound', { default: 'Authentication token not found. Please log in again.' }) : 'Authentication token not found. Please log in again.');
-            }
-            
-            // Use the enhanced endpoint with admin assignment
-            const apiUrl = getApiUrl('/admin/organizations/enhanced');
-            console.log(`Creating organization with admin assignment at: ${apiUrl}`);
-            
-            // Prepare the payload
-            const payload = {
-                slug: slug,
-                name: name,
-                admin_user_id: parseInt(adminUserId),
-                signup_enabled: signupEnabled,
-                signup_key: signupEnabled ? signupKey.trim() : null,
-                use_system_baseline: useSystemBaseline
-            };
-            
-            console.log('Organization creation payload:', payload);
-            
-            const response = await axios.post(apiUrl, payload, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            console.log('Create organization response:', response.data);
-            
-            if (response.data) {
-                createOrgSuccess = true;
-                // Wait 1.5 seconds to show success message, then close modal and refresh list
-                setTimeout(() => {
-                    closeCreateOrgModal();
-                    fetchOrganizations(); // Refresh the organizations list
-                }, 1500);
-            } else {
-                throw new Error(localeLoaded ? $_('admin.organizations.errors.createFailed', { default: 'Failed to create organization.' }) : 'Failed to create organization.');
-            }
-        } catch (err) {
-            console.error('Error creating organization:', err);
-            if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                createOrgError = err.response.data.detail;
-            } else if (err instanceof Error) {
-                createOrgError = err.message;
-            } else {
-                createOrgError = localeLoaded ? $_('admin.organizations.errors.unknownError', { default: 'An unknown error occurred while creating the organization.' }) : 'An unknown error occurred while creating the organization.';
-            }
-        } finally {
-            isCreatingOrg = false;
         }
     }
 
@@ -1134,56 +964,6 @@
         }
     }
 
-    async function fetchSystemOrgUsers() {
-        if (isLoadingSystemUsers) {
-            console.log("Already loading system users, skipping duplicate request");
-            return;
-        }
-        
-        console.log("Fetching system organization users...");
-        isLoadingSystemUsers = true;
-        systemUsersError = null;
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-
-            const apiUrl = getApiUrl('/admin/organizations/system/users');
-            console.log(`Fetching system users from: ${apiUrl}`);
-
-            const response = await axios.get(apiUrl, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            console.log('System Users API Response:', response.data);
-
-            if (response.data && Array.isArray(response.data)) {
-                systemOrgUsers = response.data;
-                console.log(`Fetched ${systemOrgUsers.length} system org users`);
-            } else {
-                throw new Error('Invalid response format.');
-            }
-        } catch (err) {
-            console.error('Error fetching system org users:', err);
-            if (axios.isAxiosError(err) && err.response?.status === 401) {
-                systemUsersError = 'Access denied. Admin privileges required.';
-            } else if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                systemUsersError = err.response.data.detail;
-            } else if (err instanceof Error) {
-                systemUsersError = err.message;
-            } else {
-                systemUsersError = 'An unknown error occurred while fetching system users.';
-            }
-            systemOrgUsers = [];
-        } finally {
-            isLoadingSystemUsers = false;
-        }
-    }
-
     async function fetchOrganizationsForUsers() {
         if (isLoadingOrganizationsForUsers) {
             console.log("Already loading organizations for users, skipping duplicate request");
@@ -1312,12 +1092,20 @@
     }
 
     /**
+     * Open delete organization confirmation modal
      * @param {string} slug - Organization slug
      */
-    async function deleteOrganization(slug) {
-        if (!confirm(`Are you sure you want to delete organization '${slug}'? This action cannot be undone.`)) {
-            return;
-        }
+    function deleteOrganization(slug) {
+        orgToDelete = slug;
+        showDeleteOrgModal = true;
+    }
+    
+    /**
+     * Confirm organization deletion
+     */
+    async function confirmDeleteOrganization() {
+        if (!orgToDelete || isDeletingOrg) return;
+        isDeletingOrg = true;
         
         try {
             const token = getAuthToken();
@@ -1325,7 +1113,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/admin/organizations/${slug}`);
+            const apiUrl = getApiUrl(`/admin/organizations/${orgToDelete}`);
             console.log(`Deleting organization at: ${apiUrl}`);
 
             const response = await axios.delete(apiUrl, {
@@ -1339,8 +1127,12 @@
             // Refresh organizations list
             fetchOrganizations();
             
+            // Close modal and reset state
+            showDeleteOrgModal = false;
+            orgToDelete = null;
+            
             // Show success message
-            alert(`Organization '${slug}' deleted successfully!`);
+            alert(`Organization deleted successfully!`);
         } catch (err) {
             console.error('Error deleting organization:', err);
             let errorMessage = 'Failed to delete organization.';
@@ -1352,7 +1144,18 @@
             }
             
             alert(`Error: ${errorMessage}`);
+        } finally {
+            isDeletingOrg = false;
         }
+    }
+    
+    /**
+     * Cancel organization deletion
+     */
+    function cancelDeleteOrganization() {
+        if (isDeletingOrg) return;
+        showDeleteOrgModal = false;
+        orgToDelete = null;
     }
 
     // --- Migration Modal State ---
@@ -1545,240 +1348,15 @@
 
     <!-- View Content -->
     {#if currentView === 'dashboard'}
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-800 mb-2">{localeLoaded ? $_('admin.dashboard.title', { default: 'System Dashboard' }) : 'System Dashboard'}</h1>
-            <p class="text-gray-500 mb-8 text-sm">{localeLoaded ? $_('admin.dashboard.welcome', { default: 'Overview of your LAMB platform statistics' }) : 'Overview of your LAMB platform statistics'}</p>
-            
-            {#if isLoadingStats}
-                <!-- Loading skeleton -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {#each Array(6) as _}
-                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 animate-pulse">
-                            <div class="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
-                            <div class="h-10 bg-gray-200 rounded w-1/2 mb-4"></div>
-                            <div class="flex gap-4">
-                                <div class="h-3 bg-gray-200 rounded w-1/4"></div>
-                                <div class="h-3 bg-gray-200 rounded w-1/4"></div>
-                            </div>
-                        </div>
-                    {/each}
-                </div>
-            {:else if statsError}
-                <div class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-6" role="alert">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-                        </svg>
-                        <span class="font-medium">{statsError}</span>
-                    </div>
-                    <button 
-                        onclick={fetchSystemStats}
-                        class="mt-3 text-red-600 hover:text-red-800 underline text-sm"
-                    >
-                        Try again
-                    </button>
-                </div>
-            {:else if systemStats}
-                <!-- Stats Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <!-- Users Card -->
-                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-blue-600 uppercase tracking-wide">Users</h3>
-                            <div class="p-2 bg-blue-100 rounded-xl">
-                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.users.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-emerald-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                {systemStats.users.enabled} active
-                            </span>
-                            {#if systemStats.users.disabled > 0}
-                                <span class="text-gray-400 flex items-center gap-1">
-                                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                                    {systemStats.users.disabled} disabled
-                                </span>
-                            {/if}
-                        </div>
-                        <div class="mt-3 pt-3 border-t border-blue-100 flex gap-4 text-xs text-gray-500">
-                            <span>{systemStats.users.creators} creators</span>
-                            <span>{systemStats.users.end_users} end users</span>
-                        </div>
-                    </div>
-
-                    <!-- Organizations Card -->
-                    <div class="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl shadow-sm border border-violet-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-violet-600 uppercase tracking-wide">Organizations</h3>
-                            <div class="p-2 bg-violet-100 rounded-xl">
-                                <svg class="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.organizations.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-emerald-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                {systemStats.organizations.active} active
-                            </span>
-                            {#if systemStats.organizations.inactive > 0}
-                                <span class="text-gray-400 flex items-center gap-1">
-                                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                                    {systemStats.organizations.inactive} inactive
-                                </span>
-                            {/if}
-                        </div>
-                    </div>
-
-                    <!-- Assistants Card -->
-                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl shadow-sm border border-emerald-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-emerald-600 uppercase tracking-wide">Assistants</h3>
-                            <div class="p-2 bg-emerald-100 rounded-xl">
-                                <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.assistants.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-emerald-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                {systemStats.assistants.published} published
-                            </span>
-                            <span class="text-amber-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-amber-400 rounded-full"></span>
-                                {systemStats.assistants.unpublished} drafts
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- Knowledge Bases Card -->
-                    <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-sm border border-amber-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-amber-600 uppercase tracking-wide">Knowledge Bases</h3>
-                            <div class="p-2 bg-amber-100 rounded-xl">
-                                <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.knowledge_bases.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-cyan-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-cyan-500 rounded-full"></span>
-                                {systemStats.knowledge_bases.shared} shared
-                            </span>
-                            <span class="text-gray-400 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                                {systemStats.knowledge_bases.total - systemStats.knowledge_bases.shared} private
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- Rubrics Card -->
-                    <div class="bg-gradient-to-br from-rose-50 to-pink-50 rounded-2xl shadow-sm border border-rose-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-rose-600 uppercase tracking-wide">Rubrics</h3>
-                            <div class="p-2 bg-rose-100 rounded-xl">
-                                <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.rubrics.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-rose-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-rose-500 rounded-full"></span>
-                                {systemStats.rubrics.public} public
-                            </span>
-                            <span class="text-gray-400 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                                {systemStats.rubrics.total - systemStats.rubrics.public} private
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- Templates Card -->
-                    <div class="bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl shadow-sm border border-slate-200 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-sm font-medium text-slate-600 uppercase tracking-wide">Prompt Templates</h3>
-                            <div class="p-2 bg-slate-200 rounded-xl">
-                                <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="text-4xl font-bold text-gray-900 mb-3">{systemStats.templates.total}</div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                            <span class="text-slate-600 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-slate-500 rounded-full"></span>
-                                {systemStats.templates.shared} shared
-                            </span>
-                            <span class="text-gray-400 flex items-center gap-1">
-                                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
-                                {systemStats.templates.total - systemStats.templates.shared} private
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="mt-8 pt-8 border-t border-gray-200">
-                    <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">Quick Actions</h3>
-                    <div class="flex flex-wrap gap-3">
-                        <button 
-                            onclick={showUsers}
-                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                        >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197"/>
-                            </svg>
-                            Manage Users
-                        </button>
-                        <button 
-                            onclick={showOrganizations}
-                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                        >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/>
-                            </svg>
-                            Manage Organizations
-                        </button>
-                        <button 
-                            onclick={fetchSystemStats}
-                            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-                        >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                            </svg>
-                            Refresh Stats
-                        </button>
-                    </div>
-                </div>
-            {:else}
-                <!-- Initial state - prompt to load -->
-                <div class="text-center py-12">
-                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                        </svg>
-                    </div>
-                    <p class="text-gray-500 mb-4">Loading system statistics...</p>
-                    <button 
-                        onclick={fetchSystemStats}
-                        class="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-hover transition-colors"
-                    >
-                        Load Statistics
-                    </button>
-                </div>
-            {/if}
-        </div>
+        <AdminDashboard
+            {systemStats}
+            isLoading={isLoadingStats}
+            error={statsError}
+            {localeLoaded}
+            onRefresh={fetchSystemStats}
+            onShowUsers={showUsers}
+            onShowOrganizations={showOrganizations}
+        />
     {:else if currentView === 'users'}
         <!-- Users Management View -->
         <div class="flex justify-between items-center mb-6">
@@ -2274,462 +1852,46 @@
     {/if}
 </div>
 
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    {localeLoaded ? $_('admin.users.password.title', { default: 'Change Password' }) : 'Change Password'}
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    {localeLoaded 
-                        ? $_('admin.users.password.subtitle', { default: 'Set a new password for' }) 
-                        : 'Set a new password for'} {selectedUserName}
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{localeLoaded ? $_('admin.users.password.success', { default: 'Password changed successfully!' }) : 'Password changed successfully!'}</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.password.email', { default: 'Email' }) : 'Email'}
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-500 bg-gray-100 leading-tight" 
-                                value={passwordChangeData.email} 
-                                disabled
-                                readonly
-                            />
-                        </div>
-                        
-                        <div class="mb-6 text-left">
-                            <label for="new_password" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.password.newPassword', { default: 'New Password' }) : 'New Password'} *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new_password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                {localeLoaded ? $_('admin.users.password.hint', { default: 'At least 8 characters recommended' }) : 'At least 8 characters recommended'}
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                {localeLoaded ? $_('admin.users.password.cancel', { default: 'Cancel' }) : 'Cancel'}
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword 
-                                    ? (localeLoaded ? $_('admin.users.password.changing', { default: 'Changing...' }) : 'Changing...') 
-                                    : (localeLoaded ? $_('admin.users.password.change', { default: 'Change Password' }) : 'Change Password')}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={selectedUserName}
+    userEmail={passwordChangeData.email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    {localeLoaded}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
-<!-- Create User Modal -->
-{#if isCreateUserModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    {localeLoaded ? $_('admin.users.create.title', { default: 'Create New User' }) : 'Create New User'}
-                </h3>
-                
-                {#if createUserSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{localeLoaded ? $_('admin.users.create.success', { default: 'User created successfully!' }) : 'User created successfully!'}</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateUser}>
-                        {#if createUserError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createUserError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.create.email', { default: 'Email' }) : 'Email'} *
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.email} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.create.name', { default: 'Name' }) : 'Name'} *
-                            </label>
-                            <input 
-                                type="text" 
-                                id="name" 
-                                name="name"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.name} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.create.password', { default: 'Password' }) : 'Password'} *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.password} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="role" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.users.create.role', { default: 'Role' }) : 'Role'}
-                            </label>
-                            <select 
-                                id="role" 
-                                name="role"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.role}
-                                onchange={(e) => {
-                                    // If admin is selected, automatically set user_type to 'creator'
-                                    const target = /** @type {HTMLSelectElement} */ (e.target);
-                                    if (target.value === 'admin') {
-                                        newUser.user_type = 'creator';
-                                    }
-                                }}
-                            >
-                                <option value="user">{localeLoaded ? $_('admin.users.create.roleUser', { default: 'User' }) : 'User'}</option>
-                                <option value="admin">{localeLoaded ? $_('admin.users.create.roleAdmin', { default: 'Admin' }) : 'Admin'}</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-4 text-left">
-                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
-                                User Type
-                            </label>
-                            <select 
-                                id="user_type" 
-                                name="user_type"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.user_type}
-                                disabled={newUser.role === 'admin'}
-                            >
-                                <option value="creator">Creator (Can create assistants)</option>
-                                <option value="end_user">End User (Redirects to Open WebUI)</option>
-                            </select>
-                            {#if newUser.role === 'admin'}
-                                <p class="text-xs text-gray-500 mt-1">Admin users are automatically creators</p>
-                            {/if}
-                        </div>
-
-                        <div class="mb-6 text-left">
-                            <label for="organization" class="block text-gray-700 text-sm font-bold mb-2">
-                                Organization
-                            </label>
-                            {#if isLoadingOrganizationsForUsers}
-                                <div class="text-gray-500 text-sm">Loading organizations...</div>
-                            {:else if organizationsForUsersError}
-                                <div class="text-red-500 text-sm">{organizationsForUsersError}</div>
-                            {:else}
-                                <select 
-                                    id="organization" 
-                                    name="organization_id"
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                    bind:value={newUser.organization_id}
-                                >
-                                    <option value={null}>Select an organization (optional)</option>
-                                    {#each organizationsForUsers as org}
-                                        <option value={org.id}>
-                                            {org.name}
-                                            {#if org.is_system}
-                                                (System)
-                                            {/if}
-                                        </option>
-                                    {/each}
-                                </select>
-                            {/if}
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                If no organization is selected, the user will be assigned to the system organization by default.
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateUserModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                {localeLoaded ? $_('admin.users.create.cancel', { default: 'Cancel' }) : 'Cancel'}
-                            </button>
-                            <button 
-                                type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingUser}
-                            >
-                                {isCreatingUser 
-                                    ? (localeLoaded ? $_('admin.users.create.creating', { default: 'Creating...' }) : 'Creating...') 
-                                    : (localeLoaded ? $_('admin.users.create.create', { default: 'Create User' }) : 'Create User')}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Create User Modal (Shared Component) -->
+<UserForm
+    isOpen={isCreateUserModalOpen}
+    isSuperAdmin={true}
+    {newUser}
+    organizations={organizationsForUsers}
+    isLoadingOrganizations={isLoadingOrganizationsForUsers}
+    organizationsError={organizationsForUsersError}
+    isCreating={isCreatingUser}
+    error={createUserError}
+    success={createUserSuccess}
+    {localeLoaded}
+    onSubmit={handleCreateUser}
+    onClose={closeCreateUserModal}
+    onUserChange={(user) => { newUser = user; }}
+/>
 
 <!-- Create Organization Modal -->
-{#if isCreateOrgModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center">
-                    {localeLoaded ? $_('admin.organizations.create.title', { default: 'Create New Organization' }) : 'Create New Organization'}
-                </h3>
-                
-                {#if createOrgSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{localeLoaded ? $_('admin.organizations.create.success', { default: 'Organization created successfully!' }) : 'Organization created successfully!'}</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateOrganization}>
-                        {#if createOrgError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createOrgError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div class="text-left">
-                                <label for="org_slug" class="block text-gray-700 text-sm font-bold mb-2">
-                                    {localeLoaded ? $_('admin.organizations.create.slug', { default: 'Slug' }) : 'Slug'} *
-                                </label>
-                                <input 
-                                    type="text" 
-                                    id="org_slug" 
-                                    name="org_slug"
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                    bind:value={newOrg.slug} 
-                                    required 
-                                    pattern="[a-z0-9-]+"
-                                    title="Only lowercase letters, numbers, and hyphens allowed"
-                                />
-                                <p class="text-gray-500 text-xs italic mt-1">
-                                    URL-friendly identifier (lowercase, numbers, hyphens only)
-                                </p>
-                            </div>
-                            
-                            <div class="text-left">
-                                <label for="org_name" class="block text-gray-700 text-sm font-bold mb-2">
-                                    {localeLoaded ? $_('admin.organizations.create.name', { default: 'Name' }) : 'Name'} *
-                                </label>
-                                <input 
-                                    type="text" 
-                                    id="org_name" 
-                                    name="org_name"
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                    bind:value={newOrg.name} 
-                                    required 
-                                />
-                            </div>
-                        </div>
-
-                        <!-- Admin User Selection -->
-                        <div class="mb-4 text-left">
-                            <label for="admin_user" class="block text-gray-700 text-sm font-bold mb-2">
-                                Organization Admin *
-                            </label>
-                            {#if isLoadingSystemUsers}
-                                <div class="text-gray-500 text-sm">Loading system users...</div>
-                            {:else if systemUsersError}
-                                <div class="text-red-500 text-sm">{systemUsersError}</div>
-                            {:else}
-                                <select 
-                                    id="admin_user"
-                                    name="admin_user_id"
-                                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                                    bind:value={newOrg.admin_user_id}
-                                    required
-                                >
-                                    <option value={null}>Select a user from system organization...</option>
-                                    {#each systemOrgUsers.filter(user => user.role !== 'admin') as user}
-                                        <option value={user.id}>{user.name} ({user.email}) - {user.role}</option>
-                                    {/each}
-                                </select>
-                            {/if}
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                Select a user from the system organization to become admin of this organization. 
-                                <strong>Note:</strong> System admins are not eligible as they must remain in the system organization.
-                            </p>
-                        </div>
-
-                        <!-- Signup Configuration -->
-                        <div class="mb-4 text-left">
-                            <label for="signup_config_section" class="block text-gray-700 text-sm font-bold mb-2">
-                                Signup Configuration
-                            </label>
-                            <div id="signup_config_section" class="mb-3">
-                                <label class="flex items-center">
-                                    <input type="checkbox" name="signup_enabled" bind:checked={newOrg.signup_enabled} class="mr-2">
-                                    <span class="text-sm">Enable organization-specific signup</span>
-                                </label>
-                            </div>
-                            
-                            {#if newOrg.signup_enabled}
-                                <div>
-                                    <label for="signup_key" class="block text-gray-600 text-sm mb-1">Signup Key *</label>
-                                    <input 
-                                        type="text" 
-                                        id="signup_key"
-                                        name="signup_key"
-                                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                        bind:value={newOrg.signup_key} 
-                                        required={newOrg.signup_enabled}
-                                        pattern="[a-zA-Z0-9_-]+"
-                                        title="Only letters, numbers, hyphens, and underscores allowed"
-                                        minlength="8"
-                                        maxlength="64"
-                                    />
-                                    <p class="text-gray-500 text-xs italic mt-1">
-                                        Unique key for users to signup to this organization (8-64 characters)
-                                    </p>
-                                </div>
-                            {/if}
-                        </div>
-
-                        <!-- System Baseline Option -->
-                        <div class="mb-4 text-left">
-                            <label class="flex items-center">
-                                <input type="checkbox" name="use_system_baseline" bind:checked={newOrg.use_system_baseline} class="mr-2">
-                                <span class="text-sm">Copy system organization configuration as baseline</span>
-                            </label>
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                Inherit providers and settings from the system organization
-                            </p>
-                        </div>
-
-                        <div class="mb-4 text-left">
-                            <label for="org_features" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.organizations.create.features', { default: 'Features' }) : 'Features'}
-                            </label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <label class="flex items-center">
-                                    <input type="checkbox" bind:checked={newOrg.config.features.rag_enabled} class="mr-2">
-                                    <span class="text-sm">RAG Enabled</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="checkbox" bind:checked={newOrg.config.features.lti_publishing} class="mr-2">
-                                    <span class="text-sm">LTI Publishing</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="checkbox" bind:checked={newOrg.config.features.signup_enabled} class="mr-2">
-                                    <span class="text-sm">Signup Enabled</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="mb-4 text-left" style="display: none;">
-                            <label for="org_limits" class="block text-gray-700 text-sm font-bold mb-2">
-                                {localeLoaded ? $_('admin.organizations.create.limits', { default: 'Usage Limits' }) : 'Usage Limits'}
-                            </label>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label for="tokens_per_month" class="block text-gray-600 text-xs mb-1">Tokens/Month</label>
-                                    <input 
-                                        type="number" 
-                                        id="tokens_per_month"
-                                        class="shadow appearance-none border rounded w-full py-1 px-2 text-gray-700 text-sm leading-tight focus:outline-none focus:shadow-outline" 
-                                        bind:value={newOrg.config.limits.usage.tokens_per_month}
-                                        min="0"
-                                    />
-                                </div>
-                                <div>
-                                    <label for="max_assistants" class="block text-gray-600 text-xs mb-1">Max Assistants</label>
-                                    <input 
-                                        type="number" 
-                                        id="max_assistants"
-                                        class="shadow appearance-none border rounded w-full py-1 px-2 text-gray-700 text-sm leading-tight focus:outline-none focus:shadow-outline" 
-                                        bind:value={newOrg.config.limits.usage.max_assistants}
-                                        min="1"
-                                    />
-                                </div>
-                                <div>
-                                    <label for="storage_gb" class="block text-gray-600 text-xs mb-1">Storage (GB)</label>
-                                    <input 
-                                        type="number" 
-                                        id="storage_gb"
-                                        class="shadow appearance-none border rounded w-full py-1 px-2 text-gray-700 text-sm leading-tight focus:outline-none focus:shadow-outline" 
-                                        bind:value={newOrg.config.limits.usage.storage_gb}
-                                        min="0"
-                                        step="0.1"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateOrgModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                {localeLoaded ? $_('admin.organizations.create.cancel', { default: 'Cancel' }) : 'Cancel'}
-                            </button>
-                            <button 
-                                type="submit" 
-                                class="bg-brand text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingOrg}
-                            >
-                                {isCreatingOrg 
-                                    ? (localeLoaded ? $_('admin.organizations.create.creating', { default: 'Creating...' }) : 'Creating...') 
-                                    : (localeLoaded ? $_('admin.organizations.create.create', { default: 'Create Organization' }) : 'Create Organization')}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
+<OrgForm
+    bind:isOpen={isCreateOrgModalOpen}
+    {localeLoaded}
+    {getAuthToken}
+    onSuccess={() => fetchOrganizations()}
+    onClose={closeCreateOrgModal}
+/>
 
 <!-- View Configuration Modal -->
 {#if isViewConfigModalOpen && selectedOrg}
@@ -2832,89 +1994,29 @@
     </div>
 {/if}
 
-<!-- Disable User Confirmation Modal -->
-{#if showDisableConfirm}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex items-center mb-4">
-                    <svg class="w-6 h-6 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                    </svg>
-                    <h3 class="text-lg font-medium text-gray-900">Confirm Disable</h3>
-                </div>
-                <div class="mt-2 px-7 py-3">
-                    <p class="text-sm text-gray-700">
-                        {#if actionType === 'single'}
-                            Are you sure you want to disable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
-                        {:else}
-                            Are you sure you want to disable <strong>{selectedUsers.length}</strong> user(s)?
-                        {/if}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-3">
-                        Disabled users will not be able to login, but their published assistants and shared resources will remain available.
-                    </p>
-                </div>
-                <div class="flex items-center justify-end gap-3 px-4 py-3">
-                    <button 
-                        onclick={() => showDisableConfirm = false}
-                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onclick={confirmDisable}
-                        class="bg-amber-600 hover:bg-amber-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Disable
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Disable User Confirmation Modal (Shared Component) -->
+<UserActionModal
+    isOpen={showDisableConfirm}
+    action="disable"
+    isBulk={actionType === 'bulk'}
+    targetUser={actionType === 'single' ? targetUser : null}
+    selectedCount={selectedUsers.length}
+    {localeLoaded}
+    onConfirm={confirmDisable}
+    onClose={() => { showDisableConfirm = false; }}
+/>
 
-<!-- Enable User Confirmation Modal -->
-{#if showEnableConfirm}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <div class="flex items-center mb-4">
-                    <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <h3 class="text-lg font-medium text-gray-900">Confirm Enable</h3>
-                </div>
-                <div class="mt-2 px-7 py-3">
-                    <p class="text-sm text-gray-700">
-                        {#if actionType === 'single'}
-                            Are you sure you want to enable <strong>{targetUser?.name}</strong> ({targetUser?.email})?
-                        {:else}
-                            Are you sure you want to enable <strong>{selectedUsers.length}</strong> user(s)?
-                        {/if}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-3">
-                        Enabled users will be able to login and access the system.
-                    </p>
-                </div>
-                <div class="flex items-center justify-end gap-3 px-4 py-3">
-                    <button 
-                        onclick={() => showEnableConfirm = false}
-                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onclick={confirmEnable}
-                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Enable
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Enable User Confirmation Modal (Shared Component) -->
+<UserActionModal
+    isOpen={showEnableConfirm}
+    action="enable"
+    isBulk={actionType === 'bulk'}
+    targetUser={actionType === 'single' ? targetUser : null}
+    selectedCount={selectedUsers.length}
+    {localeLoaded}
+    onConfirm={confirmEnable}
+    onClose={() => { showEnableConfirm = false; }}
+/>
 
 <!-- Delete User Confirmation Modal -->
 {#if showDeleteConfirm}
@@ -3245,6 +2347,18 @@
         </div>
     </div>
 {/if}
+
+<!-- Delete Organization Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteOrgModal}
+    bind:isLoading={isDeletingOrg}
+    title="Delete Organization"
+    message={`Are you sure you want to delete organization '${orgToDelete}'? This action cannot be undone and will remove all associated data.`}
+    confirmText="Delete"
+    variant="danger"
+    onconfirm={confirmDeleteOrganization}
+    oncancel={cancelDeleteOrganization}
+/>
 
 <style>
     /* Add specific styles if needed, though Tailwind should cover most */

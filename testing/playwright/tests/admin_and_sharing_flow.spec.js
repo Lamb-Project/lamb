@@ -45,27 +45,32 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form/dialog to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // Wait for organization dropdown to finish loading
-    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
+
+    // Wait for organization dropdown to finish loading - scope to modal to avoid ambiguity
+    const orgSelect = modal.getByRole("combobox", { name: /organization/i });
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(adminTestUserEmail);
-    await page.locator('input#name').fill(adminTestUserName);
-    await page.locator('input#password').fill(adminTestPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(adminTestUserEmail);
+    await modal.locator('input[name="name"]').fill(adminTestUserName);
+    await modal.locator('input[name="password"]').fill(adminTestPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Submit the form - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit the form - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -181,16 +186,18 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(disableButton).toBeVisible({ timeout: 5_000 });
     await disableButton.click();
 
-    // Wait for the confirmation modal
-    await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
+    // Wait for the confirmation modal (UserActionModal shows "Disable User Account")
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+    await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
 
-    // Click the "Disable" button in the modal (scope to overlay)
-    const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+    // Click the "Disable" button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^disable$/i });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
     await confirmButton.click();
 
     // Wait for modal to disappear and status to change
-    await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(userRow.getByText("Disabled")).toBeVisible({ timeout: 10_000 });
     console.log(`User "${adminTestUserEmail}" successfully disabled.`);
   });
@@ -207,24 +214,25 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     }
 
     // Find the org row
-    const orgRow = page.locator(`text=${adminTestOrgSlug}`).first();
+    const orgRow = page.locator(`tr:has-text("${adminTestOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Handle confirmation dialog
-    page.once("dialog", async (dialog) => {
-      console.log("Confirm dialog:", dialog.message());
-      await dialog.accept();
-    });
-
-    // Click delete
-    const deleteButton = page
-      .locator(`tr:has-text("${adminTestOrgSlug}")`)
-      .getByRole("button", { name: /delete/i })
-      .first();
+    // Click delete button (named "Delete Organization")
+    const deleteButton = orgRow.getByRole("button", { name: /delete organization/i });
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for the org to be removed
+    // Wait for the confirmation modal to appear (dialog named "Delete Organization")
+    const modal = page.getByRole("dialog", { name: /delete organization/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Click the Delete button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^delete$/i });
+    await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    await confirmButton.click();
+
+    // Wait for modal to close and org to be removed
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(orgRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${adminTestOrgSlug}" successfully deleted.`);
   });
@@ -251,27 +259,32 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
 
     // Wait for organization dropdown to finish loading
-    const orgSelect = page.getByRole("combobox", { name: /organization/i });
+    const orgSelect = modal.getByRole("combobox", { name: /organization/i });
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(sharingUser1Email);
-    await page.locator('input#name').fill(sharingUser1Name);
-    await page.locator('input#password').fill(sharingPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(sharingUser1Email);
+    await modal.locator('input[name="name"]').fill(sharingUser1Name);
+    await modal.locator('input[name="password"]').fill(sharingPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Submit - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -368,26 +381,31 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await expect(createButton).toBeVisible({ timeout: 10_000 });
     await createButton.click();
 
-    // Wait for the create user form to appear
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 5_000 });
+    // Wait for the modal dialog to appear first
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // Wait for organization dropdown to finish loading (use CSS selector to target form dropdown, not filter)
-    const orgSelect = page.locator('select#organization');
+    // Wait for the create user form to appear within modal
+    const emailInput = modal.locator('input[name="email"]');
+    await expect(emailInput).toBeVisible({ timeout: 5_000 });
+
+    // Wait for organization dropdown to finish loading
+    const orgSelect = modal.locator('select[name="organization_id"]');
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/loading organizations/i)).not.toBeVisible({ timeout: 15_000 });
 
     // Wait for form to be fully ready
     await page.waitForTimeout(500);
 
-    // Fill in user details using standard fill() - form now reads from DOM via FormData
-    await page.locator('input#email').fill(sharingUser2Email);
-    await page.locator('input#name').fill(sharingUser2Name);
-    await page.locator('input#password').fill(sharingPassword);
+    // Fill in user details - use name attribute selectors within modal
+    await modal.locator('input[name="email"]').fill(sharingUser2Email);
+    await modal.locator('input[name="name"]').fill(sharingUser2Name);
+    await modal.locator('input[name="password"]').fill(sharingPassword);
 
     // Select User Type: Creator
-    await page.locator('select#user_type').selectOption('creator');
+    await modal.locator('select[name="user_type"]').selectOption('creator');
 
-    // Find and select the organization we created (use CSS selector to avoid matching filter dropdown)
+    // Find and select the organization we created
     const options = await orgSelect.locator("option").all();
     let foundOption = false;
     for (const option of options) {
@@ -406,8 +424,8 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       throw new Error(`Could not find organization option: ${sharingOrgName}`);
     }
 
-    // Submit - find button inside the dialog overlay
-    const submitButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^create user$/i });
+    // Submit - find button inside the modal
+    const submitButton = modal.getByRole("button", { name: /^create user$/i });
     await expect(submitButton).toBeVisible({ timeout: 5_000 });
     await submitButton.click();
 
@@ -756,18 +774,22 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const orgRow = page.locator(`tr:has-text("${sharingOrgSlug}")`);
     await expect(orgRow).toBeVisible({ timeout: 10_000 });
 
-    // Handle confirmation dialog
-    page.once("dialog", async (dialog) => {
-      console.log("Confirm dialog:", dialog.message());
-      await dialog.accept();
-    });
-
-    // Click delete
-    const deleteButton = orgRow.getByRole("button", { name: /delete/i }).first();
+    // Click delete button (named "Delete Organization")
+    const deleteButton = orgRow.getByRole("button", { name: /delete organization/i });
     await expect(deleteButton).toBeVisible({ timeout: 5_000 });
     await deleteButton.click();
 
-    // Wait for org to be removed
+    // Wait for the confirmation modal to appear (dialog named "Delete Organization")
+    const modal = page.getByRole("dialog", { name: /delete organization/i });
+    await expect(modal).toBeVisible({ timeout: 5_000 });
+
+    // Click the Delete button in the modal
+    const confirmButton = modal.getByRole("button", { name: /^delete$/i });
+    await expect(confirmButton).toBeVisible({ timeout: 5_000 });
+    await confirmButton.click();
+
+    // Wait for modal to close and org to be removed
+    await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(orgRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Organization "${sharingOrgSlug}" deleted.`);
   });
@@ -790,10 +812,13 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       const disableButton = userRow.getByRole("button", { name: /disable/i }).first();
       if (await disableButton.count()) {
         await disableButton.click();
-        await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+        // Wait for UserActionModal to appear
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: 5_000 });
+        await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
+        const confirmButton = modal.getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+        await expect(modal).not.toBeVisible({ timeout: 10_000 });
       }
     }
 
@@ -808,10 +833,13 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       const disableButton = userRow.getByRole("button", { name: /disable/i }).first();
       if (await disableButton.count()) {
         await disableButton.click();
-        await expect(page.getByText(/confirm disable/i)).toBeVisible({ timeout: 5_000 });
-        const confirmButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^disable$/i });
+        // Wait for UserActionModal to appear
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: 5_000 });
+        await expect(modal.getByText(/disable user account/i)).toBeVisible({ timeout: 5_000 });
+        const confirmButton = modal.getByRole("button", { name: /^disable$/i });
         await confirmButton.click();
-        await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 10_000 });
+        await expect(modal).not.toBeVisible({ timeout: 10_000 });
       }
     }
 

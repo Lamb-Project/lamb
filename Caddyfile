@@ -10,12 +10,15 @@ lamb.yourdomain.com {
     }
 
     handle /api/* {
+        uri strip_prefix /api
         reverse_proxy backend:9099
     }
 
     handle /lamb/* {
         uri strip_prefix /lamb
-        reverse_proxy backend:9099
+        reverse_proxy backend:9099 {
+            header_up X-Forwarded-Prefix "/lamb"
+        }
     }
 
     handle /kb/* {

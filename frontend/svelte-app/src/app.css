@@ -7,13 +7,3 @@
   --color-brand: #2271b3;
   --color-brand-hover: #195a91;
 }
-
-/* Ensure message bubbles preserve intended text color when markdown typography (.prose) is used inside */
-.message-bubble.user :where(.prose, .prose *) {
-  color: inherit !important;
-}
-
-/* Ensure plain text in message bubbles inherits the bubble color */
-.message-bubble.user .message-content {
-  color: inherit;
-}

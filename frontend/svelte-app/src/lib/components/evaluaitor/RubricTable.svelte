@@ -1,5 +1,6 @@
 <script>
   import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
+  import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
   // Props
   let { isEditMode = false } = $props();
@@ -8,6 +9,15 @@
   let editingCell = $state(null); // {criterionId, levelId, field}
   let editValue = $state('');
   let ignoreNextBlur = $state(false); // Flag to prevent immediate blur on focus
+  
+  // Delete confirmation modal state
+  let showDeleteCriterionModal = $state(false);
+  /** @type {string|null} */
+  let criterionToDelete = $state(null);
+  
+  let showDeleteLevelModal = $state(false);
+  /** @type {string|null} */
+  let levelToDelete = $state(null);
 
   // Start editing a cell
   function startEditing(criterionId, levelId, field, currentValue) {
@@ -148,11 +158,25 @@
     rubricStore.addCriterion(newCriterion);
   }
 
-  // Remove criterion
+  // Open remove criterion modal
   function removeCriterion(criterionId) {
-    if (confirm('Are you sure you want to remove this criterion?')) {
-      rubricStore.removeCriterion(criterionId);
+    criterionToDelete = criterionId;
+    showDeleteCriterionModal = true;
+  }
+  
+  // Confirm remove criterion
+  function confirmRemoveCriterion() {
+    if (criterionToDelete) {
+      rubricStore.removeCriterion(criterionToDelete);
     }
+    showDeleteCriterionModal = false;
+    criterionToDelete = null;
+  }
+  
+  // Cancel remove criterion
+  function cancelRemoveCriterion() {
+    showDeleteCriterionModal = false;
+    criterionToDelete = null;
   }
 
   // Add new performance level
@@ -166,11 +190,25 @@
     rubricStore.addLevel(newLevel);
   }
 
-  // Remove performance level
+  // Open remove level modal
   function removeLevel(levelId) {
-    if (confirm('Are you sure you want to remove this performance level from all criteria?')) {
-      rubricStore.removeLevel(levelId);
+    levelToDelete = levelId;
+    showDeleteLevelModal = true;
+  }
+  
+  // Confirm remove level
+  function confirmRemoveLevel() {
+    if (levelToDelete) {
+      rubricStore.removeLevel(levelToDelete);
     }
+    showDeleteLevelModal = false;
+    levelToDelete = null;
+  }
+  
+  // Cancel remove level
+  function cancelRemoveLevel() {
+    showDeleteLevelModal = false;
+    levelToDelete = null;
   }
 
   // Get common level structure based on first criterion
@@ -463,4 +501,26 @@
     </div>
   {/if}
 </div>
+
+<!-- Remove Criterion Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteCriterionModal}
+    title="Remove Criterion"
+    message="Are you sure you want to remove this criterion? This will delete all associated performance level descriptions."
+    confirmText="Remove"
+    variant="danger"
+    onconfirm={confirmRemoveCriterion}
+    oncancel={cancelRemoveCriterion}
+/>
+
+<!-- Remove Level Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteLevelModal}
+    title="Remove Performance Level"
+    message="Are you sure you want to remove this performance level from all criteria? This action cannot be undone."
+    confirmText="Remove"
+    variant="danger"
+    onconfirm={confirmRemoveLevel}
+    oncancel={cancelRemoveLevel}
+/>
 

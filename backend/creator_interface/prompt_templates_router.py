@@ -12,17 +12,16 @@ This module handles CRUD operations for prompt templates, including:
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, List, Dict, Any
-import logging
 import json
 import time
 from pydantic import BaseModel, Field
 from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import PromptTemplate
 from .assistant_router import get_creator_user_from_token
+from lamb.logging_config import get_logger
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__, component="API")
 
 # Initialize router
 router = APIRouter(tags=["Prompt Templates"])

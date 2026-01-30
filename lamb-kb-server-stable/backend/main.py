@@ -2,16 +2,34 @@ import os
 import json
 from typing import Dict, Any, List, Optional
 
+import logging
+import sys
+
+
+# --- Logging configuration ---
+_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
+_effective_level = os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING")).upper().strip()
+if _effective_level not in _LOG_LEVELS:
+    _effective_level = "WARNING"
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=getattr(logging, _effective_level),
+    format="%(levelname)s: %(name)s: %(message)s",
+    force=True,
+)
+logger = logging.getLogger("lamb-kb")
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
     # Load the environment variables from .env file
     load_dotenv()
-    print(f"INFO: Environment variables loaded from .env file")
-    print(f"INFO: EMBEDDINGS_VENDOR={os.getenv('EMBEDDINGS_VENDOR')}")
-    print(f"INFO: EMBEDDINGS_MODEL={os.getenv('EMBEDDINGS_MODEL')}")
+    logger.debug("Environment variables loaded from .env file")
+    logger.debug("EMBEDDINGS_VENDOR=%s", os.getenv("EMBEDDINGS_VENDOR"))
+    logger.debug("EMBEDDINGS_MODEL=%s", os.getenv("EMBEDDINGS_MODEL"))
 except ImportError:
-    print("WARNING: python-dotenv not installed, environment variables must be set manually")
+    logger.warning("python-dotenv not installed; environment variables must be set manually")
 
 from fastapi import Depends, FastAPI, HTTPException, status, Query, File, Form, UploadFile, BackgroundTasks
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -101,33 +119,33 @@ from routers import ingestion_status
 @app.on_event("startup")
 async def startup_event():
     """Initialize databases and perform sanity checks on startup."""
-    print("Initializing databases...")
+    logger.info("Initializing databases...")
     init_status = init_databases()
     
     if init_status["errors"]:
         for error in init_status["errors"]:
-            print(f"ERROR: {error}")
+            logger.error("%s", error)
     else:
-        print("Databases initialized successfully.")
+        logger.info("Databases initialized successfully.")
     
     # Run database migrations
-    print("Checking database migrations...")
+    logger.info("Checking database migrations...")
     try:
         from database.migrations.migration_add_ingestion_tracking import check_migration_status, run_migration
         migration_status = check_migration_status()
         if not migration_status.get("applied"):
-            print("Running migration: Add Ingestion Tracking Fields...")
+            logger.info("Running migration: Add Ingestion Tracking Fields...")
             run_migration()
-            print("Migration completed.")
+            logger.info("Migration completed.")
         else:
-            print("All migrations up to date.")
+            logger.info("All migrations up to date.")
     except Exception as e:
-        print(f"WARNING: Migration check failed: {e}")
+        logger.warning("Migration check failed: %s", e)
     
     # Discover ingestion plugins
-    print("Discovering ingestion plugins...")
+    logger.info("Discovering ingestion plugins...")
     discover_plugins("plugins")
-    print(f"Found {len(IngestionService.list_plugins())} ingestion plugins")
+    logger.info("Found %d ingestion plugins", len(IngestionService.list_plugins()))
     
     # Ensure static directory exists
     IngestionService._ensure_dirs()
@@ -153,6 +171,35 @@ app.add_middleware(
 
 
 # Ingestion Plugin Endpoints
+
+@app.get(
+    "/config/ingestion",
+    summary="Get ingestion configuration",
+    description="""Get configuration values for ingestion monitoring.
+    
+    Returns configuration such as:
+    - refresh_rate: How often (in seconds) the frontend should poll job status
+    
+    Example:
+    ```bash
+    curl -X GET 'http://localhost:9090/config/ingestion'
+    ```
+    """,
+    tags=["Configuration"],
+    responses={
+        200: {"description": "Configuration values"}
+    }
+)
+async def get_ingestion_config():
+    """Get ingestion configuration values.
+    
+    Returns:
+        Dictionary with configuration values
+    """
+    return {
+        "refresh_rate": int(os.getenv("INGESTION_JOB_REFRESH_RATE", "3"))
+    }
+
 
 @app.get(
     "/ingestion/plugins",

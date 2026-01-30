@@ -14,11 +14,13 @@ from database.models import FileRegistry, FileStatus # Needed for ingest backgro
 
 # Schema imports
 from schemas.collection import (
-    CollectionCreate, 
-    CollectionResponse, 
+    CollectionCreate,
+    CollectionResponse,
     CollectionList,
     CollectionCreateResponse,
-    EmbeddingsModel
+    EmbeddingsModel,
+    BulkUpdateEmbeddingsRequest,
+    BulkUpdateEmbeddingsResponse
 )
 from schemas.ingestion import (
     IngestURLRequest, 
@@ -198,7 +200,8 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             result = IngestionService.add_documents_to_collection(
                 db=db_background,
                 collection_id=collection_id,
-                documents=documents
+                documents=documents,
+                file_registry_id=file_registry_id
             )
         except Exception as e:
             raise Exception(f"Failed to add documents to collection: {str(e)}")
@@ -362,7 +365,8 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
         result = IngestionService.add_documents_to_collection(
             db=db_background,
             collection_id=collection_id,
-            documents=documents
+            documents=documents,
+            file_registry_id=file_registry_id
         )
         
         # Mark as completed
@@ -654,6 +658,89 @@ async def list_collections(
         owner=owner,
         visibility=visibility
     )
+
+
+# Bulk update embeddings API key for all collections of an owner
+@router.put(
+    "/owner/{owner}/embeddings",
+    response_model=BulkUpdateEmbeddingsResponse,
+    summary="Bulk update embeddings API key for owner",
+    description="""Update the embeddings API key for all collections belonging to an owner.
+
+    This endpoint updates the `apikey` field in the `embeddings_model` configuration
+    for ALL collections owned by the specified owner (organization).
+
+    **Note:** Only the API key is updated. Other fields like model name, vendor, and endpoint remain unchanged.
+
+    Example:
+    ```bash
+    curl -X PUT 'http://localhost:9090/collections/owner/1/embeddings' \\
+      -H 'Authorization: Bearer 0p3n-w3bu!' \\
+      -H 'Content-Type: application/json' \\
+      -d '{
+        "embeddings_model": {
+          "apikey": "sk-test-direct-update"
+        }
+      }'
+    ```
+
+    Response:
+    ```json
+    {
+      "total": 4,
+      "updated": 4,
+      "failed": 0,
+      "collections": [
+        {"id": 1, "name": "convocatoria_ikasiker"},
+        {"id": 3, "name": "test_main"},
+        {"id": 4, "name": "youtubeassistant"},
+        {"id": 5, "name": "ikasiker_test"}
+      ]
+    }
+    ```
+    """,
+    tags=["Collections"],
+    responses={
+        200: {"description": "API keys updated successfully"},
+        401: {"description": "Unauthorized - Invalid or missing authentication token"},
+        500: {"description": "Server error during bulk update"}
+    }
+)
+async def bulk_update_embeddings_apikey(
+    owner: str,
+    request: BulkUpdateEmbeddingsRequest,
+    db: Session = Depends(get_db)
+):
+    """Bulk update the embeddings API key for all collections of an owner.
+
+    Args:
+        owner: Owner identifier (e.g., organization ID)
+        request: Request body with new embeddings_model configuration
+        db: Database session
+
+    Returns:
+        Bulk update results with total, updated, failed counts and list of updated collections
+
+    Raises:
+        HTTPException: If the update operation fails
+    """
+    # Extract the API key from the request
+    apikey = request.embeddings_model.apikey
+
+    if not apikey:
+        raise HTTPException(
+            status_code=400,
+            detail="API key is required in embeddings_model"
+        )
+
+    # Perform bulk update
+    result = CollectionsService.bulk_update_embeddings_apikey(
+        db=db,
+        owner=owner,
+        apikey=apikey
+    )
+
+    return result
 
 
 # Get a specific collection
