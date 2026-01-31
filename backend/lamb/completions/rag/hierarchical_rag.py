@@ -1,25 +1,157 @@
 import json
 import os
 import requests
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="RAG")
 
-def rag_processor(
-    messages: List[Dict[str, Any]],
-    assistant: Assistant = None,
-    request: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+async def _generate_optimal_query(messages: List[Dict[str, Any]], assistant: Assistant) -> str:
     """
-    Synchronous RAG processor that returns context from the knowledge base server
-    using the last user message as a query.
-    """
-    logger.info("Using simple_rag processor with assistant: %s", assistant.name if assistant else "None")
+    Use the small-fast-model to analyze the full conversation and generate
+    an optimal query for RAG retrieval.
     
-    # Log the messages passed to the processor
+    Args:
+        messages: Full conversation history
+        assistant: Assistant object with owner information
+        
+    Returns:
+        Optimized query string for RAG retrieval
+    """
+    try:
+        from lamb.completions.small_fast_model_helper import invoke_small_fast_model, is_small_fast_model_configured
+        
+        # Check if small-fast-model is configured
+        if not is_small_fast_model_configured(assistant.owner):
+            logger.info("Small-fast-model not configured, using last user message as query")
+            # Fallback: return last user message
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        # Extract text from multimodal content
+                        text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
+                        return ' '.join(text_parts)
+                    return content
+            return ""
+        
+        # Build a condensed conversation history (last 5 turns max to save tokens)
+        conversation_summary = []
+        recent_messages = messages[-10:] if len(messages) > 10 else messages
+        
+        for msg in recent_messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            
+            # Handle multimodal content
+            if isinstance(content, list):
+                text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
+                content = ' '.join(text_parts)
+            
+            # Truncate very long messages
+            if len(content) > 500:
+                content = content[:500] + "..."
+            
+            conversation_summary.append(f"{role.upper()}: {content}")
+        
+        conversation_text = "\n".join(conversation_summary)
+        
+        # Create prompt for query optimization
+        system_prompt = """You are a query optimization assistant for a RAG (Retrieval-Augmented Generation) system.
+
+Your task is to analyze the conversation history and generate an optimal search query that will retrieve the most relevant documents from a knowledge base.
+
+Guidelines:
+1. Consider the full conversation context, not just the last message
+2. Identify the core information need
+3. Include relevant keywords and concepts
+4. If the conversation references previous topics, incorporate them
+5. Make the query specific and focused
+6. Keep the query concise (1-3 sentences max)
+7. Return ONLY the optimized query, nothing else
+
+Example:
+CONVERSATION:
+USER: What is photosynthesis?
+ASSISTANT: Photosynthesis is the process by which plants convert light energy into chemical energy.
+USER: How does it work in detail?
+
+OPTIMAL QUERY: detailed explanation of photosynthesis process mechanism light energy conversion chlorophyll
+
+Now generate the optimal query for the following conversation:"""
+
+        user_prompt = f"""CONVERSATION:
+{conversation_text}
+
+OPTIMAL QUERY:"""
+
+        # Invoke small-fast-model
+        enhancement_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        logger.info("🔍 Generating optimal query using small-fast-model...")
+        logger.debug(f"Query optimization context: {len(recent_messages)} messages")
+
+        response = await invoke_small_fast_model(
+            messages=enhancement_messages,
+            assistant_owner=assistant.owner,
+            stream=False
+        )
+
+        # Extract the optimized query from response
+        optimized_query = ""
+        if isinstance(response, dict):
+            if 'choices' in response and len(response['choices']) > 0:
+                optimized_query = response['choices'][0]['message']['content'].strip()
+            elif 'message' in response:
+                optimized_query = response['message'].get('content', '').strip()
+
+        if optimized_query:
+            logger.info(f"✅ Optimized query generated: {optimized_query[:100]}...")
+            logger.debug(f"Full optimized query: {optimized_query}")
+            return optimized_query
+        else:
+            logger.warning("Empty response from small-fast-model, falling back to last user message")
+            # Fallback to last user message
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
+                        return ' '.join(text_parts)
+                    return content
+            return ""
+            
+    except Exception as e:
+        logger.error(f"Error generating optimal query: {e}", exc_info=True)
+        # Fallback: return last user message
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
+                    return ' '.join(text_parts)
+                return content
+        return ""
+
+async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None, request: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Hierarchical RAG processor with parent-child chunking support.
+    
+    This processor combines context-aware query optimization with parent-child chunking:
+    - Full conversation history awareness (like context_aware_rag)
+    - Multi-turn context tracking
+    - Semantic query enhancement using small-fast-model
+    - Uses parent_child_query plugin to return parent chunks for better structural understanding
+    - Optimal for queries like "How many steps?", "List all X", "What is in section Y?"
+    """
+    logger.info("Using hierarchical_rag processor with assistant: %s", assistant.name if assistant else "None")
+    
+    # Print the messages passed to the processor
     logger.debug("=== MESSAGES ===")
     try:
         logger.debug(f"Messages count: {len(messages)}")
@@ -48,14 +180,24 @@ def rag_processor(
     
     # Log the assistant dictionary
     logger.debug(f"Assistant Dictionary: {json.dumps(assistant_dict, indent=2)}")
-    # Extract the last user message
-    last_user_message = ""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            last_user_message = msg.get("content", "")
-            break
+
+    # Generate optimal query from full conversation context
+    logger.info("Analyzing conversation context for optimal query generation...")
+    optimal_query = await _generate_optimal_query(messages, assistant)
     
-    logger.debug(f"Last user message: {last_user_message}")
+    if not optimal_query:
+        # Fallback: extract last user message
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    text_parts = [item.get('text', '') for item in content if item.get('type') == 'text']
+                    optimal_query = ' '.join(text_parts)
+                else:
+                    optimal_query = content
+                break
+    
+    logger.info(f"Query for RAG retrieval: {optimal_query}")
 
     # Check if we have what we need to make a query
     if not assistant or not hasattr(assistant, 'RAG_collections') or not assistant.RAG_collections:
@@ -67,8 +209,8 @@ def rag_processor(
             "assistant_data": assistant_dict
         }
     
-    if not last_user_message:
-        error_message = "No user message found to use for the query"
+    if not optimal_query:
+        error_message = "No query could be generated from the conversation"
         logger.error(f"RAG processing failed: {error_message}")
         return {
             "context": error_message,
@@ -93,6 +235,10 @@ def rag_processor(
     
     # Get the top_k value or use a default
     top_k = getattr(assistant, 'RAG_Top_k', 3)
+    
+    # Hierarchical RAG always uses parent_child_query plugin for better context
+    query_plugin = 'parent_child_query'
+    logger.info(f"Hierarchical RAG processor using query plugin: {query_plugin}")
     
     # Setup for KB server API requests - use organization-specific configuration
     KB_SERVER_URL = None
@@ -126,19 +272,19 @@ def rag_processor(
         if not KB_SERVER_URL:
             raise ValueError("LAMB_KB_SERVER environment variable is required")
         KB_API_KEY = os.getenv('LAMB_KB_SERVER_TOKEN') or config.LAMB_BEARER_TOKEN
-        logger.info(f"Using environment variable configuration (fallback for {assistant.owner})")
+        print(f"🔧 [RAG/KB] Using environment variable configuration (fallback for {assistant.owner})")
         logger.info("Using environment variable KB configuration")
 
-    logger.info(f"Server: {KB_SERVER_URL} | Config: {config_source} | Organization: {org_name} | Collections: {len(collections)}")
+    print(f"🚀 [RAG/KB] Server: {KB_SERVER_URL} | Config: {config_source} | Organization: {org_name} | Collections: {len(collections)}")
     
     headers = {
         "Authorization": f"Bearer {KB_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    # Prepare the payload (same for all collections)
+    # Prepare the payload (same for all collections) - using optimized query
     payload = {
-        "query_text": last_user_message,
+        "query_text": optimal_query,
         "top_k": top_k,
         "threshold": 0.0,
         "plugin_params": {}
@@ -151,25 +297,27 @@ def rag_processor(
     try:
         # Query each collection
         for collection_id in collections:
-            logger.debug(f"Querying collection: {collection_id}")
-
-            url = f"{KB_SERVER_URL}/collections/{collection_id}/query"
-
-            logger.debug(f"URL: {url}")
-            logger.debug(f"Payload: {json.dumps(payload, indent=2)}")
+            print(f"\n===== QUERYING COLLECTION: {collection_id} =====")
+            
+            # Use parent_child_query plugin for hierarchical context
+            url = f"{KB_SERVER_URL}/collections/{collection_id}/query?plugin_name={query_plugin}"
+            
+            print(f"URL: {url}")
+            print(f"Query plugin: {query_plugin} (hierarchical parent-child)")
+            print(f"Payload: {json.dumps(payload, indent=2)}")
             
             try:
                 # Make the request to the KB server
                 response = requests.post(url, headers=headers, json=payload)
                 
-                logger.debug(f"Status Code: {response.status_code}")
-
+                print(f"Status Code: {response.status_code}")
+                
                 if response.status_code == 200:
                     # Parse the JSON response
                     raw_response = response.json()
-                    # Log the response summary
-                    logger.debug(f"Response Summary: {len(raw_response.get('documents', []))} documents returned")
-                    logger.debug(f"Raw Response: {json.dumps(raw_response, indent=2)}")
+                    # Print the entire raw response
+                    print(f"Response Summary: {len(raw_response.get('documents', []))} documents returned")
+                    print(f"Raw Response:\n{json.dumps(raw_response, indent=2)}")
                     
                     # Store the response
                     all_responses[collection_id] = {
@@ -179,23 +327,23 @@ def rag_processor(
                     any_success = True
                 else:
                     error_text = response.text
-                    logger.error(f"KB server error: {error_text}")
+                    print(f"Error: {error_text}")
                     all_responses[collection_id] = {
                         "status": "error",
                         "error": f"Status code: {response.status_code}, Message: {error_text}"
                     }
             except Exception as collection_error:
                 error_msg = f"Error querying collection {collection_id}: {str(collection_error)}"
-                logger.error(error_msg)
+                print(f"Error: {error_msg}")
                 all_responses[collection_id] = {
                     "status": "error",
                     "error": error_msg
                 }
-
-            logger.debug("Query completed")
-
-        # Log a summary of all responses
-        logger.debug("Summary of all queries")
+            
+            print("===========================================\n")
+        
+        # Print a summary of all responses
+        print("\n===== SUMMARY OF ALL QUERIES =====")
         sources = []
         contexts = []
         
@@ -204,7 +352,7 @@ def rag_processor(
             if status == "success":
                 documents = result["data"].get("documents", [])
                 doc_count = len(documents)
-                logger.info(f"Collection {cid}: {status} - {doc_count} documents")
+                print(f"Collection {cid}: {status} - {doc_count} documents")
                 
                 # Extract file_urls and create source URLs
                 # Supports both legacy (file_url) and new (original_file_url, markdown_file_url) metadata
@@ -258,9 +406,10 @@ def rag_processor(
                     if "data" in doc:
                         contexts.append(doc["data"])
             else:
-                logger.warning(f"Collection {cid}: {status} - {result.get('error', 'Unknown error')}")
-
-        logger.info(f"Extracted {len(sources)} source URLs")
+                print(f"Collection {cid}: {status} - {result.get('error', 'Unknown error')}")
+        
+        print("===================================\n")
+        print(f"Extracted {len(sources)} source URLs")
         
         # Combine contexts into a single string
         combined_context = "\n\n".join(contexts) if contexts else ""

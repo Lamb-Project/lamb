@@ -5,7 +5,7 @@
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore'; // Import the store
 	import { tick } from 'svelte'; // Import tick for $effect timing
 	import { get } from 'svelte/store'; // Import get
-	import { getUserKnowledgeBases, getSharedKnowledgeBases, getQueryPlugins } from '$lib/services/knowledgeBaseService'; // Import KB service
+	import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { goto } from '$app/navigation'; // Import for redirect
@@ -59,15 +59,12 @@
 	let availableModels = $state([]);
 	/** @type {string[]} */
 	let ragProcessors = $state([]);
-	/** @type {Array<{name: string, description: string}>} */
-	let queryPlugins = $state([]);
 
 	// Selected values for dropdowns
 	let selectedPromptProcessor = $state('');
 	let selectedConnector = $state('');
 	let selectedLlm = $state('');
 	let selectedRagProcessor = $state('');
-	let selectedQueryPlugin = $state('simple_query'); // Default to simple_query
 
 	// Vision capability
 	let visionEnabled = $state(false);
@@ -303,9 +300,6 @@
 				connectorsList = Object.keys(capabilities.connectors || {});
 				ragProcessors = capabilities.rag_processors || [];
 				// console.log('Options populated:', { promptProcessors, connectorsList, ragProcessors });
-				
-				// Load query plugins for RAG configuration
-				loadQueryPlugins();
 
 				configInitialized = true; 
 
@@ -446,10 +440,6 @@
 			
 			selectedRagProcessor = data.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 			console.log('[populateFormFields] Set selectedRagProcessor:', selectedRagProcessor);
-			
-			// Load query plugin from metadata (defaults to simple_query)
-			selectedQueryPlugin = data.query_plugin || 'simple_query';
-			console.log('[populateFormFields] Set selectedQueryPlugin:', selectedQueryPlugin);
 			
 			// Update available models based on the selected connector
 			updateAvailableModels();
@@ -639,29 +629,6 @@
 			// For image generation connectors, auto-enable image generation
 			imageGenerationEnabled = true;
 			console.log('Auto-enabled image generation for connector:', selectedConnector);
-		}
-	}
-
-	/** Loads available query plugins from the KB server */
-	async function loadQueryPlugins() {
-		console.log('Loading query plugins...');
-		try {
-			const plugins = await getQueryPlugins();
-			queryPlugins = plugins || [];
-			console.log('Loaded query plugins:', queryPlugins);
-			
-			// If we don't have a selected plugin yet, default to simple_query
-			if (!selectedQueryPlugin && queryPlugins.length > 0) {
-				selectedQueryPlugin = 'simple_query';
-			}
-		} catch (err) {
-			console.warn('Error loading query plugins:', err);
-			// Set default plugins if fetch fails
-			queryPlugins = [
-				{ name: 'simple_query', description: 'Simple similarity search' },
-				{ name: 'parent_child_query', description: 'Parent-child chunking query (returns parent context)' }
-			];
-			selectedQueryPlugin = 'simple_query';
 		}
 	}
 
@@ -1132,7 +1099,6 @@
 			llm: selectedLlm,
 			rag_processor: selectedRagProcessor,
 			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : '',
-			query_plugin: selectedQueryPlugin, // Add query plugin
 			capabilities: {
 				vision: visionEnabled,
 				image_generation: imageGenerationEnabled
@@ -1963,29 +1929,6 @@
 											   disabled={false}
 											   class="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed">
 										<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.ragTopK.help', { default: 'Number of relevant documents to retrieve (1-10).' })}</p>
-									</div>
-									
-									<!-- Query Plugin Selector -->
-									<div>
-										<label for="query-plugin" class="block text-sm font-medium text-gray-700">Query Plugin</label>
-										<select id="query-plugin" bind:value={selectedQueryPlugin} onchange={handleFieldChange}
-												class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white">
-											{#if queryPlugins.length > 0}
-												{#each queryPlugins as plugin}
-													<option value={plugin.name}>{plugin.name} - {plugin.description}</option>
-												{/each}
-											{:else}
-												<option value="simple_query">simple_query - Simple similarity search</option>
-												<option value="parent_child_query">parent_child_query - Parent-child chunking (better for structural queries)</option>
-											{/if}
-										</select>
-										<p class="mt-1 text-xs text-gray-500">
-											{#if selectedQueryPlugin === 'parent_child_query'}
-												🔍 Parent-child query returns larger context chunks for better understanding of document structure. Works best with files ingested using hierarchical_ingest.
-											{:else}
-												🔍 Simple query performs standard similarity search on chunks.
-											{/if}
-										</p>
 									</div>
 								{/if}
 

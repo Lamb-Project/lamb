@@ -236,16 +236,6 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
     # Get the top_k value or use a default
     top_k = getattr(assistant, 'RAG_Top_k', 3)
     
-    # Extract query plugin from assistant metadata (defaults to simple_query for backward compatibility)
-    query_plugin = 'simple_query'  # Default
-    try:
-        if assistant and hasattr(assistant, 'metadata'):
-            metadata_json = json.loads(assistant.metadata)
-            query_plugin = metadata_json.get('query_plugin', 'simple_query')
-            logger.info(f"Using query plugin from assistant metadata: {query_plugin}")
-    except (json.JSONDecodeError, Exception) as e:
-        logger.warning(f"Could not parse assistant metadata for query_plugin, using default: {e}")
-    
     # Setup for KB server API requests - use organization-specific configuration
     KB_SERVER_URL = None
     KB_API_KEY = None
@@ -305,11 +295,9 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         for collection_id in collections:
             print(f"\n===== QUERYING COLLECTION: {collection_id} =====")
             
-            # Build URL with query plugin parameter
-            url = f"{KB_SERVER_URL}/collections/{collection_id}/query?plugin_name={query_plugin}"
+            url = f"{KB_SERVER_URL}/collections/{collection_id}/query"
             
             print(f"URL: {url}")
-            print(f"Query plugin: {query_plugin}")
             print(f"Payload: {json.dumps(payload, indent=2)}")
             
             try:
