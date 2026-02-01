@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Test script for hierarchical parent-child chunking in markitdown_plus plugin.
+Test script for markitdown_hierarchical_ingest plugin.
 
 This test validates:
-1. Hierarchical chunking mode works for converted markdown documents
+1. MarkItDown conversion combined with hierarchical parent-child chunking
 2. Document outline is generated and appended when enabled
 3. Parent-child metadata is correctly structured
-4. Works with different file formats (via markdown conversion)
+4. Works with any file format supported by MarkItDown
 """
 
 import sys
@@ -17,7 +17,7 @@ from pathlib import Path
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from plugins.markitdown_plus_ingest import MarkItDownPlusPlugin
+from plugins.markitdown_hierarchical_ingest import MarkItDownHierarchicalIngestPlugin
 
 
 def create_test_markdown_file():
@@ -78,9 +78,9 @@ You now have a solid foundation in Python programming.
 
 
 def test_hierarchical_chunking():
-    """Test the hierarchical chunking mode in markitdown_plus plugin."""
+    """Test the hierarchical chunking in markitdown_hierarchical_ingest plugin."""
     print("=" * 80)
-    print("TESTING MARKITDOWN_PLUS HIERARCHICAL CHUNKING")
+    print("TESTING MARKITDOWN_HIERARCHICAL_INGEST PLUGIN")
     print("=" * 80)
     
     # Create test file
@@ -88,7 +88,7 @@ def test_hierarchical_chunking():
     print(f"\n✓ Created test file: {test_file}")
     
     # Initialize plugin
-    plugin = MarkItDownPlusPlugin()
+    plugin = MarkItDownHierarchicalIngestPlugin()
     print(f"✓ Initialized plugin: {plugin.name}")
     
     # Test 1: Hierarchical mode WITHOUT outline
@@ -98,7 +98,6 @@ def test_hierarchical_chunking():
     
     results_no_outline = plugin.ingest(
         test_file,
-        chunking_mode="hierarchical",
         parent_chunk_size=2000,
         child_chunk_size=400,
         child_chunk_overlap=50,
@@ -127,7 +126,6 @@ def test_hierarchical_chunking():
     
     results_with_outline = plugin.ingest(
         test_file,
-        chunking_mode="hierarchical",
         parent_chunk_size=2000,
         child_chunk_size=400,
         child_chunk_overlap=50,
@@ -277,13 +275,6 @@ def test_hierarchical_chunking():
     
     params = plugin.get_parameters()
     
-    # Check hierarchical mode exists
-    if "hierarchical" in params.get("chunking_mode", {}).get("enum", []):
-        print("✓ 'hierarchical' chunking mode is available")
-    else:
-        print("✗ FAIL: 'hierarchical' mode not in chunking_mode options")
-        return False
-    
     # Check hierarchical parameters exist
     hierarchical_params = [
         "parent_chunk_size",
@@ -313,7 +304,7 @@ def test_hierarchical_chunking():
         pass
     
     print("\n" + "=" * 80)
-    print("ALL MARKITDOWN_PLUS HIERARCHICAL TESTS PASSED")
+    print("ALL MARKITDOWN_HIERARCHICAL_INGEST TESTS PASSED")
     print("=" * 80)
     
     return True
