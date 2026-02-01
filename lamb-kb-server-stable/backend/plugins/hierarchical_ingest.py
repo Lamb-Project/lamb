@@ -58,6 +58,12 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 "description": "Whether to split parent chunks by Markdown headers",
                 "default": True,
                 "required": False
+            },
+            "include_outline": {
+                "type": "boolean",
+                "description": "Whether to append a document outline section at the end",
+                "default": False,
+                "required": False
             }
         }
     
@@ -102,6 +108,58 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 sections.insert(0, ("Preamble", preamble))
         
         return sections
+    
+    def _extract_headers_for_outline(self, content: str) -> List[Tuple[int, str]]:
+        """Extract all headers from Markdown content for document outline.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            List of tuples (header_level, header_text) where header_level is the number of # symbols
+        """
+        # Pattern to match Markdown headers (#, ##, ###, etc.)
+        header_pattern = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
+        
+        headers = []
+        for match in header_pattern.finditer(content):
+            header_level = len(match.group(1))  # Number of # symbols
+            header_text = match.group(2).strip()
+            headers.append((header_level, header_text))
+        
+        return headers
+    
+    def _generate_document_outline(self, content: str) -> str:
+        """Generate a hierarchical document outline section.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            A formatted document outline as a string
+        """
+        headers = self._extract_headers_for_outline(content)
+        
+        if not headers:
+            return ""
+        
+        outline_lines = [
+            "",
+            "Document Outline",
+            "================",
+            ""
+        ]
+        
+        # Track the minimum header level to use as the base level
+        min_level = min(h[0] for h in headers) if headers else 1
+        
+        for header_level, header_text in headers:
+            # Calculate indent level relative to the minimum level
+            indent_level = header_level - min_level
+            indent = "  " * indent_level
+            outline_lines.append(f"{indent}* <a>{header_text}</a>")
+        
+        return "\n".join(outline_lines)
     
     def _create_parent_chunks(self, content: str, parent_chunk_size: int, 
                              split_by_headers: bool) -> List[Dict[str, Any]]:
@@ -199,6 +257,7 @@ class HierarchicalIngestPlugin(IngestPlugin):
             child_chunk_size: Size of child chunks (default: 400)
             child_chunk_overlap: Overlap between child chunks (default: 50)
             split_by_headers: Whether to split parent chunks by headers (default: True)
+            include_outline: Whether to append a document outline section at the end (default: False)
             file_url: URL to access the file (default: None)
             
         Returns:
@@ -216,6 +275,7 @@ class HierarchicalIngestPlugin(IngestPlugin):
         child_chunk_size = kwargs.get("child_chunk_size", 400)
         child_chunk_overlap = kwargs.get("child_chunk_overlap", 50)
         split_by_headers = kwargs.get("split_by_headers", True)
+        include_outline = kwargs.get("include_outline", False)
         file_url = kwargs.get("file_url", "")
         
         # Read the file
@@ -224,6 +284,12 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 content = f.read()
         except Exception as e:
             raise RuntimeError(f"Failed to read file: {str(e)}")
+        
+        # Generate and append document outline if requested
+        if include_outline:
+            outline = self._generate_document_outline(content)
+            if outline:
+                content = content + "\n\n" + outline
         
         # Get file metadata
         file_path_obj = Path(file_path)
