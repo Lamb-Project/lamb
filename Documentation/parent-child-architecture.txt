@@ -1,0 +1,224 @@
+# Parent-Child Chunking Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         DOCUMENT INGESTION                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+                        Markdown Document
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  Split by Headers    │
+                    │  (##, ###)           │
+                    └──────────────────────┘
+                               │
+                               ↓
+        ┌──────────────────────┴──────────────────────┐
+        │                                              │
+        ↓                                              ↓
+┌───────────────┐                            ┌───────────────┐
+│ Parent Chunk 0│                            │ Parent Chunk 1│
+│ ~2000 chars   │                            │ ~2000 chars   │
+│               │                            │               │
+│ ## Step 1...  │                            │ ## Step 2...  │
+└───────────────┘                            └───────────────┘
+        │                                              │
+        ↓                                              ↓
+  Split Further                                  Split Further
+  (child chunks)                                (child chunks)
+        │                                              │
+    ┌───┴───┐                                    ┌────┴────┐
+    ↓       ↓                                    ↓         ↓
+┌─────┐ ┌─────┐                            ┌─────┐   ┌─────┐
+│Child│ │Child│                            │Child│   │Child│
+│  0  │ │  1  │                            │  0  │   │  1  │
+│~400 │ │~400 │                            │~400 │   │~400 │
+│chars│ │chars│                            │chars│   │chars│
+└─────┘ └─────┘                            └─────┘   └─────┘
+    ↓       ↓                                    ↓         ↓
+  Embed   Embed                                Embed     Embed
+    │       │                                    │         │
+    └───┬───┘                                    └────┬────┘
+        ↓                                             ↓
+┌───────────────┐                            ┌───────────────┐
+│ Vector Store  │                            │ Vector Store  │
+│               │                            │               │
+│ + metadata:   │                            │ + metadata:   │
+│   parent_text │                            │   parent_text │
+│   parent_id   │                            │   parent_id   │
+│   child_id    │                            │   child_id    │
+└───────────────┘                            └───────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         QUERY PROCESSING                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+                         User Query
+                  "How many steps are there?"
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  Semantic Search     │
+                    │  (using child chunks)│
+                    └──────────────────────┘
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  Match Found:        │
+                    │  Child Chunk 0       │
+                    │  Similarity: 0.85    │
+                    └──────────────────────┘
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  Extract from        │
+                    │  metadata:           │
+                    │  parent_text field   │
+                    └──────────────────────┘
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  Return to LLM:      │
+                    │  Full Parent Chunk   │
+                    │  ~2000 chars         │
+                    │  "## Step 1..."      │
+                    └──────────────────────┘
+                               │
+                               ↓
+                    ┌──────────────────────┐
+                    │  LLM has full        │
+                    │  section context     │
+                    │  → Better answers!   │
+                    └──────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     METADATA STRUCTURE                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+Child Chunk Metadata:
+{
+  "text": "First, ensure you have Python 3.8...",  ← 400 chars (embedded)
+  
+  "metadata": {
+    "parent_chunk_id": 0,                          ← Which parent
+    "child_chunk_id": 0,                           ← Which child in parent
+    "chunk_level": "child",                        ← Type marker
+    
+    "parent_text": "## Step 1: Install...",       ← Full parent (2000 chars)
+    "section_title": "Step 1: Install Deps",      ← From header
+    "children_in_parent": 2,                       ← Siblings count
+    
+    "chunk_index": 0,                              ← Global position
+    "chunk_count": 10,                             ← Total chunks
+    "chunking_strategy": "hierarchical_parent_child",
+    
+    "filename": "setup-guide.md",
+    "source": "/path/to/file.md"
+  }
+}
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     COMPARISON DIAGRAM                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+Standard Chunking:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Document: "5-Step Setup Guide"                                      │
+├─────────────────────────────────────────────────────────────────────┤
+│ Query: "How many steps?"                                            │
+├─────────────────────────────────────────────────────────────────────┤
+│ Chunks Returned:                                                    │
+│   1. "...dependencies using pip. Run the..."                        │
+│   2. "...configure your environment variables..."                   │
+│   3. "...initialize the database with alembic..."                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ Result: ❌ LLM cannot determine number of steps                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+Parent-Child Chunking:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Document: "5-Step Setup Guide"                                      │
+├─────────────────────────────────────────────────────────────────────┤
+│ Query: "How many steps?"                                            │
+├─────────────────────────────────────────────────────────────────────┤
+│ Chunks Returned:                                                    │
+│   1. "## Step 1: Install Dependencies                               │
+│       First, ensure you have Python 3.8..."                         │
+│   2. "## Step 2: Configure Environment Variables                    │
+│       Create a .env file in the project..."                         │
+│   3. "## Step 3: Initialize Database                                │
+│       Run the migration scripts..."                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│ Result: ✅ LLM sees headers, can count steps accurately             │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     SYSTEM INTEGRATION                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌──────────────┐      Upload File       ┌────────────────────┐
+│              │ ───────────────────────>│                    │
+│   Frontend   │   + plugin_name:       │   KB Server        │
+│              │     "hierarchical_     │                    │
+│   (Svelte)   │      ingest"           │   (FastAPI)        │
+│              │                         │                    │
+│              │<────────────────────────│                    │
+└──────────────┘      Job ID            └────────────────────┘
+                                                  │
+                                                  ↓
+                                         ┌────────────────────┐
+                                         │ hierarchical_      │
+                                         │ ingest.py          │
+                                         │                    │
+                                         │ 1. Split by headers│
+                                         │ 2. Create parents  │
+                                         │ 3. Create children │
+                                         │ 4. Store metadata  │
+                                         └────────────────────┘
+                                                  │
+                                                  ↓
+                                         ┌────────────────────┐
+                                         │ ChromaDB           │
+                                         │                    │
+                                         │ Stores:            │
+                                         │ - Child embeddings │
+                                         │ - Full metadata    │
+                                         └────────────────────┘
+
+┌──────────────┐      User Query        ┌────────────────────┐
+│              │ ───────────────────────>│                    │
+│   LAMB RAG   │   "How many steps?"    │   KB Server        │
+│              │                         │                    │
+│  (Backend)   │                         │   /query endpoint  │
+│              │                         │                    │
+│              │<────────────────────────│                    │
+└──────────────┘   Parent chunks        └────────────────────┘
+       │                                          │
+       │                                          ↓
+       │                                 ┌────────────────────┐
+       │                                 │ parent_child_      │
+       │                                 │ query.py           │
+       │                                 │                    │
+       │                                 │ 1. Search children │
+       │                                 │ 2. Get parent_text │
+       │                                 │ 3. Return parents  │
+       │                                 └────────────────────┘
+       ↓
+┌──────────────┐
+│   LLM        │
+│              │
+│ GPT-4 /      │
+│ Mistral /    │
+│ Local Model  │
+│              │
+│ Receives     │
+│ parent chunks│
+│ with full    │
+│ context      │
+└──────────────┘
+```
