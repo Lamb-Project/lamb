@@ -268,7 +268,7 @@ def test_outline_generation():
             print("✗ FAIL: Parameter type should be boolean")
             return False
             
-        if outline_param.get("default") == False:
+        if outline_param.get("default") is False:
             print("✓ Default value is False (backward compatible)")
         else:
             print("⚠ Warning: Default value is not False")
