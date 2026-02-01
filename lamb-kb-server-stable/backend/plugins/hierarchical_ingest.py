@@ -292,6 +292,9 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 **child_data["parent_metadata"]
             })
             
+            # Filter out None values from metadata (ChromaDB doesn't accept them)
+            chunk_metadata = {k: v for k, v in chunk_metadata.items() if v is not None}
+            
             result.append({
                 "text": child_data["text"],  # Child chunk used for embedding/search
                 "metadata": chunk_metadata
