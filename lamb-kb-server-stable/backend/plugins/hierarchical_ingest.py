@@ -133,19 +133,21 @@ class HierarchicalIngestPlugin(IngestPlugin):
                     chunks = splitter.split_text(section_content)
                     
                     for i, chunk in enumerate(chunks):
+                        chunk_metadata = {
+                            "section_title": section_title
+                        }
+                        # Only add section_part if there are multiple chunks
+                        if len(chunks) > 1:
+                            chunk_metadata["section_part"] = i + 1
                         parent_chunks.append({
                             "text": chunk,
-                            "metadata": {
-                                "section_title": section_title,
-                                "section_part": i + 1 if len(chunks) > 1 else None
-                            }
+                            "metadata": chunk_metadata
                         })
                 else:
                     parent_chunks.append({
                         "text": section_content,
                         "metadata": {
-                            "section_title": section_title,
-                            "section_part": None
+                            "section_title": section_title
                         }
                     })
         else:
@@ -242,8 +244,8 @@ class HierarchicalIngestPlugin(IngestPlugin):
         # Step 1: Create parent chunks
         parent_chunks = self._create_parent_chunks(content, parent_chunk_size, split_by_headers)
         
-        # Step 2: Create child chunks from each parent chunk and build result
-        result = []
+        # Step 2: First pass - create all child chunks to get total count
+        all_child_data = []
         global_child_index = 0
         
         for parent_index, parent_chunk in enumerate(parent_chunks):
@@ -255,35 +257,48 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 parent_text, parent_index, child_chunk_size, child_chunk_overlap
             )
             
-            # Create a document for each child chunk
+            # Store child data for second pass
             for child_index, child_text in enumerate(child_texts):
-                chunk_metadata = base_metadata.copy()
-                chunk_metadata.update({
-                    # Parent-child relationship
-                    "parent_chunk_id": parent_index,
-                    "child_chunk_id": child_index,
-                    "chunk_level": "child",
-                    "parent_text": parent_text,  # Store full parent context
-                    
-                    # Global indexing
-                    "chunk_index": global_child_index,
-                    "chunk_count": None,  # Will be updated after all chunks are created
+                all_child_data.append({
+                    "text": child_text,
+                    "parent_text": parent_text,
+                    "parent_index": parent_index,
+                    "child_index": child_index,
+                    "global_child_index": global_child_index,
                     "children_in_parent": len(child_texts),
-                    
-                    # Additional parent metadata
-                    **parent_metadata
+                    "parent_metadata": parent_metadata
                 })
-                
-                result.append({
-                    "text": child_text,  # Child chunk used for embedding/search
-                    "metadata": chunk_metadata
-                })
-                
                 global_child_index += 1
         
-        # Update chunk_count in all metadata
-        for chunk in result:
-            chunk["metadata"]["chunk_count"] = len(result)
+        # Step 3: Second pass - create result with correct chunk_count
+        result = []
+        total_chunks = len(all_child_data)
+        
+        for child_data in all_child_data:
+            chunk_metadata = base_metadata.copy()
+            chunk_metadata.update({
+                # Parent-child relationship
+                "parent_chunk_id": child_data["parent_index"],
+                "child_chunk_id": child_data["child_index"],
+                "chunk_level": "child",
+                "parent_text": child_data["parent_text"],  # Store full parent context
+                
+                # Global indexing
+                "chunk_index": child_data["global_child_index"],
+                "chunk_count": total_chunks,
+                "children_in_parent": child_data["children_in_parent"],
+                
+                # Additional parent metadata
+                **child_data["parent_metadata"]
+            })
+            
+            # Filter out None values from metadata (ChromaDB doesn't accept them)
+            chunk_metadata = {k: v for k, v in chunk_metadata.items() if v is not None}
+            
+            result.append({
+                "text": child_data["text"],  # Child chunk used for embedding/search
+                "metadata": chunk_metadata
+            })
         
         # Write the result to a JSON file for debugging/inspection
         output_file_path = file_path_obj.with_suffix(file_path_obj.suffix + '.hierarchical.json')
