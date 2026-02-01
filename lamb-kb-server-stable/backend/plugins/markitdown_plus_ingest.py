@@ -4,8 +4,8 @@ MarkItDown Plus ingestion plugin for various file formats.
 This is an enhanced version of markitdown_ingest that provides:
 - LLM-powered image descriptions using OpenAI vision models (optional)
 - Image extraction and storage with proper URL references
-- Multiple chunking strategies (standard, by_page, by_section)
-- Hierarchical section chunking with context preservation
+- Multiple chunking strategies (standard, by_page, by_section, hierarchical)
+- Hierarchical parent-child chunking with document outline support
 - Cleaner output (single .md file)
 - Detailed progress reporting
 - Comprehensive processing statistics
@@ -169,8 +169,8 @@ class MarkItDownPlusPlugin(IngestPlugin):
     Key features:
     - LLM-powered image descriptions (optional, requires OpenAI API key)
     - Image extraction and storage with accessible URLs
-    - Multiple chunking modes: standard, by_page, by_section
-    - Hierarchical section chunking with parent context preservation
+    - Multiple chunking modes: standard, by_page, by_section, hierarchical
+    - Hierarchical parent-child chunking with document outline support
     - Single .md output file
     - Detailed progress reporting
     
@@ -249,11 +249,12 @@ class MarkItDownPlusPlugin(IngestPlugin):
             "chunking_mode": {
                 "type": "string",
                 "description": "Strategy for splitting document into chunks",
-                "enum": ["standard", "by_page", "by_section"],
+                "enum": ["standard", "by_page", "by_section", "hierarchical"],
                 "enum_labels": {
                     "standard": "Standard (character-based splitting)",
                     "by_page": "By page (PDF, DOCX, PPTX only)",
-                    "by_section": "By section (split on headings)"
+                    "by_section": "By section (split on headings)",
+                    "hierarchical": "Hierarchical (parent-child with outline)"
                 },
                 "default": "standard",
                 "required": False,
@@ -336,6 +337,61 @@ class MarkItDownPlusPlugin(IngestPlugin):
                 "visible_when": {"chunking_mode": ["by_section"]},
                 "ui_hint": "number",
                 "help_text": "1 = one section per chunk. Sections from different parents are never mixed."
+            },
+            
+            # ══════════════════════════════════════════════════════════════════
+            # HIERARCHICAL MODE PARAMETERS
+            # ══════════════════════════════════════════════════════════════════
+            "parent_chunk_size": {
+                "type": "integer",
+                "description": "Size of parent chunks (larger context)",
+                "default": 2000,
+                "min": 500,
+                "max": 8000,
+                "required": False,
+                "visible_when": {"chunking_mode": ["hierarchical"]},
+                "ui_hint": "slider",
+                "help_text": "Parent chunks provide broader context for RAG queries."
+            },
+            "child_chunk_size": {
+                "type": "integer",
+                "description": "Size of child chunks (used for embedding/search)",
+                "default": 400,
+                "min": 100,
+                "max": 2000,
+                "required": False,
+                "visible_when": {"chunking_mode": ["hierarchical"]},
+                "ui_hint": "slider",
+                "help_text": "Child chunks are embedded and used for semantic search."
+            },
+            "child_chunk_overlap": {
+                "type": "integer",
+                "description": "Overlap between child chunks",
+                "default": 50,
+                "min": 0,
+                "max": 200,
+                "required": False,
+                "visible_when": {"chunking_mode": ["hierarchical"]},
+                "ui_hint": "slider",
+                "help_text": "Overlap helps maintain context across chunk boundaries."
+            },
+            "split_by_headers": {
+                "type": "boolean",
+                "description": "Split parent chunks by markdown headers",
+                "default": True,
+                "required": False,
+                "visible_when": {"chunking_mode": ["hierarchical"]},
+                "ui_hint": "checkbox",
+                "help_text": "When enabled, parent chunks align with document structure."
+            },
+            "include_outline": {
+                "type": "boolean",
+                "description": "Append a document outline (TOC) at the end",
+                "default": False,
+                "required": False,
+                "visible_when": {"chunking_mode": ["hierarchical"]},
+                "ui_hint": "checkbox",
+                "help_text": "Adds a hierarchical table of contents to improve structural queries."
             },
             
             # ══════════════════════════════════════════════════════════════════
@@ -964,6 +1020,273 @@ class MarkItDownPlusPlugin(IngestPlugin):
         
         return chunks, metadata, True
     
+    def _extract_headers_for_outline(self, content: str) -> List[Tuple[int, str]]:
+        """Extract all headers from Markdown content for document outline.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            List of tuples (header_level, header_text) where header_level is the number of # symbols
+        """
+        # Pattern to match Markdown headers (#, ##, ###, etc.)
+        header_pattern = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
+        
+        headers = []
+        for match in header_pattern.finditer(content):
+            header_level = len(match.group(1))  # Number of # symbols
+            header_text = match.group(2).strip()
+            headers.append((header_level, header_text))
+        
+        return headers
+    
+    def _generate_document_outline(self, content: str) -> str:
+        """Generate a hierarchical document outline section.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            A formatted document outline as a string
+        """
+        headers = self._extract_headers_for_outline(content)
+        
+        if not headers:
+            return ""
+        
+        outline_lines = [
+            "",
+            "Document Outline",
+            "================",
+            ""
+        ]
+        
+        # Track the minimum header level to use as the base level
+        min_level = min(h[0] for h in headers) if headers else 1
+        
+        for header_level, header_text in headers:
+            # Calculate indent level relative to the minimum level
+            indent_level = header_level - min_level
+            indent = "  " * indent_level
+            outline_lines.append(f"{indent}* <a>{header_text}</a>")
+        
+        return "\n".join(outline_lines)
+    
+    def _extract_sections_by_headers(self, content: str) -> List[Tuple[str, str]]:
+        """Extract sections from Markdown content based on headers.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            List of tuples (section_title, section_content)
+        """
+        # Pattern to match Markdown headers (## or ###)
+        header_pattern = re.compile(r'^(#{2,3})\s+(.+)$', re.MULTILINE)
+        
+        sections = []
+        matches = list(header_pattern.finditer(content))
+        
+        if not matches:
+            # No headers found, return entire content as single section
+            return [("Document", content)]
+        
+        # Extract sections between headers
+        for i, match in enumerate(matches):
+            header_level = len(match.group(1))  # Number of # symbols
+            section_title = match.group(2).strip()
+            start_pos = match.start()
+            
+            # Find end position (start of next header or end of document)
+            if i + 1 < len(matches):
+                end_pos = matches[i + 1].start()
+            else:
+                end_pos = len(content)
+            
+            section_content = content[start_pos:end_pos].strip()
+            sections.append((section_title, section_content))
+        
+        # If there's content before the first header, add it as preamble
+        if matches[0].start() > 0:
+            preamble = content[:matches[0].start()].strip()
+            if preamble:
+                sections.insert(0, ("Preamble", preamble))
+        
+        return sections
+    
+    def _create_parent_chunks(self, content: str, parent_chunk_size: int, 
+                              split_by_headers: bool) -> List[Dict[str, Any]]:
+        """Create parent chunks from content.
+        
+        Args:
+            content: The document content
+            parent_chunk_size: Maximum size for parent chunks
+            split_by_headers: Whether to split by Markdown headers
+            
+        Returns:
+            List of parent chunk dictionaries with text and metadata
+        """
+        parent_chunks = []
+        
+        if split_by_headers:
+            # Split by headers first
+            sections = self._extract_sections_by_headers(content)
+            
+            for section_title, section_content in sections:
+                # If section is larger than parent_chunk_size, split it
+                if len(section_content) > parent_chunk_size:
+                    # Use RecursiveCharacterTextSplitter for oversized sections
+                    splitter = RecursiveCharacterTextSplitter(
+                        chunk_size=parent_chunk_size,
+                        chunk_overlap=100,
+                        separators=["\n\n", "\n", " ", ""]
+                    )
+                    chunks = splitter.split_text(section_content)
+                    
+                    for i, chunk in enumerate(chunks):
+                        chunk_metadata = {
+                            "section_title": section_title
+                        }
+                        # Only add section_part if there are multiple chunks
+                        if len(chunks) > 1:
+                            chunk_metadata["section_part"] = i + 1
+                        parent_chunks.append({
+                            "text": chunk,
+                            "metadata": chunk_metadata
+                        })
+                else:
+                    parent_chunks.append({
+                        "text": section_content,
+                        "metadata": {
+                            "section_title": section_title
+                        }
+                    })
+        else:
+            # Use simple character-based splitting for parent chunks
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=parent_chunk_size,
+                chunk_overlap=100,
+                separators=["\n\n", "\n", " ", ""]
+            )
+            chunks = splitter.split_text(content)
+            
+            for chunk in chunks:
+                parent_chunks.append({
+                    "text": chunk,
+                    "metadata": {}
+                })
+        
+        return parent_chunks
+    
+    def _create_child_chunks(self, parent_text: str, parent_index: int,
+                            child_chunk_size: int, child_chunk_overlap: int) -> List[str]:
+        """Create child chunks from a parent chunk.
+        
+        Args:
+            parent_text: The parent chunk text
+            parent_index: Index of the parent chunk
+            child_chunk_size: Size of child chunks
+            child_chunk_overlap: Overlap between child chunks
+            
+        Returns:
+            List of child chunk texts
+        """
+        # Use RecursiveCharacterTextSplitter for child chunks
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=child_chunk_size,
+            chunk_overlap=child_chunk_overlap,
+            separators=["\n\n", "\n", ". ", " ", ""]
+        )
+        
+        child_chunks = splitter.split_text(parent_text)
+        return child_chunks
+    
+    def _chunk_hierarchical(self, content: str, parent_chunk_size: int = 2000,
+                           child_chunk_size: int = 400, child_chunk_overlap: int = 50,
+                           split_by_headers: bool = True, 
+                           include_outline: bool = False) -> Tuple[List[str], List[Dict], bool]:
+        """Split content using hierarchical parent-child chunking strategy.
+        
+        This implements the same strategy as hierarchical_ingest.py where:
+        - Parent chunks (larger contexts) are stored in metadata
+        - Child chunks (small sections) are used for semantic search/embedding
+        - Optionally appends a document outline for better structural understanding
+        
+        Args:
+            content: Markdown content
+            parent_chunk_size: Size of parent chunks (default: 2000)
+            child_chunk_size: Size of child chunks (default: 400)
+            child_chunk_overlap: Overlap between child chunks (default: 50)
+            split_by_headers: Whether to split parent chunks by headers (default: True)
+            include_outline: Whether to append document outline (default: False)
+            
+        Returns:
+            Tuple of (chunks, metadata list, success flag)
+        """
+        # Generate and append document outline if requested
+        if include_outline:
+            outline = self._generate_document_outline(content)
+            if outline:
+                content = content + "\n\n" + outline
+        
+        # Step 1: Create parent chunks
+        parent_chunks = self._create_parent_chunks(content, parent_chunk_size, split_by_headers)
+        
+        # Step 2: First pass - create all child chunks to get total count
+        all_child_data = []
+        global_child_index = 0
+        
+        for parent_index, parent_chunk in enumerate(parent_chunks):
+            parent_text = parent_chunk["text"]
+            parent_metadata = parent_chunk["metadata"]
+            
+            # Create child chunks from this parent
+            child_texts = self._create_child_chunks(
+                parent_text, parent_index, child_chunk_size, child_chunk_overlap
+            )
+            
+            # Store child data for second pass
+            for child_index, child_text in enumerate(child_texts):
+                all_child_data.append({
+                    "text": child_text,
+                    "parent_text": parent_text,
+                    "parent_index": parent_index,
+                    "child_index": child_index,
+                    "global_child_index": global_child_index,
+                    "children_in_parent": len(child_texts),
+                    "parent_metadata": parent_metadata
+                })
+                global_child_index += 1
+        
+        # Step 3: Second pass - create result with metadata
+        chunks = []
+        metadata_list = []
+        total_chunks = len(all_child_data)
+        
+        for child_data in all_child_data:
+            chunk_metadata = {
+                # Parent-child relationship
+                "parent_chunk_id": child_data["parent_index"],
+                "child_chunk_id": child_data["child_index"],
+                "chunk_level": "child",
+                "parent_text": child_data["parent_text"],  # Store full parent context
+                
+                # Global indexing
+                "chunk_index": child_data["global_child_index"],
+                "chunk_count": total_chunks,
+                "children_in_parent": child_data["children_in_parent"],
+                
+                # Additional parent metadata
+                **child_data["parent_metadata"]
+            }
+            
+            chunks.append(child_data["text"])
+            metadata_list.append(chunk_metadata)
+        
+        logger.info(f"[markitdown_plus] Hierarchical chunking: {len(parent_chunks)} parents -> {len(chunks)} children")
+        
+        return chunks, metadata_list, True
+    
     def _save_markdown(self, file_path: Path, content: str) -> str:
         """Save the processed markdown content."""
         md_output_path = file_path.with_suffix('.md')
@@ -1010,6 +1333,13 @@ class MarkItDownPlusPlugin(IngestPlugin):
         pages_per_chunk = params.get("pages_per_chunk", 1)
         split_on_heading = params.get("split_on_heading", 2)
         headings_per_chunk = params.get("headings_per_chunk", 1)
+        # Hierarchical parameters
+        parent_chunk_size = params.get("parent_chunk_size", 2000)
+        child_chunk_size = params.get("child_chunk_size", 400)
+        child_chunk_overlap = params.get("child_chunk_overlap", 50)
+        split_by_headers = params.get("split_by_headers", True)
+        include_outline = params.get("include_outline", False)
+        # Metadata
         description = params.get("description")
         citation = params.get("citation")
         provided_file_url = params.get("file_url", "")
@@ -1189,6 +1519,29 @@ class MarkItDownPlusPlugin(IngestPlugin):
                 stats.chunking_strategy = "by_section"
             else:
                 logger.warning("[markitdown_plus] No headings found, falling back to standard")
+                chunking_mode = "standard"
+        
+        if chunking_mode == "hierarchical":
+            chunks, chunk_metadata_list, success = self._chunk_hierarchical(
+                content,
+                parent_chunk_size=parent_chunk_size,
+                child_chunk_size=child_chunk_size,
+                child_chunk_overlap=child_chunk_overlap,
+                split_by_headers=split_by_headers,
+                include_outline=include_outline
+            )
+            if success:
+                strategy_metadata = {
+                    "chunking_strategy": "hierarchical_parent_child",
+                    "parent_chunk_size": parent_chunk_size,
+                    "child_chunk_size": child_chunk_size,
+                    "child_chunk_overlap": child_chunk_overlap,
+                    "split_by_headers": split_by_headers,
+                    "include_outline": include_outline
+                }
+                stats.chunking_strategy = "hierarchical_parent_child"
+            else:
+                logger.warning("[markitdown_plus] Hierarchical chunking failed, falling back to standard")
                 chunking_mode = "standard"
         
         if chunking_mode == "standard" and not chunks:
