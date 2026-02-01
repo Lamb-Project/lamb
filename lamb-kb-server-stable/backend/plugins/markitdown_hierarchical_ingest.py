@@ -1,12 +1,16 @@
 """
-Hierarchical ingestion plugin for Markdown documents with parent-child chunking.
+MarkItDown Hierarchical ingestion plugin for various file formats.
 
-This plugin implements a parent-child chunking strategy where:
+This plugin combines:
+- MarkItDown conversion (PDF, DOC, DOCX, etc. to Markdown)
+- Hierarchical parent-child chunking strategy for better RAG performance
+- Optional document outline generation for improved structural queries
+
+The plugin converts any supported file format to Markdown and then applies
+the hierarchical parent-child chunking strategy where:
 - Child chunks (small sections) are used for semantic search/embedding
 - Parent chunks (larger contexts) are stored in metadata and returned to the LLM
-
-The strategy is optimized for documents with hierarchical headers (##, ###, etc.)
-and structural queries like "How many steps does X have?" or "List all steps".
+- Optionally appends a document outline for better structural understanding
 """
 
 import os
@@ -16,17 +20,23 @@ from typing import Dict, List, Any, Optional, Tuple
 import json
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from markitdown import MarkItDown
 from .base import IngestPlugin, PluginRegistry
 
 
 @PluginRegistry.register
-class HierarchicalIngestPlugin(IngestPlugin):
-    """Plugin for ingesting Markdown files with parent-child chunking."""
+class MarkItDownHierarchicalIngestPlugin(IngestPlugin):
+    """Plugin for ingesting files with MarkItDown conversion and hierarchical parent-child chunking."""
     
-    name = "hierarchical_ingest"
+    name = "markitdown_hierarchical_ingest"
     kind = "file-ingest"
-    description = "Ingest Markdown files with parent-child chunking strategy for better structural queries"
-    supported_file_types = {"*.md"}
+    description = "Convert files to Markdown with MarkItDown and apply hierarchical parent-child chunking for better RAG"
+    supports_progress = True
+    
+    supported_file_types = {
+        "pdf", "pptx", "docx", "xlsx", "xls", "mp3", "wav", 
+        "html", "csv", "json", "xml", "zip", "epub"
+    }
     
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
         """Get the parameters accepted by this plugin.
@@ -39,18 +49,24 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 "type": "integer",
                 "description": "Size of parent chunks (larger context)",
                 "default": 2000,
+                "min": 500,
+                "max": 8000,
                 "required": False
             },
             "child_chunk_size": {
                 "type": "integer",
                 "description": "Size of child chunks (used for embedding/search)",
                 "default": 400,
+                "min": 100,
+                "max": 2000,
                 "required": False
             },
             "child_chunk_overlap": {
                 "type": "integer",
                 "default": 50,
                 "description": "Overlap between child chunks",
+                "min": 0,
+                "max": 200,
                 "required": False
             },
             "split_by_headers": {
@@ -61,53 +77,21 @@ class HierarchicalIngestPlugin(IngestPlugin):
             },
             "include_outline": {
                 "type": "boolean",
-                "description": "Whether to append a document outline section at the end",
+                "description": "Whether to append a document outline (TOC) at the end",
                 "default": False,
+                "required": False
+            },
+            "description": {
+                "type": "long-string",
+                "description": "Optional description for the ingested content",
+                "required": False
+            },
+            "citation": {
+                "type": "long-string",
+                "description": "Optional citation/source reference",
                 "required": False
             }
         }
-    
-    def _extract_sections_by_headers(self, content: str) -> List[Tuple[str, str]]:
-        """Extract sections from Markdown content based on headers.
-        
-        Args:
-            content: The Markdown content
-            
-        Returns:
-            List of tuples (section_title, section_content)
-        """
-        # Pattern to match Markdown headers (## or ###)
-        header_pattern = re.compile(r'^(#{2,3})\s+(.+)$', re.MULTILINE)
-        
-        sections = []
-        matches = list(header_pattern.finditer(content))
-        
-        if not matches:
-            # No headers found, return entire content as single section
-            return [("Document", content)]
-        
-        # Extract sections between headers
-        for i, match in enumerate(matches):
-            header_level = len(match.group(1))  # Number of # symbols
-            section_title = match.group(2).strip()
-            start_pos = match.start()
-            
-            # Find end position (start of next header or end of document)
-            if i + 1 < len(matches):
-                end_pos = matches[i + 1].start()
-            else:
-                end_pos = len(content)
-            
-            section_content = content[start_pos:end_pos].strip()
-            sections.append((section_title, section_content))
-        
-        # If there's content before the first header, add it as preamble
-        if matches[0].start() > 0:
-            preamble = content[:matches[0].start()].strip()
-            if preamble:
-                sections.insert(0, ("Preamble", preamble))
-        
-        return sections
     
     def _extract_headers_for_outline(self, content: str) -> List[Tuple[int, str]]:
         """Extract all headers from Markdown content for document outline.
@@ -161,8 +145,50 @@ class HierarchicalIngestPlugin(IngestPlugin):
         
         return "\n".join(outline_lines)
     
+    def _extract_sections_by_headers(self, content: str) -> List[Tuple[str, str]]:
+        """Extract sections from Markdown content based on headers.
+        
+        Args:
+            content: The Markdown content
+            
+        Returns:
+            List of tuples (section_title, section_content)
+        """
+        # Pattern to match Markdown headers (## or ###)
+        header_pattern = re.compile(r'^(#{2,3})\s+(.+)$', re.MULTILINE)
+        
+        sections = []
+        matches = list(header_pattern.finditer(content))
+        
+        if not matches:
+            # No headers found, return entire content as single section
+            return [("Document", content)]
+        
+        # Extract sections between headers
+        for i, match in enumerate(matches):
+            header_level = len(match.group(1))  # Number of # symbols
+            section_title = match.group(2).strip()
+            start_pos = match.start()
+            
+            # Find end position (start of next header or end of document)
+            if i + 1 < len(matches):
+                end_pos = matches[i + 1].start()
+            else:
+                end_pos = len(content)
+            
+            section_content = content[start_pos:end_pos].strip()
+            sections.append((section_title, section_content))
+        
+        # If there's content before the first header, add it as preamble
+        if matches[0].start() > 0:
+            preamble = content[:matches[0].start()].strip()
+            if preamble:
+                sections.insert(0, ("Preamble", preamble))
+        
+        return sections
+    
     def _create_parent_chunks(self, content: str, parent_chunk_size: int, 
-                             split_by_headers: bool) -> List[Dict[str, Any]]:
+                              split_by_headers: bool) -> List[Dict[str, Any]]:
         """Create parent chunks from content.
         
         Args:
@@ -249,15 +275,15 @@ class HierarchicalIngestPlugin(IngestPlugin):
         return child_chunks
     
     def ingest(self, file_path: str, **kwargs) -> List[Dict[str, Any]]:
-        """Ingest a Markdown file with parent-child chunking strategy.
+        """Ingest a file by converting to Markdown and applying hierarchical parent-child chunking.
         
         Args:
-            file_path: Path to the Markdown file to ingest
+            file_path: Path to the file to ingest
             parent_chunk_size: Size of parent chunks (default: 2000)
             child_chunk_size: Size of child chunks (default: 400)
             child_chunk_overlap: Overlap between child chunks (default: 50)
             split_by_headers: Whether to split parent chunks by headers (default: True)
-            include_outline: Whether to append a document outline section at the end (default: False)
+            include_outline: Whether to append a document outline at the end (default: False)
             file_url: URL to access the file (default: None)
             
         Returns:
@@ -277,25 +303,36 @@ class HierarchicalIngestPlugin(IngestPlugin):
         split_by_headers = kwargs.get("split_by_headers", True)
         include_outline = kwargs.get("include_outline", False)
         file_url = kwargs.get("file_url", "")
-        
-        # Read the file
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-        except Exception as e:
-            raise RuntimeError(f"Failed to read file: {str(e)}")
-        
-        # Generate and append document outline if requested
-        if include_outline:
-            outline = self._generate_document_outline(content)
-            if outline:
-                content = content + "\n\n" + outline
+        description = kwargs.get("description", None)
+        citation = kwargs.get("citation", None)
         
         # Get file metadata
         file_path_obj = Path(file_path)
         file_name = file_path_obj.name
         file_extension = file_path_obj.suffix.lstrip(".")
         file_size = os.path.getsize(file_path)
+        
+        # Report: Starting conversion (stage 1 of 3)
+        self.report_progress(kwargs, 0, 3, f"Converting {file_name} to Markdown...")
+        
+        # Convert the file to Markdown using MarkItDown
+        try:
+            md = MarkItDown()
+            result = md.convert(file_path)
+            content = result.text_content
+            print(f"INFO: [markitdown_hierarchical_ingest] Converted {file_name}, length: {len(content)}")
+        except Exception as e:
+            raise ValueError(f"Error converting file to Markdown: {str(e)}")
+        
+        # Generate and append document outline if requested
+        if include_outline:
+            outline = self._generate_document_outline(content)
+            if outline:
+                content = content + "\n\n" + outline
+                print(f"INFO: [markitdown_hierarchical_ingest] Added document outline")
+        
+        # Report: Starting chunking (stage 2 of 3)
+        self.report_progress(kwargs, 1, 3, f"Applying hierarchical chunking...")
         
         # Create base metadata
         base_metadata = {
@@ -306,6 +343,12 @@ class HierarchicalIngestPlugin(IngestPlugin):
             "file_url": file_url,
             "chunking_strategy": "hierarchical_parent_child"
         }
+        
+        # Add optional metadata fields if provided
+        if description is not None:
+            base_metadata["description"] = description
+        if citation is not None:
+            base_metadata["citation"] = citation
         
         # Step 1: Create parent chunks
         parent_chunks = self._create_parent_chunks(content, parent_chunk_size, split_by_headers)
@@ -336,6 +379,9 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 })
                 global_child_index += 1
         
+        # Report: Finalizing (stage 3 of 3)
+        self.report_progress(kwargs, 2, 3, f"Finalizing {len(all_child_data)} chunks...")
+        
         # Step 3: Second pass - create result with correct chunk_count
         result = []
         total_chunks = len(all_child_data)
@@ -358,7 +404,7 @@ class HierarchicalIngestPlugin(IngestPlugin):
                 **child_data["parent_metadata"]
             })
             
-            # Filter out None values from metadata (ChromaDB doesn't accept them)
+            # Filter out None values from metadata
             chunk_metadata = {k: v for k, v in chunk_metadata.items() if v is not None}
             
             result.append({
@@ -371,9 +417,11 @@ class HierarchicalIngestPlugin(IngestPlugin):
         try:
             with open(output_file_path, 'w', encoding='utf-8') as f:
                 json.dump(result, f, indent=4)
-            print(f"INFO: [hierarchical_ingest] Successfully wrote {len(result)} child chunks "
+            print(f"INFO: [markitdown_hierarchical_ingest] Successfully wrote {len(result)} child chunks "
                   f"from {len(parent_chunks)} parent chunks to {output_file_path}")
         except Exception as e:
-            print(f"WARNING: [hierarchical_ingest] Failed to write chunks to {output_file_path}: {str(e)}")
+            print(f"WARNING: [markitdown_hierarchical_ingest] Failed to write chunks to {output_file_path}: {str(e)}")
+        
+        print(f"INFO: [markitdown_hierarchical_ingest] Created {len(result)} child chunks from {len(parent_chunks)} parent chunks")
         
         return result

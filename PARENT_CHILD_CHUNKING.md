@@ -2,11 +2,21 @@
 
 This directory contains the implementation of a parent-child chunking strategy for LAMB's RAG system, addressing the issue of structural queries failing due to information being distributed across multiple chunks.
 
+## Plugins
+
+### 1. `hierarchical_ingest` - For Markdown Files
+
+Use this plugin for **Markdown (.md)** files.
+
+### 2. `markitdown_hierarchical_ingest` - For All Other Formats
+
+Use this plugin for **PDF, DOC, DOCX, PPTX, XLSX, HTML, and other formats**. It converts the file to Markdown using MarkItDown, then applies hierarchical chunking.
+
 ## Quick Start
 
 ### 1. Ingest a Document with Hierarchical Chunking
 
-When uploading a Markdown document to the Knowledge Base Server, use the `hierarchical_ingest` plugin:
+**For Markdown files** - use the `hierarchical_ingest` plugin:
 
 ```bash
 curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
@@ -14,6 +24,34 @@ curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
   -F "file=@setup-guide.md" \
   -F "plugin_name=hierarchical_ingest" \
   -F 'plugin_params={"parent_chunk_size": 2000, "child_chunk_size": 400, "split_by_headers": true}'
+```
+
+**For PDF, DOC, DOCX, etc.** - use the `markitdown_hierarchical_ingest` plugin:
+
+```bash
+curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@document.pdf" \
+  -F "plugin_name=markitdown_hierarchical_ingest" \
+  -F 'plugin_params={"parent_chunk_size": 2000, "child_chunk_size": 400, "split_by_headers": true}'
+```
+
+**Optional:** Add a document outline for better structural queries (works with both plugins):
+
+```bash
+# For Markdown:
+curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@setup-guide.md" \
+  -F "plugin_name=hierarchical_ingest" \
+  -F 'plugin_params={"parent_chunk_size": 2000, "child_chunk_size": 400, "split_by_headers": true, "include_outline": true}'
+
+# For PDF/DOC/etc:
+curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@document.pdf" \
+  -F "plugin_name=markitdown_hierarchical_ingest" \
+  -F 'plugin_params={"parent_chunk_size": 2000, "child_chunk_size": 400, "split_by_headers": true, "include_outline": true}'
 ```
 
 ### 2. Query with Parent-Child Support
@@ -39,9 +77,17 @@ curl -X POST "http://kb-server:9090/collections/{collection_id}/query" \
 ### Core Implementation
 
 - **`lamb-kb-server-stable/backend/plugins/hierarchical_ingest.py`**
-  - Ingestion plugin that creates parent-child chunk hierarchies
+  - Ingestion plugin for **Markdown files** with parent-child chunk hierarchies
   - Splits documents by headers (for Markdown) or character count
   - Stores full parent text in child chunk metadata
+  - Supports optional document outline generation
+
+- **`lamb-kb-server-stable/backend/plugins/markitdown_hierarchical_ingest.py`**
+  - Ingestion plugin for **PDF, DOC, DOCX, PPTX, and other formats**
+  - Converts files to Markdown using MarkItDown library
+  - Applies hierarchical parent-child chunking strategy
+  - Supports optional document outline generation
+  - Works with: PDF, DOCX, PPTX, XLSX, HTML, CSV, JSON, XML, EPUB, and more
 
 - **`lamb-kb-server-stable/backend/plugins/parent_child_query.py`**
   - Query plugin that returns parent context for child matches
@@ -51,9 +97,18 @@ curl -X POST "http://kb-server:9090/collections/{collection_id}/query" \
 ### Tests
 
 - **`lamb-kb-server-stable/backend/test_files/test_hierarchical_chunking.py`**
-  - Unit tests for the hierarchical ingestion plugin
+  - Unit tests for the hierarchical ingestion plugin (Markdown)
   - Validates parent-child relationships
   - Verifies metadata structure
+
+- **`lamb-kb-server-stable/backend/test_files/test_markitdown_hierarchical.py`**
+  - Unit tests for the markitdown_hierarchical_ingest plugin
+  - Tests MarkItDown conversion + hierarchical chunking
+  - Validates outline generation
+
+- **`lamb-kb-server-stable/backend/test_files/test_outline_generation.py`**
+  - Tests for document outline generation feature
+  - Validates outline format and structure
 
 - **`lamb-kb-server-stable/backend/test_files/test_integration_parent_child.py`**
   - Integration test demonstrating the complete workflow
@@ -146,6 +201,7 @@ ALL TESTS COMPLETED SUCCESSFULLY
 | `child_chunk_size` | 400 | Maximum size of child chunks (chars) |
 | `child_chunk_overlap` | 50 | Overlap between child chunks (chars) |
 | `split_by_headers` | true | Split parent chunks by Markdown headers |
+| `include_outline` | false | Append a document outline section at the end |
 
 ### Query Parameters
 
@@ -196,6 +252,52 @@ Each child chunk includes:
   "chunking_strategy": "hierarchical_parent_child"
 }
 ```
+
+## Document Outline Feature
+
+The hierarchical ingest plugin can optionally generate and append a document outline section at the end of the ingested document. This feature enhances RAG performance by providing a comprehensive overview of the document structure.
+
+### How It Works
+
+When `include_outline=true` is set, the plugin:
+1. Extracts all headers from the markdown document (H1, H2, H3, etc.)
+2. Generates a hierarchical outline in a structured format
+3. Appends the outline as a new section at the end of the document
+
+### Example Outline Format
+
+```
+Document Outline
+================
+
+* <a>Main Title</a>
+  * <a>Section 1: Introduction</a>
+    * <a>1.1 Overview</a>
+    * <a>1.2 Background</a>
+  * <a>Section 2: Implementation</a>
+    * <a>2.1 Setup</a>
+    * <a>2.2 Configuration</a>
+```
+
+### Benefits
+
+- **Better structural queries**: Questions like "How many steps does X have?" can be answered more accurately
+- **Improved navigation**: The outline provides a clear map of the document structure
+- **Enhanced context**: RAG systems can better understand the document's organization
+
+### Usage
+
+Enable the outline feature during ingestion:
+
+```bash
+curl -X POST "http://kb-server:9090/collections/{collection_id}/ingest-file" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@document.md" \
+  -F "plugin_name=hierarchical_ingest" \
+  -F 'plugin_params={"include_outline": true, "parent_chunk_size": 2000, "child_chunk_size": 400}'
+```
+
+**Note:** The outline feature is disabled by default to maintain backward compatibility.
 
 ## Limitations
 

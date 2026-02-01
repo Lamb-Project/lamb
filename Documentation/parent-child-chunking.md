@@ -63,6 +63,7 @@ POST /collections/{collection_id}/ingest-file
 - `child_chunk_size` (default: 400): Maximum size of child chunks in characters
 - `child_chunk_overlap` (default: 50): Overlap between child chunks for context continuity
 - `split_by_headers` (default: true): Split parent chunks by Markdown headers (##, ###)
+- `include_outline` (default: false): Append a hierarchical document outline section at the end
 
 ### 2. Querying with Parent-Child Support
 
