@@ -34,11 +34,29 @@ class CollectionBase(BaseModel):
 
 
 class CollectionCreate(CollectionBase):
-    """Schema for creating a new collection."""
+    """Schema for creating a new collection.
+
+    Supports DUAL MODE:
+    - OLD MODE: Provide embeddings_model (inline configuration)
+    - NEW MODE: Provide organization_external_id + optional embeddings_setup_key
+    - DEFAULT MODE: Provide neither (creates default setup from env vars)
+    """
     owner: str = Field(..., description="Owner of the collection")
+
+    # OLD MODE: Inline embeddings configuration (backward compatibility)
     embeddings_model: Optional[EmbeddingsModel] = Field(
-        None, 
-        description="Optional custom embeddings model configuration"
+        None,
+        description="Optional custom embeddings model configuration (OLD MODE)"
+    )
+
+    # NEW MODE: Organization and setup reference
+    organization_external_id: Optional[str] = Field(
+        None,
+        description="Organization external ID (NEW MODE)"
+    )
+    embeddings_setup_key: Optional[str] = Field(
+        None,
+        description="Embeddings setup key (NEW MODE, optional - uses default if omitted)"
     )
 
 
@@ -54,11 +72,19 @@ class CollectionUpdate(BaseModel):
 
 
 class CollectionResponse(CollectionBase):
-    """Schema for collection response (SAFE - uses EmbeddingsModelSafe, no API keys exposed)."""
+    """Schema for collection response (SAFE - uses EmbeddingsModelSafe, no API keys exposed).
+
+    CRITICAL: embeddings_model field is ALWAYS present for backward compatibility.
+    For collections using NEW MODE, embeddings_model is synthesized from the setup.
+    """
     id: int = Field(..., description="Unique identifier of the collection")
     owner: str = Field(..., description="Owner of the collection")
     creation_date: datetime = Field(..., description="Creation date of the collection")
     embeddings_model: EmbeddingsModelSafe = Field(..., description="Embeddings model configuration (API key hidden)")
+
+    # NEW MODE fields (optional)
+    embeddings_setup: Optional[Dict[str, Any]] = Field(None, description="Embeddings setup reference (if using NEW MODE)")
+    organization_id: Optional[int] = Field(None, description="Organization ID (if using NEW MODE)")
 
     class Config:
         """Pydantic config for collection response."""

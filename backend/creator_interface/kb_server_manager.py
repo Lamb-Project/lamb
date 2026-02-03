@@ -445,7 +445,51 @@ class KBServerManager:
             except Exception as e:
                 logger.error(f"Unexpected error fetching owned KBs: {e}")
                 return []
-                
+
+    async def ensure_org_in_kb_server(self, organization: Dict[str, Any], kb_url: str, kb_token: str) -> Dict[str, Any]:
+        """
+        Ensure organization exists in KB-Server (upsert operation).
+
+        Args:
+            organization: Organization dict with 'id' and 'name' keys
+            kb_url: KB server base URL
+            kb_token: KB server authentication token
+
+        Returns:
+            Dict with organization data from KB server
+        """
+        org_data = {
+            "external_id": str(organization['id']),
+            "name": organization['name']
+        }
+
+        logger.info(f"Ensuring organization exists in KB server: {org_data['external_id']}")
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{kb_url}/organizations/",
+                    headers={"Authorization": f"Bearer {kb_token}", "Content-Type": "application/json"},
+                    json=org_data,
+                    timeout=30.0
+                )
+
+                # 200 or 201 are both OK (upsert behavior)
+                if response.status_code not in [200, 201]:
+                    logger.error(f"KB server org sync failed with status {response.status_code}: {response.text}")
+                    response.raise_for_status()
+
+                result = response.json()
+                logger.info(f"Organization synced to KB server: {result}")
+                return result
+
+            except httpx.RequestError as req_err:
+                logger.error(f"Error syncing organization to KB server: {str(req_err)}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Unable to sync organization to KB server: {str(req_err)}"
+                )
+
     async def create_knowledge_base(self, kb_data: KnowledgeBaseCreate, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create a new knowledge base in the KB server.
@@ -482,12 +526,17 @@ class KBServerManager:
         
         # Update kb_data with sanitized name
         kb_data.name = sanitized_name
-   
+
+        # Ensure organization exists in KB-Server if user has one
+        org = creator_user.get('organization')
+        if org:
+            await self.ensure_org_in_kb_server(org, kb_server_url, kb_token)
+
         # Create collection in KB server
         async with httpx.AsyncClient() as client:
             kb_server_collections_url = f"{kb_server_url}/collections"
             logger.info(f"Creating collection in KB server at {kb_server_collections_url}: {sanitized_name}")
-            
+
             # Check if there's metadata with a description field
             # The frontend might send the description in metadata.description rather than directly
             description = kb_data.description or ""
@@ -501,20 +550,32 @@ class KBServerManager:
                             logger.info(f"Using description from metadata: {description}")
             except Exception as md_err:
                 logger.warning(f"Error extracting metadata description: {str(md_err)}")
-                
+
             # Prepare collection data according to KB server API
             collection_data = {
                 "name": kb_data.name,
                 "description": description,
                 "owner": str(creator_user.get('id')),  # Use ID instead of email for privacy (as string)
-                "visibility": kb_data.access_control or "private",
-                "embeddings_model": {
+                "visibility": kb_data.access_control or "private"
+            }
+
+            # Use NEW MODE if organization is present
+            if org:
+                collection_data["organization_external_id"] = str(org['id'])
+                # Include embeddings_setup_key if provided by frontend
+                if hasattr(kb_data, 'embeddings_setup_key') and kb_data.embeddings_setup_key:
+                    collection_data["embeddings_setup_key"] = kb_data.embeddings_setup_key
+                    logger.info(f"Using embeddings setup: {kb_data.embeddings_setup_key}")
+                # If no setup_key provided, KB-Server will use org's default setup
+            else:
+                # Fallback to OLD MODE for users without organization
+                collection_data["embeddings_model"] = {
                     "model": "default",
                     "vendor": "default",
                     "api_endpoint": "default",
                     "apikey": "default"
                 }
-            }
+                logger.info("Using default embeddings model (user has no organization)")
             
             # Log the final data being sent to the KB server
             logger.info(f"Sending collection data to KB server: {collection_data}")

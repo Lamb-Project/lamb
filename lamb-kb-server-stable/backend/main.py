@@ -114,6 +114,7 @@ from dependencies import verify_token
 # Import routers
 from routers import system, collections
 from routers import ingestion_status
+from routers import organizations, embeddings_setups
 
 # Initialize databases on startup
 @app.on_event("startup")
@@ -141,6 +142,16 @@ async def startup_event():
             logger.info("All migrations up to date.")
     except Exception as e:
         logger.warning("Migration check failed: %s", e)
+
+    # Run organizations and embeddings setups migration
+    try:
+        from database.migrations.migration_add_org_and_setups import check_migration_status as check_org_migration, run_migration as run_org_migration
+        if not check_org_migration():
+            logger.info("Running migration: Add Organizations and Embeddings Setups...")
+            run_org_migration()
+            logger.info("Organizations migration completed.")
+    except Exception as e:
+        logger.warning("Organizations migration check failed: %s", e)
     
     # Discover ingestion plugins
     logger.info("Discovering ingestion plugins...")
@@ -154,6 +165,8 @@ async def startup_event():
 app.include_router(system.router)
 app.include_router(collections.router)
 app.include_router(ingestion_status.router)
+app.include_router(organizations.router)
+app.include_router(embeddings_setups.router)
 
 # Configure static files
 static_dir = IngestionService.STATIC_DIR

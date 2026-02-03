@@ -35,13 +35,13 @@ class TestCreateCollection:
         """Create collection with custom embeddings model."""
         timestamp = int(time.time() * 1000)
         name = f"test-custom-embed-{timestamp}"
-        
+
         collection = client.create_collection(
             name=name,
             embeddings_model={
                 "model": "nomic-embed-text",
                 "vendor": "ollama",
-                "api_endpoint": "http://host.docker.internal:11434/api/embeddings",
+                "api_endpoint": "http://localhost:11434/api/embeddings",
                 "apikey": ""
             }
         )

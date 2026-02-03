@@ -119,14 +119,30 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             params['collection_owner'] = collection_owner
             params['collection_name'] = collection_name
             
-            # Extract embeddings config
-            embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
-            if isinstance(embeddings_config, str):
-                try:
-                    embeddings_config = json.loads(embeddings_config)
-                except json.JSONDecodeError:
-                    embeddings_config = {}
-            
+            # Extract embeddings config (handle both OLD and NEW modes)
+            from database.models import EmbeddingsSetup
+
+            embeddings_config = {}
+
+            # Check if using NEW MODE (setup reference)
+            if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
+                setup = db_background.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+                if setup:
+                    embeddings_config = {
+                        "vendor": setup.vendor,
+                        "model": setup.model_name,
+                        "apikey": setup.api_key,
+                        "api_endpoint": setup.api_endpoint
+                    }
+            else:
+                # OLD MODE: Use inline config
+                embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
+                if isinstance(embeddings_config, str):
+                    try:
+                        embeddings_config = json.loads(embeddings_config)
+                    except json.JSONDecodeError:
+                        embeddings_config = {}
+
             # Pass OpenAI API key to plugin for LLM-powered image descriptions
             # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":
@@ -310,14 +326,30 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
             params['collection_owner'] = collection_owner
             params['collection_name'] = collection_name
             
-            # Extract embeddings config
-            embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
-            if isinstance(embeddings_config, str):
-                try:
-                    embeddings_config = json.loads(embeddings_config)
-                except json.JSONDecodeError:
-                    embeddings_config = {}
-            
+            # Extract embeddings config (handle both OLD and NEW modes)
+            from database.models import EmbeddingsSetup
+
+            embeddings_config = {}
+
+            # Check if using NEW MODE (setup reference)
+            if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
+                setup = db_background.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+                if setup:
+                    embeddings_config = {
+                        "vendor": setup.vendor,
+                        "model": setup.model_name,
+                        "apikey": setup.api_key,
+                        "api_endpoint": setup.api_endpoint
+                    }
+            else:
+                # OLD MODE: Use inline config
+                embeddings_config = collection.embeddings_model if hasattr(collection, 'embeddings_model') else collection.get('embeddings_model', {})
+                if isinstance(embeddings_config, str):
+                    try:
+                        embeddings_config = json.loads(embeddings_config)
+                    except json.JSONDecodeError:
+                        embeddings_config = {}
+
             # Pass OpenAI API key to plugin for LLM-powered image descriptions
             # ONLY if the collection uses OpenAI for embeddings (respects user's privacy choice)
             if embeddings_config.get("vendor") == "openai":

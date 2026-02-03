@@ -90,13 +90,19 @@ def init_sqlite_db() -> None:
 
 
 def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str, Any]]) -> Callable:
-    """Get the embedding function for a collection by its ID or Collection object."""
+    """
+    Get the embedding function for a collection.
+    Handles both old mode (inline config) and new mode (setup reference).
+    """
+    from .models import EmbeddingsSetup
+
     db = next(get_db())
 
     try:
-        # Handle dict case first
+        # Resolve to Collection object
         if isinstance(collection_id_or_obj, dict):
-            if 'embeddings_model' in collection_id_or_obj:
+            # Check if dict has embeddings_model directly
+            if 'embeddings_model' in collection_id_or_obj and collection_id_or_obj['embeddings_model']:
                 embedding_config = collection_id_or_obj['embeddings_model']
                 return get_embedding_function_by_params(
                     embedding_config.get("vendor"),
@@ -104,36 +110,48 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
                     embedding_config.get("apikey"),
                     embedding_config.get("api_endpoint")
                 )
+            # Otherwise fetch collection from DB
             collection_id = collection_id_or_obj.get('id')
             if not collection_id:
-                raise ValueError(
-                    "Collection dictionary must contain an 'id' field")
-            collection = db.query(Collection).filter(
-                Collection.id == collection_id).first()
-        # Handle Collection object case
+                raise ValueError("Collection dictionary must contain an 'id' field")
+            collection = db.query(Collection).filter(Collection.id == collection_id).first()
         elif isinstance(collection_id_or_obj, Collection):
             collection = collection_id_or_obj
-        # Handle integer ID case
         elif isinstance(collection_id_or_obj, int):
-            collection = db.query(Collection).filter(
-                Collection.id == collection_id_or_obj).first()
+            collection = db.query(Collection).filter(Collection.id == collection_id_or_obj).first()
         else:
             raise ValueError(f"Expected Collection object, dictionary or ID")
 
         if not collection:
             raise ValueError(f"Collection not found")
 
-        # Extract embedding configuration
-        embedding_config = json.loads(collection.embeddings_model) if isinstance(
-            collection.embeddings_model, str) else collection.embeddings_model
+        # Check if using NEW MODE (setup reference)
+        if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
+            # NEW MODE: Get config from setup
+            setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+            if not setup:
+                raise ValueError(f"Embeddings setup {collection.embeddings_setup_id} not found")
 
-        # Use the helper function to get the actual embedding function
-        return get_embedding_function_by_params(
-            embedding_config.get("vendor"),
-            embedding_config.get("model"),
-            embedding_config.get("apikey"),
-            embedding_config.get("api_endpoint")
-        )
+            return get_embedding_function_by_params(
+                vendor=setup.vendor,
+                model_name=setup.model_name,
+                api_key=setup.api_key or "",
+                api_endpoint=setup.api_endpoint or ""
+            )
+        else:
+            # OLD MODE: Use inline config
+            if not collection.embeddings_model:
+                raise ValueError(f"Collection has no embeddings configuration")
+
+            embedding_config = json.loads(collection.embeddings_model) if isinstance(
+                collection.embeddings_model, str) else collection.embeddings_model
+
+            return get_embedding_function_by_params(
+                embedding_config.get("vendor"),
+                embedding_config.get("model"),
+                embedding_config.get("apikey"),
+                embedding_config.get("api_endpoint")
+            )
 
     finally:
         db.close()

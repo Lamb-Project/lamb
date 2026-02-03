@@ -9,7 +9,7 @@ import json
 from enum import Enum
 from typing import Optional, Dict, Any
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey, Enum as SQLAlchemyEnum, UniqueConstraint, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey, Enum as SQLAlchemyEnum, UniqueConstraint, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -23,12 +23,12 @@ class Visibility(str, Enum):
 
 class FileStatus(str, Enum):
     """Enum for file/ingestion job status states.
-    
+
     Status Flow:
         PENDING -> PROCESSING -> COMPLETED
                              -> FAILED
                              -> CANCELLED
-        
+
         Any status can transition to DELETED (soft delete)
     """
     PENDING = "pending"        # Job created but not yet started
@@ -39,27 +39,88 @@ class FileStatus(str, Enum):
     DELETED = "deleted"        # Soft-deleted (file may still exist)
 
 
+class Organization(Base):
+    """Model representing an organization.
+
+    Organizations own embeddings setups and collections.
+    """
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    external_id = Column(String(255), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    config = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Organization id={self.id}, external_id={self.external_id}, name={self.name}>"
+
+
+class EmbeddingsSetup(Base):
+    """Model representing an embeddings configuration setup.
+
+    Embeddings setups are reusable configurations that collections can reference.
+    This allows organization-level management of embedding providers and API keys.
+    """
+    __tablename__ = "embeddings_setups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    setup_key = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    vendor = Column(String(50), nullable=False)
+    api_endpoint = Column(Text, nullable=True)
+    api_key = Column(Text, nullable=True)
+    model_name = Column(String(255), nullable=False)
+    embedding_dimensions = Column(Integer, nullable=False)  # IMMUTABLE after creation
+    is_default = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('organization_id', 'setup_key', name='uix_org_setup_key'),
+    )
+
+    def __repr__(self):
+        return f"<EmbeddingsSetup id={self.id}, org_id={self.organization_id}, setup_key={self.setup_key}, model={self.model_name}>"
+
+
 class Collection(Base):
     """Model representing a knowledge base collection.
-    
+
     Each collection has an associated ChromaDB collection.
+
+    Collections support DUAL MODE:
+    - OLD MODE: Inline embeddings_model JSON (backward compatibility)
+    - NEW MODE: Reference to embeddings_setup_id (organization-level management)
     """
     __tablename__ = "collections"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     creation_date = Column(DateTime, default=datetime.datetime.utcnow)
     owner = Column(String(255), nullable=False, index=True)
     visibility = Column(SQLAlchemyEnum(Visibility), default=Visibility.PRIVATE, nullable=False)
-    embeddings_model = Column(JSON, nullable=False, 
+
+    # OLD MODE: Inline embeddings configuration (kept for backward compatibility)
+    embeddings_model = Column(JSON, nullable=True,
                               default=lambda: json.dumps({
                                   "model": "sentence-transformers/all-MiniLM-L6-v2",
                                   "endpoint": None,
                                   "apikey": None
                               }))
+
+    # NEW MODE: Reference to organization and embeddings setup
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    embeddings_setup_id = Column(Integer, ForeignKey("embeddings_setups.id"), nullable=True, index=True)
+    embedding_dimensions = Column(Integer, nullable=True)
+
     chromadb_uuid = Column(String(36), nullable=True, unique=True, index=True)
-    
+
     __table_args__ = (
         UniqueConstraint('name', 'owner', name='uix_collection_name_owner'),
     )
