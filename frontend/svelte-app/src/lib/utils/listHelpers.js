@@ -68,6 +68,14 @@ export function filterByFilters(items, filters) {
         return true;
       }
       
+      // Handle exclude_ prefix for negative matching
+      if (key.startsWith('exclude_')) {
+        const actualKey = key.substring(8); // Remove 'exclude_' prefix
+        const itemValue = getNestedValue(item, actualKey);
+        // Return true if item value does NOT match the filter value
+        return itemValue !== filterValue;
+      }
+      
       const itemValue = getNestedValue(item, key);
       
       // Handle boolean filters (including string "true"/"false")

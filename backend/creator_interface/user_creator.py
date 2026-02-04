@@ -34,8 +34,23 @@ class UserCreatorManager:
             
         Returns:
             Dict[str, Any]: Response containing success status and error information if any
+            
+        Note:
+            LTI creator users cannot have their password changed.
         """
         try:
+            # Check if user is an LTI creator user (password changes not allowed)
+            db_manager = LambDatabaseManager()
+            creator_user = db_manager.get_creator_user_by_email(email)
+            
+            if creator_user and creator_user.get('auth_provider') == 'lti_creator':
+                logger.warning(f"Attempted to change password for LTI creator user: {email}")
+                return {
+                    "success": False,
+                    "error": "Password changes are not allowed for LTI users",
+                    "data": None
+                }
+            
             # Update password using OWI manager directly
             success = self.owi_user_manager.update_user_password(email, new_password)
             

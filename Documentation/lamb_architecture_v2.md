@@ -1,8 +1,8 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.0  
-**Last Updated:** December 27, 2025  
-**Reading Time:** ~30 minutes
+**Version:** 2.1  
+**Last Updated:** February 4, 2026  
+**Reading Time:** ~35 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
 
@@ -178,7 +178,8 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 | Router | Prefix | Purpose |
 |--------|--------|---------|
 | `lti_users_router` | `/v1/lti_users` | LTI user management |
-| `simple_lti_router` | `/simple_lti` | LTI launch handling |
+| `simple_lti_router` | `/simple_lti` | Student LTI launch handling |
+| `lti_creator_router` | `/v1/lti_creator` | LTI Creator launch (educators) |
 | `completions_router` | `/v1/completions` | Completion generation |
 | `mcp_router` | `/v1/mcp` | MCP endpoints |
 
@@ -213,8 +214,9 @@ LAMB integrates with Open WebUI through dedicated bridge classes in `/backend/la
 
 **Key Operations:**
 - Create OWI user when LAMB creator user is created
+- Create OWI user for LTI creator users (with random password)
 - Verify passwords against OWI auth table (bcrypt)
-- Generate JWT tokens for authenticated sessions
+- Generate JWT tokens for authenticated sessions (including LTI creator logins)
 - Create/update OWI groups for published assistants
 - Register assistants as OWI models
 
@@ -238,11 +240,12 @@ LAMB integrates with Open WebUI through dedicated bridge classes in `/backend/la
 |-------|---------|------------|
 | `organizations` | Organization/tenant records | id, slug, name, config (JSON), is_system |
 | `organization_roles` | User-organization membership | organization_id, user_id, role |
-| `Creator_users` | User accounts | email, name, user_type, organization_id, enabled |
+| `Creator_users` | User accounts | email, name, user_type, organization_id, enabled, auth_provider, lti_user_id |
 | `assistants` | Assistant definitions | name, owner, system_prompt, metadata*, published |
 | `assistant_shares` | Assistant sharing records | assistant_id, shared_with_user_id |
 | `kb_registry` | Knowledge Base metadata | kb_id, owner_user_id, is_shared |
 | `lti_users` | LTI launch user mappings | assistant_id, user_email |
+| `lti_creator_keys` | LTI Creator OAuth credentials | organization_id, consumer_key, consumer_secret |
 | `shared_prompt_templates` | Reusable prompt templates | name, template, organization_id |
 | `usage_logs` | Usage tracking and analytics | organization_id, assistant_id, usage_data (JSON) |
 
@@ -335,7 +338,12 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 
 **User Types:**
 - `creator` — Full access to creator interface
+- `lti_creator` — Creator user authenticated via LTI (same permissions as creator, cannot be org admin, password cannot be changed)
 - `end_user` — Redirected to Open WebUI only (no creator access)
+
+**Auth Providers:**
+- `password` — Standard email/password authentication (default)
+- `lti_creator` — LTI-based authentication for creator users
 
 ### 5.2 Token Validation
 
@@ -631,6 +639,12 @@ Frontend → Creator Interface → KB Server → ChromaDB
 
 ### 8.2 LTI Integration
 
+LAMB supports two types of LTI integration:
+1. **Student LTI** — Students access published assistants via LTI
+2. **LTI Creator** — Educators access the Creator Interface via LTI (new in v2.1)
+
+#### 8.2.1 Student LTI (Published Assistants)
+
 **Publishing Flow:**
 ```
 Creator publishes assistant
@@ -652,7 +666,7 @@ Student clicks LTI link in LMS
 ```
 
 **Key Endpoints:**
-- `POST /lamb/simple_lti/launch` — LTI launch handler
+- `POST /lamb/simple_lti/launch` — Student LTI launch handler
 
 **LTI XML Cartridge (for LMS):**
 ```xml
@@ -671,6 +685,68 @@ Student clicks LTI link in LMS
 - `lis_person_contact_email_primary` — User email
 - `lis_person_name_full` — User display name
 - `custom_assistant_id` — Target assistant
+
+#### 8.2.2 LTI Creator (Creator Interface Access)
+
+**Purpose:** Allow educators to access the LAMB Creator Interface directly from their LMS without separate login credentials.
+
+**Setup Flow:**
+```
+1. Organization admin configures LTI Creator in org settings
+    → Sets OAuth consumer key (format: {org_id}_{custom_name})
+    → Sets OAuth consumer secret
+2. Admin configures LTI activity in LMS with these credentials
+3. Educators click LTI link → land in Creator Interface
+```
+
+**LTI Creator Launch Flow:**
+```
+Educator clicks LTI link in LMS
+    → LMS sends OAuth 1.0 signed POST to /lamb/v1/lti_creator/launch
+    → LAMB validates OAuth signature
+    → Extract organization from consumer key prefix
+    → Identify user by LMS user_id (stable across sessions)
+    → Create LTI creator user if first launch (or fetch existing)
+    → Create OWI user with random password
+    → Generate JWT token
+    → Redirect to Creator Interface with token in URL
+    → Frontend stores token and authenticates user
+```
+
+**Key Endpoints:**
+- `POST /lamb/v1/lti_creator/launch` — LTI Creator launch handler
+- `GET /lamb/v1/lti_creator/info` — LTI Creator configuration info
+
+**LTI Creator User Characteristics:**
+| Attribute | Value |
+|-----------|-------|
+| `user_type` | `creator` |
+| `auth_provider` | `lti_creator` |
+| `organization_role` | `member` (cannot be admin/owner) |
+| Password changeable | No (random password, unused) |
+| Can share assistants | Yes (same as regular creator) |
+| Can create KBs | Yes |
+| Can publish assistants | Yes |
+
+**User Identification:**
+- Users identified by `lti_user_id` from LMS (stable across launches)
+- Email format: `lti_creator_{org_slug}_{lti_user_id}@lamb-lti.local`
+- Same user can launch from different LTI consumer instances
+
+**Organization Admin Configuration:**
+```json
+{
+  "lti_creator": {
+    "oauth_consumer_key": "2_my_lti_creator",
+    "oauth_consumer_secret": "secret123"
+  }
+}
+```
+
+**Database Tables:**
+- `lti_creator_keys` — Stores OAuth credentials per organization
+- `Creator_users.lti_user_id` — LMS user identifier
+- `Creator_users.auth_provider` — Set to `lti_creator`
 
 ### 8.3 Assistant Sharing
 
@@ -730,6 +806,27 @@ Student clicks LTI link in LMS
 - `PUT /creator/admin/users/{id}/disable`
 - `PUT /creator/admin/users/{id}/enable`
 - `POST /creator/admin/users/disable-bulk`
+
+### 8.6 Admin User Management
+
+**User Type Display in Admin UI:**
+
+The admin user management panel identifies users by type with color-coded badges:
+
+| User Type | Badge | Criteria |
+|-----------|-------|----------|
+| Admin | Red | OWI role = 'admin' |
+| Org Admin | Purple | organization_role IN ('admin', 'owner') |
+| LTI Creator | Blue | auth_provider = 'lti_creator' |
+| Creator | Green | Default for creator users |
+| End User | Gray | user_type = 'end_user' |
+
+**LTI Creator User Management:**
+- Displayed with blue "LTI Creator" badge
+- Filter dropdown includes "LTI Creator" option
+- Password change button disabled (LTI users have random passwords)
+- Can be enabled/disabled by admin
+- Cannot be promoted to organization admin
 
 ---
 
@@ -1044,7 +1141,8 @@ DB_LOG_LEVEL=DEBUG
 | **Completions** | `lamb/completions/main.py`, `lamb/completions/connectors/` |
 | **KBs** | `creator_interface/knowledges_router.py`, `kb_server_manager.py` |
 | **Orgs** | `creator_interface/organization_router.py`, `lamb/organization_router.py` |
-| **LTI** | `lamb/simple_lti/simple_lti_main.py` |
+| **LTI (Student)** | `lamb/simple_lti/simple_lti_main.py` |
+| **LTI (Creator)** | `lamb/lti_creator_router.py` |
 | **Frontend** | `frontend/svelte-app/src/routes/`, `src/lib/components/` |
 
 ### 12.3 Common Patterns
@@ -1145,10 +1243,16 @@ api_key = openai_config.get("api_key")
 - Check collection ID is correct in assistant's `RAG_collections`
 - Test query directly against KB server
 
-**LTI launch failing:**
+**LTI launch failing (Student):**
 - Verify OAuth signature matches
 - Check consumer key/secret match
 - Ensure `custom_assistant_id` is set
+
+**LTI Creator launch failing:**
+- Verify consumer key format: `{org_id}_{name}`
+- Check OAuth signature validation in backend logs
+- Ensure organization has `lti_creator` config set
+- Check that organization is not the system organization
 
 **Frontend not loading:**
 - Check `static/config.js` has correct API URLs
@@ -1188,6 +1292,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: December 27, 2025*  
-*Version: 2.0*
+*Last Updated: February 4, 2026*  
+*Version: 2.1*
 

@@ -706,6 +706,75 @@ class LambDatabaseManager:
                 else:
                     logger.debug("lamb_chats table already exists")
 
+                # Migration 8: Add LTI creator user fields to Creator_users
+                cursor.execute(
+                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                if 'lti_user_id' not in columns:
+                    logger.info("Adding lti_user_id column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN lti_user_id TEXT
+                    """)
+                    logger.info("Successfully added lti_user_id column")
+                else:
+                    logger.debug("lti_user_id column already exists in Creator_users table")
+
+                if 'auth_provider' not in columns:
+                    logger.info("Adding auth_provider column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'
+                    """)
+                    logger.info("Successfully added auth_provider column")
+                else:
+                    logger.debug("auth_provider column already exists in Creator_users table")
+
+                # Create unique index for (organization_id, lti_user_id) if not exists
+                # This ensures one LTI user per org
+                cursor.execute(f"""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org_lti 
+                    ON {self.table_prefix}Creator_users(organization_id, lti_user_id)
+                    WHERE lti_user_id IS NOT NULL
+                """)
+                logger.debug("Ensured unique index on (organization_id, lti_user_id)")
+
+                # Create index on lti_user_id for fast lookups
+                cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_lti_user_id 
+                    ON {self.table_prefix}Creator_users(lti_user_id)
+                    WHERE lti_user_id IS NOT NULL
+                """)
+                logger.debug("Ensured index on lti_user_id")
+
+                # Migration 9: Create lti_creator_keys table for org LTI consumer keys
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_creator_keys'")
+                lti_creator_keys_table_exists = cursor.fetchone()
+
+                if not lti_creator_keys_table_exists:
+                    logger.info("Creating lti_creator_keys table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_creator_keys (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id INTEGER NOT NULL UNIQUE,
+                            oauth_consumer_key TEXT NOT NULL UNIQUE,
+                            oauth_consumer_secret TEXT NOT NULL,
+                            enabled BOOLEAN DEFAULT TRUE,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_consumer_key ON {self.table_prefix}lti_creator_keys(oauth_consumer_key)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_org ON {self.table_prefix}lti_creator_keys(organization_id)")
+                    logger.info("Successfully created lti_creator_keys table and indexes")
+                else:
+                    logger.debug("lti_creator_keys table already exists")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -1996,7 +2065,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, 
                            COALESCE(r.role, 'member') as role, 
                            COALESCE(r.created_at, u.created_at) as joined_at,
-                           u.user_type
+                           u.user_type, u.auth_provider, u.lti_user_id
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = ?
                     WHERE u.organization_id = ?
@@ -2011,7 +2080,9 @@ class LambDatabaseManager:
                         'name': row[2],
                         'role': row[3],
                         'joined_at': row[4],
-                        'user_type': row[5]
+                        'user_type': row[5],
+                        'auth_provider': row[6] or 'password',
+                        'lti_user_id': row[7]
                     })
 
                 return users
@@ -2480,7 +2551,7 @@ class LambDatabaseManager:
 
         Returns:
             Optional[Dict]: User details if found, None otherwise
-            Returns dict with: id, email, name, user_config
+            Returns dict with: id, email, name, user_config, lti_user_id, auth_provider
         """
         connection = self.get_connection()
         if not connection:
@@ -2491,7 +2562,7 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled, lti_user_id, auth_provider 
                     FROM {self.table_prefix}Creator_users 
                     WHERE user_email = ?
                 """, (user_email,))
@@ -2507,7 +2578,9 @@ class LambDatabaseManager:
                     'name': result[3],
                     'user_type': result[4],
                     'user_config': json.loads(result[5]) if result[5] else {},
-                    'enabled': bool(result[6]) if len(result) > 6 else True
+                    'enabled': bool(result[6]) if len(result) > 6 else True,
+                    'lti_user_id': result[7] if len(result) > 7 else None,
+                    'auth_provider': result[8] if len(result) > 8 else 'password'
                 }
 
         except sqlite3.Error as e:
@@ -4136,7 +4209,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
                            o.name as org_name, o.slug as org_slug, o.is_system,
-                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
+                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled,
+                           u.lti_user_id, u.auth_provider
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
@@ -4160,7 +4234,9 @@ class LambDatabaseManager:
                         },
                         'organization_role': row[8],
                         'user_type': row[9] if len(row) > 9 else 'creator',
-                        'enabled': bool(row[10]) if len(row) > 10 else True
+                        'enabled': bool(row[10]) if len(row) > 10 else True,
+                        'lti_user_id': row[11] if len(row) > 11 else None,
+                        'auth_provider': row[12] if len(row) > 12 else 'password'
                     })
                 return users
 
@@ -4173,6 +4249,397 @@ class LambDatabaseManager:
         finally:
             connection.close()
             logger.debug("Database connection closed")
+
+    # ==================== LTI Creator Methods ====================
+
+    def get_organization_by_lti_consumer_key(self, oauth_consumer_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get organization by LTI creator consumer key.
+        
+        Args:
+            oauth_consumer_key: The OAuth consumer key to look up
+            
+        Returns:
+            Organization dict with LTI key info if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT o.id, o.slug, o.name, o.is_system, o.status, o.config,
+                           k.oauth_consumer_key, k.oauth_consumer_secret, k.enabled as lti_enabled
+                    FROM {self.table_prefix}lti_creator_keys k
+                    JOIN {self.table_prefix}organizations o ON k.organization_id = o.id
+                    WHERE k.oauth_consumer_key = ? AND k.enabled = 1
+                """, (oauth_consumer_key,))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'slug': result[1],
+                    'name': result[2],
+                    'is_system': bool(result[3]),
+                    'status': result[4],
+                    'config': json.loads(result[5]) if result[5] else {},
+                    'lti_creator': {
+                        'oauth_consumer_key': result[6],
+                        'oauth_consumer_secret': result[7],
+                        'enabled': bool(result[8])
+                    }
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_organization_by_lti_consumer_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def get_lti_creator_key(self, organization_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get LTI creator key config for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            
+        Returns:
+            LTI key config dict if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, organization_id, oauth_consumer_key, oauth_consumer_secret, 
+                           enabled, created_at, updated_at
+                    FROM {self.table_prefix}lti_creator_keys
+                    WHERE organization_id = ?
+                """, (organization_id,))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'organization_id': result[1],
+                    'oauth_consumer_key': result[2],
+                    'oauth_consumer_secret': result[3],
+                    'enabled': bool(result[4]),
+                    'created_at': result[5],
+                    'updated_at': result[6]
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_lti_creator_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def create_lti_creator_key(self, organization_id: int, oauth_consumer_key: str, 
+                                oauth_consumer_secret: str, enabled: bool = True) -> Optional[int]:
+        """
+        Create LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            oauth_consumer_key: The OAuth consumer key (must be unique)
+            oauth_consumer_secret: The OAuth consumer secret
+            enabled: Whether the key is enabled (default True)
+            
+        Returns:
+            Key ID if created, None if failed (e.g., duplicate key)
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            now = int(time.time())
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_creator_keys 
+                    (organization_id, oauth_consumer_key, oauth_consumer_secret, enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (organization_id, oauth_consumer_key, oauth_consumer_secret, enabled, now, now))
+                
+                key_id = cursor.lastrowid
+                logger.info(f"Created LTI creator key for org {organization_id}: {oauth_consumer_key}")
+                return key_id
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator key already exists or constraint violated: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error in create_lti_creator_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def update_lti_creator_key(self, organization_id: int, oauth_consumer_key: str = None,
+                                oauth_consumer_secret: str = None, enabled: bool = None) -> bool:
+        """
+        Update LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            oauth_consumer_key: New OAuth consumer key (optional)
+            oauth_consumer_secret: New OAuth consumer secret (optional)
+            enabled: Whether the key is enabled (optional)
+            
+        Returns:
+            True if updated, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return False
+
+        try:
+            now = int(time.time())
+            updates = []
+            params = []
+            
+            if oauth_consumer_key is not None:
+                updates.append("oauth_consumer_key = ?")
+                params.append(oauth_consumer_key)
+            if oauth_consumer_secret is not None:
+                updates.append("oauth_consumer_secret = ?")
+                params.append(oauth_consumer_secret)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(enabled)
+            
+            if not updates:
+                return True  # Nothing to update
+            
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(organization_id)
+            
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_creator_keys 
+                    SET {', '.join(updates)}
+                    WHERE organization_id = ?
+                """, params)
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated LTI creator key for org {organization_id}")
+                    return True
+                return False
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator key update failed (constraint violation): {e}")
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Database error in update_lti_creator_key: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def delete_lti_creator_key(self, organization_id: int) -> bool:
+        """
+        Delete LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            
+        Returns:
+            True if deleted, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return False
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}lti_creator_keys 
+                    WHERE organization_id = ?
+                """, (organization_id,))
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted LTI creator key for org {organization_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in delete_lti_creator_key: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def get_creator_user_by_lti(self, organization_id: int, lti_user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get creator user by organization ID and LTI user ID.
+        
+        Args:
+            organization_id: The organization ID
+            lti_user_id: The LTI user ID from LMS
+            
+        Returns:
+            User dict if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, 
+                           enabled, lti_user_id, auth_provider
+                    FROM {self.table_prefix}Creator_users 
+                    WHERE organization_id = ? AND lti_user_id = ?
+                """, (organization_id, lti_user_id))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'organization_id': result[1],
+                    'email': result[2],
+                    'name': result[3],
+                    'user_type': result[4],
+                    'user_config': json.loads(result[5]) if result[5] else {},
+                    'enabled': bool(result[6]),
+                    'lti_user_id': result[7],
+                    'auth_provider': result[8]
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_creator_user_by_lti: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def create_lti_creator_user(self, organization_id: int, lti_user_id: str, 
+                                 user_email: str, user_name: str) -> Optional[int]:
+        """
+        Create a new LTI creator user.
+        
+        LTI creator users:
+        - Have auth_provider = 'lti_creator'
+        - Have user_type = 'creator' (can use creator interface)
+        - Cannot have their password changed
+        - Are identified by (organization_id, lti_user_id)
+        
+        Args:
+            organization_id: The organization ID (must not be system org)
+            lti_user_id: The LTI user ID from LMS
+            user_email: Generated email for the user
+            user_name: Display name from LMS
+            
+        Returns:
+            User ID if created, None if failed
+        """
+        # Check org is not system
+        org = self.get_organization_by_id(organization_id)
+        if not org:
+            logger.error(f"Organization {organization_id} not found")
+            return None
+        if org.get('is_system'):
+            logger.error("Cannot create LTI creator user in system organization")
+            return None
+
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            # First check if user already exists
+            existing = self.get_creator_user_by_lti(organization_id, lti_user_id)
+            if existing:
+                logger.warning(f"LTI creator user already exists for org {organization_id}, lti_user_id {lti_user_id}")
+                return existing['id']
+
+            # Also check by email
+            existing_by_email = self.get_creator_user_by_email(user_email)
+            if existing_by_email:
+                logger.warning(f"User with email {user_email} already exists")
+                return None
+
+            # Create OWI user (with random password since LTI users don't use password)
+            import secrets
+            random_password = secrets.token_urlsafe(32)
+            
+            owi_manager = OwiUserManager()
+            owi_user = owi_manager.get_user_by_email(user_email)
+            
+            if not owi_user:
+                logger.debug(f"Creating OWI user for LTI creator: {user_email}")
+                owi_user = owi_manager.create_user(
+                    name=user_name,
+                    email=user_email,
+                    password=random_password,
+                    role="user"
+                )
+                if not owi_user:
+                    logger.error(f"Failed to create OWI user for LTI creator: {user_email}")
+                    return None
+
+            # Create the creator user
+            now = int(time.time())
+            user_id = None
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}Creator_users 
+                    (organization_id, user_email, user_name, user_type, user_config, 
+                     lti_user_id, auth_provider, enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, 'creator', '{{}}', ?, 'lti_creator', 1, ?, ?)
+                """, (organization_id, user_email, user_name, lti_user_id, now, now))
+
+                user_id = cursor.lastrowid
+                logger.info(f"Created LTI creator user {user_email} (ID: {user_id}) for org {organization_id}")
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator user creation failed (constraint violation): {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error in create_lti_creator_user: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+        
+        # Assign member role AFTER connection is closed to avoid "database is locked" error
+        # (assign_organization_role creates its own connection)
+        if user_id:
+            self.assign_organization_role(organization_id, user_id, 'member')
+            return user_id
+        
+        return None
+
+    # ==================== End LTI Creator Methods ====================
 
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """

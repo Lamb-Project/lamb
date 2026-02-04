@@ -1565,6 +1565,9 @@ class OrgUserResponse(BaseModel):
     enabled: bool
     created_at: int
     role: str = "member"
+    user_type: str = "creator"
+    auth_provider: str = "password"
+    lti_user_id: Optional[str] = None
 
 # Organization Admin Dashboard endpoint
 @router.get(
@@ -1727,7 +1730,10 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 name=user['name'],
                 enabled=enabled_status,
                 created_at=user.get('joined_at', 0),
-                role=user.get('role', 'member')
+                role=user.get('role', 'member'),
+                user_type=user.get('user_type', 'creator'),
+                auth_provider=user.get('auth_provider', 'password'),
+                lti_user_id=user.get('lti_user_id')
             ))
         
         return user_responses
@@ -3460,6 +3466,280 @@ async def update_kb_embeddings_config(
         raise
     except Exception as e:
         logger.error(f"Error updating KB embeddings config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# LTI CREATOR KEY MANAGEMENT
+# These endpoints allow organization admins to manage LTI creator access keys
+# ============================================================================
+
+class LtiCreatorKeySettings(BaseModel):
+    """Settings for LTI creator key"""
+    oauth_consumer_key: Optional[str] = Field(None, description="OAuth consumer key (unique across orgs)")
+    oauth_consumer_secret: Optional[str] = Field(None, description="OAuth consumer secret")
+    enabled: Optional[bool] = Field(None, description="Whether LTI creator access is enabled")
+
+class LtiCreatorKeyResponse(BaseModel):
+    """Response for LTI creator key info"""
+    has_key: bool
+    oauth_consumer_key: Optional[str] = None
+    enabled: bool = False
+    launch_url: Optional[str] = None
+    created_at: Optional[int] = None
+
+
+@router.get(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Get LTI Creator Key Settings",
+    description="""Get the current LTI creator key configuration for the organization.
+    
+LTI creator keys allow users to log into the LAMB Creator Interface via LTI from their LMS.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+
+Example Response:
+```json
+{
+  "has_key": true,
+  "oauth_consumer_key": "myorg_creator",
+  "enabled": true,
+  "launch_url": "https://lamb.example.edu/lamb/v1/lti_creator/launch",
+  "created_at": 1678886400
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def get_lti_creator_settings(request: Request, org: Optional[str] = None):
+    """Get LTI creator key settings for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        organization = admin_info['organization']
+        
+        # System org cannot have LTI creator keys
+        if organization.get('is_system'):
+            return LtiCreatorKeyResponse(
+                has_key=False,
+                enabled=False,
+                launch_url=None
+            )
+        
+        # Get LTI creator key
+        lti_key = db_manager.get_lti_creator_key(org_id)
+        
+        if not lti_key:
+            return LtiCreatorKeyResponse(
+                has_key=False,
+                enabled=False,
+                launch_url=None
+            )
+        
+        # Build launch URL
+        import os
+        public_base_url = os.getenv("LAMB_PUBLIC_BASE_URL", "")
+        launch_url = f"{public_base_url}/lamb/v1/lti_creator/launch" if public_base_url else None
+        
+        return LtiCreatorKeyResponse(
+            has_key=True,
+            oauth_consumer_key=lti_key['oauth_consumer_key'],
+            enabled=lti_key['enabled'],
+            launch_url=launch_url,
+            created_at=lti_key['created_at']
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LTI creator settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Update LTI Creator Key Settings",
+    description="""Create or update LTI creator key for the organization.
+
+The oauth_consumer_key must be unique across all organizations. A recommended format is:
+`{org_slug}_{custom_name}` (e.g., "engineering_creator").
+
+Note: System organization cannot have LTI creator keys.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "oauth_consumer_key": "myorg_creator",
+  "oauth_consumer_secret": "my-secret-key-here",
+  "enabled": true
+}'
+```
+
+Example Response:
+```json
+{
+  "message": "LTI creator key updated successfully",
+  "oauth_consumer_key": "myorg_creator",
+  "launch_url": "https://lamb.example.edu/lamb/v1/lti_creator/launch"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def update_lti_creator_settings(
+    request: Request,
+    settings: LtiCreatorKeySettings,
+    org: Optional[str] = None
+):
+    """Create or update LTI creator key for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        organization = admin_info['organization']
+        
+        # System org cannot have LTI creator keys
+        if organization.get('is_system'):
+            raise HTTPException(
+                status_code=400, 
+                detail="System organization cannot have LTI creator keys"
+            )
+        
+        # Check if key already exists
+        existing_key = db_manager.get_lti_creator_key(org_id)
+        
+        if existing_key:
+            # Update existing key
+            success = db_manager.update_lti_creator_key(
+                organization_id=org_id,
+                oauth_consumer_key=settings.oauth_consumer_key,
+                oauth_consumer_secret=settings.oauth_consumer_secret,
+                enabled=settings.enabled
+            )
+            
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Failed to update LTI creator key. The consumer key may already be in use."
+                )
+            
+            message = "LTI creator key updated successfully"
+        else:
+            # Create new key
+            if not settings.oauth_consumer_key or not settings.oauth_consumer_secret:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Both oauth_consumer_key and oauth_consumer_secret are required to create a new LTI creator key"
+                )
+            
+            key_id = db_manager.create_lti_creator_key(
+                organization_id=org_id,
+                oauth_consumer_key=settings.oauth_consumer_key,
+                oauth_consumer_secret=settings.oauth_consumer_secret,
+                enabled=settings.enabled if settings.enabled is not None else True
+            )
+            
+            if not key_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Failed to create LTI creator key. The consumer key may already be in use."
+                )
+            
+            message = "LTI creator key created successfully"
+        
+        # Build launch URL
+        import os
+        public_base_url = os.getenv("LAMB_PUBLIC_BASE_URL", "")
+        launch_url = f"{public_base_url}/lamb/v1/lti_creator/launch" if public_base_url else None
+        
+        # Get final key for response
+        final_key = db_manager.get_lti_creator_key(org_id)
+        
+        logger.info(f"Organization admin {admin_info['user_email']} updated LTI creator key")
+        return {
+            "message": message,
+            "oauth_consumer_key": final_key['oauth_consumer_key'] if final_key else settings.oauth_consumer_key,
+            "launch_url": launch_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI creator settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Delete LTI Creator Key",
+    description="""Delete the LTI creator key for the organization.
+
+This will disable LTI creator access for the organization.
+Existing LTI creator users will no longer be able to log in via LTI.
+
+Example Request:
+```bash
+curl -X DELETE 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def delete_lti_creator_settings(request: Request, org: Optional[str] = None):
+    """Delete LTI creator key for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        
+        # Delete the key
+        success = db_manager.delete_lti_creator_key(org_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail="No LTI creator key found for this organization"
+            )
+        
+        logger.info(f"Organization admin {admin_info['user_email']} deleted LTI creator key")
+        return {"message": "LTI creator key deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting LTI creator settings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

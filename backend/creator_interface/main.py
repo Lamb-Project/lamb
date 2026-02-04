@@ -624,7 +624,9 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 "user_type": user.get("user_type", "creator"),
                 "user_config": user.get("user_config", {}),
                 "organization": user.get("organization"),
-                "organization_role": user.get("organization_role")
+                "organization_role": user.get("organization_role"),
+                "auth_provider": user.get("auth_provider", "password"),
+                "lti_user_id": user.get("lti_user_id")
             }
             users_with_roles.append(user_data)
 

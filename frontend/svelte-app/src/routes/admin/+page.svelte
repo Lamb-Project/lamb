@@ -821,13 +821,16 @@
             'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
         };
         
-        // Handle merged user_type filter (can be 'admin', 'creator', or 'end_user')
+        // Handle merged user_type filter (can be 'admin', 'creator', 'lti_creator', or 'end_user')
         if (usersFilterType === 'admin') {
             // Admin users: filter by role === 'admin'
             filters.role = 'admin';
         } else if (usersFilterType === 'end_user') {
             // End users: filter by user_type === 'end_user'
             filters.user_type = 'end_user';
+        } else if (usersFilterType === 'lti_creator') {
+            // LTI Creator users: filter by auth_provider === 'lti_creator'
+            filters.auth_provider = 'lti_creator';
         }
         
         /** @type {any} */
@@ -841,9 +844,9 @@
             itemsPerPage: usersPerPage
         });
         
-        // Additional filtering for 'creator' type (non-admin creators)
+        // Additional filtering for 'creator' type (non-admin, non-LTI creators)
         if (usersFilterType === 'creator') {
-            result.items = result.items.filter((/** @type {any} */ u) => u.role !== 'admin' && u.user_type === 'creator');
+            result.items = result.items.filter((/** @type {any} */ u) => u.role !== 'admin' && u.user_type === 'creator' && u.auth_provider !== 'lti_creator');
             result.filteredCount = result.items.length;
             result.totalPages = Math.ceil(result.filteredCount / usersPerPage) || 1;
             const safePage = Math.max(1, Math.min(usersPage, result.totalPages));
@@ -1398,6 +1401,7 @@
                         options: [
                             { value: 'admin', label: localeLoaded ? $_('admin.users.filtersOptions.admin', { default: 'Admin' }) : 'Admin' },
                             { value: 'creator', label: localeLoaded ? $_('admin.users.filtersOptions.creator', { default: 'Creator' }) : 'Creator' },
+                            { value: 'lti_creator', label: localeLoaded ? $_('admin.users.filtersOptions.ltiCreator', { default: 'LTI Creator' }) : 'LTI Creator' },
                             { value: 'end_user', label: localeLoaded ? $_('admin.users.filtersOptions.endUser', { default: 'End User' }) : 'End User' }
                         ]
                     },
@@ -1600,6 +1604,10 @@
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
                                             {localeLoaded ? $_('admin.users.filtersOptions.admin', { default: 'Admin' }) : 'Admin'}
                                         </span>
+                                    {:else if user.auth_provider === 'lti_creator'}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                            {localeLoaded ? $_('admin.users.filtersOptions.ltiCreator', { default: 'LTI Creator' }) : 'LTI Creator'}
+                                        </span>
                                     {:else if user.user_type === 'end_user'}
                                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                                             {localeLoaded ? $_('admin.users.filtersOptions.endUser', { default: 'End User' }) : 'End User'}
@@ -1638,16 +1646,28 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <!-- Action buttons -->
-                                    <button 
-                                        class="text-amber-600 hover:text-amber-800 mr-3" 
-                                        title={localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Change Password' }) : 'Change Password'}
-                                        aria-label={localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Change Password' }) : 'Change Password'}
-                                        onclick={() => openChangePasswordModal(user.email, user.name)}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25-2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                        </svg>
-                                    </button>
+                                    {#if user.auth_provider === 'lti_creator'}
+                                        <!-- LTI users cannot change password -->
+                                        <span 
+                                            class="text-gray-400 mr-3 cursor-not-allowed inline-block" 
+                                            title={localeLoaded ? $_('admin.users.actions.ltiNoPassword', { default: 'LTI users use LMS authentication' }) : 'LTI users use LMS authentication'}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25-2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                            </svg>
+                                        </span>
+                                    {:else}
+                                        <button 
+                                            class="text-amber-600 hover:text-amber-800 mr-3" 
+                                            title={localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Change Password' }) : 'Change Password'}
+                                            aria-label={localeLoaded ? $_('admin.users.actions.changePassword', { default: 'Change Password' }) : 'Change Password'}
+                                            onclick={() => openChangePasswordModal(user.email, user.name)}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25-2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                            </svg>
+                                        </button>
+                                    {/if}
                                     <button
                                         class={currentUserData && currentUserData.email === user.email && user.enabled 
                                             ? "text-gray-400 cursor-not-allowed mr-3" 

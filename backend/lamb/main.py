@@ -10,6 +10,7 @@ from .database_manager import LambDatabaseManager
 from config import API_KEY  # Import the API_KEY from your config file
 from fastapi import APIRouter
 from .lti_users_router import router as lti_users_router
+from .lti_creator_router import router as lti_creator_router
 # REMOVED: owi_router - OWI endpoints removed for security (Dec 27, 2025)
 # OWI managers are still used internally as service classes
 from fastapi.staticfiles import StaticFiles
@@ -77,6 +78,7 @@ class UserPermissions(BaseModel):
 # REMOVED: config_router (unused configuration management)
 # REMOVED: owi_router (security risk - Dec 27, 2025)
 app.include_router(lti_users_router, prefix="/v1/lti_users")
+app.include_router(lti_creator_router, prefix="/v1/lti_creator")  # LTI creator login
 app.include_router(simple_lti_router)
 app.include_router(completions_router, prefix="/v1/completions")
 app.include_router(mcp_router, prefix="/v1/mcp")  # MCP protocol - KEEP (used by frontend)

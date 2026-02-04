@@ -84,7 +84,7 @@ class CreatorUserService:
             None if credentials are invalid
             
         Raises:
-            ValueError: If account is disabled
+            ValueError: If account is disabled or is LTI user (no password login)
         """
         try:
             logger.info(f"Verifying creator user: {email}")
@@ -100,6 +100,11 @@ class CreatorUserService:
             if not user.get('enabled', True):
                 logger.warning(f"Disabled user {email} attempted login")
                 raise ValueError("Account has been disabled. Please contact your administrator.")
+            
+            # Check if user is LTI creator (password login not allowed)
+            if user.get('auth_provider') == 'lti_creator':
+                logger.warning(f"LTI creator user {email} attempted password login")
+                raise ValueError("This account uses LTI authentication. Please log in through your LMS.")
             
             # Verify password via OWI
             owi_user = self.owi_user_manager.verify_user(
@@ -135,7 +140,8 @@ class CreatorUserService:
                 "email": user["email"],
                 "role": user_role,
                 "id": user["id"],
-                "user_type": user.get("user_type", "creator")
+                "user_type": user.get("user_type", "creator"),
+                "auth_provider": user.get("auth_provider", "password")
             }
             
         except ValueError:
