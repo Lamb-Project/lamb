@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Activity Not Ready</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-8 text-center">
+        <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">&#x23F3;</div>
+        <h1 class="text-xl font-bold text-gray-900 mb-2">Activity Not Ready Yet</h1>
+        <p class="text-gray-600 mb-4">
+            This activity for <strong>{{ context_title }}</strong> hasn't been configured by your instructor yet.
+        </p>
+        <p class="text-sm text-gray-500">
+            Your instructor needs to set up the AI assistants for this activity.
+            Please try again later or contact your instructor.
+        </p>
+        <div class="mt-6">
+            <button onclick="window.history.back()" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                &larr; Go Back
+            </button>
+        </div>
+    </div>
+</body>
+</html>

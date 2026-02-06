@@ -71,7 +71,7 @@
     
     // Filter state for users
     let usersSearchQuery = $state('');
-    let usersFilterUserType = $state('all'); // 'all', 'creator', 'end_user'
+    let usersFilterUserType = $state('all'); // 'all', 'creator', 'lti_creator', 'end_user'
     let usersFilterStatus = $state('all'); // 'all', 'enabled', 'disabled'
     let usersSortBy = $state('id'); // 'id', 'name', 'email'
     let usersSortOrder = $state('asc'); // 'asc', 'desc'
@@ -265,6 +265,77 @@
     // Signup key display state
     let signupKey = $state('');
     let showSignupKey = $state(false);
+    
+    // LTI Creator settings state
+    /** @type {any} */
+    let ltiCreatorSettings = $state({
+        has_key: false,
+        oauth_consumer_key: '',
+        enabled: false,
+        launch_url: '',
+        created_at: null
+    });
+    /** @type {any} */
+    let newLtiCreatorSettings = $state({
+        oauth_consumer_key: '',
+        oauth_consumer_secret: '',
+        enabled: true
+    });
+    let isLoadingLtiCreatorSettings = $state(false);
+    /** @type {string | null} */
+    let ltiCreatorSettingsError = $state(null);
+    let ltiCreatorSettingsSuccess = $state(false);
+    let showLtiCreatorSecret = $state(false);
+
+    // --- LTI Activities State ---
+    let ltiActivities = $state([]);
+    let isLoadingLtiActivities = $state(false);
+    let ltiActivitiesError = $state(null);
+    let ltiActivitiesSuccess = $state(null);
+
+    async function fetchLtiActivities() {
+        isLoadingLtiActivities = true;
+        ltiActivitiesError = null;
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const url = getApiUrl(`/lti-activities${params}`);
+            const response = await axios.get(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            ltiActivities = response.data.activities || [];
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to load LTI activities';
+        } finally {
+            isLoadingLtiActivities = false;
+        }
+    }
+
+    async function toggleActivityStatus(activity) {
+        ltiActivitiesError = null;
+        ltiActivitiesSuccess = null;
+        const newStatus = activity.status === 'active' ? 'disabled' : 'active';
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.put(getApiUrl(`/lti-activities/${activity.id}${params}`), 
+                { status: newStatus },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            // Update local state
+            const idx = ltiActivities.findIndex(a => a.id === activity.id);
+            if (idx >= 0) {
+                ltiActivities[idx] = { ...ltiActivities[idx], status: newStatus };
+                ltiActivities = [...ltiActivities]; // trigger reactivity
+            }
+            ltiActivitiesSuccess = `Activity "${activity.activity_name || activity.resource_link_id}" ${newStatus === 'active' ? 'enabled' : 'disabled'}.`;
+            setTimeout(() => { ltiActivitiesSuccess = null; }, 3000);
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to update activity';
+        }
+    }
 
     // Target organization for system admin
     let targetOrgSlug = $state(null);
@@ -415,11 +486,6 @@
         fetchSettings();
     }
 
-    function showBulkImport() {
-        currentView = 'bulk-import';
-        goto(`${base}/org-admin?view=bulk-import`, { replaceState: true });
-    }
-
     // Dashboard functions
     async function fetchDashboard() {
         if (isLoadingDashboard) {
@@ -558,7 +624,15 @@
         
         // Filter by user type
         if (usersFilterUserType !== 'all') {
-            filters.user_type = usersFilterUserType;
+            if (usersFilterUserType === 'lti_creator') {
+                filters.auth_provider = 'lti_creator';
+            } else if (usersFilterUserType === 'creator') {
+                // Regular creators (not LTI)
+                filters.user_type = 'creator';
+                filters.exclude_auth_provider = 'lti_creator';
+            } else {
+                filters.user_type = usersFilterUserType;
+            }
         }
         
         // Filter by enabled status
@@ -1808,6 +1882,141 @@
         showApplyToAllKbConfirmation = false;
     }
 
+    // LTI Creator Settings functions
+    async function fetchLtiCreatorSettings() {
+        if (isLoadingLtiCreatorSettings) return;
+        isLoadingLtiCreatorSettings = true;
+        ltiCreatorSettingsError = null;
+        ltiCreatorSettingsSuccess = false;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/lti-creator${params}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            ltiCreatorSettings = response.data;
+            
+            // Initialize edit form
+            newLtiCreatorSettings = {
+                oauth_consumer_key: ltiCreatorSettings.oauth_consumer_key || '',
+                oauth_consumer_secret: '', // Never populate with actual secret
+                enabled: ltiCreatorSettings.enabled ?? true
+            };
+        } catch (err) {
+            console.error('Error fetching LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to fetch LTI creator settings.';
+            }
+        } finally {
+            isLoadingLtiCreatorSettings = false;
+        }
+    }
+
+    async function saveLtiCreatorSettings() {
+        ltiCreatorSettingsError = null;
+        ltiCreatorSettingsSuccess = false;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Validation
+            if (!ltiCreatorSettings.has_key) {
+                // Creating new key - require both key and secret
+                if (!newLtiCreatorSettings.oauth_consumer_key || !newLtiCreatorSettings.oauth_consumer_secret) {
+                    ltiCreatorSettingsError = 'Both Consumer Key and Consumer Secret are required to create a new LTI key.';
+                    return;
+                }
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const payload = {
+                oauth_consumer_key: newLtiCreatorSettings.oauth_consumer_key || undefined,
+                oauth_consumer_secret: newLtiCreatorSettings.oauth_consumer_secret || undefined,
+                enabled: newLtiCreatorSettings.enabled
+            };
+
+            await axios.put(getApiUrl(`/org-admin/settings/lti-creator${params}`), payload, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // Refresh settings
+            await fetchLtiCreatorSettings();
+            
+            // Show success message
+            ltiCreatorSettingsSuccess = true;
+            
+            // Clear secret field after save
+            newLtiCreatorSettings.oauth_consumer_secret = '';
+            
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                ltiCreatorSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error saving LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to save LTI creator settings.';
+            }
+        }
+    }
+
+    async function deleteLtiCreatorSettings() {
+        ltiCreatorSettingsError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.delete(getApiUrl(`/org-admin/settings/lti-creator${params}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            // Refresh settings
+            await fetchLtiCreatorSettings();
+            
+            // Reset form
+            newLtiCreatorSettings = {
+                oauth_consumer_key: '',
+                oauth_consumer_secret: '',
+                enabled: true
+            };
+
+        } catch (err) {
+            console.error('Error deleting LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to delete LTI creator settings.';
+            }
+        }
+    }
+
     async function updateSignupSettings() {
         // Reset error and success states
         signupSettingsError = null;
@@ -1993,12 +2202,6 @@
                             onclick={showUsers}
                         >
                             Users
-                        </button>
-                        <button
-                            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'bulk-import' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-                            onclick={showBulkImport}
-                        >
-                            Bulk Import
                         </button>
                         <button
                             class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'assistants' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
@@ -2353,6 +2556,7 @@
                                 >
                                     <option value="all">All Types</option>
                                     <option value="creator">Creator</option>
+                                    <option value="lti_creator">LTI Creator</option>
                                     <option value="end_user">End User</option>
                                 </select>
                             </div>
@@ -2501,9 +2705,19 @@
                                                 </td>
                                                 <!-- User Type -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.user_type === 'end_user' ? 'bg-purple-100 text-purple-800' : 'bg-brand/10 text-brand'}">
-                                                        {user.user_type === 'end_user' ? 'End User' : 'Creator'}
-                                                    </span>
+                                                    {#if user.auth_provider === 'lti_creator'}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                            LTI Creator
+                                                        </span>
+                                                    {:else if user.user_type === 'end_user'}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                            End User
+                                                        </span>
+                                                    {:else}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-brand/10 text-brand">
+                                                            Creator
+                                                        </span>
+                                                    {/if}
                                                 </td>
                                                 <!-- Status -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
@@ -2525,17 +2739,28 @@
                                                 </td>
                                                 <!-- Actions -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    <!-- Change Password -->
-                                                    <button
-                                                        class="text-amber-600 hover:text-amber-800 mr-3"
-                                                        title="Change Password"
-                                                        aria-label="Change Password for {user.name}"
-                                                        onclick={() => openChangePasswordModal(user)}
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                                        </svg>
-                                                    </button>
+                                                    <!-- Change Password (disabled for LTI Creator users) -->
+                                                    {#if user.auth_provider === 'lti_creator'}
+                                                        <span
+                                                            class="text-gray-400 mr-3 cursor-not-allowed"
+                                                            title="Password cannot be changed for LTI users"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                            </svg>
+                                                        </span>
+                                                    {:else}
+                                                        <button
+                                                            class="text-amber-600 hover:text-amber-800 mr-3"
+                                                            title="Change Password"
+                                                            aria-label="Change Password for {user.name}"
+                                                            onclick={() => openChangePasswordModal(user)}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                            </svg>
+                                                        </button>
+                                                    {/if}
                                                     
                                                     <!-- Enable/Disable Toggle -->
                                                     {#if user.enabled}
@@ -2877,6 +3102,30 @@
                                         onclick={() => { settingsSubView = 'embeddings'; }}
                                     >
                                         Embeddings Setups
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'lti-creator' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'lti-creator';
+                                            // Lazy load LTI creator settings only when tab is clicked
+                                            if (!ltiCreatorSettings.has_key && !isLoadingLtiCreatorSettings) {
+                                                fetchLtiCreatorSettings();
+                                            }
+                                        }}
+                                    >
+                                        LTI Creator
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'lti-activities' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'lti-activities';
+                                            if (ltiActivities.length === 0 && !isLoadingLtiActivities) {
+                                                fetchLtiActivities();
+                                            }
+                                        }}
+                                    >
+                                        LTI Activities
+                                    </button>
                                     </button>
                                 </nav>
                             </div>
@@ -3823,17 +4072,307 @@
                             />
                         </div>
                         {/if}
+                        <!-- LTI Activities Tab -->
+                        {#if settingsSubView === 'lti-activities'}
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">LTI Activities</h3>
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Manage LTI activities configured through the unified LTI endpoint. Each activity represents
+                                    an LTI placement in an LMS course with its own set of assistants.
+                                </p>
+
+                                {#if isLoadingLtiActivities}
+                                    <div class="flex items-center justify-center py-8">
+                                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                        <span class="text-gray-500">Loading activities...</span>
+                                    </div>
+                                {:else}
+                                    {#if ltiActivitiesError}
+                                        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Error: </strong>
+                                            <span class="block sm:inline">{ltiActivitiesError}</span>
+                                        </div>
+                                    {/if}
+                                    {#if ltiActivitiesSuccess}
+                                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                            <span>{ltiActivitiesSuccess}</span>
+                                        </div>
+                                    {/if}
+
+                                    {#if ltiActivities.length === 0}
+                                        <div class="text-center py-8">
+                                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                            </svg>
+                                            <h3 class="mt-2 text-sm font-medium text-gray-900">No LTI activities yet</h3>
+                                            <p class="mt-1 text-sm text-gray-500">
+                                                Activities are created when an instructor launches the unified LTI tool for the first time.
+                                            </p>
+                                        </div>
+                                    {:else}
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full divide-y divide-gray-200">
+                                                <thead class="bg-gray-50">
+                                                    <tr>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assistants</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Options</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="bg-white divide-y divide-gray-200">
+                                                    {#each ltiActivities as activity}
+                                                        <tr class="hover:bg-gray-50">
+                                                            <td class="px-4 py-3">
+                                                                <div class="text-sm font-medium text-gray-900">
+                                                                    {activity.activity_name || '(unnamed)'}
+                                                                </div>
+                                                                <div class="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={activity.resource_link_id}>
+                                                                    {activity.resource_link_id}
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-700">
+                                                                {activity.context_title || activity.context_id || '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    {activity.assistant_count || 0} assistant{(activity.assistant_count || 0) !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-700">
+                                                                {activity.owner_name || activity.owner_email || activity.configured_by_name || activity.configured_by_email || '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                {#if activity.chat_visibility_enabled}
+                                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700" title="Instructors can view anonymized chat transcripts">
+                                                                        Chat visible
+                                                                    </span>
+                                                                {:else}
+                                                                    <span class="text-xs text-gray-400">—</span>
+                                                                {/if}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {activity.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                                    {activity.status}
+                                                                </span>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-500">
+                                                                {activity.created_at ? new Date(activity.created_at * 1000).toLocaleDateString() : '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm">
+                                                                <button
+                                                                    class="text-sm font-medium {activity.status === 'active' ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}"
+                                                                    onclick={() => toggleActivityStatus(activity)}
+                                                                >
+                                                                    {activity.status === 'active' ? 'Disable' : 'Enable'}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    {/each}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Reload button -->
+                                    <div class="mt-4 pt-4 border-t border-gray-200">
+                                        <button
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                            onclick={fetchLtiActivities}
+                                        >
+                                            Reload Activities
+                                        </button>
+                                    </div>
+                                {/if}
+                            </div>
+                        </div>
+                        {/if}
+
+                        <!-- LTI Creator Settings Tab -->
+                        {#if settingsSubView === 'lti-creator'}
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">LTI Creator Access</h3>
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Configure LTI-based login for the Creator Interface. This allows educators to access LAMB
+                                    directly from their LMS (e.g., Moodle) without needing separate credentials.
+                                </p>
+
+                                <!-- Loading State -->
+                                {#if isLoadingLtiCreatorSettings}
+                                    <div class="flex items-center justify-center py-8">
+                                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                        <span class="text-gray-500">Loading LTI settings...</span>
+                                    </div>
+                                {:else}
+                                    <!-- Error Message -->
+                                    {#if ltiCreatorSettingsError}
+                                        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Error: </strong>
+                                            <span class="block sm:inline">{ltiCreatorSettingsError}</span>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Success Message -->
+                                    {#if ltiCreatorSettingsSuccess}
+                                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Success! </strong>
+                                            <span class="block sm:inline">LTI creator settings saved successfully.</span>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Current Status -->
+                                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                                        <h4 class="text-sm font-medium text-gray-700 mb-2">Current Status</h4>
+                                        {#if ltiCreatorSettings.has_key}
+                                            <div class="flex items-center mb-2">
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {ltiCreatorSettings.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                    {ltiCreatorSettings.enabled ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </div>
+                                            <p class="text-sm text-gray-600">
+                                                <strong>Consumer Key:</strong> <code class="bg-gray-100 px-1 rounded">{ltiCreatorSettings.oauth_consumer_key}</code>
+                                            </p>
+                                            {#if ltiCreatorSettings.launch_url}
+                                                <p class="text-sm text-gray-600 mt-1">
+                                                    <strong>Launch URL:</strong> <code class="bg-gray-100 px-1 rounded text-xs">{ltiCreatorSettings.launch_url}</code>
+                                                </p>
+                                            {/if}
+                                        {:else}
+                                            <p class="text-sm text-gray-500 italic">No LTI creator key configured yet.</p>
+                                        {/if}
+                                    </div>
+
+                                    <!-- Configuration Form -->
+                                    <div class="space-y-4">
+                                        <!-- Enable/Disable Toggle -->
+                                        {#if ltiCreatorSettings.has_key}
+                                            <div class="flex items-center">
+                                                <input
+                                                    id="lti-creator-enabled"
+                                                    type="checkbox"
+                                                    bind:checked={newLtiCreatorSettings.enabled}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                                >
+                                                <label for="lti-creator-enabled" class="ml-2 block text-sm text-gray-700">
+                                                    Enable LTI Creator Access
+                                                </label>
+                                            </div>
+                                        {/if}
+
+                                        <!-- Consumer Key -->
+                                        <div>
+                                            <label for="lti-consumer-key" class="block text-sm font-medium text-gray-700">
+                                                OAuth Consumer Key
+                                            </label>
+                                            <input
+                                                id="lti-consumer-key"
+                                                type="text"
+                                                bind:value={newLtiCreatorSettings.oauth_consumer_key}
+                                                placeholder="e.g., myorg_creator"
+                                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                            >
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                Must be unique across all organizations. Recommended format: <code>{dashboardData?.organization?.slug || 'orgslug'}_creator</code>
+                                            </p>
+                                        </div>
+
+                                        <!-- Consumer Secret -->
+                                        <div>
+                                            <label for="lti-consumer-secret" class="block text-sm font-medium text-gray-700">
+                                                OAuth Consumer Secret
+                                                {#if ltiCreatorSettings.has_key}
+                                                    <span class="text-gray-400 font-normal">(leave blank to keep current)</span>
+                                                {/if}
+                                            </label>
+                                            <div class="relative mt-1">
+                                                <input
+                                                    id="lti-consumer-secret"
+                                                    type={showLtiCreatorSecret ? 'text' : 'password'}
+                                                    bind:value={newLtiCreatorSettings.oauth_consumer_secret}
+                                                    placeholder={ltiCreatorSettings.has_key ? '••••••••' : 'Enter a strong secret key'}
+                                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-10 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                                >
+                                                <button
+                                                    type="button"
+                                                    onclick={() => showLtiCreatorSecret = !showLtiCreatorSecret}
+                                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                                >
+                                                    {#if showLtiCreatorSecret}
+                                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                        </svg>
+                                                    {:else}
+                                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    {/if}
+                                                </button>
+                                            </div>
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                Use a secure, random string. This will be used to sign LTI requests.
+                                            </p>
+                                        </div>
+
+                                        <!-- LTI Information Box -->
+                                        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+                                            <h4 class="text-sm font-medium text-blue-800 mb-2">Setting up LTI in your LMS</h4>
+                                            <ul class="text-xs text-blue-700 space-y-1">
+                                                <li>1. In your LMS, create a new External Tool (LTI 1.1)</li>
+                                                <li>2. Set the <strong>Launch URL</strong> to: <code class="bg-blue-100 px-1 rounded">{ltiCreatorSettings.launch_url || '/lamb/v1/lti_creator/launch'}</code></li>
+                                                <li>3. Enter the <strong>Consumer Key</strong> and <strong>Consumer Secret</strong> from above</li>
+                                                <li>4. Users who access via LTI will automatically get creator accounts</li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                                            <div class="flex space-x-3">
+                                                <button
+                                                    class="bg-brand hover:bg-brand-dark text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                                    onclick={saveLtiCreatorSettings}
+                                                >
+                                                    {ltiCreatorSettings.has_key ? 'Update LTI Settings' : 'Create LTI Key'}
+                                                </button>
+                                                <button
+                                                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                                    onclick={fetchLtiCreatorSettings}
+                                                >
+                                                    Reload
+                                                </button>
+                                            </div>
+                                            {#if ltiCreatorSettings.has_key}
+                                                <button
+                                                    class="text-red-600 hover:text-red-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                                    onclick={deleteLtiCreatorSettings}
+                                                >
+                                                    Delete LTI Key
+                                                </button>
+                                            {/if}
+                                        </div>
+
+                                        <!-- Security Note -->
+                                        <div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+                                            <p class="text-xs text-yellow-700">
+                                                <strong>Note:</strong> LTI creator users cannot become organization admins and cannot change their passwords.
+                                                They are identified by their LMS user ID and can access LAMB from any LTI instance on their LMS.
+                                            </p>
+                                        </div>
+                                    </div>
+                                {/if}
+                            </div>
+                        </div>
+                        {/if}
                     {/if}
                 </div>
             {/if}
 
-            <!-- Bulk Import View -->
-            {#if currentView === 'bulk-import'}
-                <div class="mb-6">
-                    <p class="text-gray-500">Bulk user import feature coming soon...</p>
-                    <!-- <BulkUserImport /> -->
-                </div>
-            {/if}
         </div>
     </main>
 </div>
