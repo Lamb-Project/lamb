@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB Activity Setup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-2xl w-full p-8">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">&#x1F40F;</div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">LAMB Activity Setup</h1>
+                {% if context_title %}
+                <p class="text-sm text-gray-500">Course: {{ context_title }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <form id="setupForm" method="POST" action="/lamb/v1/lti/configure">
+            <input type="hidden" name="token" value="{{ token }}">
+
+            <!-- Step 1: Organization Selection (only if multiple orgs) -->
+            {% if needs_org_selection %}
+            <div id="orgStep" class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-3">Choose Organization</h2>
+                <p class="text-sm text-gray-600 mb-4">
+                    You have accounts in multiple organizations. Choose one for this activity.
+                    <span class="text-amber-600 font-medium">This cannot be changed later.</span>
+                </p>
+                {% for org_id, assistants in orgs_with_assistants.items() %}
+                <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-blue-50 transition-colors">
+                    <input type="radio" name="organization_id" value="{{ org_id }}" class="org-radio text-blue-600" required>
+                    <div>
+                        <span class="font-medium text-gray-900">{{ org_names.get(org_id, 'Organization ' ~ org_id) }}</span>
+                        <span class="text-sm text-gray-500 ml-2">({{ assistants|length }} published assistant{{ 's' if assistants|length != 1 else '' }})</span>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            {% else %}
+            <!-- Single org: auto-select -->
+            {% for org_id in orgs_with_assistants %}
+            <input type="hidden" name="organization_id" value="{{ org_id }}">
+            {% endfor %}
+            {% endif %}
+
+            <!-- Step 2: Assistant Selection -->
+            <div id="assistantStep" class="{% if needs_org_selection %}hidden{% endif %} mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
+                <p class="text-sm text-gray-600 mb-4">Choose which AI assistants will be available in this activity.</p>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Activity Name</label>
+                    <input type="text" name="activity_name" placeholder="{{ context_title or 'My AI Assistants' }}"
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div id="assistantList" class="space-y-2 max-h-96 overflow-y-auto">
+                    <!-- Populated by JS based on org selection -->
+                    {% if not needs_org_selection %}
+                    {% for org_id, assistants in orgs_with_assistants.items() %}
+                    {% for a in assistants %}
+                    <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                        <input type="checkbox" name="assistant_ids" value="{{ a.id }}" class="mt-1 text-blue-600 rounded">
+                        <div>
+                            <span class="font-medium text-gray-900">{{ a.name }}</span>
+                            {% if a.access_type == 'shared' %}
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">shared</span>
+                            {% endif %}
+                            <p class="text-sm text-gray-500">by {{ a.owner }}</p>
+                        </div>
+                    </label>
+                    {% endfor %}
+                    {% endfor %}
+                    {% endif %}
+                </div>
+
+                {% if needs_org_selection %}
+                <p id="noOrgSelected" class="text-sm text-gray-400 italic">Select an organization above to see available assistants.</p>
+                {% endif %}
+            </div>
+
+            <!-- Submit -->
+            <div class="flex justify-end">
+                <button type="submit" id="submitBtn"
+                        class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled>
+                    Save &amp; Launch
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const orgsData = {{ orgs_json | safe }};
+        const needsOrgSelection = {{ 'true' if needs_org_selection else 'false' }};
+        const assistantList = document.getElementById('assistantList');
+        const assistantStep = document.getElementById('assistantStep');
+        const noOrgSelected = document.getElementById('noOrgSelected');
+        const submitBtn = document.getElementById('submitBtn');
+
+        function renderAssistants(orgId) {
+            const assistants = orgsData[orgId] || [];
+            assistantList.innerHTML = '';
+            assistants.forEach(a => {
+                const sharedBadge = a.access_type === 'shared'
+                    ? '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">shared</span>'
+                    : '';
+                assistantList.innerHTML += `
+                    <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                        <input type="checkbox" name="assistant_ids" value="${a.id}" class="mt-1 text-blue-600 rounded assistant-cb">
+                        <div>
+                            <span class="font-medium text-gray-900">${a.name}</span>
+                            ${sharedBadge}
+                            <p class="text-sm text-gray-500">by ${a.owner}</p>
+                        </div>
+                    </label>
+                `;
+            });
+            if (noOrgSelected) noOrgSelected.classList.add('hidden');
+            updateSubmitState();
+            // Re-attach checkbox listeners
+            document.querySelectorAll('.assistant-cb').forEach(cb => {
+                cb.addEventListener('change', updateSubmitState);
+            });
+        }
+
+        function updateSubmitState() {
+            const anyChecked = document.querySelectorAll('input[name="assistant_ids"]:checked').length > 0;
+            const orgSelected = !needsOrgSelection || document.querySelector('input[name="organization_id"]:checked');
+            submitBtn.disabled = !(anyChecked && orgSelected);
+        }
+
+        // Org radio handlers
+        if (needsOrgSelection) {
+            document.querySelectorAll('.org-radio').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    assistantStep.classList.remove('hidden');
+                    renderAssistants(e.target.value);
+                });
+            });
+        }
+
+        // Checkbox change handlers (for single-org case)
+        document.querySelectorAll('input[name="assistant_ids"]').forEach(cb => {
+            cb.addEventListener('change', updateSubmitState);
+        });
+
+        // Initial state
+        updateSubmitState();
+    </script>
+</body>
+</html>

@@ -177,8 +177,9 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 
 | Router | Prefix | Purpose |
 |--------|--------|---------|
-| `lti_users_router` | `/v1/lti_users` | LTI user management |
-| `simple_lti_router` | `/simple_lti` | Student LTI launch handling |
+| `lti_router` | `/v1/lti` | **Unified LTI** — multi-assistant activities (new) |
+| `lti_users_router` | `/v1/lti_users` | Legacy student LTI (single assistant) |
+| `simple_lti_router` | `/simple_lti` | Student LTI launch handling (stub) |
 | `lti_creator_router` | `/v1/lti_creator` | LTI Creator launch (educators) |
 | `completions_router` | `/v1/completions` | Completion generation |
 | `mcp_router` | `/v1/mcp` | MCP endpoints |
@@ -639,11 +640,60 @@ Frontend → Creator Interface → KB Server → ChromaDB
 
 ### 8.2 LTI Integration
 
-LAMB supports two types of LTI integration:
-1. **Student LTI** — Students access published assistants via LTI
-2. **LTI Creator** — Educators access the Creator Interface via LTI (new in v2.1)
+LAMB supports three types of LTI integration:
+1. **Unified LTI** — Multi-assistant activities configured by instructors (recommended, new in v2.2)
+2. **Legacy Student LTI** — Students access a single published assistant via LTI
+3. **LTI Creator** — Educators access the Creator Interface via LTI (new in v2.1)
 
-#### 8.2.1 Student LTI (Published Assistants)
+> For full details, see [lti_landscape.md](./lti_landscape.md) and [projects/lti_unified_activity_design.md](./projects/lti_unified_activity_design.md).
+
+#### 8.2.1 Unified LTI (Multi-Assistant Activities) — Recommended
+
+**Purpose:** One LTI tool for the entire LAMB instance. Instructors configure which published assistants are available per activity. Students see multiple assistants in one activity.
+
+**Global credentials:** Set via `LTI_GLOBAL_CONSUMER_KEY`/`LTI_GLOBAL_SECRET` in `.env`, or overridden by admin via the database.
+
+**Launch Flow:**
+```
+User clicks LTI link in LMS
+    → LMS sends OAuth 1.0 signed POST to /lamb/v1/lti/launch
+    → LAMB validates signature with global key/secret
+    → LAMB checks resource_link_id:
+        ├── Activity configured → Student flow:
+        │     → Generate synthetic email ({user}_{resource_link_id}@lamb-lti.local)
+        │     → Create/get OWI user → Add to activity group
+        │     → Redirect to OWI chat (sees all activity assistants)
+        │
+        └── Activity NOT configured → Instructor flow:
+              → Identify instructor as LAMB Creator user
+              → Show org selection (if multi-org) + assistant picker
+              → Create OWI group for activity
+              → Add group to each selected assistant model
+              → Redirect instructor to OWI
+```
+
+**Key Endpoints:**
+- `POST /lamb/v1/lti/launch` — Main LTI entry point
+- `GET /lamb/v1/lti/setup` — Instructor setup page
+- `POST /lamb/v1/lti/configure` — Save activity configuration
+- `GET /lamb/v1/lti/info` — LTI tool configuration info
+
+**Key Design Decisions:**
+- Activities are bound to one organization (no cross-org mixing)
+- Student identity is per `resource_link_id` (each LTI placement = separate identity)
+- Org admins can manage activities: `GET/PUT /creator/admin/lti-activities`
+- Global credentials managed by system admin: `GET/PUT /creator/admin/lti-global-config`
+
+**Database Tables:**
+- `lti_global_config` — Global consumer key/secret (singleton)
+- `lti_activities` — Activity records (resource_link_id → org, OWI group)
+- `lti_activity_assistants` — Junction: assistants per activity
+- `lti_activity_users` — Student access tracking
+- `lti_identity_links` — Maps LMS identities to Creator users
+
+#### 8.2.2 Legacy Student LTI (Single Published Assistant)
+
+> **Note:** This is the older approach. Consider using Unified LTI (§8.2.1) for new deployments.
 
 **Publishing Flow:**
 ```
@@ -666,27 +716,14 @@ Student clicks LTI link in LMS
 ```
 
 **Key Endpoints:**
-- `POST /lamb/simple_lti/launch` — Student LTI launch handler
-
-**LTI XML Cartridge (for LMS):**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<cartridge_basiclti_link xmlns="http://www.imsglobal.org/xsd/imslticc_v1p0">
-    <blti:title>CS101 Assistant</blti:title>
-    <blti:description>Learning Assistant for CS 101</blti:description>
-    <blti:launch_url>https://lamb.example.edu/lamb/simple_lti/launch</blti:launch_url>
-    <blti:custom>
-        <lticm:property name="assistant_id">42</lticm:property>
-    </blti:custom>
-</cartridge_basiclti_link>
-```
+- `POST /lamb/v1/lti_users/lti` — Student LTI launch handler
 
 **LTI Parameters Extracted:**
-- `lis_person_contact_email_primary` — User email
-- `lis_person_name_full` — User display name
-- `custom_assistant_id` — Target assistant
+- `ext_user_username` / `user_id` — Username for email generation
+- `oauth_consumer_key` — Published assistant name (identifies the assistant)
+- Uses global `LTI_SECRET` env var for OAuth validation
 
-#### 8.2.2 LTI Creator (Creator Interface Access)
+#### 8.2.3 LTI Creator (Creator Interface Access)
 
 **Purpose:** Allow educators to access the LAMB Creator Interface directly from their LMS without separate login credentials.
 
@@ -1010,6 +1047,9 @@ npm run dev
 | `KB_SERVER_URL` | KB server address | `http://localhost:9090` |
 | `OWI_BASE_URL` | OWI internal URL | `http://openwebui:8080` |
 | `OWI_PUBLIC_BASE_URL` | OWI public URL | - |
+| `LTI_GLOBAL_CONSUMER_KEY` | Unified LTI consumer key | `lamb` |
+| `LTI_GLOBAL_SECRET` | Unified LTI shared secret | (falls back to `LTI_SECRET`) |
+| `LTI_SECRET` | Legacy student LTI secret | - |
 
 > See [ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) for complete list.
 
@@ -1141,7 +1181,8 @@ DB_LOG_LEVEL=DEBUG
 | **Completions** | `lamb/completions/main.py`, `lamb/completions/connectors/` |
 | **KBs** | `creator_interface/knowledges_router.py`, `kb_server_manager.py` |
 | **Orgs** | `creator_interface/organization_router.py`, `lamb/organization_router.py` |
-| **LTI (Student)** | `lamb/simple_lti/simple_lti_main.py` |
+| **LTI (Unified)** | `lamb/lti_router.py`, `lamb/lti_activity_manager.py` |
+| **LTI (Student legacy)** | `lamb/lti_users_router.py` |
 | **LTI (Creator)** | `lamb/lti_creator_router.py` |
 | **Frontend** | `frontend/svelte-app/src/routes/`, `src/lib/components/` |
 

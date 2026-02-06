@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Link Your Account</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-8">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">&#x1F40F;</div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">Link Your LAMB Account</h1>
+                <p class="text-sm text-gray-500">Connect your LMS identity to LAMB</p>
+            </div>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-6">
+            We couldn't automatically identify your LAMB Creator account.
+            Please enter your LAMB Creator credentials to link your accounts.
+            You'll only need to do this once.
+        </p>
+
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/lamb/v1/lti/link-account">
+            <input type="hidden" name="token" value="{{ token }}">
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" name="email" required autocomplete="email"
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="your.email@university.edu">
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="Your LAMB Creator password">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                Link Account &amp; Continue
+            </button>
+        </form>
+
+        <p class="text-xs text-gray-400 mt-4 text-center">
+            Don't have a LAMB Creator account? Contact your institution's LAMB administrator.
+        </p>
+    </div>
+</body>
+</html>
