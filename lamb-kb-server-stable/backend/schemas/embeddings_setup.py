@@ -59,3 +59,4 @@ class EmbeddingsSetupUpdate(BaseModel):
     vendor: Optional[str] = None
     model_name: Optional[str] = None
     is_active: Optional[bool] = None
+    is_default: Optional[bool] = None

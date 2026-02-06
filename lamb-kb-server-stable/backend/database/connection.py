@@ -132,10 +132,14 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
             if not setup:
                 raise ValueError(f"Embeddings setup {collection.embeddings_setup_id} not found")
 
+            # Decrypt API key if encrypted
+            from utils.encryption import decrypt_api_key
+            decrypted_key = decrypt_api_key(setup.api_key) if setup.api_key else ""
+            
             return get_embedding_function_by_params(
                 vendor=setup.vendor,
                 model_name=setup.model_name,
-                api_key=setup.api_key or "",
+                api_key=decrypted_key,
                 api_endpoint=setup.api_endpoint or ""
             )
         else:

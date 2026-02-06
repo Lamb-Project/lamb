@@ -41,7 +41,7 @@ class TestCreateCollection:
             embeddings_model={
                 "model": "nomic-embed-text",
                 "vendor": "ollama",
-                "api_endpoint": "http://localhost:11434/api/embeddings",
+                "api_endpoint": "http://host.docker.internal:11434/api/embeddings",
                 "apikey": ""
             }
         )

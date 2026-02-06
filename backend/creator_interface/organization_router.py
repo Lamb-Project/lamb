@@ -4101,6 +4101,12 @@ async def list_embeddings_setups(org_id: int, request: Request):
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
         # Check KB server availability
         kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
@@ -4111,10 +4117,10 @@ async def list_embeddings_setups(org_id: int, request: Request):
         kb_url = kb_config['url']
         kb_token = kb_config['token']
 
-        # Call KB server API
+        # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{kb_url}/organizations/{org_id}/embeddings-setups",
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 timeout=30.0
             )
@@ -4139,6 +4145,12 @@ async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dic
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
         # Check KB server availability
         kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
@@ -4149,10 +4161,10 @@ async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dic
         kb_url = kb_config['url']
         kb_token = kb_config['token']
 
-        # Call KB server API
+        # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{kb_url}/organizations/{org_id}/embeddings-setups",
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 json=setup_data,
                 timeout=60.0  # Longer timeout for validation
@@ -4178,6 +4190,12 @@ async def update_embeddings_setup(org_id: int, setup_key: str, request: Request,
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
         # Check KB server availability
         kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
@@ -4188,10 +4206,10 @@ async def update_embeddings_setup(org_id: int, setup_key: str, request: Request,
         kb_url = kb_config['url']
         kb_token = kb_config['token']
 
-        # Call KB server API
+        # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.put(
-                f"{kb_url}/organizations/{org_id}/embeddings-setups/{setup_key}",
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 json=update_data,
                 timeout=60.0  # Longer timeout for validation
@@ -4223,6 +4241,12 @@ async def delete_embeddings_setup(
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
         # Check KB server availability
         kb_available = await kb_server_manager.is_kb_server_available(creator_user)
         if not kb_available:
@@ -4240,10 +4264,10 @@ async def delete_embeddings_setup(
         if replacement_setup_key:
             params['replacement_setup_key'] = replacement_setup_key
 
-        # Call KB server API
+        # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.delete(
-                f"{kb_url}/organizations/{org_id}/embeddings-setups/{setup_key}",
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 params=params,
                 timeout=30.0

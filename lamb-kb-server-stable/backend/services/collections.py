@@ -141,6 +141,39 @@ class CollectionsService:
         return sanitized
     
     @staticmethod
+    def _resolve_embeddings_from_setup(setup) -> dict:
+        """
+        Resolve embeddings configuration from an EmbeddingsSetup object.
+        
+        This helper centralizes the logic for extracting embeddings info from a setup,
+        used when synthesizing embeddings_model for backward compatibility.
+        
+        Args:
+            setup: EmbeddingsSetup model instance
+            
+        Returns:
+            Tuple of (embeddings_model dict, embeddings_setup dict) or (None, None) if setup is None
+        """
+        if not setup:
+            return None, None
+            
+        embeddings_model = {
+            "model": setup.model_name,
+            "vendor": setup.vendor,
+            "api_endpoint": setup.api_endpoint,
+            "apikey_configured": bool(setup.api_key)
+        }
+        
+        embeddings_setup = {
+            "id": setup.id,
+            "name": setup.name,
+            "setup_key": setup.setup_key,
+            "embedding_dimensions": setup.embedding_dimensions
+        }
+        
+        return embeddings_model, embeddings_setup
+    
+    @staticmethod
     def _sanitize_collection(collection: Any, db: Session = None) -> Dict[str, Any]:
         """
         Sanitize a collection object before returning to frontend.
@@ -172,22 +205,13 @@ class CollectionsService:
 
             # SYNTHESIZE embeddings_model for backward compatibility
             if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id and db:
-                # NEW MODE: Get config from setup
+                # NEW MODE: Get config from setup using helper
                 setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
-
-                if setup:
-                    coll_dict["embeddings_model"] = {
-                        "model": setup.model_name,
-                        "vendor": setup.vendor,
-                        "api_endpoint": setup.api_endpoint,
-                        "apikey_configured": bool(setup.api_key)
-                    }
-                    coll_dict["embeddings_setup"] = {
-                        "id": setup.id,
-                        "name": setup.name,
-                        "setup_key": setup.setup_key,
-                        "embedding_dimensions": setup.embedding_dimensions
-                    }
+                emb_model, emb_setup = CollectionsService._resolve_embeddings_from_setup(setup)
+                
+                if emb_model:
+                    coll_dict["embeddings_model"] = emb_model
+                    coll_dict["embeddings_setup"] = emb_setup
                     coll_dict["organization_id"] = collection.organization_id
                 else:
                     # Setup not found - fallback
@@ -202,19 +226,10 @@ class CollectionsService:
             if coll_dict.get("embeddings_setup_id") and db:
                 from database.models import EmbeddingsSetup
                 setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == coll_dict["embeddings_setup_id"]).first()
-                if setup:
-                    coll_dict["embeddings_model"] = {
-                        "model": setup.model_name,
-                        "vendor": setup.vendor,
-                        "api_endpoint": setup.api_endpoint,
-                        "apikey_configured": bool(setup.api_key)
-                    }
-                    coll_dict["embeddings_setup"] = {
-                        "id": setup.id,
-                        "name": setup.name,
-                        "setup_key": setup.setup_key,
-                        "embedding_dimensions": setup.embedding_dimensions
-                    }
+                emb_model, emb_setup = CollectionsService._resolve_embeddings_from_setup(setup)
+                if emb_model:
+                    coll_dict["embeddings_model"] = emb_model
+                    coll_dict["embeddings_setup"] = emb_setup
             else:
                 coll_dict["embeddings_model"] = CollectionsService._sanitize_embeddings_model(
                     coll_dict.get("embeddings_model", {})

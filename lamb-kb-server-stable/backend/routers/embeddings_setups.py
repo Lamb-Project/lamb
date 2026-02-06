@@ -14,6 +14,7 @@ from schemas.embeddings_setup import (
     EmbeddingsSetupUpdate
 )
 from dependencies import verify_token
+from utils.encryption import encrypt_api_key, decrypt_api_key
 
 router = APIRouter(tags=["Embeddings Setups"])
 
@@ -71,6 +72,35 @@ async def get_available_setups(org_external_id: str, db: Session = Depends(get_d
     ]
 
 
+@router.get("/organizations/{org_external_id}/embeddings-setups/{setup_key}", response_model=EmbeddingsSetupResponse, dependencies=[Depends(verify_token)])
+async def get_embeddings_setup(org_external_id: str, setup_key: str, db: Session = Depends(get_db)):
+    """Get a specific embeddings setup by key."""
+    org = db.query(Organization).filter(Organization.external_id == org_external_id).first()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+
+    setup = db.query(EmbeddingsSetup).filter(
+        EmbeddingsSetup.organization_id == org.id,
+        EmbeddingsSetup.setup_key == setup_key
+    ).first()
+    if not setup:
+        raise HTTPException(404, "Embeddings setup not found")
+
+    collections_count = db.query(Collection).filter(Collection.embeddings_setup_id == setup.id).count()
+    return EmbeddingsSetupResponse(
+        id=setup.id,
+        name=setup.name,
+        setup_key=setup.setup_key,
+        vendor=setup.vendor,
+        model_name=setup.model_name,
+        embedding_dimensions=setup.embedding_dimensions,
+        is_default=setup.is_default,
+        is_active=setup.is_active,
+        api_key_configured=bool(setup.api_key),
+        collections_count=collections_count
+    )
+
+
 @router.post("/organizations/{org_external_id}/embeddings-setups", response_model=EmbeddingsSetupResponse, dependencies=[Depends(verify_token)])
 async def create_embeddings_setup(org_external_id: str, setup: EmbeddingsSetupCreate, db: Session = Depends(get_db)):
     """Create a new embeddings setup for an organization."""
@@ -103,7 +133,7 @@ async def create_embeddings_setup(org_external_id: str, setup: EmbeddingsSetupCr
     except Exception as e:
         raise HTTPException(400, f"Invalid embeddings configuration: {str(e)}")
 
-    # Create new setup
+    # Create new setup with encrypted API key
     new_setup = EmbeddingsSetup(
         organization_id=org.id,
         name=setup.name,
@@ -111,13 +141,21 @@ async def create_embeddings_setup(org_external_id: str, setup: EmbeddingsSetupCr
         description=setup.description,
         vendor=setup.vendor,
         api_endpoint=setup.api_endpoint,
-        api_key=setup.api_key,
+        api_key=encrypt_api_key(setup.api_key),  # Encrypt before storing
         model_name=setup.model_name,
         embedding_dimensions=setup.embedding_dimensions,
         is_default=setup.is_default,
         is_active=True
     )
     db.add(new_setup)
+    
+    # SINGLE-DEFAULT ENFORCEMENT: If new setup is default, clear is_default on all others
+    if setup.is_default:
+        db.query(EmbeddingsSetup).filter(
+            EmbeddingsSetup.organization_id == org.id,
+            EmbeddingsSetup.setup_key != setup.setup_key
+        ).update({"is_default": False})
+    
     db.commit()
     db.refresh(new_setup)
 
@@ -192,7 +230,7 @@ async def update_embeddings_setup(
     if update.description is not None:
         setup.description = update.description
     if update.api_key:
-        setup.api_key = update.api_key
+        setup.api_key = encrypt_api_key(update.api_key)  # Encrypt before storing
     if update.api_endpoint is not None:
         setup.api_endpoint = update.api_endpoint
     if update.vendor:
@@ -201,6 +239,16 @@ async def update_embeddings_setup(
         setup.model_name = update.model_name
     if update.is_active is not None:
         setup.is_active = update.is_active
+    
+    # SINGLE-DEFAULT ENFORCEMENT: Handle is_default updates
+    if update.is_default is not None:
+        if update.is_default:
+            # Clear is_default on all other setups in this org
+            db.query(EmbeddingsSetup).filter(
+                EmbeddingsSetup.organization_id == org.id,
+                EmbeddingsSetup.id != setup.id
+            ).update({"is_default": False})
+        setup.is_default = update.is_default
 
     db.commit()
     db.refresh(setup)

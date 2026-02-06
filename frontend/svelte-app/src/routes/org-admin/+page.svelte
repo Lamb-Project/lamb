@@ -18,6 +18,7 @@
     import UserForm from '$lib/components/admin/shared/UserForm.svelte';
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
     import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
+    import EmbeddingsSetupManager from '$lib/components/admin/EmbeddingsSetupManager.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -2871,6 +2872,12 @@
                                     >
                                         Assistant Defaults
                                     </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'embeddings' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { settingsSubView = 'embeddings'; }}
+                                    >
+                                        Embeddings Setups
+                                    </button>
                                 </nav>
                             </div>
                         </div>
@@ -3804,6 +3811,16 @@
                                     <p class="text-xs text-gray-500">Tip: Fields are dynamic. Unknown keys will be preserved. Ensure the `connector` and `llm` are enabled in this organization.</p>
                                 </div>
                             </div>
+                        </div>
+                        {/if}
+
+                        <!-- Embeddings Setups Tab -->
+                        {#if settingsSubView === 'embeddings'}
+                        <div class="mt-6">
+                            <EmbeddingsSetupManager 
+                                organizationId={dashboardData?.organization?.id}
+                                onClose={() => {}}
+                            />
                         </div>
                         {/if}
                     {/if}

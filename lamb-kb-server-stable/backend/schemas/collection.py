@@ -7,7 +7,7 @@ This module defines the request and response models for the Collection API endpo
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EmbeddingsModel(BaseModel):
@@ -40,6 +40,8 @@ class CollectionCreate(CollectionBase):
     - OLD MODE: Provide embeddings_model (inline configuration)
     - NEW MODE: Provide organization_external_id + optional embeddings_setup_key
     - DEFAULT MODE: Provide neither (creates default setup from env vars)
+    
+    VALIDATION: Cannot specify both OLD MODE and NEW MODE simultaneously.
     """
     owner: str = Field(..., description="Owner of the collection")
 
@@ -58,6 +60,19 @@ class CollectionCreate(CollectionBase):
         None,
         description="Embeddings setup key (NEW MODE, optional - uses default if omitted)"
     )
+    
+    @model_validator(mode='after')
+    def validate_mode_exclusivity(self):
+        """Ensure OLD MODE and NEW MODE are mutually exclusive."""
+        has_old_mode = self.embeddings_model is not None
+        has_new_mode = self.organization_external_id is not None
+        
+        if has_old_mode and has_new_mode:
+            raise ValueError(
+                "Cannot specify both embeddings_model (OLD MODE) and "
+                "organization_external_id (NEW MODE). Choose one mode or the other."
+            )
+        return self
 
 
 class CollectionUpdate(BaseModel):
