@@ -4101,7 +4101,8 @@
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity</th>
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assistants</th>
-                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Configured By</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Options</th>
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                                                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -4127,7 +4128,16 @@
                                                                 </span>
                                                             </td>
                                                             <td class="px-4 py-3 text-sm text-gray-700">
-                                                                {activity.configured_by_name || activity.configured_by_email || '-'}
+                                                                {activity.owner_name || activity.owner_email || activity.configured_by_name || activity.configured_by_email || '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                {#if activity.chat_visibility_enabled}
+                                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700" title="Instructors can view anonymized chat transcripts">
+                                                                        Chat visible
+                                                                    </span>
+                                                                {:else}
+                                                                    <span class="text-xs text-gray-400">—</span>
+                                                                {/if}
                                                             </td>
                                                             <td class="px-4 py-3">
                                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {activity.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">

@@ -807,8 +807,11 @@ class LambDatabaseManager:
                             activity_name TEXT,
                             owi_group_id TEXT NOT NULL,
                             owi_group_name TEXT NOT NULL,
+                            owner_email TEXT NOT NULL,
+                            owner_name TEXT,
                             configured_by_email TEXT NOT NULL,
                             configured_by_name TEXT,
+                            chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
                             status TEXT NOT NULL DEFAULT 'active',
                             created_at INTEGER NOT NULL,
                             updated_at INTEGER NOT NULL,
@@ -820,6 +823,18 @@ class LambDatabaseManager:
                     cursor.execute(
                         f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activities_org ON {self.table_prefix}lti_activities(organization_id)")
                     logger.info("Successfully created lti_activities table and indexes")
+                else:
+                    # Migrate existing table: add new columns if missing
+                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activities)")
+                    existing_cols = {row[1] for row in cursor.fetchall()}
+                    if 'owner_email' not in existing_cols:
+                        logger.info("Migrating lti_activities: adding owner_email, owner_name, chat_visibility_enabled")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_name TEXT")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN chat_visibility_enabled INTEGER NOT NULL DEFAULT 0")
+                        # Backfill owner_email from configured_by_email
+                        cursor.execute(f"UPDATE {self.table_prefix}lti_activities SET owner_email = configured_by_email, owner_name = configured_by_name WHERE owner_email = ''")
+                        logger.info("Migrated lti_activities with owner and chat_visibility fields")
 
                 # lti_activity_assistants — junction: which assistants belong to which activity
                 cursor.execute(
@@ -854,12 +869,27 @@ class LambDatabaseManager:
                             user_name TEXT NOT NULL DEFAULT '',
                             user_display_name TEXT NOT NULL DEFAULT '',
                             lms_user_id TEXT,
+                            owi_user_id TEXT,
+                            consent_given_at INTEGER,
+                            last_access_at INTEGER,
+                            access_count INTEGER NOT NULL DEFAULT 0,
                             created_at INTEGER NOT NULL,
                             FOREIGN KEY (activity_id) REFERENCES {self.table_prefix}lti_activities(id) ON DELETE CASCADE,
                             UNIQUE(user_email, activity_id)
                         )
                     """)
                     logger.info("Successfully created lti_activity_users table")
+                else:
+                    # Migrate existing table: add new columns if missing
+                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activity_users)")
+                    existing_cols = {row[1] for row in cursor.fetchall()}
+                    if 'owi_user_id' not in existing_cols:
+                        logger.info("Migrating lti_activity_users: adding owi_user_id, consent_given_at, last_access_at, access_count")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN owi_user_id TEXT")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN consent_given_at INTEGER")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN last_access_at INTEGER")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0")
+                        logger.info("Migrated lti_activity_users with dashboard fields")
 
                 # lti_identity_links — map LMS identities to LAMB Creator users
                 cursor.execute(
@@ -7130,7 +7160,8 @@ class LambDatabaseManager:
                             owi_group_id: str, owi_group_name: str,
                             configured_by_email: str, configured_by_name: str = None,
                             context_id: str = None, context_title: str = None,
-                            activity_name: str = None) -> Optional[int]:
+                            activity_name: str = None,
+                            chat_visibility_enabled: bool = False) -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7142,12 +7173,15 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activities
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
-                     owi_group_id, owi_group_name, configured_by_email, configured_by_name,
-                     status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     owi_group_id, owi_group_name, owner_email, owner_name,
+                     configured_by_email, configured_by_name,
+                     chat_visibility_enabled, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
-                      configured_by_email, configured_by_name, now, now))
+                      configured_by_email, configured_by_name,
+                      configured_by_email, configured_by_name,
+                      1 if chat_visibility_enabled else 0, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")
@@ -7178,7 +7212,7 @@ class LambDatabaseManager:
 
     def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
         """Update an LTI activity. Pass fields to update as keyword arguments."""
-        allowed_fields = {'activity_name', 'status', 'context_title'}
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -7273,14 +7307,16 @@ class LambDatabaseManager:
 
     def create_lti_activity_user(self, activity_id: int, user_email: str,
                                   user_name: str = '', user_display_name: str = '',
-                                  lms_user_id: str = None) -> Optional[int]:
-        """Create or get an LTI activity user record. Returns the user record id."""
+                                  lms_user_id: str = None,
+                                  owi_user_id: str = None) -> Optional[int]:
+        """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
         connection = self.get_connection()
         if not connection:
             return None
         try:
             with connection:
                 cursor = connection.cursor()
+                now = int(time.time())
                 # Check if exists
                 cursor.execute(f"""
                     SELECT id FROM {self.table_prefix}lti_activity_users
@@ -7288,18 +7324,126 @@ class LambDatabaseManager:
                 """, (user_email, activity_id))
                 existing = cursor.fetchone()
                 if existing:
+                    # Update access tracking
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}lti_activity_users
+                        SET last_access_at = ?, access_count = access_count + 1
+                        WHERE id = ?
+                    """, (now, existing[0]))
+                    # Update owi_user_id if provided and not set
+                    if owi_user_id:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET owi_user_id = ?
+                            WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
+                        """, (owi_user_id, existing[0]))
                     return existing[0]
                 # Create
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activity_users
-                    (activity_id, user_email, user_name, user_display_name, lms_user_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (activity_id, user_email, user_name, user_display_name,
+                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """, (activity_id, user_email, user_name, user_display_name,
-                      lms_user_id, int(time.time())))
+                      lms_user_id, owi_user_id, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity user: {e}")
             return None
+        finally:
+            connection.close()
+
+    def record_student_consent(self, activity_id: int, user_email: str) -> bool:
+        """Record that a student has accepted the chat visibility consent."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_activity_users
+                    SET consent_given_at = ?
+                    WHERE activity_id = ? AND user_email = ?
+                """, (int(time.time()), activity_id, user_email))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error recording student consent: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_activity_user(self, activity_id: int, user_email: str) -> Optional[Dict[str, Any]]:
+        """Get a specific LTI activity user record."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ? AND user_email = ?
+                """, (activity_id, user_email))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity user: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_activity_students(self, activity_id: int, page: int = 1,
+                               per_page: int = 20) -> Dict[str, Any]:
+        """Get paginated list of students for an activity (for dashboard)."""
+        connection = self.get_connection()
+        if not connection:
+            return {"students": [], "total": 0}
+        try:
+            with connection:
+                cursor = connection.cursor()
+                # Count total
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ?
+                """, (activity_id,))
+                total = cursor.fetchone()[0]
+                # Get page
+                offset = (page - 1) * per_page
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ?
+                    ORDER BY created_at ASC
+                    LIMIT ? OFFSET ?
+                """, (activity_id, per_page, offset))
+                columns = [col[0] for col in cursor.description]
+                students = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                return {"students": students, "total": total}
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity students: {e}")
+            return {"students": [], "total": 0}
+        finally:
+            connection.close()
+
+    def get_all_activity_user_owi_ids(self, activity_id: int) -> List[str]:
+        """Get all OWI user IDs for an activity (for chat queries)."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT owi_user_id FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ? AND owi_user_id IS NOT NULL AND owi_user_id != ''
+                """, (activity_id,))
+                return [row[0] for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity user OWI IDs: {e}")
+            return []
         finally:
             connection.close()
 

@@ -85,6 +85,18 @@
                 {% endif %}
             </div>
 
+            <!-- Options -->
+            <div id="optionsStep" class="{% if needs_org_selection %}hidden{% endif %} mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-3">Options</h2>
+                <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                    <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded">
+                    <div>
+                        <span class="font-medium text-gray-900">Allow instructors to review anonymized chat transcripts</span>
+                        <p class="text-sm text-gray-500 mt-0.5">Students will be notified and must accept before using the tool. Chat content is always anonymized — student identities are never revealed.</p>
+                    </div>
+                </label>
+            </div>
+
             <!-- Submit -->
             <div class="flex justify-end">
                 <button type="submit" id="submitBtn"
@@ -102,6 +114,7 @@
         const assistantList = document.getElementById('assistantList');
         const assistantStep = document.getElementById('assistantStep');
         const noOrgSelected = document.getElementById('noOrgSelected');
+        const optionsStep = document.getElementById('optionsStep');
         const submitBtn = document.getElementById('submitBtn');
 
         function renderAssistants(orgId) {
@@ -141,6 +154,7 @@
             document.querySelectorAll('.org-radio').forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     assistantStep.classList.remove('hidden');
+                    if (optionsStep) optionsStep.classList.remove('hidden');
                     renderAssistants(e.target.value);
                 });
             });

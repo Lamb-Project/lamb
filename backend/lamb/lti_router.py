@@ -3,7 +3,8 @@ Unified LTI Router
 
 Single LTI endpoint that supports:
 - Instructor-configured activities with multiple assistants
-- Student launch into configured activities
+- Student launch into configured activities (with optional consent)
+- Instructor dashboard with usage stats, student log, and anonymized chat transcripts
 - Identity linking for instructor identification
 
 Endpoint: POST /lamb/v1/lti/launch
@@ -20,6 +21,7 @@ import os
 import json
 import time
 import secrets
+from datetime import datetime
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -33,34 +35,59 @@ templates = Jinja2Templates(directory=[
 
 
 # =============================================================================
-# Setup tokens — short-lived tokens for the setup flow
-# In-memory store (cleared on restart, which is fine for setup tokens)
+# Token store — short-lived tokens for setup, dashboard, and consent flows
+# In-memory store (cleared on restart, which is fine)
 # =============================================================================
-_setup_tokens: dict = {}  # token -> {creator_users, lms_user_id, lms_email, resource_link_id, context_id, context_title, expires}
-SETUP_TOKEN_TTL = 600  # 10 minutes
+_tokens: dict = {}
+SETUP_TOKEN_TTL = 600       # 10 minutes (setup / reconfigure)
+DASHBOARD_TOKEN_TTL = 1800  # 30 minutes (dashboard)
+CONSENT_TOKEN_TTL = 600     # 10 minutes (consent flow)
 
 
-def _create_setup_token(data: dict) -> str:
-    """Create a short-lived setup token."""
+def _create_token(data: dict, ttl: int = SETUP_TOKEN_TTL) -> str:
+    """Create a short-lived token."""
     token = secrets.token_urlsafe(32)
-    _setup_tokens[token] = {**data, "expires": time.time() + SETUP_TOKEN_TTL}
+    _tokens[token] = {**data, "expires": time.time() + ttl}
     # Prune expired tokens occasionally
     now = time.time()
-    expired = [k for k, v in _setup_tokens.items() if v["expires"] < now]
+    expired = [k for k, v in _tokens.items() if v["expires"] < now]
     for k in expired:
-        del _setup_tokens[k]
+        del _tokens[k]
     return token
 
 
-def _validate_setup_token(token: str) -> dict | None:
-    """Validate and consume a setup token. Returns data or None."""
-    data = _setup_tokens.get(token)
+def _validate_token(token: str) -> dict | None:
+    """Validate a token (does NOT consume it). Returns data or None."""
+    data = _tokens.get(token)
     if not data:
         return None
     if time.time() > data["expires"]:
-        del _setup_tokens[token]
+        del _tokens[token]
         return None
     return data
+
+
+def _consume_token(token: str):
+    """Remove a token from the store."""
+    _tokens.pop(token, None)
+
+
+# Backward compatibility aliases
+def _create_setup_token(data: dict) -> str:
+    return _create_token(data, SETUP_TOKEN_TTL)
+
+def _validate_setup_token(token: str) -> dict | None:
+    return _validate_token(token)
+
+
+def _format_timestamp(ts):
+    """Format a unix timestamp for display."""
+    if not ts:
+        return "—"
+    try:
+        return datetime.fromtimestamp(ts).strftime("%b %d, %Y %H:%M")
+    except (ValueError, OSError):
+        return "—"
 
 
 # =============================================================================
@@ -120,18 +147,56 @@ async def lti_launch(request: Request):
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
         if activity and activity['status'] == 'active':
-            # ── CONFIGURED: Launch user into OWI ──
-            token = manager.handle_student_launch(
+            public_base = manager.get_public_base_url(request)
+
+            # ── CONFIGURED: Is this an instructor? → Dashboard ──
+            if manager.is_instructor(roles):
+                logger.info(f"Instructor accessing configured activity {resource_link_id} → dashboard")
+                is_owner = (lms_email and lms_email == activity.get('owner_email'))
+                dashboard_token = _create_token({
+                    "type": "dashboard",
+                    "resource_link_id": resource_link_id,
+                    "lms_user_id": lms_user_id,
+                    "lms_email": lms_email,
+                    "username": username,
+                    "display_name": display_name,
+                    "is_owner": is_owner,
+                }, ttl=DASHBOARD_TOKEN_TTL)
+                return RedirectResponse(
+                    url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
+                    status_code=303
+                )
+
+            # ── CONFIGURED: Student flow ──
+            # Check if consent is needed
+            student_email = manager.generate_student_email(username, resource_link_id)
+            if manager.check_student_consent(activity, student_email):
+                logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
+                consent_token = _create_token({
+                    "type": "consent",
+                    "resource_link_id": resource_link_id,
+                    "username": username,
+                    "display_name": display_name,
+                    "lms_user_id": lms_user_id,
+                    "student_email": student_email,
+                }, ttl=CONSENT_TOKEN_TTL)
+                return RedirectResponse(
+                    url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
+                    status_code=303
+                )
+
+            # No consent needed — launch into OWI
+            owi_token = manager.handle_student_launch(
                 activity=activity,
                 username=username,
                 display_name=display_name,
                 lms_user_id=lms_user_id
             )
-            if not token:
+            if not owi_token:
                 raise HTTPException(status_code=500, detail="Failed to process launch")
 
-            redirect_url = manager.get_owi_redirect_url(token)
-            logger.info(f"Redirecting user to OWI: {redirect_url}")
+            redirect_url = manager.get_owi_redirect_url(owi_token)
+            logger.info(f"Redirecting student to OWI: {redirect_url}")
             return RedirectResponse(url=redirect_url, status_code=303)
 
         # ── NOT CONFIGURED ──
@@ -265,6 +330,7 @@ async def lti_configure_activity(request: Request):
         activity_name = form_data.get("activity_name", "").strip()
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
+        chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
 
         if not organization_id:
             return HTMLResponse("<h2>Error</h2><p>No organization selected.</p>", status_code=400)
@@ -290,40 +356,35 @@ async def lti_configure_activity(request: Request):
             configured_by_name=creator_user.get("user_name"),
             context_id=context_id,
             context_title=context_title,
-            activity_name=activity_name or context_title or f"Activity {resource_link_id[:8]}"
+            activity_name=activity_name or context_title or f"Activity {resource_link_id[:8]}",
+            chat_visibility_enabled=chat_visibility_enabled,
         )
 
         if not activity:
             logger.error(f"Failed to configure activity {resource_link_id}")
             return HTMLResponse("<h2>Error</h2><p>Failed to configure activity. Please try again.</p>", status_code=500)
 
-        logger.info(f"Activity {resource_link_id} configured with {len(assistant_ids)} assistants")
+        logger.info(f"Activity {resource_link_id} configured with {len(assistant_ids)} assistants, chat_visibility={chat_visibility_enabled}")
 
         # Consume the setup token
-        if token in _setup_tokens:
-            del _setup_tokens[token]
+        _consume_token(token)
 
-        # Launch instructor into OWI as first user
-        username = data.get("lms_user_id", "instructor")
-        display_name = creator_user.get("user_name", "Instructor")
+        # Redirect instructor to the dashboard
+        dashboard_token = _create_token({
+            "type": "dashboard",
+            "resource_link_id": resource_link_id,
+            "lms_user_id": data.get("lms_user_id", ""),
+            "lms_email": creator_user["user_email"],
+            "username": data.get("lms_user_id", "instructor"),
+            "display_name": creator_user.get("user_name", "Instructor"),
+            "is_owner": True,
+        }, ttl=DASHBOARD_TOKEN_TTL)
 
-        owi_token = manager.handle_student_launch(
-            activity=activity,
-            username=username,
-            display_name=display_name,
-            lms_user_id=data.get("lms_user_id")
+        public_base = manager.get_public_base_url(request)
+        return RedirectResponse(
+            url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
+            status_code=303
         )
-
-        if owi_token:
-            redirect_url = manager.get_owi_redirect_url(owi_token)
-            return RedirectResponse(url=redirect_url, status_code=303)
-        else:
-            return HTMLResponse(
-                "<h2>Activity configured!</h2>"
-                "<p>Your activity is ready. Students can now access it from the LMS.</p>"
-                "<p>You can close this tab and return to your LMS.</p>",
-                status_code=200
-            )
 
     except HTTPException:
         raise
@@ -419,18 +480,22 @@ async def lti_link_account_submit(request: Request):
 
 @router.post("/reconfigure")
 async def lti_reconfigure_activity(request: Request):
-    """Reconfigure an existing activity's assistant selection."""
+    """Reconfigure an existing activity's assistant selection. Owner only."""
     try:
         form_data = await request.form()
         token = form_data.get("token", "")
-        data = _validate_setup_token(token)
+        data = _validate_token(token)
         if not data:
             return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link again.</p>", status_code=403)
 
-        resource_link_id = data["resource_link_id"]
+        resource_link_id = data.get("resource_link_id")
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
         if not activity:
             return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
+
+        # Owner check
+        if not data.get("is_owner"):
+            return HTMLResponse("<h2>Access Denied</h2><p>Only the activity owner can reconfigure assistants.</p>", status_code=403)
 
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
@@ -441,18 +506,22 @@ async def lti_reconfigure_activity(request: Request):
         if activity_name:
             db_manager.update_lti_activity(activity['id'], activity_name=activity_name)
 
+        # Handle chat_visibility toggle
+        chat_visibility_str = form_data.get("chat_visibility_enabled")
+        if chat_visibility_str is not None:
+            new_chat_vis = 1 if chat_visibility_str == "1" else 0
+            if new_chat_vis != activity.get('chat_visibility_enabled', 0):
+                db_manager.update_lti_activity(activity['id'], chat_visibility_enabled=new_chat_vis)
+
         success = manager.reconfigure_activity(activity, assistant_ids)
         if not success:
             return HTMLResponse("<h2>Error</h2><p>Failed to reconfigure.</p>", status_code=500)
 
-        # Consume token
-        if token in _setup_tokens:
-            del _setup_tokens[token]
-
-        return HTMLResponse(
-            "<h2>Activity updated!</h2>"
-            "<p>Assistant selection has been updated. You can close this tab.</p>",
-            status_code=200
+        # Redirect back to dashboard
+        public_base = manager.get_public_base_url(request)
+        return RedirectResponse(
+            url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={token}",
+            status_code=303
         )
 
     except Exception as e:
@@ -493,3 +562,242 @@ async def lti_info():
             "Activities are bound to one organization"
         ]
     })
+
+
+# =============================================================================
+# Student Consent
+# =============================================================================
+
+@router.get("/consent")
+async def lti_consent_page(request: Request, token: str = ""):
+    """Show the student consent page for chat visibility."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "consent":
+        return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link in your LMS again.</p>", status_code=403)
+
+    resource_link_id = data["resource_link_id"]
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
+
+    return templates.TemplateResponse("lti_consent.html", {
+        "request": request,
+        "token": token,
+        "activity_name": activity.get("activity_name", "LTI Activity"),
+        "context_title": activity.get("context_title", ""),
+    })
+
+
+@router.post("/consent")
+async def lti_consent_submit(request: Request):
+    """Process student consent acceptance."""
+    try:
+        form_data = await request.form()
+        token = form_data.get("token", "")
+        data = _validate_token(token)
+        if not data or data.get("type") != "consent":
+            return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link again.</p>", status_code=403)
+
+        resource_link_id = data["resource_link_id"]
+        student_email = data["student_email"]
+        username = data["username"]
+        display_name = data["display_name"]
+        lms_user_id = data.get("lms_user_id")
+
+        activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+        if not activity:
+            return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
+
+        # Record consent (need to ensure user record exists first)
+        db_manager.create_lti_activity_user(
+            activity_id=activity['id'],
+            user_email=student_email,
+            user_name=username,
+            user_display_name=display_name,
+            lms_user_id=lms_user_id
+        )
+        db_manager.record_student_consent(activity['id'], student_email)
+        logger.info(f"Student {student_email} gave consent for activity {resource_link_id}")
+
+        # Now launch into OWI
+        owi_token = manager.handle_student_launch(
+            activity=activity,
+            username=username,
+            display_name=display_name,
+            lms_user_id=lms_user_id
+        )
+
+        _consume_token(token)
+
+        if not owi_token:
+            return HTMLResponse("<h2>Error</h2><p>Failed to launch. Please try again.</p>", status_code=500)
+
+        redirect_url = manager.get_owi_redirect_url(owi_token)
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    except Exception as e:
+        logger.error(f"Error processing consent: {str(e)}", exc_info=True)
+        return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
+
+
+# =============================================================================
+# Instructor Dashboard
+# =============================================================================
+
+@router.get("/dashboard")
+async def lti_dashboard(request: Request, resource_link_id: str = "", token: str = ""):
+    """Serve the instructor dashboard page."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link in your LMS again.</p>", status_code=403)
+
+    if data.get("resource_link_id") != resource_link_id:
+        return HTMLResponse("<h2>Invalid request.</h2>", status_code=400)
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        return HTMLResponse("<h2>Activity not found.</h2>", status_code=404)
+
+    is_owner = data.get("is_owner", False)
+
+    # Get org name
+    org = db_manager.get_organization_by_id(activity['organization_id'])
+    org_name = org.get('name', 'Unknown') if org else 'Unknown'
+
+    # Get dashboard data
+    stats = manager.get_dashboard_stats(activity)
+    students = manager.get_dashboard_students(activity['id'])
+
+    # Get chats if chat_visibility enabled
+    chats = {"chats": [], "total": 0}
+    if activity.get('chat_visibility_enabled'):
+        chats = manager.get_dashboard_chats(activity)
+
+    # Format created date
+    created_date = _format_timestamp(activity.get('created_at'))
+
+    return templates.TemplateResponse("lti_dashboard.html", {
+        "request": request,
+        "activity": activity,
+        "token": token,
+        "is_owner": is_owner,
+        "org_name": org_name,
+        "stats": stats,
+        "students": students,
+        "chats": chats,
+        "created_date": created_date,
+        "format_ts": _format_timestamp,
+    })
+
+
+# =============================================================================
+# Dashboard Data API (JSON)
+# =============================================================================
+
+@router.get("/dashboard/stats")
+async def lti_dashboard_stats(resource_link_id: str = "", token: str = ""):
+    """Return dashboard stats as JSON."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    stats = manager.get_dashboard_stats(activity)
+    return JSONResponse(stats)
+
+
+@router.get("/dashboard/students")
+async def lti_dashboard_students(resource_link_id: str = "", token: str = "",
+                                  page: int = 1, per_page: int = 20):
+    """Return anonymized student list as JSON."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    students = manager.get_dashboard_students(activity['id'], page, per_page)
+    return JSONResponse(students)
+
+
+@router.get("/dashboard/chats")
+async def lti_dashboard_chats(resource_link_id: str = "", token: str = "",
+                               assistant_id: int = None,
+                               page: int = 1, per_page: int = 20):
+    """Return anonymized chat list as JSON. Requires chat_visibility enabled."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if not activity.get('chat_visibility_enabled'):
+        raise HTTPException(status_code=403, detail="Chat visibility not enabled")
+
+    chats = manager.get_dashboard_chats(activity, assistant_id, page, per_page)
+    return JSONResponse(chats)
+
+
+@router.get("/dashboard/chats/{chat_id}")
+async def lti_dashboard_chat_detail(chat_id: str, resource_link_id: str = "",
+                                     token: str = ""):
+    """Return a single chat transcript as JSON. Requires chat_visibility enabled."""
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if not activity.get('chat_visibility_enabled'):
+        raise HTTPException(status_code=403, detail="Chat visibility not enabled")
+
+    detail = manager.get_dashboard_chat_detail(activity, chat_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    return JSONResponse(detail)
+
+
+# =============================================================================
+# Instructor → OWI (Enter Chat)
+# =============================================================================
+
+@router.get("/enter-chat")
+async def lti_enter_chat(request: Request, resource_link_id: str = "", token: str = ""):
+    """
+    Redirect instructor from dashboard to OWI.
+    Creates/gets OWI user, adds to activity group, redirects.
+    """
+    data = _validate_token(token)
+    if not data or data.get("type") != "dashboard":
+        return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link again.</p>", status_code=403)
+
+    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+    if not activity:
+        return HTMLResponse("<h2>Activity not found.</h2>", status_code=404)
+
+    username = data.get("username", data.get("lms_user_id", "instructor"))
+    display_name = data.get("display_name", "Instructor")
+    lms_user_id = data.get("lms_user_id")
+
+    owi_token = manager.handle_student_launch(
+        activity=activity,
+        username=username,
+        display_name=display_name,
+        lms_user_id=lms_user_id
+    )
+
+    if not owi_token:
+        return HTMLResponse("<h2>Error</h2><p>Failed to access chat. Please try again.</p>", status_code=500)
+
+    redirect_url = manager.get_owi_redirect_url(owi_token)
+    return RedirectResponse(url=redirect_url, status_code=303)
