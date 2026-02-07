@@ -9,6 +9,9 @@ Features:
  - Accepts a single YouTube URL (plugin param: video_url) or a text file whose
    first non-empty line(s) contain YouTube URLs (one per line)
  - Fetches transcript using yt-dlp for robust subtitle extraction
+ - Supports manual subtitle ingestion from uploaded `.srt` / `.vtt` / `.txt`
+   subtitle files (useful fallback when YouTube returns 429)
+ - Supports manual subtitle ingestion from pasted subtitle text via plugin params
  - Supports both manual and automatic captions from YouTube
  - Chunks transcript pieces by target duration (default 60s)
  - Cleans text and preserves original raw text per piece
@@ -20,12 +23,17 @@ Usage (API Example):
       "video_url": "https://www.youtube.com/watch?v=XXXXXXXXXXX",
       "language": "en",                 # optional (default: en)
       "chunk_duration": 60,               # seconds, optional
-      "proxy_url": "http://proxy:8080"   # optional
+      "proxy_url": "http://proxy:8080",   # optional
+      "manual_subtitle_text": "...",      # optional manual subtitle content
+      "manual_subtitle_format": "auto"    # optional: auto|srt|vtt|plain
   }
 
 If you upload a small text file containing multiple video URLs (one per line)
 you may omit video_url; all listed videos will be ingested sequentially and
 their chunks aggregated. (Note: current implementation does sequential fetch.)
+
+If you upload an `.srt`, `.vtt`, or subtitle `.txt` file, subtitles are parsed
+directly and YouTube fetching is skipped.
 
 Environment Toggle:
   Set PLUGIN_YOUTUBE_TRANSCRIPT_INGEST=DISABLE to disable auto-registration.
@@ -35,6 +43,7 @@ from __future__ import annotations
 
 import re
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterable
 from datetime import datetime
 
@@ -286,12 +295,158 @@ def _parse_srt_content(srt_content: str) -> List[Dict[str, Any]]:
 
 def _srt_timestamp_to_seconds(timestamp: str) -> float:
     """Convert SRT timestamp (HH:MM:SS,mmm) to seconds."""
-    import re
-    match = re.match(r'(\d{2}):(\d{2}):(\d{2}),(\d{3})', timestamp)
-    if match:
-        hours, minutes, seconds, milliseconds = map(int, match.groups())
-        return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000
+    return _subtitle_timestamp_to_seconds(timestamp)
+
+
+def _subtitle_timestamp_to_seconds(timestamp: str) -> float:
+    """Convert subtitle timestamps to seconds.
+
+    Supports:
+    - SRT: HH:MM:SS,mmm
+    - WebVTT: HH:MM:SS.mmm or MM:SS.mmm
+    """
+    timestamp = timestamp.strip().replace(",", ".")
+    parts = timestamp.split(":")
+    try:
+        if len(parts) == 3:
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            seconds = float(parts[2])
+            return hours * 3600 + minutes * 60 + seconds
+        if len(parts) == 2:
+            minutes = int(parts[0])
+            seconds = float(parts[1])
+            return minutes * 60 + seconds
+    except ValueError:
+        return 0.0
     return 0.0
+
+
+def _parse_vtt_content(vtt_content: str) -> List[Dict[str, Any]]:
+    """Parse WebVTT subtitle content into transcript pieces."""
+    pieces: List[Dict[str, Any]] = []
+    lines = vtt_content.split("\n")
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        if not line or line.startswith("WEBVTT") or line.startswith("NOTE"):
+            i += 1
+            continue
+
+        # Allow cue identifiers: if current line isn't a timestamp but next is,
+        # advance to next line.
+        if "-->" not in line and i + 1 < len(lines) and "-->" in lines[i + 1]:
+            i += 1
+            line = lines[i].strip()
+
+        if "-->" not in line:
+            i += 1
+            continue
+
+        # VTT end timestamp may include settings after a space.
+        ts_parts = line.split("-->")
+        if len(ts_parts) != 2:
+            i += 1
+            continue
+
+        start_raw = ts_parts[0].strip().split(" ")[0]
+        end_raw = ts_parts[1].strip().split(" ")[0]
+        start_time = _subtitle_timestamp_to_seconds(start_raw)
+        end_time = _subtitle_timestamp_to_seconds(end_raw)
+
+        text_lines: List[str] = []
+        i += 1
+        while i < len(lines):
+            text_line = lines[i].strip()
+            if not text_line:
+                break
+            # Next cue starts
+            if "-->" in text_line:
+                i -= 1
+                break
+            text_line = re.sub(r"<[^>]+>", "", text_line)
+            if text_line:
+                text_lines.append(text_line)
+            i += 1
+
+        if text_lines:
+            pieces.append({
+                "text": " ".join(text_lines),
+                "start": start_time,
+                "duration": max(0.0, end_time - start_time),
+            })
+
+        i += 1
+
+    return pieces
+
+
+def _parse_plain_subtitle_content(text_content: str) -> List[Dict[str, Any]]:
+    """Parse plain subtitle/transcript text without timestamps.
+
+    We assign synthetic timings so existing duration-based chunking still works.
+    """
+    pieces: List[Dict[str, Any]] = []
+    current_start = 0.0
+    synthetic_duration = 5.0
+
+    for raw_line in text_content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        pieces.append({
+            "text": line,
+            "start": current_start,
+            "duration": synthetic_duration,
+        })
+        current_start += synthetic_duration
+
+    return pieces
+
+
+def _detect_subtitle_format(
+    content: str,
+    file_path: Optional[str] = None,
+    explicit_format: str = "auto",
+) -> str:
+    """Detect subtitle format from explicit setting, file extension, or content."""
+    if explicit_format in {"srt", "vtt", "plain"}:
+        return explicit_format
+
+    suffix = Path(file_path).suffix.lower() if file_path else ""
+    if suffix == ".srt":
+        return "srt"
+    if suffix == ".vtt":
+        return "vtt"
+
+    content_stripped = content.lstrip()
+    if content_stripped.startswith("WEBVTT"):
+        return "vtt"
+
+    if re.search(r"\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}", content):
+        return "srt"
+
+    if re.search(r"(?:\d{2}:)?\d{2}:\d{2}\.\d{3}\s*-->\s*(?:\d{2}:)?\d{2}:\d{2}\.\d{3}", content):
+        return "vtt"
+
+    return "plain"
+
+
+def _parse_subtitle_content(content: str, subtitle_format: str) -> List[Dict[str, Any]]:
+    """Parse subtitle content into normalized transcript pieces."""
+    if subtitle_format == "srt":
+        return _parse_srt_content(content)
+    if subtitle_format == "vtt":
+        return _parse_vtt_content(content)
+    return _parse_plain_subtitle_content(content)
+
+
+def _read_text_file(file_path: str) -> str:
+    """Read text from a file, tolerating encoding issues."""
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        return f.read()
 
 
 @PluginRegistry.register
@@ -307,16 +462,30 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
 
     name = "youtube_transcript_ingest"
     kind = "remote-ingest"
-    description = "Ingest YouTube video transcripts via yt-dlp with time-based chunking"
+    description = "Ingest YouTube transcripts via yt-dlp, with manual subtitle upload/paste fallback"
     # We allow providing a text file containing URLs; advertise txt support.
-    supported_file_types = {"txt"}
+    supported_file_types = {"txt", "srt", "vtt"}
     supports_progress = True  # This plugin supports progress callbacks
 
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:  # noqa: D401
         return {
+            "_manual_subtitles_fallback": {
+                "type": "info",
+                "description": (
+                    "If YouTube returns 429, upload subtitle files (.srt/.vtt/.txt) "
+                    "or paste subtitles into manual_subtitle_text. "
+                    "Provide video_url optionally to keep YouTube citation links."
+                ),
+                "required": False,
+                "ui_hint": "info",
+            },
             "video_url": {
                 "type": "string",
-                "description": "Full YouTube video URL. If omitted, the uploaded text file is read for URLs (one per line).",
+                "description": (
+                    "Full YouTube video URL. If manual subtitles are provided, this URL is optional and "
+                    "used for source metadata/timestamp links. If omitted, uploaded text files are read "
+                    "for YouTube URLs (one per line)."
+                ),
                 "required": False,
             },
             "language": {
@@ -334,6 +503,18 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
             "proxy_url": {
                 "type": "string",
                 "description": "Optional proxy URL for transcript API calls.",
+                "required": False,
+            },
+            "manual_subtitle_text": {
+                "type": "long-string",
+                "description": "Optional manual subtitle/transcript content (SRT, VTT, or plain text).",
+                "required": False,
+            },
+            "manual_subtitle_format": {
+                "type": "string",
+                "description": "Format for manual_subtitle_text or uploaded subtitle text file.",
+                "enum": ["auto", "srt", "vtt", "plain"],
+                "default": "auto",
                 "required": False,
             },
         }
@@ -366,8 +547,107 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
         language: str = kwargs.get("language", "en")
         chunk_duration: float = float(kwargs.get("chunk_duration", 60))
         proxy_url: Optional[str] = kwargs.get("proxy_url")
+        manual_subtitle_text: Optional[str] = kwargs.get("manual_subtitle_text")
+        manual_subtitle_format: str = str(
+            kwargs.get("manual_subtitle_format", "auto") or "auto"
+        ).lower()
         # supplied by ingestion service
         file_url: str = kwargs.get("file_url", "")
+
+        # Manual subtitle ingestion path (highest priority)
+        manual_text = manual_subtitle_text.strip() if isinstance(
+            manual_subtitle_text, str) else ""
+        file_suffix = Path(file_path).suffix.lower()
+        uploaded_text_content = ""
+        uploaded_urls: List[str] = []
+
+        if file_suffix in {".txt", ".srt", ".vtt"}:
+            try:
+                uploaded_text_content = _read_text_file(file_path).strip()
+            except Exception:
+                uploaded_text_content = ""
+
+        if file_suffix == ".txt":
+            uploaded_urls = self._extract_urls_from_file(file_path)
+
+        manual_source: Optional[str] = None
+        manual_content: str = ""
+
+        if manual_text:
+            manual_content = manual_text
+            manual_source = "manual_text"
+        elif uploaded_text_content:
+            # For .txt files, preserve prior behavior:
+            # if file includes YouTube URLs, treat as URL list (automatic mode).
+            if file_suffix in {".srt", ".vtt"} or (file_suffix == ".txt" and not uploaded_urls):
+                manual_content = uploaded_text_content
+                manual_source = "uploaded_file"
+
+        if manual_content:
+            self.report_progress(kwargs, 0, 1, "Parsing manual subtitles...")
+            detected_format = _detect_subtitle_format(
+                manual_content,
+                file_path=file_path,
+                explicit_format=manual_subtitle_format,
+            )
+            pieces = _parse_subtitle_content(manual_content, detected_format)
+            if not pieces:
+                raise ValueError(
+                    "Manual subtitle content could not be parsed into subtitle segments."
+                )
+
+            video_id = _parse_youtube_url(video_url) if video_url else None
+            chunk_objs = _chunk_transcript(pieces, chunk_duration)
+
+            all_chunks: List[Dict[str, Any]] = []
+            total = len(chunk_objs)
+            for idx, c in enumerate(chunk_objs):
+                cleaned_text = " ".join(c["text_parts"]).strip()
+                original_text = " ".join(c["original_text_parts"]).strip()
+                start_seconds = float(c.get("start", 0.0) or 0.0)
+                end_seconds = float(c.get("end", start_seconds) or start_seconds)
+                start_ts = _seconds_to_timestamp(start_seconds)
+                end_ts = _seconds_to_timestamp(end_seconds)
+
+                if video_id:
+                    source_url = f"https://youtu.be/{video_id}?t={int(start_seconds)}"
+                elif file_url:
+                    source_url = file_url
+                else:
+                    source_url = "manual_subtitles"
+
+                metadata = {
+                    "ingestion_plugin": self.name,
+                    "source_url": source_url,
+                    "video_id": video_id or "",
+                    "language": language,
+                    "chunk_index": idx,
+                    "chunk_count": total,
+                    "start_time": start_seconds,
+                    "end_time": end_seconds,
+                    "start_timestamp": start_ts,
+                    "end_timestamp": end_ts,
+                    "chunk_duration_target": chunk_duration,
+                    "original_text_sample": original_text[:200],
+                    "file_url": file_url,
+                    "retrieval_timestamp": datetime.utcnow().isoformat(),
+                    "plugin_version": "1.1.0",
+                    "subtitle_source": manual_source,
+                    "subtitle_format": detected_format,
+                }
+
+                all_chunks.append({
+                    "text": cleaned_text,
+                    "metadata": metadata,
+                })
+
+            if not all_chunks:
+                raise ValueError("No chunks produced from manual subtitle content.")
+
+            self.report_progress(
+                kwargs, 1, 1, f"Completed manual subtitle ingestion: {len(all_chunks)} chunks"
+            )
+            return all_chunks
 
         urls: List[str] = []
         if video_url:
