@@ -6,7 +6,7 @@
     import { base } from '$app/paths';
     import { _ } from '$lib/i18n'; // Assuming i18n setup
     import axios from 'axios';
-    import { getApiUrl } from '$lib/config';
+    import { getApiUrl, getConfig } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
@@ -24,7 +24,7 @@
     import OrgForm from '$lib/components/admin/OrgForm.svelte';
 
     // --- State Management ---
-    /** @type {'dashboard' | 'users' | 'organizations'} */
+    /** @type {'dashboard' | 'users' | 'organizations' | 'lti-settings'} */
     let currentView = $state('dashboard'); // Default view is dashboard
     let localeLoaded = $state(true); // Assume loaded for now
     
@@ -145,6 +145,93 @@
     /** @type {string | null} */
     let configError = $state(null);
 
+    // --- Global LTI Settings State ---
+    let ltiGlobalConfig = $state({ oauth_consumer_key: '', oauth_consumer_secret_masked: '', updated_at: null, source: 'environment' });
+    let ltiGlobalForm = $state({ consumer_key: '', consumer_secret: '' });
+    let isLoadingLtiGlobal = $state(false);
+    let ltiGlobalError = $state(null);
+    let ltiGlobalSuccess = $state(null);
+    let showLtiSecret = $state(false);
+    let ltiHasSecret = $derived(ltiGlobalConfig.oauth_consumer_secret_masked && ltiGlobalConfig.oauth_consumer_secret_masked !== '(not set)');
+    let ltiCopied = $state('');
+
+    // Build the full LTI Launch URL from config
+    let ltiLaunchUrl = $derived(() => {
+        const config = getConfig();
+        const server = config?.api?.lambServer || 'http://localhost:9099';
+        return `${server.replace(/\/$/, '')}/lamb/v1/lti/launch`;
+    });
+
+    /** @param {string} text @param {string} label */
+    async function copyToClipboard(text, label) {
+        try {
+            await navigator.clipboard.writeText(text);
+            ltiCopied = label;
+            setTimeout(() => { ltiCopied = ''; }, 2000);
+        } catch {
+            // Fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            ltiCopied = label;
+            setTimeout(() => { ltiCopied = ''; }, 2000);
+        }
+    }
+
+    async function fetchLtiGlobalConfig() {
+        isLoadingLtiGlobal = true;
+        ltiGlobalError = null;
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const response = await axios.get(getApiUrl('/admin/lti-global-config'), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            ltiGlobalConfig = response.data;
+            ltiGlobalForm = {
+                consumer_key: response.data.oauth_consumer_key || '',
+                consumer_secret: ''
+            };
+        } catch (err) {
+            ltiGlobalError = err?.response?.data?.detail || err.message || 'Failed to load LTI config';
+        } finally {
+            isLoadingLtiGlobal = false;
+        }
+    }
+
+    async function saveLtiGlobalConfig() {
+        ltiGlobalError = null;
+        ltiGlobalSuccess = null;
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            if (!ltiGlobalForm.consumer_key) {
+                ltiGlobalError = 'Consumer key is required';
+                return;
+            }
+            if (!ltiHasSecret && !ltiGlobalForm.consumer_secret) {
+                ltiGlobalError = 'Consumer secret is required for first-time setup';
+                return;
+            }
+            const payload = { oauth_consumer_key: ltiGlobalForm.consumer_key };
+            if (ltiGlobalForm.consumer_secret) {
+                payload.oauth_consumer_secret = ltiGlobalForm.consumer_secret;
+            }
+            await axios.put(getApiUrl('/admin/lti-global-config'), payload, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            ltiGlobalSuccess = 'Global LTI configuration saved successfully.';
+            ltiGlobalForm.consumer_secret = '';
+            await fetchLtiGlobalConfig();
+            setTimeout(() => { ltiGlobalSuccess = null; }, 4000);
+        } catch (err) {
+            ltiGlobalError = err?.response?.data?.detail || err.message || 'Failed to save LTI config';
+        }
+    }
+
     // --- URL Handling ---
     /** @type {Function|null} */
     let unsubscribePage = null;
@@ -164,6 +251,12 @@
         goto(`${base}/admin?view=users`, { replaceState: true });
         // Always fetch users when this view is explicitly selected
         fetchUsers();
+    }
+
+    function showLtiSettings() {
+        currentView = 'lti-settings';
+        goto(`${base}/admin?view=lti-settings`, { replaceState: true });
+        fetchLtiGlobalConfig();
     }
 
     function showOrganizations() {
@@ -668,6 +761,10 @@
                 console.log("URL indicates 'organizations' view.");
                 currentView = 'organizations';
                 fetchOrganizations(); // Always fetch when the view is organizations
+            } else if (viewParam === 'lti-settings') {
+                console.log("URL indicates 'lti-settings' view.");
+                currentView = 'lti-settings';
+                fetchLtiGlobalConfig();
             } else {
                 console.log("URL indicates 'dashboard' view.");
                 currentView = 'dashboard';
@@ -1344,6 +1441,15 @@
                     aria-label={localeLoaded ? $_('admin.tabs.organizations', { default: 'Organizations' }) : 'Organizations'}
                 >
                     {localeLoaded ? $_('admin.tabs.organizations', { default: 'Organizations' }) : 'Organizations'}
+                </button>
+            </li>
+            <li class="mr-2">
+                <button
+                    class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'lti-settings' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
+                    onclick={showLtiSettings}
+                    aria-label="LTI Settings"
+                >
+                    LTI Settings
                 </button>
             </li>
         </ul>
@@ -2366,7 +2472,216 @@
             </div>
         </div>
     </div>
-{/if}
+
+    {:else if currentView === 'lti-settings'}
+        <!-- Global LTI Settings View -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">LTI Tool Configuration</h2>
+            <p class="text-sm text-gray-600">
+                Use these values when creating an External Tool (LTI 1.1) in your LMS (Moodle, Canvas, etc.).
+            </p>
+        </div>
+
+        {#if isLoadingLtiGlobal}
+            <div class="bg-white overflow-hidden shadow rounded-lg p-8">
+                <div class="flex items-center justify-center">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                    <span class="text-gray-500">Loading LTI configuration...</span>
+                </div>
+            </div>
+        {:else}
+            <!-- Error Message -->
+            {#if ltiGlobalError}
+                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Error: </strong>
+                    <span class="block sm:inline">{ltiGlobalError}</span>
+                </div>
+            {/if}
+
+            <!-- Success Message -->
+            {#if ltiGlobalSuccess}
+                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Success! </strong>
+                    <span class="block sm:inline">{ltiGlobalSuccess}</span>
+                </div>
+            {/if}
+
+            <!-- ===== LMS Setup Information ===== -->
+            <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-1">LMS Setup Information</h3>
+                    <p class="text-sm text-gray-500 mb-5">Copy these three values into your LMS External Tool configuration.</p>
+
+                    <!-- Launch URL -->
+                    <div class="mb-5">
+                        <label for="lti-launch-url" class="block text-sm font-medium text-gray-700 mb-1">Launch URL</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                id="lti-launch-url"
+                                type="text"
+                                readonly
+                                value={ltiLaunchUrl()}
+                                class="flex-1 bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-sm font-mono text-gray-900 cursor-text select-all"
+                            >
+                            <button
+                                type="button"
+                                onclick={() => copyToClipboard(ltiLaunchUrl(), 'url')}
+                                class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium {ltiCopied === 'url' ? 'bg-green-50 text-green-700 border-green-300' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+                            >
+                                {#if ltiCopied === 'url'}
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                                    Copied
+                                {:else}
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                    Copy
+                                {/if}
+                            </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">This is the URL the LMS sends the LTI launch POST to.</p>
+                    </div>
+
+                    <!-- Consumer Key (read-only display) -->
+                    <div class="mb-5">
+                        <label for="lti-display-key" class="block text-sm font-medium text-gray-700 mb-1">Consumer Key</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                id="lti-display-key"
+                                type="text"
+                                readonly
+                                value={ltiGlobalConfig.oauth_consumer_key || '(not set)'}
+                                class="flex-1 bg-gray-50 border border-gray-300 rounded-md shadow-sm py-2 px-3 text-sm font-mono text-gray-900 cursor-text select-all"
+                            >
+                            <button
+                                type="button"
+                                onclick={() => copyToClipboard(ltiGlobalConfig.oauth_consumer_key || '', 'key')}
+                                class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium {ltiCopied === 'key' ? 'bg-green-50 text-green-700 border-green-300' : 'bg-white text-gray-700 hover:bg-gray-50'} transition-colors"
+                                disabled={!ltiGlobalConfig.oauth_consumer_key}
+                            >
+                                {#if ltiCopied === 'key'}
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                                    Copied
+                                {:else}
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                    Copy
+                                {/if}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Secret Status (read-only display) -->
+                    <div>
+                        <p class="block text-sm font-medium text-gray-700 mb-1">Shared Secret</p>
+                        <div class="flex items-center gap-3">
+                            {#if ltiHasSecret}
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <svg class="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                    Configured ({ltiGlobalConfig.oauth_consumer_secret_masked})
+                                </span>
+                            {:else}
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    <svg class="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                                    Not set — configure below
+                                </span>
+                            {/if}
+                            <span class="text-xs text-gray-500">
+                                Source: {ltiGlobalConfig.source === 'database' ? 'Database' : '.env file'}
+                                {#if ltiGlobalConfig.updated_at}
+                                    &middot; Updated {new Date(ltiGlobalConfig.updated_at * 1000).toLocaleDateString()}
+                                {/if}
+                            </span>
+                        </div>
+                        <p class="mt-1.5 text-xs text-gray-500">
+                            The secret is never displayed in full. Enter it in your LMS exactly as configured below.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Edit Credentials ===== -->
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-1">Edit LTI Credentials</h3>
+                    <p class="text-sm text-gray-500 mb-5">
+                        Change the consumer key or secret. Saving stores them in the database and overrides any <code class="text-xs bg-gray-100 px-1 rounded">.env</code> values.
+                    </p>
+
+                    <div class="space-y-4">
+                        <!-- Consumer Key -->
+                        <div>
+                            <label for="lti-global-key" class="block text-sm font-medium text-gray-700">OAuth Consumer Key</label>
+                            <input
+                                id="lti-global-key"
+                                type="text"
+                                bind:value={ltiGlobalForm.consumer_key}
+                                placeholder="e.g., lamb"
+                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                            >
+                            <p class="mt-1 text-xs text-gray-500">The LMS sends this as <code>oauth_consumer_key</code>. Must match on both sides.</p>
+                        </div>
+
+                        <!-- Consumer Secret -->
+                        <div>
+                            <label for="lti-global-secret" class="block text-sm font-medium text-gray-700">
+                                OAuth Shared Secret
+                                {#if ltiHasSecret}
+                                    <span class="text-gray-400 font-normal">(leave blank to keep current)</span>
+                                {/if}
+                            </label>
+                            <div class="relative mt-1">
+                                <input
+                                    id="lti-global-secret"
+                                    type={showLtiSecret ? 'text' : 'password'}
+                                    bind:value={ltiGlobalForm.consumer_secret}
+                                    placeholder={ltiHasSecret ? '••••••••' : 'Enter a strong secret key'}
+                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-10 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                >
+                                <button
+                                    type="button"
+                                    onclick={() => showLtiSecret = !showLtiSecret}
+                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                    title={showLtiSecret ? 'Hide secret' : 'Show secret'}
+                                >
+                                    {#if showLtiSecret}
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                    {:else}
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                    {/if}
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">Used to sign and verify LTI launch requests (HMAC-SHA1). Must match in the LMS.</p>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                            <button
+                                class="bg-brand hover:bg-brand-hover text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                onclick={saveLtiGlobalConfig}
+                            >
+                                Save LTI Configuration
+                            </button>
+                            <button
+                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                onclick={fetchLtiGlobalConfig}
+                            >
+                                Reload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== How it works ===== -->
+            <div class="mt-6 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+                <h4 class="text-sm font-semibold text-blue-800 mb-2">How the Unified LTI Endpoint Works</h4>
+                <ol class="text-xs text-blue-700 space-y-1.5 list-decimal list-inside">
+                    <li>In your LMS, create a new <strong>External Tool (LTI 1.1)</strong>.</li>
+                    <li>Paste the <strong>Launch URL</strong>, <strong>Consumer Key</strong>, and <strong>Secret</strong> from above.</li>
+                    <li>When an <strong>instructor</strong> launches the tool for the first time, they choose which assistants to assign.</li>
+                    <li>Subsequent <strong>student</strong> launches go directly to Open WebUI with those assistants available.</li>
+                </ol>
+            </div>
+        {/if}
+    {/if}
 
 <!-- Delete Organization Confirmation Modal -->
 <ConfirmationModal

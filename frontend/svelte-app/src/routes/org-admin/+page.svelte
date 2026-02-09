@@ -286,6 +286,56 @@
     let ltiCreatorSettingsSuccess = $state(false);
     let showLtiCreatorSecret = $state(false);
 
+    // --- LTI Activities State ---
+    let ltiActivities = $state([]);
+    let isLoadingLtiActivities = $state(false);
+    let ltiActivitiesError = $state(null);
+    let ltiActivitiesSuccess = $state(null);
+
+    async function fetchLtiActivities() {
+        isLoadingLtiActivities = true;
+        ltiActivitiesError = null;
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const url = getApiUrl(`/lti-activities${params}`);
+            const response = await axios.get(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            ltiActivities = response.data.activities || [];
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to load LTI activities';
+        } finally {
+            isLoadingLtiActivities = false;
+        }
+    }
+
+    async function toggleActivityStatus(activity) {
+        ltiActivitiesError = null;
+        ltiActivitiesSuccess = null;
+        const newStatus = activity.status === 'active' ? 'disabled' : 'active';
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.put(getApiUrl(`/lti-activities/${activity.id}${params}`), 
+                { status: newStatus },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            // Update local state
+            const idx = ltiActivities.findIndex(a => a.id === activity.id);
+            if (idx >= 0) {
+                ltiActivities[idx] = { ...ltiActivities[idx], status: newStatus };
+                ltiActivities = [...ltiActivities]; // trigger reactivity
+            }
+            ltiActivitiesSuccess = `Activity "${activity.activity_name || activity.resource_link_id}" ${newStatus === 'active' ? 'enabled' : 'disabled'}.`;
+            setTimeout(() => { ltiActivitiesSuccess = null; }, 3000);
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to update activity';
+        }
+    }
+
     // Target organization for system admin
     let targetOrgSlug = $state(null);
 
@@ -3058,6 +3108,17 @@
                                     >
                                         LTI Creator
                                     </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'lti-activities' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'lti-activities';
+                                            if (ltiActivities.length === 0 && !isLoadingLtiActivities) {
+                                                fetchLtiActivities();
+                                            }
+                                        }}
+                                    >
+                                        LTI Activities
+                                    </button>
                                 </nav>
                             </div>
                         </div>
@@ -3990,6 +4051,127 @@
                                     </div>
                                     <p class="text-xs text-gray-500">Tip: Fields are dynamic. Unknown keys will be preserved. Ensure the `connector` and `llm` are enabled in this organization.</p>
                                 </div>
+                            </div>
+                        </div>
+                        {/if}
+
+                        <!-- LTI Activities Tab -->
+                        {#if settingsSubView === 'lti-activities'}
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">LTI Activities</h3>
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Manage LTI activities configured through the unified LTI endpoint. Each activity represents
+                                    an LTI placement in an LMS course with its own set of assistants.
+                                </p>
+
+                                {#if isLoadingLtiActivities}
+                                    <div class="flex items-center justify-center py-8">
+                                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                        <span class="text-gray-500">Loading activities...</span>
+                                    </div>
+                                {:else}
+                                    {#if ltiActivitiesError}
+                                        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Error: </strong>
+                                            <span class="block sm:inline">{ltiActivitiesError}</span>
+                                        </div>
+                                    {/if}
+                                    {#if ltiActivitiesSuccess}
+                                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                            <span>{ltiActivitiesSuccess}</span>
+                                        </div>
+                                    {/if}
+
+                                    {#if ltiActivities.length === 0}
+                                        <div class="text-center py-8">
+                                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                            </svg>
+                                            <h3 class="mt-2 text-sm font-medium text-gray-900">No LTI activities yet</h3>
+                                            <p class="mt-1 text-sm text-gray-500">
+                                                Activities are created when an instructor launches the unified LTI tool for the first time.
+                                            </p>
+                                        </div>
+                                    {:else}
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full divide-y divide-gray-200">
+                                                <thead class="bg-gray-50">
+                                                    <tr>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assistants</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Options</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="bg-white divide-y divide-gray-200">
+                                                    {#each ltiActivities as activity}
+                                                        <tr class="hover:bg-gray-50">
+                                                            <td class="px-4 py-3">
+                                                                <div class="text-sm font-medium text-gray-900">
+                                                                    {activity.activity_name || '(unnamed)'}
+                                                                </div>
+                                                                <div class="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={activity.resource_link_id}>
+                                                                    {activity.resource_link_id}
+                                                                </div>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-700">
+                                                                {activity.context_title || activity.context_id || '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    {activity.assistant_count || 0} assistant{(activity.assistant_count || 0) !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-700">
+                                                                {activity.owner_name || activity.owner_email || activity.configured_by_name || activity.configured_by_email || '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                {#if activity.chat_visibility_enabled}
+                                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700" title="Instructors can view anonymized chat transcripts">
+                                                                        Chat visible
+                                                                    </span>
+                                                                {:else}
+                                                                    <span class="text-xs text-gray-400">—</span>
+                                                                {/if}
+                                                            </td>
+                                                            <td class="px-4 py-3">
+                                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {activity.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                                    {activity.status}
+                                                                </span>
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm text-gray-500">
+                                                                {activity.created_at ? new Date(activity.created_at * 1000).toLocaleDateString() : '-'}
+                                                            </td>
+                                                            <td class="px-4 py-3 text-sm">
+                                                                <button
+                                                                    class="text-sm font-medium {activity.status === 'active' ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}"
+                                                                    onclick={() => toggleActivityStatus(activity)}
+                                                                >
+                                                                    {activity.status === 'active' ? 'Disable' : 'Enable'}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    {/each}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Reload button -->
+                                    <div class="mt-4 pt-4 border-t border-gray-200">
+                                        <button
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                            onclick={fetchLtiActivities}
+                                        >
+                                            Reload Activities
+                                        </button>
+                                    </div>
+                                {/if}
                             </div>
                         </div>
                         {/if}

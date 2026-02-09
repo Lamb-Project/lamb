@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — {{ activity.activity_name or 'Activity Dashboard' }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .chat-bubble-user { background: #EFF6FF; border-left: 3px solid #3B82F6; }
+        .chat-bubble-assistant { background: #F0FDF4; border-left: 3px solid #22C55E; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-xl">&#x1F40F;</div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">{{ activity.activity_name or 'LTI Activity' }}</h1>
+                        <p class="text-sm text-gray-500">
+                            {% if activity.context_title %}{{ activity.context_title }} · {% endif %}
+                            {{ org_name }}
+                        </p>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            Owner: {{ activity.owner_name or activity.owner_email }}
+                            · Created {{ created_date }}
+                        </p>
+                    </div>
+                </div>
+                <a href="/lamb/v1/lti/enter-chat?resource_link_id={{ activity.resource_link_id }}&token={{ token }}"
+                   class="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                    Open Chat
+                </a>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-gray-900" id="stat-students">{{ stats.total_students }}</div>
+                <div class="text-xs text-gray-500 mt-1">Students</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-gray-900" id="stat-chats">{{ stats.total_chats }}</div>
+                <div class="text-xs text-gray-500 mt-1">Chats</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-gray-900" id="stat-messages">{{ stats.total_messages }}</div>
+                <div class="text-xs text-gray-500 mt-1">Messages</div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                <div class="text-2xl font-bold text-gray-900" id="stat-active">{{ stats.active_last_7d }}</div>
+                <div class="text-xs text-gray-500 mt-1">Active (7d)</div>
+            </div>
+        </div>
+
+        <!-- Assistants -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">Assistants</h2>
+                {% if is_owner %}
+                <a href="/lamb/v1/lti/setup?token={{ token }}&reconfigure=true"
+                   class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    Manage
+                </a>
+                {% endif %}
+            </div>
+            <div class="space-y-2">
+                {% for asst in stats.assistants %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                        <span class="font-medium text-gray-900 text-sm">{{ asst.name }}</span>
+                        <span class="text-xs text-gray-400">by {{ asst.owner }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        {{ asst.chat_count }} chats · {{ asst.message_count }} messages
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not stats.assistants %}
+                <p class="text-sm text-gray-400 italic">No assistants configured.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Student Access Log -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Student Access Log</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="studentTable">
+                    <thead>
+                        <tr class="border-b text-left text-gray-500 text-xs uppercase tracking-wider">
+                            <th class="pb-3 pr-4">Student</th>
+                            <th class="pb-3 pr-4">First Access</th>
+                            <th class="pb-3 pr-4">Last Access</th>
+                            <th class="pb-3 pr-4 text-center">Visits</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentBody">
+                        {% for s in students.students %}
+                        <tr class="border-b border-gray-100">
+                            <td class="py-3 pr-4 font-medium text-gray-900">{{ s.anonymous_id }}</td>
+                            <td class="py-3 pr-4 text-gray-600">{{ format_ts(s.first_access) }}</td>
+                            <td class="py-3 pr-4 text-gray-600">{{ format_ts(s.last_access) }}</td>
+                            <td class="py-3 pr-4 text-center text-gray-600">{{ s.access_count }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not students.students %}
+                        <tr><td colspan="4" class="py-6 text-center text-gray-400 italic">No students have accessed this activity yet.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% if students.total > 20 %}
+            <div class="mt-4 flex justify-center gap-2" id="studentPagination">
+                <span class="text-sm text-gray-500">Showing {{ students.students|length }} of {{ students.total }} students</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Chat Transcripts -->
+        {% if activity.chat_visibility_enabled %}
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">Chat Transcripts</h2>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        Chat visibility ON
+                    </span>
+                    <select id="chatFilter" class="text-xs border border-gray-300 rounded-lg px-2 py-1">
+                        <option value="">All Assistants</option>
+                        {% for asst in stats.assistants %}
+                        <option value="{{ asst.id }}">{{ asst.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <p class="text-xs text-gray-400 mb-4">All student identities are anonymized. You cannot see who wrote each message.</p>
+
+            <div id="chatList" class="space-y-2">
+                {% for chat in chats.chats %}
+                <div class="border rounded-lg overflow-hidden chat-item" data-chat-id="{{ chat.chat_id }}">
+                    <button onclick="toggleChat('{{ chat.chat_id }}')"
+                            class="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between">
+                        <div>
+                            <span class="font-medium text-gray-900 text-sm">{{ chat.title }}</span>
+                            <div class="text-xs text-gray-500 mt-0.5">
+                                {{ chat.anonymous_student }} → {{ chat.assistant_name }}
+                                · {{ chat.message_count }} messages
+                                · {{ format_ts(chat.updated_at) }}
+                            </div>
+                        </div>
+                        <svg class="h-4 w-4 text-gray-400 transform transition-transform chat-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div class="chat-transcript hidden px-4 pb-4" id="transcript-{{ chat.chat_id }}">
+                        <div class="text-center py-4 text-sm text-gray-400">Loading...</div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not chats.chats %}
+                <p class="text-sm text-gray-400 italic py-4 text-center">No chat transcripts yet.</p>
+                {% endif %}
+            </div>
+
+            {% if chats.total > 20 %}
+            <div class="mt-4 flex justify-center">
+                <span class="text-sm text-gray-500">Showing {{ chats.chats|length }} of {{ chats.total }} chats</span>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-2">Chat Transcripts</h2>
+            <div class="flex items-center gap-2 text-gray-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                <p class="text-sm">Chat transcript review is not enabled for this activity.</p>
+                {% if is_owner %}
+                <a href="/lamb/v1/lti/setup?token={{ token }}&reconfigure=true" class="text-blue-600 text-sm hover:underline ml-2">Enable in settings</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        const TOKEN = '{{ token }}';
+        const RESOURCE_LINK_ID = '{{ activity.resource_link_id }}';
+
+        function toggleChat(chatId) {
+            const el = document.getElementById('transcript-' + chatId);
+            const item = el.closest('.chat-item');
+            const chevron = item.querySelector('.chat-chevron');
+
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                chevron.classList.add('rotate-180');
+                // Load transcript if not loaded
+                if (el.querySelector('.text-gray-400')) {
+                    loadTranscript(chatId, el);
+                }
+            } else {
+                el.classList.add('hidden');
+                chevron.classList.remove('rotate-180');
+            }
+        }
+
+        async function loadTranscript(chatId, container) {
+            try {
+                const resp = await fetch(
+                    `/lamb/v1/lti/dashboard/chats/${chatId}?token=${TOKEN}&resource_link_id=${RESOURCE_LINK_ID}`
+                );
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+
+                let html = '';
+                for (const msg of data.messages) {
+                    const isUser = msg.role === 'user';
+                    const bubbleClass = isUser ? 'chat-bubble-user' : 'chat-bubble-assistant';
+                    const speaker = msg.speaker || (isUser ? data.anonymous_student : 'Assistant');
+                    html += `
+                        <div class="${bubbleClass} rounded-lg p-3 mb-2">
+                            <div class="text-xs font-semibold ${isUser ? 'text-blue-700' : 'text-green-700'} mb-1">${speaker}</div>
+                            <div class="text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(msg.content)}</div>
+                        </div>
+                    `;
+                }
+                container.innerHTML = html || '<p class="text-sm text-gray-400 italic">No messages in this chat.</p>';
+            } catch (e) {
+                container.innerHTML = '<p class="text-sm text-red-500">Failed to load transcript.</p>';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Chat filter
+        const chatFilter = document.getElementById('chatFilter');
+        if (chatFilter) {
+            chatFilter.addEventListener('change', async () => {
+                const assistantId = chatFilter.value;
+                const params = new URLSearchParams({
+                    token: TOKEN,
+                    resource_link_id: RESOURCE_LINK_ID,
+                });
+                if (assistantId) params.set('assistant_id', assistantId);
+                try {
+                    const resp = await fetch(`/lamb/v1/lti/dashboard/chats?${params}`);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    const chatList = document.getElementById('chatList');
+                    if (!data.chats || data.chats.length === 0) {
+                        chatList.innerHTML = '<p class="text-sm text-gray-400 italic py-4 text-center">No chats found.</p>';
+                        return;
+                    }
+                    let html = '';
+                    for (const chat of data.chats) {
+                        html += `
+                            <div class="border rounded-lg overflow-hidden chat-item" data-chat-id="${chat.chat_id}">
+                                <button onclick="toggleChat('${chat.chat_id}')"
+                                        class="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between">
+                                    <div>
+                                        <span class="font-medium text-gray-900 text-sm">${escapeHtml(chat.title)}</span>
+                                        <div class="text-xs text-gray-500 mt-0.5">
+                                            ${chat.anonymous_student} → ${escapeHtml(chat.assistant_name)}
+                                            · ${chat.message_count} messages
+                                        </div>
+                                    </div>
+                                    <svg class="h-4 w-4 text-gray-400 transform transition-transform chat-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+                                <div class="chat-transcript hidden px-4 pb-4" id="transcript-${chat.chat_id}">
+                                    <div class="text-center py-4 text-sm text-gray-400">Loading...</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    chatList.innerHTML = html;
+                } catch (e) {
+                    console.error('Filter error:', e);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

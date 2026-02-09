@@ -9,6 +9,7 @@ Automated browser tests for the LAMB platform.
 | Test File                              | Description                                                                             |
 | -------------------------------------- | --------------------------------------------------------------------------------------- |
 | `tests/admin_and_sharing_flow.spec.js` | Combined admin & sharing flow: user/org CRUD + assistant sharing                        |
+| `tests/admin_role_lifecycle.spec.js`   | Admin role lifecycle (issue #245): create admin, verify capabilities, disable, cleanup   |
 | `tests/creator_flow.spec.js`           | Creator flow: Create KB → ingest file → query → create assistant                        |
 | `tests/moodle_lti.spec.js`             | Moodle LTI integration: login via Moodle, click LTI activity and verify redirect to OWI |
 

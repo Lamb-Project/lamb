@@ -818,6 +818,30 @@
         }
         return { valid: true };
     }
+
+    /**
+     * Whether this plugin can accept an uploaded file as input.
+     * file-ingest plugins require it; non-file plugins may accept it optionally.
+     * @param {IngestionPlugin | null} plugin
+     * @returns {boolean}
+     */
+    function pluginCanUseFileUpload(plugin) {
+        if (!plugin) return false;
+        if (plugin.kind === 'file-ingest') return true;
+        return Array.isArray(plugin.supported_file_types) && plugin.supported_file_types.length > 0;
+    }
+
+    /**
+     * Build file input accept string from plugin-supported extensions.
+     * @param {IngestionPlugin | null} plugin
+     * @returns {string}
+     */
+    function getAcceptedFileTypes(plugin) {
+        if (!plugin || !Array.isArray(plugin.supported_file_types) || plugin.supported_file_types.length === 0) {
+            return '';
+        }
+        return plugin.supported_file_types.map(ext => `.${ext}`).join(',');
+    }
     
     /**
      * Uploads the selected file with the selected plugin
@@ -892,7 +916,9 @@
             uploadError = 'Please select a plugin.';
             return;
         }
-        if (selectedPlugin.kind === 'file-ingest') {
+        // For non-file plugins, use file-ingest path only when the user selected
+        // an optional input file. Otherwise keep base-ingest behavior.
+        if (selectedPlugin.kind === 'file-ingest' || (!!selectedFile && pluginCanUseFileUpload(selectedPlugin))) {
             uploadFile();
         } else {
             runBaseIngestion();
@@ -1286,11 +1312,13 @@
                             {:else}
                                 <!-- Ingestion Form -->
                                 <form onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
-                                    <!-- File selection (only for file-ingest plugins) -->
-                                    {#if selectedPlugin?.kind === 'file-ingest'}
+                                    <!-- File selection (required for file-ingest, optional for other plugins that support file input) -->
+                                    {#if pluginCanUseFileUpload(selectedPlugin)}
                                         <div>
                                             <label for="file-upload-input-inline" class="block text-sm font-medium text-gray-700">
-                                                {$_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })}
+                                                {selectedPlugin?.kind === 'file-ingest'
+                                                    ? $_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })
+                                                    : $_('knowledgeBases.fileUpload.optionalFileLabel', { default: 'Optional File Input' })}
                                             </label>
                                             <div class="mt-1 flex items-center">
                                                 <input
@@ -1299,8 +1327,15 @@
                                                     class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#2271b3] file:text-white hover:file:bg-[#195a91]"
                                                     style="file:background-color: #2271b3;"
                                                     onchange={handleFileSelect}
+                                                    required={selectedPlugin?.kind === 'file-ingest'}
+                                                    accept={getAcceptedFileTypes(selectedPlugin)}
                                                 />
                                             </div>
+                                            {#if selectedPlugin?.kind !== 'file-ingest'}
+                                                <p class="mt-2 text-xs text-gray-500">
+                                                    Optional: If a file is selected, ingestion runs through the file-upload path. Leave empty to run direct ingestion.
+                                                </p>
+                                            {/if}
                                             {#if selectedFile}
                                                 <p class="mt-2 text-sm text-gray-500">
                                                     {selectedFile.name} ({formatFileSize(selectedFile.size)})

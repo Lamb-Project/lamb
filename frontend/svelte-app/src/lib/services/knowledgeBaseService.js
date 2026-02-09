@@ -325,7 +325,7 @@ export async function getKnowledgeBaseDetails(kbId) {
  * @typedef {Object} IngestionPlugin
  * @property {string} name - Name of the plugin
  * @property {string} description - Description of the plugin
- * @property {'file-ingest' | 'base-ingest'} [kind] - The type of plugin (Added based on frontend logic)
+ * @property {'file-ingest' | 'base-ingest' | 'remote-ingest'} [kind] - The type of plugin
  * @property {string[]} [supported_file_types] - Optional list of supported file types
  * @property {Object<string, IngestionParameterDetail>} [parameters] - Parameters for the plugin (object keyed by param name)
  * 

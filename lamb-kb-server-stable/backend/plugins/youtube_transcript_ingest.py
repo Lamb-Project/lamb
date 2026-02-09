@@ -9,6 +9,7 @@ Features:
  - Accepts a single YouTube URL (plugin param: video_url) or a text file whose
    first non-empty line(s) contain YouTube URLs (one per line)
  - Fetches transcript using yt-dlp for robust subtitle extraction
+ - Supports manual subtitle ingestion from uploaded `.srt` files
  - Supports both manual and automatic captions from YouTube
  - Chunks transcript pieces by target duration (default 60s)
  - Cleans text and preserves original raw text per piece
@@ -27,6 +28,9 @@ If you upload a small text file containing multiple video URLs (one per line)
 you may omit video_url; all listed videos will be ingested sequentially and
 their chunks aggregated. (Note: current implementation does sequential fetch.)
 
+If you upload an `.srt` file, subtitles are parsed directly and YouTube
+fetching is skipped.
+
 Environment Toggle:
   Set PLUGIN_YOUTUBE_TRANSCRIPT_INGEST=DISABLE to disable auto-registration.
 """
@@ -35,6 +39,7 @@ from __future__ import annotations
 
 import re
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterable
 from datetime import datetime
 
@@ -147,59 +152,40 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             # Get available subtitles
             subtitles = info.get('subtitles', {})
             automatic_captions = info.get('automatic_captions', {})
-            native_lang = info.get('language')
-
             # Try requested languages first, then fall back to English, then any available
             available_subs = None
-            selected_lang_code = None
-            is_translated = False       # because if true then error 429 is likely
 
             for lang in languages:
                 # Check for manual subtitles (safe)
                 if lang in subtitles:
                     available_subs = subtitles[lang]
-                    selected_lang_code = lang
-                    is_translated = False
                     break
                 
                 # Check for original automatic captions (also safe)
                 orig_key = f"{lang}-orig"
                 if orig_key in automatic_captions:
                     available_subs = automatic_captions[orig_key]
-                    selected_lang_code = orig_key
-                    is_translated = False
                     break
                 
-                # Check for auto-translated captions (Error 429 likely)
+                # Check for auto-translated captions
                 if lang in automatic_captions:
                     available_subs = automatic_captions[lang]
-                    selected_lang_code = lang
-                    # If it lacks -orig and isn't the native language, it's certainly translated
-                    is_translated = (lang != native_lang)
                     break
 
             # Fallback to English if requested language not found
             if not available_subs:
                 if 'en' in subtitles:
                     available_subs = subtitles['en']
-                    selected_lang_code = 'en'
-                    is_translated = False
                 elif 'en-orig' in automatic_captions:
                     available_subs = automatic_captions['en-orig']
-                    selected_lang_code = 'en-orig'
-                    is_translated = False
                 elif 'en' in automatic_captions:
                     available_subs = automatic_captions['en']
-                    selected_lang_code = 'en'
-                    is_translated = (native_lang != 'en')
                 else:
                     # Take the first available subtitle
                     all_subs = {**subtitles, **automatic_captions}
                     if all_subs:
                         first_key = list(all_subs.keys())[0]
                         available_subs = all_subs[first_key]
-                        selected_lang_code = first_key
-                        is_translated = not (first_key.endswith('-orig') or first_key in subtitles)
 
             if not available_subs:
                 raise ValueError("No subtitles available for this video")
@@ -220,24 +206,13 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
             response = requests.get(subtitle_url, proxies={
                                     'http': proxy_url, 'https': proxy_url} if proxy_url else None)
             
-            # Handling for 429 error if machine-translated subtitles are requested
+            # Handle 429 rate-limit errors
             if response.status_code == 429:
-                raise ValueError(
-                    f"YouTube rate-limited this request (429). "
-                    f"This usually happens when requesting auto-translated subtitles ('{selected_lang_code}') "
-                    f"for a video natively in '{native_lang}'."
-                ) 
+                raise ValueError("YouTube rate-limited this request (429).")
 
             response.raise_for_status()
 
-            return {    # still returning pieces, adding metadata, useful for frontend user-facing warning to work
-                "pieces": _parse_srt_content(response.text),
-                "metadata": {
-                    "is_translated": is_translated,
-                    "native_lang": native_lang,
-                    "selected_lang_code": selected_lang_code
-                }
-            }
+            return _parse_srt_content(response.text)
 
         except Exception as e:
             raise ValueError(f"Failed to extract subtitles: {e}")
@@ -294,6 +269,12 @@ def _srt_timestamp_to_seconds(timestamp: str) -> float:
     return 0.0
 
 
+def _read_text_file(file_path: str) -> str:
+    """Read text from a file, tolerating encoding issues."""
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        return f.read()
+
+
 @PluginRegistry.register
 class YouTubeTranscriptIngestPlugin(IngestPlugin):
     """Ingest YouTube video transcript(s) as document chunks.
@@ -307,16 +288,29 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
 
     name = "youtube_transcript_ingest"
     kind = "remote-ingest"
-    description = "Ingest YouTube video transcripts via yt-dlp with time-based chunking"
+    description = "Ingest YouTube transcripts via yt-dlp, with optional uploaded SRT subtitle fallback"
     # We allow providing a text file containing URLs; advertise txt support.
-    supported_file_types = {"txt"}
+    supported_file_types = {"txt", "srt"}
     supports_progress = True  # This plugin supports progress callbacks
 
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:  # noqa: D401
         return {
+            "_manual_subtitles_fallback": {
+                "type": "info",
+                "description": (
+                    "You can upload an .srt subtitle file as a manual fallback. "
+                    "Provide video_url optionally to keep YouTube citation links."
+                ),
+                "required": False,
+                "ui_hint": "info",
+            },
             "video_url": {
                 "type": "string",
-                "description": "Full YouTube video URL. If omitted, the uploaded text file is read for URLs (one per line).",
+                "description": (
+                    "Full YouTube video URL. If manual subtitles are provided, this URL is optional and "
+                    "used for source metadata/timestamp links. If omitted, uploaded text files are read "
+                    "for YouTube URLs (one per line)."
+                ),
                 "required": False,
             },
             "language": {
@@ -369,6 +363,77 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
         # supplied by ingestion service
         file_url: str = kwargs.get("file_url", "")
 
+        # Manual subtitle ingestion path (uploaded .srt file only)
+        file_suffix = Path(file_path).suffix.lower()
+        if file_suffix == ".srt":
+            try:
+                manual_content = _read_text_file(file_path).strip()
+            except Exception as e:
+                raise ValueError(f"Failed to read SRT subtitle file: {e}")
+
+            if not manual_content:
+                raise ValueError("Uploaded SRT subtitle file is empty.")
+
+            self.report_progress(kwargs, 0, 1, "Parsing manual subtitles...")
+            pieces = _parse_srt_content(manual_content)
+            if not pieces:
+                raise ValueError(
+                    "Uploaded SRT subtitle file could not be parsed into subtitle segments."
+                )
+
+            video_id = _parse_youtube_url(video_url) if video_url else None
+            chunk_objs = _chunk_transcript(pieces, chunk_duration)
+
+            all_chunks: List[Dict[str, Any]] = []
+            total = len(chunk_objs)
+            for idx, c in enumerate(chunk_objs):
+                cleaned_text = " ".join(c["text_parts"]).strip()
+                original_text = " ".join(c["original_text_parts"]).strip()
+                start_seconds = float(c.get("start", 0.0) or 0.0)
+                end_seconds = float(c.get("end", start_seconds) or start_seconds)
+                start_ts = _seconds_to_timestamp(start_seconds)
+                end_ts = _seconds_to_timestamp(end_seconds)
+
+                if video_id:
+                    source_url = f"https://youtu.be/{video_id}?t={int(start_seconds)}"
+                elif file_url:
+                    source_url = file_url
+                else:
+                    source_url = "manual_subtitles"
+
+                metadata = {
+                    "ingestion_plugin": self.name,
+                    "source_url": source_url,
+                    "video_id": video_id or "",
+                    "language": language,
+                    "chunk_index": idx,
+                    "chunk_count": total,
+                    "start_time": start_seconds,
+                    "end_time": end_seconds,
+                    "start_timestamp": start_ts,
+                    "end_timestamp": end_ts,
+                    "chunk_duration_target": chunk_duration,
+                    "original_text_sample": original_text[:200],
+                    "file_url": file_url,
+                    "retrieval_timestamp": datetime.utcnow().isoformat(),
+                    "plugin_version": "1.1.0",
+                    "subtitle_source": "uploaded_file",
+                    "subtitle_format": "srt",
+                }
+
+                all_chunks.append({
+                    "text": cleaned_text,
+                    "metadata": metadata,
+                })
+
+            if not all_chunks:
+                raise ValueError("No chunks produced from manual subtitle content.")
+
+            self.report_progress(
+                kwargs, 1, 1, f"Completed manual subtitle ingestion: {len(all_chunks)} chunks"
+            )
+            return all_chunks
+
         urls: List[str] = []
         if video_url:
             urls.append(video_url)
@@ -396,19 +461,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                 urls), f"Fetching transcript for video {video_id}...")
 
             try:    
-                result = _fetch_transcript(video_id, [language], proxy_url)
-                pieces = result["pieces"]
-                meta_info = result["metadata"]      # not var metadata as seen below, just info about translation
-
-                # If machine-translated, issue a warning
-                if meta_info["is_translated"]:
-                    warning_msg = (
-                        f"WARNING: Requested language '{language}' requires YouTube Auto-Translation "
-                        f"for video {video_id} (Native: '{meta_info['native_lang']}'). "
-                        "This frequently triggers '429 Too Many Requests' errors. "
-                        f"Consider requesting '{meta_info['native_lang']}' instead for better stability."
-                    )
-                    self.report_progress(kwargs, url_idx, len(urls), warning_msg)
+                pieces = _fetch_transcript(video_id, [language], proxy_url)
 
             except ValueError as e:
                 # Skip videos without transcripts or other extraction failures
@@ -417,7 +470,9 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                         kwargs, url_idx + 1, len(urls), f"No subtitles for {video_id}, skipping...")
                     continue
                 elif "429" in str(e):
-                    self.report_progress(kwargs, url_idx + 1, len(urls), f"Error: {str(e)}")
+                    self.report_progress(
+                        kwargs, url_idx + 1, len(urls), f"Transcript unavailable for {video_id}, skipping..."
+                    )
                     continue
                 else:
                     raise e

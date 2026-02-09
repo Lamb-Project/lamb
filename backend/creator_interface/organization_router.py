@@ -4360,3 +4360,180 @@ async def get_system_stats(request: Request):
     except Exception as e:
         logger.error(f"Error getting system stats: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Unified LTI Global Config & Activity Management
+# =============================================================================
+
+@router.get(
+    "/lti-global-config",
+    tags=["Admin - LTI"],
+    summary="Get global LTI configuration",
+    description="Get the global LTI consumer key/secret. System admin only.",
+    dependencies=[Depends(security)]
+)
+async def get_lti_global_config(request: Request):
+    """Get global LTI credentials (secret is masked)."""
+    try:
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
+        if not creator_user or not is_admin_user(creator_user):
+            raise HTTPException(status_code=403, detail="System admin required")
+
+        config = db_manager.get_lti_global_config()
+        if config:
+            return {
+                "source": "database",
+                "oauth_consumer_key": config["oauth_consumer_key"],
+                "oauth_consumer_secret_masked": config["oauth_consumer_secret"][:4] + "****",
+                "updated_at": config.get("updated_at"),
+                "updated_by": config.get("updated_by"),
+            }
+
+        import os
+        env_key = os.getenv("LTI_GLOBAL_CONSUMER_KEY", "lamb")
+        env_secret = os.getenv("LTI_GLOBAL_SECRET") or os.getenv("LTI_SECRET", "")
+        return {
+            "source": "environment",
+            "oauth_consumer_key": env_key,
+            "oauth_consumer_secret_masked": env_secret[:4] + "****" if env_secret else "(not set)",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LTI global config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/lti-global-config",
+    tags=["Admin - LTI"],
+    summary="Update global LTI configuration",
+    description="Set or update the global LTI consumer key/secret. System admin only. DB values override .env.",
+    dependencies=[Depends(security)]
+)
+async def update_lti_global_config(request: Request):
+    """Update global LTI credentials in the database."""
+    try:
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
+        if not creator_user or not is_admin_user(creator_user):
+            raise HTTPException(status_code=403, detail="System admin required")
+
+        body = await request.json()
+        key = body.get("oauth_consumer_key", "").strip()
+        secret = body.get("oauth_consumer_secret", "").strip()
+        if not key or not secret:
+            raise HTTPException(status_code=400, detail="Both oauth_consumer_key and oauth_consumer_secret are required")
+
+        admin_email = creator_user.get("email") or creator_user.get("user_email", "")
+        success = db_manager.set_lti_global_config(key, secret, updated_by=admin_email)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update LTI config")
+
+        return {"success": True, "oauth_consumer_key": key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI global config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/lti-activities",
+    tags=["Organization Admin - LTI"],
+    summary="List LTI activities for organization",
+    description="Get all unified LTI activities bound to the admin's organization.",
+    dependencies=[Depends(security)]
+)
+async def list_lti_activities(request: Request, org: Optional[str] = None):
+    """List all LTI activities for the org admin's organization."""
+    try:
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        # Determine target org
+        if org:
+            target_org = db_manager.get_organization_by_slug(org)
+            if not target_org:
+                raise HTTPException(status_code=404, detail="Organization not found")
+            org_id = target_org['id']
+        else:
+            org_id = creator_user.get('organization_id')
+
+        # Check admin access
+        user_email = creator_user.get('email') or creator_user.get('user_email', '')
+        if not (is_admin_user(creator_user) or db_manager.is_organization_admin(user_email, org_id)):
+            raise HTTPException(status_code=403, detail="Organization admin required")
+
+        activities = db_manager.get_lti_activities_by_org(org_id)
+
+        # Enrich with assistant counts
+        for act in activities:
+            assistants = db_manager.get_activity_assistants(act['id'])
+            act['assistant_count'] = len(assistants)
+            act['assistants'] = [{'id': a['id'], 'name': a['name']} for a in assistants]
+
+        return {"activities": activities, "count": len(activities)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing LTI activities: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/lti-activities/{activity_id}",
+    tags=["Organization Admin - LTI"],
+    summary="Update LTI activity",
+    description="Update an LTI activity's name or status. Org admin only.",
+    dependencies=[Depends(security)]
+)
+async def update_lti_activity(activity_id: int, request: Request):
+    """Update an LTI activity (name, status)."""
+    try:
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        body = await request.json()
+
+        # Get activity and verify org admin access
+        from lamb.database_manager import LambDatabaseManager
+        _db = LambDatabaseManager()
+        # We need to get the activity by ID — use a direct query
+        connection = _db.get_connection()
+        if not connection:
+            raise HTTPException(status_code=500, detail="Database error")
+        try:
+            cursor = connection.cursor()
+            cursor.execute(f"SELECT * FROM {_db.table_prefix}lti_activities WHERE id = ?", (activity_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Activity not found")
+            columns = [col[0] for col in cursor.description]
+            activity = dict(zip(columns, row))
+        finally:
+            connection.close()
+
+        org_id = activity['organization_id']
+        user_email = creator_user.get('email') or creator_user.get('user_email', '')
+        if not (is_admin_user(creator_user) or _db.is_organization_admin(user_email, org_id)):
+            raise HTTPException(status_code=403, detail="Organization admin required")
+
+        # Apply updates
+        updates = {}
+        if "activity_name" in body:
+            updates["activity_name"] = body["activity_name"]
+        if "status" in body and body["status"] in ("active", "disabled"):
+            updates["status"] = body["status"]
+
+        if updates:
+            _db.update_lti_activity(activity_id, **updates)
+
+        return {"success": True, "activity_id": activity_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI activity: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
