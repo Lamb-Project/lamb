@@ -184,6 +184,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
             logger.error(f"No creator user found for email: {user_email}")
             return None
 
+        # Enrich with OWI role so callers (e.g. is_admin_user) can check
+        # admin status without a separate OWI query.  user_auth was already
+        # fetched above from the OWI /auths/ endpoint.
+        creator_user['role'] = user_auth.get('role', 'user')
+
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
         if organization_id:
@@ -207,7 +212,12 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
 def is_admin_user(user_or_auth_header) -> bool:
     """
-    Check if a user has admin privileges
+    Check if a user has admin privileges.
+
+    Accepts either:
+      - A user dictionary (as returned by get_creator_user_from_token, which
+        now always includes a 'role' field enriched from OWI).
+      - An authorization header string, in which case OWI is queried directly.
 
     Args:
         user_or_auth_header: Either a user dictionary or authorization header containing the token
@@ -216,32 +226,21 @@ def is_admin_user(user_or_auth_header) -> bool:
         bool: True if the user is an admin, False otherwise
     """
     try:
-        # If we're given a user dictionary directly
+        # --- Dict path (from get_creator_user_from_token) ---
         if isinstance(user_or_auth_header, dict):
-            # Special case: User ID 1 is always considered an admin
-            if user_or_auth_header.get('id') == 1:
-                logger.info(f"User ID 1 found - automatically granting admin privileges")
-                return True
-                
-            # Check role if it exists
-            if 'role' in user_or_auth_header:
-                user_role = user_or_auth_header.get("role", "")
-                logger.info(f"User role from dictionary: {user_role}")
-                return user_role == "admin"
-            else:
-                logger.warning(f"User dictionary has no 'role' field: {user_or_auth_header}")
-                # If no role in dictionary, we'll check the DB for user ID
-                user_id = user_or_auth_header.get('id')
-                if user_id:
-                    # Get user from database to check role
-                    logger.info(f"Looking up role for user ID {user_id} in database")
-                    db_user = owi_user_manager.db.get_user_by_id(str(user_id))
-                    if db_user and 'role' in db_user and db_user['role'] == 'admin':
-                        logger.info(f"User {user_id} found as admin in database")
-                        return True
+            user_role = user_or_auth_header.get("role", "")
+            if not user_role:
+                # Defensive: dict without role field — should not happen if
+                # the caller used get_creator_user_from_token(), but log it.
+                logger.warning(
+                    f"User dictionary has no 'role' field for user id={user_or_auth_header.get('id')}. "
+                    "Denying admin access. Ensure get_creator_user_from_token() is the source of this dict."
+                )
                 return False
-            
-        # Otherwise, it should be an auth header
+            logger.info(f"User role from dictionary: {user_role} (user id={user_or_auth_header.get('id')})")
+            return user_role == "admin"
+
+        # --- String path (raw auth header) ---
         if not user_or_auth_header:
             logger.error("No authorization header provided")
             return False
@@ -251,7 +250,6 @@ def is_admin_user(user_or_auth_header) -> bool:
             logger.error("Invalid authentication token")
             return False
 
-        # Check if the user has admin role
         user_role = user_auth.get("role", "")
         logger.info(f"User role from token: {user_role}")
         return user_role == "admin"
