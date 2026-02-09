@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.1  
-**Last Updated:** February 4, 2026  
+**Version:** 2.2  
+**Last Updated:** February 8, 2026  
 **Reading Time:** ~35 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -172,6 +172,7 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 - `GET /v1/models` — List assistants as OpenAI models
 - `POST /v1/chat/completions` — Generate completions
 - `GET /status` — Health check
+- `GET /openapi.json` — Full OpenAPI specification (all endpoints, schemas, and parameters)
 
 ### 3.3 LAMB Core Routers
 
@@ -353,7 +354,8 @@ Every authenticated endpoint:
 2. Calls `get_creator_user_from_token()` helper
 3. Validates token against OWI database
 4. Verifies user exists in LAMB Creator_users table
-5. Returns user object or raises 401
+5. Enriches the returned dict with the user's OWI `role` (e.g. `"admin"` or `"user"`)
+6. Returns user object or raises 401
 
 ### 5.3 Authorization Levels
 
@@ -366,8 +368,9 @@ Every authenticated endpoint:
 
 **Admin Detection:**
 ```python
-def is_admin_user(creator_user):
-    # Check OWI role == 'admin' OR organization_roles.role IN ('admin', 'owner')
+def is_admin_user(user_or_auth_header):
+    # Accepts a creator_user dict (with 'role' field from OWI) or an auth header string.
+    # Returns True when the user's OWI role == 'admin'.
 ```
 
 ### 5.4 API Key Authentication
@@ -1347,6 +1350,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 4, 2026*  
-*Version: 2.1*
+*Last Updated: February 8, 2026*  
+*Version: 2.2*
 
