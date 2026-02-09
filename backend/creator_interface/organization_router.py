@@ -1655,6 +1655,23 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
                 api_status["providers"][provider_name]["enabled_models"] = enabled_models
                 api_status["providers"][provider_name]["default_model"] = provider_config.get('default_model', '')
         
+        # Check LTI creator key status
+        lti_creator_key = db_manager.get_lti_creator_key(org_id)
+        lti_creator_enabled = bool(lti_creator_key and lti_creator_key.get('enabled', False))
+
+        # Get assistant count
+        org_assistants = db_manager.get_assistants_by_organization(org_id)
+        total_assistants = len(org_assistants)
+        published_assistants = len([a for a in org_assistants if a.get('published')])
+
+        # Get default models from config
+        global_default_model = default_setup.get('global_default_model', {})
+        small_fast_model = default_setup.get('small_fast_model', {})
+
+        # Get LTI activities count
+        lti_activities = db_manager.get_lti_activities_by_org(org_id)
+        total_lti_activities = len(lti_activities)
+
         dashboard_info = {
             "organization": {
                 "id": organization['id'],
@@ -1665,12 +1682,26 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
             "stats": {
                 "total_users": len(org_users),
                 "active_users": active_users,
-                "disabled_users": disabled_users
+                "disabled_users": disabled_users,
+                "total_assistants": total_assistants,
+                "published_assistants": published_assistants,
+                "total_lti_activities": total_lti_activities
             },
             "settings": {
                 "signup_enabled": features.get('signup_enabled', False),
                 "api_configured": api_status["overall_status"] in ["working", "partial"],
-                "signup_key_set": bool(features.get('signup_key'))
+                "signup_key_set": bool(features.get('signup_key')),
+                "lti_creator_enabled": lti_creator_enabled
+            },
+            "default_models": {
+                "global_default": {
+                    "provider": global_default_model.get('provider', ''),
+                    "model": global_default_model.get('model', '')
+                },
+                "small_fast": {
+                    "provider": small_fast_model.get('provider', ''),
+                    "model": small_fast_model.get('model', '')
+                }
             },
             "api_status": api_status
         }

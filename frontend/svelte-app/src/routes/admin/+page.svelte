@@ -154,6 +154,19 @@
     let showLtiSecret = $state(false);
     let ltiHasSecret = $derived(ltiGlobalConfig.oauth_consumer_secret_masked && ltiGlobalConfig.oauth_consumer_secret_masked !== '(not set)');
     let ltiCopied = $state('');
+    
+    // Dirty tracking for global LTI settings
+    let ltiGlobalDirty = $derived.by(() => {
+        if (!ltiHasSecret) {
+            // First-time setup: dirty if either field has content
+            return !!(ltiGlobalForm.consumer_key || ltiGlobalForm.consumer_secret);
+        }
+        // Existing config: dirty if key changed or secret entered
+        return (
+            ltiGlobalForm.consumer_key !== (ltiGlobalConfig.oauth_consumer_key || '') ||
+            ltiGlobalForm.consumer_secret !== ''
+        );
+    });
 
     // Build the full LTI Launch URL from config
     let ltiLaunchUrl = $derived(() => {
@@ -1906,7 +1919,13 @@
                         {#each organizations as org (org.id)}
                             <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
-                                    <div class="text-sm font-medium text-gray-900">{org.name || '-'}</div>
+                                    <button 
+                                        class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-transparent border-none p-0"
+                                        onclick={() => administerOrganization(org)}
+                                        title="Go to organization settings"
+                                    >
+                                        {org.name || '-'}
+                                    </button>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
                                     <div class="text-sm text-gray-800 font-mono">{org.slug}</div>
@@ -1924,15 +1943,16 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex space-x-2">
                                         <button 
-                                            class="text-green-600 hover:text-green-800" 
-                                            title="Administer Organization"
-                                            aria-label="Administer Organization"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm transition-colors" 
+                                            title="Manage Organization"
+                                            aria-label="Manage Organization"
                                             onclick={() => administerOrganization(org)}
                                         >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             </svg>
+                                            Manage
                                         </button>
                                         <button 
                                             class="text-blue-600 hover:text-blue-800" 
@@ -2623,47 +2643,41 @@
                         <div>
                             <label for="lti-global-secret" class="block text-sm font-medium text-gray-700">
                                 OAuth Shared Secret
-                                {#if ltiHasSecret}
-                                    <span class="text-gray-400 font-normal">(leave blank to keep current)</span>
-                                {/if}
                             </label>
                             <div class="relative mt-1">
                                 <input
                                     id="lti-global-secret"
-                                    type={showLtiSecret ? 'text' : 'password'}
+                                    type={showLtiSecret && ltiGlobalForm.consumer_secret ? 'text' : 'password'}
                                     bind:value={ltiGlobalForm.consumer_secret}
-                                    placeholder={ltiHasSecret ? '••••••••' : 'Enter a strong secret key'}
-                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-10 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                    placeholder={ltiHasSecret ? '••••••••  (leave blank to keep current)' : 'Enter a strong secret key'}
+                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 {ltiGlobalForm.consumer_secret ? 'pr-10' : ''} focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
                                 >
-                                <button
-                                    type="button"
-                                    onclick={() => showLtiSecret = !showLtiSecret}
-                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                                    title={showLtiSecret ? 'Hide secret' : 'Show secret'}
-                                >
-                                    {#if showLtiSecret}
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                                    {:else}
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                    {/if}
-                                </button>
+                                {#if ltiGlobalForm.consumer_secret}
+                                    <button
+                                        type="button"
+                                        onclick={() => showLtiSecret = !showLtiSecret}
+                                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                        title={showLtiSecret ? 'Hide secret' : 'Show secret'}
+                                    >
+                                        {#if showLtiSecret}
+                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                        {:else}
+                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        {/if}
+                                    </button>
+                                {/if}
                             </div>
                             <p class="mt-1 text-xs text-gray-500">Used to sign and verify LTI launch requests (HMAC-SHA1). Must match in the LMS.</p>
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                        <div class="flex items-center pt-4 border-t border-gray-200">
                             <button
-                                class="bg-brand hover:bg-brand-hover text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                class="text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors {ltiGlobalDirty ? 'bg-brand hover:bg-brand-hover' : 'bg-gray-300 cursor-not-allowed'}"
                                 onclick={saveLtiGlobalConfig}
+                                disabled={!ltiGlobalDirty}
                             >
                                 Save LTI Configuration
-                            </button>
-                            <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                onclick={fetchLtiGlobalConfig}
-                            >
-                                Reload
                             </button>
                         </div>
                     </div>
