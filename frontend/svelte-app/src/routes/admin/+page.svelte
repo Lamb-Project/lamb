@@ -145,6 +145,19 @@
     /** @type {string | null} */
     let configError = $state(null);
 
+    // --- Organization Members Modal State ---
+    let isMembersModalOpen = $state(false);
+    /** @type {any | null} */
+    let membersModalOrg = $state(null);
+    /** @type {Array<any>} */
+    let orgMembers = $state([]);
+    let isLoadingMembers = $state(false);
+    /** @type {string | null} */
+    let membersError = $state(null);
+    let isUpdatingRole = $state(false);
+    /** @type {string | null} */
+    let roleUpdateSuccess = $state(null);
+
     // --- Global LTI Settings State ---
     let ltiGlobalConfig = $state({ oauth_consumer_key: '', oauth_consumer_secret_masked: '', updated_at: null, source: 'environment' });
     let ltiGlobalForm = $state({ consumer_key: '', consumer_secret: '' });
@@ -543,6 +556,109 @@
     function administerOrganization(org) {
         // Navigate to org-admin with organization parameter
         goto(`${base}/org-admin?org=${org.slug}`);
+    }
+
+    // --- Organization Members Management ---
+
+    /**
+     * Open the members modal for an organization
+     * @param {any} org - Organization object
+     */
+    function openMembersModal(org) {
+        membersModalOrg = org;
+        orgMembers = [];
+        membersError = null;
+        roleUpdateSuccess = null;
+        isMembersModalOpen = true;
+        fetchOrgMembers(org.slug);
+    }
+
+    /**
+     * Close the members modal
+     */
+    function closeMembersModal() {
+        isMembersModalOpen = false;
+        membersModalOrg = null;
+        orgMembers = [];
+        membersError = null;
+        roleUpdateSuccess = null;
+    }
+
+    /**
+     * Fetch members for an organization
+     * @param {string} orgSlug - Organization slug
+     */
+    async function fetchOrgMembers(orgSlug) {
+        isLoadingMembers = true;
+        membersError = null;
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication required');
+            
+            const response = await axios.get(getApiUrl(`/admin/org-admin/users?org=${orgSlug}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.data && Array.isArray(response.data)) {
+                orgMembers = response.data;
+            } else {
+                throw new Error('Invalid response');
+            }
+        } catch (err) {
+            console.error('Error fetching org members:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                membersError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                membersError = err.message;
+            } else {
+                membersError = 'Failed to load organization members.';
+            }
+        } finally {
+            isLoadingMembers = false;
+        }
+    }
+
+    /**
+     * Update a member's role in an organization
+     * @param {number} userId - User ID
+     * @param {string} newRole - New role ('admin' or 'member')
+     */
+    async function updateMemberRole(userId, newRole) {
+        if (!membersModalOrg) return;
+        
+        isUpdatingRole = true;
+        roleUpdateSuccess = null;
+        membersError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication required');
+            
+            const response = await axios.put(
+                getApiUrl(`/admin/organizations/${membersModalOrg.slug}/members/${userId}/role`),
+                { role: newRole },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            
+            if (response.data?.success) {
+                roleUpdateSuccess = response.data.message;
+                // Refresh the members list
+                await fetchOrgMembers(membersModalOrg.slug);
+                // Clear success message after 3 seconds
+                setTimeout(() => { roleUpdateSuccess = null; }, 3000);
+            }
+        } catch (err) {
+            console.error('Error updating member role:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                membersError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                membersError = err.message;
+            } else {
+                membersError = 'Failed to update user role.';
+            }
+        } finally {
+            isUpdatingRole = false;
+        }
     }
 
     // --- Form Handling ---
@@ -1954,6 +2070,19 @@
                                             </svg>
                                             Manage
                                         </button>
+                                        {#if !org.is_system}
+                                            <button 
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm transition-colors" 
+                                                title="Manage Members & Roles"
+                                                aria-label="Manage Members & Roles"
+                                                onclick={() => openMembersModal(org)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                                                </svg>
+                                                Members
+                                            </button>
+                                        {/if}
                                         <button 
                                             class="text-blue-600 hover:text-blue-800" 
                                             title={localeLoaded ? $_('admin.organizations.actions.viewConfig', { default: 'View Configuration' }) : 'View Configuration'}
@@ -2696,6 +2825,133 @@
             </div>
         {/if}
     {/if}
+
+<!-- Organization Members & Roles Modal -->
+{#if isMembersModalOpen && membersModalOrg}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    Members: {membersModalOrg.name}
+                    <span class="text-sm text-gray-500 font-normal ml-2">({membersModalOrg.slug})</span>
+                </h3>
+                <button 
+                    onclick={closeMembersModal}
+                    class="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            {#if roleUpdateSuccess}
+                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded text-sm">
+                    {roleUpdateSuccess}
+                </div>
+            {/if}
+
+            {#if membersError}
+                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded text-sm">
+                    {membersError}
+                </div>
+            {/if}
+
+            {#if isLoadingMembers}
+                <div class="text-center py-8 text-gray-500">Loading members...</div>
+            {:else if orgMembers.length === 0}
+                <div class="text-center py-8">
+                    <p class="text-gray-500">No members in this organization.</p>
+                    <p class="text-gray-400 text-sm mt-2">Users can join via signup or be assigned by a system admin.</p>
+                </div>
+            {:else}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {#each orgMembers as member (member.id)}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3">
+                                        <div class="text-sm font-medium text-gray-900">{member.name || '-'}</div>
+                                        <div class="text-xs text-gray-500">{member.email}</div>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.auth_provider === 'lti_creator'}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">LTI Creator</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Creator</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.role === 'admin'}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Admin</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Member</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.enabled}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Disabled</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.role === 'admin'}
+                                            <button
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors disabled:opacity-50"
+                                                title="Demote to Member"
+                                                disabled={isUpdatingRole}
+                                                onclick={() => updateMemberRole(member.id, 'member')}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+                                                </svg>
+                                                Demote
+                                            </button>
+                                        {:else}
+                                            <button
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors disabled:opacity-50"
+                                                title="Promote to Admin"
+                                                disabled={isUpdatingRole}
+                                                onclick={() => updateMemberRole(member.id, 'admin')}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                                                </svg>
+                                                Promote
+                                            </button>
+                                        {/if}
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-3 text-xs text-gray-500 italic">
+                    Any user, including LTI Creator users, can be promoted to organization admin.
+                </p>
+            {/if}
+
+            <div class="mt-4 flex justify-end">
+                <button 
+                    onclick={closeMembersModal}
+                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded transition-colors"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <!-- Delete Organization Confirmation Modal -->
 <ConfirmationModal

@@ -4464,8 +4464,9 @@
                                         <!-- Security Note -->
                                         <div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
                                             <p class="text-xs text-yellow-700">
-                                                <strong>Note:</strong> LTI creator users cannot become organization admins and cannot change their passwords.
+                                                <strong>Note:</strong> LTI creator users cannot change their passwords (they authenticate via LTI).
                                                 They are identified by their LMS user ID and can access LAMB from any LTI instance on their LMS.
+                                                LTI creator users can be promoted to organization admin by a system administrator.
                                             </p>
                                         </div>
                                     </div>
