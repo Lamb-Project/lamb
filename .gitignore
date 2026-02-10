@@ -165,3 +165,6 @@ testing/package-lock.json
 testing/playwright/test-results/.last-run.json
 backend/static/cache
 docker-compose.yaml
+
+
+./clinerules
