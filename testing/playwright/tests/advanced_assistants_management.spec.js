@@ -12,7 +12,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
  *  - Publicación de assistants a OWI (lamb_assistant.{id}, creación de grupo OWI)
  *  - Configuración de RAG_collections desde la UI (incl. KB compartidas)
  *  - Configuración de plugins (modelo, connector, visión)
- *  - Casos de error (duplicados, metadata incompleta, etc.)
+ *  - Casos de error (validación client-side: nombre vacío)
  *
  * Prerrequisitos:
  *  - Sesión de admin válida vía global-setup.js o state de Playwright
@@ -268,10 +268,14 @@ test.describe.serial("Advanced Assistants Management", () => {
       .getByRole("combobox", { name: /model|Language Model/i })
       .first();
     const connectorSelect = page
-      .getByRole("combobox", { name: /onnector/i })
+      .getByRole("combobox", { name: /connector/i })
       .first();
-    const visionCheckbox = page
-      .getByRole("checkbox", { name: /vision|image input|enable vision/i })
+    // El checkbox de visión usa class="sr-only" (oculto visualmente, patrón toggle Tailwind).
+    // Solo se renderiza si el connector es 'openai', 'banana_img' o si ya estaba habilitado.
+    // Para interactuar con él, hacemos clic en su <label> padre.
+    const visionLabel = page
+      .locator('label:has(input[type="checkbox"].sr-only)')
+      .filter({ hasText: /vision/i })
       .first();
 
     // Todos estos elementos son opcionales, pero si existen, los tocamos.
@@ -283,9 +287,8 @@ test.describe.serial("Advanced Assistants Management", () => {
       await connectorSelect.selectOption({ index: 1 }).catch(() => { });
     }
 
-    if (await visionCheckbox.count()) {
-      const checked = await visionCheckbox.isChecked();
-      await visionCheckbox.setChecked(!checked).catch(() => { });
+    if (await visionLabel.count()) {
+      await visionLabel.click();
     }
 
     const saveButton = page.locator(
@@ -324,20 +327,24 @@ test.describe.serial("Advanced Assistants Management", () => {
       expect(connectorValue).not.toBe("");
     }
 
-    const visionCheckboxAfter = page
-      .getByRole("checkbox", { name: /vision|image input|enable vision/i })
+    // El checkbox de visión es sr-only, así que verificamos que el label del toggle existe
+    const visionLabelAfter = page
+      .locator('label:has(input[type="checkbox"].sr-only)')
+      .filter({ hasText: /vision/i })
       .first();
-    if (await visionCheckboxAfter.count()) {
-      // Debería estar visible
-      await expect(visionCheckboxAfter).toBeVisible();
+    if (await visionLabelAfter.count()) {
+      await expect(visionLabelAfter).toBeVisible();
     }
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // 5. Casos de error: duplicados y metadata incompleta
+  // 5. Caso de error: nombre vacío (única validación client-side)
   // ─────────────────────────────────────────────────────────────────────
-  test("5. Errores: nombre duplicado y metadata incompleta", async ({ page }) => {
-    // Intentar crear un assistant con el mismo nombre que el ya existente
+  test("5. Error: nombre vacío muestra validación client-side", async ({ page }) => {
+    // NOTA: La única validación client-side en handleSubmit es: nombre vacío.
+    //   - Descripción y system prompt vacíos NO generan error (no son required).
+    //   - Nombres duplicados son auto-resueltos por el backend (añade _2, _3...).
+
     await page.goto("assistants?view=create");
     await page.waitForLoadState("networkidle");
 
@@ -350,16 +357,10 @@ test.describe.serial("Advanced Assistants Management", () => {
     const form = page.locator("#assistant-form-main");
     await expect(form).toBeVisible({ timeout: 30_000 });
 
-    // Caso 1: metadata incompleta (faltan campos requeridos)
-    await page.fill("#assistant-name", baseAssistantName);
-    await page.fill(
-      "#assistant-description",
-      "" // descripción vacía para forzar validación
-    );
-    await page.fill(
-      "#system-prompt",
-      "" // prompt vacío para forzar validación
-    );
+    // Caso: dejar nombre vacío y rellenar el resto
+    await page.fill("#assistant-name", "");
+    await page.fill("#assistant-description", "Test description");
+    await page.fill("#system-prompt", "Test system prompt");
 
     const saveButton = page.locator(
       'button[type="submit"][form="assistant-form-main"]'
@@ -367,48 +368,21 @@ test.describe.serial("Advanced Assistants Management", () => {
     await expect(saveButton).toBeVisible({ timeout: 10_000 });
     await saveButton.click();
 
-    // Debería aparecer algún mensaje de error de validación de metadata incompleta
-    const incompleteMetaError = page
-      .getByText(/description.*required|system prompt.*required|metadata incomplete/i)
+    // handleSubmit valida: if (!name?.trim()) → "Assistant Name is required."
+    const nameRequiredError = page
+      .getByText(/assistant name is required/i)
       .first();
-    await expect(incompleteMetaError).toBeVisible({ timeout: 10_000 });
-
-    // Caso 2: tras rellenar metadata, el backend debería devolver error por duplicado
-    await page.fill("#assistant-description", "Duplicate name test");
-    await page.fill("#system-prompt", "Duplicate name test prompt");
-
-    const duplicateRequest = page.waitForResponse((response) => {
-      if (response.request().method() !== "POST") return false;
-      try {
-        const url = new URL(response.url());
-        return url.pathname.endsWith("/assistant/create_assistant");
-      } catch {
-        return false;
-      }
-    });
-
-    await Promise.all([duplicateRequest, saveButton.click()]);
-
-    // Esperamos un mensaje de error indicando duplicado
-    await expect(
-      page
-        .getByText(/already exists|duplicate assistant|nombre ya existe/i)
-        .first()
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(nameRequiredError).toBeVisible({ timeout: 10_000 });
   });
 
   // ─────────────────────────────────────────────────────────────────────
   // 6. Cleanup: borrar el assistant de pruebas
   // ─────────────────────────────────────────────────────────────────────
   test("6. Cleanup: borrar assistant avanzado de pruebas", async ({ page }) => {
-    // Puede llamarse updatedAssistantName o seguir con baseAssistantName
+  
     let row;
-    try {
-      row = await findAssistantRow(page, updatedAssistantName);
-    } catch {
-      row = await findAssistantRow(page, baseAssistantName);
-    }
-
+    row = await findAssistantRow(page, baseAssistantName);
+    
     const deleteButton = row
       .getByRole("button", { name: /delete/i })
       .first();
