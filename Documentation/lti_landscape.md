@@ -233,9 +233,9 @@ This means both Unified and legacy Student LTI security rely on a single secret 
 
 Same OAuth parameter, three completely different semantics.
 
-### 7.3 Creator LTI Users Are "Creators" But With Limits
+### 7.3 Creator LTI Users Are "Creators" But With Some Differences
 
-LTI creator users get `user_type = 'creator'` and can do almost everything a regular creator can: build assistants, create knowledge bases, publish, share. But they **cannot** become organization admins, and their password is a random string they'll never see (they always enter through LTI).
+LTI creator users get `user_type = 'creator'` and can do almost everything a regular creator can: build assistants, create knowledge bases, publish, share. Their password is a random string they'll never see (they always enter through LTI). They are created as `member` by default, but a **system admin can promote them to organization admin** via the Members panel in the system admin interface.
 
 ### 7.4 Four Endpoints, Three Active
 
