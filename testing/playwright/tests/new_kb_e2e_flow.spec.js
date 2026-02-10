@@ -205,4 +205,202 @@ test.describe.serial("New Knowledge Base E2E Flow", () => {
 
         console.log("Verified Firecrawl correctly handles Invalid URLs");
     });
+
+    test("Query KB after Firecrawl ingestion to verify content", async ({ page }, testInfo) => {
+        const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+        if (!FIRECRAWL_API_KEY) {
+            testInfo.skip(true, "Skipping query test — no FIRECRAWL_API_KEY provided");
+            return;
+        }
+
+        // 1. Navigate to the KB detail
+        await page.goto("knowledgebases");
+        await page.waitForLoadState("networkidle");
+
+        const kbRow = page.locator("tr").filter({ hasText: kbName }).first();
+        await expect(kbRow).toBeVisible({ timeout: 5_000 });
+        await kbRow.getByRole("button", { name: kbName }).click();
+
+        // 2. Wait for async ingestion to complete before querying.
+        // Instead of checking Files tab status, we go straight to Query
+        // and retry with a generous timeout — if results come back,
+        // ingestion worked.
+        // Give Firecrawl ingestion some time to finish processing
+        await page.waitForTimeout(15_000);
+
+        // 3. Go to Query tab
+        await page.getByRole("button", { name: "Query" }).click();
+
+        // 4. Query for "messi" — the Wikipedia page we ingested is about Lionel Messi
+        const queryInput = page.locator("#query-text");
+        const queryInputAlt = page.getByRole("textbox", { name: /enter your query/i });
+
+        // Use whichever query input is available
+        if (await queryInput.isVisible().catch(() => false)) {
+            await queryInput.fill("messi");
+        } else {
+            await queryInputAlt.fill("messi");
+        }
+
+        const submitBtn = page.getByRole("button", { name: /^Submit Query$/i });
+        if (await submitBtn.count()) {
+            await submitBtn.click();
+        } else {
+            await page.keyboard.press("Enter");
+        }
+
+        // 5. Verify that query results appear (embedding similarity search, no LLM)
+        await expect(page.getByText(/Query Results:/i)).toBeVisible({ timeout: 60_000 });
+
+        console.log("Query returned results for 'messi' — ingestion verified");
+    });
+
+    test("Ingest malformed URL (invalid protocol htps://)", async ({ page }, testInfo) => {
+        const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+        if (!FIRECRAWL_API_KEY) {
+            testInfo.skip(true, "Skipping malformed URL test — no FIRECRAWL_API_KEY provided");
+            return;
+        }
+
+        // 1. Navigate to the KB
+        await page.goto("knowledgebases");
+        await page.waitForLoadState("networkidle");
+
+        const kbRow = page.locator("tr").filter({ hasText: kbName }).first();
+        await expect(kbRow).toBeVisible({ timeout: 5_000 });
+        await kbRow.getByRole("button", { name: kbName }).click();
+
+        // 2. Go to Ingest Content
+        await page.getByRole("button", { name: /ingest content/i }).click();
+
+        // 3. Select Firecrawl Plugin
+        const pluginSelect = page.locator("#plugin-select-inline");
+        let firecrawlOption = pluginSelect.locator("option", { hasText: /firecrawl/i });
+        if (await firecrawlOption.count() === 0) {
+            firecrawlOption = pluginSelect.locator("option", { hasText: /url/i });
+        }
+        const optionValue = await firecrawlOption.first().getAttribute("value");
+        await pluginSelect.selectOption(optionValue);
+
+        // 4. Fill API Key
+        const apiKeyInput = page.locator("#param-api_key-inline");
+        try {
+            await expect(apiKeyInput).toBeVisible({ timeout: 2_000 });
+            await apiKeyInput.fill(FIRECRAWL_API_KEY);
+        } catch (e) {
+            console.log("API Key input not visible, skipping fill");
+        }
+
+        // 5. Fill MALFORMED URL — typo in protocol: htps instead of https
+        const urlInput = page.locator("#param-url-inline");
+        await urlInput.fill("htps://es.wikipedia.org/wiki/Lionel_Messi");
+
+        // 6. Run Ingestion
+        await page.getByRole("button", { name: /run ingestion/i }).click();
+
+        // 7. Expect failure — either immediate UI validation error or async ingestion failure
+        // Check for inline error first (some UIs validate URL format)
+        const inlineError = page.getByText(/invalid url|invalid protocol|url must start with/i);
+        const hasInlineError = await inlineError.isVisible({ timeout: 3_000 }).catch(() => false);
+
+        if (hasInlineError) {
+            console.log("UI correctly rejected malformed URL with validation error");
+        } else {
+            // If no inline error, check Files tab for ingestion failure
+            await page.getByRole("button", { name: /files/i }).click();
+
+            const failedTag = page.getByRole("button", { name: /failed/i }).first();
+            await expect(failedTag).toBeVisible({ timeout: 20_000 });
+            await failedTag.click();
+
+            await expect(page.getByLabel("Ingestion Job Details")).toContainText(
+                /invalid url|invalid protocol|failed|error/i
+            );
+            console.log("Firecrawl correctly rejected malformed URL (htps://)");
+        }
+    });
+
+    test("Ingest unreachable URL (localhost that never responds)", async ({ page }, testInfo) => {
+        const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+        if (!FIRECRAWL_API_KEY) {
+            testInfo.skip(true, "Skipping unreachable URL test — no FIRECRAWL_API_KEY provided");
+            return;
+        }
+
+        // 1. Navigate to the KB
+        await page.goto("knowledgebases");
+        await page.waitForLoadState("networkidle");
+
+        const kbRow = page.locator("tr").filter({ hasText: kbName }).first();
+        await expect(kbRow).toBeVisible({ timeout: 5_000 });
+        await kbRow.getByRole("button", { name: kbName }).click();
+
+        // 2. Go to Ingest Content
+        await page.getByRole("button", { name: /ingest content/i }).click();
+
+        // 3. Select Firecrawl Plugin
+        const pluginSelect = page.locator("#plugin-select-inline");
+        let firecrawlOption = pluginSelect.locator("option", { hasText: /firecrawl/i });
+        if (await firecrawlOption.count() === 0) {
+            firecrawlOption = pluginSelect.locator("option", { hasText: /url/i });
+        }
+        const optionValue = await firecrawlOption.first().getAttribute("value");
+        await pluginSelect.selectOption(optionValue);
+
+        // 4. Fill API Key
+        const apiKeyInput = page.locator("#param-api_key-inline");
+        try {
+            await expect(apiKeyInput).toBeVisible({ timeout: 2_000 });
+            await apiKeyInput.fill(FIRECRAWL_API_KEY);
+        } catch (e) {
+            console.log("API Key input not visible, skipping fill");
+        }
+
+        // 5. Fill unreachable URL — localhost on a port that nothing listens on
+        const urlInput = page.locator("#param-url-inline");
+        await urlInput.fill("http://localhost:19999/this-page-does-not-exist");
+
+        // 6. Run Ingestion
+        await page.getByRole("button", { name: /run ingestion/i }).click();
+
+        // 7. Expect failure — the URL is valid but unreachable
+        await page.getByRole("button", { name: /files/i }).click();
+
+        const failedTag = page.getByRole("button", { name: /failed/i }).first();
+        await expect(failedTag).toBeVisible({ timeout: 30_000 });
+        await failedTag.click();
+
+        await expect(page.getByLabel("Ingestion Job Details")).toContainText(
+            /no content could be extracted|connection refused|timeout|failed|error|unreachable/i
+        );
+
+        console.log("Firecrawl correctly failed on unreachable localhost URL");
+    });
+
+    test.skip("Cleanup — delete test KB", async ({ page }) => {
+        await page.goto("knowledgebases");
+        await page.waitForLoadState("networkidle");
+
+        const kbRow = page.locator("tr").filter({ hasText: kbName });
+        if (await kbRow.count() === 0) {
+            console.log("Test KB already deleted or not found — nothing to clean up");
+            return;
+        }
+
+        const deleteButton = kbRow.locator("button.text-red-600", { hasText: /delete/i });
+        await expect(deleteButton).toBeVisible({ timeout: 5_000 });
+        await deleteButton.click();
+
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: 3_000 });
+
+        const confirmButton = modal.locator("button", { hasText: /delete/i });
+        await expect(confirmButton).toBeVisible({ timeout: 2_000 });
+        await confirmButton.click();
+
+        await expect(modal).not.toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText(kbName)).not.toBeVisible({ timeout: 5_000 });
+
+        console.log(`Cleanup: KB "${kbName}" deleted`);
+    });
 });
