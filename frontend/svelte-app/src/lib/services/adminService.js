@@ -1,6 +1,61 @@
 import { getApiUrl } from '$lib/config';
 
 /**
+ * Fetch the current user's profile (resource overview)
+ * @param {string} token - Authorization token
+ * @returns {Promise<any>} - Promise resolving to user profile data
+ */
+export async function getMyProfile(token) {
+	try {
+		const response = await fetch(getApiUrl('/user/profile'), {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			}
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.error || error.detail || 'Failed to fetch profile');
+		}
+
+		return await response.json();
+	} catch (error) {
+		console.error('Error fetching user profile:', error);
+		throw error;
+	}
+}
+
+/**
+ * Fetch a specific user's profile (admin/org-admin)
+ * @param {string} token - Authorization token
+ * @param {number} userId - User ID to fetch profile for
+ * @returns {Promise<any>} - Promise resolving to user profile data
+ */
+export async function getUserProfile(token, userId) {
+	try {
+		const response = await fetch(getApiUrl(`/admin/users/${userId}/profile`), {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json'
+			}
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.error || error.detail || 'Failed to fetch user profile');
+		}
+
+		return await response.json();
+	} catch (error) {
+		console.error('Error fetching user profile:', error);
+		throw error;
+	}
+}
+
+/**
  * Disable a user account
  * @param {string} token - Authorization token
  * @param {number} userId - User ID to disable

@@ -2175,6 +2175,54 @@ async def get_current_user(request: Request):
 
 
 @router.get(
+    "/user/profile",
+    tags=["User Management"],
+    summary="Get Current User Profile (Resource Overview)",
+    description="""Get the authenticated user's comprehensive profile including all owned resources
+(assistants, knowledge bases, rubrics, templates) and resources shared with them.
+
+This is a convenience alias for `GET /creator/admin/users/{user_id}/profile` using the
+current user's ID.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/user/profile' \\
+-H 'Authorization: Bearer <user_token>'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User profile retrieved successfully"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_own_profile(request: Request):
+    """Get comprehensive profile for the currently authenticated user."""
+    try:
+        creator_user = get_creator_user_from_token(
+            request.headers.get("Authorization"))
+        if not creator_user:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication or user not found in creator database"
+            )
+
+        db = LambDatabaseManager()
+        profile = db.get_user_profile(creator_user["id"])
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+
+        return profile
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error getting own profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
     "/news/{lang}",
     tags=["News"],
     summary="Get News Content by Language",
@@ -2554,16 +2602,18 @@ async def get_assistant_shares_endpoint(request: Request, assistant_id: int):
         if not assistant:
             raise HTTPException(status_code=404, detail="Assistant not found")
 
-        # Check authorization: owner or org admin
+        # Check authorization: owner, system admin, or org admin
         is_owner = assistant.owner == user_email
         auth_header = request.headers.get("Authorization")
+        from .assistant_router import is_admin_user
+        is_sys_admin = is_admin_user(auth_header)
         is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
 
-        if not is_owner and not is_org_admin:
+        if not is_owner and not is_sys_admin and not is_org_admin:
             logger.warning(f"User {user_email} denied access to shares for assistant {assistant_id}")
             raise HTTPException(
                 status_code=403,
-                detail="Only the assistant owner or organization admin can view sharing settings"
+                detail="Only the assistant owner, system admin, or organization admin can view sharing settings"
             )
 
         from lamb.services.assistant_sharing_service import AssistantSharingService
@@ -2657,16 +2707,18 @@ async def update_assistant_shares_endpoint(
         if not assistant:
             raise HTTPException(status_code=404, detail="Assistant not found")
 
-        # Check authorization: owner or org admin
+        # Check authorization: owner, system admin, or org admin
         is_owner = assistant.owner == user_email
         auth_header = request.headers.get("Authorization")
+        from .assistant_router import is_admin_user
+        is_sys_admin = is_admin_user(auth_header)
         is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
 
-        if not is_owner and not is_org_admin:
+        if not is_owner and not is_sys_admin and not is_org_admin:
             logger.warning(f"User {user_email} denied update shares for assistant {assistant_id}")
             raise HTTPException(
                 status_code=403,
-                detail="Only the assistant owner or organization admin can manage sharing"
+                detail="Only the assistant owner, system admin, or organization admin can manage sharing"
             )
 
         from lamb.services.assistant_sharing_service import AssistantSharingService

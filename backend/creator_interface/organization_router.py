@@ -4497,6 +4497,86 @@ async def get_system_stats(request: Request):
 
 
 # =============================================================================
+# User Profile — aggregated resource overview
+# =============================================================================
+
+@router.get(
+    "/users/{user_id}/profile",
+    tags=["System Administration", "User Management"],
+    summary="Get User Profile (Resource Overview)",
+    description="""Get a comprehensive profile for a specific user, including all owned resources
+(assistants, knowledge bases, rubrics, templates) and resources shared with them.
+
+**Access control:**
+- **System admin**: can view any user's profile
+- **Org admin**: can view profiles of users in their organization
+- **Regular user**: can view their own profile
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/admin/users/42/profile' \\
+-H 'Authorization: Bearer <token>'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User profile retrieved successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Insufficient privileges"},
+        404: {"description": "User not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_user_profile(request: Request, user_id: int):
+    """Get comprehensive user profile with all resources."""
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        caller = get_creator_user_from_token(auth_header)
+        if not caller:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        caller_id = caller.get('id')
+        caller_org_id = caller.get('organization_id')
+
+        # Access control: system admin, org admin for their org, or self
+        if is_admin_user(caller):
+            # System admin can view anyone
+            pass
+        elif caller_id == user_id:
+            # Users can always view their own profile
+            pass
+        else:
+            # Check if caller is an org admin and target user is in same org
+            caller_org_role = db_manager.get_user_organization_role(caller_id, caller_org_id)
+            if caller_org_role in ('admin', 'owner'):
+                # Verify target user is in the same organization
+                target_user = db_manager.get_creator_user_by_id(user_id)
+                if not target_user or target_user.get('organization_id') != caller_org_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Can only view profiles of users in your organization"
+                    )
+            else:
+                raise HTTPException(status_code=403, detail="Insufficient privileges")
+
+        # Fetch the profile
+        profile = db_manager.get_user_profile(user_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return profile
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user profile for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# =============================================================================
 # Unified LTI Global Config & Activity Management
 # =============================================================================
 

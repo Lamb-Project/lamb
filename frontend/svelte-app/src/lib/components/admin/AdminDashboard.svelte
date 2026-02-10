@@ -61,7 +61,8 @@
         <!-- Stats Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <!-- Users Card -->
-            <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6 transition-all hover:shadow-md hover:scale-[1.02]">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 p-6 transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer" onclick={onShowUsers} onkeydown={(e) => e.key === 'Enter' && onShowUsers()} role="button" tabindex="0">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-sm font-medium text-blue-600 uppercase tracking-wide">Users</h3>
                     <div class="p-2 bg-blue-100 rounded-xl">

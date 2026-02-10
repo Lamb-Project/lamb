@@ -148,6 +148,9 @@
       "editTab": "Editatu",
       "shareTab": "Partekatu",
       "chatTab": "Txata",
+      "activityTab": "Jarduera",
+      "chatWith": "honekin",
+      "readOnlyBanner": "Irakurtzeko soilik — Laguntzaile hau {owner}-(r)ena da",
       "ltiTitle": "LTI Argitaratze Xehetasunak",
       "ltiAssistantName": "Laguntzailearen Izena",
       "ltiModelId": "Ereduaren IDa",
@@ -599,6 +602,8 @@
         "system": "Sistema",
         "noOrganization": "Erakunderik Gabe"
       },
+      "viewProfile": "Erabiltzailearen profila ikusi",
+      "backToList": "Erabiltzaileetara itzuli",
       "actions": {
         "create": "Sortu Erabiltzailea",
         "changePassword": "Aldatu Pasahitza",
@@ -728,6 +733,57 @@
         "createFailed": "Errorea erakundea sortzean.",
         "unknownError": "Errore ezezaguna gertatu da erakundea sortzean."
       }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panela",
+      "help": "Laguntza eta Berriak"
+    },
+    "dashboard": {
+      "title": "Nire Panela",
+      "subtitle": "Zure baliabideen eta jardueraren laburpena",
+      "loading": "Zure panela kargatzen...",
+      "error": "Ezin izan dira panelaren datuak kargatu.",
+      "retry": "Saiatu berriro",
+      "welcome": "Ongi etorri, {name}!",
+      "organization": "Erakundea",
+      "role": "Rola",
+      "memberSince": "Kidea noiztik",
+      "viewAll": "Ikusi guztiak",
+      "quickActions": "Ekintza Azkarrak",
+      "owned": "Nire Baliabideak",
+      "sharedWithMe": "Nirekin Partekatua",
+      "assistants": "Laguntzaileak",
+      "knowledgeBases": "Ezagutza Baseak",
+      "rubrics": "Errubrikak",
+      "templates": "Prompt Txantiloiak",
+      "published": "argitaratuak",
+      "shared": "partekatuak",
+      "public": "publikoak",
+      "private": "pribatuak",
+      "total": "guztira",
+      "noResources": "Oraindik ez duzu baliabiderik",
+      "noSharedResources": "Oraindik ez dago zurekin partekatutakorik",
+      "sharedBy": "Nork partekatua",
+      "ownedBy": "nork",
+      "createAssistant": "Laguntzailea Sortu",
+      "createKnowledgeBase": "Ezagutza Basea Sortu",
+      "createRubric": "Errubrika Sortu",
+      "createTemplate": "Txantiloia Sortu",
+      "manageAssistants": "Laguntzaileak Kudeatu",
+      "orgRole": {
+        "owner": "Jabea",
+        "admin": "Administratzailea",
+        "member": "Kidea"
+      }
+    },
+    "help": {
+      "title": "Laguntza eta Berriak",
+      "subtitle": "Azken berriak eta informazioa",
+      "loadingNews": "Berriak kargatzen...",
+      "noNews": "Ez dago berririk erakusteko.",
+      "viewAssistants": "Ikaskuntza Laguntzaileak Ikusi"
     }
   }
 }

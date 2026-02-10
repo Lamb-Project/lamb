@@ -2749,29 +2749,29 @@
                                             />
                                         </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                            Name
+                                            <div class="flex flex-col">
+                                                <span>Name</span>
+                                                <span class="text-gray-400">Email</span>
+                                            </div>
                                         </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                            Email
-                                        </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                            User Type
-                                        </th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
-                                            Status
-                                        </th>
-                                        <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-brand uppercase tracking-wider">
-                                            Can Share
+                                            <div class="flex flex-col">
+                                                <span>User Type</span>
+                                                <span class="text-gray-400">Status</span>
+                                            </div>
                                         </th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-brand uppercase tracking-wider">
                                             Actions
+                                        </th>
+                                        <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-brand uppercase tracking-wider">
+                                            Can Share
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     {#if displayUsers.length === 0}
                                         <tr>
-                                            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
                                                 {#if usersSearchQuery || usersFilterUserType !== 'all' || usersFilterStatus !== 'all'}
                                                     No users match your filters. Try adjusting the search or filters.
                                                 {:else}
@@ -2791,38 +2791,86 @@
                                                         class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                                                     />
                                                 </td>
-                                                <!-- Name -->
+                                                <!-- Name / Email -->
                                                 <td class="px-6 py-4 whitespace-nowrap">
                                                     <div class="text-sm font-medium text-gray-900">{user.name || '-'}</div>
+                                                    <div class="text-xs text-gray-500">
+                                                        {user.email}
+                                                        {#if userData && userData.email === user.email}
+                                                            <span class="italic">(You)</span>
+                                                        {/if}
+                                                    </div>
                                                 </td>
-                                                <!-- Email -->
-                                                <td class="px-6 py-4 whitespace-nowrap">
-                                                    <div class="text-sm text-gray-800">{user.email}</div>
-                                                    {#if userData && userData.email === user.email}
-                                                        <span class="text-xs text-gray-500 italic">(You)</span>
-                                                    {/if}
+                                                <!-- User Type / Status -->
+                                                <td class="px-6 py-4 whitespace-nowrap" style="font-size: 0.8125rem;">
+                                                    <div>
+                                                        {#if user.auth_provider === 'lti_creator'}
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                                LTI Creator
+                                                            </span>
+                                                        {:else if user.user_type === 'end_user'}
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                                End User
+                                                            </span>
+                                                        {:else}
+                                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-brand/10 text-brand">
+                                                                Creator
+                                                            </span>
+                                                        {/if}
+                                                    </div>
+                                                    <div class="mt-1">
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                            {user.enabled ? 'Enabled' : 'Disabled'}
+                                                        </span>
+                                                    </div>
                                                 </td>
-                                                <!-- User Type -->
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    {#if user.auth_provider === 'lti_creator'}
-                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                                            LTI Creator
-                                                        </span>
-                                                    {:else if user.user_type === 'end_user'}
-                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
-                                                            End User
-                                                        </span>
-                                                    {:else}
-                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-brand/10 text-brand">
-                                                            Creator
-                                                        </span>
-                                                    {/if}
-                                                </td>
-                                                <!-- Status -->
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                                                        {user.enabled ? 'Enabled' : 'Disabled'}
-                                                    </span>
+                                                <!-- Actions -->
+                                                <td class="px-6 py-4 whitespace-nowrap text-xs font-medium">
+                                                    <div class="flex flex-col gap-1">
+                                                        <!-- Change Password (only for non-LTI users) -->
+                                                        {#if user.auth_provider !== 'lti_creator'}
+                                                            <button
+                                                                class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-800"
+                                                                title="Change Password"
+                                                                aria-label="Change Password for {user.name}"
+                                                                onclick={() => openChangePasswordModal(user)}
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                                </svg>
+                                                                Password
+                                                            </button>
+                                                        {/if}
+
+                                                        <!-- Enable/Disable Toggle -->
+                                                        {#if !(userData && userData.email === user.email)}
+                                                            {#if user.enabled}
+                                                                <button
+                                                                    class="inline-flex items-center gap-1 text-yellow-600 hover:text-yellow-800"
+                                                                    title="Disable User"
+                                                                    aria-label="Disable {user.name}"
+                                                                    onclick={() => toggleUserStatus(user)}
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636" />
+                                                                    </svg>
+                                                                    Disable
+                                                                </button>
+                                                            {:else}
+                                                                <button
+                                                                    class="inline-flex items-center gap-1 text-green-600 hover:text-green-800"
+                                                                    title="Enable User"
+                                                                    aria-label="Enable {user.name}"
+                                                                    onclick={() => toggleUserStatus(user)}
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                    </svg>
+                                                                    Enable
+                                                                </button>
+                                                            {/if}
+                                                        {/if}
+                                                    </div>
                                                 </td>
                                                 <!-- Can Share Permission -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-center">
@@ -2835,79 +2883,6 @@
                                                         />
                                                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                                     </label>
-                                                </td>
-                                                <!-- Actions -->
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    <!-- Change Password (disabled for LTI Creator users) -->
-                                                    {#if user.auth_provider === 'lti_creator'}
-                                                        <span
-                                                            class="text-gray-400 mr-3 cursor-not-allowed"
-                                                            title="Password cannot be changed for LTI users"
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                                            </svg>
-                                                        </span>
-                                                    {:else}
-                                                        <button
-                                                            class="text-amber-600 hover:text-amber-800 mr-3"
-                                                            title="Change Password"
-                                                            aria-label="Change Password for {user.name}"
-                                                            onclick={() => openChangePasswordModal(user)}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                                            </svg>
-                                                        </button>
-                                                    {/if}
-                                                    
-                                                    <!-- Enable/Disable Toggle -->
-                                                    {#if user.enabled}
-                                                        <button
-                                                            class={userData && userData.email === user.email
-                                                                ? "text-gray-400 cursor-not-allowed mr-3"
-                                                                : "text-yellow-600 hover:text-yellow-800 mr-3"}
-                                                            title={userData && userData.email === user.email 
-                                                                ? "You cannot disable your own account" 
-                                                                : 'Disable User'}
-                                                            aria-label="Disable {user.name}"
-                                                            onclick={() => toggleUserStatus(user)}
-                                                            disabled={userData && userData.email === user.email}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                                                            </svg>
-                                                        </button>
-                                                    {:else}
-                                                        <button
-                                                            class="text-green-600 hover:text-green-800 mr-3"
-                                                            title="Enable User"
-                                                            aria-label="Enable {user.name}"
-                                                            onclick={() => toggleUserStatus(user)}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                            </svg>
-                                                        </button>
-                                                    {/if}
-                                                    
-                                                    <!-- Disable (Block) Button -->
-                                                    <button
-                                                        class={userData && userData.email === user.email 
-                                                            ? "text-gray-400 cursor-not-allowed" 
-                                                            : "text-red-600 hover:text-red-800"}
-                                                        title={userData && userData.email === user.email 
-                                                            ? "You cannot disable your own account" 
-                                                            : 'Disable User'}
-                                                        aria-label="Disable {user.name}"
-                                                        onclick={() => openDeleteUserModal(user)}
-                                                        disabled={userData && userData.email === user.email}
-                                                    >
-                                                        <!-- Block Icon -->
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728A9 9 0 015.636 5.636" />
-                                                        </svg>
-                                                    </button>
                                                 </td>
                                             </tr>
                                         {/each}

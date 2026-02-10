@@ -148,7 +148,7 @@ class AssistantSharingService:
         if not assistant:
             raise ValueError("Assistant not found")
 
-        # Check permissions (owner or admin)
+        # Check permissions (owner, system admin, or org admin for assistant's org)
         current_user = self.db_manager.get_creator_user_by_id(current_user_id)
         if not current_user:
             raise ValueError("Current user not found")
@@ -157,9 +157,19 @@ class AssistantSharingService:
 
         is_owner = assistant.owner == current_user['user_email']
         is_admin = owi_user and owi_user.get('role') == 'admin'
-
+        
+        # Check if user is org admin for the assistant's organization
+        is_org_admin = False
         if not is_owner and not is_admin:
-            raise PermissionError("Only owner or admin can manage assistant sharing")
+            assistant_org_id = getattr(assistant, 'organization_id', None)
+            user_org_id = current_user.get('organization_id')
+            if assistant_org_id and user_org_id == assistant_org_id:
+                user_org_role = self.db_manager.get_user_organization_role(
+                    current_user_id, assistant_org_id)
+                is_org_admin = user_org_role in ('admin', 'owner')
+
+        if not is_owner and not is_admin and not is_org_admin:
+            raise PermissionError("Only owner, system admin, or organization admin can manage assistant sharing")
 
         # Check if sharing is enabled for organization (only when adding shares)
         if len(user_ids) > 0 and not self.check_sharing_permission(current_user_id):
