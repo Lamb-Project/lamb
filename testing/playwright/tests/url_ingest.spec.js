@@ -172,17 +172,6 @@ test.describe.serial("URL ingestion and query verification", () => {
       }
     }
 
-    // Fill Firecrawl API URL if provided
-    if (FIRECRAWL_API_URL) {
-      const apiUrlInput = page.locator("#param-api_url-inline");
-      try {
-        await apiUrlInput.waitFor({ timeout: 2000 });
-        await apiUrlInput.fill(FIRECRAWL_API_URL);
-      } catch (e) {
-        // API URL input not found, might be optional
-      }
-    }
-
     // Click "Run Ingestion"
     const runButton = page.locator("div.border-t > div.px-4 button", {
       hasText: /Run Ingestion/i,
