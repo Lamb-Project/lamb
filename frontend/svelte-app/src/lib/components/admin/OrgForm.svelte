@@ -173,12 +173,6 @@
             return;
         }
         
-        // Validate admin user selection
-        if (!adminUserId || adminUserId === 'null') {
-            createOrgError = localeLoaded ? $_('admin.organizations.errors.selectAdmin', { default: 'Please select an admin user for the organization.' }) : 'Please select an admin user for the organization.';
-            return;
-        }
-        
         // Validate slug format (URL-friendly)
         if (!/^[a-z0-9-]+$/.test(slug)) {
             createOrgError = localeLoaded ? $_('admin.organizations.errors.slugInvalid', { default: 'Slug must contain only lowercase letters, numbers, and hyphens.' }) : 'Slug must contain only lowercase letters, numbers, and hyphens.';
@@ -209,11 +203,11 @@
             // Use the enhanced endpoint with admin assignment
             const apiUrl = getApiUrl('/admin/organizations/enhanced');
             
-            // Prepare the payload
+            // Prepare the payload (admin_user_id is optional)
             const payload = {
                 slug: slug,
                 name: name,
-                admin_user_id: parseInt(adminUserId),
+                admin_user_id: (adminUserId && adminUserId !== 'null' && adminUserId !== '') ? parseInt(adminUserId) : null,
                 signup_enabled: signupEnabled,
                 signup_key: signupEnabled ? signupKey.trim() : null,
                 use_system_baseline: useSystemBaseline
@@ -329,10 +323,11 @@
                             </div>
                         </div>
 
-                        <!-- Admin User Selection -->
+                        <!-- Admin User Selection (Optional) -->
                         <div class="mb-4 text-left">
                             <label for="admin_user" class="block text-gray-700 text-sm font-bold mb-2">
-                                Organization Admin *
+                                Organization Admin
+                                <span class="text-gray-400 font-normal text-xs ml-1">(optional)</span>
                             </label>
                             {#if isLoadingSystemUsers}
                                 <div class="text-gray-500 text-sm">Loading system users...</div>
@@ -344,16 +339,16 @@
                                     name="admin_user_id"
                                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                                     bind:value={newOrg.admin_user_id}
-                                    required
                                 >
-                                    <option value={null}>Select a user from system organization...</option>
+                                    <option value={null}>No admin (assign later)</option>
                                     {#each systemOrgUsers.filter(user => user.role !== 'admin') as user}
                                         <option value={user.id}>{user.name} ({user.email}) - {user.role}</option>
                                     {/each}
                                 </select>
                             {/if}
                             <p class="text-gray-500 text-xs italic mt-1">
-                                Select a user from the system organization to become admin of this organization. 
+                                Optionally select a user from the system organization to become admin.
+                                You can also create the organization without an admin and promote a member later from the organization's member list.
                                 <strong>Note:</strong> System admins are not eligible as they must remain in the system organization.
                             </p>
                         </div>

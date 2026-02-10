@@ -340,7 +340,7 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 
 **User Types:**
 - `creator` — Full access to creator interface
-- `lti_creator` — Creator user authenticated via LTI (same permissions as creator, cannot be org admin, password cannot be changed)
+- `lti_creator` — Creator user authenticated via LTI (same permissions as creator, password cannot be changed; can be promoted to org admin by a system admin)
 - `end_user` — Redirected to Open WebUI only (no creator access)
 
 **Auth Providers:**
@@ -597,20 +597,29 @@ The "system" organization is special:
 - Fallback configuration source
 - System admins are members with admin role
 
-### 7.3 Organization Signup Flow
+### 7.3 Organization Creation
+
+Organizations can be created with or without an admin:
+
+1. System admin creates org via `/creator/admin/organizations/enhanced`
+2. **With admin:** A user from the system org is moved to the new org and assigned the admin role
+3. **Without admin:** Org is created with no admin; a system admin can promote a member later via the Members panel
+
+### 7.4 Organization Signup Flow
 
 1. Admin creates org with `signup_enabled: true` and `signup_key`
 2. User enters email, name, password, and signup key
 3. System matches key to organization
 4. User created in that org with "member" role
 
-### 7.4 Key Organization APIs
+### 7.5 Key Organization APIs
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET | `/creator/admin/organizations` | List organizations |
-| POST | `/creator/admin/organizations/enhanced` | Create org |
+| POST | `/creator/admin/organizations/enhanced` | Create org (admin optional) |
 | PUT | `/creator/admin/organizations/{slug}/config` | Update config |
+| PUT | `/creator/admin/organizations/{slug}/members/{user_id}/role` | Promote/demote member (sys admin only) |
 | GET | `/lamb/v1/organizations/{slug}/members` | List members |
 
 ---
@@ -776,7 +785,7 @@ Educator clicks LTI link in LMS
 |-----------|-------|
 | `user_type` | `creator` |
 | `auth_provider` | `lti_creator` |
-| `organization_role` | `member` (cannot be admin/owner) |
+| `organization_role` | `member` (default; can be promoted to admin by a system admin) |
 | Password changeable | No (random password, unused) |
 | Can share assistants | Yes (same as regular creator) |
 | Can create KBs | Yes |
@@ -880,7 +889,7 @@ The admin user management panel identifies users by type with color-coded badges
 - Filter dropdown includes "LTI Creator" option
 - Password change button disabled (LTI users have random passwords)
 - Can be enabled/disabled by admin
-- Cannot be promoted to organization admin
+- Can be promoted to organization admin by a system admin
 
 ---
 

@@ -145,6 +145,19 @@
     /** @type {string | null} */
     let configError = $state(null);
 
+    // --- Organization Members Modal State ---
+    let isMembersModalOpen = $state(false);
+    /** @type {any | null} */
+    let membersModalOrg = $state(null);
+    /** @type {Array<any>} */
+    let orgMembers = $state([]);
+    let isLoadingMembers = $state(false);
+    /** @type {string | null} */
+    let membersError = $state(null);
+    let isUpdatingRole = $state(false);
+    /** @type {string | null} */
+    let roleUpdateSuccess = $state(null);
+
     // --- Global LTI Settings State ---
     let ltiGlobalConfig = $state({ oauth_consumer_key: '', oauth_consumer_secret_masked: '', updated_at: null, source: 'environment' });
     let ltiGlobalForm = $state({ consumer_key: '', consumer_secret: '' });
@@ -154,6 +167,19 @@
     let showLtiSecret = $state(false);
     let ltiHasSecret = $derived(ltiGlobalConfig.oauth_consumer_secret_masked && ltiGlobalConfig.oauth_consumer_secret_masked !== '(not set)');
     let ltiCopied = $state('');
+    
+    // Dirty tracking for global LTI settings
+    let ltiGlobalDirty = $derived.by(() => {
+        if (!ltiHasSecret) {
+            // First-time setup: dirty if either field has content
+            return !!(ltiGlobalForm.consumer_key || ltiGlobalForm.consumer_secret);
+        }
+        // Existing config: dirty if key changed or secret entered
+        return (
+            ltiGlobalForm.consumer_key !== (ltiGlobalConfig.oauth_consumer_key || '') ||
+            ltiGlobalForm.consumer_secret !== ''
+        );
+    });
 
     // Build the full LTI Launch URL from config
     let ltiLaunchUrl = $derived(() => {
@@ -530,6 +556,109 @@
     function administerOrganization(org) {
         // Navigate to org-admin with organization parameter
         goto(`${base}/org-admin?org=${org.slug}`);
+    }
+
+    // --- Organization Members Management ---
+
+    /**
+     * Open the members modal for an organization
+     * @param {any} org - Organization object
+     */
+    function openMembersModal(org) {
+        membersModalOrg = org;
+        orgMembers = [];
+        membersError = null;
+        roleUpdateSuccess = null;
+        isMembersModalOpen = true;
+        fetchOrgMembers(org.slug);
+    }
+
+    /**
+     * Close the members modal
+     */
+    function closeMembersModal() {
+        isMembersModalOpen = false;
+        membersModalOrg = null;
+        orgMembers = [];
+        membersError = null;
+        roleUpdateSuccess = null;
+    }
+
+    /**
+     * Fetch members for an organization
+     * @param {string} orgSlug - Organization slug
+     */
+    async function fetchOrgMembers(orgSlug) {
+        isLoadingMembers = true;
+        membersError = null;
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication required');
+            
+            const response = await axios.get(getApiUrl(`/admin/org-admin/users?org=${orgSlug}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.data && Array.isArray(response.data)) {
+                orgMembers = response.data;
+            } else {
+                throw new Error('Invalid response');
+            }
+        } catch (err) {
+            console.error('Error fetching org members:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                membersError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                membersError = err.message;
+            } else {
+                membersError = 'Failed to load organization members.';
+            }
+        } finally {
+            isLoadingMembers = false;
+        }
+    }
+
+    /**
+     * Update a member's role in an organization
+     * @param {number} userId - User ID
+     * @param {string} newRole - New role ('admin' or 'member')
+     */
+    async function updateMemberRole(userId, newRole) {
+        if (!membersModalOrg) return;
+        
+        isUpdatingRole = true;
+        roleUpdateSuccess = null;
+        membersError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication required');
+            
+            const response = await axios.put(
+                getApiUrl(`/admin/organizations/${membersModalOrg.slug}/members/${userId}/role`),
+                { role: newRole },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            
+            if (response.data?.success) {
+                roleUpdateSuccess = response.data.message;
+                // Refresh the members list
+                await fetchOrgMembers(membersModalOrg.slug);
+                // Clear success message after 3 seconds
+                setTimeout(() => { roleUpdateSuccess = null; }, 3000);
+            }
+        } catch (err) {
+            console.error('Error updating member role:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                membersError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                membersError = err.message;
+            } else {
+                membersError = 'Failed to update user role.';
+            }
+        } finally {
+            isUpdatingRole = false;
+        }
     }
 
     // --- Form Handling ---
@@ -1906,7 +2035,13 @@
                         {#each organizations as org (org.id)}
                             <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
-                                    <div class="text-sm font-medium text-gray-900">{org.name || '-'}</div>
+                                    <button 
+                                        class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-transparent border-none p-0"
+                                        onclick={() => administerOrganization(org)}
+                                        title="Go to organization settings"
+                                    >
+                                        {org.name || '-'}
+                                    </button>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap align-top">
                                     <div class="text-sm text-gray-800 font-mono">{org.slug}</div>
@@ -1924,16 +2059,30 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex space-x-2">
                                         <button 
-                                            class="text-green-600 hover:text-green-800" 
-                                            title="Administer Organization"
-                                            aria-label="Administer Organization"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm transition-colors" 
+                                            title="Manage Organization"
+                                            aria-label="Manage Organization"
                                             onclick={() => administerOrganization(org)}
                                         >
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             </svg>
+                                            Manage
                                         </button>
+                                        {#if !org.is_system}
+                                            <button 
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md shadow-sm transition-colors" 
+                                                title="Manage Members & Roles"
+                                                aria-label="Manage Members & Roles"
+                                                onclick={() => openMembersModal(org)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                                                </svg>
+                                                Members
+                                            </button>
+                                        {/if}
                                         <button 
                                             class="text-blue-600 hover:text-blue-800" 
                                             title={localeLoaded ? $_('admin.organizations.actions.viewConfig', { default: 'View Configuration' }) : 'View Configuration'}
@@ -2623,47 +2772,41 @@
                         <div>
                             <label for="lti-global-secret" class="block text-sm font-medium text-gray-700">
                                 OAuth Shared Secret
-                                {#if ltiHasSecret}
-                                    <span class="text-gray-400 font-normal">(leave blank to keep current)</span>
-                                {/if}
                             </label>
                             <div class="relative mt-1">
                                 <input
                                     id="lti-global-secret"
-                                    type={showLtiSecret ? 'text' : 'password'}
+                                    type={showLtiSecret && ltiGlobalForm.consumer_secret ? 'text' : 'password'}
                                     bind:value={ltiGlobalForm.consumer_secret}
-                                    placeholder={ltiHasSecret ? '••••••••' : 'Enter a strong secret key'}
-                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 pr-10 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                    placeholder={ltiHasSecret ? '••••••••  (leave blank to keep current)' : 'Enter a strong secret key'}
+                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 {ltiGlobalForm.consumer_secret ? 'pr-10' : ''} focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
                                 >
-                                <button
-                                    type="button"
-                                    onclick={() => showLtiSecret = !showLtiSecret}
-                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                                    title={showLtiSecret ? 'Hide secret' : 'Show secret'}
-                                >
-                                    {#if showLtiSecret}
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                                    {:else}
-                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                    {/if}
-                                </button>
+                                {#if ltiGlobalForm.consumer_secret}
+                                    <button
+                                        type="button"
+                                        onclick={() => showLtiSecret = !showLtiSecret}
+                                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                        title={showLtiSecret ? 'Hide secret' : 'Show secret'}
+                                    >
+                                        {#if showLtiSecret}
+                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                        {:else}
+                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        {/if}
+                                    </button>
+                                {/if}
                             </div>
                             <p class="mt-1 text-xs text-gray-500">Used to sign and verify LTI launch requests (HMAC-SHA1). Must match in the LMS.</p>
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                        <div class="flex items-center pt-4 border-t border-gray-200">
                             <button
-                                class="bg-brand hover:bg-brand-hover text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                class="text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors {ltiGlobalDirty ? 'bg-brand hover:bg-brand-hover' : 'bg-gray-300 cursor-not-allowed'}"
                                 onclick={saveLtiGlobalConfig}
+                                disabled={!ltiGlobalDirty}
                             >
                                 Save LTI Configuration
-                            </button>
-                            <button
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                onclick={fetchLtiGlobalConfig}
-                            >
-                                Reload
                             </button>
                         </div>
                     </div>
@@ -2682,6 +2825,133 @@
             </div>
         {/if}
     {/if}
+
+<!-- Organization Members & Roles Modal -->
+{#if isMembersModalOpen && membersModalOrg}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    Members: {membersModalOrg.name}
+                    <span class="text-sm text-gray-500 font-normal ml-2">({membersModalOrg.slug})</span>
+                </h3>
+                <button 
+                    onclick={closeMembersModal}
+                    class="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            {#if roleUpdateSuccess}
+                <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded text-sm">
+                    {roleUpdateSuccess}
+                </div>
+            {/if}
+
+            {#if membersError}
+                <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded text-sm">
+                    {membersError}
+                </div>
+            {/if}
+
+            {#if isLoadingMembers}
+                <div class="text-center py-8 text-gray-500">Loading members...</div>
+            {:else if orgMembers.length === 0}
+                <div class="text-center py-8">
+                    <p class="text-gray-500">No members in this organization.</p>
+                    <p class="text-gray-400 text-sm mt-2">Users can join via signup or be assigned by a system admin.</p>
+                </div>
+            {:else}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {#each orgMembers as member (member.id)}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3">
+                                        <div class="text-sm font-medium text-gray-900">{member.name || '-'}</div>
+                                        <div class="text-xs text-gray-500">{member.email}</div>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.auth_provider === 'lti_creator'}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">LTI Creator</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Creator</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.role === 'admin'}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Admin</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Member</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.enabled}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                                        {:else}
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Disabled</span>
+                                        {/if}
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        {#if member.role === 'admin'}
+                                            <button
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors disabled:opacity-50"
+                                                title="Demote to Member"
+                                                disabled={isUpdatingRole}
+                                                onclick={() => updateMemberRole(member.id, 'member')}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+                                                </svg>
+                                                Demote
+                                            </button>
+                                        {:else}
+                                            <button
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors disabled:opacity-50"
+                                                title="Promote to Admin"
+                                                disabled={isUpdatingRole}
+                                                onclick={() => updateMemberRole(member.id, 'admin')}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                                                </svg>
+                                                Promote
+                                            </button>
+                                        {/if}
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-3 text-xs text-gray-500 italic">
+                    Any user, including LTI Creator users, can be promoted to organization admin.
+                </p>
+            {/if}
+
+            <div class="mt-4 flex justify-end">
+                <button 
+                    onclick={closeMembersModal}
+                    class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded transition-colors"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <!-- Delete Organization Confirmation Modal -->
 <ConfirmationModal

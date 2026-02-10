@@ -1183,17 +1183,17 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int,
+    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int = None,
                                        signup_enabled: bool = False, signup_key: str = None,
                                        use_system_baseline: bool = True,
                                        config: Dict[str, Any] = None) -> Optional[int]:
         """
-        Create a new organization with admin user assignment and signup configuration
+        Create a new organization with optional admin user assignment and signup configuration
 
         Args:
             slug: URL-friendly organization identifier
             name: Organization display name
-            admin_user_id: ID of user from system org to become org admin
+            admin_user_id: ID of user from system org to become org admin (optional — if None, org is created without an admin)
             signup_enabled: Whether signup is enabled for this organization
             signup_key: Unique signup key for organization-specific signup
             use_system_baseline: Whether to copy system org config as baseline
@@ -1219,25 +1219,27 @@ class LambDatabaseManager:
                     logger.error(f"Signup key '{signup_key}' already exists")
                     return None
 
-            # Validate that admin user exists and is in system organization
-            admin_user = self.get_creator_user_by_id(admin_user_id)
-            if not admin_user:
-                logger.error(f"Admin user {admin_user_id} not found")
-                return None
+            # Validate admin user if provided
+            admin_user = None
+            if admin_user_id is not None:
+                admin_user = self.get_creator_user_by_id(admin_user_id)
+                if not admin_user:
+                    logger.error(f"Admin user {admin_user_id} not found")
+                    return None
 
-            system_org = self.get_organization_by_slug("lamb")
-            if not system_org or admin_user['organization_id'] != system_org['id']:
-                logger.error(
-                    f"Admin user {admin_user_id} is not in system organization")
-                return None
+                system_org = self.get_organization_by_slug("lamb")
+                if not system_org or admin_user['organization_id'] != system_org['id']:
+                    logger.error(
+                        f"Admin user {admin_user_id} is not in system organization")
+                    return None
 
-            # Check if user is currently an admin in the system organization
-            current_role = self.get_user_organization_role(
-                admin_user_id, system_org['id'])
-            if current_role == "admin":
-                logger.error(
-                    f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
-                return None
+                # Check if user is currently an admin in the system organization
+                current_role = self.get_user_organization_role(
+                    admin_user_id, system_org['id'])
+                if current_role == "admin":
+                    logger.error(
+                        f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
+                    return None
 
             with connection:
                 cursor = connection.cursor()
@@ -1262,9 +1264,10 @@ class LambDatabaseManager:
                 # Add creation metadata
                 if 'metadata' not in config:
                     config['metadata'] = {}
-                config['metadata']['admin_user_id'] = admin_user_id
-                config['metadata']['admin_user_email'] = admin_user['user_email']
                 config['metadata']['created_by_system_admin'] = True
+                if admin_user is not None:
+                    config['metadata']['admin_user_id'] = admin_user_id
+                    config['metadata']['admin_user_email'] = admin_user['user_email']
 
                 # Create organization
                 cursor.execute(f"""
@@ -1276,30 +1279,35 @@ class LambDatabaseManager:
                 org_id = cursor.lastrowid
                 logger.info(f"Organization '{name}' created with id: {org_id}")
 
-                # Move admin user to new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}Creator_users
-                    SET organization_id = ?, updated_at = ?
-                    WHERE id = ?
-                """, (org_id, now, admin_user_id))
+                # If admin user provided, move them to the new org and assign admin role
+                if admin_user_id is not None:
+                    # Move admin user to new organization
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}Creator_users
+                        SET organization_id = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (org_id, now, admin_user_id))
 
-                if cursor.rowcount == 0:
-                    logger.error(
-                        f"Failed to move admin user to new organization")
-                    return None
+                    if cursor.rowcount == 0:
+                        logger.error(
+                            f"Failed to move admin user to new organization")
+                        return None
 
-                # Assign admin role to user in new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    INSERT OR REPLACE INTO {self.table_prefix}organization_roles
-                    (organization_id, user_id, role, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (org_id, admin_user_id, "admin", now, now))
+                    # Assign admin role to user in new organization
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (org_id, admin_user_id, "admin", now, now))
 
-                logger.info(
-                    f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
+                else:
+                    logger.info(
+                        f"Organization '{name}' created without an admin. An admin can be assigned later.")
 
-                logger.info(
-                    f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
                 return org_id
 
         except sqlite3.Error as e:
