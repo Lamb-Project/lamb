@@ -16,12 +16,15 @@ import sys
 import statistics
 
 
-async def send_completion(session, url, api_key, model, user_id, results):
+async def send_completion(session, url, api_key, model, user_id, results, prompt=None):
     """Send a single completion request and record the result."""
+    content = prompt or f"User {user_id}: Say hello in exactly one word."
+    if prompt:
+        content = f"{prompt} (request {user_id})"
     payload = {
         "model": model,
         "messages": [
-            {"role": "user", "content": f"User {user_id}: Say hello in exactly one word."}
+            {"role": "user", "content": content}
         ],
         "stream": False,
     }
@@ -72,7 +75,7 @@ async def send_completion(session, url, api_key, model, user_id, results):
         print(f"  User {user_id:3d}  ERROR            {elapsed:6.2f}s  {str(e)[:80]}")
 
 
-async def run_load_test(url, api_key, model, num_users, request_timeout):
+async def run_load_test(url, api_key, model, num_users, request_timeout, custom_prompt=None):
     """Run the load test with the specified number of concurrent users."""
     print(f"\n{'='*65}")
     print(f"  LAMB Load Test - /v1/chat/completions")
@@ -88,7 +91,7 @@ async def run_load_test(url, api_key, model, num_users, request_timeout):
     timeout = aiohttp.ClientTimeout(total=request_timeout)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         preflight = []
-        await send_completion(session, url, api_key, model, 0, preflight)
+        await send_completion(session, url, api_key, model, 0, preflight, custom_prompt)
         if not preflight[0]["success"]:
             print(f"\nPre-flight FAILED: {preflight[0]}")
             print("Aborting load test. Fix single-request issues first.")
@@ -104,7 +107,7 @@ async def run_load_test(url, api_key, model, num_users, request_timeout):
     connector = aiohttp.TCPConnector(limit=0)  # no connection limit on test client
     async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
         tasks = [
-            send_completion(session, url, api_key, model, i + 1, results)
+            send_completion(session, url, api_key, model, i + 1, results, custom_prompt)
             for i in range(num_users)
         ]
         await asyncio.gather(*tasks)
@@ -171,9 +174,10 @@ def main():
     parser.add_argument("--model", default="lamb_assistant.58", help="Model/assistant ID")
     parser.add_argument("--users", type=int, default=30, help="Number of concurrent users")
     parser.add_argument("--timeout", type=int, default=180, help="Per-request timeout in seconds")
+    parser.add_argument("--prompt", default=None, help="Custom prompt (overrides default short prompt)")
     args = parser.parse_args()
 
-    asyncio.run(run_load_test(args.url, args.api_key, args.model, args.users, args.timeout))
+    asyncio.run(run_load_test(args.url, args.api_key, args.model, args.users, args.timeout, args.prompt))
 
 
 if __name__ == "__main__":
