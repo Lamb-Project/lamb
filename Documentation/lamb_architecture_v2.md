@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.2  
-**Last Updated:** February 8, 2026  
+**Version:** 2.3
+**Last Updated:** February 11, 2026
 **Reading Time:** ~35 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -526,7 +526,32 @@ def rag_processor(messages: List[Dict], assistant=None) -> Dict:
 3. Plugin is auto-loaded at runtime — no registration needed
 4. Configure assistant metadata to use it
 
-### 6.5 Streaming Responses
+### 6.5 Connection Pooling
+
+LLM connectors use **shared HTTP client pools** to avoid creating new TCP connections on every request. Without pooling, concurrent users exhaust OS-level connection resources and the system becomes unresponsive.
+
+**OpenAI Connector** (`openai.py`):
+- Shared `AsyncOpenAI` clients cached by `(api_key, base_url)`
+- A single client is created on the first request for each credential pair and reused for all subsequent requests
+- Explicit timeouts configured via environment variables
+
+**Ollama Connector** (`ollama.py`):
+- Shared `aiohttp.ClientSession` instances cached by `base_url`
+- Each session uses a `TCPConnector` with configurable connection limits and keepalive
+- Sessions are recreated transparently if closed
+
+**Configuration** (via `backend/.env`):
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `LLM_REQUEST_TIMEOUT` | Total request timeout for OpenAI calls (seconds) | `120` |
+| `LLM_CONNECT_TIMEOUT` | TCP connection establishment timeout (seconds) | `10` |
+| `LLM_MAX_CONNECTIONS` | Max concurrent connections per client pool | `50` |
+| `OLLAMA_REQUEST_TIMEOUT` | Total request timeout for Ollama calls (seconds) | `120` |
+
+> **Performance:** With connection pooling and a single uvicorn worker, the system handles 50+ concurrent users at 100% success rate with a median response time under 5 seconds against real OpenAI models.
+
+### 6.6 Streaming Responses
 
 For streaming completions (`"stream": true`), responses use Server-Sent Events (SSE):
 
@@ -542,7 +567,7 @@ data: [DONE]
 
 **Content-Type:** `text/event-stream`
 
-### 6.6 Multimodal Support
+### 6.7 Multimodal Support
 
 LAMB supports images via OpenAI's vision API format:
 
@@ -1076,6 +1101,10 @@ npm run dev
 | `LTI_GLOBAL_CONSUMER_KEY` | Unified LTI consumer key | `lamb` |
 | `LTI_GLOBAL_SECRET` | Unified LTI shared secret | (falls back to `LTI_SECRET`) |
 | `LTI_SECRET` | Legacy student LTI secret | - |
+| `LLM_REQUEST_TIMEOUT` | OpenAI request timeout (seconds) | `120` |
+| `LLM_CONNECT_TIMEOUT` | TCP connect timeout (seconds) | `10` |
+| `LLM_MAX_CONNECTIONS` | Max connections per client pool | `50` |
+| `OLLAMA_REQUEST_TIMEOUT` | Ollama request timeout (seconds) | `120` |
 
 > See [ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) for complete list.
 
@@ -1105,12 +1134,22 @@ def run_migrations(self):
 - `/testing/playwright/` — E2E tests with Playwright
 - `/testing/unit-tests/` — Python unit tests
 - `/testing/curls/` — API test scripts
+- `/testing/load_test_completions.py` — Concurrent load test for completions endpoint
 
 **Running Playwright Tests:**
 ```bash
 cd testing/playwright
 npm install
 npx playwright test
+```
+
+**Running Load Tests:**
+```bash
+# Test with 30 concurrent users
+python3 testing/load_test_completions.py --users 30 --url http://localhost:9099
+
+# Test with 50 concurrent users and custom timeout
+python3 testing/load_test_completions.py --users 50 --url http://localhost:9099 --timeout 180
 ```
 
 ### 10.6 Production Checklist
@@ -1359,6 +1398,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 8, 2026*  
-*Version: 2.2*
+*Last Updated: February 11, 2026*
+*Version: 2.3*
 
