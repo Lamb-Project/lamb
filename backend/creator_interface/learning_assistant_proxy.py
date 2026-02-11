@@ -35,12 +35,15 @@ chats_service = LambChatsService()
 
 def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
     """
-    Verify user has access to the specified assistant.
+    Verify user has access to use the specified assistant (chat).
     
     Access is granted if:
     1. User is the owner of the assistant
-    2. User belongs to the same organization as the assistant
-    3. Assistant is in system organization and user has system access
+    2. User is a System Admin (can use any assistant)
+    3. User is an Org Admin for the assistant's organization
+    4. Assistant is shared with the user
+    5. User belongs to the same organization as the assistant
+    6. Assistant is in system organization and user has system access
     
     Args:
         user: Authenticated user information
@@ -61,17 +64,23 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
             logger.debug(f"User {user['email']} is owner of assistant {assistant_id}")
             return True
         
-        # Check if assistant is shared with this user
-        import sys
-        import os
-        # Add the parent directory to the Python path
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
+        # Check if user is System Admin (can use any assistant)
+        from .assistant_router import is_admin_user
+        if is_admin_user(user):
+            logger.info(f"System admin {user['email']} granted access to assistant {assistant_id}")
+            return True
         
-        from lamb.database_manager import LambDatabaseManager
-        db_check = LambDatabaseManager()
-        is_shared = db_check.is_assistant_shared_with_user(assistant_id, user['id'])
+        # Check if user is Org Admin for this assistant's organization
+        assistant_org_id = getattr(assistant, 'organization_id', None)
+        user_org_id = user.get('organization_id')
+        if assistant_org_id and user_org_id == assistant_org_id:
+            user_org_role = db_manager.get_user_organization_role(user['id'], assistant_org_id)
+            if user_org_role in ('admin', 'owner'):
+                logger.info(f"Org admin {user['email']} granted access to assistant {assistant_id} in their org")
+                return True
+        
+        # Check if assistant is shared with this user
+        is_shared = db_manager.is_assistant_shared_with_user(assistant_id, user['id'])
         
         if is_shared:
             logger.debug(f"User {user['email']} has access to shared assistant {assistant_id}")
@@ -79,7 +88,6 @@ def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
         
         # Check organization membership
         user_org = user.get('organization', {})
-        assistant_org_id = getattr(assistant, 'organization_id', None)
         
         if user_org.get('id') == assistant_org_id:
             logger.debug(f"User {user['email']} has org access to assistant {assistant_id}")

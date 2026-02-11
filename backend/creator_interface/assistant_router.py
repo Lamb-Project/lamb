@@ -67,6 +67,7 @@ class AssistantGetResponse(BaseModel):
     name: str
     description: Optional[str]
     owner: str
+    organization_id: Optional[int] = None
     api_callback: Optional[str]  # Kept for backward compatibility
     metadata: Optional[str]  # New field - source of truth for frontend
     system_prompt: Optional[str]
@@ -81,6 +82,9 @@ class AssistantGetResponse(BaseModel):
     published: bool # Existing field
     created_at: Optional[int] = None  # Unix timestamp in seconds
     updated_at: Optional[int] = None  # Unix timestamp in seconds
+    # Access control metadata (populated by get_assistant_proxy)
+    access_level: Optional[str] = None  # 'full', 'read_only', 'shared', or None
+    is_owner: Optional[bool] = None  # Whether the requesting user owns this assistant
 
 
 class GenerateDescriptionRequest(BaseModel):
@@ -785,34 +789,52 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
                 detail="Assistant not found"
             )
 
-        # --- Verify Ownership OR Sharing ---
+        # --- Verify Access: Ownership, Admin, Org Admin, or Sharing ---
         # User has access if they:
-        # 1. Own the assistant OR
-        # 2. Assistant is shared with them
+        # 1. Own the assistant (full access)
+        # 2. Are a System Admin (read-only access to any assistant)
+        # 3. Are an Org Admin for the assistant's organization (read-only access)
+        # 4. Assistant is shared with them (limited access)
         is_owner = assistant_data.get('owner') == creator_user['email']
+        is_admin = is_admin_user(creator_user)
+        access_level = 'full' if is_owner else None
         
-        # Check if assistant is shared with user
-        is_shared = False
         if not is_owner:
-            import sys
-            import os
-            # Add the parent directory to the Python path
-            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
-            
-            from lamb.database_manager import LambDatabaseManager
-            db_check = LambDatabaseManager()
-            is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+            if is_admin:
+                # System admin can view any assistant (read-only)
+                access_level = 'read_only'
+                logger.info(f"System admin {creator_user['email']} viewing assistant {assistant_id} (read-only)")
+            else:
+                # Check if user is org admin for this assistant's organization
+                assistant_org_id = assistant_data.get('organization_id')
+                user_org_id = creator_user.get('organization_id')
+                if assistant_org_id and user_org_id == assistant_org_id:
+                    user_org_role = db_manager.get_user_organization_role(
+                        creator_user['id'], assistant_org_id)
+                    if user_org_role in ('admin', 'owner'):
+                        access_level = 'read_only'
+                        logger.info(f"Org admin {creator_user['email']} viewing assistant {assistant_id} in their org (read-only)")
+                
+                # Check if assistant is shared with user
+                if not access_level:
+                    from lamb.database_manager import LambDatabaseManager
+                    db_check = LambDatabaseManager()
+                    is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+                    if is_shared:
+                        access_level = 'shared'
         
-        if not is_owner and not is_shared:
+        if not access_level:
             # Log potential security/data issue but return 404 to the user for security
             logger.warning(f"Access denied: User {creator_user['email']} attempted to access assistant {assistant_id} owned by {assistant_data.get('owner')}")
             raise HTTPException(
                 status_code=404, # Treat as not found for this user
                 detail="Assistant not found"
             )
-        # --- End Ownership/Sharing Verification ---
+        # --- End Access Verification ---
+        
+        # Add access metadata to response so frontend can adjust UI
+        assistant_data['access_level'] = access_level
+        assistant_data['is_owner'] = is_owner
 
         # The 'published' field is correctly calculated by the DB function
         # Ensure metadata is populated from api_callback if empty

@@ -173,3 +173,6 @@ opencode.json             # Tu configuración con paths absolutos
 AGENTS.md                 # Tu archivo de contexto (si quieres que sea privado)
 CONTEXT.md
 
+
+
+./clinerules

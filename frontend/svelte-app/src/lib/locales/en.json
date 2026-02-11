@@ -149,6 +149,9 @@
       "editTab": "Edit",
       "shareTab": "Share",
       "chatTab": "Chat",
+      "activityTab": "Activity",
+      "chatWith": "with",
+      "readOnlyBanner": "Read-only view — This assistant belongs to {owner}",
       "ltiTitle": "LTI Publish Details",
       "ltiAssistantName": "Assistant Name",
       "ltiModelId": "Model ID",
@@ -560,7 +563,7 @@
   "admin": {
     "tabs": {
       "dashboard": "Dashboard",
-      "users": "User Management",
+      "users": "Users",
       "organizations": "Organizations"
     },
     "dashboard": {
@@ -597,6 +600,8 @@
         "system": "System",
         "noOrganization": "No Organization"
       },
+      "viewProfile": "View user profile",
+      "backToList": "Back to Users",
       "actions": {
         "create": "Create User",
         "changePassword": "Change Password",
@@ -726,6 +731,57 @@
         "createFailed": "Failed to create organization.",
         "unknownError": "An unknown error occurred while creating the organization."
       }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Dashboard",
+      "help": "Help & News"
+    },
+    "dashboard": {
+      "title": "My Dashboard",
+      "subtitle": "Overview of your resources and activity",
+      "loading": "Loading your dashboard...",
+      "error": "Could not load dashboard data.",
+      "retry": "Try Again",
+      "welcome": "Welcome back, {name}!",
+      "organization": "Organization",
+      "role": "Role",
+      "memberSince": "Member since",
+      "viewAll": "View all",
+      "quickActions": "Quick Actions",
+      "owned": "My Resources",
+      "sharedWithMe": "Shared with Me",
+      "assistants": "Assistants",
+      "knowledgeBases": "Knowledge Bases",
+      "rubrics": "Rubrics",
+      "templates": "Prompt Templates",
+      "published": "published",
+      "shared": "shared",
+      "public": "public",
+      "private": "private",
+      "total": "total",
+      "noResources": "No resources yet",
+      "noSharedResources": "Nothing shared with you yet",
+      "sharedBy": "Shared by",
+      "ownedBy": "by",
+      "createAssistant": "Create Assistant",
+      "createKnowledgeBase": "Create Knowledge Base",
+      "createRubric": "Create Rubric",
+      "createTemplate": "Create Template",
+      "manageAssistants": "Manage Assistants",
+      "orgRole": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member"
+      }
+    },
+    "help": {
+      "title": "Help & News",
+      "subtitle": "Latest updates and information",
+      "loadingNews": "Loading news...",
+      "noNews": "No news to display.",
+      "viewAssistants": "View Learning Assistants"
     }
   }
 }

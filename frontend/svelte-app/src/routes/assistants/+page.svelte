@@ -110,10 +110,36 @@
     let loadingShares = $state(false);
     let canShare = $state(true); // Permission check result
     
-    // --- Ownership Check ---
+    // --- Ownership & Access Level Check ---
     let isOwner = $derived.by(() => {
         if (!selectedAssistantData || !$user.email) return false;
+        // Use backend-provided is_owner if available, fallback to email comparison
+        if (selectedAssistantData.is_owner !== undefined) return selectedAssistantData.is_owner;
         return selectedAssistantData.owner === $user.email;
+    });
+    
+    /** @type {'full' | 'read_only' | 'shared' | null} */
+    let accessLevel = $derived.by(() => {
+        if (!selectedAssistantData) return null;
+        return selectedAssistantData.access_level || (isOwner ? 'full' : 'shared');
+    });
+    
+    // Can manage sharing: owner, system admin (read_only on any), or org admin (read_only in org)
+    let canManageSharing = $derived.by(() => {
+        return isOwner || accessLevel === 'read_only';
+    });
+    
+    // Can view analytics: owner (full), system admin (full), org admin (aggregate stats/timeline only)
+    let canViewAnalytics = $derived.by(() => {
+        return isOwner || accessLevel === 'read_only';
+    });
+    
+    // Can delete: owner or system admin
+    let canDelete = $derived.by(() => {
+        if (isOwner) return true;
+        // System admins have read_only access_level but can delete
+        // Check OWI admin role from login data
+        return $user.data?.role === 'admin';
     });
 
     // --- Templates View State ---
@@ -917,7 +943,7 @@
                 {currentLocale ? $_('assistants.detail.editTab', { default: 'Edit' }) : 'Edit'}
             </button>
         {/if}
-        {#if canShare && isOwner}
+        {#if canShare && (isOwner || canManageSharing)}
             <button
                 class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'share' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
                 onclick={() => detailSubView = 'share'}
@@ -934,7 +960,7 @@
                 {currentLocale ? $_('assistants.detail.chatWith', { default: 'with' }) : 'with'} {selectedAssistantData.name.replace(/^\d+_/, '')}
             {/if}
         </button>
-        {#if isOwner}
+        {#if canViewAnalytics}
             <button
                 class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'analytics' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
                 onclick={() => detailSubView = 'analytics'}
@@ -960,6 +986,19 @@
             <!-- Header for Properties View -->
             <!-- Add key based on assistant ID to force re-render when data changes -->
             {#key selectedAssistantData?.id}
+            
+            <!-- Read-only banner for admin/org-admin viewing other user's assistant -->
+            {#if !isOwner && accessLevel === 'read_only'}
+                <div class="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="text-sm text-amber-700">
+                        {currentLocale ? $_('assistants.detail.readOnlyBanner', { default: 'Read-only view — This assistant belongs to {owner}', values: { owner: selectedAssistantData?.owner || '' } }) : `Read-only view — This assistant belongs to ${selectedAssistantData?.owner || ''}`}
+                    </span>
+                </div>
+            {/if}
+            
             <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200">
                 <h2 class="text-xl font-semibold text-gray-800">
                     {currentLocale ? $_('assistants.detail.propertiesTitle', { default: 'Assistant Properties' }) : 'Assistant Properties'}
@@ -992,33 +1031,37 @@
                         {/if}
                     </button>
                     
-                    <!-- Publish/Unpublish Button -->
-                    <button 
-                        type="button" 
-                        class={`px-3 py-1 text-sm font-medium rounded text-white transition-colors ${selectedAssistantData?.published 
-                            ? 'bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed' 
-                            : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed'}`}
-                        onclick={handlePublishToggle}
-                        disabled={isPublishing} 
-                    >
-                        {#if isPublishing}
-                           <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                           {currentLocale ? $_('common.updating', { default: 'Updating...' }) : 'Updating...'}
-                        {:else if selectedAssistantData?.published}
-                            {currentLocale ? $_('common.unpublish', { default: 'Unpublish' }) : 'Unpublish'}
-                        {:else}
-                            {currentLocale ? $_('common.publish', { default: 'Publish' }) : 'Publish'} 
-                        {/if}
-                    </button>
+                    {#if isOwner}
+                        <!-- Publish/Unpublish Button (Owner Only) -->
+                        <button 
+                            type="button" 
+                            class={`px-3 py-1 text-sm font-medium rounded text-white transition-colors ${selectedAssistantData?.published 
+                                ? 'bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed' 
+                                : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed'}`}
+                            onclick={handlePublishToggle}
+                            disabled={isPublishing} 
+                        >
+                            {#if isPublishing}
+                               <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                               {currentLocale ? $_('common.updating', { default: 'Updating...' }) : 'Updating...'}
+                            {:else if selectedAssistantData?.published}
+                                {currentLocale ? $_('common.unpublish', { default: 'Unpublish' }) : 'Unpublish'}
+                            {:else}
+                                {currentLocale ? $_('common.publish', { default: 'Publish' }) : 'Publish'} 
+                            {/if}
+                        </button>
+                    {/if}
                     
-                    <!-- Delete Button -->
-                    <button 
-                        type="button" 
-                        class="px-3 py-1 text-sm font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
-                        onclick={() => handleDeleteRequest({ detail: { id: selectedAssistantData.id, name: selectedAssistantData.name, published: selectedAssistantData.published }})}
-                    >
-                        {currentLocale ? $_('common.delete') : 'Delete'}
-                    </button>
+                    {#if canDelete}
+                        <!-- Delete Button (Owner or System Admin) -->
+                        <button 
+                            type="button" 
+                            class="px-3 py-1 text-sm font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                            onclick={() => handleDeleteRequest({ detail: { id: selectedAssistantData.id, name: selectedAssistantData.name, published: selectedAssistantData.published }})}
+                        >
+                            {currentLocale ? $_('common.delete') : 'Delete'}
+                        </button>
+                    {/if}
                 </div>
             </div>
             
