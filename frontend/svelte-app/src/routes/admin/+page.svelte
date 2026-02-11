@@ -1102,7 +1102,7 @@
         /** @type {Record<string, any>} */
         const filters = {
             enabled: usersFilterEnabled === '' ? null : usersFilterEnabled,
-            'organization.id': usersFilterOrg ? parseInt(usersFilterOrg) : null
+            'organization.name': usersFilterOrg ? (organizationsForUsers.find(o => String(o.id) === usersFilterOrg)?.name || null) : null
         };
         
         // Handle merged user_type filter (can be 'admin', 'creator', 'lti_creator', or 'end_user')
