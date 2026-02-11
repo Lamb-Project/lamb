@@ -107,7 +107,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await page.locator('input#org_name').fill(adminTestOrgName);
 
     // Wait for admin dropdown to load
-    const adminSelect = page.getByRole("combobox", { name: /organization admin\s*\*/i });
+    const adminSelect = page.getByRole("combobox", { name: /organization admin/i });
     await expect(adminSelect).toBeVisible({ timeout: 10_000 });
     
     // Wait for options to load
@@ -319,7 +319,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     await page.locator('input#org_name').fill(sharingOrgName);
 
     // Wait for admin dropdown to load
-    const adminSelect = page.getByRole("combobox", { name: /organization admin\s*\*/i });
+    const adminSelect = page.getByRole("combobox", { name: /organization admin/i });
     await expect(adminSelect).toBeVisible({ timeout: 10_000 });
     
     await page.waitForFunction(

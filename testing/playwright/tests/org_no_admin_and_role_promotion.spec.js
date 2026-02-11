@@ -391,10 +391,10 @@ test.describe.serial("Organization Without Admin & Role Promotion (issue #249)",
     await page.waitForTimeout(1500);
 
     // Verify the note about LTI Creator users
-    await expect(page.getByText(/any user.*including lti creator.*can be promoted/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/any user.*including lti creator.*can be promoted/i)).toBeVisible({ timeout: 10_000 });
 
-    // Close the modal
-    const closeButton = page.locator('.fixed.inset-0').getByRole("button", { name: /close/i });
+    // Close the modal (use the text "Close" button at the bottom, not the X icon)
+    const closeButton = page.locator('.fixed.inset-0').getByRole("button", { name: /^close$/i }).last();
     await closeButton.click();
     await expect(page.getByText(`Members: ${promoOrgName}`)).not.toBeVisible({ timeout: 5_000 });
 

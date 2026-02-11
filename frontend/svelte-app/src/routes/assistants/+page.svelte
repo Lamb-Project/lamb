@@ -113,8 +113,8 @@
     // --- Ownership & Access Level Check ---
     let isOwner = $derived.by(() => {
         if (!selectedAssistantData || !$user.email) return false;
-        // Use backend-provided is_owner if available, fallback to email comparison
-        if (selectedAssistantData.is_owner !== undefined) return selectedAssistantData.is_owner;
+        // Use backend-provided is_owner if available (check for both null and undefined), fallback to email comparison
+        if (selectedAssistantData.is_owner != null) return selectedAssistantData.is_owner;
         return selectedAssistantData.owner === $user.email;
     });
     
