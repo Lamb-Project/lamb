@@ -706,6 +706,212 @@ class LambDatabaseManager:
                 else:
                     logger.debug("lamb_chats table already exists")
 
+                # Migration 8: Add LTI creator user fields to Creator_users
+                cursor.execute(
+                    f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                if 'lti_user_id' not in columns:
+                    logger.info("Adding lti_user_id column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN lti_user_id TEXT
+                    """)
+                    logger.info("Successfully added lti_user_id column")
+                else:
+                    logger.debug("lti_user_id column already exists in Creator_users table")
+
+                if 'auth_provider' not in columns:
+                    logger.info("Adding auth_provider column to Creator_users table")
+                    cursor.execute(f"""
+                        ALTER TABLE {self.table_prefix}Creator_users 
+                        ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'
+                    """)
+                    logger.info("Successfully added auth_provider column")
+                else:
+                    logger.debug("auth_provider column already exists in Creator_users table")
+
+                # Create unique index for (organization_id, lti_user_id) if not exists
+                # This ensures one LTI user per org
+                cursor.execute(f"""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_org_lti 
+                    ON {self.table_prefix}Creator_users(organization_id, lti_user_id)
+                    WHERE lti_user_id IS NOT NULL
+                """)
+                logger.debug("Ensured unique index on (organization_id, lti_user_id)")
+
+                # Create index on lti_user_id for fast lookups
+                cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}creator_users_lti_user_id 
+                    ON {self.table_prefix}Creator_users(lti_user_id)
+                    WHERE lti_user_id IS NOT NULL
+                """)
+                logger.debug("Ensured index on lti_user_id")
+
+                # Migration 9: Create lti_creator_keys table for org LTI consumer keys
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_creator_keys'")
+                lti_creator_keys_table_exists = cursor.fetchone()
+
+                if not lti_creator_keys_table_exists:
+                    logger.info("Creating lti_creator_keys table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_creator_keys (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            organization_id INTEGER NOT NULL UNIQUE,
+                            oauth_consumer_key TEXT NOT NULL UNIQUE,
+                            oauth_consumer_secret TEXT NOT NULL,
+                            enabled BOOLEAN DEFAULT TRUE,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_consumer_key ON {self.table_prefix}lti_creator_keys(oauth_consumer_key)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_creator_keys_org ON {self.table_prefix}lti_creator_keys(organization_id)")
+                    logger.info("Successfully created lti_creator_keys table and indexes")
+                else:
+                    logger.debug("lti_creator_keys table already exists")
+
+                # Migration 10: Create unified LTI activity tables
+                # lti_global_config — singleton for global LTI consumer key/secret
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_global_config'")
+                if not cursor.fetchone():
+                    logger.info("Creating lti_global_config table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_global_config (
+                            id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                            oauth_consumer_key TEXT NOT NULL,
+                            oauth_consumer_secret TEXT NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            updated_by TEXT
+                        )
+                    """)
+                    logger.info("Successfully created lti_global_config table")
+
+                # lti_activities — one row per LTI activity placement, bound to one org
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activities'")
+                if not cursor.fetchone():
+                    logger.info("Creating lti_activities table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_activities (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            resource_link_id TEXT NOT NULL UNIQUE,
+                            organization_id INTEGER NOT NULL,
+                            context_id TEXT,
+                            context_title TEXT,
+                            activity_name TEXT,
+                            owi_group_id TEXT NOT NULL,
+                            owi_group_name TEXT NOT NULL,
+                            owner_email TEXT NOT NULL,
+                            owner_name TEXT,
+                            configured_by_email TEXT NOT NULL,
+                            configured_by_name TEXT,
+                            chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
+                            status TEXT NOT NULL DEFAULT 'active',
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id)
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activities_resource_link ON {self.table_prefix}lti_activities(resource_link_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activities_org ON {self.table_prefix}lti_activities(organization_id)")
+                    logger.info("Successfully created lti_activities table and indexes")
+                else:
+                    # Migrate existing table: add new columns if missing
+                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activities)")
+                    existing_cols = {row[1] for row in cursor.fetchall()}
+                    if 'owner_email' not in existing_cols:
+                        logger.info("Migrating lti_activities: adding owner_email, owner_name, chat_visibility_enabled")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_name TEXT")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN chat_visibility_enabled INTEGER NOT NULL DEFAULT 0")
+                        # Backfill owner_email from configured_by_email
+                        cursor.execute(f"UPDATE {self.table_prefix}lti_activities SET owner_email = configured_by_email, owner_name = configured_by_name WHERE owner_email = ''")
+                        logger.info("Migrated lti_activities with owner and chat_visibility fields")
+
+                # lti_activity_assistants — junction: which assistants belong to which activity
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activity_assistants'")
+                if not cursor.fetchone():
+                    logger.info("Creating lti_activity_assistants table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_activity_assistants (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            activity_id INTEGER NOT NULL,
+                            assistant_id INTEGER NOT NULL,
+                            added_at INTEGER NOT NULL,
+                            FOREIGN KEY (activity_id) REFERENCES {self.table_prefix}lti_activities(id) ON DELETE CASCADE,
+                            FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE,
+                            UNIQUE(activity_id, assistant_id)
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_activity_assistants_activity ON {self.table_prefix}lti_activity_assistants(activity_id)")
+                    logger.info("Successfully created lti_activity_assistants table")
+
+                # lti_activity_users — track students who accessed via each activity
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_activity_users'")
+                if not cursor.fetchone():
+                    logger.info("Creating lti_activity_users table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_activity_users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            activity_id INTEGER NOT NULL,
+                            user_email TEXT NOT NULL,
+                            user_name TEXT NOT NULL DEFAULT '',
+                            user_display_name TEXT NOT NULL DEFAULT '',
+                            lms_user_id TEXT,
+                            owi_user_id TEXT,
+                            consent_given_at INTEGER,
+                            last_access_at INTEGER,
+                            access_count INTEGER NOT NULL DEFAULT 0,
+                            created_at INTEGER NOT NULL,
+                            FOREIGN KEY (activity_id) REFERENCES {self.table_prefix}lti_activities(id) ON DELETE CASCADE,
+                            UNIQUE(user_email, activity_id)
+                        )
+                    """)
+                    logger.info("Successfully created lti_activity_users table")
+                else:
+                    # Migrate existing table: add new columns if missing
+                    cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activity_users)")
+                    existing_cols = {row[1] for row in cursor.fetchall()}
+                    if 'owi_user_id' not in existing_cols:
+                        logger.info("Migrating lti_activity_users: adding owi_user_id, consent_given_at, last_access_at, access_count")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN owi_user_id TEXT")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN consent_given_at INTEGER")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN last_access_at INTEGER")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0")
+                        logger.info("Migrated lti_activity_users with dashboard fields")
+
+                # lti_identity_links — map LMS identities to LAMB Creator users
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}lti_identity_links'")
+                if not cursor.fetchone():
+                    logger.info("Creating lti_identity_links table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}lti_identity_links (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            lms_user_id TEXT NOT NULL,
+                            lms_email TEXT,
+                            creator_user_id INTEGER NOT NULL,
+                            linked_at INTEGER NOT NULL,
+                            FOREIGN KEY (creator_user_id) REFERENCES {self.table_prefix}Creator_users(id) ON DELETE CASCADE
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_identity_lms_user ON {self.table_prefix}lti_identity_links(lms_user_id)")
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_identity_lms_email ON {self.table_prefix}lti_identity_links(lms_email)")
+                    logger.info("Successfully created lti_identity_links table and indexes")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -977,17 +1183,17 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int,
+    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int = None,
                                        signup_enabled: bool = False, signup_key: str = None,
                                        use_system_baseline: bool = True,
                                        config: Dict[str, Any] = None) -> Optional[int]:
         """
-        Create a new organization with admin user assignment and signup configuration
+        Create a new organization with optional admin user assignment and signup configuration
 
         Args:
             slug: URL-friendly organization identifier
             name: Organization display name
-            admin_user_id: ID of user from system org to become org admin
+            admin_user_id: ID of user from system org to become org admin (optional — if None, org is created without an admin)
             signup_enabled: Whether signup is enabled for this organization
             signup_key: Unique signup key for organization-specific signup
             use_system_baseline: Whether to copy system org config as baseline
@@ -1013,25 +1219,27 @@ class LambDatabaseManager:
                     logger.error(f"Signup key '{signup_key}' already exists")
                     return None
 
-            # Validate that admin user exists and is in system organization
-            admin_user = self.get_creator_user_by_id(admin_user_id)
-            if not admin_user:
-                logger.error(f"Admin user {admin_user_id} not found")
-                return None
+            # Validate admin user if provided
+            admin_user = None
+            if admin_user_id is not None:
+                admin_user = self.get_creator_user_by_id(admin_user_id)
+                if not admin_user:
+                    logger.error(f"Admin user {admin_user_id} not found")
+                    return None
 
-            system_org = self.get_organization_by_slug("lamb")
-            if not system_org or admin_user['organization_id'] != system_org['id']:
-                logger.error(
-                    f"Admin user {admin_user_id} is not in system organization")
-                return None
+                system_org = self.get_organization_by_slug("lamb")
+                if not system_org or admin_user['organization_id'] != system_org['id']:
+                    logger.error(
+                        f"Admin user {admin_user_id} is not in system organization")
+                    return None
 
-            # Check if user is currently an admin in the system organization
-            current_role = self.get_user_organization_role(
-                admin_user_id, system_org['id'])
-            if current_role == "admin":
-                logger.error(
-                    f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
-                return None
+                # Check if user is currently an admin in the system organization
+                current_role = self.get_user_organization_role(
+                    admin_user_id, system_org['id'])
+                if current_role == "admin":
+                    logger.error(
+                        f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
+                    return None
 
             with connection:
                 cursor = connection.cursor()
@@ -1056,9 +1264,10 @@ class LambDatabaseManager:
                 # Add creation metadata
                 if 'metadata' not in config:
                     config['metadata'] = {}
-                config['metadata']['admin_user_id'] = admin_user_id
-                config['metadata']['admin_user_email'] = admin_user['user_email']
                 config['metadata']['created_by_system_admin'] = True
+                if admin_user is not None:
+                    config['metadata']['admin_user_id'] = admin_user_id
+                    config['metadata']['admin_user_email'] = admin_user['user_email']
 
                 # Create organization
                 cursor.execute(f"""
@@ -1070,30 +1279,35 @@ class LambDatabaseManager:
                 org_id = cursor.lastrowid
                 logger.info(f"Organization '{name}' created with id: {org_id}")
 
-                # Move admin user to new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}Creator_users
-                    SET organization_id = ?, updated_at = ?
-                    WHERE id = ?
-                """, (org_id, now, admin_user_id))
+                # If admin user provided, move them to the new org and assign admin role
+                if admin_user_id is not None:
+                    # Move admin user to new organization
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}Creator_users
+                        SET organization_id = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (org_id, now, admin_user_id))
 
-                if cursor.rowcount == 0:
-                    logger.error(
-                        f"Failed to move admin user to new organization")
-                    return None
+                    if cursor.rowcount == 0:
+                        logger.error(
+                            f"Failed to move admin user to new organization")
+                        return None
 
-                # Assign admin role to user in new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    INSERT OR REPLACE INTO {self.table_prefix}organization_roles
-                    (organization_id, user_id, role, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (org_id, admin_user_id, "admin", now, now))
+                    # Assign admin role to user in new organization
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (org_id, admin_user_id, "admin", now, now))
 
-                logger.info(
-                    f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
+                else:
+                    logger.info(
+                        f"Organization '{name}' created without an admin. An admin can be assigned later.")
 
-                logger.info(
-                    f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
                 return org_id
 
         except sqlite3.Error as e:
@@ -1996,7 +2210,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, 
                            COALESCE(r.role, 'member') as role, 
                            COALESCE(r.created_at, u.created_at) as joined_at,
-                           u.user_type
+                           u.user_type, u.auth_provider, u.lti_user_id
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = ?
                     WHERE u.organization_id = ?
@@ -2011,7 +2225,9 @@ class LambDatabaseManager:
                         'name': row[2],
                         'role': row[3],
                         'joined_at': row[4],
-                        'user_type': row[5]
+                        'user_type': row[5],
+                        'auth_provider': row[6] or 'password',
+                        'lti_user_id': row[7]
                     })
 
                 return users
@@ -2480,7 +2696,7 @@ class LambDatabaseManager:
 
         Returns:
             Optional[Dict]: User details if found, None otherwise
-            Returns dict with: id, email, name, user_config
+            Returns dict with: id, email, name, user_config, lti_user_id, auth_provider
         """
         connection = self.get_connection()
         if not connection:
@@ -2491,7 +2707,7 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled, lti_user_id, auth_provider 
                     FROM {self.table_prefix}Creator_users 
                     WHERE user_email = ?
                 """, (user_email,))
@@ -2507,7 +2723,9 @@ class LambDatabaseManager:
                     'name': result[3],
                     'user_type': result[4],
                     'user_config': json.loads(result[5]) if result[5] else {},
-                    'enabled': bool(result[6]) if len(result) > 6 else True
+                    'enabled': bool(result[6]) if len(result) > 6 else True,
+                    'lti_user_id': result[7] if len(result) > 7 else None,
+                    'auth_provider': result[8] if len(result) > 8 else 'password'
                 }
 
         except sqlite3.Error as e:
@@ -4136,7 +4354,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
                            o.name as org_name, o.slug as org_slug, o.is_system,
-                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled
+                           COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled,
+                           u.lti_user_id, u.auth_provider
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
@@ -4160,7 +4379,9 @@ class LambDatabaseManager:
                         },
                         'organization_role': row[8],
                         'user_type': row[9] if len(row) > 9 else 'creator',
-                        'enabled': bool(row[10]) if len(row) > 10 else True
+                        'enabled': bool(row[10]) if len(row) > 10 else True,
+                        'lti_user_id': row[11] if len(row) > 11 else None,
+                        'auth_provider': row[12] if len(row) > 12 else 'password'
                     })
                 return users
 
@@ -4173,6 +4394,397 @@ class LambDatabaseManager:
         finally:
             connection.close()
             logger.debug("Database connection closed")
+
+    # ==================== LTI Creator Methods ====================
+
+    def get_organization_by_lti_consumer_key(self, oauth_consumer_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get organization by LTI creator consumer key.
+        
+        Args:
+            oauth_consumer_key: The OAuth consumer key to look up
+            
+        Returns:
+            Organization dict with LTI key info if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT o.id, o.slug, o.name, o.is_system, o.status, o.config,
+                           k.oauth_consumer_key, k.oauth_consumer_secret, k.enabled as lti_enabled
+                    FROM {self.table_prefix}lti_creator_keys k
+                    JOIN {self.table_prefix}organizations o ON k.organization_id = o.id
+                    WHERE k.oauth_consumer_key = ? AND k.enabled = 1
+                """, (oauth_consumer_key,))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'slug': result[1],
+                    'name': result[2],
+                    'is_system': bool(result[3]),
+                    'status': result[4],
+                    'config': json.loads(result[5]) if result[5] else {},
+                    'lti_creator': {
+                        'oauth_consumer_key': result[6],
+                        'oauth_consumer_secret': result[7],
+                        'enabled': bool(result[8])
+                    }
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_organization_by_lti_consumer_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def get_lti_creator_key(self, organization_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get LTI creator key config for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            
+        Returns:
+            LTI key config dict if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, organization_id, oauth_consumer_key, oauth_consumer_secret, 
+                           enabled, created_at, updated_at
+                    FROM {self.table_prefix}lti_creator_keys
+                    WHERE organization_id = ?
+                """, (organization_id,))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'organization_id': result[1],
+                    'oauth_consumer_key': result[2],
+                    'oauth_consumer_secret': result[3],
+                    'enabled': bool(result[4]),
+                    'created_at': result[5],
+                    'updated_at': result[6]
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_lti_creator_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def create_lti_creator_key(self, organization_id: int, oauth_consumer_key: str, 
+                                oauth_consumer_secret: str, enabled: bool = True) -> Optional[int]:
+        """
+        Create LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            oauth_consumer_key: The OAuth consumer key (must be unique)
+            oauth_consumer_secret: The OAuth consumer secret
+            enabled: Whether the key is enabled (default True)
+            
+        Returns:
+            Key ID if created, None if failed (e.g., duplicate key)
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            now = int(time.time())
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_creator_keys 
+                    (organization_id, oauth_consumer_key, oauth_consumer_secret, enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (organization_id, oauth_consumer_key, oauth_consumer_secret, enabled, now, now))
+                
+                key_id = cursor.lastrowid
+                logger.info(f"Created LTI creator key for org {organization_id}: {oauth_consumer_key}")
+                return key_id
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator key already exists or constraint violated: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error in create_lti_creator_key: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def update_lti_creator_key(self, organization_id: int, oauth_consumer_key: str = None,
+                                oauth_consumer_secret: str = None, enabled: bool = None) -> bool:
+        """
+        Update LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            oauth_consumer_key: New OAuth consumer key (optional)
+            oauth_consumer_secret: New OAuth consumer secret (optional)
+            enabled: Whether the key is enabled (optional)
+            
+        Returns:
+            True if updated, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return False
+
+        try:
+            now = int(time.time())
+            updates = []
+            params = []
+            
+            if oauth_consumer_key is not None:
+                updates.append("oauth_consumer_key = ?")
+                params.append(oauth_consumer_key)
+            if oauth_consumer_secret is not None:
+                updates.append("oauth_consumer_secret = ?")
+                params.append(oauth_consumer_secret)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(enabled)
+            
+            if not updates:
+                return True  # Nothing to update
+            
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(organization_id)
+            
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_creator_keys 
+                    SET {', '.join(updates)}
+                    WHERE organization_id = ?
+                """, params)
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated LTI creator key for org {organization_id}")
+                    return True
+                return False
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator key update failed (constraint violation): {e}")
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Database error in update_lti_creator_key: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def delete_lti_creator_key(self, organization_id: int) -> bool:
+        """
+        Delete LTI creator key for an organization.
+        
+        Args:
+            organization_id: The organization ID
+            
+        Returns:
+            True if deleted, False otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return False
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}lti_creator_keys 
+                    WHERE organization_id = ?
+                """, (organization_id,))
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted LTI creator key for org {organization_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in delete_lti_creator_key: {e}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
+    def get_creator_user_by_lti(self, organization_id: int, lti_user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get creator user by organization ID and LTI user ID.
+        
+        Args:
+            organization_id: The organization ID
+            lti_user_id: The LTI user ID from LMS
+            
+        Returns:
+            User dict if found, None otherwise
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config, 
+                           enabled, lti_user_id, auth_provider
+                    FROM {self.table_prefix}Creator_users 
+                    WHERE organization_id = ? AND lti_user_id = ?
+                """, (organization_id, lti_user_id))
+
+                result = cursor.fetchone()
+                if not result:
+                    return None
+
+                return {
+                    'id': result[0],
+                    'organization_id': result[1],
+                    'email': result[2],
+                    'name': result[3],
+                    'user_type': result[4],
+                    'user_config': json.loads(result[5]) if result[5] else {},
+                    'enabled': bool(result[6]),
+                    'lti_user_id': result[7],
+                    'auth_provider': result[8]
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_creator_user_by_lti: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+
+    def create_lti_creator_user(self, organization_id: int, lti_user_id: str, 
+                                 user_email: str, user_name: str) -> Optional[int]:
+        """
+        Create a new LTI creator user.
+        
+        LTI creator users:
+        - Have auth_provider = 'lti_creator'
+        - Have user_type = 'creator' (can use creator interface)
+        - Cannot have their password changed
+        - Are identified by (organization_id, lti_user_id)
+        
+        Args:
+            organization_id: The organization ID (must not be system org)
+            lti_user_id: The LTI user ID from LMS
+            user_email: Generated email for the user
+            user_name: Display name from LMS
+            
+        Returns:
+            User ID if created, None if failed
+        """
+        # Check org is not system
+        org = self.get_organization_by_id(organization_id)
+        if not org:
+            logger.error(f"Organization {organization_id} not found")
+            return None
+        if org.get('is_system'):
+            logger.error("Cannot create LTI creator user in system organization")
+            return None
+
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection")
+            return None
+
+        try:
+            # First check if user already exists
+            existing = self.get_creator_user_by_lti(organization_id, lti_user_id)
+            if existing:
+                logger.warning(f"LTI creator user already exists for org {organization_id}, lti_user_id {lti_user_id}")
+                return existing['id']
+
+            # Also check by email
+            existing_by_email = self.get_creator_user_by_email(user_email)
+            if existing_by_email:
+                logger.warning(f"User with email {user_email} already exists")
+                return None
+
+            # Create OWI user (with random password since LTI users don't use password)
+            import secrets
+            random_password = secrets.token_urlsafe(32)
+            
+            owi_manager = OwiUserManager()
+            owi_user = owi_manager.get_user_by_email(user_email)
+            
+            if not owi_user:
+                logger.debug(f"Creating OWI user for LTI creator: {user_email}")
+                owi_user = owi_manager.create_user(
+                    name=user_name,
+                    email=user_email,
+                    password=random_password,
+                    role="user"
+                )
+                if not owi_user:
+                    logger.error(f"Failed to create OWI user for LTI creator: {user_email}")
+                    return None
+
+            # Create the creator user
+            now = int(time.time())
+            user_id = None
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}Creator_users 
+                    (organization_id, user_email, user_name, user_type, user_config, 
+                     lti_user_id, auth_provider, enabled, created_at, updated_at)
+                    VALUES (?, ?, ?, 'creator', '{{}}', ?, 'lti_creator', 1, ?, ?)
+                """, (organization_id, user_email, user_name, lti_user_id, now, now))
+
+                user_id = cursor.lastrowid
+                logger.info(f"Created LTI creator user {user_email} (ID: {user_id}) for org {organization_id}")
+
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"LTI creator user creation failed (constraint violation): {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error in create_lti_creator_user: {e}")
+            return None
+        finally:
+            if connection:
+                connection.close()
+        
+        # Assign member role AFTER connection is closed to avoid "database is locked" error
+        # (assign_organization_role creates its own connection)
+        if user_id:
+            self.assign_organization_role(organization_id, user_id, 'member')
+            return user_id
+        
+        return None
+
+    # ==================== End LTI Creator Methods ====================
 
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """
@@ -6484,3 +7096,517 @@ class LambDatabaseManager:
         timestamp = now.strftime("%b %d %H:%M")
 
         return f"{clean_msg} - {timestamp}" if clean_msg else f"New Chat - {timestamp}"
+
+    # =========================================================================
+    # Unified LTI Activity Operations
+    # =========================================================================
+
+    def get_lti_global_config(self) -> Optional[Dict[str, Any]]:
+        """Get the global LTI config from DB (singleton row)."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"SELECT * FROM {self.table_prefix}lti_global_config WHERE id = 1")
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting LTI global config: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def set_lti_global_config(self, oauth_consumer_key: str, oauth_consumer_secret: str, updated_by: str = None) -> bool:
+        """Set or update the global LTI config (INSERT OR REPLACE singleton)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    INSERT OR REPLACE INTO {self.table_prefix}lti_global_config
+                    (id, oauth_consumer_key, oauth_consumer_secret, updated_at, updated_by)
+                    VALUES (1, ?, ?, ?, ?)
+                """, (oauth_consumer_key, oauth_consumer_secret, int(time.time()), updated_by))
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error setting LTI global config: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_lti_activity_by_resource_link(self, resource_link_id: str) -> Optional[Dict[str, Any]]:
+        """Get an LTI activity by its resource_link_id."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activities
+                    WHERE resource_link_id = ?
+                """, (resource_link_id,))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting LTI activity: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def create_lti_activity(self, resource_link_id: str, organization_id: int,
+                            owi_group_id: str, owi_group_name: str,
+                            configured_by_email: str, configured_by_name: str = None,
+                            context_id: str = None, context_title: str = None,
+                            activity_name: str = None,
+                            chat_visibility_enabled: bool = False) -> Optional[int]:
+        """Create a new LTI activity. Returns the activity id."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_activities
+                    (resource_link_id, organization_id, context_id, context_title, activity_name,
+                     owi_group_id, owi_group_name, owner_email, owner_name,
+                     configured_by_email, configured_by_name,
+                     chat_visibility_enabled, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """, (resource_link_id, organization_id, context_id, context_title,
+                      activity_name, owi_group_id, owi_group_name,
+                      configured_by_email, configured_by_name,
+                      configured_by_email, configured_by_name,
+                      1 if chat_visibility_enabled else 0, now, now))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Error creating LTI activity: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_lti_activities_by_org(self, organization_id: int) -> List[Dict[str, Any]]:
+        """Get all LTI activities for an organization (for org-admin)."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activities
+                    WHERE organization_id = ?
+                    ORDER BY created_at DESC
+                """, (organization_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error getting LTI activities by org: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def update_lti_activity(self, activity_id: int, **kwargs) -> bool:
+        """Update an LTI activity. Pass fields to update as keyword arguments."""
+        allowed_fields = {'activity_name', 'status', 'context_title', 'chat_visibility_enabled', 'owner_email', 'owner_name'}
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return False
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                updates['updated_at'] = int(time.time())
+                set_clause = ", ".join(f"{k} = ?" for k in updates)
+                values = list(updates.values()) + [activity_id]
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_activities
+                    SET {set_clause}
+                    WHERE id = ?
+                """, values)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating LTI activity: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def add_assistants_to_activity(self, activity_id: int, assistant_ids: List[int]) -> bool:
+        """Add assistants to an LTI activity (junction table)."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                for aid in assistant_ids:
+                    cursor.execute(f"""
+                        INSERT OR IGNORE INTO {self.table_prefix}lti_activity_assistants
+                        (activity_id, assistant_id, added_at)
+                        VALUES (?, ?, ?)
+                    """, (activity_id, aid, now))
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error adding assistants to activity: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def remove_assistants_from_activity(self, activity_id: int, assistant_ids: List[int]) -> bool:
+        """Remove assistants from an LTI activity."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                placeholders = ",".join("?" for _ in assistant_ids)
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}lti_activity_assistants
+                    WHERE activity_id = ? AND assistant_id IN ({placeholders})
+                """, [activity_id] + list(assistant_ids))
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error removing assistants from activity: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_activity_assistants(self, activity_id: int) -> List[Dict[str, Any]]:
+        """Get all assistants linked to an LTI activity, with assistant details."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT a.id, a.name, a.owner, a.description,
+                           aa.added_at,
+                           ap.oauth_consumer_name
+                    FROM {self.table_prefix}lti_activity_assistants aa
+                    JOIN {self.table_prefix}assistants a ON aa.assistant_id = a.id
+                    LEFT JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    WHERE aa.activity_id = ?
+                    ORDER BY a.name
+                """, (activity_id,))
+                columns = [col[0] for col in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity assistants: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def create_lti_activity_user(self, activity_id: int, user_email: str,
+                                  user_name: str = '', user_display_name: str = '',
+                                  lms_user_id: str = None,
+                                  owi_user_id: str = None) -> Optional[int]:
+        """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                # Check if exists
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}lti_activity_users
+                    WHERE user_email = ? AND activity_id = ?
+                """, (user_email, activity_id))
+                existing = cursor.fetchone()
+                if existing:
+                    # Update access tracking
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}lti_activity_users
+                        SET last_access_at = ?, access_count = access_count + 1
+                        WHERE id = ?
+                    """, (now, existing[0]))
+                    # Update owi_user_id if provided and not set
+                    if owi_user_id:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET owi_user_id = ?
+                            WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
+                        """, (owi_user_id, existing[0]))
+                    return existing[0]
+                # Create
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_activity_users
+                    (activity_id, user_email, user_name, user_display_name,
+                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """, (activity_id, user_email, user_name, user_display_name,
+                      lms_user_id, owi_user_id, now, now))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Error creating LTI activity user: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def record_student_consent(self, activity_id: int, user_email: str) -> bool:
+        """Record that a student has accepted the chat visibility consent."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}lti_activity_users
+                    SET consent_given_at = ?
+                    WHERE activity_id = ? AND user_email = ?
+                """, (int(time.time()), activity_id, user_email))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error recording student consent: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_activity_user(self, activity_id: int, user_email: str) -> Optional[Dict[str, Any]]:
+        """Get a specific LTI activity user record."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ? AND user_email = ?
+                """, (activity_id, user_email))
+                row = cursor.fetchone()
+                if row:
+                    columns = [col[0] for col in cursor.description]
+                    return dict(zip(columns, row))
+                return None
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity user: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_activity_students(self, activity_id: int, page: int = 1,
+                               per_page: int = 20) -> Dict[str, Any]:
+        """Get paginated list of students for an activity (for dashboard)."""
+        connection = self.get_connection()
+        if not connection:
+            return {"students": [], "total": 0}
+        try:
+            with connection:
+                cursor = connection.cursor()
+                # Count total
+                cursor.execute(f"""
+                    SELECT COUNT(*) FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ?
+                """, (activity_id,))
+                total = cursor.fetchone()[0]
+                # Get page
+                offset = (page - 1) * per_page
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ?
+                    ORDER BY created_at ASC
+                    LIMIT ? OFFSET ?
+                """, (activity_id, per_page, offset))
+                columns = [col[0] for col in cursor.description]
+                students = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                return {"students": students, "total": total}
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity students: {e}")
+            return {"students": [], "total": 0}
+        finally:
+            connection.close()
+
+    def get_all_activity_user_owi_ids(self, activity_id: int) -> List[str]:
+        """Get all OWI user IDs for an activity (for chat queries)."""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT owi_user_id FROM {self.table_prefix}lti_activity_users
+                    WHERE activity_id = ? AND owi_user_id IS NOT NULL AND owi_user_id != ''
+                """, (activity_id,))
+                return [row[0] for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Error getting activity user OWI IDs: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def create_lti_identity_link(self, lms_user_id: str, creator_user_id: int,
+                                  lms_email: str = None) -> Optional[int]:
+        """Create a link between an LMS identity and a LAMB Creator user."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                # Check if this exact link already exists
+                cursor.execute(f"""
+                    SELECT id FROM {self.table_prefix}lti_identity_links
+                    WHERE lms_user_id = ? AND creator_user_id = ?
+                """, (lms_user_id, creator_user_id))
+                existing = cursor.fetchone()
+                if existing:
+                    return existing[0]
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}lti_identity_links
+                    (lms_user_id, lms_email, creator_user_id, linked_at)
+                    VALUES (?, ?, ?, ?)
+                """, (lms_user_id, lms_email, creator_user_id, int(time.time())))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Error creating LTI identity link: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_creator_users_by_lms_identity(self, lms_user_id: str = None,
+                                           lms_email: str = None) -> List[Dict[str, Any]]:
+        """
+        Find Creator users matching an LMS identity.
+        Tries: 1) email match in Creator_users, 2) lti_user_id match, 3) lti_identity_links.
+        Returns list of Creator user dicts (may be multiple if in different orgs).
+        """
+        results = []
+        seen_ids = set()
+        connection = self.get_connection()
+        if not connection:
+            return results
+        try:
+            with connection:
+                cursor = connection.cursor()
+
+                # Strategy 1: Direct email match in Creator_users
+                if lms_email:
+                    cursor.execute(f"""
+                        SELECT id, organization_id, user_email, user_name, user_type, 
+                               enabled, lti_user_id, auth_provider
+                        FROM {self.table_prefix}Creator_users
+                        WHERE user_email = ? AND enabled = 1
+                    """, (lms_email,))
+                    for row in cursor.fetchall():
+                        columns = [col[0] for col in cursor.description]
+                        user = dict(zip(columns, row))
+                        if user['id'] not in seen_ids:
+                            results.append(user)
+                            seen_ids.add(user['id'])
+
+                # Strategy 2: Match by lti_user_id in Creator_users
+                if lms_user_id:
+                    cursor.execute(f"""
+                        SELECT id, organization_id, user_email, user_name, user_type,
+                               enabled, lti_user_id, auth_provider
+                        FROM {self.table_prefix}Creator_users
+                        WHERE lti_user_id = ? AND enabled = 1
+                    """, (lms_user_id,))
+                    for row in cursor.fetchall():
+                        columns = [col[0] for col in cursor.description]
+                        user = dict(zip(columns, row))
+                        if user['id'] not in seen_ids:
+                            results.append(user)
+                            seen_ids.add(user['id'])
+
+                # Strategy 3: Check lti_identity_links
+                if lms_user_id:
+                    cursor.execute(f"""
+                        SELECT cu.id, cu.organization_id, cu.user_email, cu.user_name,
+                               cu.user_type, cu.enabled, cu.lti_user_id, cu.auth_provider
+                        FROM {self.table_prefix}lti_identity_links lil
+                        JOIN {self.table_prefix}Creator_users cu ON lil.creator_user_id = cu.id
+                        WHERE lil.lms_user_id = ? AND cu.enabled = 1
+                    """, (lms_user_id,))
+                    for row in cursor.fetchall():
+                        columns = [col[0] for col in cursor.description]
+                        user = dict(zip(columns, row))
+                        if user['id'] not in seen_ids:
+                            results.append(user)
+                            seen_ids.add(user['id'])
+
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Error finding creator users by LMS identity: {e}")
+            return results
+        finally:
+            connection.close()
+
+    def get_published_assistants_for_org_user(self, organization_id: int,
+                                               creator_user_id: int,
+                                               creator_user_email: str) -> List[Dict[str, Any]]:
+        """
+        Get all published assistants accessible by a Creator user within an org.
+        Includes: owned assistants + assistants shared with them. Only published ones.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                # Published assistants owned by this user in this org
+                cursor.execute(f"""
+                    SELECT a.id, a.name, a.description, a.owner,
+                           ap.oauth_consumer_name, ap.group_id, ap.group_name,
+                           'owned' as access_type
+                    FROM {self.table_prefix}assistants a
+                    JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    WHERE a.owner = ? AND a.organization_id = ?
+                          AND ap.oauth_consumer_name IS NOT NULL
+                          AND ap.oauth_consumer_name != 'null'
+                    ORDER BY a.name
+                """, (creator_user_email, organization_id))
+                columns = [col[0] for col in cursor.description]
+                owned = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+                # Published assistants shared with this user in this org
+                cursor.execute(f"""
+                    SELECT a.id, a.name, a.description, a.owner,
+                           ap.oauth_consumer_name, ap.group_id, ap.group_name,
+                           'shared' as access_type
+                    FROM {self.table_prefix}assistant_shares s
+                    JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
+                    JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    WHERE s.shared_with_user_id = ? AND a.organization_id = ?
+                          AND ap.oauth_consumer_name IS NOT NULL
+                          AND ap.oauth_consumer_name != 'null'
+                    ORDER BY a.name
+                """, (creator_user_id, organization_id))
+                columns = [col[0] for col in cursor.description]
+                shared = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+                # Deduplicate (in case somehow both owned and shared)
+                seen = set()
+                result = []
+                for a in owned + shared:
+                    if a['id'] not in seen:
+                        result.append(a)
+                        seen.add(a['id'])
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Error getting published assistants for org user: {e}")
+            return []
+        finally:
+            connection.close()

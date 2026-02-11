@@ -134,6 +134,23 @@ router.include_router(chats_router, prefix="/chats")
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 
 
+# Configuration Endpoints
+
+@router.get("/config/ingestion")
+async def get_ingestion_config():
+    """Get ingestion configuration values.
+    
+    Returns configuration such as:
+    - refresh_rate: How often (in seconds) the frontend should poll job status
+    
+    Returns:
+        Dictionary with configuration values
+    """
+    return {
+        "refresh_rate": int(os.getenv("INGESTION_JOB_REFRESH_RATE", "3"))
+    }
+
+
 # Initialize security
 security = HTTPBearer()
 
@@ -607,7 +624,9 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 "user_type": user.get("user_type", "creator"),
                 "user_config": user.get("user_config", {}),
                 "organization": user.get("organization"),
-                "organization_role": user.get("organization_role")
+                "organization_role": user.get("organization_role"),
+                "auth_provider": user.get("auth_provider", "password"),
+                "lti_user_id": user.get("lti_user_id")
             }
             users_with_roles.append(user_data)
 

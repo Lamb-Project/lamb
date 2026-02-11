@@ -3,6 +3,11 @@ import { getApiUrl } from '$lib/config'; // Use the helper for API base
 import { browser } from '$app/environment';
 
 /**
+ * @typedef {Object} IngestionConfig
+ * @property {number} refresh_rate - Polling interval in seconds
+ */
+
+/**
  * @typedef {Object} KnowledgeBase
  * @property {string} id
  * @property {string} name
@@ -11,6 +16,31 @@ import { browser } from '$app/environment';
  * @property {number} created_at
  * @property {object} [metadata]
  */
+
+/**
+ * Get ingestion configuration from backend.
+ * 
+ * @returns {Promise<IngestionConfig>} Configuration including refresh rate
+ * @throws {Error} If the request fails
+ */
+export async function getIngestionConfig() {
+    if (!browser) {
+        throw new Error('Configuration fetching is only available in the browser.');
+    }
+
+    const url = getApiUrl('/config/ingestion');
+    console.log(`Fetching ingestion config from: ${url}`);
+
+    try {
+        const response = await axios.get(url);
+        console.log('Ingestion config response:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching ingestion config:', error);
+        // Return default values if fetch fails
+        return { refresh_rate: 3 };
+    }
+}
 
 /**
  * Fetches user's owned knowledge bases.
@@ -295,7 +325,7 @@ export async function getKnowledgeBaseDetails(kbId) {
  * @typedef {Object} IngestionPlugin
  * @property {string} name - Name of the plugin
  * @property {string} description - Description of the plugin
- * @property {'file-ingest' | 'base-ingest'} [kind] - The type of plugin (Added based on frontend logic)
+ * @property {'file-ingest' | 'base-ingest' | 'remote-ingest'} [kind] - The type of plugin
  * @property {string[]} [supported_file_types] - Optional list of supported file types
  * @property {Object<string, IngestionParameterDetail>} [parameters] - Parameters for the plugin (object keyed by param name)
  * 

@@ -2,13 +2,12 @@ from openai import AsyncOpenAI, APIError
 from fastapi import HTTPException
 import os
 from dotenv import load_dotenv
-import logging
 import json
 from typing import Dict, Any
+from lamb.logging_config import get_logger
 
 # Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger = get_logger(__name__, component="API")
 
 # Load environment variables
 load_dotenv()

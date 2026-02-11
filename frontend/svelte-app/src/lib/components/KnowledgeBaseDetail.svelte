@@ -1,11 +1,12 @@
 <script>
     import { onMount } from 'svelte';
-    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus } from '$lib/services/knowledgeBaseService';
+    import { getKnowledgeBaseDetails, getIngestionPlugins, uploadFileWithPlugin, runBaseIngestionPlugin, deleteKnowledgeBaseFile, listIngestionJobs, retryIngestionJob, cancelIngestionJob, getIngestionJobStatus, getIngestionConfig } from '$lib/services/knowledgeBaseService';
     import { _ } from '$lib/i18n';
     import { page } from '$app/stores';
     import axios from 'axios'; // Import axios
     import { getApiUrl } from '$lib/config'; // Import getApiUrl
     import { browser } from '$app/environment'; // Import browser
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     
     /** 
      * @typedef {import('$lib/services/knowledgeBaseService').IngestionPlugin} IngestionPlugin
@@ -218,11 +219,35 @@
     let selectedJob = $state(null);
     let showJobModal = $state(false);
     let jobActionLoading = $state(false);
+    
+    // State for delete file confirmation modal
+    let showDeleteFileModal = $state(false);
+    /** @type {{ id: string|null, filename: string }} */
+    let deleteFileTarget = $state({ id: null, filename: '' });
+    let isDeletingFile = $state(false);
+    
+    // State for cancel job confirmation modal
+    let showCancelJobModal = $state(false);
+    /** @type {number|null} */
+    let cancelJobTarget = $state(null);
+    let isCancellingJob = $state(false);
+    
+    // Polling configuration
+    let pollingRefreshRate = $state(3000); // Default 3 seconds, will be fetched from backend
 
     // Initialization and cleanup
     onMount(() => {
         console.log('KnowledgeBaseDetail mounted, kbId:', kbId);
         previousKbId = kbId; // Initialize previousKbId
+        
+        // Fetch polling configuration
+        getIngestionConfig().then(config => {
+            pollingRefreshRate = config.refresh_rate * 1000; // Convert to milliseconds
+            console.log('Polling refresh rate set to:', pollingRefreshRate, 'ms');
+        }).catch(err => {
+            console.error('Failed to fetch ingestion config, using default:', err);
+        });
+        
         return () => {
             console.log('KnowledgeBaseDetail unmounted');
         };
@@ -280,7 +305,7 @@
                 } catch (err) {
                     console.error('[Job Polling] Error fetching job status:', err);
                 }
-            }, 2000); // Poll every 2 seconds
+            }, pollingRefreshRate); // Use configured refresh rate from backend
             
             // Cleanup when effect reruns or component unmounts
             return () => {
@@ -457,25 +482,45 @@
     }
     
     /**
-     * Cancel a pending/processing job
+     * Open the cancel job confirmation modal
      * @param {number} jobId
      */
-    async function handleCancelJob(jobId) {
+    function handleCancelJob(jobId) {
         if (!kbId) return;
-        if (!confirm('Cancel this ingestion job?')) return;
-        jobActionLoading = true;
+        cancelJobTarget = jobId;
+        showCancelJobModal = true;
+    }
+    
+    /**
+     * Confirm cancellation of the job
+     */
+    async function confirmCancelJob() {
+        if (!kbId || !cancelJobTarget || isCancellingJob) return;
+        isCancellingJob = true;
         
         try {
-            await cancelIngestionJob(kbId, jobId);
+            await cancelIngestionJob(kbId, cancelJobTarget);
             // Refresh jobs after cancel
             await loadIngestionJobs(kbId);
+            showCancelJobModal = false;
+            cancelJobTarget = null;
             closeJobModal();
         } catch (/** @type {unknown} */ err) {
             console.error('Error cancelling job:', err);
-            alert(err instanceof Error ? err.message : 'Failed to cancel job');
+            error = err instanceof Error ? err.message : 'Failed to cancel job';
+            setTimeout(() => { error = ''; }, 5000);
         } finally {
-            jobActionLoading = false;
+            isCancellingJob = false;
         }
+    }
+    
+    /**
+     * Cancel the cancel job modal
+     */
+    function cancelCancelJobModal() {
+        if (isCancellingJob) return;
+        showCancelJobModal = false;
+        cancelJobTarget = null;
     }
     
     /**
@@ -575,22 +620,45 @@
     }
     
     /**
-     * Handle file delete
+     * Open the delete file confirmation modal
      * @param {string} fileId - ID of the file to delete
+     * @param {string} [filename] - Optional filename for display
      */
-    async function handleDeleteFile(fileId) {
+    function handleDeleteFile(fileId, filename = '') {
         if (!kbId) return;
-        if (!confirm($_('knowledgeBases.detail.confirmDelete', { default: 'Delete this file and its embeddings? This cannot be undone.' }))) {
-            return;
-        }
+        deleteFileTarget = { id: fileId, filename: filename || fileId };
+        showDeleteFileModal = true;
+    }
+    
+    /**
+     * Confirm deletion of the file
+     */
+    async function confirmDeleteFile() {
+        if (!kbId || !deleteFileTarget.id || isDeletingFile) return;
+        isDeletingFile = true;
+        
         try {
-            await deleteKnowledgeBaseFile(kbId, fileId, true);
+            await deleteKnowledgeBaseFile(kbId, deleteFileTarget.id, true);
             // Refresh list
             await loadKnowledgeBase(kbId);
+            showDeleteFileModal = false;
+            deleteFileTarget = { id: null, filename: '' };
         } catch (err) {
             console.error('Failed to delete file', err);
-            alert(err instanceof Error ? err.message : 'File deletion failed');
+            error = err instanceof Error ? err.message : 'File deletion failed';
+            setTimeout(() => { error = ''; }, 5000);
+        } finally {
+            isDeletingFile = false;
         }
+    }
+    
+    /**
+     * Cancel the delete file modal
+     */
+    function cancelDeleteFileModal() {
+        if (isDeletingFile) return;
+        showDeleteFileModal = false;
+        deleteFileTarget = { id: null, filename: '' };
     }
 
     // --- Ingestion Functions (Moved from Modal) ---
@@ -750,6 +818,30 @@
         }
         return { valid: true };
     }
+
+    /**
+     * Whether this plugin can accept an uploaded file as input.
+     * file-ingest plugins require it; non-file plugins may accept it optionally.
+     * @param {IngestionPlugin | null} plugin
+     * @returns {boolean}
+     */
+    function pluginCanUseFileUpload(plugin) {
+        if (!plugin) return false;
+        if (plugin.kind === 'file-ingest') return true;
+        return Array.isArray(plugin.supported_file_types) && plugin.supported_file_types.length > 0;
+    }
+
+    /**
+     * Build file input accept string from plugin-supported extensions.
+     * @param {IngestionPlugin | null} plugin
+     * @returns {string}
+     */
+    function getAcceptedFileTypes(plugin) {
+        if (!plugin || !Array.isArray(plugin.supported_file_types) || plugin.supported_file_types.length === 0) {
+            return '';
+        }
+        return plugin.supported_file_types.map(ext => `.${ext}`).join(',');
+    }
     
     /**
      * Uploads the selected file with the selected plugin
@@ -824,7 +916,9 @@
             uploadError = 'Please select a plugin.';
             return;
         }
-        if (selectedPlugin.kind === 'file-ingest') {
+        // For non-file plugins, use file-ingest path only when the user selected
+        // an optional input file. Otherwise keep base-ingest behavior.
+        if (selectedPlugin.kind === 'file-ingest' || (!!selectedFile && pluginCanUseFileUpload(selectedPlugin))) {
             uploadFile();
         } else {
             runBaseIngestion();
@@ -1179,7 +1273,7 @@
                                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                         {#if kb.can_modify === true}
                                                         <button 
-                                                            onclick={() => handleDeleteFile(file.id)}
+                                                            onclick={() => handleDeleteFile(file.id, file.filename)}
                                                             class="text-red-600 hover:text-red-900"
                                                         >
                                                             {$_('knowledgeBases.detail.fileDeleteButton', { default: 'Delete' })}
@@ -1218,11 +1312,13 @@
                             {:else}
                                 <!-- Ingestion Form -->
                                 <form onsubmit={(e) => { e.preventDefault(); handleSubmitIngestion(); }} class="space-y-6">
-                                    <!-- File selection (only for file-ingest plugins) -->
-                                    {#if selectedPlugin?.kind === 'file-ingest'}
+                                    <!-- File selection (required for file-ingest, optional for other plugins that support file input) -->
+                                    {#if pluginCanUseFileUpload(selectedPlugin)}
                                         <div>
                                             <label for="file-upload-input-inline" class="block text-sm font-medium text-gray-700">
-                                                {$_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })}
+                                                {selectedPlugin?.kind === 'file-ingest'
+                                                    ? $_('knowledgeBases.fileUpload.fileLabel', { default: 'Select File' })
+                                                    : $_('knowledgeBases.fileUpload.optionalFileLabel', { default: 'Optional File Input' })}
                                             </label>
                                             <div class="mt-1 flex items-center">
                                                 <input
@@ -1231,8 +1327,15 @@
                                                     class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#2271b3] file:text-white hover:file:bg-[#195a91]"
                                                     style="file:background-color: #2271b3;"
                                                     onchange={handleFileSelect}
+                                                    required={selectedPlugin?.kind === 'file-ingest'}
+                                                    accept={getAcceptedFileTypes(selectedPlugin)}
                                                 />
                                             </div>
+                                            {#if selectedPlugin?.kind !== 'file-ingest'}
+                                                <p class="mt-2 text-xs text-gray-500">
+                                                    Optional: If a file is selected, ingestion runs through the file-upload path. Leave empty to run direct ingestion.
+                                                </p>
+                                            {/if}
                                             {#if selectedFile}
                                                 <p class="mt-2 text-sm text-gray-500">
                                                     {selectedFile.name} ({formatFileSize(selectedFile.size)})
@@ -1690,13 +1793,39 @@
                     </div>
 
                     <!-- Progress info (if available) -->
-                    {#if selectedJob.progress && selectedJob.status === 'processing'}
+                    {#if selectedJob.progress && (selectedJob.status === 'processing' || selectedJob.status === 'pending')}
                         <div class="mb-6">
                             <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Progress</h4>
+            
+                            <!-- Chunks progress - only show if total > 1  -->
+                            {#if (selectedJob.progress.total ?? 0) > 1}
+                                <div class="flex justify-between items-center text-sm mb-2">
+                                    <span class="text-gray-700 font-medium">
+                                        {selectedJob.progress.current || 0} / {selectedJob.progress.total || 0} chunks added
+                                    </span>
+                                    <span class="text-gray-600">
+                                        {(selectedJob.progress.percentage || 0).toFixed(1)}%
+                                    </span>
+                                </div>
+                            {:else}
+                                <!-- During URL crawling/conversion phase, just show percentage if available -->
+                                {#if selectedJob.progress.percentage > 0}
+                                    <div class="flex justify-between items-center text-sm mb-2">
+                                        <span class="text-gray-700 font-medium">Progress</span>
+                                        <span class="text-gray-600">
+                                            {(selectedJob.progress.percentage || 0).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                {/if}
+                            {/if}
+                            
+                            <!-- Progress bar -->
                             <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
                                 <div class="bg-[#2271b3] h-2.5 rounded-full transition-all duration-300" style="width: {selectedJob.progress.percentage || 0}%"></div>
                             </div>
-                            <p class="text-sm text-gray-600">{selectedJob.progress.message || `${selectedJob.progress.current || 0} / ${selectedJob.progress.total || 0}`}</p>
+                            
+                            <!-- Progress message -->
+                            <p class="text-sm text-gray-600 italic">{selectedJob.progress.message || 'Processing...'}</p>
                         </div>
                     {/if}
 
@@ -1960,3 +2089,27 @@
         </div>
     </div>
 {/if}
+
+<!-- Delete File Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteFileModal}
+    bind:isLoading={isDeletingFile}
+    title={$_('knowledgeBases.detail.deleteFileTitle', { default: 'Delete File' })}
+    message={$_('knowledgeBases.detail.confirmDeleteFile', { values: { filename: deleteFileTarget.filename }, default: `Delete file "${deleteFileTarget.filename}" and all its embeddings? This action cannot be undone.` })}
+    confirmText={$_('common.delete', { default: 'Delete' })}
+    variant="danger"
+    onconfirm={confirmDeleteFile}
+    oncancel={cancelDeleteFileModal}
+/>
+
+<!-- Cancel Job Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showCancelJobModal}
+    bind:isLoading={isCancellingJob}
+    title={$_('knowledgeBases.detail.cancelJobTitle', { default: 'Cancel Ingestion Job' })}
+    message={$_('knowledgeBases.detail.confirmCancelJob', { default: 'Are you sure you want to cancel this ingestion job? The job will be stopped and any progress will be lost.' })}
+    confirmText={$_('common.cancel', { default: 'Cancel Job' })}
+    variant="warning"
+    onconfirm={confirmCancelJob}
+    oncancel={cancelCancelJobModal}
+/>

@@ -7,10 +7,14 @@ This module defines the base plugin interface and registry for document ingestio
 import abc
 import importlib
 import inspect
+import logging
 import os
 import pkgutil
 from enum import Enum, auto
 from typing import Dict, List, Type, Any, Optional, Set, Tuple, Union, Callable
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChunkUnit(str, Enum):
@@ -124,9 +128,9 @@ class PluginRegistry:
 
         env_var_name = f"PLUGIN_{plugin_class.name.upper()}"
         env_var_value = os.getenv(env_var_name, "ENABLE").upper()
-        print(f"DEBUG: Checking {env_var_name}={env_var_value}")
+        logger.debug("Checking %s=%s", env_var_name, env_var_value)
         if env_var_value == "DISABLE":
-            print(f"INFO: Plugin {plugin_class.name} is disabled via {env_var_name}=DISABLE")
+            logger.info("Plugin %s disabled via %s=DISABLE", plugin_class.name, env_var_name)
             return plugin_class 
 
         if issubclass(plugin_class, IngestPlugin):

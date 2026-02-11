@@ -5,14 +5,19 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
-    import AssistantAccessManager from '$lib/components/AssistantAccessManager.svelte';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
     // import BulkUserImport from '$lib/components/admin/BulkUserImport.svelte';
     import * as adminService from '$lib/services/adminService';
     import { processListData } from '$lib/utils/listHelpers';
     import { getLambApiUrl } from '$lib/config';
+    
+    // Import shared admin components
+    import UserForm from '$lib/components/admin/shared/UserForm.svelte';
+    import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
+    import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
     // Get user data  
     /** @type {any} */
@@ -34,8 +39,6 @@
     let assistantsLoaded = $state(false); // Track if assistants have been loaded at least once
     /** @type {string | null} */
     let assistantsError = $state(null);
-    let selectedAssistant = $state(null);
-    let showAccessModal = $state(false);
     let assistantsSearchQuery = $state('');
     let assistantsFilterPublished = $state('all');
     
@@ -67,7 +70,7 @@
     
     // Filter state for users
     let usersSearchQuery = $state('');
-    let usersFilterUserType = $state('all'); // 'all', 'creator', 'end_user'
+    let usersFilterUserType = $state('all'); // 'all', 'creator', 'lti_creator', 'end_user'
     let usersFilterStatus = $state('all'); // 'all', 'enabled', 'disabled'
     let usersSortBy = $state('id'); // 'id', 'name', 'email'
     let usersSortOrder = $state('asc'); // 'asc', 'desc'
@@ -108,6 +111,15 @@
     let isDeletingUser = $state(false);
     /** @type {string | null} */
     let deleteUserError = $state(null);
+    
+    // Single user enable/disable modal states
+    let showSingleUserDisableModal = $state(false);
+    let showSingleUserEnableModal = $state(false);
+    /** @type {any} */
+    let userToToggle = $state(null);
+    let isTogglingUser = $state(false);
+    /** @type {string | null} */
+    let toggleUserError = $state(null);
     
     // Bulk enable/disable modal states
     let isBulkDisableModalOpen = $state(false);
@@ -187,6 +199,7 @@
         url: '',
         api_key: '',
         embedding_model: '',
+        embedding_api_key: '',
         collection_defaults: {
             chunk_size: 1000,
             chunk_overlap: 200
@@ -203,6 +216,33 @@
     let showKbAdvanced = $state(false);
     /** @type {boolean} */
     let showKbApiKey = $state(false);
+    /** @type {boolean} */
+    let showEmbeddingApiKey = $state(false);
+    
+    // KB server embeddings config state
+    /** @type {any} */
+    let kbEmbeddingsConfig = $state({
+        vendor: '',
+        model: '',
+        api_endpoint: '',
+        apikey_configured: false,
+        apikey_masked: '',
+        config_source: 'env'
+    });
+    let isLoadingKbEmbeddingsConfig = $state(false);
+    /** @type {string | null} */
+    let kbEmbeddingsConfigError = $state(null);
+    let isUpdatingKbEmbeddingsConfig = $state(false);
+    let showApplyToAllKbConfirmation = $state(false);
+    let isApplyingToAllKb = $state(false);
+    /** @type {string | null} */
+    let applyToAllKbResult = $state(null);
+    let applyToAllKbChecked = $state(false);
+    let embeddingApiKeyOriginal = $state('');
+    let embeddingApiKeyDirty = $state(false);
+    
+    // Reset KB embeddings config modal state
+    let showResetKbConfigModal = $state(false);
 
     // Model selection modal state
     let isModelModalOpen = $state(false);
@@ -224,6 +264,91 @@
     // Signup key display state
     let signupKey = $state('');
     let showSignupKey = $state(false);
+    
+    // LTI Creator settings state
+    /** @type {any} */
+    let ltiCreatorSettings = $state({
+        has_key: false,
+        oauth_consumer_key: '',
+        enabled: false,
+        launch_url: '',
+        created_at: null
+    });
+    /** @type {any} */
+    let newLtiCreatorSettings = $state({
+        oauth_consumer_key: '',
+        oauth_consumer_secret: '',
+        enabled: true
+    });
+    let isLoadingLtiCreatorSettings = $state(false);
+    /** @type {string | null} */
+    let ltiCreatorSettingsError = $state(null);
+    let ltiCreatorSettingsSuccess = $state(false);
+    let showLtiCreatorSecret = $state(false);
+    
+    // Dirty tracking for LTI Creator settings
+    let ltiCreatorSettingsDirty = $derived.by(() => {
+        if (!ltiCreatorSettings.has_key) {
+            // For new keys, dirty if either field has content
+            return !!(newLtiCreatorSettings.oauth_consumer_key || newLtiCreatorSettings.oauth_consumer_secret);
+        }
+        // For existing keys, dirty if key changed, secret entered, or enabled toggled
+        return (
+            newLtiCreatorSettings.oauth_consumer_key !== (ltiCreatorSettings.oauth_consumer_key || '') ||
+            newLtiCreatorSettings.oauth_consumer_secret !== '' ||
+            newLtiCreatorSettings.enabled !== (ltiCreatorSettings.enabled ?? true)
+        );
+    });
+
+    // --- LTI Activities State ---
+    let ltiActivities = $state([]);
+    let isLoadingLtiActivities = $state(false);
+    let ltiActivitiesError = $state(null);
+    let ltiActivitiesSuccess = $state(null);
+
+    async function fetchLtiActivities() {
+        isLoadingLtiActivities = true;
+        ltiActivitiesError = null;
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const url = getApiUrl(`/lti-activities${params}`);
+            const response = await axios.get(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            ltiActivities = response.data.activities || [];
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to load LTI activities';
+        } finally {
+            isLoadingLtiActivities = false;
+        }
+    }
+
+    async function toggleActivityStatus(activity) {
+        ltiActivitiesError = null;
+        ltiActivitiesSuccess = null;
+        const newStatus = activity.status === 'active' ? 'disabled' : 'active';
+        try {
+            const token = localStorage.getItem('userToken');
+            if (!token) throw new Error('Not authenticated');
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.put(getApiUrl(`/lti-activities/${activity.id}${params}`), 
+                { status: newStatus },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            // Update local state
+            const idx = ltiActivities.findIndex(a => a.id === activity.id);
+            if (idx >= 0) {
+                ltiActivities[idx] = { ...ltiActivities[idx], status: newStatus };
+                ltiActivities = [...ltiActivities]; // trigger reactivity
+            }
+            ltiActivitiesSuccess = `Activity "${activity.activity_name || activity.resource_link_id}" ${newStatus === 'active' ? 'enabled' : 'disabled'}.`;
+            setTimeout(() => { ltiActivitiesSuccess = null; }, 3000);
+        } catch (err) {
+            ltiActivitiesError = err?.response?.data?.detail || err.message || 'Failed to update activity';
+        }
+    }
 
     // Target organization for system admin
     let targetOrgSlug = $state(null);
@@ -350,33 +475,43 @@
     }
 
     // Navigation functions
+    function buildOrgAdminUrl(view) {
+        const params = new URLSearchParams();
+        if (targetOrgSlug) params.set('org', targetOrgSlug);
+        params.set('view', view);
+        return `${base}/org-admin?${params.toString()}`;
+    }
+
     function showDashboard() {
         currentView = 'dashboard';
-        goto(`${base}/org-admin?view=dashboard`, { replaceState: true });
+        goto(buildOrgAdminUrl('dashboard'), { replaceState: true });
         fetchDashboard();
     }
 
     function showUsers() {
         currentView = 'users';
-        goto(`${base}/org-admin?view=users`, { replaceState: true });
+        goto(buildOrgAdminUrl('users'), { replaceState: true });
         fetchUsers();
     }
 
     function showAssistants() {
         currentView = 'assistants';
-        goto(`${base}/org-admin?view=assistants`, { replaceState: true });
+        goto(buildOrgAdminUrl('assistants'), { replaceState: true });
         fetchAssistants();
+    }
+
+    function showLtiActivities() {
+        currentView = 'lti-activities';
+        goto(buildOrgAdminUrl('lti-activities'), { replaceState: true });
+        if (ltiActivities.length === 0 && !isLoadingLtiActivities) {
+            fetchLtiActivities();
+        }
     }
 
     function showSettings() {
         currentView = 'settings';
-        goto(`${base}/org-admin?view=settings`, { replaceState: true });
+        goto(buildOrgAdminUrl('settings'), { replaceState: true });
         fetchSettings();
-    }
-
-    function showBulkImport() {
-        currentView = 'bulk-import';
-        goto(`${base}/org-admin?view=bulk-import`, { replaceState: true });
     }
 
     // Dashboard functions
@@ -517,7 +652,15 @@
         
         // Filter by user type
         if (usersFilterUserType !== 'all') {
-            filters.user_type = usersFilterUserType;
+            if (usersFilterUserType === 'lti_creator') {
+                filters.auth_provider = 'lti_creator';
+            } else if (usersFilterUserType === 'creator') {
+                // Regular creators (not LTI)
+                filters.user_type = 'creator';
+                filters.exclude_auth_provider = 'lti_creator';
+            } else {
+                filters.user_type = usersFilterUserType;
+            }
         }
         
         // Filter by enabled status
@@ -591,27 +734,40 @@
         isCreateUserModalOpen = true;
     }
 
-    // User enable/disable functions
-    async function toggleUserStatus(user) {
-        const newStatus = !user.enabled;
-        const action = newStatus ? 'enable' : 'disable';
-        
+    // User enable/disable functions - show modal first
+    function toggleUserStatus(user) {
         // Prevent users from disabling themselves
-        if (userData && userData.email === user.email && !newStatus) {
+        if (userData && userData.email === user.email && !user.enabled === false) {
             return;
         }
-
+        
+        userToToggle = user;
+        toggleUserError = null;
+        
+        if (user.enabled) {
+            showSingleUserDisableModal = true;
+        } else {
+            showSingleUserEnableModal = true;
+        }
+    }
+    
+    async function confirmToggleUserEnable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
         try {
             const token = getAuthToken();
             if (!token) {
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${user.id}`);
-            console.log(`${action === 'enable' ? 'Enabling' : 'Disabling'} user ${user.email} at: ${apiUrl}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Enabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
-                enabled: newStatus
+                enabled: true
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -619,28 +775,91 @@
                 }
             });
 
-            console.log(`User ${action} response:`, response.data);
+            console.log('User enable response:', response.data);
 
             // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === user.id);
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
             if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = newStatus;
+                orgUsers[userIndex].enabled = true;
                 orgUsers = [...orgUsers]; // Trigger reactivity
             }
+            
+            showSingleUserEnableModal = false;
+            userToToggle = null;
 
         } catch (err) {
-            console.error(`Error ${action}ing user:`, err);
+            console.error('Error enabling user:', err);
             
-            let errorMessage = `Failed to ${action} user.`;
+            let errorMessage = 'Failed to enable user.';
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
                 errorMessage = err.response.data.detail;
             } else if (err instanceof Error) {
                 errorMessage = err.message;
             }
             
-            // Log error but don't show alert - could add a toast notification here
-            console.error(errorMessage);
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
         }
+    }
+    
+    async function confirmToggleUserDisable() {
+        if (!userToToggle) return;
+        
+        isTogglingUser = true;
+        toggleUserError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            console.log(`Disabling user ${userToToggle.email} at: ${apiUrl}`);
+
+            const response = await axios.put(apiUrl, {
+                enabled: false
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('User disable response:', response.data);
+
+            // Update the user in the local list
+            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
+            if (userIndex !== -1) {
+                orgUsers[userIndex].enabled = false;
+                orgUsers = [...orgUsers]; // Trigger reactivity
+            }
+            
+            showSingleUserDisableModal = false;
+            userToToggle = null;
+
+        } catch (err) {
+            console.error('Error disabling user:', err);
+            
+            let errorMessage = 'Failed to disable user.';
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                errorMessage = err.response.data.detail;
+            } else if (err instanceof Error) {
+                errorMessage = err.message;
+            }
+            
+            toggleUserError = errorMessage;
+        } finally {
+            isTogglingUser = false;
+        }
+    }
+    
+    function closeSingleUserModal() {
+        showSingleUserDisableModal = false;
+        showSingleUserEnableModal = false;
+        userToToggle = null;
+        toggleUserError = null;
     }
 
     // --- Sharing Permission Functions ---
@@ -859,94 +1078,8 @@
         }
     }
 
-    // Bulk user actions
-    async function handleBulkEnable() {
-        const usersToEnable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToEnable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Enable ${usersToEnable.length} selected user(s)?`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.enableUsersBulk(token, usersToEnable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToEnable.includes(u.id)) {
-                    return {...u, enabled: true};
-                }
-                return u;
-            });
-            
-            alert(`Successfully enabled ${result.enabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk enable error:', err);
-            alert('Bulk enable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
-    
-    async function handleBulkDisable() {
-        const usersToDisable = displayUsers.filter(u => u.selected).map(u => u.id);
-        
-        if (usersToDisable.length === 0) {
-            return;
-        }
-        
-        if (!confirm(`Disable ${usersToDisable.length} selected user(s)? They will not be able to log in.`)) {
-            return;
-        }
-        
-        try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, usersToDisable);
-            
-            // Update local state
-            displayUsers = displayUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false, selected: false};
-                }
-                return {...u, selected: false};
-            });
-            
-            // Update orgUsers as well
-            orgUsers = orgUsers.map(u => {
-                if (usersToDisable.includes(u.id)) {
-                    return {...u, enabled: false};
-                }
-                return u;
-            });
-            
-            alert(`Successfully disabled ${result.disabled} user(s)`);
-            selectedUsers = [];
-            
-        } catch (err) {
-            console.error('Bulk disable error:', err);
-            alert('Bulk disable failed: ' + (err.message || 'Unknown error'));
-        }
-    }
+    // NOTE: Bulk enable/disable actions now use modal-based approach
+    // See openBulkEnableModal/openBulkDisableModal and confirmBulkEnable/confirmBulkDisable
 
     function closeCreateUserModal() {
         isCreateUserModalOpen = false;
@@ -1180,15 +1313,6 @@
         loadAssistantShareCounts();
     }
 
-    function closeAccessModal() {
-        showAccessModal = false;
-        selectedAssistant = null;
-    }
-
-    function handleAccessUpdated() {
-        // Optionally reload assistants
-        fetchAssistants();
-    }
 
     function formatDate(timestamp) {
         if (!timestamp) return 'N/A';
@@ -1440,11 +1564,15 @@
                 url: kbSettings.url || '',
                 api_key: '', // Never populate with actual key
                 embedding_model: kbSettings.embedding_model || '',
+                embedding_api_key: '', // Will be populated from KB server config
                 collection_defaults: kbSettings.collection_defaults || {
                     chunk_size: 1000,
                     chunk_overlap: 200
                 }
             };
+            
+            // Fetch embeddings config from KB server
+            await fetchKbEmbeddingsConfig();
         } catch (err) {
             console.error('Error fetching KB settings:', err);
             if (axios.isAxiosError(err) && err.response?.data?.detail) {
@@ -1583,6 +1711,340 @@
         }
     }
 
+        /**
+     * Fetch the current embeddings configuration from the KB server
+     */
+    async function fetchKbEmbeddingsConfig() {
+        isLoadingKbEmbeddingsConfig = true;
+        kbEmbeddingsConfigError = null;
+
+        try {
+            if (!kbSettings.url) {
+                kbEmbeddingsConfig = {
+                    vendor: '',
+                    model: '',
+                    api_endpoint: '',
+                    apikey_configured: false,
+                    apikey_masked: '',
+                    config_source: 'env'
+                };
+                return;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`), {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            kbEmbeddingsConfig = response.data;
+
+            // Initialize embedding API key form field with masked key if configured
+            if (kbEmbeddingsConfig.apikey_configured && kbEmbeddingsConfig.apikey_masked) {
+                // Store the masked key for display purposes and dirty tracking
+                newKbSettings.embedding_api_key = kbEmbeddingsConfig.apikey_masked;
+                embeddingApiKeyOriginal = kbEmbeddingsConfig.apikey_masked;
+            } else {
+                // No key configured
+                newKbSettings.embedding_api_key = '';
+                embeddingApiKeyOriginal = '';
+            }
+            
+            // Reset dirty state and checkbox when loading fresh config
+            embeddingApiKeyDirty = false;
+            applyToAllKbChecked = false;
+
+        } catch (err) {
+            console.error('Error fetching KB embeddings config:', err);
+            // Don't show error to user - this is optional configuration
+            kbEmbeddingsConfigError = null;
+            kbEmbeddingsConfig = {
+                vendor: '',
+                model: '',
+                api_endpoint: '',
+                apikey_configured: false,
+                apikey_masked: '',
+                config_source: 'env'
+            };
+        } finally {
+            isLoadingKbEmbeddingsConfig = false;
+        }
+    }
+
+    /**
+     * Update the embeddings configuration on the KB server
+     */
+    /**
+     * Update the embeddings configuration on the KB server.
+     * @param {{ applyToAll?: boolean }} [options]
+     */
+    async function updateKbEmbeddingsConfig({ applyToAll = false } = {}) {
+        kbEmbeddingsConfigError = null;
+        isUpdatingKbEmbeddingsConfig = true;
+
+        try {
+            if (!newKbSettings.url && !kbSettings.url) {
+                throw new Error('KB server URL is not configured');
+            }
+
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Build payload with only provided fields
+            /** @type {any} */
+            const payload = {};
+
+            if (newKbSettings.embedding_api_key &&
+                newKbSettings.embedding_api_key !== kbEmbeddingsConfig.apikey_masked) {
+                payload.apikey = newKbSettings.embedding_api_key;
+
+                // Add flag to apply to all KB collections only after explicit confirmation
+                if (applyToAll) {
+                    payload.apply_to_all_kb = true;
+                }
+            }
+
+            // Add other fields from current config to preserve them
+            if (kbEmbeddingsConfig.vendor) {
+                payload.vendor = kbEmbeddingsConfig.vendor;
+            }
+            if (kbEmbeddingsConfig.model) {
+                payload.model = kbEmbeddingsConfig.model;
+            }
+            if (kbEmbeddingsConfig.api_endpoint) {
+                payload.api_endpoint = kbEmbeddingsConfig.api_endpoint;
+            }
+
+            // Use LAMB backend proxy endpoint instead of calling KB server directly
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.put(
+                getApiUrl(`/org-admin/settings/kb/embeddings-config${params}`),
+                payload,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            // Refresh the config to get updated state
+            await fetchKbEmbeddingsConfig();
+
+            // Capture bulk update result for UI display
+            if (response.data?.bulk_update) {
+                const bulk = response.data.bulk_update;
+                applyToAllKbResult = `Updated ${bulk.updated} of ${bulk.total} collections`;
+            } else {
+                applyToAllKbResult = null;
+            }
+
+            // Show success message
+            kbSettingsSuccess = true;
+            
+            // Handle bulk update results
+            if (response.data?.bulk_update) {
+                const bulkResult = response.data.bulk_update;
+                const message = `KB server embeddings configuration updated. ` +
+                    (bulkResult.updated > 0 
+                        ? `Applied new API key to ${bulkResult.updated} of ${bulkResult.total} knowledge base collections.` 
+                        : 'No existing collections needed updating.');
+                addPendingChange(message);
+            } else {
+                addPendingChange('KB server embeddings configuration updated');
+            }
+
+            // Reset apply-to-all checkbox after a successful save
+            applyToAllKbChecked = false;
+
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                kbSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error updating KB embeddings config:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                kbEmbeddingsConfigError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                kbEmbeddingsConfigError = err.message;
+            } else {
+                kbEmbeddingsConfigError = 'Failed to update embeddings configuration. Make sure the KB server is accessible.';
+            }
+        } finally {
+            isUpdatingKbEmbeddingsConfig = false;
+        }
+    }
+
+    async function saveKbEmbeddingsConfig() {
+        // If user requested a bulk update, require explicit confirmation.
+        if (applyToAllKbChecked && embeddingApiKeyDirty) {
+            showApplyToAllKbConfirmation = true;
+            return;
+        }
+
+        await updateKbEmbeddingsConfig({ applyToAll: false });
+    }
+
+    async function confirmApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
+        isApplyingToAllKb = true;
+        try {
+            await updateKbEmbeddingsConfig({ applyToAll: true });
+        } finally {
+            isApplyingToAllKb = false;
+        }
+    }
+
+    function cancelApplyToAllKb() {
+        showApplyToAllKbConfirmation = false;
+    }
+
+    // LTI Creator Settings functions
+    async function fetchLtiCreatorSettings() {
+        if (isLoadingLtiCreatorSettings) return;
+        isLoadingLtiCreatorSettings = true;
+        ltiCreatorSettingsError = null;
+        ltiCreatorSettingsSuccess = false;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const response = await axios.get(getApiUrl(`/org-admin/settings/lti-creator${params}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            ltiCreatorSettings = response.data;
+            
+            // Initialize edit form
+            newLtiCreatorSettings = {
+                oauth_consumer_key: ltiCreatorSettings.oauth_consumer_key || '',
+                oauth_consumer_secret: '', // Never populate with actual secret
+                enabled: ltiCreatorSettings.enabled ?? true
+            };
+        } catch (err) {
+            console.error('Error fetching LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to fetch LTI creator settings.';
+            }
+        } finally {
+            isLoadingLtiCreatorSettings = false;
+        }
+    }
+
+    async function saveLtiCreatorSettings() {
+        ltiCreatorSettingsError = null;
+        ltiCreatorSettingsSuccess = false;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            // Validation
+            if (!ltiCreatorSettings.has_key) {
+                // Creating new key - require both key and secret
+                if (!newLtiCreatorSettings.oauth_consumer_key || !newLtiCreatorSettings.oauth_consumer_secret) {
+                    ltiCreatorSettingsError = 'Both Consumer Key and Consumer Secret are required to create a new LTI key.';
+                    return;
+                }
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            const payload = {
+                oauth_consumer_key: newLtiCreatorSettings.oauth_consumer_key || undefined,
+                oauth_consumer_secret: newLtiCreatorSettings.oauth_consumer_secret || undefined,
+                enabled: newLtiCreatorSettings.enabled
+            };
+
+            await axios.put(getApiUrl(`/org-admin/settings/lti-creator${params}`), payload, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            // Refresh settings
+            await fetchLtiCreatorSettings();
+            
+            // Show success message
+            ltiCreatorSettingsSuccess = true;
+            
+            // Clear secret field after save
+            newLtiCreatorSettings.oauth_consumer_secret = '';
+            
+            // Clear success message after 3 seconds
+            setTimeout(() => {
+                ltiCreatorSettingsSuccess = false;
+            }, 3000);
+
+        } catch (err) {
+            console.error('Error saving LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to save LTI creator settings.';
+            }
+        }
+    }
+
+    async function deleteLtiCreatorSettings() {
+        ltiCreatorSettingsError = null;
+        
+        try {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
+            const params = targetOrgSlug ? `?org=${targetOrgSlug}` : '';
+            await axios.delete(getApiUrl(`/org-admin/settings/lti-creator${params}`), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            // Refresh settings
+            await fetchLtiCreatorSettings();
+            
+            // Reset form
+            newLtiCreatorSettings = {
+                oauth_consumer_key: '',
+                oauth_consumer_secret: '',
+                enabled: true
+            };
+
+        } catch (err) {
+            console.error('Error deleting LTI creator settings:', err);
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                ltiCreatorSettingsError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                ltiCreatorSettingsError = err.message;
+            } else {
+                ltiCreatorSettingsError = 'Failed to delete LTI creator settings.';
+            }
+        }
+    }
+
     async function updateSignupSettings() {
         // Reset error and success states
         signupSettingsError = null;
@@ -1714,12 +2176,16 @@
         targetOrgSlug = $page.url.searchParams.get('org');
 
         // Load initial data based on view
+        // Always fetch dashboard data for the org header bar
+        fetchDashboard();
         if (currentView === 'dashboard') {
-            fetchDashboard();
+            // dashboard already fetched above
         } else if (currentView === 'users') {
             fetchUsers();
         } else if (currentView === 'assistants') {
             fetchAssistants();
+        } else if (currentView === 'lti-activities') {
+            fetchLtiActivities();
         } else if (currentView === 'settings') {
             fetchSettings();
         }
@@ -1770,16 +2236,16 @@
                             Users
                         </button>
                         <button
-                            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'bulk-import' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-                            onclick={showBulkImport}
-                        >
-                            Bulk Import
-                        </button>
-                        <button
                             class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'assistants' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
                             onclick={showAssistants}
                         >
                             Assistants Access
+                        </button>
+                        <button
+                            class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'lti-activities' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                            onclick={showLtiActivities}
+                        >
+                            LTI Activities
                         </button>
                         <button
                             class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200 {currentView === 'settings' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
@@ -1855,15 +2321,32 @@
                                         </p>
                                     </div>
                                 {:else}
-                                    <div class="mt-4 bg-yellow-600 bg-opacity-50 rounded-md p-3">
-                                        <p class="text-yellow-100 text-sm">
-                                            <svg class="inline h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                    <div class="mt-4 bg-white bg-opacity-90 rounded-md p-3">
+                                        <p class="text-blue-900 text-sm">
+                                            <svg class="inline h-4 w-4 mr-1 text-blue-800 opacity-75" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
                                             </svg>
                                             No signup key configured. Users cannot self-register for this organization.
                                         </p>
                                     </div>
                                 {/if}
+                                <div class="mt-3 bg-white bg-opacity-90 rounded-md p-3">
+                                    {#if dashboardData.settings.lti_creator_enabled}
+                                        <p class="text-blue-900 text-sm">
+                                            <svg class="inline h-4 w-4 mr-1 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            LTI Creator access is enabled. Users can join this organization via LTI from their LMS.
+                                        </p>
+                                    {:else}
+                                        <p class="text-blue-900 text-sm">
+                                            <svg class="inline h-4 w-4 mr-1 text-blue-800 opacity-75" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            LTI Creator access is not configured. Configure it in Settings to allow LMS-based signup.
+                                        </p>
+                                    {/if}
+                                </div>
                             </div>
                         </div>
                     {/if}
@@ -1875,156 +2358,200 @@
                         </div>
                     {:else if dashboardData}
                         <!-- Organization Stats -->
-                        <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
-                            <div class="px-4 py-5 sm:p-6">
-                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                    Organization Statistics
-                                </h3>
-                                <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                                    <!-- Total Users -->
-                                    <div class="bg-blue-50 overflow-hidden shadow rounded-lg">
-                                        <div class="p-5">
-                                            <div class="flex items-center">
-                                                <div class="flex-shrink-0">
-                                                    <svg class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                                                    </svg>
-                                                </div>
-                                                <div class="ml-5 w-0 flex-1">
-                                                    <dl>
-                                                        <dt class="text-sm font-medium text-gray-500 truncate">
-                                                            Total Users
-                                                        </dt>
-                                                        <dd class="text-lg font-medium text-gray-900">
-                                                            {dashboardData.stats.total_users}
-                                                        </dd>
-                                                    </dl>
-                                                </div>
-                                            </div>
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+                            <!-- Users Card (clickable) -->
+                            <button
+                                class="bg-white overflow-hidden shadow rounded-lg text-left hover:shadow-md hover:ring-2 hover:ring-brand/30 transition-all cursor-pointer"
+                                onclick={() => showUsers()}
+                            >
+                                <div class="p-5">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 bg-blue-100 rounded-lg p-3">
+                                            <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                                            </svg>
+                                        </div>
+                                        <div class="ml-4 flex-1">
+                                            <dt class="text-sm font-medium text-gray-500">Users</dt>
+                                            <dd class="text-2xl font-semibold text-gray-900">{dashboardData.stats.total_users}</dd>
                                         </div>
                                     </div>
-
-                                    <!-- Active Users -->
-                                    <div class="bg-green-50 overflow-hidden shadow rounded-lg">
-                                        <div class="p-5">
-                                            <div class="flex items-center">
-                                                <div class="flex-shrink-0">
-                                                    <svg class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                </div>
-                                                <div class="ml-5 w-0 flex-1">
-                                                    <dl>
-                                                        <dt class="text-sm font-medium text-gray-500 truncate">
-                                                            Active Users
-                                                        </dt>
-                                                        <dd class="text-lg font-medium text-gray-900">
-                                                            {dashboardData.stats.active_users}
-                                                        </dd>
-                                                    </dl>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Settings Status -->
-                                    <div class="bg-yellow-50 overflow-hidden shadow rounded-lg">
-                                        <div class="p-5">
-                                            <div class="flex items-center">
-                                                <div class="flex-shrink-0">
-                                                    <svg class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                    </svg>
-                                                </div>
-                                                <div class="ml-5 w-0 flex-1">
-                                                    <dl>
-                                                        <dt class="text-sm font-medium text-gray-500 truncate">
-                                                            Configuration
-                                                        </dt>
-                                                        <dd class="text-lg font-medium text-gray-900">
-                                                            {#if dashboardData.api_status}
-                                                                {#if dashboardData.api_status.overall_status === 'working'}
-                                                                    <span class="text-green-600">✓ APIs Working</span>
-                                                                    <div class="text-sm text-gray-500 mt-1">
-                                                                        {dashboardData.api_status.summary.total_models} models available
-                                                                    </div>
-                                                                {:else if dashboardData.api_status.overall_status === 'partial'}
-                                                                    <span class="text-yellow-600">⚠ Partial Setup</span>
-                                                                    <div class="text-sm text-gray-500 mt-1">
-                                                                        {dashboardData.api_status.summary.working_count}/{dashboardData.api_status.summary.configured_count} providers working
-                                                                    </div>
-                                                                {:else if dashboardData.api_status.overall_status === 'error'}
-                                                                    <span class="text-red-600">❌ API Errors</span>
-                                                                    <div class="text-sm text-gray-500 mt-1">
-                                                                        Check configuration
-                                                                    </div>
-                                                                {:else}
-                                                                    <span class="text-gray-600">⚠ Not Configured</span>
-                                                                {/if}
-                                                            {:else}
-                                                            {dashboardData.settings.api_configured ? '✓' : '⚠'} API Setup
-                                                            {/if}
-                                                        </dd>
-                                                    </dl>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Enabled Models per Connector -->
-                                        {#if dashboardData.api_status && Object.keys(dashboardData.api_status.providers).length > 0}
-                                            <div class="mt-6">
-                                                <h4 class="text-sm font-medium text-gray-900 mb-3">Enabled Models by Connector</h4>
-                                                <div class="space-y-3">
-                                                    {#each Object.entries(dashboardData.api_status.providers) as [providerName, providerStatus]}
-                                                        <div class="bg-gray-50 rounded-lg p-3">
-                                                            <div class="flex items-center justify-between mb-2">
-                                                                <h5 class="font-medium text-gray-900 capitalize">{providerName}</h5>
-                                                                <span class="px-2 py-1 text-xs rounded-full {
-                                                                    providerStatus.status === 'working' ? 'bg-green-100 text-green-800' :
-                                                                    'bg-gray-100 text-gray-800'
-                                                                }">
-                                                                    {providerStatus.status}
-                                                                </span>
-                                                            </div>
-
-                                                            {#if providerStatus.enabled_models && providerStatus.enabled_models.length > 0}
-                                                                <div class="mb-2">
-                                                                    <div class="text-xs text-gray-600 mb-1">
-                                                                        <strong>{providerStatus.enabled_models.length}</strong> models enabled
-                                                                        {#if providerStatus.default_model}
-                                                                            <span class="text-brand">• Default: {providerStatus.default_model}</span>
-                                                                        {/if}
-                                                                    </div>
-                                                                    <div class="flex flex-wrap gap-1">
-                                                                        {#each providerStatus.enabled_models.slice(0, 8) as model}
-                                                                            <span class="inline-block px-2 py-1 text-xs bg-brand/10 text-brand rounded {
-                                                                                model === providerStatus.default_model ? 'ring-2 ring-brand' : ''
-                                                                            }">
-                                                                                {model}
-                                                                            </span>
-                                                                        {/each}
-                                                                        {#if providerStatus.enabled_models.length > 8}
-                                                                            <span class="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                                                                                +{providerStatus.enabled_models.length - 8} more
-                                                                            </span>
-                                                                        {/if}
-                                                                    </div>
-                                                                </div>
-                                                            {:else}
-                                                                <div class="text-xs text-gray-500 italic">
-                                                                    No models enabled
-                                                                </div>
-                                                            {/if}
-                                                        </div>
-                                                    {/each}
-                                                </div>
-                                            </div>
+                                    <div class="mt-3 flex items-center gap-4 text-sm">
+                                        <span class="text-green-600 font-medium">{dashboardData.stats.active_users} active</span>
+                                        {#if dashboardData.stats.disabled_users > 0}
+                                            <span class="text-gray-400">{dashboardData.stats.disabled_users} disabled</span>
                                         {/if}
                                     </div>
+                                    <div class="mt-2 text-xs text-brand font-medium">View users &rarr;</div>
+                                </div>
+                            </button>
+
+                            <!-- Assistants Card (clickable) -->
+                            <button
+                                class="bg-white overflow-hidden shadow rounded-lg text-left hover:shadow-md hover:ring-2 hover:ring-brand/30 transition-all cursor-pointer"
+                                onclick={() => showAssistants()}
+                            >
+                                <div class="p-5">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 bg-purple-100 rounded-lg p-3">
+                                            <svg class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                                            </svg>
+                                        </div>
+                                        <div class="ml-4 flex-1">
+                                            <dt class="text-sm font-medium text-gray-500">Assistants</dt>
+                                            <dd class="text-2xl font-semibold text-gray-900">{dashboardData.stats.total_assistants ?? 0}</dd>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 flex items-center gap-4 text-sm">
+                                        <span class="text-green-600 font-medium">{dashboardData.stats.published_assistants ?? 0} published</span>
+                                        {#if (dashboardData.stats.total_assistants ?? 0) - (dashboardData.stats.published_assistants ?? 0) > 0}
+                                            <span class="text-gray-400">{(dashboardData.stats.total_assistants ?? 0) - (dashboardData.stats.published_assistants ?? 0)} draft</span>
+                                        {/if}
+                                    </div>
+                                    <div class="mt-2 text-xs text-brand font-medium">View assistants &rarr;</div>
+                                </div>
+                            </button>
+
+                            <!-- LTI Activities Card (clickable) -->
+                            <button
+                                class="bg-white overflow-hidden shadow rounded-lg text-left hover:shadow-md hover:ring-2 hover:ring-brand/30 transition-all cursor-pointer"
+                                onclick={() => showLtiActivities()}
+                            >
+                                <div class="p-5">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 bg-orange-100 rounded-lg p-3">
+                                            <svg class="h-6 w-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-6.364-6.364L4.5 8.257m10.5.743l4.5-4.5" />
+                                            </svg>
+                                        </div>
+                                        <div class="ml-4 flex-1">
+                                            <dt class="text-sm font-medium text-gray-500">LTI Activities</dt>
+                                            <dd class="text-2xl font-semibold text-gray-900">{dashboardData.stats.total_lti_activities ?? 0}</dd>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 text-sm text-gray-500">
+                                        Active LMS integrations
+                                    </div>
+                                    <div class="mt-2 text-xs text-brand font-medium">View activities &rarr;</div>
+                                </div>
+                            </button>
+
+                            <!-- API Status Card -->
+                            <div class="bg-white overflow-hidden shadow rounded-lg">
+                                <div class="p-5">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 bg-green-100 rounded-lg p-3">
+                                            <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
+                                            </svg>
+                                        </div>
+                                        <div class="ml-4 flex-1">
+                                            <dt class="text-sm font-medium text-gray-500">API Status</dt>
+                                            <dd class="text-lg font-semibold">
+                                                {#if dashboardData.api_status}
+                                                    {#if dashboardData.api_status.overall_status === 'working'}
+                                                        <span class="text-green-600">Working</span>
+                                                    {:else if dashboardData.api_status.overall_status === 'partial'}
+                                                        <span class="text-yellow-600">Partial</span>
+                                                    {:else if dashboardData.api_status.overall_status === 'error'}
+                                                        <span class="text-red-600">Error</span>
+                                                    {:else}
+                                                        <span class="text-gray-500">Not Configured</span>
+                                                    {/if}
+                                                {:else}
+                                                    <span class="text-gray-500">Unknown</span>
+                                                {/if}
+                                            </dd>
+                                        </div>
+                                    </div>
+                                    {#if dashboardData.api_status}
+                                        <div class="mt-3 text-sm text-gray-500">
+                                            {dashboardData.api_status.summary.total_models} models available
+                                        </div>
+                                    {/if}
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Default Models -->
+                        {#if dashboardData.default_models}
+                            <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+                                <div class="px-4 py-5 sm:p-6">
+                                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Default Models</h3>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div class="border border-gray-200 rounded-lg p-4">
+                                            <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Global Default Model</div>
+                                            {#if dashboardData.default_models.global_default?.model}
+                                                <div class="text-sm font-semibold text-gray-900">{dashboardData.default_models.global_default.model}</div>
+                                                <div class="text-xs text-gray-500 mt-0.5">Provider: <span class="capitalize">{dashboardData.default_models.global_default.provider}</span></div>
+                                            {:else}
+                                                <div class="text-sm text-gray-400 italic">Not configured</div>
+                                            {/if}
+                                        </div>
+                                        <div class="border border-gray-200 rounded-lg p-4">
+                                            <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Small / Fast Model</div>
+                                            {#if dashboardData.default_models.small_fast?.model}
+                                                <div class="text-sm font-semibold text-gray-900">{dashboardData.default_models.small_fast.model}</div>
+                                                <div class="text-xs text-gray-500 mt-0.5">Provider: <span class="capitalize">{dashboardData.default_models.small_fast.provider}</span></div>
+                                            {:else}
+                                                <div class="text-sm text-gray-400 italic">Not configured</div>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
+
+                        <!-- Enabled Models per Connector -->
+                        {#if dashboardData.api_status && Object.keys(dashboardData.api_status.providers).length > 0}
+                            <div class="bg-white overflow-hidden shadow rounded-lg mb-6">
+                                <div class="px-4 py-5 sm:p-6">
+                                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Enabled Models by Connector</h3>
+                                    <div class="space-y-3">
+                                        {#each Object.entries(dashboardData.api_status.providers) as [providerName, providerStatus]}
+                                            <div class="bg-gray-50 rounded-lg p-4">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <h5 class="font-medium text-gray-900 capitalize">{providerName}</h5>
+                                                    <span class="px-2 py-1 text-xs rounded-full {
+                                                        providerStatus.status === 'working' ? 'bg-green-100 text-green-800' :
+                                                        'bg-gray-100 text-gray-800'
+                                                    }">
+                                                        {providerStatus.status}
+                                                    </span>
+                                                </div>
+                                                {#if providerStatus.enabled_models && providerStatus.enabled_models.length > 0}
+                                                    <div class="mb-1">
+                                                        <div class="text-xs text-gray-600 mb-1">
+                                                            <strong>{providerStatus.enabled_models.length}</strong> models enabled
+                                                            {#if providerStatus.default_model}
+                                                                <span class="text-brand">• Default: {providerStatus.default_model}</span>
+                                                            {/if}
+                                                        </div>
+                                                        <div class="flex flex-wrap gap-1">
+                                                            {#each providerStatus.enabled_models.slice(0, 8) as model}
+                                                                <span class="inline-block px-2 py-1 text-xs bg-brand/10 text-brand rounded {
+                                                                    model === providerStatus.default_model ? 'ring-2 ring-brand' : ''
+                                                                }">
+                                                                    {model}
+                                                                </span>
+                                                            {/each}
+                                                            {#if providerStatus.enabled_models.length > 8}
+                                                                <span class="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                                                                    +{providerStatus.enabled_models.length - 8} more
+                                                                </span>
+                                                            {/if}
+                                                        </div>
+                                                    </div>
+                                                {:else}
+                                                    <div class="text-xs text-gray-500 italic">No models enabled</div>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
 
                         <!-- Quick Settings -->
                         <div class="bg-white overflow-hidden shadow rounded-lg">
@@ -2128,6 +2655,7 @@
                                 >
                                     <option value="all">All Types</option>
                                     <option value="creator">Creator</option>
+                                    <option value="lti_creator">LTI Creator</option>
                                     <option value="end_user">End User</option>
                                 </select>
                             </div>
@@ -2276,9 +2804,19 @@
                                                 </td>
                                                 <!-- User Type -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {user.user_type === 'end_user' ? 'bg-purple-100 text-purple-800' : 'bg-brand/10 text-brand'}">
-                                                        {user.user_type === 'end_user' ? 'End User' : 'Creator'}
-                                                    </span>
+                                                    {#if user.auth_provider === 'lti_creator'}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                            LTI Creator
+                                                        </span>
+                                                    {:else if user.user_type === 'end_user'}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                            End User
+                                                        </span>
+                                                    {:else}
+                                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-brand/10 text-brand">
+                                                            Creator
+                                                        </span>
+                                                    {/if}
                                                 </td>
                                                 <!-- Status -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
@@ -2300,17 +2838,28 @@
                                                 </td>
                                                 <!-- Actions -->
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    <!-- Change Password -->
-                                                    <button
-                                                        class="text-amber-600 hover:text-amber-800 mr-3"
-                                                        title="Change Password"
-                                                        aria-label="Change Password for {user.name}"
-                                                        onclick={() => openChangePasswordModal(user)}
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                                                        </svg>
-                                                    </button>
+                                                    <!-- Change Password (disabled for LTI Creator users) -->
+                                                    {#if user.auth_provider === 'lti_creator'}
+                                                        <span
+                                                            class="text-gray-400 mr-3 cursor-not-allowed"
+                                                            title="Password cannot be changed for LTI users"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                            </svg>
+                                                        </span>
+                                                    {:else}
+                                                        <button
+                                                            class="text-amber-600 hover:text-amber-800 mr-3"
+                                                            title="Change Password"
+                                                            aria-label="Change Password for {user.name}"
+                                                            onclick={() => openChangePasswordModal(user)}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                                                            </svg>
+                                                        </button>
+                                                    {/if}
                                                     
                                                     <!-- Enable/Disable Toggle -->
                                                     {#if user.enabled}
@@ -2385,6 +2934,26 @@
             <!-- Assistants Access View -->
             {#if currentView === 'assistants'}
                 <div class="mb-6">
+                    <!-- Organization Header for Assistants -->
+                    {#if dashboardData}
+                        <div class="bg-white border-l-4 border-brand shadow-sm rounded-lg mb-4">
+                            <div class="px-4 py-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h1 class="text-xl font-semibold text-gray-900">{dashboardData.organization.name}</h1>
+                                        <p class="text-sm text-gray-600">Assistants Access</p>
+                                    </div>
+                                    <div class="text-right text-sm text-gray-500">
+                                        {#if targetOrgSlug}
+                                            <span class="text-xs text-brand">System Admin View</span>
+                                        {/if}
+                                        <div>ID: {dashboardData.organization.slug}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+
                     <!-- Assistants Header -->
                     <div class="bg-white shadow-sm rounded-lg p-4 mb-6">
                         <div class="flex justify-between items-center">
@@ -2551,6 +3120,147 @@
                 </div>
             {/if}
 
+            <!-- LTI Activities View -->
+            {#if currentView === 'lti-activities'}
+                <div class="mb-6">
+                    <!-- Organization Header for LTI Activities -->
+                    {#if dashboardData}
+                        <div class="bg-white border-l-4 border-brand shadow-sm rounded-lg mb-4">
+                            <div class="px-4 py-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h1 class="text-xl font-semibold text-gray-900">{dashboardData.organization.name}</h1>
+                                        <p class="text-sm text-gray-600">LTI Activities</p>
+                                    </div>
+                                    <div class="text-right text-sm text-gray-500">
+                                        {#if targetOrgSlug}
+                                            <span class="text-xs text-brand">System Admin View</span>
+                                        {/if}
+                                        <div>ID: {dashboardData.organization.slug}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+
+                    <div class="bg-white overflow-hidden shadow rounded-lg">
+                        <div class="px-4 py-5 sm:p-6">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900">LTI Activities</h3>
+                                <button
+                                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-1.5 px-3 rounded text-sm focus:outline-none focus:shadow-outline"
+                                    onclick={fetchLtiActivities}
+                                >
+                                    Refresh
+                                </button>
+                            </div>
+                            <p class="text-sm text-gray-600 mb-4">
+                                Manage LTI activities configured through the unified LTI endpoint. Each activity represents
+                                an LTI placement in an LMS course with its own set of assistants.
+                            </p>
+
+                            {#if isLoadingLtiActivities}
+                                <div class="flex items-center justify-center py-8">
+                                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                    <span class="text-gray-500">Loading activities...</span>
+                                </div>
+                            {:else}
+                                {#if ltiActivitiesError}
+                                    <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                        <strong class="font-bold">Error: </strong>
+                                        <span class="block sm:inline">{ltiActivitiesError}</span>
+                                    </div>
+                                {/if}
+                                {#if ltiActivitiesSuccess}
+                                    <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                        <span>{ltiActivitiesSuccess}</span>
+                                    </div>
+                                {/if}
+
+                                {#if ltiActivities.length === 0}
+                                    <div class="text-center py-8">
+                                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                        </svg>
+                                        <h3 class="mt-2 text-sm font-medium text-gray-900">No LTI activities yet</h3>
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            Activities are created when an instructor launches the unified LTI tool for the first time.
+                                        </p>
+                                    </div>
+                                {:else}
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full divide-y divide-gray-200">
+                                            <thead class="bg-gray-50">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assistants</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Options</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="bg-white divide-y divide-gray-200">
+                                                {#each ltiActivities as activity}
+                                                    <tr class="hover:bg-gray-50">
+                                                        <td class="px-4 py-3">
+                                                            <div class="text-sm font-medium text-gray-900">
+                                                                {activity.activity_name || '(unnamed)'}
+                                                            </div>
+                                                            <div class="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={activity.resource_link_id}>
+                                                                {activity.resource_link_id}
+                                                            </div>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-gray-700">
+                                                            {activity.context_title || activity.context_id || '-'}
+                                                        </td>
+                                                        <td class="px-4 py-3">
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                {activity.assistant_count || 0} assistant{(activity.assistant_count || 0) !== 1 ? 's' : ''}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-gray-700">
+                                                            {activity.owner_name || activity.owner_email || activity.configured_by_name || activity.configured_by_email || '-'}
+                                                        </td>
+                                                        <td class="px-4 py-3">
+                                                            {#if activity.chat_visibility_enabled}
+                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700" title="Instructors can view anonymized chat transcripts">
+                                                                    Chat visible
+                                                                </span>
+                                                            {:else}
+                                                                <span class="text-xs text-gray-400">—</span>
+                                                            {/if}
+                                                        </td>
+                                                        <td class="px-4 py-3">
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {activity.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                                {activity.status}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-gray-500">
+                                                            {activity.created_at ? new Date(activity.created_at * 1000).toLocaleDateString() : '-'}
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm">
+                                                            <button
+                                                                class="text-sm font-medium {activity.status === 'active' ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}"
+                                                                onclick={() => toggleActivityStatus(activity)}
+                                                            >
+                                                                {activity.status === 'active' ? 'Disable' : 'Enable'}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                {/each}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {/if}
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
             <!-- Settings View -->
             {#if currentView === 'settings'}
                 <div class="mb-6">
@@ -2646,6 +3356,18 @@
                                         }}
                                     >
                                         Assistant Defaults
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 border-b-2 font-medium text-sm transition-colors duration-200 {settingsSubView === 'lti-creator' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+                                        onclick={() => { 
+                                            settingsSubView = 'lti-creator';
+                                            // Lazy load LTI creator settings only when tab is clicked
+                                            if (!ltiCreatorSettings.has_key && !isLoadingLtiCreatorSettings) {
+                                                fetchLtiCreatorSettings();
+                                            }
+                                        }}
+                                    >
+                                        LTI Creator
                                     </button>
                                 </nav>
                             </div>
@@ -3345,6 +4067,116 @@
                                     </div>
 
                                     {#if showKbAdvanced}
+                                    <!-- Embedding API Key (NEW - at top of advanced options) -->
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1">
+                                            <label for="kb-embedding-api-key" class="block text-sm font-medium text-gray-700">
+                                                Embedding API Key (Optional)
+                                                <span class="ml-1 text-gray-400 cursor-help" title="Set or update the API key used for embeddings (e.g., OpenAI). Requires KB Server connection to be configured first.">ℹ️</span>
+                                            </label>
+                                            {#if kbEmbeddingsConfig.apikey_configured || newKbSettings.embedding_api_key}
+                                            <button
+                                                type="button"
+                                                class="text-sm text-brand hover:text-brand-hover"
+                                                onclick={() => showEmbeddingApiKey = !showEmbeddingApiKey}
+                                            >
+                                                {showEmbeddingApiKey ? 'Hide' : 'Show'} API Key
+                                            </button>
+                                            {/if}
+                                        </div>
+
+                                        {#if !kbSettings.url}
+                                        <!-- Warning when KB server is not configured -->
+                                        <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <span class="text-blue-600 mr-2">ℹ️</span>
+                                                <div class="flex-1">
+                                                    <p class="text-sm text-blue-800 font-medium">KB Server Connection Required</p>
+                                                    <p class="mt-1 text-xs text-blue-700">
+                                                        Before setting an embedding API key, you must first configure and save the KB Server URL and API Key above, then click "Update KB Settings".
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+
+                                        <input
+                                            type={showEmbeddingApiKey ? 'text' : 'password'}
+                                            id="kb-embedding-api-key"
+                                            bind:value={newKbSettings.embedding_api_key}
+                                            class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-brand focus:border-brand disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            placeholder={kbEmbeddingsConfig.apikey_configured ? '••••••••••••••••••••••••••••' : 'Enter embedding API key'}
+                                            disabled={!kbSettings.url}
+                                            oninput={() => {
+                                                kbTestResult = null;
+                                                // Auto-show API key when user starts typing
+                                                if (newKbSettings.embedding_api_key && !showEmbeddingApiKey) {
+                                                    showEmbeddingApiKey = true;
+                                                }
+                                                // Track if field is dirty (different from original)
+                                                embeddingApiKeyDirty = newKbSettings.embedding_api_key !== embeddingApiKeyOriginal;
+                                            }}
+                                        >
+                                        <p class="mt-1 text-sm text-gray-500">
+                                            {#if kbEmbeddingsConfig.apikey_configured}
+                                                API key is currently set on KB server ({kbEmbeddingsConfig.config_source === 'file' ? 'persisted config' : 'from env vars'}). {showEmbeddingApiKey ? 'You can view it above.' : 'Click "Show API Key" to view or leave empty to keep existing.'}
+                                            {:else}
+                                                Enter the API key for embeddings service (e.g., OpenAI). This will be set on the KB server.
+                                            {/if}
+                                        </p>
+                                        
+                                        <!-- Conditional: Bulk Update Checkbox (only show when key is dirty) -->
+                                        {#if embeddingApiKeyDirty}
+                                        <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                            <div class="flex items-start">
+                                                <input
+                                                    id="apply-to-all-kb"
+                                                    type="checkbox"
+                                                    bind:checked={applyToAllKbChecked}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded mt-0.5"
+                                                >
+                                                <div class="ml-3">
+                                                    <label for="apply-to-all-kb" class="block text-sm font-medium text-gray-900 cursor-pointer">
+                                                        Apply this key to all existing knowledge bases in this organization
+                                                    </label>
+                                                    <p class="mt-1 text-xs text-yellow-700 flex items-start">
+                                                        <span class="mr-1">⚠️</span>
+                                                        <span>This will update the embedding API key for all knowledge base collections. Use this when rotating API keys.</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/if}
+                                        
+                                        <div class="mt-2 flex gap-2">
+                                            <button
+                                                type="button"
+                                                onclick={saveKbEmbeddingsConfig}
+                                                class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={isUpdatingKbEmbeddingsConfig || !newKbSettings.embedding_api_key || !kbSettings.url}
+                                                title={!kbSettings.url ? 'Please save KB Server connection first' : !newKbSettings.embedding_api_key ? 'Please enter an API key' : 'Save embedding API key to KB server'}
+                                            >
+                                                {isUpdatingKbEmbeddingsConfig ? '🔄 Saving...' : '💾 Save to KB Server'}
+                                            </button>
+                                            {#if kbEmbeddingsConfig.config_source === 'file'}
+                                                <button
+                                                    type="button"
+                                                    class="text-sm text-gray-500 hover:text-gray-700 underline"
+                                                    onclick={() => { showResetKbConfigModal = true; }}
+                                                >
+                                                    Reset to Env
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        {#if kbEmbeddingsConfigError}
+                                            <p class="mt-1 text-sm text-red-600">{kbEmbeddingsConfigError}</p>
+                                        {/if}
+
+                                        {#if applyToAllKbResult}
+                                            <p class="mt-2 text-sm text-green-700">{applyToAllKbResult}</p>
+                                        {/if}
+                                    </div>
+
                                     <!-- Embedding Model -->
                                     <div>
                                         <label for="kb-embedding-model" class="block text-sm font-medium text-gray-700">Embedding Model (Optional)</label>
@@ -3472,264 +4304,226 @@
                             </div>
                         </div>
                         {/if}
+
+                        <!-- LTI Creator Settings Tab -->
+                        {#if settingsSubView === 'lti-creator'}
+                        <div class="bg-white overflow-hidden shadow rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">LTI Creator Access</h3>
+                                <p class="text-sm text-gray-600 mb-4">
+                                    Configure LTI-based login for the Creator Interface. This allows educators to access LAMB
+                                    directly from their LMS (e.g., Moodle) without needing separate credentials.
+                                </p>
+
+                                <!-- Loading State -->
+                                {#if isLoadingLtiCreatorSettings}
+                                    <div class="flex items-center justify-center py-8">
+                                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                                        <span class="text-gray-500">Loading LTI settings...</span>
+                                    </div>
+                                {:else}
+                                    <!-- Error Message -->
+                                    {#if ltiCreatorSettingsError}
+                                        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Error: </strong>
+                                            <span class="block sm:inline">{ltiCreatorSettingsError}</span>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Success Message -->
+                                    {#if ltiCreatorSettingsSuccess}
+                                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                                            <strong class="font-bold">Success! </strong>
+                                            <span class="block sm:inline">LTI creator settings saved successfully.</span>
+                                        </div>
+                                    {/if}
+
+                                    <!-- Current Status -->
+                                    <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                                        <h4 class="text-sm font-medium text-gray-700 mb-2">Current Status</h4>
+                                        {#if ltiCreatorSettings.has_key}
+                                            <div class="flex items-center mb-2">
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {ltiCreatorSettings.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                                    {ltiCreatorSettings.enabled ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </div>
+                                            <p class="text-sm text-gray-600">
+                                                <strong>Consumer Key:</strong> <code class="bg-gray-100 px-1 rounded">{ltiCreatorSettings.oauth_consumer_key}</code>
+                                            </p>
+                                            {#if ltiCreatorSettings.launch_url}
+                                                <p class="text-sm text-gray-600 mt-1">
+                                                    <strong>Launch URL:</strong> <code class="bg-gray-100 px-1 rounded text-xs">{ltiCreatorSettings.launch_url}</code>
+                                                </p>
+                                            {/if}
+                                        {:else}
+                                            <p class="text-sm text-gray-500 italic">No LTI creator key configured yet.</p>
+                                        {/if}
+                                    </div>
+
+                                    <!-- Configuration Form -->
+                                    <div class="space-y-4">
+                                        <!-- Enable/Disable Toggle -->
+                                        {#if ltiCreatorSettings.has_key}
+                                            <div class="flex items-center">
+                                                <input
+                                                    id="lti-creator-enabled"
+                                                    type="checkbox"
+                                                    bind:checked={newLtiCreatorSettings.enabled}
+                                                    class="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded"
+                                                >
+                                                <label for="lti-creator-enabled" class="ml-2 block text-sm text-gray-700">
+                                                    Enable LTI Creator Access
+                                                </label>
+                                            </div>
+                                        {/if}
+
+                                        <!-- Consumer Key -->
+                                        <div>
+                                            <label for="lti-consumer-key" class="block text-sm font-medium text-gray-700">
+                                                OAuth Consumer Key
+                                            </label>
+                                            <input
+                                                id="lti-consumer-key"
+                                                type="text"
+                                                bind:value={newLtiCreatorSettings.oauth_consumer_key}
+                                                placeholder="e.g., myorg_creator"
+                                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                            >
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                Must be unique across all organizations. Recommended format: <code>{dashboardData?.organization?.slug || 'orgslug'}_creator</code>
+                                            </p>
+                                        </div>
+
+                                        <!-- Consumer Secret -->
+                                        <div>
+                                            <label for="lti-consumer-secret" class="block text-sm font-medium text-gray-700">
+                                                OAuth Consumer Secret
+                                            </label>
+                                            <div class="relative mt-1">
+                                                <input
+                                                    id="lti-consumer-secret"
+                                                    type={showLtiCreatorSecret && newLtiCreatorSettings.oauth_consumer_secret ? 'text' : 'password'}
+                                                    bind:value={newLtiCreatorSettings.oauth_consumer_secret}
+                                                    placeholder={ltiCreatorSettings.has_key ? '••••••••  (leave blank to keep current)' : 'Enter a strong secret key'}
+                                                    class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 {newLtiCreatorSettings.oauth_consumer_secret ? 'pr-10' : ''} focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
+                                                >
+                                                {#if newLtiCreatorSettings.oauth_consumer_secret}
+                                                    <button
+                                                        type="button"
+                                                        onclick={() => showLtiCreatorSecret = !showLtiCreatorSecret}
+                                                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                                    >
+                                                        {#if showLtiCreatorSecret}
+                                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                            </svg>
+                                                        {:else}
+                                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                            </svg>
+                                                        {/if}
+                                                    </button>
+                                                {/if}
+                                            </div>
+                                            <p class="mt-1 text-xs text-gray-500">
+                                                Use a secure, random string. This will be used to sign LTI requests.
+                                            </p>
+                                        </div>
+
+                                        <!-- LTI Information Box -->
+                                        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
+                                            <h4 class="text-sm font-medium text-blue-800 mb-2">Setting up LTI in your LMS</h4>
+                                            <ul class="text-xs text-blue-700 space-y-1">
+                                                <li>1. In your LMS, create a new External Tool (LTI 1.1)</li>
+                                                <li>2. Set the <strong>Launch URL</strong> to: <code class="bg-blue-100 px-1 rounded">{ltiCreatorSettings.launch_url || '/lamb/v1/lti_creator/launch'}</code></li>
+                                                <li>3. Enter the <strong>Consumer Key</strong> and <strong>Consumer Secret</strong> from above</li>
+                                                <li>4. Users who access via LTI will automatically get creator accounts</li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- Action Buttons -->
+                                        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                                            <button
+                                                class="text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors {ltiCreatorSettingsDirty ? 'bg-brand hover:bg-brand-dark' : 'bg-gray-300 cursor-not-allowed'}"
+                                                onclick={saveLtiCreatorSettings}
+                                                disabled={!ltiCreatorSettingsDirty}
+                                            >
+                                                {ltiCreatorSettings.has_key ? 'Update LTI Settings' : 'Create LTI Key'}
+                                            </button>
+                                            {#if ltiCreatorSettings.has_key}
+                                                <button
+                                                    class="text-red-600 hover:text-red-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                                    onclick={deleteLtiCreatorSettings}
+                                                >
+                                                    Delete LTI Key
+                                                </button>
+                                            {/if}
+                                        </div>
+
+                                        <!-- Security Note -->
+                                        <div class="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+                                            <p class="text-xs text-yellow-700">
+                                                <strong>Note:</strong> LTI creator users cannot change their passwords (they authenticate via LTI).
+                                                They are identified by their LMS user ID and can access LAMB from any LTI instance on their LMS.
+                                                LTI creator users can be promoted to organization admin by a system administrator.
+                                            </p>
+                                        </div>
+                                    </div>
+                                {/if}
+                            </div>
+                        </div>
+                        {/if}
                     {/if}
                 </div>
             {/if}
 
-            <!-- Bulk Import View -->
-            {#if currentView === 'bulk-import'}
-                <div class="mb-6">
-                    <p class="text-gray-500">Bulk user import feature coming soon...</p>
-                    <!-- <BulkUserImport /> -->
-                </div>
-            {/if}
         </div>
     </main>
 </div>
 
-<!-- Create User Modal -->
-{#if isCreateUserModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Create New User
-                </h3>
-                
-                {#if createUserSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">User created successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleCreateUser}>
-                        {#if createUserError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{createUserError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="email" class="block text-gray-700 text-sm font-bold mb-2">
-                                Email *
-                            </label>
-                            <input 
-                                type="email" 
-                                id="email" 
-                                name="email"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.email} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="name" class="block text-gray-700 text-sm font-bold mb-2">
-                                Name *
-                            </label>
-                            <input 
-                                type="text" 
-                                id="name" 
-                                name="name"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.name} 
-                                required 
-                            />
-                        </div>
-                        
-                        <div class="mb-4 text-left">
-                            <label for="password" class="block text-gray-700 text-sm font-bold mb-2">
-                                Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="password" 
-                                name="password"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.password} 
-                                required 
-                            />
-                        </div>
-
-                        <div class="mb-4 text-left">
-                            <label for="user_type" class="block text-gray-700 text-sm font-bold mb-2">
-                                User Type
-                            </label>
-                            <select 
-                                id="user_type" 
-                                name="user_type"
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={newUser.user_type}
-                            >
-                                <option value="creator">Creator (Can create assistants)</option>
-                                <option value="end_user">End User (Redirects to Open WebUI)</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-6 text-left">
-                            <div class="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="enabled" 
-                                    name="enabled"
-                                    bind:checked={newUser.enabled}
-                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label for="enabled" class="ml-2 block text-sm text-gray-900">
-                                    User enabled
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeCreateUserModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isCreatingUser}
-                            >
-                                {#if isCreatingUser}
-                                    Creating...
-                                {:else}
-                                    Create User
-                                {/if}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Change Password Modal -->
-{#if isChangePasswordModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                    Change Password
-                </h3>
-                <p class="text-sm text-gray-500 mt-1">
-                    Set a new password for {passwordChangeData.user_name} ({passwordChangeData.user_email})
-                </p>
-                
-                {#if changePasswordSuccess}
-                    <div class="mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">Password changed successfully!</span>
-                    </div>
-                {:else}
-                    <form class="mt-4" onsubmit={handleChangePassword}>
-                        {#if changePasswordError}
-                            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                                <span class="block sm:inline">{changePasswordError}</span>
-                            </div>
-                        {/if}
-                        
-                        <div class="mb-4 text-left">
-                            <label for="new-password" class="block text-gray-700 text-sm font-bold mb-2">
-                                New Password *
-                            </label>
-                            <input 
-                                type="password" 
-                                id="new-password" 
-                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" 
-                                bind:value={passwordChangeData.new_password} 
-                                required 
-                                autocomplete="new-password"
-                                minlength="8"
-                            />
-                            <p class="text-gray-500 text-xs italic mt-1">
-                                At least 8 characters recommended
-                            </p>
-                        </div>
-                        
-                        <div class="flex items-center justify-between">
-                            <button 
-                                type="button" 
-                                onclick={closeChangePasswordModal}
-                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded focus:outline-none focus:shadow-outline" 
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                class="bg-brand hover:bg-brand-hover text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
-                                disabled={isChangingPassword}
-                            >
-                                {isChangingPassword ? 'Changing...' : 'Change Password'}
-                            </button>
-                        </div>
-                    </form>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Disable User Modal (formerly Delete User Modal) -->
-{#if isDeleteUserModalOpen && userToDelete}
+<!-- Apply Embedding Key To All KBs Confirmation Modal -->
+{#if showApplyToAllKbConfirmation}
     <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
         <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <!-- Warning Icon -->
                 <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
                     <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                 </div>
-                
-                <!-- Modal Header -->
+
                 <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable User Account
+                    Apply embedding API key to all knowledge bases?
                 </h3>
-                
-                <!-- Modal Content -->
+
                 <div class="mt-4 text-center">
                     <p class="text-sm text-gray-600">
-                        Are you sure you want to disable the account for
-                    </p>
-                    <p class="text-base font-semibold text-gray-900 mt-2">
-                        {userToDelete.name}
-                    </p>
-                    <p class="text-sm text-gray-600 mt-1">
-                        ({userToDelete.email})
+                        This will update the embedding API key for <strong>all existing KB collections</strong> in this organization.
                     </p>
                     <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
                         <p class="text-sm text-gray-700">
-                            <strong>Note:</strong> The user will not be able to log in, but their resources (assistants, templates, rubrics) will remain accessible to other users.
+                            Use this when rotating keys. Model/vendor/endpoint are unchanged — only the key is updated.
                         </p>
                     </div>
                 </div>
 
-                {#if deleteUserError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{deleteUserError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
                 <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeDeleteUserModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
+                    <button
+                        type="button"
+                        onclick={cancelApplyToAllKb}
+                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
                     >
                         Cancel
                     </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmDeleteUser}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isDeletingUser}
+                    <button
+                        type="button"
+                        onclick={confirmApplyToAllKb}
+                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isApplyingToAllKb || isUpdatingKbEmbeddingsConfig}
                     >
-                        {isDeletingUser ? 'Disabling...' : 'Disable User'}
+                        {isApplyingToAllKb ? 'Applying...' : 'Apply to All KBs'}
                     </button>
                 </div>
             </div>
@@ -3737,123 +4531,92 @@
     </div>
 {/if}
 
-<!-- Bulk Disable Users Modal -->
-{#if isBulkDisableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Warning Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Disable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to disable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will not be able to log in, but their resources will remain accessible to other users.
-                        </p>
-                    </div>
-                </div>
+<!-- Create User Modal (Shared Component) -->
+<UserForm
+    isOpen={isCreateUserModalOpen}
+    isSuperAdmin={false}
+    {newUser}
+    isCreating={isCreatingUser}
+    error={createUserError}
+    success={createUserSuccess}
+    onSubmit={handleCreateUser}
+    onClose={closeCreateUserModal}
+    onUserChange={(user) => { newUser = user; }}
+/>
 
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkDisableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkDisable}
-                        class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Disabling...' : 'Disable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Change Password Modal (Shared Component) -->
+<ChangePasswordModal
+    isOpen={isChangePasswordModalOpen}
+    userName={passwordChangeData.user_name}
+    userEmail={passwordChangeData.user_email}
+    newPassword={passwordChangeData.new_password}
+    isChanging={isChangingPassword}
+    error={changePasswordError}
+    success={changePasswordSuccess}
+    onSubmit={handleChangePassword}
+    onClose={closeChangePasswordModal}
+    onPasswordChange={(pwd) => { passwordChangeData.new_password = pwd; }}
+/>
 
-<!-- Bulk Enable Users Modal -->
-{#if isBulkEnableModalOpen}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-        <div class="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
-            <div class="mt-3">
-                <!-- Success Icon -->
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                    <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                
-                <!-- Modal Header -->
-                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center mt-4">
-                    Enable Multiple Users
-                </h3>
-                
-                <!-- Modal Content -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-600">
-                        Are you sure you want to enable <strong>{selectedUsers.length}</strong> user{selectedUsers.length > 1 ? 's' : ''}?
-                    </p>
-                    <div class="mt-4 bg-green-50 border-l-4 border-green-400 p-3 rounded">
-                        <p class="text-sm text-gray-700">
-                            These users will be able to log in and access the system.
-                        </p>
-                    </div>
-                </div>
+<!-- Disable User Modal - from delete button (Shared Component) -->
+<UserActionModal
+    isOpen={isDeleteUserModalOpen && userToDelete !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToDelete}
+    isProcessing={isDeletingUser}
+    error={deleteUserError}
+    onConfirm={confirmDeleteUser}
+    onClose={closeDeleteUserModal}
+/>
 
-                {#if bulkActionError}
-                    <div class="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline">{bulkActionError}</span>
-                    </div>
-                {/if}
-                
-                <!-- Modal Actions -->
-                <div class="flex items-center justify-between mt-6 gap-3">
-                    <button 
-                        type="button" 
-                        onclick={closeBulkEnableModal}
-                        class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="button" 
-                        onclick={confirmBulkEnable}
-                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded focus:outline-none focus:shadow-outline disabled:opacity-50" 
-                        disabled={isBulkProcessing}
-                    >
-                        {isBulkProcessing ? 'Enabling...' : 'Enable Users'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
+<!-- Single User Disable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserDisableModal && userToToggle !== null}
+    action="disable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserDisable}
+    onClose={closeSingleUserModal}
+/>
+
+<!-- Single User Enable Modal - from toggle (Shared Component) -->
+<UserActionModal
+    isOpen={showSingleUserEnableModal && userToToggle !== null}
+    action="enable"
+    isBulk={false}
+    targetUser={userToToggle}
+    isProcessing={isTogglingUser}
+    error={toggleUserError}
+    onConfirm={confirmToggleUserEnable}
+    onClose={closeSingleUserModal}
+/>
+
+<!-- Bulk Disable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkDisableModalOpen}
+    action="disable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkDisable}
+    onClose={closeBulkDisableModal}
+/>
+
+<!-- Bulk Enable Users Modal (Shared Component) -->
+<UserActionModal
+    isOpen={isBulkEnableModalOpen}
+    action="enable"
+    isBulk={true}
+    selectedCount={selectedUsers.length}
+    isProcessing={isBulkProcessing}
+    error={bulkActionError}
+    onConfirm={confirmBulkEnable}
+    onClose={closeBulkEnableModal}
+/>
 
 <!-- Model Selection Modal -->
 {#if isModelModalOpen}
@@ -4026,13 +4789,6 @@
     </div>
 {/if}
 
-<!-- Assistant Access Manager Modal -->
-<AssistantAccessManager
-    assistant={selectedAssistant}
-    bind:show={showAccessModal}
-    on:close={closeAccessModal}
-    on:updated={handleAccessUpdated}
-/>
 
 <!-- Assistant Sharing Modal -->
 {#if showSharingModal && modalAssistant}
@@ -4043,6 +4799,20 @@
         onSaved={handleSharingModalSaved}
     />
 {/if}
+
+<!-- Reset KB Embeddings Config Modal -->
+<ConfirmationModal
+    bind:isOpen={showResetKbConfigModal}
+    title="Reset KB Configuration"
+    message="Reset to environment variables? This will remove the persisted configuration and use the defaults from your environment settings."
+    confirmText="Reset"
+    variant="warning"
+    onconfirm={async () => {
+        await updateKbEmbeddingsConfig();
+        showResetKbConfigModal = false;
+    }}
+    oncancel={() => { showResetKbConfigModal = false; }}
+/>
 
 <style>
     /* Custom scrollbar styles */

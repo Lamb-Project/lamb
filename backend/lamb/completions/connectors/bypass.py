@@ -59,7 +59,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 }]
             }
             yield f"data: {json.dumps(first_chunk)}\n\n"
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.017)  # 3x faster (was 0.05)
             
             # Simulate streaming response
             response_text = content  # Use the formatted content
@@ -78,7 +78,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                     }]
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
-                await asyncio.sleep(0.1)  # Simulate delay
+                await asyncio.sleep(0.033)  # 3x faster (was 0.1)
 
             # Send final chunk
             final_chunk = {

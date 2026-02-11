@@ -5,6 +5,7 @@
     import { user } from '$lib/stores/userStore';
     import { base } from '$app/paths';
     import CreateKnowledgeBaseModal from '$lib/components/modals/CreateKnowledgeBaseModal.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     import { createEventDispatcher } from 'svelte';
     
     // Import filtering/pagination components
@@ -58,6 +59,12 @@
     // Component references
     /** @type {CreateKnowledgeBaseModal} */
     let createModal;
+    
+    // State for the delete confirmation modal
+    let showDeleteModal = $state(false);
+    /** @type {{ id: string|null, name: string }} */
+    let deleteTarget = $state({ id: null, name: '' });
+    let isDeleting = $state(false);
     
     // Event dispatcher to communicate with parent
     const dispatch = createEventDispatcher();
@@ -222,23 +229,45 @@
         dispatch('view', { id });
     }
 
-    async function handleDeleteKnowledgeBase(kb) {
+    // Handler to open the delete confirmation modal
+    function handleDeleteKnowledgeBase(kb) {
         if (!kb) return;
-        if (!confirm($_('knowledgeBases.list.confirmDelete', { default: `Delete knowledge base "${kb.name}" and all its data? This cannot be undone.` }))) {
-            return;
-        }
+        deleteTarget = {
+            id: kb.id,
+            name: kb.name ?? ''
+        };
+        showDeleteModal = true;
+    }
+
+    // Handler to confirm deletion from the modal
+    async function handleDeleteConfirm() {
+        if (!deleteTarget.id || isDeleting) return;
+        isDeleting = true;
         try {
-            await deleteKnowledgeBase(kb.id);
+            await deleteKnowledgeBase(deleteTarget.id);
             // Optimistic removal
-            allKnowledgeBases = allKnowledgeBases.filter(k => k.id !== kb.id);
-            ownedKnowledgeBases = ownedKnowledgeBases.filter(k => k.id !== kb.id);
-            sharedKnowledgeBases = sharedKnowledgeBases.filter(k => k.id !== kb.id);
+            allKnowledgeBases = allKnowledgeBases.filter(k => k.id !== deleteTarget.id);
+            ownedKnowledgeBases = ownedKnowledgeBases.filter(k => k.id !== deleteTarget.id);
+            sharedKnowledgeBases = sharedKnowledgeBases.filter(k => k.id !== deleteTarget.id);
             applyFiltersAndPagination();
+            showDeleteModal = false;
+            deleteTarget = { id: null, name: '' };
             successMessage = $_('knowledgeBases.list.deleteSuccess', { default: 'Knowledge base deleted.' });
             setTimeout(() => { successMessage = ''; }, 4000);
         } catch (e) {
-            alert(e instanceof Error ? e.message : 'Deletion failed');
+            console.error('Error deleting knowledge base:', e);
+            error = e instanceof Error ? e.message : 'Deletion failed';
+            setTimeout(() => { error = ''; }, 8000);
+        } finally {
+            isDeleting = false;
         }
+    }
+
+    // Handler to cancel deletion from the modal
+    function handleDeleteCancel() {
+        if (isDeleting) return;
+        showDeleteModal = false;
+        deleteTarget = { id: null, name: '' };
     }
     
     async function handleToggleSharing(kb) {
@@ -577,4 +606,16 @@
         bind:this={createModal} 
         on:created={handleKnowledgeBaseCreated}
     />
-</div> 
+</div>
+
+<!-- Delete Confirmation Modal (rendered once, outside the loop) -->
+<ConfirmationModal
+    bind:isOpen={showDeleteModal}
+    bind:isLoading={isDeleting}
+    title={$_('knowledgeBases.deleteModal.title', { default: 'Delete Knowledge Base' })}
+    message={$_('knowledgeBases.deleteModal.confirmation', { values: { name: deleteTarget.name }, default: `Are you sure you want to delete the knowledge base "${deleteTarget.name}" and all its data? This action cannot be undone.` })}
+    confirmText={$_('knowledgeBases.deleteModal.confirmButton', { default: 'Delete' })}
+    variant="danger"
+    onconfirm={handleDeleteConfirm}
+    oncancel={handleDeleteCancel}
+/>

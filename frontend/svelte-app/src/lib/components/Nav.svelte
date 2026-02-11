@@ -1,21 +1,14 @@
 <script>
-  import { user } from '$lib/stores/userStore'; // Restore user store import
-  // import LanguageSelector from './LanguageSelector.svelte'; // Migrated in Internationalization module
-  // import { _, locale } from 'svelte-i18n'; // Migrated in Internationalization module
-  import { /* onMount, */ createEventDispatcher, onMount } from 'svelte'; // onMount needed for i18n
-  // import { browser } from '$app/environment';
+  import { user } from '$lib/stores/userStore';
+  import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { base } from '$app/paths'; // Import base path helper
-  import { locale, _ } from '$lib/i18n'; // Import i18n tools
-  import LanguageSelector from '$lib/components/LanguageSelector.svelte'; // Import selector
-  import { VERSION_INFO } from '$lib/version.js'; // Import version info
-  // import { onMount } from 'svelte';
+  import { base } from '$app/paths';
+  import { locale, _ } from '$lib/i18n';
+  import LanguageSelector from '$lib/components/LanguageSelector.svelte';
+  import { VERSION_INFO } from '$lib/version.js';
   
   // Format version display
   let versionDisplay = `v${VERSION_INFO.version}`;
-  
-  // Event dispatcher for component events
-  const dispatch = createEventDispatcher();
   
   // Default text for when i18n isn't loaded yet
   let localeLoaded = $state(false);
@@ -47,16 +40,6 @@
       toolsMenuOpen = false;
     }
   }
-  
-  // Get help from input
-  // function getHelpFromInput() { // Part of Help System module
-  //   const helpInput = document.getElementById('helpInput');
-  //   // Check if it's an input element before accessing value
-  //   if (helpInput instanceof HTMLInputElement && helpInput.value.trim()) {
-  //     dispatch('help', { question: helpInput.value.trim() });
-  //     helpInput.value = '';
-  //   }
-  // }
   
   // Use $effect to react to locale changes
   $effect(() => {
@@ -192,29 +175,4 @@
       
     </div>
   </div>
-</nav>
-
-<!-- Help container (temporarily disabled) -->
-<!-- 
-<div class="bg-gray-100 py-2">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center">
-      <input 
-        type="text" 
-        id="helpInput" 
-        placeholder="Ask LAMB anything..." 
-        class="flex-grow px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#2271b3] focus:border-[#2271b3]"
-      >
-      <button 
-        id="helpButton" 
-        class="ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#2271b3] hover:bg-[#195a91]"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" />
-        </svg>
-        LAMB Help
-      </button>
-    </div>
-  </div>
-</div>
---> 
+</nav> 

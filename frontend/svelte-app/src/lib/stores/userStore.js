@@ -71,6 +71,22 @@ const createUserStore = () => {
       });
     },
     
+    /**
+     * Sets just the auth token (for LTI login scenarios where we don't have full user data yet).
+     * The user info will be fetched later when API calls are made.
+     * @param {string} token - Authentication token.
+     */
+    setToken: (token) => {
+      if (browser && token) {
+        localStorage.setItem('userToken', token);
+      }
+      update(state => ({
+        ...state,
+        isLoggedIn: true,
+        token: token
+      }));
+    },
+    
     // Logout function
     logout: () => {
       // Only remove from localStorage if in browser environment
