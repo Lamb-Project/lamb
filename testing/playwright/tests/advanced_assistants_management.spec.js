@@ -70,6 +70,11 @@ test.describe.serial("Advanced Assistants Management", () => {
     await expect(
       page.getByRole("heading", { name: /assistant/i }).first()
     ).toBeVisible({ timeout: 30_000 });
+    
+    // Wait for detail sub-tabs to render (Properties button confirms data is loaded)
+    await expect(
+      page.getByRole("button", { name: /^properties$/i }).first()
+    ).toBeVisible({ timeout: 10_000 });
   }
 
   // ─────────────────────────────────────────────────────────────────────

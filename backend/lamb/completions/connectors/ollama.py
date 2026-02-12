@@ -5,11 +5,47 @@ from typing import Dict, Any, AsyncGenerator, Optional
 import time
 import asyncio
 import aiohttp # Import aiohttp
+import config as app_config
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.logging_config import get_logger
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 
 logger = get_logger(__name__, component="API")
+
+# ---------------------------------------------------------------------------
+# Shared aiohttp session pool
+# ---------------------------------------------------------------------------
+# Sessions are cached by base_url so that all requests to the same Ollama
+# instance reuse a single TCP connection pool instead of creating a new
+# session per request.  This prevents connection exhaustion under concurrent
+# load (see GitHub issue #255).
+# ---------------------------------------------------------------------------
+_ollama_sessions: Dict[str, aiohttp.ClientSession] = {}
+
+
+def _get_ollama_session(base_url: str) -> aiohttp.ClientSession:
+    """Return a shared aiohttp ClientSession for the given Ollama base URL.
+
+    Creates a new session on the first call for each unique base_url and
+    reuses it on subsequent calls.  If a previous session was closed, a
+    new one is created transparently.
+    """
+    if base_url not in _ollama_sessions or _ollama_sessions[base_url].closed:
+        timeout = aiohttp.ClientTimeout(total=app_config.OLLAMA_REQUEST_TIMEOUT)
+        connector = aiohttp.TCPConnector(
+            limit=app_config.LLM_MAX_CONNECTIONS,
+            keepalive_timeout=30,
+        )
+        _ollama_sessions[base_url] = aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector,
+        )
+        logger.info(
+            f"Created shared Ollama session for {base_url} "
+            f"(timeout={app_config.OLLAMA_REQUEST_TIMEOUT}s, "
+            f"max_conn={app_config.LLM_MAX_CONNECTIONS})"
+        )
+    return _ollama_sessions[base_url]
 
 async def get_available_llms(assistant_owner: Optional[str] = None): # Make async
     """
@@ -49,16 +85,16 @@ async def get_available_llms(assistant_owner: Optional[str] = None): # Make asyn
             return []
 
     try:
-        async with aiohttp.ClientSession() as session: # Use aiohttp session
-            async with session.get(f"{base_url}/api/tags") as response:
-                if response.status == 200:
-                    data = await response.json() # await json()
-                    models = data.get('models', [])
-                    return [model['name'] for model in models]
-                else:
-                    logger.error(f"Failed to get models from Ollama: {response.status}")
-                    return []  # Return empty list on error
-    except aiohttp.ClientError as e: # Catch aiohttp errors
+        session = _get_ollama_session(base_url)
+        async with session.get(f"{base_url}/api/tags") as response:
+            if response.status == 200:
+                data = await response.json()
+                models = data.get('models', [])
+                return [model['name'] for model in models]
+            else:
+                logger.error(f"Failed to get models from Ollama: {response.status}")
+                return []  # Return empty list on error
+    except aiohttp.ClientError as e:
         logger.error(f"Error fetching Ollama models: {str(e)}")
         return []  # Return empty list on error
     except Exception as e:
@@ -224,19 +260,18 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
         Returns tuple: (success: bool, content_or_error: str)
         """
         try:
-            timeout = aiohttp.ClientTimeout(total=120)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
-                    response.raise_for_status()
-                    
-                    if is_stream:
-                        return (True, response)  # Return response object for streaming
-                    else:
-                        ollama_response = await response.json()
-                        content = ollama_response.get("message", {}).get("content", "")
-                        if not content:
-                            return (False, f"Empty response from Ollama for model {model_to_use}")
-                        return (True, content)
+            session = _get_ollama_session(base_url)
+            async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
+                response.raise_for_status()
+
+                if is_stream:
+                    return (True, response)  # Return response object for streaming
+                else:
+                    ollama_response = await response.json()
+                    content = ollama_response.get("message", {}).get("content", "")
+                    if not content:
+                        return (False, f"Empty response from Ollama for model {model_to_use}")
+                    return (True, content)
                         
         except aiohttp.ClientResponseError as e:
             error_msg = f"API Error ({e.status}) for model {model_to_use}: {e.message}"
@@ -300,72 +335,66 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                 sent_initial_role = False
 
                 try:
-                    timeout = aiohttp.ClientTimeout(total=120) # 2 minutes timeout
-                    async with aiohttp.ClientSession(timeout=timeout) as session:
-                        async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
-                            response.raise_for_status() # Check for HTTP errors immediately
+                    session = _get_ollama_session(base_url)
+                    async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
+                        response.raise_for_status() # Check for HTTP errors immediately
 
-                            # Process the stream line by line
-                            async for line_bytes in response.content:
-                                if not line_bytes:
-                                    continue # Skip empty lines
-                                line = line_bytes.decode('utf-8').strip()
-                                logger.debug(f"Received Ollama chunk line: {line}")
+                        # Process the stream line by line
+                        async for line_bytes in response.content:
+                            if not line_bytes:
+                                continue # Skip empty lines
+                            line = line_bytes.decode('utf-8').strip()
+                            logger.debug(f"Received Ollama chunk line: {line}")
 
-                                try:
-                                    ollama_chunk = json.loads(line)
-                                except json.JSONDecodeError:
-                                    logger.warning(f"Skipping invalid JSON chunk from Ollama: {line}")
-                                    continue
+                            try:
+                                ollama_chunk = json.loads(line)
+                            except json.JSONDecodeError:
+                                logger.warning(f"Skipping invalid JSON chunk from Ollama: {line}")
+                                continue
 
-                                # Prepare OpenAI formatted chunk
-                                current_choice = {
-                                    "index": 0,
-                                    "delta": {},
-                                    "logprobs": None,
-                                    "finish_reason": None
-                                }
-                                data = {
-                                    "id": response_id,
-                                    "object": "chat.completion.chunk",
-                                    "created": created_time,
-                                    "model": resolved_model,
-                                    "choices": [current_choice]
-                                }
+                            # Prepare OpenAI formatted chunk
+                            current_choice = {
+                                "index": 0,
+                                "delta": {},
+                                "logprobs": None,
+                                "finish_reason": None
+                            }
+                            data = {
+                                "id": response_id,
+                                "object": "chat.completion.chunk",
+                                "created": created_time,
+                                "model": resolved_model,
+                                "choices": [current_choice]
+                            }
 
-                                # Extract content delta
-                                delta_content = ollama_chunk.get("message", {}).get("content")
+                            # Extract content delta
+                            delta_content = ollama_chunk.get("message", {}).get("content")
 
-                                # First chunk should include the role
-                                if not sent_initial_role:
-                                    current_choice["delta"]["role"] = "assistant"
-                                    sent_initial_role = True
+                            # First chunk should include the role
+                            if not sent_initial_role:
+                                current_choice["delta"]["role"] = "assistant"
+                                sent_initial_role = True
 
-                                # Add content if present
-                                if delta_content:
-                                    current_choice["delta"]["content"] = delta_content
+                            # Add content if present
+                            if delta_content:
+                                current_choice["delta"]["content"] = delta_content
 
-                                # Check if Ollama stream is done
-                                if ollama_chunk.get("done"): # Check the 'done' field from Ollama
-                                    logger.debug("Ollama stream finished.")
-                                    # Yield final content chunk first (if any content exists)
-                                    if current_choice["delta"]:
-                                        yield f"data: {json.dumps(data)}\n\n"
-
-                                    # Then yield final empty delta chunk with finish_reason
-                                    current_choice["delta"] = {} # Final delta is usually empty
-                                    current_choice["finish_reason"] = "stop"
+                            # Check if Ollama stream is done
+                            if ollama_chunk.get("done"): # Check the 'done' field from Ollama
+                                logger.debug("Ollama stream finished.")
+                                # Yield final content chunk first (if any content exists)
+                                if current_choice["delta"]:
                                     yield f"data: {json.dumps(data)}\n\n"
-                                    break # Exit stream processing loop
-                                else:
-                                    # Yield regular content chunk if delta is not empty
-                                    if current_choice["delta"]:
-                                        yield f"data: {json.dumps(data)}\n\n"
 
-                            # If the loop finishes without ollama_chunk["done"] == True (unlikely but possible)
-                            # Ensure a final stop message is sent.
-                            # This part might need refinement based on Ollama's exact behavior for errors/abrupt ends.
-                            # logger.warning("Ollama stream ended without explicit 'done' flag.")
+                                # Then yield final empty delta chunk with finish_reason
+                                current_choice["delta"] = {} # Final delta is usually empty
+                                current_choice["finish_reason"] = "stop"
+                                yield f"data: {json.dumps(data)}\n\n"
+                                break # Exit stream processing loop
+                            else:
+                                # Yield regular content chunk if delta is not empty
+                                if current_choice["delta"]:
+                                    yield f"data: {json.dumps(data)}\n\n"
 
                 except asyncio.TimeoutError:
                      logger.error(f"Timeout calling Ollama API after 120 seconds")
@@ -431,16 +460,14 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
                         ollama_params[key] = body[key]
             
             try:
-                timeout = aiohttp.ClientTimeout(total=120) # 2 minutes timeout
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                     # Send keepalive header - aiohttp handles this automatically for HTTP/1.1
-                    async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
-                        response.raise_for_status()
-                        ollama_response = await response.json()
-                        content = ollama_response.get("message", {}).get("content", "")
-                        if not content:
-                             logger.warning("Empty response from Ollama, falling back to bypass")
-                             content = f"[Ollama Error] No response from model: {resolved_model}"
+                session = _get_ollama_session(base_url)
+                async with session.post(f"{base_url}/api/chat", json=ollama_params) as response:
+                    response.raise_for_status()
+                    ollama_response = await response.json()
+                    content = ollama_response.get("message", {}).get("content", "")
+                    if not content:
+                         logger.warning("Empty response from Ollama, falling back to bypass")
+                         content = f"[Ollama Error] No response from model: {resolved_model}"
 
             except asyncio.TimeoutError:
                 logger.error(f"Timeout calling Ollama API after 120 seconds")

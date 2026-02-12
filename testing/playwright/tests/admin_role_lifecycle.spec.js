@@ -130,7 +130,7 @@ test.describe.serial("Admin Role Lifecycle (issue #245)", () => {
       page.getByRole("button", { name: "Dashboard" })
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.getByRole("button", { name: "User Management" })
+      page.getByRole("button", { name: "Users", exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Organizations", exact: true })
@@ -196,15 +196,22 @@ test.describe.serial("Admin Role Lifecycle (issue #245)", () => {
     await searchBox.fill(baseAdminEmail);
     await page.waitForTimeout(1000);
 
-    // The base admin's row should have a disabled button
+    // The base admin's row should be visible
     const selfRow = page.locator(`tr:has-text("${baseAdminEmail}")`);
     await expect(selfRow).toBeVisible({ timeout: 10_000 });
 
-    const disabledBtn = selfRow.getByRole("button", {
-      name: /cannot disable your own/i,
+    // The UI hides the Disable/Enable button for the current user (self-disable prevention).
+    // Verify the Disable button is NOT present in the current user's row.
+    const disableBtn = selfRow.getByRole("button", {
+      name: /disable/i,
     });
-    await expect(disabledBtn).toBeVisible();
-    await expect(disabledBtn).toBeDisabled();
+    await expect(disableBtn).not.toBeVisible({ timeout: 3_000 });
+
+    // Also verify the checkbox for self-selection is disabled
+    const selfCheckbox = selfRow.locator('input[type="checkbox"]');
+    if (await selfCheckbox.count()) {
+      await expect(selfCheckbox).toBeDisabled();
+    }
 
     console.log(
       "[admin_role_lifecycle] Self-disable is correctly blocked."
