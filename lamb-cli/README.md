@@ -59,6 +59,29 @@ lamb
 
   model
     list                   List available models
+
+  kb
+    list                   List your knowledge bases
+    list-shared            List shared knowledge bases
+    get <id>               Get KB details (files, owner, sharing)
+    create <name>          Create a new knowledge base
+    update <id>            Update a knowledge base
+    delete <id>            Delete a knowledge base (with confirmation)
+    share <id>             Enable/disable sharing
+    upload <id> <files>    Upload files to a KB (with progress bar)
+    ingest <id>            Ingest content via plugin (URL, YouTube, etc.)
+    query <id> <text>      Query a knowledge base
+    delete-file <id> <fid> Delete a file from a KB
+    plugins                List available ingestion plugins
+    query-plugins          List available query plugins
+
+  job
+    list <kb-id>           List ingestion jobs for a KB
+    get <kb-id> <job-id>   Get job details and progress
+    retry <kb-id> <job-id> Retry a failed job
+    cancel <kb-id> <job-id> Cancel a running job
+    watch <kb-id> <job-id> Watch job progress live
+    status <kb-id>         Ingestion status summary
 ```
 
 ## Output Formats
@@ -94,9 +117,17 @@ lamb login --email user@example.com --password secret
 lamb login --server-url https://lamb.university.edu
 ```
 
-Credentials are stored locally with restricted permissions (0600) in:
-- macOS: `~/Library/Application Support/lamb/credentials.toml`
-- Linux: `~/.config/lamb/credentials.toml`
+Credentials are stored locally with restricted permissions (0600) in a platform-specific config directory (via [platformdirs](https://pypi.org/project/platformdirs/)):
+
+| Platform | Path |
+|----------|------|
+| macOS    | `~/Library/Application Support/lamb/credentials.toml` |
+| Linux    | `~/.config/lamb/credentials.toml` |
+| Windows  | `C:\Users\<username>\AppData\Local\lamb\credentials.toml` |
+
+Server URL and output preferences are stored alongside in `config.toml` at the same location.
+
+On Windows, NTFS user-level folder permissions protect the file (Unix chmod is a no-op).
 
 ### Environment Variables
 
@@ -152,7 +183,7 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | Phase | Scope                                  | Status  |
 |-------|----------------------------------------|---------|
 | 1     | Core + Assistants + Models             | Done    |
-| 2     | Knowledge Bases + Ingestion Jobs       | Planned |
+| 2     | Knowledge Bases + Ingestion Jobs       | Done    |
 | 3     | Organizations + Users (admin commands) | Planned |
 | 4     | Templates + Analytics + Chat           | Planned |
 | 5     | Shell completions, config profiles     | Planned |

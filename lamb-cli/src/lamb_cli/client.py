@@ -66,6 +66,51 @@ class LambClient:
             files = {field_name: f}
             return self._request("POST", path, files=files, **kwargs)
 
+    def upload_files(
+        self,
+        path: str,
+        file_paths: list[str],
+        field_name: str = "files",
+        data: dict | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Upload multiple files via multipart form.
+
+        Args:
+            path: API endpoint path.
+            file_paths: List of local file paths to upload.
+            field_name: Form field name for the files.
+            data: Optional extra form fields.
+            **kwargs: Additional request kwargs.
+        """
+        files = []
+        handles = []
+        try:
+            for fp in file_paths:
+                fh = open(fp, "rb")  # noqa: SIM115
+                handles.append(fh)
+                files.append((field_name, fh))
+            return self._request("POST", path, files=files, data=data, **kwargs)
+        finally:
+            for fh in handles:
+                fh.close()
+
+    def post_multipart_form(
+        self, path: str, file_path: str, field_name: str = "file", data: dict | None = None, **kwargs: Any
+    ) -> Any:
+        """POST with a single file plus additional form fields.
+
+        Args:
+            path: API endpoint path.
+            file_path: Local file path to upload.
+            field_name: Form field name for the file.
+            data: Additional form fields.
+            **kwargs: Additional request kwargs.
+        """
+        with open(file_path, "rb") as f:
+            files = {field_name: f}
+            return self._request("POST", path, files=files, data=data or {}, **kwargs)
+
     def stream_post(self, path: str, **kwargs: Any) -> Iterator[str]:
         """POST and yield streaming text chunks."""
         try:

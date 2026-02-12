@@ -9,7 +9,7 @@ import typer
 
 from lamb_cli import __version__
 from lamb_cli.client import LambClient, get_client
-from lamb_cli.commands import assistant, model
+from lamb_cli.commands import assistant, job, kb, model
 from lamb_cli.config import clear_credentials, get_output_format, get_server_url, get_user_info, save_config, save_credentials
 from lamb_cli.errors import LambCliError, exit_code_for
 from lamb_cli.output import format_output, print_error, print_success
@@ -22,6 +22,8 @@ app = typer.Typer(
 
 app.add_typer(assistant.app, name="assistant")
 app.add_typer(model.app, name="model")
+app.add_typer(kb.app, name="kb")
+app.add_typer(job.app, name="job")
 
 
 def version_callback(value: bool) -> None:
