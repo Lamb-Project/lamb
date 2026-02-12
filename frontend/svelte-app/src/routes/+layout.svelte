@@ -7,6 +7,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { user } from '$lib/stores/userStore';
+	import { onDestroy } from 'svelte';
+	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
 
 	let { children } = $props();
 
@@ -19,6 +21,20 @@
 				goto(`${base}/`, { replaceState: true });
 			}
 		}
+	});
+
+	// Session guard: periodically check if the account has been disabled mid-session.
+	// When logged in, polls the backend every 60 seconds; forces logout on 403 "Account disabled".
+	$effect(() => {
+		if (browser && $user.isLoggedIn) {
+			startSessionPolling(60000);
+		} else {
+			stopSessionPolling();
+		}
+	});
+
+	onDestroy(() => {
+		stopSessionPolling();
 	});
 </script>
 

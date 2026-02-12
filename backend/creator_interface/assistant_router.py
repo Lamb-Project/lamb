@@ -167,6 +167,9 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     Returns:
         Optional[Dict[str, Any]]: Creator user object if found and valid, None otherwise
         Includes full organization data in 'organization' field for access control
+
+    Raises:
+        HTTPException(403): If the user account has been disabled by an admin
     """
     try:
         if not auth_header:
@@ -187,6 +190,14 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         if not creator_user:
             logger.error(f"No creator user found for email: {user_email}")
             return None
+
+        # Check if the user account is disabled
+        if not creator_user.get('enabled', True):
+            logger.warning(f"Disabled user {user_email} attempted API access with valid token")
+            raise HTTPException(
+                status_code=403,
+                detail="Account disabled. Your account has been disabled by an administrator."
+            )
 
         # Enrich with OWI role so callers (e.g. is_admin_user) can check
         # admin status without a separate OWI query.  user_auth was already
@@ -209,6 +220,8 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
         return creator_user
 
+    except HTTPException:
+        raise  # Re-raise HTTPException (e.g. 403 for disabled accounts) without catching it
     except Exception as e:
         logger.error(f"Error getting creator user from token: {str(e)}")
         return None

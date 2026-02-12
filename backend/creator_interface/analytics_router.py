@@ -116,7 +116,11 @@ class AnalyticsTimelineResponse(BaseModel):
 # --- Helper Functions ---
 
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
-    """Get creator user from authentication token"""
+    """Get creator user from authentication token.
+
+    Raises:
+        HTTPException(403): If the user account has been disabled by an admin.
+    """
     try:
         if not auth_header:
             logger.error("No authorization header provided")
@@ -137,6 +141,14 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
             logger.error(f"No creator user found for email: {user_email}")
             return None
 
+        # Check if the user account is disabled
+        if not creator_user.get('enabled', True):
+            logger.warning(f"Disabled user {user_email} attempted API access with valid token")
+            raise HTTPException(
+                status_code=403,
+                detail="Account disabled. Your account has been disabled by an administrator."
+            )
+
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
         if organization_id:
@@ -150,6 +162,8 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
         return creator_user
 
+    except HTTPException:
+        raise  # Re-raise HTTPException (e.g. 403 for disabled accounts)
     except Exception as e:
         logger.error(f"Error getting creator user from token: {str(e)}")
         return None
