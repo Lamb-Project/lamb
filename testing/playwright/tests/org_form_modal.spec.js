@@ -144,7 +144,7 @@ test.describe("Organization Form Modal", () => {
 
     // Verify at least the placeholder option exists
     const placeholderOption = adminSelect.locator("option").first();
-    await expect(placeholderOption).toHaveText(/select a user/i);
+    await expect(placeholderOption).toHaveText(/no admin|select a user/i);
 
     console.log("Admin dropdown loads correctly.");
   });

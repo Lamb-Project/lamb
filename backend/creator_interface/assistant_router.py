@@ -1710,6 +1710,10 @@ async def publish_assistant(assistant_id: int, publish_request: PublishRequest, 
             # This case should ideally not happen if the assistant existed before
             raise HTTPException(status_code=500, detail="Failed to retrieve updated assistant data")
 
+        # Add access metadata so the frontend can adjust UI correctly after publish/unpublish
+        updated_assistant_data['is_owner'] = True  # Only owner can publish/unpublish (verified above)
+        updated_assistant_data['access_level'] = 'full'
+
         logger.info(f"Successfully processed publish request for assistant {assistant_id}. Returning updated data.")
         return updated_assistant_data
 
