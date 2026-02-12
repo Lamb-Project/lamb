@@ -155,16 +155,39 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def check_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
+def check_assistant_access(user: Dict[str, Any], assistant_id: int) -> str:
     """
-    Check if user has access to view analytics for an assistant.
-    Only assistant owners can view analytics.
+    Check user's analytics access level for an assistant.
+    
+    Returns:
+        'full' - Owner or System Admin: can see chats, stats, timeline
+        'aggregate' - Org Admin: can see stats and timeline only (no chat content)
+        'none' - No access
     """
     assistant = assistant_service.get_assistant_by_id(assistant_id)
     if not assistant:
-        return False
+        return 'none'
     
-    return assistant.owner == user.get('email')
+    # Owner gets full access
+    if assistant.owner == user.get('email'):
+        return 'full'
+    
+    # System Admin gets full access to any assistant
+    from .assistant_router import is_admin_user
+    if is_admin_user(user):
+        logger.info(f"System admin {user.get('email')} accessing analytics for assistant {assistant_id}")
+        return 'full'
+    
+    # Org Admin gets aggregate-only access for assistants in their org
+    assistant_org_id = getattr(assistant, 'organization_id', None)
+    user_org_id = user.get('organization_id')
+    if assistant_org_id and user_org_id == assistant_org_id:
+        user_org_role = db_manager.get_user_organization_role(user['id'], assistant_org_id)
+        if user_org_role in ('admin', 'owner'):
+            logger.info(f"Org admin {user.get('email')} accessing aggregate analytics for assistant {assistant_id}")
+            return 'aggregate'
+    
+    return 'none'
 
 
 def get_anonymize_setting(user: Dict[str, Any]) -> bool:
@@ -217,9 +240,12 @@ async def list_assistant_chats(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or missing authentication")
     
-    # Check access
-    if not check_assistant_access(user, assistant_id):
+    # Check access - chat content requires 'full' access (owner or system admin)
+    access_level = check_assistant_access(user, assistant_id)
+    if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
+    if access_level == 'aggregate':
+        raise HTTPException(status_code=403, detail="Chat content is not available. Use the stats or timeline endpoints for aggregate data.")
     
     # Parse dates
     start_dt = None
@@ -272,9 +298,12 @@ async def get_chat_detail(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or missing authentication")
     
-    # Check access
-    if not check_assistant_access(user, assistant_id):
+    # Check access - chat content requires 'full' access (owner or system admin)
+    access_level = check_assistant_access(user, assistant_id)
+    if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
+    if access_level == 'aggregate':
+        raise HTTPException(status_code=403, detail="Chat content is not available. Use the stats or timeline endpoints for aggregate data.")
     
     # Get anonymization setting
     anonymize = get_anonymize_setting(user)
@@ -312,8 +341,9 @@ async def get_assistant_stats(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or missing authentication")
     
-    # Check access
-    if not check_assistant_access(user, assistant_id):
+    # Check access - stats are available to 'full' and 'aggregate' access levels
+    access_level = check_assistant_access(user, assistant_id)
+    if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     
     # Parse dates
@@ -361,8 +391,9 @@ async def get_assistant_timeline(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or missing authentication")
     
-    # Check access
-    if not check_assistant_access(user, assistant_id):
+    # Check access - timeline is available to 'full' and 'aggregate' access levels
+    access_level = check_assistant_access(user, assistant_id)
+    if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     
     # Validate period

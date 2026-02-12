@@ -67,6 +67,7 @@ class AssistantGetResponse(BaseModel):
     name: str
     description: Optional[str]
     owner: str
+    organization_id: Optional[int] = None
     api_callback: Optional[str]  # Kept for backward compatibility
     metadata: Optional[str]  # New field - source of truth for frontend
     system_prompt: Optional[str]
@@ -81,6 +82,9 @@ class AssistantGetResponse(BaseModel):
     published: bool # Existing field
     created_at: Optional[int] = None  # Unix timestamp in seconds
     updated_at: Optional[int] = None  # Unix timestamp in seconds
+    # Access control metadata (populated by get_assistant_proxy)
+    access_level: Optional[str] = None  # 'full', 'read_only', 'shared', or None
+    is_owner: Optional[bool] = None  # Whether the requesting user owns this assistant
 
 
 class GenerateDescriptionRequest(BaseModel):
@@ -184,6 +188,11 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
             logger.error(f"No creator user found for email: {user_email}")
             return None
 
+        # Enrich with OWI role so callers (e.g. is_admin_user) can check
+        # admin status without a separate OWI query.  user_auth was already
+        # fetched above from the OWI /auths/ endpoint.
+        creator_user['role'] = user_auth.get('role', 'user')
+
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
         if organization_id:
@@ -207,7 +216,12 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
 def is_admin_user(user_or_auth_header) -> bool:
     """
-    Check if a user has admin privileges
+    Check if a user has admin privileges.
+
+    Accepts either:
+      - A user dictionary (as returned by get_creator_user_from_token, which
+        now always includes a 'role' field enriched from OWI).
+      - An authorization header string, in which case OWI is queried directly.
 
     Args:
         user_or_auth_header: Either a user dictionary or authorization header containing the token
@@ -216,32 +230,21 @@ def is_admin_user(user_or_auth_header) -> bool:
         bool: True if the user is an admin, False otherwise
     """
     try:
-        # If we're given a user dictionary directly
+        # --- Dict path (from get_creator_user_from_token) ---
         if isinstance(user_or_auth_header, dict):
-            # Special case: User ID 1 is always considered an admin
-            if user_or_auth_header.get('id') == 1:
-                logger.info(f"User ID 1 found - automatically granting admin privileges")
-                return True
-                
-            # Check role if it exists
-            if 'role' in user_or_auth_header:
-                user_role = user_or_auth_header.get("role", "")
-                logger.info(f"User role from dictionary: {user_role}")
-                return user_role == "admin"
-            else:
-                logger.warning(f"User dictionary has no 'role' field: {user_or_auth_header}")
-                # If no role in dictionary, we'll check the DB for user ID
-                user_id = user_or_auth_header.get('id')
-                if user_id:
-                    # Get user from database to check role
-                    logger.info(f"Looking up role for user ID {user_id} in database")
-                    db_user = owi_user_manager.db.get_user_by_id(str(user_id))
-                    if db_user and 'role' in db_user and db_user['role'] == 'admin':
-                        logger.info(f"User {user_id} found as admin in database")
-                        return True
+            user_role = user_or_auth_header.get("role", "")
+            if not user_role:
+                # Defensive: dict without role field — should not happen if
+                # the caller used get_creator_user_from_token(), but log it.
+                logger.warning(
+                    f"User dictionary has no 'role' field for user id={user_or_auth_header.get('id')}. "
+                    "Denying admin access. Ensure get_creator_user_from_token() is the source of this dict."
+                )
                 return False
-            
-        # Otherwise, it should be an auth header
+            logger.info(f"User role from dictionary: {user_role} (user id={user_or_auth_header.get('id')})")
+            return user_role == "admin"
+
+        # --- String path (raw auth header) ---
         if not user_or_auth_header:
             logger.error("No authorization header provided")
             return False
@@ -251,7 +254,6 @@ def is_admin_user(user_or_auth_header) -> bool:
             logger.error("Invalid authentication token")
             return False
 
-        # Check if the user has admin role
         user_role = user_auth.get("role", "")
         logger.info(f"User role from token: {user_role}")
         return user_role == "admin"
@@ -787,34 +789,52 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
                 detail="Assistant not found"
             )
 
-        # --- Verify Ownership OR Sharing ---
+        # --- Verify Access: Ownership, Admin, Org Admin, or Sharing ---
         # User has access if they:
-        # 1. Own the assistant OR
-        # 2. Assistant is shared with them
+        # 1. Own the assistant (full access)
+        # 2. Are a System Admin (read-only access to any assistant)
+        # 3. Are an Org Admin for the assistant's organization (read-only access)
+        # 4. Assistant is shared with them (limited access)
         is_owner = assistant_data.get('owner') == creator_user['email']
+        is_admin = is_admin_user(creator_user)
+        access_level = 'full' if is_owner else None
         
-        # Check if assistant is shared with user
-        is_shared = False
         if not is_owner:
-            import sys
-            import os
-            # Add the parent directory to the Python path
-            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if parent_dir not in sys.path:
-                sys.path.insert(0, parent_dir)
-            
-            from lamb.database_manager import LambDatabaseManager
-            db_check = LambDatabaseManager()
-            is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+            if is_admin:
+                # System admin can view any assistant (read-only)
+                access_level = 'read_only'
+                logger.info(f"System admin {creator_user['email']} viewing assistant {assistant_id} (read-only)")
+            else:
+                # Check if user is org admin for this assistant's organization
+                assistant_org_id = assistant_data.get('organization_id')
+                user_org_id = creator_user.get('organization_id')
+                if assistant_org_id and user_org_id == assistant_org_id:
+                    user_org_role = db_manager.get_user_organization_role(
+                        creator_user['id'], assistant_org_id)
+                    if user_org_role in ('admin', 'owner'):
+                        access_level = 'read_only'
+                        logger.info(f"Org admin {creator_user['email']} viewing assistant {assistant_id} in their org (read-only)")
+                
+                # Check if assistant is shared with user
+                if not access_level:
+                    from lamb.database_manager import LambDatabaseManager
+                    db_check = LambDatabaseManager()
+                    is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
+                    if is_shared:
+                        access_level = 'shared'
         
-        if not is_owner and not is_shared:
+        if not access_level:
             # Log potential security/data issue but return 404 to the user for security
             logger.warning(f"Access denied: User {creator_user['email']} attempted to access assistant {assistant_id} owned by {assistant_data.get('owner')}")
             raise HTTPException(
                 status_code=404, # Treat as not found for this user
                 detail="Assistant not found"
             )
-        # --- End Ownership/Sharing Verification ---
+        # --- End Access Verification ---
+        
+        # Add access metadata to response so frontend can adjust UI
+        assistant_data['access_level'] = access_level
+        assistant_data['is_owner'] = is_owner
 
         # The 'published' field is correctly calculated by the DB function
         # Ensure metadata is populated from api_callback if empty
@@ -1689,6 +1709,10 @@ async def publish_assistant(assistant_id: int, publish_request: PublishRequest, 
             logger.error(f"Failed to retrieve assistant {assistant_id} data after update.")
             # This case should ideally not happen if the assistant existed before
             raise HTTPException(status_code=500, detail="Failed to retrieve updated assistant data")
+
+        # Add access metadata so the frontend can adjust UI correctly after publish/unpublish
+        updated_assistant_data['is_owner'] = True  # Only owner can publish/unpublish (verified above)
+        updated_assistant_data['access_level'] = 'full'
 
         logger.info(f"Successfully processed publish request for assistant {assistant_id}. Returning updated data.")
         return updated_assistant_data

@@ -152,7 +152,7 @@ class OrganizationCreate(BaseModel):
 class OrganizationCreateEnhanced(BaseModel):
     slug: str = Field(..., description="URL-friendly unique identifier")
     name: str = Field(..., description="Organization display name")
-    admin_user_id: int = Field(..., description="ID of user from system org to become org admin")
+    admin_user_id: Optional[int] = Field(None, description="ID of user from system org to become org admin (optional — org can be created without an admin)")
     signup_enabled: bool = Field(False, description="Whether signup is enabled for this organization")
     signup_key: Optional[str] = Field(None, description="Unique signup key for organization-specific signup")
     use_system_baseline: bool = Field(True, description="Whether to copy system org config as baseline")
@@ -635,7 +635,7 @@ async def create_organization_enhanced(
     request: Request,
     org_data: OrganizationCreateEnhanced
 ):
-    """Create a new organization with admin user assignment and signup configuration"""
+    """Create a new organization with optional admin user assignment and signup configuration"""
     try:
         await verify_admin_access(request)
         
@@ -653,19 +653,20 @@ async def create_organization_enhanced(
         if existing:
             raise HTTPException(status_code=400, detail=f"Organization with slug '{org_data.slug}' already exists")
         
-        # Check if the selected user is a system admin (not eligible)
-        admin_user = db_manager.get_creator_user_by_id(org_data.admin_user_id)
-        if admin_user:
-            system_org = db_manager.get_organization_by_slug("lamb")
-            if system_org:
-                current_role = db_manager.get_user_organization_role(org_data.admin_user_id, system_org['id'])
-                if current_role == "admin":
-                    raise HTTPException(
-                        status_code=400, 
-                        detail="System administrators cannot be assigned to new organizations. They must remain in the system organization to manage it."
-                    )
+        # If admin_user_id is provided, validate the user
+        if org_data.admin_user_id is not None:
+            admin_user = db_manager.get_creator_user_by_id(org_data.admin_user_id)
+            if admin_user:
+                system_org = db_manager.get_organization_by_slug("lamb")
+                if system_org:
+                    current_role = db_manager.get_user_organization_role(org_data.admin_user_id, system_org['id'])
+                    if current_role == "admin":
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="System administrators cannot be assigned to new organizations. They must remain in the system organization to manage it."
+                        )
         
-        # Create organization with admin assignment
+        # Create organization (with or without admin assignment)
         org_id = db_manager.create_organization_with_admin(
             slug=org_data.slug,
             name=org_data.name,
@@ -701,6 +702,108 @@ async def create_organization_enhanced(
     except Exception as e:
         logger.error(f"Error creating enhanced organization: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Organization Member Role Management (System Admin Only) ---
+
+class UpdateMemberRole(BaseModel):
+    role: str = Field(..., description="New role for the user: 'admin' or 'member'")
+
+@router.put(
+    "/organizations/{slug}/members/{user_id}/role",
+    tags=["Organization Management"],
+    summary="Update Organization Member Role (System Admin Only)",
+    description="""Promote or demote a user's role within an organization. Only system administrators can use this endpoint.
+
+Any user type (including LTI Creator users) can be promoted to organization admin.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/organizations/engineering/members/5/role' \\
+-H 'Authorization: Bearer <system_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"role": "admin"}'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Role updated successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid role or user not in organization"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "System admin privileges required"},
+        404: {"model": ErrorResponse, "description": "Organization or user not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def update_member_role(
+    request: Request,
+    slug: str,
+    user_id: int,
+    role_data: UpdateMemberRole
+):
+    """Update a user's role in an organization. System admin only."""
+    try:
+        await verify_admin_access(request)
+        
+        # Validate role value
+        valid_roles = ["admin", "member"]
+        if role_data.role not in valid_roles:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid role '{role_data.role}'. Must be one of: {', '.join(valid_roles)}"
+            )
+        
+        # Get organization
+        organization = db_manager.get_organization_by_slug(slug)
+        if not organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+        
+        if organization.get('is_system'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot modify roles in the system organization through this endpoint"
+            )
+        
+        # Get user and verify they belong to this organization
+        user = db_manager.get_creator_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+        
+        if user['organization_id'] != organization['id']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"User {user_id} does not belong to organization '{slug}'"
+            )
+        
+        # Assign the new role
+        success = db_manager.assign_organization_role(
+            organization_id=organization['id'],
+            user_id=user_id,
+            role=role_data.role
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update user role")
+        
+        logger.info(
+            f"System admin updated user {user_id} ({user['user_email']}) role to '{role_data.role}' "
+            f"in organization '{slug}'"
+        )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "organization_slug": slug,
+            "new_role": role_data.role,
+            "message": f"User role updated to '{role_data.role}' successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating member role: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get(
     "/organizations/{slug}",
@@ -1657,6 +1760,23 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
                 api_status["providers"][provider_name]["enabled_models"] = enabled_models
                 api_status["providers"][provider_name]["default_model"] = provider_config.get('default_model', '')
         
+        # Check LTI creator key status
+        lti_creator_key = db_manager.get_lti_creator_key(org_id)
+        lti_creator_enabled = bool(lti_creator_key and lti_creator_key.get('enabled', False))
+
+        # Get assistant count
+        org_assistants = db_manager.get_assistants_by_organization(org_id)
+        total_assistants = len(org_assistants)
+        published_assistants = len([a for a in org_assistants if a.get('published')])
+
+        # Get default models from config
+        global_default_model = default_setup.get('global_default_model', {})
+        small_fast_model = default_setup.get('small_fast_model', {})
+
+        # Get LTI activities count
+        lti_activities = db_manager.get_lti_activities_by_org(org_id)
+        total_lti_activities = len(lti_activities)
+
         dashboard_info = {
             "organization": {
                 "id": organization['id'],
@@ -1667,12 +1787,26 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
             "stats": {
                 "total_users": len(org_users),
                 "active_users": active_users,
-                "disabled_users": disabled_users
+                "disabled_users": disabled_users,
+                "total_assistants": total_assistants,
+                "published_assistants": published_assistants,
+                "total_lti_activities": total_lti_activities
             },
             "settings": {
                 "signup_enabled": features.get('signup_enabled', False),
                 "api_configured": api_status["overall_status"] in ["working", "partial"],
-                "signup_key_set": bool(features.get('signup_key'))
+                "signup_key_set": bool(features.get('signup_key')),
+                "lti_creator_enabled": lti_creator_enabled
+            },
+            "default_models": {
+                "global_default": {
+                    "provider": global_default_model.get('provider', ''),
+                    "model": global_default_model.get('model', '')
+                },
+                "small_fast": {
+                    "provider": small_fast_model.get('provider', ''),
+                    "model": small_fast_model.get('model', '')
+                }
             },
             "api_status": api_status
         }
@@ -4354,6 +4488,86 @@ async def get_system_stats(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# User Profile — aggregated resource overview
+# =============================================================================
+
+@router.get(
+    "/users/{user_id}/profile",
+    tags=["System Administration", "User Management"],
+    summary="Get User Profile (Resource Overview)",
+    description="""Get a comprehensive profile for a specific user, including all owned resources
+(assistants, knowledge bases, rubrics, templates) and resources shared with them.
+
+**Access control:**
+- **System admin**: can view any user's profile
+- **Org admin**: can view profiles of users in their organization
+- **Regular user**: can view their own profile
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/admin/users/42/profile' \\
+-H 'Authorization: Bearer <token>'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User profile retrieved successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Insufficient privileges"},
+        404: {"description": "User not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_user_profile(request: Request, user_id: int):
+    """Get comprehensive user profile with all resources."""
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        caller = get_creator_user_from_token(auth_header)
+        if not caller:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        caller_id = caller.get('id')
+        caller_org_id = caller.get('organization_id')
+
+        # Access control: system admin, org admin for their org, or self
+        if is_admin_user(caller):
+            # System admin can view anyone
+            pass
+        elif caller_id == user_id:
+            # Users can always view their own profile
+            pass
+        else:
+            # Check if caller is an org admin and target user is in same org
+            caller_org_role = db_manager.get_user_organization_role(caller_id, caller_org_id)
+            if caller_org_role in ('admin', 'owner'):
+                # Verify target user is in the same organization
+                target_user = db_manager.get_creator_user_by_id(user_id)
+                if not target_user or target_user.get('organization_id') != caller_org_id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Can only view profiles of users in your organization"
+                    )
+            else:
+                raise HTTPException(status_code=403, detail="Insufficient privileges")
+
+        # Fetch the profile
+        profile = db_manager.get_user_profile(user_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return profile
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user profile for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 # Embeddings Setup Management (Organization Admin Endpoints)
 
 @router.get("/organizations/{org_id}/embeddings-setups")
@@ -4545,6 +4759,10 @@ async def delete_embeddings_setup(
         raise
     except Exception as e:
         logger.error(f"Error deleting embeddings setup: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # Unified LTI Global Config & Activity Management
 
 @router.get(

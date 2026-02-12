@@ -248,6 +248,6 @@ async def lti_creator_info():
         "notes": [
             "Consumer key and secret are configured per-organization in LAMB admin settings",
             "Users are identified by user_id across LTI instances",
-            "LTI creator users cannot be organization admins"
+            "LTI creator users are created as members by default but can be promoted to org admin by a system admin"
         ]
     })

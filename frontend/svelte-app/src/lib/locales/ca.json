@@ -230,6 +230,9 @@
       "editTab": "Editar",
       "shareTab": "Compartir",
       "chatTab": "Xat",
+      "activityTab": "Activitat",
+      "chatWith": "amb",
+      "readOnlyBanner": "Vista de només lectura — Aquest assistent pertany a {owner}",
       "ltiTitle": "Detalls de Publicació LTI",
       "ltiAssistantName": "Nom de l'Assistent",
       "ltiModelId": "ID del Model",
@@ -592,6 +595,8 @@
         "system": "Sistema",
         "noOrganization": "Sense Organització"
       },
+      "viewProfile": "Veure perfil de l'usuari",
+      "backToList": "Tornar a Usuaris",
       "actions": {
         "create": "Crear Usuari",
         "changePassword": "Canviar Contrasenya",
@@ -721,6 +726,57 @@
         "createFailed": "Error al crear organització.",
         "unknownError": "S'ha produït un error desconegut al crear l'organització."
       }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panell",
+      "help": "Ajuda i Notícies"
+    },
+    "dashboard": {
+      "title": "El Meu Panell",
+      "subtitle": "Resum dels teus recursos i activitat",
+      "loading": "Carregant el teu panell...",
+      "error": "No s'han pogut carregar les dades del panell.",
+      "retry": "Reintenta",
+      "welcome": "Benvingut/da, {name}!",
+      "organization": "Organització",
+      "role": "Rol",
+      "memberSince": "Membre des de",
+      "viewAll": "Veure tot",
+      "quickActions": "Accions Ràpides",
+      "owned": "Els Meus Recursos",
+      "sharedWithMe": "Compartit Amb Mi",
+      "assistants": "Assistents",
+      "knowledgeBases": "Bases de Coneixement",
+      "rubrics": "Rúbriques",
+      "templates": "Plantilles de Prompt",
+      "published": "publicats",
+      "shared": "compartits",
+      "public": "públiques",
+      "private": "privades",
+      "total": "total",
+      "noResources": "Encara no tens recursos",
+      "noSharedResources": "Res compartit amb tu encara",
+      "sharedBy": "Compartit per",
+      "ownedBy": "per",
+      "createAssistant": "Crear Assistent",
+      "createKnowledgeBase": "Crear Base de Coneixement",
+      "createRubric": "Crear Rúbrica",
+      "createTemplate": "Crear Plantilla",
+      "manageAssistants": "Gestionar Assistents",
+      "orgRole": {
+        "owner": "Propietari",
+        "admin": "Administrador",
+        "member": "Membre"
+      }
+    },
+    "help": {
+      "title": "Ajuda i Notícies",
+      "subtitle": "Últimes novetats i informació",
+      "loadingNews": "Carregant notícies...",
+      "noNews": "No hi ha notícies per mostrar.",
+      "viewAssistants": "Veure Assistents d'Aprenentatge"
     }
   }
 }

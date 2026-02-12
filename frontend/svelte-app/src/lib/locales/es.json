@@ -230,6 +230,9 @@
       "editTab": "Editar",
       "shareTab": "Compartir",
       "chatTab": "Chat",
+      "activityTab": "Actividad",
+      "chatWith": "con",
+      "readOnlyBanner": "Vista de solo lectura — Este asistente pertenece a {owner}",
       "ltiTitle": "Detalles de Publicación LTI",
       "ltiAssistantName": "Nombre del Asistente",
       "ltiModelId": "ID del Modelo",
@@ -603,6 +606,8 @@
         "system": "Sistema",
         "noOrganization": "Sin Organización"
       },
+      "viewProfile": "Ver perfil del usuario",
+      "backToList": "Volver a Usuarios",
       "actions": {
         "create": "Crear Usuario",
         "changePassword": "Cambiar Contraseña",
@@ -732,6 +737,57 @@
         "createFailed": "Error al crear organización.",
         "unknownError": "Ocurrió un error desconocido al crear la organización."
       }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panel",
+      "help": "Ayuda y Noticias"
+    },
+    "dashboard": {
+      "title": "Mi Panel",
+      "subtitle": "Resumen de tus recursos y actividad",
+      "loading": "Cargando tu panel...",
+      "error": "No se pudo cargar los datos del panel.",
+      "retry": "Reintentar",
+      "welcome": "¡Bienvenido/a, {name}!",
+      "organization": "Organización",
+      "role": "Rol",
+      "memberSince": "Miembro desde",
+      "viewAll": "Ver todo",
+      "quickActions": "Acciones Rápidas",
+      "owned": "Mis Recursos",
+      "sharedWithMe": "Compartido Conmigo",
+      "assistants": "Asistentes",
+      "knowledgeBases": "Bases de Conocimiento",
+      "rubrics": "Rúbricas",
+      "templates": "Plantillas de Prompt",
+      "published": "publicados",
+      "shared": "compartidos",
+      "public": "públicas",
+      "private": "privadas",
+      "total": "total",
+      "noResources": "Aún no tienes recursos",
+      "noSharedResources": "Nada compartido contigo aún",
+      "sharedBy": "Compartido por",
+      "ownedBy": "por",
+      "createAssistant": "Crear Asistente",
+      "createKnowledgeBase": "Crear Base de Conocimiento",
+      "createRubric": "Crear Rúbrica",
+      "createTemplate": "Crear Plantilla",
+      "manageAssistants": "Gestionar Asistentes",
+      "orgRole": {
+        "owner": "Propietario",
+        "admin": "Administrador",
+        "member": "Miembro"
+      }
+    },
+    "help": {
+      "title": "Ayuda y Noticias",
+      "subtitle": "Últimas novedades e información",
+      "loadingNews": "Cargando noticias...",
+      "noNews": "No hay noticias que mostrar.",
+      "viewAssistants": "Ver Asistentes de Aprendizaje"
     }
   }
 }

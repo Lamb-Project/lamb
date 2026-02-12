@@ -8,6 +8,8 @@ import re
 import base64
 # import openai
 from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, AuthenticationError
+from httpx import Timeout, Limits
+import config as app_config
 from lamb.logging_config import get_logger
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
@@ -16,6 +18,42 @@ logger = get_logger(__name__, component="API")
 
 # Set up multimodal logging using centralized config
 multimodal_logger = get_logger('multimodal.openai', component="API")
+
+# ---------------------------------------------------------------------------
+# Shared AsyncOpenAI client pool
+# ---------------------------------------------------------------------------
+# Clients are cached by (api_key, base_url) so that all requests sharing the
+# same credentials reuse a single HTTP connection pool instead of creating a
+# new one per request.  This prevents TCP connection exhaustion under
+# concurrent load (see GitHub issue #255).
+# ---------------------------------------------------------------------------
+_openai_clients: Dict[tuple, AsyncOpenAI] = {}
+
+
+def _get_openai_client(api_key: str, base_url: str = None) -> AsyncOpenAI:
+    """Return a shared AsyncOpenAI client for the given credentials.
+
+    Creates a new client on the first call for each unique (api_key, base_url)
+    pair and reuses it on subsequent calls.  Timeout and connection-pool
+    parameters are read from config (backed by environment variables).
+    """
+    key = (api_key, base_url)
+    if key not in _openai_clients:
+        _openai_clients[key] = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=Timeout(
+                app_config.LLM_REQUEST_TIMEOUT,
+                connect=app_config.LLM_CONNECT_TIMEOUT,
+            ),
+            max_retries=2,
+        )
+        logger.info(
+            f"Created shared OpenAI client for base_url={base_url} "
+            f"(timeout={app_config.LLM_REQUEST_TIMEOUT}s, "
+            f"connect={app_config.LLM_CONNECT_TIMEOUT}s)"
+        )
+    return _openai_clients[key]
 
 def get_available_llms(assistant_owner: Optional[str] = None):
     """
@@ -487,13 +525,10 @@ Returns:
             vision_params["messages"] = vision_messages
             vision_params["stream"] = stream
 
-            # Create client for vision attempt
-            vision_client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url
-            )
+            # Get shared client for vision attempt
+            vision_client = _get_openai_client(api_key, base_url)
 
-            logger.debug(f"OpenAI vision client created")
+            logger.debug(f"OpenAI vision client acquired from pool")
 
             # Try the vision API call
             if stream:
@@ -534,13 +569,10 @@ Returns:
     params["messages"] = messages
     params["stream"] = stream
 
-    # client = openai.OpenAI(
-    client = AsyncOpenAI( # Use AsyncOpenAI
-        api_key=api_key,
-        base_url=base_url
-    )
+    # Get shared client from pool
+    client = _get_openai_client(api_key, base_url)
 
-    logger.debug(f"OpenAI client created")
+    logger.debug(f"OpenAI client acquired from pool")
 
     # Helper function to make API call with runtime fallback
     async def _make_api_call_with_fallback(params_to_use: dict, attempt_fallback: bool = True):

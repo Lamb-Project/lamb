@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.1  
-**Last Updated:** February 4, 2026  
+**Version:** 2.3
+**Last Updated:** February 11, 2026
 **Reading Time:** ~35 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -172,6 +172,7 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 - `GET /v1/models` — List assistants as OpenAI models
 - `POST /v1/chat/completions` — Generate completions
 - `GET /status` — Health check
+- `GET /openapi.json` — Full OpenAPI specification (all endpoints, schemas, and parameters)
 
 ### 3.3 LAMB Core Routers
 
@@ -339,7 +340,7 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 
 **User Types:**
 - `creator` — Full access to creator interface
-- `lti_creator` — Creator user authenticated via LTI (same permissions as creator, cannot be org admin, password cannot be changed)
+- `lti_creator` — Creator user authenticated via LTI (same permissions as creator, password cannot be changed; can be promoted to org admin by a system admin)
 - `end_user` — Redirected to Open WebUI only (no creator access)
 
 **Auth Providers:**
@@ -353,7 +354,8 @@ Every authenticated endpoint:
 2. Calls `get_creator_user_from_token()` helper
 3. Validates token against OWI database
 4. Verifies user exists in LAMB Creator_users table
-5. Returns user object or raises 401
+5. Enriches the returned dict with the user's OWI `role` (e.g. `"admin"` or `"user"`)
+6. Returns user object or raises 401
 
 ### 5.3 Authorization Levels
 
@@ -366,8 +368,9 @@ Every authenticated endpoint:
 
 **Admin Detection:**
 ```python
-def is_admin_user(creator_user):
-    # Check OWI role == 'admin' OR organization_roles.role IN ('admin', 'owner')
+def is_admin_user(user_or_auth_header):
+    # Accepts a creator_user dict (with 'role' field from OWI) or an auth header string.
+    # Returns True when the user's OWI role == 'admin'.
 ```
 
 ### 5.4 API Key Authentication
@@ -523,7 +526,32 @@ def rag_processor(messages: List[Dict], assistant=None) -> Dict:
 3. Plugin is auto-loaded at runtime — no registration needed
 4. Configure assistant metadata to use it
 
-### 6.5 Streaming Responses
+### 6.5 Connection Pooling
+
+LLM connectors use **shared HTTP client pools** to avoid creating new TCP connections on every request. Without pooling, concurrent users exhaust OS-level connection resources and the system becomes unresponsive.
+
+**OpenAI Connector** (`openai.py`):
+- Shared `AsyncOpenAI` clients cached by `(api_key, base_url)`
+- A single client is created on the first request for each credential pair and reused for all subsequent requests
+- Explicit timeouts configured via environment variables
+
+**Ollama Connector** (`ollama.py`):
+- Shared `aiohttp.ClientSession` instances cached by `base_url`
+- Each session uses a `TCPConnector` with configurable connection limits and keepalive
+- Sessions are recreated transparently if closed
+
+**Configuration** (via `backend/.env`):
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `LLM_REQUEST_TIMEOUT` | Total request timeout for OpenAI calls (seconds) | `120` |
+| `LLM_CONNECT_TIMEOUT` | TCP connection establishment timeout (seconds) | `10` |
+| `LLM_MAX_CONNECTIONS` | Max concurrent connections per client pool | `50` |
+| `OLLAMA_REQUEST_TIMEOUT` | Total request timeout for Ollama calls (seconds) | `120` |
+
+> **Performance:** With connection pooling and a single uvicorn worker, the system handles 50+ concurrent users at 100% success rate with a median response time under 5 seconds against real OpenAI models.
+
+### 6.6 Streaming Responses
 
 For streaming completions (`"stream": true`), responses use Server-Sent Events (SSE):
 
@@ -539,7 +567,7 @@ data: [DONE]
 
 **Content-Type:** `text/event-stream`
 
-### 6.6 Multimodal Support
+### 6.7 Multimodal Support
 
 LAMB supports images via OpenAI's vision API format:
 
@@ -594,20 +622,29 @@ The "system" organization is special:
 - Fallback configuration source
 - System admins are members with admin role
 
-### 7.3 Organization Signup Flow
+### 7.3 Organization Creation
+
+Organizations can be created with or without an admin:
+
+1. System admin creates org via `/creator/admin/organizations/enhanced`
+2. **With admin:** A user from the system org is moved to the new org and assigned the admin role
+3. **Without admin:** Org is created with no admin; a system admin can promote a member later via the Members panel
+
+### 7.4 Organization Signup Flow
 
 1. Admin creates org with `signup_enabled: true` and `signup_key`
 2. User enters email, name, password, and signup key
 3. System matches key to organization
 4. User created in that org with "member" role
 
-### 7.4 Key Organization APIs
+### 7.5 Key Organization APIs
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | GET | `/creator/admin/organizations` | List organizations |
-| POST | `/creator/admin/organizations/enhanced` | Create org |
+| POST | `/creator/admin/organizations/enhanced` | Create org (admin optional) |
 | PUT | `/creator/admin/organizations/{slug}/config` | Update config |
+| PUT | `/creator/admin/organizations/{slug}/members/{user_id}/role` | Promote/demote member (sys admin only) |
 | GET | `/lamb/v1/organizations/{slug}/members` | List members |
 
 ---
@@ -773,7 +810,7 @@ Educator clicks LTI link in LMS
 |-----------|-------|
 | `user_type` | `creator` |
 | `auth_provider` | `lti_creator` |
-| `organization_role` | `member` (cannot be admin/owner) |
+| `organization_role` | `member` (default; can be promoted to admin by a system admin) |
 | Password changeable | No (random password, unused) |
 | Can share assistants | Yes (same as regular creator) |
 | Can create KBs | Yes |
@@ -877,7 +914,7 @@ The admin user management panel identifies users by type with color-coded badges
 - Filter dropdown includes "LTI Creator" option
 - Password change button disabled (LTI users have random passwords)
 - Can be enabled/disabled by admin
-- Cannot be promoted to organization admin
+- Can be promoted to organization admin by a system admin
 
 ---
 
@@ -1064,6 +1101,10 @@ npm run dev
 | `LTI_GLOBAL_CONSUMER_KEY` | Unified LTI consumer key | `lamb` |
 | `LTI_GLOBAL_SECRET` | Unified LTI shared secret | (falls back to `LTI_SECRET`) |
 | `LTI_SECRET` | Legacy student LTI secret | - |
+| `LLM_REQUEST_TIMEOUT` | OpenAI request timeout (seconds) | `120` |
+| `LLM_CONNECT_TIMEOUT` | TCP connect timeout (seconds) | `10` |
+| `LLM_MAX_CONNECTIONS` | Max connections per client pool | `50` |
+| `OLLAMA_REQUEST_TIMEOUT` | Ollama request timeout (seconds) | `120` |
 
 > See [ENVIRONMENT_VARIABLES.md](../backend/ENVIRONMENT_VARIABLES.md) for complete list.
 
@@ -1093,12 +1134,22 @@ def run_migrations(self):
 - `/testing/playwright/` — E2E tests with Playwright
 - `/testing/unit-tests/` — Python unit tests
 - `/testing/curls/` — API test scripts
+- `/testing/load_test_completions.py` — Concurrent load test for completions endpoint
 
 **Running Playwright Tests:**
 ```bash
 cd testing/playwright
 npm install
 npx playwright test
+```
+
+**Running Load Tests:**
+```bash
+# Test with 30 concurrent users
+python3 testing/load_test_completions.py --users 30 --url http://localhost:9099
+
+# Test with 50 concurrent users and custom timeout
+python3 testing/load_test_completions.py --users 50 --url http://localhost:9099 --timeout 180
 ```
 
 ### 10.6 Production Checklist
@@ -1347,6 +1398,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 4, 2026*  
-*Version: 2.1*
+*Last Updated: February 11, 2026*
+*Version: 2.3*
 

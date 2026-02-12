@@ -6,11 +6,14 @@ Automated browser tests for the LAMB platform.
 
 ### Automated Test Suite (Playwright Test)
 
-| Test File                              | Description                                                                             |
-| -------------------------------------- | --------------------------------------------------------------------------------------- |
-| `tests/admin_and_sharing_flow.spec.js` | Combined admin & sharing flow: user/org CRUD + assistant sharing                        |
-| `tests/creator_flow.spec.js`           | Creator flow: Create KB → ingest file → query → create assistant                        |
-| `tests/moodle_lti.spec.js`             | Moodle LTI integration: login via Moodle, click LTI activity and verify redirect to OWI |
+| Test File                                        | Description                                                                             |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `tests/admin_and_sharing_flow.spec.js`           | Combined admin & sharing flow: user/org CRUD + assistant sharing                        |
+| `tests/admin_role_lifecycle.spec.js`              | Admin role lifecycle (issue #245): create admin, verify capabilities, disable, cleanup   |
+| `tests/creator_flow.spec.js`                      | Creator flow: Create KB → ingest file → query → create assistant                        |
+| `tests/moodle_lti.spec.js`                        | Moodle LTI integration: login via Moodle, click LTI activity and verify redirect to OWI |
+| `tests/org_no_admin_and_role_promotion.spec.js`  | Org without admin + role promotion (issue #249): create org without admin, promote/demote members |
+| `tests/access_control_and_user_dashboard.spec.js` | Access control & admin user dashboard: read-only view, owner full access, profile API validation |
 
 ### Moodle LTI test
 

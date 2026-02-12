@@ -1184,17 +1184,17 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int,
+    def create_organization_with_admin(self, slug: str, name: str, admin_user_id: int = None,
                                        signup_enabled: bool = False, signup_key: str = None,
                                        use_system_baseline: bool = True,
                                        config: Dict[str, Any] = None) -> Optional[int]:
         """
-        Create a new organization with admin user assignment and signup configuration
+        Create a new organization with optional admin user assignment and signup configuration
 
         Args:
             slug: URL-friendly organization identifier
             name: Organization display name
-            admin_user_id: ID of user from system org to become org admin
+            admin_user_id: ID of user from system org to become org admin (optional — if None, org is created without an admin)
             signup_enabled: Whether signup is enabled for this organization
             signup_key: Unique signup key for organization-specific signup
             use_system_baseline: Whether to copy system org config as baseline
@@ -1220,25 +1220,27 @@ class LambDatabaseManager:
                     logger.error(f"Signup key '{signup_key}' already exists")
                     return None
 
-            # Validate that admin user exists and is in system organization
-            admin_user = self.get_creator_user_by_id(admin_user_id)
-            if not admin_user:
-                logger.error(f"Admin user {admin_user_id} not found")
-                return None
+            # Validate admin user if provided
+            admin_user = None
+            if admin_user_id is not None:
+                admin_user = self.get_creator_user_by_id(admin_user_id)
+                if not admin_user:
+                    logger.error(f"Admin user {admin_user_id} not found")
+                    return None
 
-            system_org = self.get_organization_by_slug("lamb")
-            if not system_org or admin_user['organization_id'] != system_org['id']:
-                logger.error(
-                    f"Admin user {admin_user_id} is not in system organization")
-                return None
+                system_org = self.get_organization_by_slug("lamb")
+                if not system_org or admin_user['organization_id'] != system_org['id']:
+                    logger.error(
+                        f"Admin user {admin_user_id} is not in system organization")
+                    return None
 
-            # Check if user is currently an admin in the system organization
-            current_role = self.get_user_organization_role(
-                admin_user_id, system_org['id'])
-            if current_role == "admin":
-                logger.error(
-                    f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
-                return None
+                # Check if user is currently an admin in the system organization
+                current_role = self.get_user_organization_role(
+                    admin_user_id, system_org['id'])
+                if current_role == "admin":
+                    logger.error(
+                        f"User {admin_user_id} is a system admin and cannot be assigned to a new organization")
+                    return None
 
             with connection:
                 cursor = connection.cursor()
@@ -1263,9 +1265,10 @@ class LambDatabaseManager:
                 # Add creation metadata
                 if 'metadata' not in config:
                     config['metadata'] = {}
-                config['metadata']['admin_user_id'] = admin_user_id
-                config['metadata']['admin_user_email'] = admin_user['user_email']
                 config['metadata']['created_by_system_admin'] = True
+                if admin_user is not None:
+                    config['metadata']['admin_user_id'] = admin_user_id
+                    config['metadata']['admin_user_email'] = admin_user['user_email']
 
                 # Create organization
                 cursor.execute(f"""
@@ -1277,30 +1280,35 @@ class LambDatabaseManager:
                 org_id = cursor.lastrowid
                 logger.info(f"Organization '{name}' created with id: {org_id}")
 
-                # Move admin user to new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    UPDATE {self.table_prefix}Creator_users
-                    SET organization_id = ?, updated_at = ?
-                    WHERE id = ?
-                """, (org_id, now, admin_user_id))
+                # If admin user provided, move them to the new org and assign admin role
+                if admin_user_id is not None:
+                    # Move admin user to new organization
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}Creator_users
+                        SET organization_id = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (org_id, now, admin_user_id))
 
-                if cursor.rowcount == 0:
-                    logger.error(
-                        f"Failed to move admin user to new organization")
-                    return None
+                    if cursor.rowcount == 0:
+                        logger.error(
+                            f"Failed to move admin user to new organization")
+                        return None
 
-                # Assign admin role to user in new organization (inline to avoid connection conflicts)
-                cursor.execute(f"""
-                    INSERT OR REPLACE INTO {self.table_prefix}organization_roles
-                    (organization_id, user_id, role, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (org_id, admin_user_id, "admin", now, now))
+                    # Assign admin role to user in new organization
+                    cursor.execute(f"""
+                        INSERT OR REPLACE INTO {self.table_prefix}organization_roles
+                        (organization_id, user_id, role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (org_id, admin_user_id, "admin", now, now))
 
-                logger.info(
-                    f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"Assigned role 'admin' to user {admin_user_id} in organization {org_id}")
+                    logger.info(
+                        f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
+                else:
+                    logger.info(
+                        f"Organization '{name}' created without an admin. An admin can be assigned later.")
 
-                logger.info(
-                    f"User {admin_user['user_email']} assigned as admin of organization '{name}'")
                 return org_id
 
         except sqlite3.Error as e:
@@ -3736,6 +3744,7 @@ class LambDatabaseManager:
                 query = f"""
                     SELECT
                         a.id, a.name, a.description, a.owner, a.api_callback,
+                        a.organization_id,
                         a.system_prompt, a.prompt_template, a.RAG_endpoint, a.RAG_Top_k,
                         a.RAG_collections, a.pre_retrieval_endpoint, a.post_retrieval_endpoint,
                         a.created_at, a.updated_at,
@@ -7605,5 +7614,276 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Error getting published assistants for org user: {e}")
             return []
+        finally:
+            connection.close()
+
+    # ------------------------------------------------------------------ #
+    #  User Profile — aggregated overview of a user's resources           #
+    # ------------------------------------------------------------------ #
+
+    def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a comprehensive profile for a user including all owned resources
+        and resources shared with them.
+
+        Args:
+            user_id: LAMB creator user ID
+
+        Returns:
+            Dict with user info, organization, owned resources, and shared resources.
+            None if user not found or database error.
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish database connection for get_user_profile")
+            return None
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+
+                # 1. User info + organization
+                cursor.execute(f"""
+                    SELECT 
+                        u.id, u.user_email, u.user_name, u.user_type,
+                        u.enabled, u.auth_provider, u.lti_user_id,
+                        u.created_at, u.updated_at, u.organization_id,
+                        o.name as org_name, o.slug as org_slug, o.is_system as org_is_system,
+                        r.role as org_role
+                    FROM {self.table_prefix}Creator_users u
+                    LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
+                    LEFT JOIN {self.table_prefix}organization_roles r 
+                        ON r.user_id = u.id AND r.organization_id = u.organization_id
+                    WHERE u.id = ?
+                """, (user_id,))
+
+                row = cursor.fetchone()
+                if not row:
+                    logger.warning(f"User {user_id} not found for profile")
+                    return None
+
+                user_email = row[1]
+                organization_id = row[9]
+
+                user_info = {
+                    'id': row[0],
+                    'email': row[1],
+                    'name': row[2],
+                    'user_type': row[3],
+                    'enabled': bool(row[4]),
+                    'auth_provider': row[5],
+                    'lti_user_id': row[6],
+                    'created_at': row[7],
+                    'updated_at': row[8],
+                }
+
+                organization_info = {
+                    'id': organization_id,
+                    'name': row[10],
+                    'slug': row[11],
+                    'is_system': bool(row[12]) if row[12] is not None else False,
+                    'role': row[13],
+                } if organization_id else None
+
+                # 2. Owned assistants (linked by email — soft reference)
+                cursor.execute(f"""
+                    SELECT 
+                        a.id, a.name, a.description, a.created_at, a.updated_at,
+                        CASE 
+                            WHEN ap.oauth_consumer_name IS NOT NULL 
+                                 AND ap.oauth_consumer_name != 'null' THEN 1 
+                            ELSE 0 
+                        END as published
+                    FROM {self.table_prefix}assistants a
+                    LEFT JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
+                    WHERE a.owner = ?
+                    ORDER BY a.created_at DESC
+                """, (user_email,))
+
+                owned_assistants = []
+                for r in cursor.fetchall():
+                    owned_assistants.append({
+                        'id': r[0], 'name': r[1], 'description': r[2],
+                        'created_at': r[3], 'updated_at': r[4], 'published': bool(r[5])
+                    })
+
+                # 3. Owned knowledge bases (linked by user_id — hard FK)
+                cursor.execute(f"""
+                    SELECT id, kb_id, kb_name, is_shared, created_at, updated_at
+                    FROM {self.table_prefix}kb_registry
+                    WHERE owner_user_id = ?
+                    ORDER BY created_at DESC
+                """, (user_id,))
+
+                owned_kbs = []
+                for r in cursor.fetchall():
+                    owned_kbs.append({
+                        'id': r[0], 'kb_id': r[1], 'kb_name': r[2],
+                        'is_shared': bool(r[3]), 'created_at': r[4], 'updated_at': r[5]
+                    })
+
+                # 4. Owned rubrics (linked by email — soft reference)
+                cursor.execute(f"""
+                    SELECT id, rubric_id, title, description, is_public, created_at, updated_at
+                    FROM {self.table_prefix}rubrics
+                    WHERE owner_email = ?
+                    ORDER BY created_at DESC
+                """, (user_email,))
+
+                owned_rubrics = []
+                for r in cursor.fetchall():
+                    owned_rubrics.append({
+                        'id': r[0], 'rubric_id': r[1], 'title': r[2],
+                        'description': r[3], 'is_public': bool(r[4]),
+                        'created_at': r[5], 'updated_at': r[6]
+                    })
+
+                # 5. Owned templates (linked by email — hard FK)
+                cursor.execute(f"""
+                    SELECT id, name, description, is_shared, created_at, updated_at
+                    FROM {self.table_prefix}prompt_templates
+                    WHERE owner_email = ?
+                    ORDER BY created_at DESC
+                """, (user_email,))
+
+                owned_templates = []
+                for r in cursor.fetchall():
+                    owned_templates.append({
+                        'id': r[0], 'name': r[1], 'description': r[2],
+                        'is_shared': bool(r[3]), 'created_at': r[4], 'updated_at': r[5]
+                    })
+
+                # 6. Assistants shared with this user (by user_id — hard FK)
+                cursor.execute(f"""
+                    SELECT 
+                        a.id, a.name, a.description,
+                        s.shared_at,
+                        u.user_name as owner_name, u.user_email as owner_email
+                    FROM {self.table_prefix}assistant_shares s
+                    JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
+                    JOIN {self.table_prefix}Creator_users u ON s.shared_by_user_id = u.id
+                    WHERE s.shared_with_user_id = ?
+                    ORDER BY s.shared_at DESC
+                """, (user_id,))
+
+                shared_assistants = []
+                for r in cursor.fetchall():
+                    shared_assistants.append({
+                        'id': r[0], 'name': r[1], 'description': r[2],
+                        'shared_at': r[3], 'owner_name': r[4], 'owner_email': r[5]
+                    })
+
+                # 7. Shared KBs in org (org-level, excluding own)
+                shared_kbs = []
+                if organization_id:
+                    cursor.execute(f"""
+                        SELECT 
+                            kr.id, kr.kb_id, kr.kb_name, kr.created_at,
+                            cu.user_name as owner_name, cu.user_email as owner_email
+                        FROM {self.table_prefix}kb_registry kr
+                        JOIN {self.table_prefix}Creator_users cu ON kr.owner_user_id = cu.id
+                        WHERE kr.organization_id = ? AND kr.is_shared = 1 AND kr.owner_user_id != ?
+                        ORDER BY kr.updated_at DESC
+                    """, (organization_id, user_id))
+
+                    for r in cursor.fetchall():
+                        shared_kbs.append({
+                            'id': r[0], 'kb_id': r[1], 'kb_name': r[2],
+                            'created_at': r[3], 'owner_name': r[4], 'owner_email': r[5]
+                        })
+
+                # 8. Shared templates in org (org-level, excluding own)
+                shared_templates = []
+                if organization_id:
+                    cursor.execute(f"""
+                        SELECT 
+                            pt.id, pt.name, pt.description, pt.created_at,
+                            cu.user_name as owner_name, cu.user_email as owner_email
+                        FROM {self.table_prefix}prompt_templates pt
+                        LEFT JOIN {self.table_prefix}Creator_users cu ON pt.owner_email = cu.user_email
+                        WHERE pt.organization_id = ? AND pt.is_shared = 1 AND pt.owner_email != ?
+                        ORDER BY pt.updated_at DESC
+                    """, (organization_id, user_email))
+
+                    for r in cursor.fetchall():
+                        shared_templates.append({
+                            'id': r[0], 'name': r[1], 'description': r[2],
+                            'created_at': r[3], 'owner_name': r[4], 'owner_email': r[5]
+                        })
+
+                # 9. Public rubrics in org (org-level, excluding own)
+                shared_rubrics = []
+                if organization_id:
+                    cursor.execute(f"""
+                        SELECT 
+                            r.id, r.rubric_id, r.title, r.description, r.created_at,
+                            cu.user_name as owner_name, cu.user_email as owner_email
+                        FROM {self.table_prefix}rubrics r
+                        LEFT JOIN {self.table_prefix}Creator_users cu ON r.owner_email = cu.user_email
+                        WHERE r.organization_id = ? AND r.is_public = 1 AND r.owner_email != ?
+                        ORDER BY r.updated_at DESC
+                    """, (organization_id, user_email))
+
+                    for r in cursor.fetchall():
+                        shared_rubrics.append({
+                            'id': r[0], 'rubric_id': r[1], 'title': r[2],
+                            'description': r[3], 'created_at': r[4],
+                            'owner_name': r[5], 'owner_email': r[6]
+                        })
+
+                # Assemble the response
+                published_count = sum(1 for a in owned_assistants if a['published'])
+
+                return {
+                    'user': user_info,
+                    'organization': organization_info,
+                    'owned': {
+                        'assistants': {
+                            'total': len(owned_assistants),
+                            'published': published_count,
+                            'items': owned_assistants,
+                        },
+                        'knowledge_bases': {
+                            'total': len(owned_kbs),
+                            'shared': sum(1 for kb in owned_kbs if kb['is_shared']),
+                            'items': owned_kbs,
+                        },
+                        'rubrics': {
+                            'total': len(owned_rubrics),
+                            'public': sum(1 for r in owned_rubrics if r['is_public']),
+                            'items': owned_rubrics,
+                        },
+                        'templates': {
+                            'total': len(owned_templates),
+                            'shared': sum(1 for t in owned_templates if t['is_shared']),
+                            'items': owned_templates,
+                        },
+                    },
+                    'shared_with_me': {
+                        'assistants': {
+                            'total': len(shared_assistants),
+                            'items': shared_assistants,
+                        },
+                        'knowledge_bases': {
+                            'total': len(shared_kbs),
+                            'items': shared_kbs,
+                        },
+                        'rubrics': {
+                            'total': len(shared_rubrics),
+                            'items': shared_rubrics,
+                        },
+                        'templates': {
+                            'total': len(shared_templates),
+                            'items': shared_templates,
+                        },
+                    },
+                }
+
+        except sqlite3.Error as e:
+            logger.error(f"Database error in get_user_profile: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in get_user_profile: {e}")
+            return None
         finally:
             connection.close()

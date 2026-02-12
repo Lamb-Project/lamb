@@ -96,6 +96,13 @@ if not OWI_ADMIN_PASSWORD:
 GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
 GEMINI_MODELS = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
 
+# LLM Client Pool Configuration
+# Controls shared HTTP client pools for OpenAI and Ollama connectors
+LLM_REQUEST_TIMEOUT = int(os.getenv('LLM_REQUEST_TIMEOUT', '120'))
+LLM_CONNECT_TIMEOUT = int(os.getenv('LLM_CONNECT_TIMEOUT', '10'))
+LLM_MAX_CONNECTIONS = int(os.getenv('LLM_MAX_CONNECTIONS', '50'))
+OLLAMA_REQUEST_TIMEOUT = int(os.getenv('OLLAMA_REQUEST_TIMEOUT', '120'))
+
 # Validate required environment variables
 required_vars = ['LAMB_DB_PATH', 'OWI_PATH']
 missing_vars = [var for var in required_vars if not os.getenv(var)]
