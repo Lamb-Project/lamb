@@ -2161,10 +2161,10 @@
             userData = userState;
         });
 
-        // Check if user is logged in
+        // Auth is handled by layout-level guard in +layout.svelte
+        // Additional check for early mount race condition
         if (!userData || !userData.isLoggedIn) {
-            console.log("User not logged in, redirecting to login");
-            goto(`${base}/auth`, { replaceState: true });
+            console.log("User not logged in, layout guard will handle redirect");
             return;
         }
 

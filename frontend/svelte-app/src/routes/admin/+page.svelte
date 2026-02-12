@@ -896,7 +896,8 @@
         // Add global keydown listener for ESC key
         document.addEventListener('keydown', handleKeydown);
         
-        // Check if user is logged in and is admin
+        // Auth is handled by layout-level guard in +layout.svelte
+        // Subscribe to user store for current user data (used for self-disable prevention)
         unsubscribeUser = user.subscribe(userData => {
             currentUserData = userData; // Store current user data for self-disable prevention
             
@@ -908,13 +909,7 @@
                     console.log("User has admin role, can access admin features");
                 } else {
                     console.warn("User doesn't have admin role:", userRole);
-                    // Optionally redirect non-admin users
-                    // goto(`${base}/`);
                 }
-            } else {
-                console.warn("User not logged in, redirecting...");
-                // Redirect to login page
-                // goto(`${base}/login`);
             }
         });
 
