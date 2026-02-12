@@ -18,6 +18,7 @@ from lamb.logging_config import get_logger
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.services import OrganizationService
 from schemas import BulkImportRequest, BulkUserActionRequest
+from .kb_server_manager import KBServerManager
 
 # Initialize router
 router = APIRouter()
@@ -25,6 +26,9 @@ security = HTTPBearer()
 
 # Initialize database manager
 db_manager = LambDatabaseManager()
+
+# Initialize KB server manager
+kb_server_manager = KBServerManager()
 
 # Set up logger for organization router
 logger = get_logger(__name__, component="API")
@@ -1614,10 +1618,8 @@ async def sync_system_organization(
         logger.error(f"Error syncing system organization: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ============================================================================
 # ORGANIZATION ADMIN ENDPOINTS
 # These endpoints are for organization admins to manage their own organizations
-# ============================================================================
 
 # Pydantic models for organization admin endpoints
 class OrgAdminUserCreate(BaseModel):
@@ -2127,9 +2129,7 @@ async def delete_organization_user(request: Request, user_id: int, org: Optional
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
 # Bulk User Management Endpoints
-# ============================================================================
 
 @router.post(
     "/org-admin/users/bulk-import/validate",
@@ -2579,9 +2579,7 @@ async def org_admin_bulk_disable_users(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
 # Organization Settings Management
-# ============================================================================
 @router.get(
     "/org-admin/settings/signup", 
     tags=["Organization Admin - Settings"],
@@ -2997,9 +2995,7 @@ async def update_api_settings(request: Request, settings: OrgAdminApiSettings, o
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
 # KNOWLEDGE BASE SERVER SETTINGS MANAGEMENT
-# ============================================================================
 
 @router.get(
     "/org-admin/settings/kb",
@@ -3603,10 +3599,8 @@ async def update_kb_embeddings_config(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
 # LTI CREATOR KEY MANAGEMENT
 # These endpoints allow organization admins to manage LTI creator access keys
-# ============================================================================
 
 class LtiCreatorKeySettings(BaseModel):
     """Settings for LTI creator key"""
@@ -3877,11 +3871,9 @@ async def delete_lti_creator_settings(request: Request, org: Optional[str] = Non
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
 # ORGANIZATION ADMIN ASSISTANT MANAGEMENT ENDPOINTS
 # These endpoints allow organization admins to view and manage access to 
 # assistants within their organization
-# ============================================================================
 
 class AssistantAccessUpdate(BaseModel):
     user_emails: List[str] = Field(..., description="List of user emails to grant/revoke access")
@@ -4576,9 +4568,202 @@ async def get_user_profile(request: Request, user_id: int):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+# Embeddings Setup Management (Organization Admin Endpoints)
+
+@router.get("/organizations/{org_id}/embeddings-setups")
+async def list_embeddings_setups(org_id: int, request: Request):
+    """List all embeddings setups for an organization (admin only)"""
+    try:
+        # Verify organization admin access
+        admin_info = await verify_organization_admin_access(request, org_id)
+        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
+        # Check KB server availability
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
+        if not kb_available:
+            raise HTTPException(status_code=503, detail="KB server unavailable")
+
+        # Get KB server config
+        kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
+        kb_url = kb_config['url']
+        kb_token = kb_config['token']
+
+        # Call KB server API using external_id (slug)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing embeddings setups: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/organizations/{org_id}/embeddings-setups")
+async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dict[str, Any]):
+    """Create a new embeddings setup (admin only)"""
+    try:
+        # Verify organization admin access
+        admin_info = await verify_organization_admin_access(request, org_id)
+        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
+        # Check KB server availability
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
+        if not kb_available:
+            raise HTTPException(status_code=503, detail="KB server unavailable")
+
+        # Get KB server config
+        kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
+        kb_url = kb_config['url']
+        kb_token = kb_config['token']
+
+        # Call KB server API using external_id (slug)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                json=setup_data,
+                timeout=60.0  # Longer timeout for validation
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating embeddings setup: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/organizations/{org_id}/embeddings-setups/{setup_key}")
+async def update_embeddings_setup(org_id: int, setup_key: str, request: Request, update_data: Dict[str, Any]):
+    """Update an embeddings setup - API key rotation, provider migration (admin only)"""
+    try:
+        # Verify organization admin access
+        admin_info = await verify_organization_admin_access(request, org_id)
+        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
+        # Check KB server availability
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
+        if not kb_available:
+            raise HTTPException(status_code=503, detail="KB server unavailable")
+
+        # Get KB server config
+        kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
+        kb_url = kb_config['url']
+        kb_token = kb_config['token']
+
+        # Call KB server API using external_id (slug)
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                json=update_data,
+                timeout=60.0  # Longer timeout for validation
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating embeddings setup: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/organizations/{org_id}/embeddings-setups/{setup_key}")
+async def delete_embeddings_setup(
+    org_id: int,
+    setup_key: str,
+    request: Request,
+    force: bool = Query(False),
+    replacement_setup_key: Optional[str] = Query(None)
+):
+    """Delete an embeddings setup (admin only)"""
+    try:
+        # Verify organization admin access
+        admin_info = await verify_organization_admin_access(request, org_id)
+        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get organization to resolve external_id (slug) for KB-server
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
+        
+        # Check KB server availability
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
+        if not kb_available:
+            raise HTTPException(status_code=503, detail="KB server unavailable")
+
+        # Get KB server config
+        kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
+        kb_url = kb_config['url']
+        kb_token = kb_config['token']
+
+        # Build query parameters
+        params = {}
+        if force:
+            params['force'] = True
+        if replacement_setup_key:
+            params['replacement_setup_key'] = replacement_setup_key
+
+        # Call KB server API using external_id (slug)
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                params=params,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting embeddings setup: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # Unified LTI Global Config & Activity Management
-# =============================================================================
 
 @router.get(
     "/lti-global-config",

@@ -2526,3 +2526,59 @@ async def cancel_ingestion_job(
 
 # --- End Ingestion Status API Endpoints --- #
 
+
+# ============================================================================
+# Embeddings Setups API Endpoints
+# ============================================================================
+
+@router.get("/embeddings-setups/available")
+async def get_available_embeddings_setups(request: Request):
+    """Get available embeddings setups for collection creation (all org members)"""
+    try:
+        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+
+        if not creator_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Check KB server availability
+        kb_available = await kb_server_manager.is_kb_server_available(creator_user)
+        if not kb_available:
+            raise HTTPException(status_code=503, detail="KB server unavailable")
+
+        # Get user's organization
+        user_id = creator_user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid user")
+
+        # Get user details to find organization
+        user_details = db_manager.get_creator_user_by_id(user_id)
+        if not user_details or not user_details.get('organization_id'):
+            # User not in an organization - return empty list
+            return []
+
+        org_id = user_details['organization_id']
+
+        # Get KB server config
+        kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
+        kb_url = kb_config['url']
+        kb_token = kb_config['token']
+
+        # Call KB server API
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{kb_url}/organizations/{org_id}/embeddings-setups/available",
+                headers={"Authorization": f"Bearer {kb_token}"},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting available embeddings setups: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- End Embeddings Setups API Endpoints --- #
+

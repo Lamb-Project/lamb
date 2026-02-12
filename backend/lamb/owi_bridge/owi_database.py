@@ -220,6 +220,39 @@ class OwiDatabaseManager:
             logging.error(f"Error in _row_to_dict: {e}")
             return {}
 
+    def get_group_by_id(self, group_id: str) -> Optional[Dict]:
+        """Get group by ID"""
+        if not group_id:
+            return None
+            
+        try:
+            query = 'SELECT * FROM "group" WHERE id = ?'
+            result = self.execute_query(query, (group_id,), fetch_one=True)
+            if result:
+                columns = [
+                    'id', 'user_ids', 'name', 'description', 
+                    'created_at', 'updated_at', 'permissions'
+                ]
+                
+                if len(result) == len(columns):
+                    group_data = dict(zip(columns, result))
+                    # Parse JSON fields
+                    if isinstance(group_data.get('user_ids'), str):
+                        try:
+                            group_data['user_ids'] = json.loads(group_data['user_ids'])
+                        except:
+                            group_data['user_ids'] = []
+                    if isinstance(group_data.get('permissions'), str):
+                        try:
+                            group_data['permissions'] = json.loads(group_data['permissions'])
+                        except:
+                            group_data['permissions'] = {}
+                    return group_data
+            return None
+        except Exception as e:
+            logging.error(f"Error in get_group_by_id: {e}")
+            return None
+
     def get_users_in_group(self, group_id: str) -> List[Dict]:
         """Get all users in a group"""
         connection = self.get_connection()

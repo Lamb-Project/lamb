@@ -268,6 +268,7 @@ class LambDatabaseManager:
                         user_name TEXT NOT NULL,
                         user_type TEXT NOT NULL DEFAULT 'creator' CHECK(user_type IN ('creator', 'end_user')),
                         user_config JSON,
+                        enabled BOOLEAN NOT NULL DEFAULT 1,
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
                         FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id),
@@ -3784,6 +3785,10 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
+
+    def get_assistant_by_name_and_owner(self, assistant_name: str, owner: str):
+        """Get assistant by name and owner (Alias for get_assistant_by_name)"""
+        return self.get_assistant_by_name(assistant_name, owner)
 
     def get_assistant_by_name(self, assistant_name: str, owner: Optional[str] = None):
         connection = self.get_connection()

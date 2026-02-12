@@ -35,7 +35,7 @@ class TestCreateCollection:
         """Create collection with custom embeddings model."""
         timestamp = int(time.time() * 1000)
         name = f"test-custom-embed-{timestamp}"
-        
+
         collection = client.create_collection(
             name=name,
             embeddings_model={

@@ -176,10 +176,11 @@ class QueryService:
                 params["embedding_function"] = collection_embedding_function
                 params["chroma_collection"] = chroma_collection
                 
-                # Extract embedding model info for debugging
-                embedding_config = db_collection["embeddings_model"]
-                vendor = embedding_config.get("vendor", "")
-                model_name = embedding_config.get("model", "")
+                # Extract embedding model info for debugging (handle both old and new mode)
+                embedding_config = db_collection.get("embeddings_model") or {}
+                embeddings_setup = db_collection.get("embeddings_setup") or {}
+                vendor = embedding_config.get("vendor", "") or embeddings_setup.get("vendor", "unknown")
+                model_name = embedding_config.get("model", "") or embeddings_setup.get("model_name", "unknown")
                 print(f"DEBUG: [query_collection] Using embeddings - vendor: {vendor}, model: {model_name}")
                 
             except Exception as ef_e:
