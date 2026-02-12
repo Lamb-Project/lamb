@@ -26,19 +26,11 @@ app.add_typer(kb.app, name="kb")
 app.add_typer(job.app, name="job")
 
 
-def version_callback(value: bool) -> None:
-    if value:
-        typer.echo(f"lamb-cli {__version__}")
-        raise typer.Exit()
-
-
 @app.callback()
-def main(
-    version: Optional[bool] = typer.Option(
-        None, "--version", "-v", callback=version_callback, is_eager=True, help="Show version."
-    ),
-) -> None:
+def main() -> None:
     """LAMB CLI."""
+    if hasattr(sys.stderr, "isatty") and sys.stderr.isatty():
+        sys.stderr.write(f"lamb-cli {__version__}\n")
 
 
 @app.command()
