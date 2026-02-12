@@ -84,8 +84,21 @@ test.describe.serial("YouTube Ingestion E2E", () => {
   /**
    * Wait until the latest ingestion job shows "completed" (or fail if "failed").
    * Polls the Files tab every few seconds up to a generous timeout.
+   *
+   * IMPORTANT: Only checks the FIRST row in the files table (= most recent
+   * ingestion).  Other test suites (e.g. youtube_titles) may contaminate the
+   * KB by ingesting unrelated videos, leaving stale "failed" rows further
+   * down the table.  Scoping to targetRowIndex avoids false negatives.
+   *
+   * @param {import('@playwright/test').Page} page
+   * @param {object}  opts
+   * @param {number}  opts.timeout         Max wait in ms (default 120 s)
+   * @param {number}  opts.targetRowIndex   Row to monitor (0 = newest file)
    */
-  async function waitForIngestionStatus(page, { timeout = 120_000 } = {}) {
+  async function waitForIngestionStatus(
+    page,
+    { timeout = 120_000, targetRowIndex = 0 } = {}
+  ) {
     const filesButton = page.getByRole("button", { name: /^Files$/i });
     await expect(filesButton).toBeVisible();
     await filesButton.click();
@@ -94,34 +107,47 @@ test.describe.serial("YouTube Ingestion E2E", () => {
     const deadline = Date.now() + timeout;
 
     while (Date.now() < deadline) {
-      // Check for "failed" first — fail fast
-      const failedButton = page.getByRole("button", { name: /failed/i });
-      if ((await failedButton.count()) > 0) {
-        // Click to get details
-        await failedButton.first().click();
-        const detailsDialog = page.getByRole("dialog", {
-          name: /Ingestion Job Details/i,
-        });
-        let errorText = "";
-        if (await detailsDialog.isVisible().catch(() => false)) {
-          errorText = await detailsDialog.textContent().catch(() => "");
-          await page
-            .locator("button")
-            .filter({ hasText: /^Close$/ })
-            .click()
-            .catch(() => {});
-        }
-        throw new Error(
-          `Ingestion failed. Details: ${errorText.substring(0, 500)}`
-        );
+      const targetRow = page
+        .locator("table tbody tr")
+        .nth(targetRowIndex);
+
+      // Row not yet visible — wait and retry
+      if ((await targetRow.count()) === 0) {
+        await page.waitForTimeout(5_000);
+        continue;
       }
 
-      // Check for "completed"
-      const completedButton = page.getByRole("button", {
-        name: /completed/i,
+      // Read the status button inside the target row only
+      const statusButton = targetRow.locator("button").filter({
+        hasText: /processing|completed|failed|pending/i,
       });
-      if ((await completedButton.count()) > 0) {
-        return; // Success
+
+      if ((await statusButton.count()) > 0) {
+        const statusText = (await statusButton.textContent()).trim().toLowerCase();
+
+        if (statusText.includes("failed")) {
+          // Click to get details
+          await statusButton.click();
+          const detailsDialog = page.getByRole("dialog", {
+            name: /Ingestion Job Details/i,
+          });
+          let errorText = "";
+          if (await detailsDialog.isVisible().catch(() => false)) {
+            errorText = await detailsDialog.textContent().catch(() => "");
+            await page
+              .locator("button")
+              .filter({ hasText: /^Close$/ })
+              .click()
+              .catch(() => {});
+          }
+          throw new Error(
+            `Ingestion failed. Details: ${errorText.substring(0, 500)}`
+          );
+        }
+
+        if (statusText.includes("completed")) {
+          return; // Success
+        }
       }
 
       // Still processing — wait 10s then hit Refresh Status
@@ -561,30 +587,31 @@ test.describe.serial("YouTube Ingestion E2E", () => {
   //   console.log("Query returned relevant results from French Revolution subtitles.");
   // });
 
-  // ── Cleanup (commented out to inspect test residuals) ──
+  // ── Cleanup ──
 
-  // test("13. Delete knowledge base (cleanup)", async ({ page }) => {
-  //   await page.goto("knowledgebases");
-  //   await page.waitForLoadState("networkidle");
-  //
-  //   const kbRow = page.locator(`tr:has-text("${kbName}")`);
-  //   await expect(kbRow).toBeVisible({ timeout: 10_000 });
-  //
-  //   const deleteButton = kbRow.locator("button.text-red-600", {
-  //     hasText: /delete/i,
-  //   });
-  //   await expect(deleteButton).toBeVisible({ timeout: 5_000 });
-  //   await deleteButton.click();
-  //
-  //   const modal = page.getByRole("dialog");
-  //   await expect(modal).toBeVisible({ timeout: 3_000 });
-  //
-  //   const confirmButton = modal.locator("button", { hasText: /delete/i });
-  //   await expect(confirmButton).toBeVisible();
-  //   await confirmButton.click();
-  //
-  //   await expect(modal).not.toBeVisible({ timeout: 5_000 });
-  //   await expect(kbRow).not.toBeVisible({ timeout: 10_000 });
-  //   console.log(`KB "${kbName}" deleted.`);
-  // });
+  test("13. Delete knowledge base (cleanup)", async ({ page }) => {
+    await page.goto("knowledgebases");
+    await page.waitForLoadState("networkidle");
+
+    const kbRow = page.locator("tr").filter({ hasText: kbName });
+    if ((await kbRow.count()) === 0) {
+      console.log(`KB "${kbName}" already deleted or not found — nothing to clean up.`);
+      return;
+    }
+
+    const deleteButton = kbRow.getByRole("button", { name: "Delete" });
+    await expect(deleteButton).toBeVisible({ timeout: 5_000 });
+    await deleteButton.click();
+
+    const modal = page.getByRole("dialog");
+    await expect(modal).toBeVisible({ timeout: 3_000 });
+
+    const confirmButton = modal.getByRole("button", { name: "Delete" });
+    await expect(confirmButton).toBeVisible({ timeout: 2_000 });
+    await confirmButton.click();
+
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(kbName)).not.toBeVisible({ timeout: 10_000 });
+    console.log(`KB "${kbName}" deleted.`);
+  });
 });

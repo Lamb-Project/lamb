@@ -377,24 +377,24 @@ test.describe.serial("New Knowledge Base E2E Flow", () => {
         console.log("Firecrawl correctly failed on unreachable localhost URL");
     });
 
-    test.skip("Cleanup — delete test KB", async ({ page }) => {
+    test("Cleanup — delete test KB", async ({ page }) => {
         await page.goto("knowledgebases");
         await page.waitForLoadState("networkidle");
 
         const kbRow = page.locator("tr").filter({ hasText: kbName });
-        if (await kbRow.count() === 0) {
+        if ((await kbRow.count()) === 0) {
             console.log("Test KB already deleted or not found — nothing to clean up");
             return;
         }
 
-        const deleteButton = kbRow.locator("button.text-red-600", { hasText: /delete/i });
+        const deleteButton = kbRow.getByRole("button", { name: "Delete" });
         await expect(deleteButton).toBeVisible({ timeout: 5_000 });
         await deleteButton.click();
 
         const modal = page.getByRole("dialog");
         await expect(modal).toBeVisible({ timeout: 3_000 });
 
-        const confirmButton = modal.locator("button", { hasText: /delete/i });
+        const confirmButton = modal.getByRole("button", { name: "Delete" });
         await expect(confirmButton).toBeVisible({ timeout: 2_000 });
         await confirmButton.click();
 
