@@ -85,7 +85,23 @@ lamb logout
 lamb assistant list
 ```
 
-### Create an assistant
+### Check available connectors and models
+
+Before creating an assistant, see what's available on your server:
+
+```bash
+lamb assistant config
+```
+
+This shows all connectors (e.g. `openai`, `ollama`), their models, prompt processors, RAG processors, and your organization's defaults. For machine-readable output:
+
+```bash
+lamb assistant config -o json
+```
+
+### Create an assistant — Interactive Wizard
+
+The easiest way to create a fully configured assistant is the interactive wizard. When you run `create` from a terminal without any configuration flags, the wizard starts automatically:
 
 ```bash
 lamb assistant create "Math Tutor" \
@@ -93,12 +109,83 @@ lamb assistant create "Math Tutor" \
   --system-prompt "You are a patient math tutor. Explain concepts step by step."
 ```
 
+The wizard walks you through each setting with numbered menus:
+
+```
+--- Assistant Configuration Wizard ---
+
+Select a connector:
+  1. openai (default)
+  2. ollama
+Choose [openai]: 1
+
+Select an LLM model:
+  1. gpt-4o
+  2. gpt-4o-mini (default)
+Choose [gpt-4o-mini]: 2
+
+Select a prompt processor:
+  1. simple_augment (default)
+  2. context_augment
+Choose [simple_augment]:
+
+Select a RAG processor:
+  1. no_rag (default)
+  2. simple_rag
+  3. context_aware_rag
+Choose [no_rag]:
+
+Enable vision? [y/N]:
+Enable image generation? [y/N]:
+```
+
+You can also force the wizard with `--interactive` / `-i`:
+
+```bash
+lamb assistant create "My Bot" -i
+```
+
+### Create an assistant — Scripting with Flags
+
+For CI/CD and scripts, pass configuration directly as flags:
+
+```bash
+lamb assistant create "Math Tutor" \
+  --description "Helps with algebra" \
+  --system-prompt "You are a math tutor." \
+  --connector openai \
+  --llm gpt-4o-mini \
+  --prompt-processor simple_augment \
+  --rag-processor no_rag
+```
+
+If you only specify some flags, the rest are filled from your organization's server defaults:
+
+```bash
+# Only specify the model — connector, processors come from org defaults
+lamb assistant create "Quick Bot" --llm gpt-4o
+```
+
+Additional options:
+
+```bash
+# Enable vision capability
+lamb assistant create "Vision Bot" --connector openai --llm gpt-4o --vision
+
+# Enable image generation
+lamb assistant create "Art Bot" --connector openai --llm gpt-4o --image-generation
+
+# Set RAG parameters
+lamb assistant create "RAG Bot" --rag-top-k 5 --rag-collections "collection1,collection2"
+```
+
 For longer system prompts, use a file:
 
 ```bash
 lamb assistant create "Essay Coach" \
   --description "Writing feedback assistant" \
-  --system-prompt-file ./prompts/essay-coach.txt
+  --system-prompt-file ./prompts/essay-coach.txt \
+  --connector openai --llm gpt-4o-mini
 ```
 
 ### View assistant details
@@ -107,6 +194,8 @@ lamb assistant create "Essay Coach" \
 lamb assistant get <assistant-id>
 ```
 
+The detail view shows the full configuration including connector, LLM, prompt processor, and RAG processor extracted from the assistant's metadata.
+
 ### Update an assistant
 
 Only the fields you pass will change:
@@ -114,6 +203,25 @@ Only the fields you pass will change:
 ```bash
 lamb assistant update <assistant-id> --name "Advanced Math Tutor"
 lamb assistant update <assistant-id> --system-prompt "Updated instructions..."
+```
+
+You can also update the LLM configuration. The CLI fetches the current metadata and merges your changes:
+
+```bash
+# Switch to a different model (keeps connector and processors unchanged)
+lamb assistant update <assistant-id> --llm gpt-4o
+
+# Enable vision on an existing assistant
+lamb assistant update <assistant-id> --vision
+
+# Change the RAG processor
+lamb assistant update <assistant-id> --rag-processor context_aware_rag
+```
+
+Or re-configure everything with the interactive wizard:
+
+```bash
+lamb assistant update <assistant-id> --interactive
 ```
 
 ### Publish and unpublish
@@ -384,7 +492,7 @@ lamb status || echo "Server is down!"
 lamb assistant get "$ID" 2>/dev/null
 if [ $? -eq 5 ]; then
   echo "Assistant not found, creating..."
-  lamb assistant create "New Bot"
+  lamb assistant create "New Bot" --connector openai --llm gpt-4o-mini
 fi
 ```
 
