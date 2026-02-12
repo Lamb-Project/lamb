@@ -127,13 +127,7 @@
 | Click en actividad LTI redirige a OWI | ✅ |
 | Assistant visible tras redirect LTI | ✅ |
 
----
-
-## 2. Funcionalidades SIN Test de Playwright
-
-A continuación se listan las funcionalidades identificadas en el código fuente (rutas frontend, componentes Svelte, routers backend, servicios) que **NO tienen cobertura** en ningún test de Playwright existente.
-
-### 🔴 Login / Signup / Autenticación
+### ✅ Login / Signup / Autenticación
 
 | Funcionalidad | Archivo(s) Relevante(s) |
 |---|---|
@@ -142,6 +136,13 @@ A continuación se listan las funcionalidades identificadas en el código fuente
 | **Logout explícito** (como test principal, no como helper) | `Nav.svelte` |
 | **Login con credenciales inválidas** (error message) | `Login.svelte`, `main.py::login` |
 | **Sesión expirada / token inválido** | `hooks.server.js` |
+
+---
+
+## 2. Funcionalidades SIN Test de Playwright
+
+A continuación se listan las funcionalidades identificadas en el código fuente (rutas frontend, componentes Svelte, routers backend, servicios) que **NO tienen cobertura** en ningún test de Playwright existente.
+
 
 ### 🔴 Evaluaitor (Rúbricas)
 
