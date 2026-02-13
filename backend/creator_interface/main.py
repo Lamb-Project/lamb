@@ -597,30 +597,16 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 }
             )
 
-        # Get OWI roles and enabled status for each user
-        user_creator = UserCreatorManager()
-        owi_manager = OwiUserManager()
+        # Build user list — role now comes from LAMB DB (no OWI lookup needed)
         users_with_roles = []
 
         for user in users:
-            # Get OWI role information for the user using direct OWI bridge call
-            try:
-                owi_user = owi_manager.get_user_by_email(user['email'])
-                owi_role = owi_user.get('role', 'user') if owi_user else 'user'
-            except Exception as e:
-                logger.warning(
-                    f"Could not get OWI role for user {user['email']}: {e}")
-                owi_role = 'user'  # Default on error
-
-            # Get enabled status from user data (LAMB database stores this)
-            enabled_status = user.get('enabled', True)
-
             user_data = {
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
-                "role": owi_role,
-                "enabled": enabled_status,
+                "role": user.get("role", "user"),
+                "enabled": user.get("enabled", True),
                 "user_type": user.get("user_type", "creator"),
                 "user_config": user.get("user_config", {}),
                 "organization": user.get("organization"),
@@ -1592,29 +1578,29 @@ async def update_user_role_by_email(
                 detail=f"Invalid role: {new_role}. Must be 'admin' or 'user'"
             )
 
-        # Import the OwiUserManager class and update the role directly
-        from lamb.owi_bridge.owi_users import OwiUserManager
-        user_manager = OwiUserManager()
-        result = user_manager.update_user_role_by_email(
-            role_update.email, new_role)
+        # LAMB primary: update role in Creator_users
+        lamb_result = db_manager.update_creator_user_role(role_update.email, new_role)
 
-        if result:
-            return {
-                "success": True,
-                "message": f"User role updated to {new_role}",
-                "data": {"email": role_update.email, "role": new_role}
-            }
-        else:
+        if not lamb_result:
             raise HTTPException(
                 status_code=400,
                 detail=f"Failed to update user role in database. User may not exist."
             )
 
-    except ImportError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error importing OwiUserManager: {str(e)}"
-        )
+        # OWI mirror (best-effort)
+        try:
+            from lamb.owi_bridge.owi_users import OwiUserManager
+            user_manager = OwiUserManager()
+            user_manager.update_user_role_by_email(role_update.email, new_role)
+        except Exception as owi_err:
+            logger.warning(f"OWI role mirror failed for {role_update.email}: {owi_err}")
+
+        return {
+            "success": True,
+            "message": f"User role updated to {new_role}",
+            "data": {"email": role_update.email, "role": new_role}
+        }
+
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
@@ -1792,41 +1778,31 @@ async def update_user_role_admin(
                     detail="Creator user has no email address"
                 )
 
-            # Import directly
+            # LAMB primary: update role in Creator_users
             try:
-                # Suppress any potential passlib/bcrypt warnings
-                import warnings
-                warnings.filterwarnings(
-                    "ignore", message=".*error reading bcrypt version.*")
+                lamb_result = db_manager.update_creator_user_role(user_email, new_role)
 
-                # Import the OwiUserManager class directly
-                from lamb.owi_bridge.owi_users import OwiUserManager
-
-                # Create an instance
-                user_manager = OwiUserManager()
-
-                # Update the user's role directly by email
-                # This eliminates the need to find the OWI user ID, simplifying the process
-                # and reducing potential points of failure
-                result = user_manager.update_user_role_by_email(
-                    user_email, new_role)
-
-                if result:
-                    return {
-                        "success": True,
-                        "message": f"User role updated to {new_role}",
-                        "data": {"user_id": user_id, "role": new_role}
-                    }
-                else:
+                if not lamb_result:
                     raise HTTPException(
                         status_code=400,
                         detail=f"Failed to update user role in database. User may not exist."
                     )
-            except ImportError as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error importing OwiUserManager: {str(e)}"
-                )
+
+                # OWI mirror (best-effort)
+                try:
+                    from lamb.owi_bridge.owi_users import OwiUserManager
+                    user_manager = OwiUserManager()
+                    user_manager.update_user_role_by_email(user_email, new_role)
+                except Exception as owi_err:
+                    logger.warning(f"OWI role mirror failed for {user_email}: {owi_err}")
+
+                return {
+                    "success": True,
+                    "message": f"User role updated to {new_role}",
+                    "data": {"user_id": user_id, "role": new_role}
+                }
+            except HTTPException:
+                raise
             except Exception as db_error:
                 import traceback
                 logger.error(
