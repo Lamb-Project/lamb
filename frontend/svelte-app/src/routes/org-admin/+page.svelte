@@ -5,6 +5,7 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
+    import { authenticatedFetch } from '$lib/utils/apiClient';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
@@ -1124,24 +1125,23 @@
         isChangingPassword = true;
 
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-
             const apiUrl = getApiUrl(`/org-admin/users/${passwordChangeData.user_id}/password`);
             console.log(`Changing password for user ${passwordChangeData.user_email} at: ${apiUrl}`);
 
-            const response = await axios.post(apiUrl, {
-                new_password: passwordChangeData.new_password
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+            const response = await authenticatedFetch(apiUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    new_password: passwordChangeData.new_password
+                })
             });
 
-            console.log('Change password response:', response.data);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to change password');
+            }
+
+            const data = await response.json();
+            console.log('Change password response:', data);
 
             changePasswordSuccess = true;
             // Wait 1.5 seconds to show success message, then close modal
@@ -1153,9 +1153,7 @@
             console.error('Error changing password:', err);
 
             let errorMessage = 'Failed to change password.';
-            if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                errorMessage = err.response.data.detail;
-            } else if (err instanceof Error) {
+            if (err instanceof Error) {
                 errorMessage = err.message;
             }
 

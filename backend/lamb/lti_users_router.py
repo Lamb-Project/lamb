@@ -3,7 +3,7 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import LTIUser
 from typing import Optional
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from utils.pipelines.auth import get_current_user
+from utils.pipelines.auth import get_current_user, get_current_active_user
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.owi_bridge.owi_group import OwiGroupManager
 from lamb.logging_config import get_logger
@@ -30,7 +30,7 @@ async def read_lti_users():
 
 
 @router.post("/lti_user/", response_model=LTIUser)
-async def create_lti_user(request: Request, current_user: str = Depends(get_current_user)):
+async def create_lti_user(request: Request, current_user: str = Depends(get_current_active_user)):
     try:
         request_data = await request.json()
 
@@ -100,7 +100,7 @@ async def create_lti_user(request: Request, current_user: str = Depends(get_curr
 
 
 @router.get("/lti_user/{user_email}", response_model=Optional[LTIUser])
-async def get_lti_user(user_email: str, current_user: str = Depends(get_current_user)):
+async def get_lti_user(user_email: str, current_user: str = Depends(get_current_active_user)):
     try:
         user = db_manager.get_lti_user_by_email(user_email)
         if user:
@@ -115,7 +115,7 @@ async def get_lti_user(user_email: str, current_user: str = Depends(get_current_
 
 
 @router.get("/lti_users/assistant/{assistant_id}", response_model=list[LTIUser])
-async def get_lti_users_by_assistant(assistant_id: str, current_user: str = Depends(get_current_user)):
+async def get_lti_users_by_assistant(assistant_id: str, current_user: str = Depends(get_current_active_user)):
     try:
         users = db_manager.get_lti_users_by_assistant_id(assistant_id)
         if users:
@@ -128,7 +128,7 @@ async def get_lti_users_by_assistant(assistant_id: str, current_user: str = Depe
 
 
 @router.post("/sign_in_lti_user")
-async def sign_in_lti_user(request: Request, current_user: str = Depends(get_current_user)):
+async def sign_in_lti_user(request: Request, current_user: str = Depends(get_current_active_user)):
     """
     Sign in LTI user.
 

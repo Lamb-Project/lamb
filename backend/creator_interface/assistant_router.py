@@ -188,15 +188,20 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
         creator_user = db_manager.get_creator_user_by_email(user_email)
         if not creator_user:
-            logger.error(f"No creator user found for email: {user_email}")
-            return None
+            logger.warning(f"No creator user found for email: {user_email} (user may have been deleted)")
+            raise HTTPException(
+                status_code=403,
+                detail="Account no longer exists. Please contact your administrator.",
+                headers={"X-Account-Status": "deleted"}
+            )
 
         # Check if the user account is disabled
         if not creator_user.get('enabled', True):
             logger.warning(f"Disabled user {user_email} attempted API access with valid token")
             raise HTTPException(
                 status_code=403,
-                detail="Account disabled. Your account has been disabled by an administrator."
+                detail="Account disabled. Your account has been disabled by an administrator.",
+                headers={"X-Account-Status": "disabled"}
             )
 
         # Enrich with OWI role so callers (e.g. is_admin_user) can check

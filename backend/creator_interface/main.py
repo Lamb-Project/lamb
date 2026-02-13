@@ -923,8 +923,19 @@ async def update_user_password_admin(
     # Extract the authorization header
     auth_header = f"Bearer {credentials.credentials}"
 
+    # Get creator user from token (this verifies user exists and is enabled)
+    creator_user = get_creator_user_from_token(auth_header)
+    if not creator_user:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "error": "Invalid authentication or user not found"
+            }
+        )
+
     # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not is_admin_user(creator_user):
         return JSONResponse(
             status_code=403,
             content={
@@ -933,7 +944,7 @@ async def update_user_password_admin(
             }
         )
 
-    # User is admin, proceed with updating the password
+    # User is admin and enabled, proceed with updating the password
     try:
         user_creator = UserCreatorManager()
         result = await user_creator.update_user_password(email, new_password)

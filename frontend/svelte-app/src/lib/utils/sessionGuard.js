@@ -20,24 +20,32 @@ import { get } from 'svelte/store';
 /** @type {ReturnType<typeof setInterval> | null} */
 let pollingInterval = null;
 
-/** Sentinel string the backend includes in the 403 detail for disabled accounts */
+/** Sentinel strings the backend includes in the 403 detail for disabled/deleted accounts */
 const ACCOUNT_DISABLED_SIGNAL = 'Account disabled';
+const ACCOUNT_DELETED_SIGNAL = 'Account no longer exists';
 
 /**
- * Check whether a fetch Response indicates the account has been disabled.
+ * Check whether a fetch Response indicates the account has been disabled or deleted.
  * If so, force-logout the user and redirect to root.
  *
  * Call this after every `fetch()` / `axios` response in services, or use
  * the polling mechanism for background detection.
  *
  * @param {Response | { status: number, data?: any }} response - A fetch Response or axios-like response object
- * @returns {boolean} `true` if the account was disabled (caller should abort further processing)
+ * @returns {boolean} `true` if the account was disabled/deleted (caller should abort further processing)
  */
 export function handleApiResponse(response) {
 	if (!browser) return false;
 
 	const status = response.status ?? response?.status;
 	if (status !== 403) return false;
+
+	// Check for X-Account-Status header first (more reliable)
+	const accountStatus = response.headers?.get?.('X-Account-Status');
+	if (accountStatus === 'disabled' || accountStatus === 'deleted') {
+		forceLogout(accountStatus === 'deleted' ? 'deleted' : 'disabled');
+		return true;
+	}
 
 	// For fetch Response objects we need to clone before reading body
 	// For axios responses, data is already parsed
@@ -48,8 +56,12 @@ export function handleApiResponse(response) {
 			.json()
 			.then((/** @type {any} */ body) => {
 				const detail = body?.detail || '';
-				if (typeof detail === 'string' && detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-					forceLogout();
+				if (typeof detail === 'string') {
+					if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
+						forceLogout('deleted');
+					} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
+						forceLogout('disabled');
+					}
 				}
 			})
 			.catch(() => {
@@ -58,9 +70,14 @@ export function handleApiResponse(response) {
 	} else if (response.data) {
 		// axios-style response
 		const detail = response.data?.detail || '';
-		if (typeof detail === 'string' && detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-			forceLogout();
-			return true;
+		if (typeof detail === 'string') {
+			if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
+				forceLogout('deleted');
+				return true;
+			} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
+				forceLogout('disabled');
+				return true;
+			}
 		}
 	}
 
@@ -69,7 +86,7 @@ export function handleApiResponse(response) {
 
 /**
  * Perform a lightweight token validation call to the backend.
- * If the backend returns 403 "Account disabled", force-logout.
+ * If the backend returns 403 "Account disabled/deleted" or 401, force-logout.
  *
  * @returns {Promise<boolean>} `true` if the session is still valid
  */
@@ -89,13 +106,25 @@ export async function checkSession() {
 		});
 
 		if (response.status === 403) {
-			// Check if this is specifically an "account disabled" response
+			// Check X-Account-Status header first
+			const accountStatus = response.headers.get('X-Account-Status');
+			if (accountStatus === 'disabled' || accountStatus === 'deleted') {
+				forceLogout(accountStatus);
+				return false;
+			}
+
+			// Fallback: check response body
 			try {
 				const body = await response.json();
 				const detail = body?.detail || '';
-				if (typeof detail === 'string' && detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-					forceLogout();
-					return false;
+				if (typeof detail === 'string') {
+					if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
+						forceLogout('deleted');
+						return false;
+					} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
+						forceLogout('disabled');
+						return false;
+					}
 				}
 			} catch {
 				/* body is not JSON */
@@ -104,7 +133,7 @@ export async function checkSession() {
 
 		if (response.status === 401) {
 			// Token is invalid/expired — force logout
-			forceLogout();
+			forceLogout('expired');
 			return false;
 		}
 
@@ -147,12 +176,20 @@ export function stopSessionPolling() {
 
 /**
  * Force-logout the user and redirect to login page.
- * Displays a brief message via console (and optionally an alert).
+ * Displays a brief message via console.
+ * 
+ * @param {string} [reason='disabled'] - Reason for logout: 'disabled', 'deleted', 'expired'
  */
-function forceLogout() {
+function forceLogout(reason = 'disabled') {
 	if (!browser) return;
 
-	console.warn('Account disabled detected — forcing logout');
+	const messages = {
+		disabled: 'Account disabled detected — forcing logout',
+		deleted: 'Account no longer exists — forcing logout',
+		expired: 'Session expired — forcing logout'
+	};
+
+	console.warn(messages[reason] || messages.disabled);
 	user.logout();
 	// Use replaceState so the user can't "back" into the disabled session
 	goto(`${base}/`, { replaceState: true });

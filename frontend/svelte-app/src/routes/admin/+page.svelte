@@ -8,6 +8,7 @@
     import axios from 'axios';
     import { getApiUrl, getConfig } from '$lib/config';
     import { user } from '$lib/stores/userStore'; // Import user store for auth token
+    import { authenticatedFetch } from '$lib/utils/apiClient';
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     
@@ -322,9 +323,7 @@
         userDetailError = null;
         userDetailProfile = null;
         try {
-            const token = $user?.token;
-            if (!token) throw new Error('Not authenticated');
-            const profile = await adminService.getUserProfile(token, userId);
+            const profile = await adminService.getUserProfile(userId);
             userDetailProfile = profile;
         } catch (err) {
             userDetailError = err instanceof Error ? err.message : String(err);
@@ -435,17 +434,12 @@
 
     async function confirmDisable() {
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-
             if (actionType === 'single') {
-                await adminService.disableUser(token, targetUser.id);
+                await adminService.disableUser(targetUser.id);
                 console.log(`User ${targetUser.email} disabled`);
                 alert(`User ${targetUser.name} has been disabled successfully.`);
             } else {
-                const result = await adminService.disableUsersBulk(token, selectedUsers);
+                const result = await adminService.disableUsersBulk(selectedUsers);
                 console.log(`Disabled ${result.disabled} user(s)`);
                 alert(`Successfully disabled ${result.disabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
             }
@@ -463,17 +457,12 @@
 
     async function confirmEnable() {
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-
             if (actionType === 'single') {
-                await adminService.enableUser(token, targetUser.id);
+                await adminService.enableUser(targetUser.id);
                 console.log(`User ${targetUser.email} enabled`);
                 alert(`User ${targetUser.name} has been enabled successfully.`);
             } else {
-                const result = await adminService.enableUsersBulk(token, selectedUsers);
+                const result = await adminService.enableUsersBulk(selectedUsers);
                 console.log(`Enabled ${result.enabled} user(s)`);
                 alert(`Successfully enabled ${result.enabled} user(s)${result.failed > 0 ? `. Failed: ${result.failed}` : ''}`);
             }
@@ -517,12 +506,7 @@
         
         // Check if user has dependencies
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-            
-            userDependencies = await adminService.checkUserDependencies(token, user.id);
+            userDependencies = await adminService.checkUserDependencies(user.id);
         } catch (error) {
             console.error('Error checking user dependencies:', error);
             userDependencies = null;
@@ -535,12 +519,7 @@
         if (!deleteTargetUser) return;
         
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-
-            await adminService.deleteUser(token, deleteTargetUser.id);
+            await adminService.deleteUser(deleteTargetUser.id);
             console.log(`User ${deleteTargetUser.email} deleted`);
             alert(`User ${deleteTargetUser.name} has been deleted successfully.`);
             
@@ -821,11 +800,6 @@
         isChangingPassword = true;
         
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error(localeLoaded ? $_('admin.users.errors.authTokenNotFound', { default: 'Authentication token not found. Please log in again.' }) : 'Authentication token not found. Please log in again.');
-            }
-            
             // Construct form data in URL-encoded format
             const formData = new URLSearchParams();
             formData.append('email', passwordChangeData.email);
@@ -834,38 +808,34 @@
             const apiUrl = getApiUrl('/admin/users/update-password');
             console.log(`Changing password at: ${apiUrl}`);
             
-            const response = await axios.post(apiUrl, formData, {
+            const response = await authenticatedFetch(apiUrl, {
+                method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/x-www-form-urlencoded'
-                }
+                },
+                body: formData.toString()
             });
             
-            console.log('Change password response:', response.data);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || errorData.detail || (localeLoaded ? $_('admin.users.errors.passwordChangeFailed', { default: 'Failed to change password.' }) : 'Failed to change password.'));
+            }
             
-            if (response.data && response.data.success) {
+            const data = await response.json();
+            console.log('Change password response:', data);
+            
+            if (data && data.success) {
                 changePasswordSuccess = true;
                 // Wait 1.5 seconds to show success message, then close modal
                 setTimeout(() => {
                     closeChangePasswordModal();
                 }, 1500);
             } else {
-                throw new Error(response.data.error || response.data.message || (localeLoaded ? $_('admin.users.errors.passwordChangeFailed', { default: 'Failed to change password.' }) : 'Failed to change password.'));
+                throw new Error(data.error || data.message || (localeLoaded ? $_('admin.users.errors.passwordChangeFailed', { default: 'Failed to change password.' }) : 'Failed to change password.'));
             }
         } catch (err) {
             console.error('Error changing password:', err);
-            if (axios.isAxiosError(err) && err.response?.data?.error) {
-                changePasswordError = err.response.data.error;
-            } else if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                // Handle validation errors from FastAPI
-                if (Array.isArray(err.response.data.detail)) {
-                    /** @type {Array<{msg: string}>} */
-                    const details = err.response.data.detail;
-                    changePasswordError = details.map(d => d.msg).join(', ');
-                } else {
-                    changePasswordError = err.response.data.detail;
-                }
-            } else if (err instanceof Error) {
+            if (err instanceof Error) {
                 changePasswordError = err.message;
             } else {
                 changePasswordError = localeLoaded ? $_('admin.users.errors.passwordChangeUnknownError', { default: 'An unknown error occurred while changing the password.' }) : 'An unknown error occurred while changing the password.';

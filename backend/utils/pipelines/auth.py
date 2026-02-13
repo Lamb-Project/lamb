@@ -63,3 +63,51 @@ def get_current_user(
 ) -> Optional[dict]:
     token = credentials.credentials
     return token
+
+
+def get_current_active_user(
+    token: str = Depends(get_current_user),
+) -> str:
+    """
+    Validate that the current user exists and is enabled.
+    Returns the user email from the token.
+    Raises HTTPException 403 if user is disabled or doesn't exist.
+    """
+    # Decode token to get user email
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+    
+    user_email = payload.get("email")
+    if not user_email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload"
+        )
+    
+    # Check if user exists and is enabled
+    from lamb.database_manager import LambDatabaseManager
+    db = LambDatabaseManager()
+    
+    user = db.get_creator_user_by_email(user_email)
+    
+    # User doesn't exist (deleted)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
+    
+    # User is disabled
+    if not user.get('enabled', True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
+    
+    return user_email
