@@ -524,3 +524,168 @@ lamb job watch --help
 ```
 
 The version is printed to stderr on every command execution, so you always know which version you're running.
+
+## 11. Managing Organizations (Admin)
+
+Organization commands require admin privileges. They let you create, configure, and monitor the multi-tenant structure of your LAMB platform.
+
+### List organizations
+
+```bash
+lamb org list
+```
+
+### Get organization details
+
+```bash
+lamb org get university-a
+```
+
+### Create an organization
+
+```bash
+lamb org create "University A" --slug university-a
+```
+
+Assign an admin during creation:
+
+```bash
+lamb org create "University A" --slug university-a --admin-user-id user-123
+```
+
+Enable self-signup with a key:
+
+```bash
+lamb org create "Open Lab" --slug open-lab --signup-enabled --signup-key secret123
+```
+
+### Update an organization
+
+```bash
+lamb org update university-a --name "University A (Renamed)"
+lamb org update university-a --status inactive
+```
+
+### Delete an organization
+
+```bash
+lamb org delete university-a --confirm
+```
+
+### Export an organization
+
+Save the full organization data (members, assistants, etc.) as JSON:
+
+```bash
+lamb org export university-a -f backup.json
+```
+
+### Set a user's role within an organization
+
+```bash
+lamb org set-role university-a user-123 admin
+lamb org set-role university-a user-456 member
+```
+
+### View organization dashboard
+
+```bash
+lamb org dashboard
+```
+
+System admins can view a specific org's dashboard:
+
+```bash
+lamb org dashboard --org university-a
+```
+
+## 12. Managing Users (Admin)
+
+User commands let org admins and system admins manage user accounts. System admins can pass `--org <slug>` to target a specific organization.
+
+### List users
+
+```bash
+lamb user list
+```
+
+System admin targeting a specific org:
+
+```bash
+lamb user list --org university-a
+```
+
+### Get user details
+
+```bash
+lamb user get <user-id>
+```
+
+### Create a user
+
+```bash
+lamb user create alice@uni.edu "Alice Smith" password123
+```
+
+Create an end-user (instead of the default creator):
+
+```bash
+lamb user create student@uni.edu "Student One" pass --user-type end_user
+```
+
+Create a user in disabled state:
+
+```bash
+lamb user create pending@uni.edu "Pending User" pass --disabled
+```
+
+### Update a user
+
+```bash
+lamb user update <user-id> --name "Alice Renamed"
+```
+
+### Enable and disable users
+
+```bash
+lamb user enable <user-id>
+lamb user disable <user-id>
+```
+
+### Reset a user's password
+
+```bash
+lamb user reset-password <user-id> newpassword456
+```
+
+### Delete a user
+
+```bash
+lamb user delete <user-id> --confirm
+```
+
+### Bulk import users
+
+Prepare a JSON file:
+
+```json
+{
+  "version": "1.0",
+  "users": [
+    {"email": "a@uni.edu", "name": "User A", "user_type": "creator", "enabled": true},
+    {"email": "b@uni.edu", "name": "User B", "user_type": "creator", "enabled": true}
+  ]
+}
+```
+
+Validate first with `--dry-run`:
+
+```bash
+lamb user bulk-import users.json --dry-run
+```
+
+Then execute the import:
+
+```bash
+lamb user bulk-import users.json
+```

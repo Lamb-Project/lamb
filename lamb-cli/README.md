@@ -56,6 +56,7 @@ lamb
     publish <id>           Publish an assistant
     unpublish <id>         Unpublish an assistant
     export <id>            Export assistant config as JSON
+    config                 Show available connectors, models, processors
 
   model
     list                   List available models
@@ -82,6 +83,27 @@ lamb
     cancel <kb-id> <job-id> Cancel a running job
     watch <kb-id> <job-id> Watch job progress live
     status <kb-id>         Ingestion status summary
+
+  org
+    list                   List all organizations
+    get <slug>             Get organization details
+    create <name>          Create an organization
+    update <slug>          Update an organization
+    delete <slug>          Delete an organization (with confirmation)
+    export <slug>          Export organization data as JSON
+    set-role <slug> <uid> <role>  Set user role in org
+    dashboard              Show organization dashboard stats
+
+  user
+    list                   List users in the organization
+    get <user-id>          Get user details
+    create <email> <name> <pw>  Create a new user
+    update <user-id>       Update a user
+    delete <user-id>       Delete a user (with confirmation)
+    enable <user-id>       Enable a user
+    disable <user-id>      Disable a user
+    reset-password <uid> <pw>  Reset a user's password
+    bulk-import <file>     Bulk import users from JSON
 ```
 
 ## Output Formats
@@ -184,7 +206,7 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 |-------|----------------------------------------|---------|
 | 1     | Core + Assistants + Models             | Done    |
 | 2     | Knowledge Bases + Ingestion Jobs       | Done    |
-| 3     | Organizations + Users (admin commands) | Planned |
+| 3     | Organizations + Users (admin commands) | Done    |
 | 4     | Templates + Analytics + Chat           | Planned |
 | 5     | Shell completions, config profiles     | Planned |
 

@@ -42,9 +42,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Proxy /lamb/* al backend (with prefix stripping)
+    # Proxy /lamb/* al backend
     location /lamb/ {
-        proxy_pass http://127.0.0.1:9099/;
+        proxy_pass http://127.0.0.1:9099/lamb/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
