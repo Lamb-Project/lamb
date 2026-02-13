@@ -54,7 +54,7 @@ This is an example of `config.js` for a production deployment:
 window.LAMB_CONFIG = {
  api: {
   baseUrl: 'https://lamb.yourdomain.com/creator',
-  lambServer: 'https://lamb.yourdomain.com/lamb',
+  lambServer: 'https://lamb.yourdomain.com',
   openWebUiServer: 'https://lamb.yourdomain.com/openwebui',
   },
   assets: {
