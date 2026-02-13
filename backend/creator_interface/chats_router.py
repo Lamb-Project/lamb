@@ -24,8 +24,8 @@ from typing import Optional, List, Dict, Any
 
 from lamb.services.lamb_chats_service import LambChatsService
 from lamb.database_manager import LambDatabaseManager
-from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
+from .assistant_router import get_creator_user_from_token
 
 logger = get_logger(__name__, component="API")
 
@@ -35,7 +35,6 @@ security = HTTPBearer()
 # Initialize services
 chats_service = LambChatsService()
 db_manager = LambDatabaseManager()
-owi_user_manager = OwiUserManager()
 
 
 # --- Pydantic Models ---
@@ -116,35 +115,6 @@ class DeleteChatResponse(BaseModel):
 
 
 # --- Helper Functions ---
-
-def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
-    """Get creator user from authentication token"""
-    try:
-        if not auth_header:
-            logger.error("No authorization header provided")
-            return None
-
-        user_auth = owi_user_manager.get_user_auth(auth_header)
-        if not user_auth:
-            logger.error("Invalid authentication token")
-            return None
-
-        user_email = user_auth.get("email", "")
-        if not user_email:
-            logger.error("No email found in authentication token")
-            return None
-
-        creator_user = db_manager.get_creator_user_by_email(user_email)
-        if not creator_user:
-            logger.error(f"No creator user found for email: {user_email}")
-            return None
-
-        return creator_user
-
-    except Exception as e:
-        logger.error(f"Error getting creator user from token: {str(e)}")
-        return None
-
 
 def parse_messages_from_chat(chat_data: Dict) -> List[Dict]:
     """

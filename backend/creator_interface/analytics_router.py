@@ -25,8 +25,8 @@ import json
 from lamb.services.chat_analytics_service import ChatAnalyticsService
 from lamb.services.assistant_service import AssistantService
 from lamb.database_manager import LambDatabaseManager
-from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
+from .assistant_router import get_creator_user_from_token
 
 logger = get_logger(__name__, component="API")
 
@@ -37,7 +37,6 @@ security = HTTPBearer()
 analytics_service = ChatAnalyticsService()
 assistant_service = AssistantService()
 db_manager = LambDatabaseManager()
-owi_user_manager = OwiUserManager()
 
 
 # --- Pydantic Models ---
@@ -114,46 +113,6 @@ class AnalyticsTimelineResponse(BaseModel):
 
 
 # --- Helper Functions ---
-
-def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
-    """Get creator user from authentication token"""
-    try:
-        if not auth_header:
-            logger.error("No authorization header provided")
-            return None
-
-        user_auth = owi_user_manager.get_user_auth(auth_header)
-        if not user_auth:
-            logger.error("Invalid authentication token")
-            return None
-
-        user_email = user_auth.get("email", "")
-        if not user_email:
-            logger.error("No email found in authentication token")
-            return None
-
-        creator_user = db_manager.get_creator_user_by_email(user_email)
-        if not creator_user:
-            logger.error(f"No creator user found for email: {user_email}")
-            return None
-
-        # Fetch full organization data for access control
-        organization_id = creator_user.get('organization_id')
-        if organization_id:
-            organization = db_manager.get_organization_by_id(organization_id)
-            if organization:
-                creator_user['organization'] = organization
-            else:
-                creator_user['organization'] = {}
-        else:
-            creator_user['organization'] = {}
-
-        return creator_user
-
-    except Exception as e:
-        logger.error(f"Error getting creator user from token: {str(e)}")
-        return None
-
 
 def check_assistant_access(user: Dict[str, Any], assistant_id: int) -> str:
     """

@@ -159,7 +159,10 @@ openai_connector = OpenAIConnector()
 
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get creator user from authentication token
+    Get creator user from authentication token.
+
+    Tries LAMB JWT first; falls back to OWI token validation for
+    pre-migration tokens.
 
     Args:
         auth_header: The authorization header containing the token
@@ -173,25 +176,46 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
             logger.error("No authorization header provided")
             return None
 
-        user_auth = owi_user_manager.get_user_auth(auth_header)
-        if not user_auth:
-            logger.error("Invalid authentication token")
-            return None
+        # Strip "Bearer " prefix if present
+        clean_token = str(auth_header).replace('Bearer ', '')
 
-        user_email = user_auth.get("email", "")
-        if not user_email:
-            logger.error("No email found in authentication token")
-            return None
+        # --- Try LAMB JWT first ---
+        from lamb import auth as lamb_auth
+        payload = lamb_auth.decode_token(clean_token)
 
-        creator_user = db_manager.get_creator_user_by_email(user_email)
-        if not creator_user:
-            logger.error(f"No creator user found for email: {user_email}")
-            return None
+        if payload:
+            user_email = payload.get("email", "")
+            if not user_email:
+                logger.error("No email in LAMB JWT payload")
+                return None
 
-        # Enrich with OWI role so callers (e.g. is_admin_user) can check
-        # admin status without a separate OWI query.  user_auth was already
-        # fetched above from the OWI /auths/ endpoint.
-        creator_user['role'] = user_auth.get('role', 'user')
+            creator_user = db_manager.get_creator_user_by_email(user_email)
+            if not creator_user:
+                logger.error(f"No creator user found for email: {user_email}")
+                return None
+
+            # Use role from JWT payload (authoritative)
+            creator_user['role'] = payload.get('role', creator_user.get('role', 'user'))
+        else:
+            # --- OWI fallback for pre-migration tokens ---
+            logger.debug("LAMB JWT decode failed, trying OWI fallback")
+            user_auth = owi_user_manager.get_user_auth(auth_header)
+            if not user_auth:
+                logger.error("Invalid authentication token (both LAMB and OWI)")
+                return None
+
+            user_email = user_auth.get("email", "")
+            if not user_email:
+                logger.error("No email found in authentication token")
+                return None
+
+            creator_user = db_manager.get_creator_user_by_email(user_email)
+            if not creator_user:
+                logger.error(f"No creator user found for email: {user_email}")
+                return None
+
+            # Use OWI role during fallback
+            creator_user['role'] = user_auth.get('role', 'user')
 
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
@@ -249,12 +273,13 @@ def is_admin_user(user_or_auth_header) -> bool:
             logger.error("No authorization header provided")
             return False
 
-        user_auth = owi_user_manager.get_user_auth(user_or_auth_header)
-        if not user_auth:
+        # Resolve via get_creator_user_from_token (tries LAMB JWT then OWI)
+        resolved_user = get_creator_user_from_token(user_or_auth_header)
+        if not resolved_user:
             logger.error("Invalid authentication token")
             return False
 
-        user_role = user_auth.get("role", "")
+        user_role = resolved_user.get("role", "")
         logger.info(f"User role from token: {user_role}")
         return user_role == "admin"
 
