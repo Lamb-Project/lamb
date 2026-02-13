@@ -104,6 +104,25 @@ lamb
     disable <user-id>      Disable a user
     reset-password <uid> <pw>  Reset a user's password
     bulk-import <file>     Bulk import users from JSON
+
+  template
+    list                   List your prompt templates
+    list-shared            List shared prompt templates
+    get <id>               Get template details
+    create <name>          Create a prompt template
+    update <id>            Update a prompt template
+    delete <id>            Delete a prompt template
+    duplicate <id>         Duplicate a prompt template
+    share <id>             Enable/disable sharing
+    export <ids...>        Export templates as JSON
+
+  analytics
+    chats <id>             List chats for an assistant
+    chat-detail <id> <cid> Get full chat with messages
+    stats <id>             Get usage statistics
+    timeline <id>          Get activity timeline
+
+  chat <id>                Chat with an assistant (interactive/single-message)
 ```
 
 ## Output Formats
@@ -207,7 +226,7 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | 1     | Core + Assistants + Models             | Done    |
 | 2     | Knowledge Bases + Ingestion Jobs       | Done    |
 | 3     | Organizations + Users (admin commands) | Done    |
-| 4     | Templates + Analytics + Chat           | Planned |
+| 4     | Templates + Analytics + Chat           | Done    |
 | 5     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.
