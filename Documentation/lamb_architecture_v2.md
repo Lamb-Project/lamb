@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.3
-**Last Updated:** February 11, 2026
+**Version:** 2.4
+**Last Updated:** February 13, 2026
 **Reading Time:** ~35 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -66,7 +66,7 @@ LAMB is a distributed system for creating and managing AI learning assistants:
 |---------|---------|------------|------|
 | **Frontend** | Creator UI, Admin panels | Svelte 5, SvelteKit | 5173 (dev) / served by backend |
 | **Backend** | Core API, Completions | FastAPI, Python 3.11 | 9099 |
-| **Open WebUI** | Auth, Chat UI, Model management | FastAPI, Python | 8080 |
+| **Open WebUI** | Chat UI, Model management | FastAPI, Python | 8080 |
 | **KB Server** | Document processing, Vector search | FastAPI, ChromaDB | 9090 |
 
 ### 1.3 Technology Stack
@@ -148,7 +148,7 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
                             │
                             ▼
                     ┌───────────────┐
-                    │ Database/OWI  │
+                    │ LAMB Database │
                     └───────────────┘
 ```
 
@@ -198,29 +198,31 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 
 **Direct Endpoints in Creator Interface:**
 - `POST /creator/login` — User login
-- `POST /creator/signup` — User signup  
+- `POST /creator/signup` — User signup
 - `GET /creator/user/current` — Current user info
+- `GET /creator/owi-session` — Get OWI chat session token (for chat handoff)
 - `POST /creator/files/upload` — File upload
 - `GET /creator/admin/users` — List users (admin)
 
-### 3.5 OWI Bridge Components
+### 3.5 OWI Bridge Components (Chat Integration)
 
-LAMB integrates with Open WebUI through dedicated bridge classes in `/backend/lamb/owi_bridge/`:
+LAMB integrates with Open WebUI for **chat runtime only** through dedicated bridge classes in `/backend/lamb/owi_bridge/`. Authentication is handled natively by LAMB (see §5).
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | `OwiDatabaseManager` | `owi_database.py` | Direct database access to OWI SQLite |
-| `OwiUserManager` | `owi_users.py` | User operations (create, verify, get token) |
+| `OwiUserManager` | `owi_users.py` | Mirror user management (ensure exists, get chat handoff token) |
 | `OwiGroupManager` | `owi_group.py` | Group operations for LTI access control |
 | `OwiModelManager` | `owi_model.py` | Model (assistant) registration |
 
 **Key Operations:**
-- Create OWI user when LAMB creator user is created
-- Create OWI user for LTI creator users (with random password)
-- Verify passwords against OWI auth table (bcrypt)
-- Generate JWT tokens for authenticated sessions (including LTI creator logins)
+- Ensure OWI mirror user exists when LAMB user is created (dummy password)
+- Ensure OWI mirror user exists for LTI users (dummy password)
+- Generate fresh OWI JWT for chat handoff (using dummy password, see §5.7)
 - Create/update OWI groups for published assistants
 - Register assistants as OWI models
+
+> **Mirror Users:** Every LAMB user has a corresponding "mirror" record in OWI's `user` and `auth` tables. These mirror users have a LAMB-generated dummy password that is never exposed to humans. The dummy password exists solely so LAMB can programmatically obtain OWI JWTs when redirecting users to OWI for chat.
 
 > **Security Note:** OWI router endpoints (`/v1/OWI/*`) were removed (Dec 2025) for security. OWI operations are now internal service classes only.
 
@@ -233,7 +235,7 @@ LAMB integrates with Open WebUI through dedicated bridge classes in `/backend/la
 | Database | File | Purpose |
 |----------|------|---------|
 | **LAMB DB** | `$LAMB_DB_PATH/lamb_v4.db` | Assistants, users, orgs |
-| **OWI DB** | `$OWI_DATA_PATH/webui.db` | Auth, chat history |
+| **OWI DB** | `$OWI_DATA_PATH/webui.db` | Chat history, mirror users, groups, models |
 | **ChromaDB** | `$OWI_DATA_PATH/vector_db/` | KB document vectors |
 
 ### 4.2 LAMB Database Tables
@@ -242,7 +244,7 @@ LAMB integrates with Open WebUI through dedicated bridge classes in `/backend/la
 |-------|---------|------------|
 | `organizations` | Organization/tenant records | id, slug, name, config (JSON), is_system |
 | `organization_roles` | User-organization membership | organization_id, user_id, role |
-| `Creator_users` | User accounts | email, name, user_type, organization_id, enabled, auth_provider, lti_user_id |
+| `Creator_users` | User accounts | email, name, user_type, organization_id, enabled, auth_provider, lti_user_id, password_hash, role |
 | `assistants` | Assistant definitions | name, owner, system_prompt, metadata*, published |
 | `assistant_shares` | Assistant sharing records | assistant_id, shared_with_user_id |
 | `kb_registry` | Knowledge Base metadata | kb_id, owner_user_id, is_shared |
@@ -313,7 +315,7 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 | Table | Purpose |
 |-------|---------|
 | `user` | End-user accounts (username, role, api_key) |
-| `auth` | Passwords (bcrypt hashed) and sessions |
+| `auth` | Mirror user passwords (dummy, LAMB-managed) and sessions |
 | `model` | LLM models (published assistants use ID: `lamb_assistant.{id}`) |
 | `group` | User groups for access control |
 | `chat` | Chat history with JSON messages |
@@ -324,15 +326,18 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 
 ### 5.1 Authentication Flow
 
+LAMB handles authentication natively. Passwords are stored in LAMB's own database and JWT tokens are issued by LAMB. Open WebUI is **not involved** in Creator Interface authentication.
+
 ```
-┌─────────┐   POST /creator/login    ┌──────────────┐   Verify    ┌─────┐
-│ Browser │ ────────────────────────►│   Creator    │ ───────────►│ OWI │
-│         │   email + password       │  Interface   │  password   │     │
-└─────────┘                          └──────────────┘             └─────┘
-     ▲                                      │                         │
-     │                                      │                         │
-     │      200 OK {token, user_type}       │◄────────────────────────┘
-     │◄─────────────────────────────────────┤       JWT token
+┌─────────┐   POST /creator/login    ┌──────────────┐   Verify     ┌──────────┐
+│ Browser │ ────────────────────────►│   Creator    │ ────────────►│ LAMB DB  │
+│         │   email + password       │  Interface   │  password    │          │
+└─────────┘                          └──────────────┘  (bcrypt)    └──────────┘
+     ▲                                      │
+     │                                      │
+     │      200 OK {token, user_type}       │
+     │◄─────────────────────────────────────┤
+     │                              LAMB-issued JWT
      │                                      │
      │  Subsequent: Authorization: Bearer   │
      ├─────────────────────────────────────►│
@@ -352,10 +357,11 @@ The `pre_retrieval_endpoint`, `post_retrieval_endpoint`, and `RAG_endpoint` colu
 Every authenticated endpoint:
 1. Extracts `Authorization: Bearer {token}` header
 2. Calls `get_creator_user_from_token()` helper
-3. Validates token against OWI database
-4. Verifies user exists in LAMB Creator_users table
-5. Enriches the returned dict with the user's OWI `role` (e.g. `"admin"` or `"user"`)
-6. Returns user object or raises 401
+3. Decodes and validates the LAMB-issued JWT (signature + expiration)
+4. Looks up user in LAMB `Creator_users` table by user ID from token
+5. Returns user object (including `role` from `Creator_users.role`) or raises 401
+
+> **No OWI dependency:** Token validation is entirely within LAMB. No OWI database calls are made during authentication.
 
 ### 5.3 Authorization Levels
 
@@ -369,8 +375,8 @@ Every authenticated endpoint:
 **Admin Detection:**
 ```python
 def is_admin_user(user_or_auth_header):
-    # Accepts a creator_user dict (with 'role' field from OWI) or an auth header string.
-    # Returns True when the user's OWI role == 'admin'.
+    # Accepts a creator_user dict or an auth header string.
+    # Returns True when the user's role == 'admin' (from Creator_users.role).
 ```
 
 ### 5.4 API Key Authentication
@@ -383,18 +389,20 @@ For `/v1/chat/completions` and `/v1/models`:
 ### 5.5 Security Considerations
 
 **Password Storage:**
-- Passwords stored in OWI `auth` table
+- Passwords stored in LAMB `Creator_users.password_hash` column
 - Hashed with bcrypt (cost factor 12)
-- LAMB never stores passwords directly
+- OWI mirror users have dummy passwords (known to LAMB, never exposed to humans)
+- LTI users have dummy passwords (no password-based login)
 
 **JWT Tokens:**
-- Generated by OWI on successful login
-- Validated against OWI database on each request
-- Include user ID and expiration
+- Generated by LAMB on successful login
+- Validated by LAMB using JWT signature verification (no database round-trip per request)
+- Include user ID/email and expiration
+- A separate OWI JWT is obtained on-demand for chat handoff only (see §5.7)
 
 **API Security:**
 - `LAMB_BEARER_TOKEN` for completion endpoints
-- User tokens for creator interface endpoints
+- LAMB-issued JWT tokens for creator interface endpoints
 - Organization isolation enforced at data layer
 
 ### 5.6 Error Handling
@@ -416,6 +424,61 @@ For `/v1/chat/completions` and `/v1/models`:
 | 409 | Conflict | Duplicate resource (e.g., assistant name) |
 | 422 | Unprocessable | Invalid request data |
 | 500 | Server Error | Internal error |
+
+### 5.7 Chat Handoff to Open WebUI
+
+When a user needs to access the OWI chat interface (e.g., "Try assistant", LTI student launch, instructor "Open Chat"), LAMB provides an OWI-compatible JWT. This is the **only** remaining interaction with OWI's authentication system.
+
+```
+┌─────────────┐  GET /creator/owi-session  ┌──────────────┐
+│  Frontend   │ ──────────────────────────►│   Creator    │
+│ (LAMB JWT)  │   Authorization: Bearer    │  Interface   │
+└─────────────┘                            └──────┬───────┘
+       ▲                                          │
+       │                                          ▼
+       │                                   ┌──────────────┐
+       │                                   │  OWI Bridge   │
+       │                                   │               │
+       │                                   │ 1. Ensure     │
+       │                                   │    mirror     │
+       │                                   │    user       │
+       │                                   │    exists     │
+       │                                   │               │
+       │                                   │ 2. Call OWI   │
+       │                                   │    signin     │
+       │                                   │    with dummy │
+       │                                   │    password   │
+       │                                   └──────┬───────┘
+       │                                          │
+       │          {owi_token, owi_url}             │
+       │◄─────────────────────────────────────────┘
+       │
+       ▼
+  Open OWI with owi_token
+```
+
+**Frontend behavior:**
+- Stores and manages **one token** day-to-day — the LAMB JWT
+- Requests an OWI token on-demand via `GET /creator/owi-session` only when navigating to chat
+- The OWI token is short-lived and not persisted
+
+**LTI student flows:**
+- Continue using server-side redirects (LAMB generates OWI token and redirects directly)
+- Students never interact with the Creator Interface or LAMB JWTs
+
+### 5.8 Password Migration from OWI
+
+A one-time migration copies existing bcrypt password hashes from OWI's `auth` table into `Creator_users.password_hash`. The migration:
+
+1. Runs automatically in `database_manager.py` → `run_migrations()` on backend startup
+2. Only processes users with `auth_provider='password'` and empty `password_hash`
+3. Copies the bcrypt hash as-is (same format, same cost factor — transparent to users)
+4. After migration, OWI mirror users' passwords are replaced with LAMB-generated dummy passwords
+
+**After migration:**
+- New user creation writes the real bcrypt hash to `Creator_users.password_hash` and a dummy password to the OWI mirror user
+- Password changes update `Creator_users.password_hash` only; the OWI dummy password is unchanged
+- LTI users already have dummy passwords — no change for them
 
 ---
 
@@ -755,14 +818,14 @@ Creator publishes assistant
     → Return LTI launch URL
 ```
 
-**LTI Launch Flow:**
+**LTI Launch Flow (Legacy):**
 ```
 Student clicks LTI link in LMS
     → LMS sends OAuth-signed POST
     → LAMB validates signature
-    → Create/get OWI user
+    → Ensure OWI mirror user exists (dummy password)
     → Add user to assistant's group
-    → Generate JWT token
+    → Generate OWI JWT (via dummy password)
     → Redirect to OWI chat
 ```
 
@@ -795,10 +858,10 @@ Educator clicks LTI link in LMS
     → Extract organization from consumer key prefix
     → Identify user by LMS user_id (stable across sessions)
     → Create LTI creator user if first launch (or fetch existing)
-    → Create OWI user with random password
-    → Generate JWT token
+    → Ensure OWI mirror user exists (dummy password)
+    → Generate LAMB JWT token
     → Redirect to Creator Interface with token in URL
-    → Frontend stores token and authenticates user
+    → Frontend stores LAMB token and authenticates user
 ```
 
 **Key Endpoints:**
@@ -903,7 +966,7 @@ The admin user management panel identifies users by type with color-coded badges
 
 | User Type | Badge | Criteria |
 |-----------|-------|----------|
-| Admin | Red | OWI role = 'admin' |
+| Admin | Red | Creator_users.role = 'admin' |
 | Org Admin | Purple | organization_role IN ('admin', 'owner') |
 | LTI Creator | Blue | auth_provider = 'lti_creator' |
 | Creator | Green | Default for creator users |
@@ -912,7 +975,7 @@ The admin user management panel identifies users by type with color-coded badges
 **LTI Creator User Management:**
 - Displayed with blue "LTI Creator" badge
 - Filter dropdown includes "LTI Creator" option
-- Password change button disabled (LTI users have random passwords)
+- Password change button disabled (LTI users have dummy passwords)
 - Can be enabled/disabled by admin
 - Can be promoted to organization admin by a system admin
 
@@ -1094,6 +1157,8 @@ npm run dev
 | `LAMB_DB_PATH` | LAMB database directory | `.` |
 | `OWI_DATA_PATH` | OWI data directory | - |
 | `LAMB_BEARER_TOKEN` | API key for completions | `0p3n-w3bu!` |
+| `LAMB_JWT_SECRET` | Secret key for signing LAMB JWT tokens | (required) |
+| `LAMB_JWT_EXPIRATION_HOURS` | JWT token expiration time in hours | `24` |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `KB_SERVER_URL` | KB server address | `http://localhost:9090` |
 | `OWI_BASE_URL` | OWI internal URL | `http://openwebui:8080` |
@@ -1155,11 +1220,13 @@ python3 testing/load_test_completions.py --users 50 --url http://localhost:9099 
 ### 10.6 Production Checklist
 
 - [ ] Change `LAMB_BEARER_TOKEN` from default
+- [ ] Set `LAMB_JWT_SECRET` to a secure random value
 - [ ] Configure SSL/TLS via Caddy or reverse proxy
 - [ ] Set up database backups
 - [ ] Configure organization LLM API keys
 - [ ] Review logging levels (`GLOBAL_LOG_LEVEL=WARNING`)
 - [ ] Set up monitoring
+- [ ] Verify password migration from OWI completed (automatic on first startup)
 
 ---
 
@@ -1235,13 +1302,14 @@ DB_LOG_LEVEL=DEBUG
 | Add frontend page | `frontend/svelte-app/src/routes/` |
 | Configure logging | `lamb/logging_config.py` + env vars |
 | Understand completion flow | `lamb/completions/main.py` |
-| Debug OWI integration | `lamb/owi_bridge/` |
+| Debug OWI chat integration | `lamb/owi_bridge/` |
 
 ### 12.2 Key Files by Task
 
 | Task | Primary Files |
 |------|---------------|
-| **Auth** | `creator_interface/main.py`, `lamb/owi_bridge/owi_users.py` |
+| **Auth** | `creator_interface/main.py`, `lamb/auth.py` |
+| **OWI Chat Handoff** | `lamb/owi_bridge/owi_users.py` |
 | **Assistants** | `creator_interface/assistant_router.py`, `lamb/assistant_router.py` |
 | **Completions** | `lamb/completions/main.py`, `lamb/completions/connectors/` |
 | **KBs** | `creator_interface/knowledges_router.py`, `kb_server_manager.py` |
@@ -1290,7 +1358,7 @@ api_key = openai_config.get("api_key")
 ### 12.4 API Quick Reference
 
 **Auth:**
-| POST `/creator/login` | POST `/creator/signup` | GET `/creator/user/current` |
+| POST `/creator/login` | POST `/creator/signup` | GET `/creator/user/current` | GET `/creator/owi-session` |
 
 **Assistants:**
 | GET `/creator/assistant/list` | POST `/creator/assistant/create` | PUT `/creator/assistant/update` |
@@ -1314,17 +1382,19 @@ api_key = openai_config.get("api_key")
 - Cross-organization access is prevented at data layer
 
 ### Authentication Security
-- Passwords hashed with bcrypt (cost 12)
-- JWT tokens with expiration
-- Token validation on every request
+- Passwords stored in LAMB database (`Creator_users.password_hash`), hashed with bcrypt (cost 12)
+- LAMB-issued JWT tokens with expiration, validated via signature (no database round-trip)
+- OWI mirror users have dummy passwords for programmatic chat handoff only
+- Real passwords never stored in OWI
 
 ### API Security
 - LAMB_BEARER_TOKEN for external completion API
-- User tokens for creator interface
+- LAMB-issued JWT tokens for creator interface
 - Rate limiting via reverse proxy (recommended)
 
 ### Best Practices
 - Change default `LAMB_BEARER_TOKEN` in production
+- Set `LAMB_JWT_SECRET` to a secure random value
 - Use HTTPS in production (via Caddy/nginx)
 - Rotate organization API keys periodically
 - Review user access regularly
@@ -1337,7 +1407,8 @@ api_key = openai_config.get("api_key")
 
 **"401 Unauthorized" on all requests:**
 - Check token is valid and not expired
-- Verify user exists in both OWI and LAMB databases
+- Verify `LAMB_JWT_SECRET` matches between token issuance and validation
+- Verify user exists in LAMB `Creator_users` table
 
 **Assistant not appearing in OWI:**
 - Check assistant is published (`published = true`)
@@ -1359,6 +1430,12 @@ api_key = openai_config.get("api_key")
 - Check OAuth signature validation in backend logs
 - Ensure organization has `lti_creator` config set
 - Check that organization is not the system organization
+
+**Chat handoff to OWI failing:**
+- Verify OWI mirror user exists (check OWI `user` table for matching email)
+- Verify OWI is reachable at `OWI_BASE_URL`
+- Check dummy password mechanism is working (LAMB can call OWI signin API)
+- Check backend logs for OWI bridge errors
 
 **Frontend not loading:**
 - Check `static/config.js` has correct API URLs
@@ -1399,5 +1476,5 @@ API_LOG_LEVEL=DEBUG
 
 *Maintainers: LAMB Development Team*  
 *Last Updated: February 11, 2026*
-*Version: 2.3*
+*Version: 2.4*
 
