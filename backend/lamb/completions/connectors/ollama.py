@@ -71,9 +71,11 @@ async def get_available_llms(assistant_owner: Optional[str] = None): # Make asyn
                 logger.info(f"Ollama disabled for organization of user {assistant_owner}")
                 return []
         except Exception as e:
-            logger.error(f"Error getting Ollama config for {assistant_owner}: {e}")
+            logger.error(f"Error resolving organization Ollama config for {assistant_owner}: {e}. "
+                         f"Returning empty model list instead of falling back to system defaults.")
+            return []
     
-    # Fallback to environment variables
+    # Fallback to environment variables only when no assistant_owner (backward compat)
     if not base_url:
         if os.getenv("OLLAMA_ENABLED", "false").lower() != "true":
             logger.info("OLLAMA_ENABLED is false, skipping model list fetch")
