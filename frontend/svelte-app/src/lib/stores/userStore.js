@@ -92,14 +92,21 @@ const createUserStore = () => {
       // Only remove from localStorage if in browser environment
       if (browser) {
         console.log('Logging out: Clearing user and cache data from localStorage');
+        // Read email BEFORE removing it, needed for user-scoped cache keys
+        const email = localStorage.getItem('userEmail');
+        // Clear assistant config cache (both user-scoped and legacy keys)
+        if (email) {
+          localStorage.removeItem(`lamb_assistant_capabilities_${email}`);
+          localStorage.removeItem(`lamb_assistant_defaults_${email}`);
+        }
+        localStorage.removeItem('lamb_assistant_capabilities');
+        localStorage.removeItem('lamb_assistant_defaults');
+        // Now clear user identity data
         localStorage.removeItem('userToken');
         localStorage.removeItem('userName');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('OWI_url');
         localStorage.removeItem('userData');
-        // Clear assistant config cache on logout for debugging
-        localStorage.removeItem('lamb_assistant_capabilities');
-        localStorage.removeItem('lamb_assistant_defaults');
       }
       
       // Update the store
