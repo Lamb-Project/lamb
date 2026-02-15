@@ -152,9 +152,15 @@ class LambClient:
     def _raise_for_status(self, resp: httpx.Response) -> None:
         """Map HTTP status codes to typed exceptions."""
         try:
+            # For streaming responses, read the body first
+            if not resp.is_stream_consumed:
+                resp.read()
             detail = resp.json().get("detail", resp.text)
         except Exception:
-            detail = resp.text
+            try:
+                detail = resp.text
+            except Exception:
+                detail = f"HTTP {resp.status_code}"
 
         if resp.status_code == 401:
             raise AuthenticationError(f"Authentication failed: {detail}")

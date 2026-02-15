@@ -350,6 +350,11 @@ def update_assistant(
             print_error("No fields to update. Provide at least one option.")
             raise typer.Exit(1)
 
+        # The backend requires 'name' on every update; fetch current if not provided.
+        if "name" not in body:
+            current = client.get(f"/creator/assistant/get_assistant/{assistant_id}")
+            body["name"] = current.get("name", "")
+
         data = client.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body)
     print_success(data.get("message", "Assistant updated."))
 
