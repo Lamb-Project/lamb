@@ -199,7 +199,7 @@ def dashboard(
     if org:
         params["org"] = org
     with get_client() as client:
-        data = client.get("/creator/org-admin/dashboard", params=params)
+        data = client.get("/creator/admin/org-admin/dashboard", params=params)
 
     if fmt == "json":
         print_json(data)

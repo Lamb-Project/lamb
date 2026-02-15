@@ -83,14 +83,18 @@ class KnowledgeBaseQueryResponse(BaseModel):
     debug_info: Optional[Dict[str, Any]] = None
 
 class FileUploadItemResponse(BaseModel):
+    id: Optional[str] = None
     filename: str
-    status: str # e.g., "success", "error"
+    size: Optional[int] = None
+    content_type: Optional[str] = None
+    status: str = "success"
     message: Optional[str] = None
     file_id: Optional[str] = None
 
 class FileUploadKBResponse(BaseModel):
-    # Assuming response from kb_server_manager.upload_files_to_kb
     uploaded_files: List[FileUploadItemResponse]
+    message: Optional[str] = None
+    knowledge_base_id: Optional[str] = None
     status: str = "success"
 
 class DeleteFileKBResponse(BaseModel):
