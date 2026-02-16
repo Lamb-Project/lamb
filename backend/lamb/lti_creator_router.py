@@ -14,7 +14,6 @@ Key differences from student LTI (lti_users_router.py):
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from lamb.database_manager import LambDatabaseManager
-from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
 import hmac
 import hashlib
@@ -27,7 +26,6 @@ logger = get_logger(__name__, component="LTI_CREATOR")
 
 router = APIRouter()
 db_manager = LambDatabaseManager()
-owi_user_manager = OwiUserManager()
 
 
 def generate_oauth_signature(params: dict, http_method: str, base_url: str, 
@@ -199,10 +197,15 @@ async def lti_creator_launch(request: Request):
             logger.warning(f"Disabled LTI creator user attempted login: {user_email}")
             raise HTTPException(status_code=403, detail="Account has been disabled")
         
-        # Get auth token from OWI
-        auth_token = owi_user_manager.get_auth_token(user_email, user_name)
+        # Generate LAMB JWT for creator interface
+        from lamb import auth as lamb_auth
+        auth_token = lamb_auth.create_token({
+            "sub": str(creator_user['id']),
+            "email": user_email,
+            "role": creator_user.get('role', 'user')
+        })
         if not auth_token:
-            logger.error(f"Failed to get auth token for LTI creator user: {user_email}")
+            logger.error(f"Failed to generate LAMB JWT for LTI creator user: {user_email}")
             raise HTTPException(status_code=500, detail="Failed to generate authentication token")
         
         logger.info(f"LTI creator login successful for {user_email}")

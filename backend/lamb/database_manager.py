@@ -912,6 +912,81 @@ class LambDatabaseManager:
                         f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}lti_identity_lms_email ON {self.table_prefix}lti_identity_links(lms_email)")
                     logger.info("Successfully created lti_identity_links table and indexes")
 
+                # ---- Migration 11: Add password_hash and role to Creator_users ----
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}Creator_users)")
+                existing_cols = {row[1] for row in cursor.fetchall()}
+
+                if 'password_hash' not in existing_cols:
+                    logger.info("Migration 11: Adding password_hash column to Creator_users")
+                    cursor.execute(
+                        f"ALTER TABLE {self.table_prefix}Creator_users ADD COLUMN password_hash TEXT")
+
+                if 'role' not in existing_cols:
+                    logger.info("Migration 11: Adding role column to Creator_users")
+                    cursor.execute(
+                        f"ALTER TABLE {self.table_prefix}Creator_users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+
+                connection.commit()
+                logger.info("Migration 11 complete")
+
+                # ---- Migration 11b: Copy password hashes and roles from OWI ----
+                try:
+                    cursor.execute(f"""
+                        SELECT id, user_email FROM {self.table_prefix}Creator_users
+                        WHERE auth_provider = 'password' AND password_hash IS NULL
+                    """)
+                    users_to_migrate = cursor.fetchall()
+
+                    if users_to_migrate:
+                        logger.info(f"Migration 11b: Migrating {len(users_to_migrate)} password hashes from OWI")
+                        try:
+                            from .owi_bridge.owi_database import OwiDatabaseManager
+                            owi_db = OwiDatabaseManager()
+                            owi_conn = owi_db.get_connection()
+
+                            if owi_conn:
+                                try:
+                                    owi_cursor = owi_conn.cursor()
+                                    for user_id, user_email in users_to_migrate:
+                                        try:
+                                            # Get password hash from OWI auth table
+                                            owi_cursor.execute(
+                                                "SELECT password FROM auth WHERE email = ?",
+                                                (user_email,))
+                                            auth_row = owi_cursor.fetchone()
+
+                                            # Get role from OWI user table
+                                            owi_cursor.execute(
+                                                "SELECT role FROM user WHERE email = ?",
+                                                (user_email,))
+                                            role_row = owi_cursor.fetchone()
+
+                                            pw_hash = auth_row[0] if auth_row else None
+                                            owi_role = role_row[0] if role_row else 'user'
+
+                                            if pw_hash:
+                                                cursor.execute(f"""
+                                                    UPDATE {self.table_prefix}Creator_users
+                                                    SET password_hash = ?, role = ?
+                                                    WHERE id = ?
+                                                """, (pw_hash, owi_role, user_id))
+                                                logger.debug(f"Migrated hash for {user_email}")
+                                        except Exception as row_err:
+                                            logger.warning(f"Migration 11b: Skipping {user_email}: {row_err}")
+
+                                    connection.commit()
+                                    logger.info("Migration 11b complete")
+                                finally:
+                                    owi_conn.close()
+                            else:
+                                logger.warning("Migration 11b: Could not connect to OWI DB, skipping hash migration")
+                        except Exception as owi_err:
+                            logger.warning(f"Migration 11b: OWI DB unavailable, skipping: {owi_err}")
+                    else:
+                        logger.info("Migration 11b: No users need hash migration")
+                except Exception as mig_err:
+                    logger.warning(f"Migration 11b error (non-fatal): {mig_err}")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -2707,8 +2782,9 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config, enabled, lti_user_id, auth_provider 
-                    FROM {self.table_prefix}Creator_users 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config,
+                           enabled, lti_user_id, auth_provider, password_hash, role
+                    FROM {self.table_prefix}Creator_users
                     WHERE user_email = ?
                 """, (user_email,))
 
@@ -2725,7 +2801,9 @@ class LambDatabaseManager:
                     'user_config': json.loads(result[5]) if result[5] else {},
                     'enabled': bool(result[6]) if len(result) > 6 else True,
                     'lti_user_id': result[7] if len(result) > 7 else None,
-                    'auth_provider': result[8] if len(result) > 8 else 'password'
+                    'auth_provider': result[8] if len(result) > 8 else 'password',
+                    'password_hash': result[9] if len(result) > 9 else None,
+                    'role': result[10] if len(result) > 10 else 'user'
                 }
 
         except sqlite3.Error as e:
@@ -2738,6 +2816,46 @@ class LambDatabaseManager:
         finally:
             connection.close()
  #           logger.debug("Database connection closed")
+
+    def update_creator_user_password_hash(self, user_email: str, password_hash: str) -> bool:
+        """Update the password_hash column for a creator user."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET password_hash = ?, updated_at = ?
+                    WHERE user_email = ?
+                """, (password_hash, int(time.time()), user_email))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating password_hash for {user_email}: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_creator_user_role(self, user_email: str, role: str) -> bool:
+        """Update the role column for a creator user."""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET role = ?, updated_at = ?
+                    WHERE user_email = ?
+                """, (role, int(time.time()), user_email))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error updating role for {user_email}: {e}")
+            return False
+        finally:
+            connection.close()
 
     def create_creator_user(self, user_email: str, user_name: str, password: str, organization_id: int = None, user_type: str = 'creator'):
         """
@@ -2765,7 +2883,7 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id FROM {self.table_prefix}Creator_users 
+                    SELECT id FROM {self.table_prefix}Creator_users
                     WHERE user_email = ?
                 """, (user_email,))
 
@@ -2774,24 +2892,27 @@ class LambDatabaseManager:
                         f"Creator user {user_email} already exists")
                     return None
 
-            # Initialize OWI user manager and check/create OWI user
-            owi_manager = OwiUserManager()
-            owi_user = owi_manager.get_user_by_email(user_email)
+            # Hash password locally (LAMB is source of truth)
+            from lamb.auth import hash_password
+            local_hash = hash_password(password)
 
-            if not owi_user:
-                # Create new OWI user if doesn't exist
-                logger.debug(f"Creating new OWI user for {user_email}")
-                owi_user = owi_manager.create_user(
-                    name=user_name,
-                    email=user_email,
-                    password=password,
-                    role="user"
-                )
+            # Create OWI mirror user (best-effort, non-fatal during dual-write)
+            try:
+                owi_manager = OwiUserManager()
+                owi_user = owi_manager.get_user_by_email(user_email)
 
                 if not owi_user:
-                    logger.error(
-                        f"Failed to create OWI user for {user_email}")
-                    return None
+                    logger.debug(f"Creating OWI mirror user for {user_email}")
+                    owi_user = owi_manager.create_user(
+                        name=user_name,
+                        email=user_email,
+                        password=password,
+                        role="user"
+                    )
+                    if not owi_user:
+                        logger.warning(f"Failed to create OWI mirror user for {user_email} (non-fatal)")
+            except Exception as owi_err:
+                logger.warning(f"OWI mirror user creation failed for {user_email} (non-fatal): {owi_err}")
 
             # If no organization_id provided, use system organization
             if organization_id is None:
@@ -2802,15 +2923,17 @@ class LambDatabaseManager:
                     logger.error("System organization not found")
                     return None
 
-            # Now create the creator user
+            # Now create the creator user with password_hash and role
             now = int(time.time())
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    INSERT INTO {self.table_prefix}Creator_users 
-                    (organization_id, user_email, user_name, user_type, user_config, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (organization_id, user_email, user_name, user_type, "{}", now, now))
+                    INSERT INTO {self.table_prefix}Creator_users
+                    (organization_id, user_email, user_name, user_type, user_config,
+                     password_hash, role, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (organization_id, user_email, user_name, user_type, "{}",
+                      local_hash, "user", now, now))
 
                 new_user_id = cursor.lastrowid
                 logger.info(
@@ -4356,7 +4479,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, u.user_config, u.organization_id,
                            o.name as org_name, o.slug as org_slug, o.is_system,
                            COALESCE(r.role, 'member') as org_role, u.user_type, u.enabled,
-                           u.lti_user_id, u.auth_provider
+                           u.lti_user_id, u.auth_provider, u.role
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organizations o ON u.organization_id = o.id
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = u.organization_id
@@ -4382,7 +4505,8 @@ class LambDatabaseManager:
                         'user_type': row[9] if len(row) > 9 else 'creator',
                         'enabled': bool(row[10]) if len(row) > 10 else True,
                         'lti_user_id': row[11] if len(row) > 11 else None,
-                        'auth_provider': row[12] if len(row) > 12 else 'password'
+                        'auth_provider': row[12] if len(row) > 12 else 'password',
+                        'role': row[13] if len(row) > 13 else 'user'
                     })
                 return users
 
@@ -4657,9 +4781,9 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT id, organization_id, user_email, user_name, user_type, user_config, 
-                           enabled, lti_user_id, auth_provider
-                    FROM {self.table_prefix}Creator_users 
+                    SELECT id, organization_id, user_email, user_name, user_type, user_config,
+                           enabled, lti_user_id, auth_provider, password_hash, role
+                    FROM {self.table_prefix}Creator_users
                     WHERE organization_id = ? AND lti_user_id = ?
                 """, (organization_id, lti_user_id))
 
@@ -4676,7 +4800,9 @@ class LambDatabaseManager:
                     'user_config': json.loads(result[5]) if result[5] else {},
                     'enabled': bool(result[6]),
                     'lti_user_id': result[7],
-                    'auth_provider': result[8]
+                    'auth_provider': result[8],
+                    'password_hash': result[9] if len(result) > 9 else None,
+                    'role': result[10] if len(result) > 10 else 'user'
                 }
 
         except sqlite3.Error as e:
@@ -4752,16 +4878,16 @@ class LambDatabaseManager:
                     logger.error(f"Failed to create OWI user for LTI creator: {user_email}")
                     return None
 
-            # Create the creator user
+            # Create the creator user (password_hash NULL for LTI users, role defaults to 'user')
             now = int(time.time())
             user_id = None
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    INSERT INTO {self.table_prefix}Creator_users 
-                    (organization_id, user_email, user_name, user_type, user_config, 
-                     lti_user_id, auth_provider, enabled, created_at, updated_at)
-                    VALUES (?, ?, ?, 'creator', '{{}}', ?, 'lti_creator', 1, ?, ?)
+                    INSERT INTO {self.table_prefix}Creator_users
+                    (organization_id, user_email, user_name, user_type, user_config,
+                     lti_user_id, auth_provider, enabled, password_hash, role, created_at, updated_at)
+                    VALUES (?, ?, ?, 'creator', '{{}}', ?, 'lti_creator', 1, NULL, 'user', ?, ?)
                 """, (organization_id, user_email, user_name, lti_user_id, now, now))
 
                 user_id = cursor.lastrowid

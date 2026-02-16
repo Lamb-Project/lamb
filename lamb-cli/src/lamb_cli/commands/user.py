@@ -47,7 +47,7 @@ def list_users(
     if org:
         params["org"] = org
     with get_client() as client:
-        resp = client.get("/creator/org-admin/users", params=params)
+        resp = client.get("/creator/admin/org-admin/users", params=params)
     users = resp if isinstance(resp, list) else resp.get("users", resp)
     if isinstance(users, dict):
         users = [users]
@@ -66,7 +66,7 @@ def get_user(
     if org:
         params["org"] = org
     with get_client() as client:
-        resp = client.get("/creator/org-admin/users", params=params)
+        resp = client.get("/creator/admin/org-admin/users", params=params)
     users = resp if isinstance(resp, list) else resp.get("users", resp)
     if isinstance(users, dict):
         users = [users]
@@ -96,7 +96,7 @@ def create_user(
         "enabled": enabled,
     }
     with get_client() as client:
-        data = client.post("/creator/org-admin/users", json=body)
+        data = client.post("/creator/admin/org-admin/users", json=body)
     print_success(f"User created: {data.get('email', data.get('id', ''))}")
     format_output(data, USER_LIST_COLUMNS, fmt)
 
@@ -117,7 +117,7 @@ def update_user(
         print_error("No fields to update. Provide at least one option.")
         raise typer.Exit(1)
     with get_client() as client:
-        data = client.put(f"/creator/org-admin/users/{user_id}", json=body)
+        data = client.put(f"/creator/admin/org-admin/users/{user_id}", json=body)
     msg = data.get("message", "User updated.") if isinstance(data, dict) else "User updated."
     print_success(msg)
 
@@ -135,7 +135,7 @@ def delete_user(
     if org:
         params["org"] = org
     with get_client() as client:
-        data = client.delete(f"/creator/org-admin/users/{user_id}", params=params)
+        data = client.delete(f"/creator/admin/org-admin/users/{user_id}", params=params)
     msg = data.get("message", "User deleted.") if isinstance(data, dict) else "User deleted."
     print_success(msg)
 
@@ -146,7 +146,7 @@ def enable_user(
 ) -> None:
     """Enable a user."""
     with get_client() as client:
-        data = client.put(f"/creator/org-admin/users/{user_id}", json={"enabled": True})
+        data = client.put(f"/creator/admin/org-admin/users/{user_id}", json={"enabled": True})
     print_success(f"User {user_id} enabled.")
 
 
@@ -156,7 +156,7 @@ def disable_user(
 ) -> None:
     """Disable a user."""
     with get_client() as client:
-        data = client.put(f"/creator/org-admin/users/{user_id}", json={"enabled": False})
+        data = client.put(f"/creator/admin/org-admin/users/{user_id}", json={"enabled": False})
     print_success(f"User {user_id} disabled.")
 
 
@@ -168,7 +168,7 @@ def reset_password(
     """Reset a user's password."""
     with get_client() as client:
         data = client.post(
-            f"/creator/org-admin/users/{user_id}/password",
+            f"/creator/admin/org-admin/users/{user_id}/password",
             json={"new_password": new_password},
         )
     msg = data.get("message", "Password reset.") if isinstance(data, dict) else "Password reset."
@@ -200,7 +200,7 @@ def bulk_import(
     if org:
         params["org"] = org
 
-    endpoint = "/creator/org-admin/users/bulk-import/validate" if dry_run else "/creator/org-admin/users/bulk-import/execute"
+    endpoint = "/creator/admin/org-admin/users/bulk-import/validate" if dry_run else "/creator/admin/org-admin/users/bulk-import/execute"
 
     with get_client() as client:
         data = client.post(endpoint, json=payload, params=params)

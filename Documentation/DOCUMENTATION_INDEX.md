@@ -186,7 +186,7 @@ frontend/svelte-app/
 | Database | Location | Purpose |
 |----------|----------|---------|
 | LAMB DB | `$LAMB_DB_PATH/lamb_v4.db` | Assistants, users, orgs |
-| OWI DB | `$OWI_DATA_PATH/webui.db` | Auth, chat history |
+| OWI DB | `$OWI_DATA_PATH/webui.db` | Chat history, mirror users, groups, models |
 | ChromaDB | `$OWI_DATA_PATH/vector_db/` | KB vectors |
 
 ---
@@ -323,5 +323,5 @@ Browser → Creator Interface API (/creator) → LAMB Core API (/lamb/v1) → Da
 
 ---
 
-*Last Updated: December 27, 2025*
+*Last Updated: February 13, 2026*
 

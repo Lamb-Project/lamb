@@ -682,6 +682,34 @@ class OwiUserManager:
         except Exception as e:
             logger.error(f"Error connecting to database for schema check: {e}")
 
+    def ensure_mirror_user(self, name: str, email: str, role: str = "user") -> bool:
+        """
+        Ensure an OWI mirror user exists. If missing, create with random password.
+
+        Used during dual-write: LAMB is the source of truth but OWI needs
+        a corresponding user record for chat functionality.
+
+        Returns:
+            True if user exists or was created, False on error.
+        """
+        try:
+            existing = self.db.get_user_by_email(email)
+            if existing:
+                return True
+
+            import secrets
+            random_password = secrets.token_urlsafe(32)
+            result = self.create_user(name, email, random_password, role)
+            if result:
+                logger.info(f"Created OWI mirror user for {email}")
+                return True
+            else:
+                logger.warning(f"Failed to create OWI mirror user for {email}")
+                return False
+        except Exception as e:
+            logger.error(f"Error in ensure_mirror_user for {email}: {e}")
+            return False
+
     def get_user_auth(self, token) -> Optional[Dict]:
         """
         Get user authentication details using a token

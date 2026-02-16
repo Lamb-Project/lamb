@@ -73,66 +73,90 @@ class CreatorUserService:
     
     def verify_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
         """
-        Verify creator user credentials
-        
+        Verify creator user credentials using LAMB-native auth (with OWI fallback).
+
         Args:
             email: User's email
             password: User's password
-            
+
         Returns:
             User info dict with token, name, email, role, id, user_type
             None if credentials are invalid
-            
+
         Raises:
             ValueError: If account is disabled or is LTI user (no password login)
         """
         try:
             logger.info(f"Verifying creator user: {email}")
-            
+
             # Get creator user from database
             user = self.db_manager.get_creator_user_by_email(email)
-            
+
             if not user:
                 logger.warning(f"Creator user not found: {email}")
                 return None
-            
+
             # Check if user account is enabled
             if not user.get('enabled', True):
                 logger.warning(f"Disabled user {email} attempted login")
                 raise ValueError("Account has been disabled. Please contact your administrator.")
-            
+
             # Check if user is LTI creator (password login not allowed)
             if user.get('auth_provider') == 'lti_creator':
                 logger.warning(f"LTI creator user {email} attempted password login")
                 raise ValueError("This account uses LTI authentication. Please log in through your LMS.")
-            
-            # Verify password via OWI
-            owi_user = self.owi_user_manager.verify_user(
-                email=email,
-                password=password
-            )
-            
-            if not owi_user:
-                logger.warning(f"Invalid password for user: {email}")
-                return None
-            
-            # Get auth token from OWI
-            auth_token = self.owi_user_manager.get_auth_token(email, user["name"])
-            if not auth_token:
-                raise ValueError("Failed to get authentication token")
-            
-            # Get user's role
-            user_role = "admin" if user.get("is_admin") else "user"
-            
-            # Also check OWI role
-            if owi_user and "role" in owi_user:
-                owi_role = owi_user["role"]
-                if owi_role == "admin":
-                    user_role = "admin"
-                logger.debug(f"Got role '{owi_role}' from OWI for user {email}")
-            
+
+            # --- LAMB-native password verification ---
+            from lamb import auth as lamb_auth
+
+            password_hash = user.get('password_hash')
+            user_role = user.get('role', 'user')
+
+            if password_hash:
+                # Primary path: verify against LAMB's own hash
+                if not lamb_auth.verify_password(password, password_hash):
+                    logger.warning(f"Invalid password for user: {email}")
+                    return None
+                logger.debug(f"Password verified via LAMB hash for {email}")
+            else:
+                # Fallback path: verify via OWI (pre-migration users)
+                logger.info(f"No LAMB hash for {email}, falling back to OWI verification")
+                owi_user = self.owi_user_manager.verify_user(
+                    email=email,
+                    password=password
+                )
+
+                if not owi_user:
+                    logger.warning(f"Invalid password for user: {email}")
+                    return None
+
+                # Backfill: write hash to LAMB DB so next login uses primary path
+                try:
+                    new_hash = lamb_auth.hash_password(password)
+                    self.db_manager.update_creator_user_password_hash(email, new_hash)
+                    logger.info(f"Backfilled password hash for {email}")
+                except Exception as backfill_err:
+                    logger.warning(f"Hash backfill failed for {email}: {backfill_err}")
+
+                # Also sync role from OWI if available
+                if owi_user and "role" in owi_user:
+                    owi_role = owi_user["role"]
+                    if owi_role == "admin":
+                        user_role = "admin"
+                        try:
+                            self.db_manager.update_creator_user_role(email, "admin")
+                        except Exception:
+                            pass
+
+            # Generate LAMB JWT
+            auth_token = lamb_auth.create_token({
+                "sub": str(user["id"]),
+                "email": user["email"],
+                "role": user_role
+            })
+
             logger.info(f"User {email} verified successfully with role: {user_role}")
-            
+
             # Return user info
             return {
                 "token": auth_token,
@@ -143,7 +167,7 @@ class CreatorUserService:
                 "user_type": user.get("user_type", "creator"),
                 "auth_provider": user.get("auth_provider", "password")
             }
-            
+
         except ValueError:
             raise
         except Exception as e:

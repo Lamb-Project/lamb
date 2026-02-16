@@ -17,12 +17,11 @@ import httpx
 from dotenv import load_dotenv
 from typing import Optional, List
 from .user_creator import UserCreatorManager
-from .assistant_router import is_admin_user
-from .organization_router import is_organization_admin
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
-from .assistant_router import router as assistant_router, get_creator_user_from_token
+from .assistant_router import router as assistant_router
 from .knowledges_router import router as knowledges_router
+from lamb.auth_context import AuthContext, get_auth_context, require_admin
 import json
 import shutil
 from pydantic import BaseModel, EmailStr
@@ -501,6 +500,32 @@ async def login(email: str = Form(...), password: str = Form(...)):
         }
 
 
+@router.get(
+    "/me",
+    tags=["Authentication"],
+    summary="Get Current User Profile",
+    description="Returns the authenticated user's profile information based on the Bearer token.",
+    responses={
+        200: {"description": "User profile returned successfully"},
+        401: {"description": "Invalid or missing token"},
+    },
+)
+async def get_current_user(auth: AuthContext = Depends(get_auth_context)):
+    """Return the current user's profile based on their auth token."""
+    return {
+        "success": True,
+        "data": {
+            "name": auth.user.get("name", ""),
+            "email": auth.user.get("email", ""),
+            "user_id": auth.user.get("id"),
+            "role": auth.user.get("role", "user"),
+            "user_type": auth.user.get("user_type", "creator"),
+            "organization_role": auth.organization_role,
+            "launch_url": auth.user.get("launch_url"),
+        }
+    }
+
+
 # Initialize security for token authentication
 security = HTTPBearer()
 
@@ -565,13 +590,10 @@ Example Forbidden Response:
         200: {"model": ListUsersResponse, "description": "Successfully retrieved users."},
     },
 )
-async def list_users(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def list_users(credentials: HTTPAuthorizationCredentials = Depends(security), auth: AuthContext = Depends(get_auth_context)):
     """List all creator users (admin only) as JSON"""
-    # Extract the authorization header
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    # Check admin privileges via AuthContext
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -597,30 +619,16 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
                 }
             )
 
-        # Get OWI roles and enabled status for each user
-        user_creator = UserCreatorManager()
-        owi_manager = OwiUserManager()
+        # Build user list — role now comes from LAMB DB (no OWI lookup needed)
         users_with_roles = []
 
         for user in users:
-            # Get OWI role information for the user using direct OWI bridge call
-            try:
-                owi_user = owi_manager.get_user_by_email(user['email'])
-                owi_role = owi_user.get('role', 'user') if owi_user else 'user'
-            except Exception as e:
-                logger.warning(
-                    f"Could not get OWI role for user {user['email']}: {e}")
-                owi_role = 'user'  # Default on error
-
-            # Get enabled status from user data (LAMB database stores this)
-            enabled_status = user.get('enabled', True)
-
             user_data = {
                 "id": user.get("id"),
                 "email": user.get("email"),
                 "name": user.get("name"),
-                "role": owi_role,
-                "enabled": enabled_status,
+                "role": user.get("role", "user"),
+                "enabled": user.get("enabled", True),
                 "user_type": user.get("user_type", "creator"),
                 "user_config": user.get("user_config", {}),
                 "organization": user.get("organization"),
@@ -826,20 +834,16 @@ Example Success Response:
 )
 async def create_user_admin(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
     email: str = Form(...),
     name: str = Form(...),
     password: str = Form(...),
     role: str = Form("user"),
     organization_id: int = Form(None),
-    user_type: str = Form("creator")  # 'creator' or 'end_user'
+    user_type: str = Form("creator"),  # 'creator' or 'end_user'
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Create a new user (admin only)"""
-    # Extract the authorization header
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -915,16 +919,12 @@ Example Success Response:
 )
 async def update_user_password_admin(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
     email: str = Form(...),
-    new_password: str = Form(...)
+    new_password: str = Form(...),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Update a user's password (admin only)"""
-    # Extract the authorization header
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -989,13 +989,10 @@ Example Success Response:
 )
 async def disable_user(
     user_id: int,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Disable a user account (admin only)"""
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -1005,7 +1002,7 @@ async def disable_user(
         )
 
     # Get current user to prevent self-disable
-    creator_user = get_creator_user_from_token(auth_header)
+    creator_user = auth.user
     if creator_user and creator_user['id'] == user_id:
         return JSONResponse(
             status_code=400,
@@ -1075,13 +1072,10 @@ Example Success Response:
 )
 async def enable_user(
     user_id: int,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Enable a user account (admin only)"""
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -1115,8 +1109,7 @@ async def enable_user(
             }
         )
 
-    creator_user = get_creator_user_from_token(auth_header)
-    logger.info(f"Admin {creator_user['email']} enabled user {user_id}")
+    logger.info(f"Admin {auth.user['email']} enabled user {user_id}")
 
     return JSONResponse(
         status_code=200,
@@ -1160,13 +1153,10 @@ Example Success Response:
 )
 async def disable_users_bulk(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Disable multiple users (admin only)"""
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -1189,7 +1179,7 @@ async def disable_users_bulk(
         )
 
     # Remove current user from list to prevent self-disable
-    creator_user = get_creator_user_from_token(auth_header)
+    creator_user = auth.user
     if creator_user and creator_user['id'] in user_ids:
         user_ids.remove(creator_user['id'])
         logger.warning(
@@ -1258,13 +1248,10 @@ Example Success Response:
 )
 async def enable_users_bulk(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Enable multiple users (admin only)"""
-    auth_header = f"Bearer {credentials.credentials}"
-
-    # Check if the user has admin privileges
-    if not is_admin_user(auth_header):
+    if not auth.is_system_admin:
         return JSONResponse(
             status_code=403,
             content={
@@ -1290,9 +1277,8 @@ async def enable_users_bulk(
     db_manager = LambDatabaseManager()
     results = db_manager.enable_users_bulk(user_ids)
 
-    creator_user = get_creator_user_from_token(auth_header)
     logger.info(
-        f"Admin {creator_user['email']} bulk enabled users: "
+        f"Admin {auth.user['email']} bulk enabled users: "
         f"{len(results['success'])} successful, {len(results['failed'])} failed"
     )
 
@@ -1339,17 +1325,10 @@ Example Success Response:
     responses={
     },
 )
-async def list_user_files(request: Request):
+async def list_user_files(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """List files in user's directory"""
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         # Create user directory path
         user_dir = STATIC_DIR / str(creator_user['id'])
@@ -1402,18 +1381,12 @@ Example Success Response:
 )
 async def upload_file(
     request: Request,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Upload a file to user's directory"""
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         # Validate file extension
         file_extension = Path(file.filename).suffix.lower()
@@ -1474,21 +1447,11 @@ Example Success Response:
     responses={
     },
 )
-async def delete_file(request: Request, path: str):
+async def delete_file(request: Request, path: str, auth: AuthContext = Depends(get_auth_context)):
     """Delete a file from the user's directory"""
     try:
         logger.debug(f"Received request to delete file: {path}")
-
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error(
-                "Invalid authentication or user not found in creator database")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         # Create user directory path
         user_dir = STATIC_DIR / str(creator_user['id'])
@@ -1560,25 +1523,12 @@ Example Success Response:
 async def update_user_role_by_email(
     role_update: EmailRoleUpdate,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Update a user's role (admin or user) directly using their email address.
     This endpoint provides a more direct way to update roles in the OWI system."""
     try:
-        # Get token from authorization header and retrieve creator user
-        token = credentials.credentials
-        creator_user = get_creator_user_from_token(token)
-
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication failed. Invalid or expired token."
-            )
-
-        # Check if user is an admin
-        is_admin = is_admin_user(creator_user)
-
-        if not is_admin:
+        if not auth.is_system_admin:
             raise HTTPException(
                 status_code=403,
                 detail="Administrator privileges required"
@@ -1592,29 +1542,29 @@ async def update_user_role_by_email(
                 detail=f"Invalid role: {new_role}. Must be 'admin' or 'user'"
             )
 
-        # Import the OwiUserManager class and update the role directly
-        from lamb.owi_bridge.owi_users import OwiUserManager
-        user_manager = OwiUserManager()
-        result = user_manager.update_user_role_by_email(
-            role_update.email, new_role)
+        # LAMB primary: update role in Creator_users
+        lamb_result = db_manager.update_creator_user_role(role_update.email, new_role)
 
-        if result:
-            return {
-                "success": True,
-                "message": f"User role updated to {new_role}",
-                "data": {"email": role_update.email, "role": new_role}
-            }
-        else:
+        if not lamb_result:
             raise HTTPException(
                 status_code=400,
                 detail=f"Failed to update user role in database. User may not exist."
             )
 
-    except ImportError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error importing OwiUserManager: {str(e)}"
-        )
+        # OWI mirror (best-effort)
+        try:
+            from lamb.owi_bridge.owi_users import OwiUserManager
+            user_manager = OwiUserManager()
+            user_manager.update_user_role_by_email(role_update.email, new_role)
+        except Exception as owi_err:
+            logger.warning(f"OWI role mirror failed for {role_update.email}: {owi_err}")
+
+        return {
+            "success": True,
+            "message": f"User role updated to {new_role}",
+            "data": {"email": role_update.email, "role": new_role}
+        }
+
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
@@ -1659,7 +1609,7 @@ Example Success Response:
 async def update_user_role_admin(
     user_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Update a user's role (admin or user).
     Note: User ID 1 cannot have its role changed from admin."""
@@ -1668,23 +1618,7 @@ async def update_user_role_admin(
         logger.info(
             f"[ROLE_UPDATE] Attempting to update role for user ID {user_id}")
 
-        # Check if the requester is an admin
-        token = credentials.credentials
-
-        auth_header = f"Bearer {token}"
-
-        creator_user = get_creator_user_from_token(auth_header)
-
-        if not creator_user:
-            raise HTTPException(
-                status_code=403,
-                detail="Authentication failed. Invalid or expired token."
-            )
-
-        # Check if user is an admin
-        is_admin = is_admin_user(creator_user)
-
-        if not is_admin:
+        if not auth.is_system_admin:
             raise HTTPException(
                 status_code=403,
                 detail="Administrator privileges required"
@@ -1792,41 +1726,31 @@ async def update_user_role_admin(
                     detail="Creator user has no email address"
                 )
 
-            # Import directly
+            # LAMB primary: update role in Creator_users
             try:
-                # Suppress any potential passlib/bcrypt warnings
-                import warnings
-                warnings.filterwarnings(
-                    "ignore", message=".*error reading bcrypt version.*")
+                lamb_result = db_manager.update_creator_user_role(user_email, new_role)
 
-                # Import the OwiUserManager class directly
-                from lamb.owi_bridge.owi_users import OwiUserManager
-
-                # Create an instance
-                user_manager = OwiUserManager()
-
-                # Update the user's role directly by email
-                # This eliminates the need to find the OWI user ID, simplifying the process
-                # and reducing potential points of failure
-                result = user_manager.update_user_role_by_email(
-                    user_email, new_role)
-
-                if result:
-                    return {
-                        "success": True,
-                        "message": f"User role updated to {new_role}",
-                        "data": {"user_id": user_id, "role": new_role}
-                    }
-                else:
+                if not lamb_result:
                     raise HTTPException(
                         status_code=400,
                         detail=f"Failed to update user role in database. User may not exist."
                     )
-            except ImportError as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error importing OwiUserManager: {str(e)}"
-                )
+
+                # OWI mirror (best-effort)
+                try:
+                    from lamb.owi_bridge.owi_users import OwiUserManager
+                    user_manager = OwiUserManager()
+                    user_manager.update_user_role_by_email(user_email, new_role)
+                except Exception as owi_err:
+                    logger.warning(f"OWI role mirror failed for {user_email}: {owi_err}")
+
+                return {
+                    "success": True,
+                    "message": f"User role updated to {new_role}",
+                    "data": {"user_id": user_id, "role": new_role}
+                }
+            except HTTPException:
+                raise
             except Exception as db_error:
                 import traceback
                 logger.error(
@@ -1879,14 +1803,11 @@ Example Success Response:
 async def update_user_status_admin(
     user_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Enable or disable a user (admin only)"""
     try:
-        # Check if the requester is an admin
-        auth_header = f"Bearer {credentials.credentials}"
-
-        if not is_admin_user(auth_header):
+        if not auth.is_system_admin:
             raise HTTPException(
                 status_code=403,
                 detail="Administrator privileges required"
@@ -1919,7 +1840,7 @@ async def update_user_status_admin(
             )
 
         # Prevent users from disabling themselves
-        current_user = get_creator_user_from_token(auth_header)
+        current_user = auth.user
         if current_user and current_user.get('email') == user.get('user_email') and not enabled:
             raise HTTPException(
                 status_code=403,
@@ -2001,21 +1922,18 @@ Example Error (User has dependencies):
 async def delete_user_admin(
     user_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Delete a disabled user with no dependencies (admin only)"""
     try:
-        # Check if the requester is an admin
-        auth_header = f"Bearer {credentials.credentials}"
-
-        if not is_admin_user(auth_header):
+        if not auth.is_system_admin:
             raise HTTPException(
                 status_code=403,
                 detail="Administrator privileges required"
             )
 
         # Prevent users from deleting themselves
-        current_user = get_creator_user_from_token(auth_header)
+        current_user = auth.user
         if current_user and str(current_user.get('id')) == user_id:
             raise HTTPException(
                 status_code=403,
@@ -2096,14 +2014,11 @@ Example Response (User has no dependencies):
 async def check_user_dependencies_admin(
     user_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Check if a user has any dependencies (admin only)"""
     try:
-        # Check if the requester is an admin
-        auth_header = f"Bearer {credentials.credentials}"
-
-        if not is_admin_user(auth_header):
+        if not auth.is_system_admin:
             raise HTTPException(
                 status_code=403,
                 detail="Administrator privileges required"
@@ -2148,17 +2063,10 @@ Example Success Response:
     responses={
     },
 )
-async def get_current_user(request: Request):
+async def get_current_user(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Get current user information from authentication token"""
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         # Return user information
         return {
@@ -2197,16 +2105,10 @@ curl -X GET 'http://localhost:9099/creator/user/profile' \\
         500: {"description": "Internal server error"}
     }
 )
-async def get_own_profile(request: Request):
+async def get_own_profile(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Get comprehensive profile for the currently authenticated user."""
     try:
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         db = LambDatabaseManager()
         profile = db.get_user_profile(creator_user["id"])
@@ -2355,20 +2257,12 @@ Example Success Response:
         500: {"description": "Internal server error"}
     }
 )
-async def get_shared_assistants(request: Request):
+async def get_shared_assistants(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Get list of assistants shared with the current user.
     """
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Unauthorized attempt to get shared assistants")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         user_id = creator_user.get('id')
         user_email = creator_user.get('email')
@@ -2438,17 +2332,10 @@ Example Response (cannot share):
         500: {"description": "Internal server error"}
     }
 )
-async def check_sharing_permission_endpoint(request: Request):
+async def check_sharing_permission_endpoint(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Check if sharing is enabled for current user's organization"""
     try:
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Unauthorized attempt to check sharing permission")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         user_id = creator_user.get('id')
         user_email = creator_user.get('email')
@@ -2503,17 +2390,10 @@ Example Response:
         500: {"description": "Internal server error"}
     }
 )
-async def get_organization_users_endpoint(request: Request):
+async def get_organization_users_endpoint(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Get list of users in current user's organization for sharing UI"""
     try:
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Unauthorized attempt to get organization users")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
 
         user_id = creator_user.get('id')
         user_email = creator_user.get('email')
@@ -2581,18 +2461,10 @@ Example Response:
         500: {"description": "Internal server error"}
     }
 )
-async def get_assistant_shares_endpoint(request: Request, assistant_id: int):
+async def get_assistant_shares_endpoint(request: Request, assistant_id: int, auth: AuthContext = Depends(get_auth_context)):
     """Get list of users an assistant is shared with"""
     try:
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Unauthorized attempt to get assistant shares")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
-
+        creator_user = auth.user
         user_id = creator_user.get('id')
         user_email = creator_user.get('email')
         logger.info(f"User {user_email} requesting shares for assistant {assistant_id}")
@@ -2604,12 +2476,7 @@ async def get_assistant_shares_endpoint(request: Request, assistant_id: int):
 
         # Check authorization: owner, system admin, or org admin
         is_owner = assistant.owner == user_email
-        auth_header = request.headers.get("Authorization")
-        from .assistant_router import is_admin_user
-        is_sys_admin = is_admin_user(auth_header)
-        is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
-
-        if not is_owner and not is_sys_admin and not is_org_admin:
+        if not is_owner and not auth.is_system_admin and not auth.is_org_admin:
             logger.warning(f"User {user_email} denied access to shares for assistant {assistant_id}")
             raise HTTPException(
                 status_code=403,
@@ -2685,19 +2552,12 @@ Example Response:
 async def update_assistant_shares_endpoint(
     request: Request, 
     assistant_id: int, 
-    shares_request: UpdateSharesRequest
+    shares_request: UpdateSharesRequest,
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Update the list of users an assistant is shared with"""
     try:
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Unauthorized attempt to update assistant shares")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
-
+        creator_user = auth.user
         user_id = creator_user.get('id')
         user_email = creator_user.get('email')
         logger.info(f"User {user_email} updating shares for assistant {assistant_id}")
@@ -2709,12 +2569,7 @@ async def update_assistant_shares_endpoint(
 
         # Check authorization: owner, system admin, or org admin
         is_owner = assistant.owner == user_email
-        auth_header = request.headers.get("Authorization")
-        from .assistant_router import is_admin_user
-        is_sys_admin = is_admin_user(auth_header)
-        is_org_admin = is_organization_admin(auth_header, assistant.organization_id)
-
-        if not is_owner and not is_sys_admin and not is_org_admin:
+        if not is_owner and not auth.is_system_admin and not auth.is_org_admin:
             logger.warning(f"User {user_email} denied update shares for assistant {assistant_id}")
             raise HTTPException(
                 status_code=403,
