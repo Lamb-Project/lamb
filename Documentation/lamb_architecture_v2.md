@@ -1,8 +1,8 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.4
-**Last Updated:** February 13, 2026
-**Reading Time:** ~35 minutes
+**Version:** 2.5
+**Last Updated:** February 16, 2026
+**Reading Time:** ~40 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
 
@@ -352,41 +352,116 @@ LAMB handles authentication natively. Passwords are stored in LAMB's own databas
 - `password` — Standard email/password authentication (default)
 - `lti_creator` — LTI-based authentication for creator users
 
-### 5.2 Token Validation
+### 5.2 AuthContext — Centralized Auth Manager
 
-Every authenticated endpoint:
-1. Extracts `Authorization: Bearer {token}` header
-2. Calls `get_creator_user_from_token()` helper
-3. Decodes and validates the LAMB-issued JWT (signature + expiration)
-4. Looks up user in LAMB `Creator_users` table by user ID from token
-5. Returns user object (including `role` from `Creator_users.role`) or raises 401
+Since v2.5, all authentication and authorization is handled by a single `AuthContext` object, built once per request via FastAPI `Depends()`. This replaces the previous pattern where each endpoint manually extracted tokens, looked up users, and checked permissions inline.
 
-> **No OWI dependency:** Token validation is entirely within LAMB. No OWI database calls are made during authentication.
+**File:** `backend/lamb/auth_context.py`
+
+```python
+@dataclass
+class AuthContext:
+    # Identity (always loaded)
+    user: dict              # Creator_users row (id, email, name, ...)
+    token_payload: dict     # Raw JWT claims (sub, email, role, exp, iat)
+
+    # Roles (always loaded)
+    is_system_admin: bool          # role == "admin" in JWT
+    organization_role: str | None  # "owner" | "admin" | "member" | None
+    is_org_admin: bool             # organization_role in ("owner", "admin")
+
+    # Organization (always loaded)
+    organization: dict    # Full org dict (id, name, slug, config, ...)
+    features: dict        # Org feature flags (sharing_enabled, rag_enabled, ...)
+
+    # Resource access checkers (on-demand, query DB when called)
+    def can_access_assistant(self, assistant_id) -> str    # "owner"|"org_admin"|"shared"|"none"
+    def can_modify_assistant(self, assistant_id) -> bool   # owner or system admin only
+    def can_access_kb(self, kb_id) -> str                  # "owner"|"shared"|"none"
+
+    # Guard methods (raise HTTPException on denial)
+    def require_system_admin(self)
+    def require_org_admin(self)
+    def require_assistant_access(self, assistant_id, level="any")
+    def require_kb_access(self, kb_id, level="any")
+
+    # Serialization for logging/debugging
+    def to_dict(self) -> dict
+```
+
+**Three dependency functions** replace all previous auth patterns:
+
+| Dependency | Use Case |
+|---|---|
+| `get_auth_context` | Standard auth — most endpoints |
+| `get_optional_auth_context` | Endpoints that work with or without auth (e.g., `/completions/list`) |
+| `require_admin` | Admin-only shortcut |
+
+**Authentication flow (per request, ~3ms):**
+1. Extract `Bearer` token from `Authorization` header
+2. Decode LAMB JWT (fallback: OWI `get_user_auth` for backward compat)
+3. Look up user in `Creator_users` by email
+4. Load organization and org role from DB
+5. Parse org feature flags from config
+6. Return populated `AuthContext`
+
+> **No OWI dependency:** Token validation is entirely within LAMB. OWI fallback exists only for backward compatibility during migration (#265) and will be removed.
 
 ### 5.3 Authorization Levels
 
-**Organization Roles:**
+**System Roles:**
+| Role | `AuthContext` property | Scope |
+|------|---|---|
+| System Admin | `is_system_admin = True` | Full access to all orgs and resources |
+| Org Admin | `is_org_admin = True` | Manage settings and members **within own org** |
+| Org Member | `organization_role = "member"` | Create assistants and KBs within org |
+
+**Organization Roles (in `organization_roles` table):**
 | Role | Permissions |
 |------|-------------|
-| `owner` | Full control over organization |
-| `admin` | Manage settings and members |
+| `owner` | Full control over organization (is_org_admin = True) |
+| `admin` | Manage settings and members (is_org_admin = True) |
 | `member` | Create assistants within org |
 
-**Admin Detection:**
+### 5.4 Resource-Level Access Control
+
+The `AuthContext` enforces resource access with org-scoping built in:
+
+**Assistant access (`can_access_assistant`):**
+| Check | Returns | Allows modify/delete? |
+|---|---|---|
+| User is the owner (`assistant.owner == user.email`) | `"owner"` | Yes |
+| User is system admin | `"org_admin"` | Yes (system admin only) |
+| User is org admin **of the same org** as the assistant | `"org_admin"` | No (read-only for org admin) |
+| Assistant is shared with user, or same org member | `"shared"` | No |
+| None of the above | `"none"` | No |
+
+**Key design: org-scoped checks.** An org admin of Org A **cannot** access assistants belonging to Org B. The check at line 104 of `auth_context.py` enforces this:
 ```python
-def is_admin_user(user_or_auth_header):
-    # Accepts a creator_user dict or an auth header string.
-    # Returns True when the user's role == 'admin' (from Creator_users.role).
+if self.is_org_admin and assistant.get("organization_id") == self.organization.get("id"):
+    return "org_admin"
 ```
 
-### 5.4 API Key Authentication
+**KB access (`can_access_kb`):**
+- Delegates to `database_manager.user_can_access_kb()` which checks ownership and sharing
+- System admin override: always gets `"owner"` level
+
+**Guard methods** raise `HTTPException` immediately:
+```python
+auth.require_system_admin()                           # 403 if not system admin
+auth.require_org_admin()                              # 403 if not org admin or system admin
+auth.require_assistant_access(id, level="owner")      # 404 if not found, 403 if not owner
+auth.require_assistant_access(id, level="owner_or_admin")  # 403 if not owner or org admin
+```
+
+### 5.5 API Key Authentication
 
 For `/v1/chat/completions` and `/v1/models`:
 - Uses `LAMB_BEARER_TOKEN` environment variable
 - Format: `Authorization: Bearer {LAMB_BEARER_TOKEN}`
 - Default: `0p3n-w3bu!` (change in production!)
 
-### 5.5 Security Considerations
+### 5.6 Security Considerations
 
 **Password Storage:**
 - Passwords stored in LAMB `Creator_users.password_hash` column
@@ -405,7 +480,7 @@ For `/v1/chat/completions` and `/v1/models`:
 - LAMB-issued JWT tokens for creator interface endpoints
 - Organization isolation enforced at data layer
 
-### 5.6 Error Handling
+### 5.7 Error Handling
 
 **Standard Error Response:**
 ```json
@@ -425,7 +500,7 @@ For `/v1/chat/completions` and `/v1/models`:
 | 422 | Unprocessable | Invalid request data |
 | 500 | Server Error | Internal error |
 
-### 5.7 Chat Handoff to Open WebUI
+### 5.8 Chat Handoff to Open WebUI
 
 When a user needs to access the OWI chat interface (e.g., "Try assistant", LTI student launch, instructor "Open Chat"), LAMB provides an OWI-compatible JWT. This is the **only** remaining interaction with OWI's authentication system.
 
@@ -466,7 +541,7 @@ When a user needs to access the OWI chat interface (e.g., "Try assistant", LTI s
 - Continue using server-side redirects (LAMB generates OWI token and redirects directly)
 - Students never interact with the Creator Interface or LAMB JWTs
 
-### 5.8 Password Migration from OWI
+### 5.9 Password Migration from OWI
 
 A one-time migration copies existing bcrypt password hashes from OWI's `auth` table into `Creator_users.password_hash`. The migration:
 
@@ -1308,7 +1383,7 @@ DB_LOG_LEVEL=DEBUG
 
 | Task | Primary Files |
 |------|---------------|
-| **Auth** | `creator_interface/main.py`, `lamb/auth.py` |
+| **Auth & AuthContext** | `lamb/auth_context.py`, `lamb/auth.py`, `creator_interface/main.py` |
 | **OWI Chat Handoff** | `lamb/owi_bridge/owi_users.py` |
 | **Assistants** | `creator_interface/assistant_router.py`, `lamb/assistant_router.py` |
 | **Completions** | `lamb/completions/main.py`, `lamb/completions/connectors/` |
@@ -1321,15 +1396,15 @@ DB_LOG_LEVEL=DEBUG
 
 ### 12.3 Common Patterns
 
-**Adding a Protected Endpoint:**
+**Adding a Protected Endpoint (with AuthContext):**
 ```python
+from lamb.auth_context import AuthContext, get_auth_context
+
 @router.get("/my-endpoint")
-async def my_endpoint(request: Request):
-    auth_header = request.headers.get("Authorization")
-    creator_user = get_creator_user_from_token(auth_header)
-    if not creator_user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
+async def my_endpoint(auth: AuthContext = Depends(get_auth_context)):
+    # auth.user is always populated (401 raised automatically if token invalid)
+    user_email = auth.user['email']
+    org = auth.organization
     # Your logic here
     return {"success": True}
 ```
@@ -1337,13 +1412,52 @@ async def my_endpoint(request: Request):
 **Admin-Only Endpoint:**
 ```python
 @router.get("/admin/my-endpoint")
-async def admin_endpoint(request: Request):
-    auth_header = request.headers.get("Authorization")
-    creator_user = get_creator_user_from_token(auth_header)
-    if not creator_user or not is_admin_user(creator_user):
-        raise HTTPException(status_code=403, detail="Admin required")
-    
+async def admin_endpoint(auth: AuthContext = Depends(get_auth_context)):
+    auth.require_system_admin()  # Raises 403 if not system admin
     # Admin logic here
+```
+
+**Org-Admin Endpoint (scoped to their organization):**
+```python
+@router.put("/org/{org_id}/settings")
+async def update_org_settings(org_id: int, auth: AuthContext = Depends(get_auth_context)):
+    auth.require_org_admin()  # Raises 403 if not org admin or system admin
+    # IMPORTANT: also verify the target org matches the user's org
+    if not auth.is_system_admin and auth.organization.get("id") != org_id:
+        raise HTTPException(status_code=403, detail="Access denied for this organization")
+    # Update settings...
+```
+
+**Resource Access Guarded Endpoint:**
+```python
+@router.delete("/assistant/{assistant_id}")
+async def delete_assistant(assistant_id: int, auth: AuthContext = Depends(get_auth_context)):
+    # Raises 404 if assistant doesn't exist, 403 if user isn't owner or org admin
+    auth.require_assistant_access(assistant_id, level="owner_or_admin")
+    # Proceed with deletion...
+```
+
+**Optional Auth (for public-ish endpoints):**
+```python
+from lamb.auth_context import get_optional_auth_context
+
+@router.get("/public-or-private")
+async def flexible_endpoint(auth: Optional[AuthContext] = Depends(get_optional_auth_context)):
+    if auth:
+        # Authenticated — scope to user's org
+        return get_data_for_org(auth.organization['id'])
+    else:
+        # Anonymous — return public data only
+        return get_public_data()
+```
+
+**Checking Feature Flags:**
+```python
+@router.post("/share-assistant")
+async def share_assistant(auth: AuthContext = Depends(get_auth_context)):
+    if not auth.features.get("sharing_enabled"):
+        raise HTTPException(status_code=403, detail="Sharing not enabled for this org")
+    # Sharing logic...
 ```
 
 **Using Organization Config:**
@@ -1354,6 +1468,8 @@ resolver = OrganizationConfigResolver(user_email)
 openai_config = resolver.get_provider_config("openai")
 api_key = openai_config.get("api_key")
 ```
+
+> **Legacy patterns** (`get_creator_user_from_token`, `is_admin_user`) still exist for backward compatibility but **should not be used in new code**. All new endpoints should use `AuthContext`.
 
 ### 12.4 API Quick Reference
 
@@ -1457,6 +1573,7 @@ API_LOG_LEVEL=DEBUG
 
 | Document | Purpose |
 |----------|---------|
+| [new_lamb_auth_tldr.md](./new_lamb_auth_tldr.md) | **AuthContext TL;DR** — quick reference for the new auth system |
 | [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) | Quick navigation guide |
 | [lamb_architecture.md](./lamb_architecture.md) | Full detailed reference |
 | [chat_analytics_project.md](./chat_analytics_project.md) | Analytics implementation |
@@ -1475,6 +1592,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 11, 2026*
-*Version: 2.4*
+*Last Updated: February 16, 2026*
+*Version: 2.5*
 
