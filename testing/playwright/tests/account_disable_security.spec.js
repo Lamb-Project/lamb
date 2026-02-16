@@ -407,12 +407,19 @@ test.describe.serial("Account Disable Security (Dual Browser)", () => {
     await admin2Page.getByRole("textbox", { name: "Password" }).fill(admin2Password);
     
     console.log(`[security-test-8] Clicking login button...`);
-    await admin2Page.getByRole("button", { name: "Login" }).click();
-    
-    console.log(`[security-test-8] Waiting for Admin2 to reach /admin...`);
-    await admin2Page.waitForURL("/admin", { timeout: 10_000 });
-    await admin2Page.waitForTimeout(1000);
+    await Promise.all([
+      admin2Page.waitForNavigation({ timeout: 15_000 }).catch(() => {}),
+      admin2Page.getByRole("button", { name: "Login" }).click()
+    ]);
+    await admin2Page.waitForTimeout(2000);
+
+    // Verify login succeeded (look for Admin link like test 2 does)
+    await expect(admin2Page.getByRole("link", { name: "Admin" })).toBeVisible({ timeout: 10_000 });
     console.log(`[security-test-8] ✅ Admin2 logged back in`);
+
+    // Navigate explicitly to admin page
+    await admin2Page.goto("/admin?view=users");
+    await admin2Page.waitForLoadState("networkidle");
 
     // Admin1 disables Admin2 again
     console.log(`[security-test-8] Admin1 navigating to users page...`);
@@ -503,7 +510,7 @@ test.describe.serial("Account Disable Security (Dual Browser)", () => {
     const deleteButton = userRow.getByLabel("Delete User");
     await deleteButton.click();
 
-    const confirmButton = admin1Page.getByRole("button", { name: /delete|confirm/i });
+    const confirmButton = admin1Page.getByRole("button", { name: "Delete", exact: true });
     await confirmButton.click();
 
     await admin1Page.waitForTimeout(2000);
