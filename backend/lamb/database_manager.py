@@ -145,9 +145,13 @@ class LambDatabaseManager:
             logger.error(f"Failed to connect to database: {e}")
             return None
 
-    def optimize_database(self):
+    def optimize_database(self, vacuum: bool = True):
         """
         Perform database optimization operations.
+
+        Args:
+            vacuum (bool): If True perform VACUUM (costly). If False run only ANALYZE and PRAGMA optimize.
+
         Should be called periodically (e.g., during maintenance windows).
         """
         connection = self.get_connection()
@@ -162,16 +166,27 @@ class LambDatabaseManager:
             logger.info("Running ANALYZE on database...")
             cursor.execute("ANALYZE")
             
-            # Vacuum the database to reclaim space and defragment
-            # Note: VACUUM requires exclusive access and can take time
-            logger.info("Running VACUUM on database...")
-            cursor.execute("VACUUM")
+            # VACUUM is optional because it's expensive; perform only when requested
+            if vacuum:
+                # Ensure WAL is checkpointed before VACUUM
+                logger.info("Checkpointing WAL before VACUUM...")
+                try:
+                    self.checkpoint_wal()
+                except Exception as e:
+                    logger.warning(f"Failed to checkpoint WAL before VACUUM: {e}")
+
+                # Vacuum the database to reclaim space and defragment
+                # Note: VACUUM requires exclusive access and can take time
+                logger.info("Running VACUUM on database...")
+                cursor.execute("VACUUM")
+            else:
+                logger.info("Skipping VACUUM (scheduled optimize without vacuum)")
             
             # Optimize the database
             cursor.execute("PRAGMA optimize")
             
             connection.commit()
-            logger.info("Database optimization completed successfully")
+            logger.info("Database optimization completed successfully (vacuum=%s)" % vacuum)
             return True
             
         except sqlite3.Error as e:
