@@ -15,7 +15,7 @@ Privacy:
 Created: December 27, 2025
 """
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -25,8 +25,8 @@ import json
 from lamb.services.chat_analytics_service import ChatAnalyticsService
 from lamb.services.assistant_service import AssistantService
 from lamb.database_manager import LambDatabaseManager
+from lamb.auth_context import AuthContext, get_auth_context
 from lamb.logging_config import get_logger
-from .assistant_router import get_creator_user_from_token
 
 logger = get_logger(__name__, component="API")
 
@@ -114,39 +114,27 @@ class AnalyticsTimelineResponse(BaseModel):
 
 # --- Helper Functions ---
 
-def check_assistant_access(user: Dict[str, Any], assistant_id: int) -> str:
+def check_assistant_access_for_analytics(auth: AuthContext, assistant_id: int) -> str:
     """
-    Check user's analytics access level for an assistant.
+    Check user's analytics access level for an assistant using AuthContext.
     
     Returns:
         'full' - Owner or System Admin: can see chats, stats, timeline
         'aggregate' - Org Admin: can see stats and timeline only (no chat content)
         'none' - No access
     """
-    assistant = assistant_service.get_assistant_by_id(assistant_id)
-    if not assistant:
-        return 'none'
+    access = auth.can_access_assistant(assistant_id)
     
-    # Owner gets full access
-    if assistant.owner == user.get('email'):
-        return 'full'
+    if access == "none":
+        return "none"
     
-    # System Admin gets full access to any assistant
-    from .assistant_router import is_admin_user
-    if is_admin_user(user):
-        logger.info(f"System admin {user.get('email')} accessing analytics for assistant {assistant_id}")
-        return 'full'
+    if access == "owner" or auth.is_system_admin:
+        return "full"
     
-    # Org Admin gets aggregate-only access for assistants in their org
-    assistant_org_id = getattr(assistant, 'organization_id', None)
-    user_org_id = user.get('organization_id')
-    if assistant_org_id and user_org_id == assistant_org_id:
-        user_org_role = db_manager.get_user_organization_role(user['id'], assistant_org_id)
-        if user_org_role in ('admin', 'owner'):
-            logger.info(f"Org admin {user.get('email')} accessing aggregate analytics for assistant {assistant_id}")
-            return 'aggregate'
+    if access == "org_admin":
+        return "aggregate"
     
-    return 'none'
+    return "none"
 
 
 def get_anonymize_setting(user: Dict[str, Any]) -> bool:
@@ -189,18 +177,15 @@ async def list_assistant_chats(
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
     search_content: Optional[str] = Query(None, description="Search for content in chat messages (supports SQLite wildcards % and _)"),
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Items per page")
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """List all chats for an assistant with optional date and user filtering"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
+    user = auth.user
     
     # Check access - chat content requires 'full' access (owner or system admin)
-    access_level = check_assistant_access(user, assistant_id)
+    access_level = check_assistant_access_for_analytics(auth, assistant_id)
     if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     if access_level == 'aggregate':
@@ -247,18 +232,15 @@ async def list_assistant_chats(
 async def get_chat_detail(
     request: Request,
     assistant_id: int,
-    chat_id: str
+    chat_id: str,
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Get detailed chat conversation including all messages"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
+    user = auth.user
     
     # Check access - chat content requires 'full' access (owner or system admin)
-    access_level = check_assistant_access(user, assistant_id)
+    access_level = check_assistant_access_for_analytics(auth, assistant_id)
     if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     if access_level == 'aggregate':
@@ -290,18 +272,15 @@ async def get_assistant_stats(
     request: Request,
     assistant_id: int,
     start_date: Optional[str] = Query(None, description="Stats from date (ISO format)"),
-    end_date: Optional[str] = Query(None, description="Stats until date (ISO format)")
+    end_date: Optional[str] = Query(None, description="Stats until date (ISO format)"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Get usage statistics for an assistant"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
+    user = auth.user
     
     # Check access - stats are available to 'full' and 'aggregate' access levels
-    access_level = check_assistant_access(user, assistant_id)
+    access_level = check_assistant_access_for_analytics(auth, assistant_id)
     if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     
@@ -340,18 +319,15 @@ async def get_assistant_timeline(
     assistant_id: int,
     period: str = Query("day", description="Aggregation period: day, week, or month"),
     start_date: Optional[str] = Query(None, description="Timeline from date (ISO format)"),
-    end_date: Optional[str] = Query(None, description="Timeline until date (ISO format)")
+    end_date: Optional[str] = Query(None, description="Timeline until date (ISO format)"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Get chat activity timeline for an assistant"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
+    user = auth.user
     
     # Check access - timeline is available to 'full' and 'aggregate' access levels
-    access_level = check_assistant_access(user, assistant_id)
+    access_level = check_assistant_access_for_analytics(auth, assistant_id)
     if access_level == 'none':
         raise HTTPException(status_code=403, detail="You don't have access to this assistant's analytics")
     

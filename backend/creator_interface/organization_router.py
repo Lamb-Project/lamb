@@ -11,7 +11,7 @@ import httpx
 import json
 import time
 from datetime import datetime
-from .assistant_router import get_creator_user_from_token, is_admin_user
+from lamb.auth_context import AuthContext, get_auth_context, require_admin, _build_auth_context
 import config
 from lamb.database_manager import LambDatabaseManager
 from lamb.logging_config import get_logger
@@ -37,27 +37,30 @@ LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN
 # Organization Admin Authorization Helpers
 def get_user_organization_admin_info(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get user information and check if they are an organization admin
-    Returns user info with organization admin details if authorized, None otherwise
+    Get user information and check if they are an organization admin.
+    Uses AuthContext internally for centralized auth resolution.
+    Returns user info with organization admin details if authorized, None otherwise.
     """
     try:
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
+        token = auth_header.replace("Bearer ", "") if auth_header and auth_header.startswith("Bearer ") else auth_header
+        if not token:
             return None
         
+        auth_ctx = _build_auth_context(token)
+        if not auth_ctx:
+            return None
+        
+        creator_user = auth_ctx.user
         user_id = creator_user.get('id')
         if not user_id:
             return None
         
-        # Get user's organization and role
-        user_details = db_manager.get_creator_user_by_id(user_id)
-        if not user_details or not user_details.get('organization_id'):
+        # Check org admin via AuthContext
+        if not auth_ctx.is_org_admin and not auth_ctx.is_system_admin:
             return None
         
-        org_id = user_details['organization_id']
-        org_role = db_manager.get_user_organization_role(user_id, org_id)
-        
-        if org_role != "admin":
+        org_id = auth_ctx.organization.get('id')
+        if not org_id:
             return None
         
         # Get organization details
@@ -92,22 +95,20 @@ def is_organization_admin(auth_header: str, organization_id: Optional[int] = Non
 
 async def verify_organization_admin_access(request: Request, organization_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    Verify that the user has organization admin access
-    Returns admin info if authorized, raises HTTPException otherwise
+    Verify that the user has organization admin access.
+    Uses _build_auth_context directly since this function is called manually (not via DI).
+    Returns admin info if authorized, raises HTTPException otherwise.
     """
     try:
-        # Get authorization header
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="Authorization header required")
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+        auth = _build_auth_context(token) if token else None
+        if not auth:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        creator_user = auth.user
         
-        # First, check if user is a system administrator
-        from .assistant_router import is_admin_user
-        if is_admin_user(auth_header):
-            # System admin can access any organization
-            creator_user = get_creator_user_from_token(auth_header)
-            if not creator_user:
-                raise HTTPException(status_code=403, detail="Invalid authentication token")
+        # First, check if user is a system administrator via AuthContext
+        if auth.is_system_admin:
             
             # If organization_id is specified, get that organization, otherwise use system org
             target_org_id = organization_id if organization_id else 1  # Default to system org
@@ -124,15 +125,22 @@ async def verify_organization_admin_access(request: Request, organization_id: Op
                 'role': 'system_admin'  # Indicate this is a system admin
             }
         
-        # If not system admin, check for regular organization admin
-        admin_info = get_user_organization_admin_info(auth_header)
-        if not admin_info:
+        # If not system admin, check for regular organization admin via AuthContext
+        if not auth.is_org_admin:
             raise HTTPException(status_code=403, detail="Organization admin privileges required")
         
-        if organization_id and admin_info['organization_id'] != organization_id:
+        user_org_id = auth.organization.get('id')
+        if organization_id and user_org_id != organization_id:
             raise HTTPException(status_code=403, detail="Access denied for this organization")
         
-        return admin_info
+        return {
+            'user_id': creator_user.get('id'),
+            'user_email': creator_user.get('email'),
+            'user_name': creator_user.get('name'),
+            'organization_id': user_org_id,
+            'organization': auth.organization,
+            'role': auth.organization_role
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -193,18 +201,16 @@ class ErrorResponse(BaseModel):
 
 # Helper function to verify admin privileges
 async def verify_admin_access(request: Request) -> str:
-    """Verify that the current user has admin access"""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    creator_user = get_creator_user_from_token(auth_header)
-    if not creator_user:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-    
-    if not is_admin_user(creator_user):
-        raise HTTPException(status_code=403, detail="Administrator privileges required")
-    
+    """Verify that the current user has admin access.
+    Uses _build_auth_context directly since this function is called manually (not via DI).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+    auth = _build_auth_context(token) if token else None
+    if not auth:
+        raise HTTPException(status_code=401, detail="Invalid authentication")
+    auth.require_system_admin()
+    # Return auth header for backward compatibility with callers that pass it to other functions
     return auth_header
 
 
@@ -4224,7 +4230,7 @@ async def update_assistant_access(
 @router.get("/organizations/{slug}/assistant-defaults")
 async def get_organization_assistant_defaults(
     slug: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get assistant defaults for a specific organization
@@ -4234,7 +4240,6 @@ async def get_organization_assistant_defaults(
     
     Args:
         slug: Organization slug identifier
-        credentials: Bearer token for authentication
     
     Returns:
         Dict containing the assistant_defaults object
@@ -4243,12 +4248,7 @@ async def get_organization_assistant_defaults(
         HTTPException: 401 if unauthorized, 404 if organization not found, 500 on server error
     """
     try:
-        # Get authorization header
-        auth_header = f"Bearer {credentials.credentials}"
-        
-        # Check admin authorization
-        user_info = get_user_organization_admin_info(auth_header)
-        if not user_info:
+        if not auth.is_system_admin and not auth.is_org_admin:
             raise HTTPException(status_code=401, detail="Admin access required")
         
         # Use OrganizationService instead of HTTP call
@@ -4271,7 +4271,7 @@ async def get_organization_assistant_defaults(
 async def update_organization_assistant_defaults(
     slug: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Update assistant defaults for a specific organization
@@ -4282,7 +4282,6 @@ async def update_organization_assistant_defaults(
     Args:
         slug: Organization slug identifier
         request: Request containing the assistant_defaults JSON in body
-        credentials: Bearer token for authentication
     
     Returns:
         Dict with success message
@@ -4291,12 +4290,7 @@ async def update_organization_assistant_defaults(
         HTTPException: 401 if unauthorized, 404 if organization not found, 500 on server error
     """
     try:
-        # Get authorization header
-        auth_header = f"Bearer {credentials.credentials}"
-        
-        # Check admin authorization
-        user_info = get_user_organization_admin_info(auth_header)
-        if not user_info:
+        if not auth.is_system_admin and not auth.is_org_admin:
             raise HTTPException(status_code=401, detail="Admin access required")
         
         # Get request body
@@ -4527,34 +4521,21 @@ curl -X GET 'http://localhost:9099/creator/admin/users/42/profile' \\
         500: {"description": "Internal server error"}
     }
 )
-async def get_user_profile(request: Request, user_id: int):
+async def get_user_profile(request: Request, user_id: int, auth: AuthContext = Depends(get_auth_context)):
     """Get comprehensive user profile with all resources."""
     try:
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        caller = get_creator_user_from_token(auth_header)
-        if not caller:
-            raise HTTPException(status_code=401, detail="Invalid authentication token")
-
+        caller = auth.user
         caller_id = caller.get('id')
-        caller_org_id = caller.get('organization_id')
 
         # Access control: system admin, org admin for their org, or self
-        if is_admin_user(caller):
-            # System admin can view anyone
+        if auth.is_system_admin:
             pass
         elif caller_id == user_id:
-            # Users can always view their own profile
             pass
         else:
-            # Check if caller is an org admin and target user is in same org
-            caller_org_role = db_manager.get_user_organization_role(caller_id, caller_org_id)
-            if caller_org_role in ('admin', 'owner'):
-                # Verify target user is in the same organization
+            if auth.is_org_admin:
                 target_user = db_manager.get_creator_user_by_id(user_id)
-                if not target_user or target_user.get('organization_id') != caller_org_id:
+                if not target_user or target_user.get('organization_id') != auth.organization.get('id'):
                     raise HTTPException(
                         status_code=403,
                         detail="Can only view profiles of users in your organization"
@@ -4587,12 +4568,10 @@ async def get_user_profile(request: Request, user_id: int):
     description="Get the global LTI consumer key/secret. System admin only.",
     dependencies=[Depends(security)]
 )
-async def get_lti_global_config(request: Request):
+async def get_lti_global_config(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Get global LTI credentials (secret is masked)."""
     try:
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user or not is_admin_user(creator_user):
-            raise HTTPException(status_code=403, detail="System admin required")
+        auth.require_system_admin()
 
         config = db_manager.get_lti_global_config()
         if config:
@@ -4626,12 +4605,10 @@ async def get_lti_global_config(request: Request):
     description="Set or update the global LTI consumer key/secret. System admin only. DB values override .env.",
     dependencies=[Depends(security)]
 )
-async def update_lti_global_config(request: Request):
+async def update_lti_global_config(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Update global LTI credentials in the database."""
     try:
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user or not is_admin_user(creator_user):
-            raise HTTPException(status_code=403, detail="System admin required")
+        auth.require_system_admin()
 
         body = await request.json()
         key = body.get("oauth_consumer_key", "").strip()
@@ -4639,7 +4616,7 @@ async def update_lti_global_config(request: Request):
         if not key or not secret:
             raise HTTPException(status_code=400, detail="Both oauth_consumer_key and oauth_consumer_secret are required")
 
-        admin_email = creator_user.get("email") or creator_user.get("user_email", "")
+        admin_email = auth.user.get("email", "")
         success = db_manager.set_lti_global_config(key, secret, updated_by=admin_email)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update LTI config")
@@ -4659,13 +4636,9 @@ async def update_lti_global_config(request: Request):
     description="Get all unified LTI activities bound to the admin's organization.",
     dependencies=[Depends(security)]
 )
-async def list_lti_activities(request: Request, org: Optional[str] = None):
+async def list_lti_activities(request: Request, org: Optional[str] = None, auth: AuthContext = Depends(get_auth_context)):
     """List all LTI activities for the org admin's organization."""
     try:
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
         # Determine target org
         if org:
             target_org = db_manager.get_organization_by_slug(org)
@@ -4673,11 +4646,10 @@ async def list_lti_activities(request: Request, org: Optional[str] = None):
                 raise HTTPException(status_code=404, detail="Organization not found")
             org_id = target_org['id']
         else:
-            org_id = creator_user.get('organization_id')
+            org_id = auth.organization.get('id')
 
-        # Check admin access
-        user_email = creator_user.get('email') or creator_user.get('user_email', '')
-        if not (is_admin_user(creator_user) or db_manager.is_organization_admin(user_email, org_id)):
+        # Check admin access via AuthContext
+        if not (auth.is_system_admin or auth.is_org_admin):
             raise HTTPException(status_code=403, detail="Organization admin required")
 
         activities = db_manager.get_lti_activities_by_org(org_id)
@@ -4703,19 +4675,14 @@ async def list_lti_activities(request: Request, org: Optional[str] = None):
     description="Update an LTI activity's name or status. Org admin only.",
     dependencies=[Depends(security)]
 )
-async def update_lti_activity(activity_id: int, request: Request):
+async def update_lti_activity(activity_id: int, request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Update an LTI activity (name, status)."""
     try:
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
         body = await request.json()
 
         # Get activity and verify org admin access
         from lamb.database_manager import LambDatabaseManager
         _db = LambDatabaseManager()
-        # We need to get the activity by ID — use a direct query
         connection = _db.get_connection()
         if not connection:
             raise HTTPException(status_code=500, detail="Database error")
@@ -4730,9 +4697,8 @@ async def update_lti_activity(activity_id: int, request: Request):
         finally:
             connection.close()
 
-        org_id = activity['organization_id']
-        user_email = creator_user.get('email') or creator_user.get('user_email', '')
-        if not (is_admin_user(creator_user) or _db.is_organization_admin(user_email, org_id)):
+        # Check admin access via AuthContext
+        if not (auth.is_system_admin or auth.is_org_admin):
             raise HTTPException(status_code=403, detail="Organization admin required")
 
         # Apply updates
