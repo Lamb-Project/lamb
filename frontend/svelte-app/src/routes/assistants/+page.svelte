@@ -112,9 +112,12 @@
     
     // --- Ownership & Access Level Check ---
     let isOwner = $derived.by(() => {
-        if (!selectedAssistantData || !$user.email) return false;
-        // Use backend-provided is_owner if available (check for both null and undefined), fallback to email comparison
+        if (!selectedAssistantData) return false;
+        // Use backend-provided is_owner if available (check for both null and undefined)
+        // This must be checked first — LTI creator users may not have $user.email populated
         if (selectedAssistantData.is_owner != null) return selectedAssistantData.is_owner;
+        // Fallback to email comparison (only if email is available)
+        if (!$user.email) return false;
         return selectedAssistantData.owner === $user.email;
     });
     
@@ -287,6 +290,8 @@
                 localStorage.setItem('userToken', urlToken);
                 // Update user store with the token
                 user.setToken(urlToken);
+                // Fetch full user profile (name, email, etc.) from the backend
+                user.fetchAndPopulateProfile();
                 // Clean the URL by removing the token parameter
                 const cleanUrl = new URL(window.location.href);
                 cleanUrl.searchParams.delete('token');

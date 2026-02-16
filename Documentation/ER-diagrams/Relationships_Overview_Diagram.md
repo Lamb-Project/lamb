@@ -2,7 +2,7 @@
 
 **Purpose:** High-level view of database integration  
 **Type:** Simplified Architecture Diagram  
-**Last Updated:** November 2025
+**Last Updated:** February 2026
 
 ---
 
@@ -97,9 +97,9 @@ graph TB
 
 ### Open WebUI Database (Orange)
 
-**Authentication:**
-- `user` - User accounts (UUID-based)
-- `auth` - Password storage (bcrypt)
+**Mirror Users & Chat:**
+- `user` - Mirror user accounts (UUID-based, synced from LAMB)
+- `auth` - Dummy password storage (LAMB-generated, for chat handoff)
 
 **Access Control:**
 - `group` - User groups for model access
@@ -118,15 +118,14 @@ graph TB
 **Link:** `Creator_users.user_email` ↔ `user.email` / `auth.email`
 
 **Purpose:**
-- User authentication
-- Password verification
-- JWT token generation
+- Mirror user synchronization
+- Chat handoff (OWI JWT via dummy password)
 
 **Flow:**
-1. LAMB creates Creator_users
-2. LAMB creates OWI user + auth
-3. Login verifies against OWI auth
-4. Email links the records
+1. LAMB creates Creator_users (with password_hash)
+2. LAMB creates OWI mirror user + auth (dummy password)
+3. Login verified against LAMB Creator_users.password_hash (not OWI)
+4. Email links the records for chat handoff
 
 ### 2. Group Links (Assistants ↔ Group)
 
@@ -168,13 +167,13 @@ graph TB
 ```
 Admin creates user
     ↓
-LAMB creates Creator_users record
+LAMB creates Creator_users record (with password_hash)
     ↓
-LAMB creates OWI user record (via email)
+LAMB creates OWI mirror user record (via email)
     ↓
-LAMB creates OWI auth record (with password)
+LAMB creates OWI auth record (with dummy password)
     ↓
-User can login
+User can login (verified against LAMB)
 ```
 
 ### Workflow 2: Assistant Publishing
@@ -218,13 +217,15 @@ LMS sends LTI launch to LAMB
     ↓
 LAMB validates OAuth signature
     ↓
-LAMB creates/finds OWI user
+LAMB ensures OWI mirror user exists (dummy password)
     ↓
 LAMB adds user to assistant's group
     ↓
 LAMB creates lti_users record
     ↓
-LAMB redirects to OWI with token
+LAMB generates OWI JWT (via dummy password)
+    ↓
+LAMB redirects to OWI with OWI token
     ↓
 Student chats with assistant
 ```
@@ -300,11 +301,11 @@ User sees response in chat
 ```
 
 ### OWI Bridge
-**Purpose:** Abstraction layer between LAMB and Open WebUI
+**Purpose:** Chat integration layer between LAMB and Open WebUI (authentication is handled by LAMB natively)
 
 **Components:**
 - `OwiDatabaseManager` - Direct DB access
-- `OwiUserManager` - User operations
+- `OwiUserManager` - Mirror user management, chat handoff tokens
 - `OwiGroupManager` - Group operations
 - `OwiModelManager` - Model operations
 
@@ -315,8 +316,8 @@ User sees response in chat
 ## Design Principles
 
 ### 1. Separation of Concerns
-- **LAMB DB** = Configuration and metadata
-- **OWI DB** = Authentication and chat UI
+- **LAMB DB** = Configuration, metadata, and authentication
+- **OWI DB** = Chat UI, mirror users, and access control
 - Clear boundaries between systems
 
 ### 2. Loose Coupling
@@ -392,10 +393,17 @@ owi_group.update_group_users(group.id, user_ids)
 
 **Check:**
 1. Does Creator_users record exist?
-2. Does OWI user record exist with same email?
-3. Does OWI auth record exist?
-4. Is password correct? (bcrypt verification)
-5. Is user enabled? (`Creator_users.enabled = 1`)
+2. Does Creator_users.password_hash contain a valid bcrypt hash?
+3. Is user enabled? (`Creator_users.enabled = 1`)
+4. Is `LAMB_JWT_SECRET` configured?
+
+### Issue: Chat handoff to OWI fails
+
+**Check:**
+1. Does OWI mirror user exist with same email?
+2. Does OWI auth record have a dummy password?
+3. Is OWI reachable at `OWI_BASE_URL`?
+4. Can LAMB authenticate with the dummy password?
 
 ### Issue: Sharing not working
 

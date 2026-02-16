@@ -15,7 +15,7 @@ Security Features:
 from fastapi import APIRouter, Request, HTTPException, Depends, Path, Query
 from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from .assistant_router import get_creator_user_from_token
+from lamb.auth_context import AuthContext, get_auth_context
 from lamb.completions.main import run_lamb_assistant
 from lamb.database_manager import LambDatabaseManager
 from lamb.services.lamb_chats_service import LambChatsService
@@ -33,79 +33,25 @@ db_manager = LambDatabaseManager()
 chats_service = LambChatsService()
 
 
-def verify_assistant_access(user: Dict[str, Any], assistant_id: int) -> bool:
+def verify_assistant_access_via_auth_context(auth: AuthContext, assistant_id: int) -> bool:
     """
-    Verify user has access to use the specified assistant (chat).
+    Verify user has access to use the specified assistant (chat) via AuthContext.
     
-    Access is granted if:
-    1. User is the owner of the assistant
-    2. User is a System Admin (can use any assistant)
-    3. User is an Org Admin for the assistant's organization
-    4. Assistant is shared with the user
-    5. User belongs to the same organization as the assistant
-    6. Assistant is in system organization and user has system access
+    Access is granted if AuthContext.can_access_assistant returns anything other than "none".
     
     Args:
-        user: Authenticated user information
+        auth: AuthContext for the current request
         assistant_id: ID of the assistant to access
         
     Returns:
         bool: True if user has access, False otherwise
     """
-    try:
-        # Get assistant details
-        assistant = db_manager.get_assistant_by_id(assistant_id)
-        if not assistant:
-            logger.warning(f"Assistant {assistant_id} not found")
-            return False
-        
-        # Check if user is owner
-        if assistant.owner == user['email']:
-            logger.debug(f"User {user['email']} is owner of assistant {assistant_id}")
-            return True
-        
-        # Check if user is System Admin (can use any assistant)
-        from .assistant_router import is_admin_user
-        if is_admin_user(user):
-            logger.info(f"System admin {user['email']} granted access to assistant {assistant_id}")
-            return True
-        
-        # Check if user is Org Admin for this assistant's organization
-        assistant_org_id = getattr(assistant, 'organization_id', None)
-        user_org_id = user.get('organization_id')
-        if assistant_org_id and user_org_id == assistant_org_id:
-            user_org_role = db_manager.get_user_organization_role(user['id'], assistant_org_id)
-            if user_org_role in ('admin', 'owner'):
-                logger.info(f"Org admin {user['email']} granted access to assistant {assistant_id} in their org")
-                return True
-        
-        # Check if assistant is shared with this user
-        is_shared = db_manager.is_assistant_shared_with_user(assistant_id, user['id'])
-        
-        if is_shared:
-            logger.debug(f"User {user['email']} has access to shared assistant {assistant_id}")
-            return True
-        
-        # Check organization membership
-        user_org = user.get('organization', {})
-        
-        if user_org.get('id') == assistant_org_id:
-            logger.debug(f"User {user['email']} has org access to assistant {assistant_id}")
-            return True
-        
-        # Check if assistant is in system organization and user has system access
-        if assistant_org_id == 1:  # System organization ID is typically 1
-            system_org = db_manager.get_organization_by_slug("lamb")
-            if system_org and user_org.get('id') == system_org.get('id'):
-                logger.debug(f"User {user['email']} has system org access to assistant {assistant_id}")
-                return True
-        
-        logger.warning(f"User {user['email']} denied access to assistant {assistant_id}")
+    access = auth.can_access_assistant(assistant_id)
+    if access == "none":
+        logger.warning(f"User {auth.user.get('email')} denied access to assistant {assistant_id}")
         return False
-        
-    except Exception as e:
-        logger.error(f"Error checking assistant access: {str(e)}")
-        return False
+    logger.debug(f"User {auth.user.get('email')} has '{access}' access to assistant {assistant_id}")
+    return True
 
 
 async def wrap_streaming_response_with_chat_save(
@@ -204,7 +150,7 @@ async def wrap_streaming_response_with_chat_save(
 async def proxy_assistant_chat(
     assistant_id: int = Path(..., description="ID of the assistant to chat with"),
     request: Request = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Proxy endpoint for chat completions with user authentication and access control.
@@ -218,22 +164,12 @@ async def proxy_assistant_chat(
     - Response includes `chat_id` for the frontend to use in subsequent requests
     """
     try:
-        # 1. Authenticate user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            logger.warning(f"Invalid authentication attempt for assistant {assistant_id}")
-            raise HTTPException(
-                status_code=401, 
-                detail="Invalid authentication. Please check your token."
-            )
-        
+        creator_user = auth.user
         user_id = creator_user.get('id')
         logger.info(f"User {creator_user['email']} requesting access to assistant {assistant_id}")
         
-        # 2. Verify assistant access
-        if not verify_assistant_access(creator_user, assistant_id):
+        # 2. Verify assistant access via AuthContext
+        if not verify_assistant_access_via_auth_context(auth, assistant_id):
             logger.warning(f"User {creator_user['email']} denied access to assistant {assistant_id}")
             raise HTTPException(
                 status_code=403,
@@ -396,21 +332,16 @@ async def proxy_assistant_chat(
 )
 async def get_assistant_info(
     assistant_id: int = Path(..., description="ID of the assistant"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get assistant information with access control.
     """
     try:
-        # 1. Authenticate user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
+        creator_user = auth.user
         
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication")
-        
-        # 2. Verify assistant access
-        if not verify_assistant_access(creator_user, assistant_id):
+        # Verify assistant access via AuthContext
+        if not verify_assistant_access_via_auth_context(auth, assistant_id):
             raise HTTPException(
                 status_code=403,
                 detail="Access denied. You don't have permission to view this assistant."
@@ -475,7 +406,7 @@ async def get_assistant_info(
     dependencies=[Depends(security)]
 )
 async def get_available_models(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get all assistants the authenticated user has access to, formatted as OpenAI models.
@@ -483,27 +414,16 @@ async def get_available_models(
     try:
         import time
         
-        # 1. Authenticate user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            logger.warning("Invalid authentication attempt for /models endpoint")
-            raise HTTPException(
-                status_code=401, 
-                detail="Invalid authentication. Please check your token."
-            )
-        
+        creator_user = auth.user
         user_email = creator_user.get('email')
-        user_org = creator_user.get('organization', {})
-        user_org_id = user_org.get('id')
+        user_org = auth.organization
         
         logger.info(f"User {user_email} requesting available models (org: {user_org.get('name', 'None')})")
         
         # 2. Get all assistants from database
         all_assistants = db_manager.get_list_of_assitants_id_and_name()
         
-        # 3. Filter assistants based on access control
+        # 3. Filter assistants based on access control via AuthContext
         accessible_assistants = []
         for assistant_dict in all_assistants:
             assistant_id = assistant_dict.get('id')
@@ -512,33 +432,11 @@ async def get_available_models(
             if assistant_dict.get('owner') == 'deleted_assistant@owi.com':
                 continue
             
-            # Check if user has access to this assistant
-            try:
-                assistant = db_manager.get_assistant_by_id(assistant_id)
-                if not assistant:
-                    continue
-                
-                # Check access: owner or same organization
-                is_owner = assistant.owner == user_email
-                assistant_org_id = getattr(assistant, 'organization_id', None)
-                same_org = user_org_id and (user_org_id == assistant_org_id)
-                
-                # Check if assistant is in system org and user has system access
-                system_org_access = False
-                if assistant_org_id == 1:
-                    system_org = db_manager.get_organization_by_slug("lamb")
-                    if system_org and user_org_id == system_org.get('id'):
-                        system_org_access = True
-                
-                if is_owner or same_org or system_org_access:
-                    accessible_assistants.append(assistant_dict)
-                    logger.debug(f"User {user_email} has access to assistant {assistant_id}")
-                else:
-                    logger.debug(f"User {user_email} does NOT have access to assistant {assistant_id}")
-                    
-            except Exception as e:
-                logger.error(f"Error checking access for assistant {assistant_id}: {str(e)}")
-                continue
+            # Check access via AuthContext
+            access = auth.can_access_assistant(assistant_id)
+            if access != "none":
+                accessible_assistants.append(assistant_dict)
+                logger.debug(f"User {user_email} has '{access}' access to assistant {assistant_id}")
         
         # 4. Format as OpenAI-compatible models
         models_data = []

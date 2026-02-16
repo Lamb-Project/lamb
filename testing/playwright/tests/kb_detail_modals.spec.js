@@ -69,13 +69,9 @@ test.describe.serial("Knowledge Base Detail Modals", () => {
     
     // Wait for file to be selected
     await expect(page.getByText("ikasiker_fixture.txt")).toBeVisible({ timeout: 5_000 });
-    
-    // Fill required parameters
-    await page.locator("#param-description-inline").fill("Test file for modal tests");
-    await page.locator("#param-citation-inline").fill("Test Citation");
-    
-    // Submit upload
-    await page.locator("div.border-t > div.px-4 button").click();
+
+    // Plugin parameters have sensible defaults — just click Upload
+    await page.getByRole("button", { name: /upload file/i }).click();
     
     // Wait for success
     await expect(page.getByText(/file uploaded and ingestion started successfully/i)).toBeVisible({ timeout: 60_000 });

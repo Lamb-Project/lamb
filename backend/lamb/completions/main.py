@@ -10,6 +10,7 @@ import requests
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
+from lamb.auth_context import AuthContext, get_optional_auth_context
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -23,7 +24,7 @@ db_manager = LambDatabaseManager()
 
 @router.get("/list")
 async def list_processors_and_connectors(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    auth: Optional[AuthContext] = Depends(get_optional_auth_context)
 ):
     """
     List available Prompt Processors, Connectors, and RAG processors with their supported features
@@ -38,18 +39,10 @@ async def list_processors_and_connectors(
     connectors = load_plugins('connectors')
     rag_processors = load_plugins('rag')
     
-    # Determine assistant_owner (user email) from credentials for organization-aware model lists
-    assistant_owner = None
-    if credentials:
-        try:
-            from lamb.owi_bridge.owi_users import OwiUserManager
-            user_manager = OwiUserManager()
-            owi_user = user_manager.get_user_auth(credentials.credentials)
-            if owi_user:
-                assistant_owner = owi_user.get('email')
-                logger.info(f"Fetching capabilities for user: {assistant_owner}")
-        except Exception as e:
-            logger.warning(f"Could not resolve user from token for capabilities: {e}")
+    # Determine assistant_owner (user email) from AuthContext for organization-aware model lists
+    assistant_owner = auth.user['email'] if auth else None
+    if assistant_owner:
+        logger.info(f"Fetching capabilities for user: {assistant_owner}")
     
     # Get available LLMs for each connector (organization-aware if assistant_owner is set)
     connector_info = {}

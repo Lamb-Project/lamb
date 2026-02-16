@@ -79,6 +79,20 @@ SIGNUP_SECRET_KEY = os.getenv('SIGNUP_SECRET_KEY')
 if not SIGNUP_SECRET_KEY:
     raise ValueError("SIGNUP_SECRET_KEY environment variable is required")
 
+# LAMB Native Authentication
+# JWT secret for signing LAMB-issued tokens. Resolution order:
+#   1. LAMB_JWT_SECRET (explicit, for full OWI decoupling)
+#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY env vars
+#   3. OWI's hardcoded default ("t0p-s3cr3t") — matches open_webui/env.py
+# This ensures zero-config compatibility: LAMB signs tokens with the same
+# secret OWI uses, so existing OWI tokens decode seamlessly.
+LAMB_JWT_SECRET = (
+    os.getenv('LAMB_JWT_SECRET')
+    or os.getenv('WEBUI_SECRET_KEY')
+    or os.getenv('WEBUI_JWT_SECRET_KEY')
+    or 't0p-s3cr3t'
+)
+
 # OWI Admin Configuration
 OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME')
 if not OWI_ADMIN_NAME:

@@ -38,7 +38,7 @@ test.describe("Organization Form Modal", () => {
     await expect(page.getByLabel(/^name/i)).toBeVisible();
 
     // 3. Organization Admin dropdown
-    const adminSelect = page.getByRole("combobox", { name: /organization admin/i });
+    const adminSelect = page.locator("select#admin_user");
     await expect(adminSelect).toBeVisible();
 
     // 4. Signup Configuration checkbox
@@ -128,7 +128,7 @@ test.describe("Organization Form Modal", () => {
     await expect(page.locator('input#org_slug')).toBeVisible({ timeout: 5_000 });
 
     // Wait for admin dropdown to load
-    const adminSelect = page.getByRole("combobox", { name: /organization admin/i });
+    const adminSelect = page.locator("select#admin_user");
     await expect(adminSelect).toBeVisible({ timeout: 10_000 });
 
     // Wait for options to load (should have more than just the placeholder)
