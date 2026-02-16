@@ -294,6 +294,10 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
         logger.error(f"No creator user found for email: {user_email}")
         return None
 
+    if not creator_user.get('enabled', True):
+        logger.warning(f"Disabled user {user_email} attempted API access")
+        return None  # 401
+        
     # Use JWT role as authoritative; fall back to DB role
     effective_role = jwt_role or creator_user.get("role", "user")
     creator_user["role"] = effective_role
