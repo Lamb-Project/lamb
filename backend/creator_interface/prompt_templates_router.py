@@ -17,7 +17,7 @@ import time
 from pydantic import BaseModel, Field
 from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import PromptTemplate
-from .assistant_router import get_creator_user_from_token
+from lamb.auth_context import AuthContext, get_auth_context
 from lamb.logging_config import get_logger
 
 # Configure logging
@@ -104,7 +104,7 @@ async def list_user_templates(
     request: Request,
     limit: int = 50,
     offset: int = 0,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     List prompt templates owned by the current user.
@@ -117,15 +117,10 @@ async def list_user_templates(
         List of user's templates with pagination info
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get user's organization
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
         
@@ -158,7 +153,7 @@ async def list_shared_templates(
     request: Request,
     limit: int = 50,
     offset: int = 0,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     List shared prompt templates in the user's organization (excluding user's own).
@@ -171,15 +166,10 @@ async def list_shared_templates(
         List of shared templates with pagination info
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get user's organization
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
         
@@ -211,7 +201,7 @@ async def list_shared_templates(
 async def get_template(
     template_id: int,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get a specific prompt template by ID.
@@ -223,12 +213,7 @@ async def get_template(
         Template details
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get template from database
         db_manager = LambDatabaseManager()
@@ -241,7 +226,7 @@ async def get_template(
             raise HTTPException(status_code=404, detail="Template not found")
         
         # Check access permissions (must be owner or template must be shared in same org)
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if template['owner_email'] != creator_user['email']:
             # Not the owner, check if it's shared in same org
             if not template['is_shared'] or template['organization_id'] != organization['id']:
@@ -259,7 +244,7 @@ async def get_template(
 async def create_template(
     template_data: PromptTemplateCreate,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Create a new prompt template.
@@ -271,15 +256,10 @@ async def create_template(
         Created template
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get user's organization
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
         
@@ -313,7 +293,7 @@ async def update_template(
     template_id: int,
     template_data: PromptTemplateUpdate,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Update a prompt template (only owner can update).
@@ -326,12 +306,7 @@ async def update_template(
         Updated template
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get existing template to verify ownership
         db_manager = LambDatabaseManager()
@@ -379,7 +354,7 @@ async def update_template(
 async def delete_template(
     template_id: int,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Delete a prompt template (only owner can delete).
@@ -391,12 +366,7 @@ async def delete_template(
         No content on success
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Delete template (database manager checks ownership)
         db_manager = LambDatabaseManager()
@@ -421,7 +391,7 @@ async def duplicate_template(
     template_id: int,
     duplicate_data: PromptTemplateDuplicate,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Duplicate a prompt template (create a copy for current user).
@@ -434,15 +404,10 @@ async def duplicate_template(
         New template
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get user's organization
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
         
@@ -491,7 +456,7 @@ async def toggle_template_sharing(
     template_id: int,
     share_data: PromptTemplateShareToggle,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Toggle sharing status of a template (only owner can change).
@@ -504,27 +469,16 @@ async def toggle_template_sharing(
         Updated template
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Check if sharing is enabled for the user's organization (only when sharing, not unsharing)
         if share_data.is_shared:
-            db_manager = LambDatabaseManager()
-            org = db_manager.get_user_organization(creator_user['id'])
-            if org:
-                config = org.get('config', {})
-                features = config.get('features', {})
-                sharing_enabled = features.get('sharing_enabled', True)
-                
-                if not sharing_enabled:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Sharing is not enabled for your organization"
-                    )
+            sharing_enabled = auth.features.get('sharing_enabled', True)
+            if not sharing_enabled:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Sharing is not enabled for your organization"
+                )
         
         # Toggle sharing
         db_manager = LambDatabaseManager()
@@ -555,7 +509,7 @@ async def toggle_template_sharing(
 async def export_templates(
     export_request: PromptTemplateExportRequest,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Export prompt templates as JSON.
@@ -567,15 +521,10 @@ async def export_templates(
         JSON export data
     """
     try:
-        # Get authenticated user
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+        creator_user = auth.user
         
         # Get user's organization for access control
-        organization = get_user_organization(creator_user)
+        organization = auth.organization if auth.organization else get_user_organization(creator_user)
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
         

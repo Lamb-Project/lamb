@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any, Union
 import json
 import time
 from pydantic import BaseModel, Field
-from .assistant_router import get_creator_user_from_token
+from lamb.auth_context import AuthContext, get_auth_context, _build_auth_context
 from lamb.logging_config import get_logger
 from io import BytesIO
 from .knowledgebase_classes import (
@@ -261,7 +261,8 @@ kb_server_manager = KBServerManager()
 # Helper function to authenticate creator user
 async def authenticate_creator_user(request: Request) -> Dict[str, Any]:
     """
-    Helper function to authenticate creator user from request
+    Authenticate a creator user from the request's Authorization header.
+    Uses AuthContext internally for centralized auth resolution.
     
     Args:
         request: FastAPI request object
@@ -275,9 +276,16 @@ async def authenticate_creator_user(request: Request) -> Dict[str, Any]:
     auth_header = request.headers.get("Authorization")
     logger.info(f"Auth header present: {auth_header is not None}")
     
+    if not auth_header:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header required"
+        )
+    
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+    
     try:
-        creator_user = get_creator_user_from_token(auth_header)
-        logger.info(f"Creator user authentication result: {creator_user is not None}")
+        auth_ctx = _build_auth_context(token)
     except Exception as auth_err:
         logger.error(f"Exception during authentication: {str(auth_err)}")
         raise HTTPException(
@@ -285,13 +293,14 @@ async def authenticate_creator_user(request: Request) -> Dict[str, Any]:
             detail=f"Authentication error: {str(auth_err)}"
         )
         
-    if not creator_user:
+    if not auth_ctx:
         logger.error("Failed to get creator user from token")
         raise HTTPException(
             status_code=401,
             detail="Invalid authentication or user not found in creator database"
         )
     
+    creator_user = auth_ctx.user
     logger.info(f"Creator user authenticated: {creator_user.get('email')}")
     return creator_user
 

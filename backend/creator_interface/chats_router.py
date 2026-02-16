@@ -17,15 +17,15 @@ Endpoints:
 Created: December 29, 2025
 """
 
-from fastapi import APIRouter, HTTPException, Request, Query, Path
+from fastapi import APIRouter, HTTPException, Request, Query, Path, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
 from lamb.services.lamb_chats_service import LambChatsService
 from lamb.database_manager import LambDatabaseManager
+from lamb.auth_context import AuthContext, get_auth_context
 from lamb.logging_config import get_logger
-from .assistant_router import get_creator_user_from_token
 
 logger = get_logger(__name__, component="API")
 
@@ -149,18 +149,12 @@ def parse_messages_from_chat(chat_data: Dict) -> List[Dict]:
     description="Create a new chat session for an assistant"
 )
 async def create_chat(
-    request: Request,
-    body: CreateChatRequest
+    body: CreateChatRequest,
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Create a new chat session"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
-    
-    user_id = user.get('id')
+    user_id = auth.user.get('id')
     
     # Create chat
     chat = chats_service.create_chat(
@@ -194,21 +188,15 @@ async def create_chat(
     description="Get paginated list of user's chats for an assistant"
 )
 async def list_chats(
-    request: Request,
     assistant_id: int = Query(..., description="ID of the assistant"),
     include_archived: bool = Query(False, description="Include archived chats"),
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Items per page")
+    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """List user's chats for an assistant"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
-    
-    user_id = user.get('id')
+    user_id = auth.user.get('id')
     
     # Get chats
     result = chats_service.get_user_chats(
@@ -248,18 +236,12 @@ async def list_chats(
     description="Get a specific chat with all messages"
 )
 async def get_chat(
-    request: Request,
-    chat_id: str = Path(..., description="ID of the chat")
+    chat_id: str = Path(..., description="ID of the chat"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Get a specific chat with all messages"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
-    
-    user_id = user.get('id')
+    user_id = auth.user.get('id')
     
     # Get chat with access validation
     chat = chats_service.get_chat(chat_id, user_id)
@@ -289,19 +271,13 @@ async def get_chat(
     description="Update chat title or archive status"
 )
 async def update_chat(
-    request: Request,
     chat_id: str = Path(..., description="ID of the chat"),
-    body: UpdateChatRequest = None
+    body: UpdateChatRequest = None,
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Update chat title or archive status"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
-    
-    user_id = user.get('id')
+    user_id = auth.user.get('id')
     
     # Handle title update
     if body.title is not None:
@@ -341,18 +317,12 @@ async def update_chat(
     description="Permanently delete a chat"
 )
 async def delete_chat(
-    request: Request,
-    chat_id: str = Path(..., description="ID of the chat")
+    chat_id: str = Path(..., description="ID of the chat"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """Permanently delete a chat"""
     
-    # Authenticate user
-    auth_header = request.headers.get("Authorization", "")
-    user = get_creator_user_from_token(auth_header)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or missing authentication")
-    
-    user_id = user.get('id')
+    user_id = auth.user.get('id')
     
     # Delete chat
     success = chats_service.delete_chat(chat_id, user_id)
@@ -366,4 +336,3 @@ async def delete_chat(
     logger.info(f"Deleted chat {chat_id} by user {user_id}")
     
     return DeleteChatResponse(success=True, message="Chat deleted successfully")
-
