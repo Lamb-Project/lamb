@@ -2,7 +2,7 @@
 
 **Database:** LAMB Database (`lamb_v4.db`)  
 **Type:** SQLite  
-**Last Updated:** November 2025
+**Last Updated:** February 2026
 
 ---
 
@@ -72,6 +72,8 @@ erDiagram
         TEXT user_email UK "Unique email"
         TEXT user_name
         TEXT user_type "creator or end_user"
+        TEXT password_hash "bcrypt hashed password"
+        TEXT role "admin or user"
         JSON user_config "User preferences, permissions"
         BOOLEAN enabled "Account status"
         INTEGER created_at

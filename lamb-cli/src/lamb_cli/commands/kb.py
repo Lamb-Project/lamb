@@ -106,7 +106,7 @@ def create_kb(
     if access_control is not None:
         body["access_control"] = access_control
     with get_client() as client:
-        data = client.post("/creator/knowledgebases/", json=body)
+        data = client.post("/creator/knowledgebases", json=body)
     print_success(f"Knowledge base created: {data.get('id', '')}")
     format_output(data, KB_LIST_COLUMNS, fmt)
 

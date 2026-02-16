@@ -11,14 +11,15 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Form, UploadFile, File, Request, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+# Note: Security is kept for backward compat but get_current_creator_user now uses AuthContext
 from fastapi.responses import StreamingResponse, JSONResponse, Response
 
-from creator_interface.assistant_router import get_creator_user_from_token
 from .user_creator import UserCreatorManager
 
 # Import business logic functions
 from lamb.evaluaitor import rubric_service
 from lamb.evaluaitor.ai_generator import generate_rubric_ai
+from lamb.auth_context import AuthContext, get_auth_context
 
 # Initialize security context for dependency injection
 security = HTTPBearer()
@@ -30,14 +31,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# Dependency functions
-async def get_current_creator_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
-    """Get current authenticated creator user"""
-    auth_header = f"Bearer {credentials.credentials}"
-    creator_user = get_creator_user_from_token(auth_header)
-    if not creator_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    return creator_user
+# Dependency functions — now delegates to AuthContext
+async def get_current_creator_user(auth: AuthContext = Depends(get_auth_context)) -> Dict[str, Any]:
+    """Get current authenticated creator user via AuthContext"""
+    return auth.user
 
 
 # Rubric CRUD Endpoints
@@ -51,7 +48,8 @@ async def create_rubric(
     gradeLevel: str = Form(""),
     scoringType: str = Form("points"),
     maxScore: float = Form(10.0),
-    criteria: str = Form(...)  # JSON string
+    criteria: str = Form(...),  # JSON string
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Create a new rubric
@@ -59,12 +57,7 @@ async def create_rubric(
     POST /creator/rubrics
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        logger.debug(f"Auth header: {auth_header}")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         # Parse criteria JSON
         criteria_data = json.loads(criteria)
@@ -106,7 +99,8 @@ async def list_rubrics(
     subject: Optional[str] = Query(None),
     grade_level: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    tab: str = Query("my", description="Tab: 'my' or 'templates'")
+    tab: str = Query("my", description="Tab: 'my' or 'templates'"),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     List rubrics (my rubrics or public templates)
@@ -114,11 +108,7 @@ async def list_rubrics(
     GET /creator/rubrics?tab=my|templates
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         if tab == "templates":
             # Get public rubrics from organization
@@ -155,7 +145,8 @@ async def list_public_rubrics(
     offset: int = Query(0, ge=0),
     subject: Optional[str] = Query(None),
     grade_level: Optional[str] = Query(None),
-    search: Optional[str] = Query(None)
+    search: Optional[str] = Query(None),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     List public rubrics (templates)
@@ -163,11 +154,7 @@ async def list_public_rubrics(
     GET /creator/rubrics/public
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         # Get user's organization
         organization_id = creator_user.get('organization_id')
@@ -195,7 +182,8 @@ async def list_public_rubrics(
 async def get_accessible_rubrics(
     request: Request,
     limit: int = Query(50, ge=1, le=200),
-    search: Optional[str] = Query(None)
+    search: Optional[str] = Query(None),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get all rubrics accessible to the user (owned + public in org)
@@ -204,11 +192,7 @@ async def get_accessible_rubrics(
     GET /creator/rubrics/accessible
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         # Get user's rubrics (empty list if none)
         try:
@@ -263,7 +247,8 @@ async def get_accessible_rubrics(
 @router.get("/{rubric_id}")
 async def get_rubric(
     rubric_id: str,
-    request: Request
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get a specific rubric
@@ -271,11 +256,7 @@ async def get_rubric(
     GET /creator/rubrics/{rubric_id}
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         result = rubric_service.get_rubric_logic(
             rubric_id=rubric_id,
@@ -301,7 +282,8 @@ async def update_rubric(
     gradeLevel: str = Form(""),
     scoringType: str = Form("points"),
     maxScore: float = Form(10.0),
-    criteria: str = Form(...)  # JSON string
+    criteria: str = Form(...),  # JSON string
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Update an existing rubric
@@ -309,11 +291,7 @@ async def update_rubric(
     PUT /creator/rubrics/{rubric_id}
     """
     try:
-        # Authenticate user
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         # Parse criteria JSON
         criteria_data = json.loads(criteria)
@@ -366,7 +344,8 @@ async def update_rubric(
 async def update_rubric_visibility(
     rubric_id: str,
     request: Request,
-    is_public: bool = Form(...)
+    is_public: bool = Form(...),
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Update rubric visibility
@@ -374,11 +353,7 @@ async def update_rubric_visibility(
     PUT /creator/rubrics/{rubric_id}/visibility
     """
     try:
-        # Authenticate user and get original auth header
-        auth_header = request.headers.get("Authorization")
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         result = rubric_service.update_rubric_visibility_logic(
             rubric_id=rubric_id,
@@ -526,7 +501,7 @@ async def import_rubric(
 @router.get("/{rubric_id}/export/json")
 async def export_rubric_json(
     rubric_id: str,
-    credentials: HTTPAuthorizationCredentials = Security(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Export rubric as JSON file
@@ -534,10 +509,7 @@ async def export_rubric_json(
     GET /creator/rubrics/{rubric_id}/export/json
     """
     try:
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
+        creator_user = auth.user
 
         rubric_data, filename = rubric_service.export_rubric_json_logic(
             rubric_id=rubric_id,
@@ -563,7 +535,7 @@ async def export_rubric_json(
 @router.get("/{rubric_id}/export/markdown")
 async def export_rubric_markdown(
     rubric_id: str,
-    credentials: HTTPAuthorizationCredentials = Security(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Export rubric as Markdown document
@@ -571,10 +543,7 @@ async def export_rubric_markdown(
     GET /creator/rubrics/{rubric_id}/export/markdown
     """
     try:
-        auth_header = f"Bearer {credentials.credentials}"
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
+        creator_user = auth.user
 
         markdown_content, filename = rubric_service.export_rubric_markdown_logic(
             rubric_id=rubric_id,
@@ -601,7 +570,7 @@ async def export_rubric_markdown(
 # AI Integration Endpoints
 
 @router.post("/ai-generate")
-async def ai_generate_rubric(request: Request):
+async def ai_generate_rubric(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Generate a rubric using AI (preview only, does not save)
 
@@ -628,10 +597,7 @@ async def ai_generate_rubric(request: Request):
         }
     """
     try:
-        # Authenticate user
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        creator_user = auth.user
 
         # Parse JSON body
         body = await request.json()

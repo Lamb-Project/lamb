@@ -81,13 +81,8 @@ test.describe.serial("Creator flow (KB + ingest + query)", () => {
     });
 
 
-    await page
-      .locator("#param-description-inline")
-      .fill("Fixture file for CI ingestion");
-    await page.locator("#param-citation-inline").fill("Ikasiker Fixture");
-
-
-    await page.locator("div.border-t > div.px-4 button").click();
+    // Plugin parameters have sensible defaults — just click Upload
+    await page.getByRole("button", { name: /upload file/i }).click();
 
 
     // After clicking Upload, the UI shows a success banner.

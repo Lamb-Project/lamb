@@ -85,14 +85,19 @@ def get_available_llms(assistant_owner: Optional[str] = None):
             
         models = openai_config.get("models", [])
         if not models:
-            import config
-            models = [openai_config.get("default_model") or config.OPENAI_MODEL]
+            # Only fall back to org-level default_model, never to system env vars
+            default_model = openai_config.get("default_model")
+            if default_model:
+                models = [default_model]
+            else:
+                logger.warning(f"No models configured for OpenAI in organization of user {assistant_owner}")
+                return []
             
         return models
     except Exception as e:
-        logger.error(f"Error getting OpenAI models for {assistant_owner}: {e}")
-        # Fallback to env vars
-        return get_available_llms(None)
+        logger.error(f"Error resolving organization OpenAI models for {assistant_owner}: {e}. "
+                     f"Returning empty model list instead of falling back to system defaults.")
+        return []
 
 def format_debug_response(messages: list, body: Dict[str, Any]) -> str:
     """Format debug response showing messages and body"""

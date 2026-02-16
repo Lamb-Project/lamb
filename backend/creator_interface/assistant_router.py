@@ -13,6 +13,7 @@ from lamb.database_manager import LambDatabaseManager
 # Replaced HTTP endpoint imports with service layer
 from lamb.services.assistant_service import AssistantService
 from lamb.services.organization_service import OrganizationService
+from lamb.auth_context import AuthContext, get_auth_context
 from typing import Optional, List, Dict, Any, Tuple, Union
 import re
 from .openai_connect import OpenAIConnector
@@ -159,7 +160,10 @@ openai_connector = OpenAIConnector()
 
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get creator user from authentication token
+    Get creator user from authentication token.
+
+    Tries LAMB JWT first; falls back to OWI token validation for
+    pre-migration tokens.
 
     Args:
         auth_header: The authorization header containing the token
@@ -176,38 +180,46 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
             logger.error("No authorization header provided")
             return None
 
-        user_auth = owi_user_manager.get_user_auth(auth_header)
-        if not user_auth:
-            logger.error("Invalid authentication token")
-            return None
+        # Strip "Bearer " prefix if present
+        clean_token = str(auth_header).replace('Bearer ', '')
 
-        user_email = user_auth.get("email", "")
-        if not user_email:
-            logger.error("No email found in authentication token")
-            return None
+        # --- Try LAMB JWT first ---
+        from lamb import auth as lamb_auth
+        payload = lamb_auth.decode_token(clean_token)
 
-        creator_user = db_manager.get_creator_user_by_email(user_email)
-        if not creator_user:
-            logger.warning(f"No creator user found for email: {user_email} (user may have been deleted)")
-            raise HTTPException(
-                status_code=403,
-                detail="Account no longer exists. Please contact your administrator.",
-                headers={"X-Account-Status": "deleted"}
-            )
+        if payload:
+            user_email = payload.get("email", "")
+            if not user_email:
+                logger.error("No email in LAMB JWT payload")
+                return None
 
-        # Check if the user account is disabled
-        if not creator_user.get('enabled', True):
-            logger.warning(f"Disabled user {user_email} attempted API access with valid token")
-            raise HTTPException(
-                status_code=403,
-                detail="Account disabled. Your account has been disabled by an administrator.",
-                headers={"X-Account-Status": "disabled"}
-            )
+            creator_user = db_manager.get_creator_user_by_email(user_email)
+            if not creator_user:
+                logger.error(f"No creator user found for email: {user_email}")
+                return None
 
-        # Enrich with OWI role so callers (e.g. is_admin_user) can check
-        # admin status without a separate OWI query.  user_auth was already
-        # fetched above from the OWI /auths/ endpoint.
-        creator_user['role'] = user_auth.get('role', 'user')
+            # Use role from JWT payload (authoritative)
+            creator_user['role'] = payload.get('role', creator_user.get('role', 'user'))
+        else:
+            # --- OWI fallback for pre-migration tokens ---
+            logger.debug("LAMB JWT decode failed, trying OWI fallback")
+            user_auth = owi_user_manager.get_user_auth(auth_header)
+            if not user_auth:
+                logger.error("Invalid authentication token (both LAMB and OWI)")
+                return None
+
+            user_email = user_auth.get("email", "")
+            if not user_email:
+                logger.error("No email found in authentication token")
+                return None
+
+            creator_user = db_manager.get_creator_user_by_email(user_email)
+            if not creator_user:
+                logger.error(f"No creator user found for email: {user_email}")
+                return None
+
+            # Use OWI role during fallback
+            creator_user['role'] = user_auth.get('role', 'user')
 
         # Fetch full organization data for access control
         organization_id = creator_user.get('organization_id')
@@ -267,12 +279,13 @@ def is_admin_user(user_or_auth_header) -> bool:
             logger.error("No authorization header provided")
             return False
 
-        user_auth = owi_user_manager.get_user_auth(user_or_auth_header)
-        if not user_auth:
+        # Resolve via get_creator_user_from_token (tries LAMB JWT then OWI)
+        resolved_user = get_creator_user_from_token(user_or_auth_header)
+        if not resolved_user:
             logger.error("Invalid authentication token")
             return False
 
-        user_role = user_auth.get("role", "")
+        user_role = resolved_user.get("role", "")
         logger.info(f"User role from token: {user_role}")
         return user_role == "admin"
 
@@ -441,7 +454,7 @@ Example Error Response (Publish Conflict):
         500: {"model": ErrorResponseDetail, "description": "Internal Server Error"}
     }
 )
-async def create_assistant_directly(request: Request):
+async def create_assistant_directly(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Creates an assistant and publishes it directly using the database manager.
     Automatically sanitizes assistant names to conform to naming rules.
@@ -451,10 +464,8 @@ async def create_assistant_directly(request: Request):
         original_body = await request.json()
         original_name = original_body.get("name", "") # Store original name for error messages
 
-        # 2. Authenticate user
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication or user not found")
+        # 2. Authenticate user (provided by AuthContext dependency)
+        creator_user = auth.user
 
         # 3. Validate that name is provided
         if not original_name or not original_name.strip():
@@ -774,7 +785,7 @@ Example Error Response (Forbidden):
         500: {"description": "Internal server error or database error"}
     }
 )
-async def get_assistant_proxy(assistant_id: int, request: Request, response: Response):
+async def get_assistant_proxy(assistant_id: int, request: Request, response: Response, auth: AuthContext = Depends(get_auth_context)):
     """Gets a specific assistant with its publication info directly from the database."""
     logger.info(f"Received request to get assistant ID: {assistant_id} directly from DB.")
     
@@ -784,15 +795,7 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
     response.headers["Expires"] = "0"
     
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error(f"Unauthorized attempt to get assistant {assistant_id}.")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} requesting assistant {assistant_id}.")
 
         # Get assistant data directly from the database
@@ -807,48 +810,22 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
                 detail="Assistant not found"
             )
 
-        # --- Verify Access: Ownership, Admin, Org Admin, or Sharing ---
-        # User has access if they:
-        # 1. Own the assistant (full access)
-        # 2. Are a System Admin (read-only access to any assistant)
-        # 3. Are an Org Admin for the assistant's organization (read-only access)
-        # 4. Assistant is shared with them (limited access)
-        is_owner = assistant_data.get('owner') == creator_user['email']
-        is_admin = is_admin_user(creator_user)
-        access_level = 'full' if is_owner else None
-        
-        if not is_owner:
-            if is_admin:
-                # System admin can view any assistant (read-only)
-                access_level = 'read_only'
-                logger.info(f"System admin {creator_user['email']} viewing assistant {assistant_id} (read-only)")
-            else:
-                # Check if user is org admin for this assistant's organization
-                assistant_org_id = assistant_data.get('organization_id')
-                user_org_id = creator_user.get('organization_id')
-                if assistant_org_id and user_org_id == assistant_org_id:
-                    user_org_role = db_manager.get_user_organization_role(
-                        creator_user['id'], assistant_org_id)
-                    if user_org_role in ('admin', 'owner'):
-                        access_level = 'read_only'
-                        logger.info(f"Org admin {creator_user['email']} viewing assistant {assistant_id} in their org (read-only)")
-                
-                # Check if assistant is shared with user
-                if not access_level:
-                    from lamb.database_manager import LambDatabaseManager
-                    db_check = LambDatabaseManager()
-                    is_shared = db_check.is_assistant_shared_with_user(assistant_id, creator_user['id'])
-                    if is_shared:
-                        access_level = 'shared'
-        
-        if not access_level:
-            # Log potential security/data issue but return 404 to the user for security
+        # --- Verify Access using AuthContext ---
+        auth_access = auth.can_access_assistant(assistant_id)
+        if auth_access == "none":
             logger.warning(f"Access denied: User {creator_user['email']} attempted to access assistant {assistant_id} owned by {assistant_data.get('owner')}")
-            raise HTTPException(
-                status_code=404, # Treat as not found for this user
-                detail="Assistant not found"
-            )
-        # --- End Access Verification ---
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Map AuthContext access levels to frontend access_level values
+        is_owner = auth_access == "owner"
+        if is_owner:
+            access_level = "full"
+        elif auth_access == "org_admin":
+            access_level = "read_only"
+        elif auth_access == "shared":
+            access_level = "shared"
+        else:
+            access_level = "read_only"
         
         # Add access metadata to response so frontend can adjust UI
         assistant_data['access_level'] = access_level
@@ -940,6 +917,7 @@ Example Success Response:
 })
 async def get_assistants_proxy(
     request: Request,
+    auth: AuthContext = Depends(get_auth_context),
     limit: int = Query(10, ge=1, le=100, description="Number of assistants per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
@@ -947,14 +925,7 @@ async def get_assistants_proxy(
     Proxy endpoint that forwards request to get assistants for the authenticated user with pagination.
     """
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
         
         # DEBUG: Log the user information
         logger.info(f"[DEBUG] get_assistants_proxy: Creator user: {creator_user}")
@@ -1100,7 +1071,7 @@ Example Error Response:
     dependencies=[Depends(security)],
     responses={
 })
-async def update_assistant_proxy(assistant_id: int, request: Request):
+async def update_assistant_proxy(assistant_id: int, request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Update assistant using direct function call to core assistant router
     """
@@ -1110,15 +1081,7 @@ async def update_assistant_proxy(assistant_id: int, request: Request):
         original_body = await request.json()
         logger.info(f"Original request body for update: {original_body}")
 
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error(f"Unauthorized attempt to update assistant {assistant_id}.")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
         # Prepare the assistant body
@@ -1215,44 +1178,19 @@ Example Error Response (Forbidden):
         500: {"description": "Internal server error or core API error"}
     }
 )
-async def delete_assistant_proxy(assistant_id: int, request: Request):
+async def delete_assistant_proxy(assistant_id: int, request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Proxy endpoint that forwards assistant soft-delete requests to the lamb assistant router.
     Verifies ownership before proceeding.
     """
     logger.info(f"Received soft delete request for assistant ID: {assistant_id}")
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error(f"Unauthorized attempt to delete assistant {assistant_id}.")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to soft delete assistant {assistant_id}.")
 
-        # 1. Get assistant details to verify ownership using direct database call
-        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
-        if not assistant_data:
-            logger.warning(f"Assistant {assistant_id} not found during delete pre-check.")
-            raise HTTPException(
-                status_code=404,
-                detail="Assistant not found"
-            )
-
-        # 2. Verify ownership or admin role
-        is_owner = assistant_data.get('owner') == creator_user['email']
-        is_admin = is_admin_user(creator_user) # Check if the user is admin
-
-        if not is_owner and not is_admin:
-            logger.warning(f"Permission denied: User {creator_user['email']} (Admin: {is_admin}) attempted to delete assistant {assistant_id} owned by {assistant_data.get('owner')}")
-            raise HTTPException(
-                status_code=403,
-                detail="User does not have permission to delete this assistant"
-            )
-        logger.info(f"User {creator_user['email']} authorized to delete assistant {assistant_id} (Is Owner: {is_owner}, Is Admin: {is_admin}).")
+        # Verify ownership or admin role using AuthContext
+        auth.require_assistant_access(assistant_id, level="owner_or_admin")
+        logger.info(f"User {creator_user['email']} authorized to delete assistant {assistant_id}.")
 
         # 3. Call the core soft delete function directly
         logger.info(f"Using AssistantService to soft delete assistant {assistant_id}")
@@ -1342,7 +1280,7 @@ Example Response with Errors:
     dependencies=[Depends(security)],
     responses={
 })
-async def upload_files(request: Request):
+async def upload_files(request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Upload files to a knowledge base using admin credentials.
     Workflow:
@@ -1352,15 +1290,7 @@ async def upload_files(request: Request):
     """
     logger.info("Received request to upload files")
     try:
-        # Get creator user from auth header
-        creator_user = get_creator_user_from_token(
-            request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error("Failed to get creator user from token")
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authentication or user not found in creator database"
-            )
+        creator_user = auth.user
         logger.info(f"Creator user authenticated: {creator_user.get('email')}")
 
         # FIXME: there is duplicate code in this file, we should refactor it
@@ -1549,36 +1479,26 @@ Error Responses:
         500: {"description": "Internal server error or core API error"}
     }
 )
-async def export_assistant_proxy(assistant_id: int, request: Request):
+async def export_assistant_proxy(assistant_id: int, request: Request, auth: AuthContext = Depends(get_auth_context)):
     """Proxy endpoint to fetch and return assistant data for JSON export."""
     logger.info(f"Received export request for assistant ID: {assistant_id}")
     try:
-        # 1. Authenticate User
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Invalid authentication")
+        creator_user = auth.user
 
-        # 2. Fetch Assistant Data using direct function call
+        # Verify ownership (only owners can export)
+        auth.require_assistant_access(assistant_id, level="owner")
+
+        # Fetch Assistant Data using service layer
         logger.info(f"Fetching assistant {assistant_id} details via direct call for export.")
-        # Initialize service
         assistant_service = AssistantService()
-        
-        # Get assistant with publication data via service layer
         assistant_data = assistant_service.get_assistant_with_publication_dict(assistant_id)
         
-        # Handle not found
         if not assistant_data:
             logger.warning(f"Assistant {assistant_id} not found during export.")
             raise HTTPException(status_code=404, detail="Assistant not found")
         
         result = {"assistant": assistant_data}
-
         assistant_data = result['assistant']
-
-        # 4. Verify Ownership
-        if assistant_data.get('owner') != creator_user['email']:
-            logger.warning(f"Access denied: User {creator_user['email']} attempted export for assistant {assistant_id} owned by {assistant_data.get('owner')}")
-            raise HTTPException(status_code=404, detail="Assistant not found") # Treat as not found for security
 
         # 5. Prepare Filename
         raw_name = assistant_data.get('name', 'export').replace(f"{creator_user['id']}_", "") # Remove prefix for filename
@@ -1661,29 +1581,23 @@ Example Success Response (Returns full updated assistant data):
         500: {"description": "Internal server error or database error"}
     }
 )
-async def publish_assistant(assistant_id: int, publish_request: PublishRequest, request: Request):
+async def publish_assistant(assistant_id: int, publish_request: PublishRequest, request: Request, auth: AuthContext = Depends(get_auth_context)):
     """
     Publish or unpublish an assistant by updating its publication record directly in the DB.
     """
     logger.info(f"Received publish request for assistant ID: {assistant_id} with status: {publish_request.publish_status}")
     try:
-        # 1. Authenticate User
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            logger.error(f"Unauthorized publish attempt for assistant {assistant_id}.")
-            raise HTTPException(status_code=401, detail="Invalid authentication")
+        creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to publish/unpublish assistant {assistant_id}.")
 
-        # 2. Fetch Assistant to verify ownership
+        # Verify ownership (only owners can publish/unpublish)
+        auth.require_assistant_access(assistant_id, level="owner")
+
+        # Fetch Assistant for publish operation
         assistant = db_manager.get_assistant_by_id(assistant_id)
         if not assistant:
             logger.warning(f"Assistant {assistant_id} not found during publish request.")
             raise HTTPException(status_code=404, detail="Assistant not found")
-
-        # 3. Verify Ownership
-        if assistant.owner != creator_user['email']:
-            logger.warning(f"Permission denied: User {creator_user['email']} attempted to modify assistant {assistant_id} owned by {assistant.owner}")
-            raise HTTPException(status_code=403, detail="User does not have permission to modify this assistant")
 
         # 4. Perform Publish/Unpublish Action
         group_id = f"assistant_{assistant_id}"
@@ -1751,60 +1665,13 @@ async def publish_assistant(assistant_id: int, publish_request: PublishRequest, 
     description="""Returns the organization-scoped assistant_defaults used to seed the assistant form.""",
     dependencies=[Depends(security)]
 )
-async def get_assistant_defaults_for_current_user(request: Request):
+async def get_assistant_defaults_for_current_user(request: Request, auth: AuthContext = Depends(get_auth_context)):
     try:
-        # Identify current user/org
-        creator_user = get_creator_user_from_token(request.headers.get("Authorization"))
-        if not creator_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        user_email = creator_user.get("email")
-        if not user_email:
-            raise HTTPException(status_code=401, detail="User email not found")
-
-        # Get user's organization from database
-        from lamb.database_manager import LambDatabaseManager
-        from lamb.owi_bridge.owi_users import OwiUserManager
-        
-        db_manager = LambDatabaseManager()
-        owi_manager = OwiUserManager()
-        
-        # Get user by email from OWI database (for authentication)
-        owi_user = owi_manager.db.get_user_by_email(user_email)
-        if not owi_user:
-            raise HTTPException(status_code=404, detail="User not found in authentication system")
-        
-        # Get user from LAMB database (for organization lookup)
-        lamb_user = db_manager.get_creator_user_by_email(user_email)
-        if not lamb_user:
-            # Default to system organization for users not in LAMB database
+        # Organization is already loaded in AuthContext
+        org_slug = auth.organization.get("slug", "lamb")
+        if not org_slug:
             org_slug = "lamb"
-            logger.info(f"User {user_email} not found in LAMB database, defaulting to system org: {org_slug}")
-        else:
-            # Use the user's organization from LAMB database
-            lamb_user_id = lamb_user.get('id')
-            org_id = lamb_user.get('organization_id')
-            logger.debug(f"LAMB User lookup: email={user_email}, lamb_user_id={lamb_user_id}, organization_id={org_id}")
-            
-            if org_id:
-                # Get organization by ID
-                org = db_manager.get_organization_by_id(org_id)
-                if org:
-                    org_slug = org['slug']
-                    logger.debug(f"Using user's primary organization: {org_slug}")
-                else:
-                    org_slug = "lamb"
-                    logger.warning(f"Organization ID {org_id} not found, defaulting to system org: {org_slug}")
-            else:
-                # Fallback to checking organization roles
-                organizations = db_manager.get_user_organizations(lamb_user_id)
-                logger.debug(f"Organizations for lamb_user_id {lamb_user_id}: {organizations}")
-                if not organizations:
-                    org_slug = "lamb"
-                    logger.info(f"No organizations found, defaulting to system org: {org_slug}")
-                else:
-                    org_slug = organizations[0]['slug']
-                    logger.debug(f"Using first organization from roles: {org_slug}")
+            logger.warning(f"No org slug for user {auth.user.get('email')}, defaulting to system org")
 
         # Use OrganizationService to get defaults
         logger.info(f"Getting assistant defaults for organization {org_slug} via service layer")

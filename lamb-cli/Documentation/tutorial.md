@@ -689,3 +689,189 @@ Then execute the import:
 ```bash
 lamb user bulk-import users.json
 ```
+
+## 13. Prompt Templates
+
+Prompt templates let you save and reuse system prompts and prompt structures across assistants.
+
+### List your templates
+
+```bash
+lamb template list
+```
+
+With pagination:
+
+```bash
+lamb template list --limit 10 --offset 20
+```
+
+### List shared templates
+
+See templates shared by others in your organization:
+
+```bash
+lamb template list-shared
+```
+
+### Get template details
+
+```bash
+lamb template get <template-id>
+```
+
+### Create a template
+
+```bash
+lamb template create "Socratic Tutor" \
+  --description "Ask guiding questions instead of giving answers" \
+  --system-prompt "You are a Socratic tutor. Never give direct answers." \
+  --prompt-template "Student question: {{question}}"
+```
+
+Share it with your organization immediately:
+
+```bash
+lamb template create "Essay Feedback" --shared \
+  --system-prompt "Provide structured writing feedback."
+```
+
+### Update a template
+
+```bash
+lamb template update <template-id> --name "Improved Tutor"
+lamb template update <template-id> --system-prompt "Updated instructions..."
+```
+
+### Duplicate a template
+
+Copy an existing template (yours or shared):
+
+```bash
+lamb template duplicate <template-id>
+lamb template duplicate <template-id> --new-name "My Copy"
+```
+
+### Share a template
+
+```bash
+lamb template share <template-id> --enable
+lamb template share <template-id> --disable
+```
+
+### Export templates
+
+Export one or more templates as JSON:
+
+```bash
+# To stdout
+lamb template export 1 2 3
+
+# To a file
+lamb template export 1 2 3 -f templates-backup.json
+```
+
+### Delete a template
+
+```bash
+lamb template delete <template-id> --confirm
+```
+
+## 14. Assistant Analytics
+
+View chat analytics and usage statistics for your assistants.
+
+### List chats
+
+```bash
+lamb analytics chats <assistant-id>
+```
+
+Filter by user, content, or date range:
+
+```bash
+lamb analytics chats <assistant-id> \
+  --user-id u123 \
+  --search "algorithm" \
+  --start-date 2024-01-01 \
+  --end-date 2024-01-31
+```
+
+### View chat detail
+
+See the full message history of a chat:
+
+```bash
+lamb analytics chat-detail <assistant-id> <chat-id>
+```
+
+### Usage statistics
+
+Get aggregate stats for an assistant:
+
+```bash
+lamb analytics stats <assistant-id>
+```
+
+With a date range:
+
+```bash
+lamb analytics stats <assistant-id> --start-date 2024-01-01 --end-date 2024-01-31
+```
+
+### Activity timeline
+
+See chat activity over time:
+
+```bash
+lamb analytics timeline <assistant-id>
+lamb analytics timeline <assistant-id> --period week
+lamb analytics timeline <assistant-id> --period month --start-date 2024-01-01
+```
+
+## 15. Chat
+
+Chat with a learning assistant directly from the terminal.
+
+### Single message
+
+```bash
+lamb chat <assistant-id> --message "What is Big-O notation?"
+```
+
+The response streams to stdout in real time.
+
+### Interactive mode
+
+Run without `--message` for a REPL:
+
+```bash
+lamb chat <assistant-id>
+```
+
+Type messages and see responses. Type `/quit` to exit.
+
+### Continue a conversation
+
+Use `--chat-id` to continue a previous chat:
+
+```bash
+lamb chat <assistant-id> --chat-id <chat-id> --message "Tell me more"
+```
+
+### Disable chat persistence
+
+By default, chat history is saved on the server. To disable:
+
+```bash
+lamb chat <assistant-id> --message "Quick question" --no-persist
+```
+
+### Pipe mode
+
+Pipe text from another command:
+
+```bash
+echo "Explain this code" | lamb chat <assistant-id>
+cat essay.txt | lamb chat <assistant-id>
+```
