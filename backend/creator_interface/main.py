@@ -500,6 +500,32 @@ async def login(email: str = Form(...), password: str = Form(...)):
         }
 
 
+@router.get(
+    "/me",
+    tags=["Authentication"],
+    summary="Get Current User Profile",
+    description="Returns the authenticated user's profile information based on the Bearer token.",
+    responses={
+        200: {"description": "User profile returned successfully"},
+        401: {"description": "Invalid or missing token"},
+    },
+)
+async def get_current_user(auth: AuthContext = Depends(get_auth_context)):
+    """Return the current user's profile based on their auth token."""
+    return {
+        "success": True,
+        "data": {
+            "name": auth.user.get("name", ""),
+            "email": auth.user.get("email", ""),
+            "user_id": auth.user.get("id"),
+            "role": auth.user.get("role", "user"),
+            "user_type": auth.user.get("user_type", "creator"),
+            "organization_role": auth.organization_role,
+            "launch_url": auth.user.get("launch_url"),
+        }
+    }
+
+
 # Initialize security for token authentication
 security = HTTPBearer()
 

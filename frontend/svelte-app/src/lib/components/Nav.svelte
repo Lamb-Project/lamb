@@ -56,6 +56,12 @@
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeydown);
 
+    // If the user is logged in (has token) but name is missing, fetch the profile
+    // This handles page refreshes after LTI login where profile wasn't fully populated
+    if ($user.isLoggedIn && !$user.name) {
+      user.fetchAndPopulateProfile();
+    }
+
     return () => {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeydown);
@@ -155,7 +161,7 @@
       <div class="flex items-center gap-3">
         {#if $user.isLoggedIn}
           <!-- Username -->
-          <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name}</span>
+          <span class="text-sm font-medium text-gray-600 hidden sm:block">{$user.name || $user.email || ''}</span>
         {/if}
         
         <!-- Logout and Language stacked vertically -->

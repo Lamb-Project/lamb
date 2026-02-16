@@ -73,7 +73,7 @@ const createUserStore = () => {
     
     /**
      * Sets just the auth token (for LTI login scenarios where we don't have full user data yet).
-     * The user info will be fetched later when API calls are made.
+     * After setting the token, call fetchAndPopulateProfile() to load user info.
      * @param {string} token - Authentication token.
      */
     setToken: (token) => {
@@ -85,6 +85,37 @@ const createUserStore = () => {
         isLoggedIn: true,
         token: token
       }));
+    },
+    
+    /**
+     * Fetches the user profile from the backend and populates the store.
+     * Should be called after setToken() for LTI login flows.
+     */
+    fetchAndPopulateProfile: async () => {
+      const { fetchUserProfile } = await import('$lib/services/authService.js');
+      const token = browser ? localStorage.getItem('userToken') : null;
+      if (!token) return;
+      
+      const result = await fetchUserProfile(token);
+      if (result?.success && result.data) {
+        const userData = { ...result.data, token };
+        if (browser) {
+          localStorage.setItem('userName', userData.name || '');
+          localStorage.setItem('userEmail', userData.email || '');
+          if (userData.launch_url) {
+            localStorage.setItem('OWI_url', userData.launch_url);
+          }
+          localStorage.setItem('userData', JSON.stringify(userData));
+        }
+        set({
+          isLoggedIn: true,
+          token: token,
+          name: userData.name || null,
+          email: userData.email || null,
+          owiUrl: userData.launch_url || null,
+          data: userData
+        });
+      }
     },
     
     // Logout function
