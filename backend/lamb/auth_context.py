@@ -296,7 +296,11 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
 
     if not creator_user.get('enabled', True):
         logger.warning(f"Disabled user {user_email} attempted API access")
-        return None  # 401
+        raise HTTPException(
+            status_code=403,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
         
     # Use JWT role as authoritative; fall back to DB role
     effective_role = jwt_role or creator_user.get("role", "user")

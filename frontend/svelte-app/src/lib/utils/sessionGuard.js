@@ -1,7 +1,7 @@
 /**
  * Session Guard - Detects disabled accounts mid-session and forces logout.
  *
- * The backend returns HTTP 403 with detail "Account disabled..." when a
+ * The backend returns HTTP 403 or 401 with detail "Account disabled..." when a
  * disabled user tries to use a valid token.  This module:
  *   1. Provides `checkSession()` to validate the current token against the backend.
  *   2. Provides `handleApiResponse()` to inspect any fetch/axios response for
@@ -38,7 +38,7 @@ export async function handleApiResponse(response) {
 	if (!browser) return false;
 
 	const status = response.status ?? response?.status;
-	if (status !== 403) return false;
+	if (status !== 403 && status !== 401) return false;
 
 	// Check for X-Account-Status header first (more reliable)
 	const accountStatus = response.headers?.get?.('X-Account-Status');

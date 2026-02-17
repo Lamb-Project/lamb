@@ -50,12 +50,20 @@ export async function authenticatedFetch(url, options = {}) {
 		throw new Error('No authentication token available');
 	}
 
+	// Build default headers
+	const defaultHeaders = {
+		'Authorization': `Bearer ${token}`
+	};
+
+	// Only set Content-Type for non-FormData requests
+	// FormData needs the browser to auto-generate the multipart boundary
+	if (!(options.body instanceof FormData)) {
+		defaultHeaders['Content-Type'] = 'application/json';
+	}
+
 	// Merge default options with provided options
 	const defaultOptions = {
-		headers: {
-			'Authorization': `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		}
+		headers: defaultHeaders
 	};
 
 	// Deep merge headers
