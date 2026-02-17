@@ -1,6 +1,6 @@
 # Security Changes: Auth Guards and Account Disablement
 
-**Date:** 2026-02-12 (Updated: 2026-02-16 - AuthContext Integration)  
+**Date:** 2026-02-12 (Updated: 2026-02-17 - Final Consolidation)  
 **Project:** LAMB (Learning Assistants Manager and Builder)
 
 ---
@@ -9,12 +9,12 @@
 
 Six critical security improvements have been implemented:
 
-1. **Centralized AuthContext** (NEW - Feb 2026): Single authentication manager that replaced scattered auth logic across 10+ routers, eliminating code duplication and inconsistencies.
+1. **Centralized AuthContext** (NEW - Feb 2026, Updated Feb 17): Single authentication manager with consistent 403 responses for disabled/deleted users. All validation logic consolidated with helper functions for non-JWT flows (MCP, LTI).
 2. **Layout-Level Auth Guards**: Centralized protection for all routes against unauthenticated access.
-3. **Disabled Account Detection (Backend)**: Backend validation that rejects API requests from disabled accounts via AuthContext.
-4. **Automatic Session Invalidation (Frontend)**: Dual-layer detection system with immediate logout for disabled accounts.
+3. **Disabled Account Detection (Backend)**: Backend validation that rejects API requests from disabled accounts via AuthContext. Returns 403 with X-Account-Status headers.
+4. **Automatic Session Invalidation (Frontend)**: Dual-layer detection system (401 and 403) with immediate logout for disabled/deleted accounts.
 5. **Navigation Interception (Frontend)**: Pre-navigation session validation that blocks disabled/deleted users from route changes.
-6. **Comprehensive Backend Validation**: All API endpoints (Creator, LTI, MCP) now verify user existence and enabled status through AuthContext.
+6. **Comprehensive Backend Validation**: All API endpoints (Creator, LTI, MCP, Completions) now verify user existence and enabled status through centralized AuthContext or validate_user_enabled() helper.
 
 ---
 
@@ -125,12 +125,20 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
     # 2. Load user from DB
     creator_user = _db.get_creator_user_by_email(user_email)
     if not creator_user:
-        return None  # User deleted → 401
+        raise HTTPException(
+            status_code=403,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )  # User deleted → 403 with header
     
-    # 3. ✅ CHECK ENABLED STATUS (NEW - This is the critical security check)
+    # 3. ✅ CHECK ENABLED STATUS (UPDATED Feb 17, 2026 - Now raises 403 instead of returning None)
     if not creator_user.get('enabled', True):
         logger.warning(f"Disabled user {user_email} attempted API access")
-        return None  # Disabled → 401
+        raise HTTPException(
+            status_code=403,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )  # Disabled → 403 with header
     
     # 4. Load organization
     organization = _db.get_organization_by_id(creator_user["organization_id"])
@@ -274,7 +282,7 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
     """Authenticate user from token and build full AuthContext.
     
     This is the SINGLE validation point for ALL API requests.
-    If this returns None, the user cannot access the system.
+    Raises HTTPException(403) with X-Account-Status header for deleted/disabled users.
     """
     
     # 1. Decode token (LAMB JWT first, OWI fallback)
@@ -283,7 +291,7 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
         # Try OWI token for backward compatibility
         owi_user = OwiUserManager().get_user_auth(token)
         if not owi_user:
-            return None  # Invalid token → 401
+            return None  # Invalid token only → 401
         user_email = owi_user["email"]
     else:
         user_email = payload["email"]
@@ -291,15 +299,23 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
     # 2. Load user from database
     creator_user = _db.get_creator_user_by_email(user_email)
     
-    # User doesn't exist (deleted) → 401
+    # User doesn't exist (deleted) → 403 with X-Account-Status: deleted
     if not creator_user:
         logger.error(f"No creator user found for email: {user_email}")
-        return None
+        raise HTTPException(
+            status_code=403,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
     
     # 3. ✅ CHECK ENABLED STATUS (CRITICAL SECURITY CHECK)
     if not creator_user.get('enabled', True):
         logger.warning(f"Disabled user {user_email} attempted API access")
-        return None  # Disabled → 401
+        raise HTTPException(
+            status_code=403,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
     
     # 4-6. Load organization, roles, features...
     organization = _db.get_organization_by_id(creator_user["organization_id"])
@@ -318,8 +334,8 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
 ```
 
 **Key Features:**
-- ✅ Detects **deleted users** (return None → 401)
-- ✅ Detects **disabled users** (check `enabled` field → 401)
+- ✅ Detects **deleted users** (raises 403 with X-Account-Status: deleted)
+- ✅ Detects **disabled users** (raises 403 with X-Account-Status: disabled)
 - ✅ Single source of truth: ALL endpoints go through this
 - ✅ Loads organization and permissions in one go
 - ✅ Consistent behavior across the entire API
@@ -366,8 +382,8 @@ async def get_assistant(id: int, auth: AuthContext = Depends(get_auth_context)):
 | Check | Where | What |
 |-------|-------|------|
 | Token valid? | `_build_auth_context` | LAMB JWT or OWI token |
-| User exists? | `_build_auth_context` | Query DB, return None if deleted |
-| User enabled? | `_build_auth_context` | Check `enabled` field ✅ |
+| User exists? | `_build_auth_context` | Query DB, raise 403 if deleted |
+| User enabled? | `_build_auth_context` | Check `enabled` field, raise 403 if disabled ✅ |
 | Load org | `_build_auth_context` | Full organization data |
 | Load role | `_build_auth_context` | System admin, org role |
 | Load features | `_build_auth_context` | Feature flags from org config |
@@ -375,70 +391,158 @@ async def get_assistant(id: int, auth: AuthContext = Depends(get_auth_context)):
 
 **Result:**
 - ✅ Disabled users blocked at ALL endpoints (single check in `_build_auth_context`)
-- ✅ Deleted users blocked automatically (return None → 401)
-- ✅ Consistent permission logic across the entire API
+- ✅ Deleted users blocked automatically (raises 403 with X-Account-Status: deleted)
+- ✅ Consistent permission logic and status codes across the entire API
 - ✅ Easy to add new checks (edit one function, affects all endpoints)
 
-### Special Cases: LTI and MCP Endpoints
+### Special Cases: Non-JWT Auth Endpoints (MCP, LTI)
 
-Some endpoints use different auth mechanisms but still need the `enabled` check:
+**Problem:** Some endpoints use different authentication mechanisms (not JWT tokens) but still need the `enabled` check.
 
-#### LTI Creator Endpoints
+**Solution (Feb 17, 2026):** Created `validate_user_enabled()` helper in `auth_context.py` to provide centralized validation for non-JWT flows.
 
-**File: `backend/lamb/mcp_router.py`**
+#### Validation Helper
 
-**What is MCP?**
-Model Context Protocol (MCP) is the communication protocol used by the frontend to interact with AI assistants. It handles:
-- Listing available assistants
-- Executing AI completions (chat with models)
-- RAG searches on knowledge bases
-- Plugin executions
-
-**Why protect it?**
-Without validation, disabled/deleted users could:
-- Continue chatting with AI assistants (bypassing all UI restrictions)
-- Access knowledge bases and retrieve embedded content
-- Execute plugins and external tool calls
-- Consume API credits (OpenAI, Anthropic, etc.)
-
-**Implementation:**
+**File: `backend/lamb/auth_context.py`**
 
 ```python
-async def get_current_user_email(
-    authorization: str = Header(None),
-    x_user_email: str = Header(None)
-) -> str:
+def validate_user_enabled(user_email: str) -> Dict[str, Any]:
     """
-    Simple authentication using LTI_SECRET and user email.
-    Also verifies the user exists and is enabled.
-    """
-    # ... existing token validation ...
+    Validate that a user exists and is enabled.
     
-    # NEW: Verify user exists and is enabled
-    user = db_manager.get_creator_user_by_email(x_user_email)
+    This is a lightweight helper for non-JWT auth flows (e.g., MCP with LTI_SECRET,
+    LTI with OAuth signature) that need to verify user status without full 
+    AuthContext construction.
+    
+    Returns:
+        The user dictionary if valid
+        
+    Raises:
+        HTTPException(403) with X-Account-Status header if deleted or disabled
+    """
+    user = _db.get_creator_user_by_email(user_email)
     
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=403,
             detail="Account no longer exists. Please contact your administrator.",
             headers={"X-Account-Status": "deleted"}
         )
     
     if not user.get('enabled', True):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=403,
             detail="Account has been disabled. Please contact your administrator.",
             headers={"X-Account-Status": "disabled"}
         )
+    
+    return user
+```
+
+#### MCP Endpoints (Model Context Protocol)
+
+**File: `backend/lamb/mcp_router.py`**
+
+**What is MCP?**
+Model Context Protocol is used by desktop applications (Claude Desktop, Cursor) to interact with AI assistants:
+- Listing available assistants
+- Executing AI completions
+- RAG searches on knowledge bases
+- Plugin executions
+
+**Implementation:**
+
+```python
+from lamb.auth_context import validate_user_enabled
+
+async def get_current_user_email(
+    authorization: str = Header(None),
+    x_user_email: str = Header(None)
+) -> str:
+    """
+    Simple authentication using LTI_SECRET and user email.
+    Delegates user validation to AuthContext.
+    """
+    # 1. Validate LTI_SECRET (MCP-specific)
+    if token != LTI_SECRET:
+        raise HTTPException(401, detail="Invalid authentication token")
+    
+    # 2. Verify user exists and is enabled (delegates to AuthContext)
+    validate_user_enabled(x_user_email)
     
     return x_user_email
 ```
 
 **Protected MCP Endpoints:**
-- `/v1/mcp/list` - List assistants
-- `/v1/mcp/completions` - Execute AI completions
-- `/v1/mcp/rag` - RAG searches
-- `/v1/mcp/plugins` - Plugin executions
+- `/v1/mcp/initialize` - MCP handshake
+- `/v1/mcp/prompts/list` - List assistants  
+- `/v1/mcp/prompts/get/{prompt_name}` - Get assistant prompt
+- `/v1/mcp/tools/call/{tool_name}` - Execute AI completions, queries
+- `/v1/mcp/resources/read` - Read assistant resources
+
+#### LTI Endpoints (Learning Tools Interoperability)
+
+**File: `backend/lamb/lti_activity_manager.py`**
+
+**What is LTI?**
+Standard protocol for integrating educational tools with LMS platforms (Moodle, Canvas):
+- OAuth 1.0 signature validation
+- Launch requests from LMS
+- Grade passback
+- User provisioning
+
+**Implementation:**
+
+```python
+from lamb.auth_context import validate_user_enabled
+from fastapi import HTTPException
+
+def verify_creator_credentials(self, email: str, password: str) -> Optional[Dict]:
+    """
+    Verify Creator user credentials for identity-linking flow.
+    Delegates enabled check to AuthContext.
+    """
+    # 1. Check password via OWI
+    verified = self.owi_user_manager.verify_user(email, password)
+    if not verified:
+        return None
+    
+    # 2. Verify user exists and is enabled (delegates to AuthContext)
+    try:
+        creator_user = validate_user_enabled(email)
+    except HTTPException:
+        return None  # User doesn't exist or is disabled
+    
+    return creator_user
+```
+
+**File: `backend/lamb/lti_users_router.py`**
+
+**UPDATED (Feb 17, 2026):** Migrated to use full AuthContext for JWT-based LTI user operations:
+
+```python
+from lamb.auth_context import get_auth_context, AuthContext
+
+@router.post("/lti_user/")
+async def create_lti_user(request: Request, auth: AuthContext = Depends(get_auth_context)):
+    current_user = auth.user['email']  # Already validated via AuthContext
+    # ... create LTI user logic ...
+```
+
+**Protected LTI Endpoints:**
+- `/v1/lti` - LTI launch (OAuth signature validation + enabled check)
+- `/v1/lti_users/lti_user/` - Create LTI user (AuthContext)
+- `/v1/lti_users/sign_in_lti_user` - Sign in LTI user (AuthContext)
+
+#### Benefits of Centralized Validation
+
+| Before (Feb 2026) | After (Feb 17, 2026) |
+|-------------------|---------------------|
+| ❌ Each router reimplemented enabled check | ✅ Single `validate_user_enabled()` function |
+| ❌ Inconsistent status codes (401 vs 403) | ✅ Consistent 403 with X-Account-Status header |
+| ❌ Different error messages | ✅ Standardized error messages |
+| ❌ No header for frontend detection | ✅ X-Account-Status header for immediate logout |
+| ❌ Hard to maintain (3+ implementations) | ✅ One place to update logic |
 
 ---
 
@@ -586,59 +690,68 @@ Provides three key functions (enhanced to detect deleted users):
 /**
  * 1. handleApiResponse() - Inspects any API response for disabled/deleted account signals
  *    Call this after fetch responses to detect account issues immediately
+ *    Enhanced Feb 17, 2026: Detects both 401 and 403 status codes
  */
-export function handleApiResponse(response) {
-    if (response.status === 403) {
-        // Check X-Account-Status header first (more reliable)
-        const accountStatus = response.headers?.get('X-Account-Status');
-        if (accountStatus === 'disabled' || accountStatus === 'deleted') {
-            forceLogout(accountStatus === 'deleted' ? 'deleted' : 'disabled');
-            return true;
-        }
-        
-        // Fallback: check response body for signal strings
-      Enhanced to detect deleted users and check headers first
- */
-export async function checkSession() {
-    const response = await fetch(getApiUrl('/user/profile'), {
-        headers: { Authorization: `Bearer ${token}` }
-    });
+export async function handleApiResponse(response) {
+    const status = response.status;
     
-    if (response.status === 403) {
-        // Check header first (faster, more reliable)
-        const accountStatus = response.headers.get('X-Account-Status');
-        if (accountStatus === 'disabled' || accountStatus === 'deleted') {
-            forceLogout(accountStatus);
-            return false;
-        }
-        
-        // Fallback to body
-        const detail = body?.detail || '';
-        if (detail.includes('Account disabled')) {
-            forceLogout('disabled');
-        } else if (detail.includes('Account no longer exists')) {
-            forceLogout('deleted');
-        }
-    }
-    
-    if (response.status === 401) {
-        forceLogout('expired');
+    // Only check 401 and 403 responses
+    if (status !== 403 && status !== 401) {
         return false;
     }
     
-    return response.ok;
+    // Check X-Account-Status header first (faster, more reliable)
+    const accountStatus = response.headers?.get('X-Account-Status');
+    if (accountStatus === 'disabled' || accountStatus === 'deleted') {
+        forceLogout(accountStatus === 'deleted' ? 'deleted' : 'disabled');
+        return true;
+    }
+    
+    // Fallback: check response body for signal strings
+    try {
+        const body = await response.clone().json();
+        const detail = body?.detail || '';
+        
+        if (detail.includes('Account disabled') || detail.includes('has been disabled')) {
+            forceLogout('disabled');
+            return true;
+        }
+        
+        if (detail.includes('Account no longer exists') || detail.includes('deleted')) {
+            forceLogout('deleted');
+            return true;
+        }
+    } catch (e) {
+        // Response not JSON, ignore
+    }
+    
+    // Generic 401 = expired token
+    if (status === 401) {
+        forceLogout('expired');
+        return true;
+    }
+    
+    return false;
+}
+
 /**
  * 2. checkSession() - Proactively validates token with backend
  *    Makes lightweight call to /user/profile endpoint
+ *    Enhanced to detect deleted users and check headers first
  */
 export async function checkSession() {
+    const token = getAuthToken();
+    if (!token) return false;
+    
     const response = await fetch(getApiUrl('/user/profile'), {
         headers: { Authorization: `Bearer ${token}` }
     });
     
-    if (response.status === 403 && detail.includes('Account disabled')) {
-        forceLogout();
-    }
+    // Delegate detection to handleApiResponse (DRY principle)
+    const accountIssue = await handleApiResponse(response);
+    if (accountIssue) return false;
+    
+    return response.ok;
 }
 
 /**
@@ -884,19 +997,21 @@ Timeline: Admin disables user account at T=0
 | `creator_interface/analytics_router.py` | Modified | Added `enabled` check |
 | `creator_interface/chats_router.py` | Modified | Added `enabled` check |
 | `lamb/database_manager.py` | Modified | Added `enabled` check in JWT |
-## Security Improvements Summary (Updated Feb 2026)
+## Security Improvements Summary (Updated Feb 17, 2026)
 
 ### Problems Fixed
 
 | Problem | Impact | Solution |
 |---------|--------|----------|
 | **Disabled users could access system** | Critical security hole | ✅ Centralized `enabled` check in AuthContext |
-| **Deleted users retained API access** | Data integrity risk | ✅ AuthContext returns None if user not found |
+| **Deleted users retained API access** | Data integrity risk | ✅ AuthContext raises 403 with X-Account-Status header |
+| **Inconsistent status codes (401 vs 403)** | Frontend confusion | ✅ Consistent 403 responses for disabled/deleted users |
 | **Inconsistent permission checks** | Org-scoping bugs | ✅ AuthContext provides consistent `can_access_*` methods |
 | **Duplicated auth logic** | Hard to maintain, bugs | ✅ Single source: `_build_auth_context()` |
-| **Navigation bypass window (~60s)** | UI exposure | ✅ `beforeNavigate` with immediate validation |
-| **MCP endpoints unprotected** | AI model access + costs | ✅ Manual `enabled` check in MCP auth |
+| **MCP endpoints unprotected** | AI model access + costs | ✅ `validate_user_enabled()` helper for non-JWT flows |
+| **LTI endpoints with custom auth** | Inconsistent behavior | ✅ Migrated to use AuthContext or `validate_user_enabled()` |
 | **10+ routers with different logic** | Maintenance nightmare | ✅ All use `Depends(get_auth_context)` |
+| **Legacy auth code duplicated** | Maintenance burden | ✅ Marked as DEPRECATED, migration path documented |
 
 ### New Protection Layers
 
@@ -918,49 +1033,27 @@ Timeline: Admin disables user account at T=0
 │  change)    │         │   click)     │
 └──────┬──────┘         └──────┬───────┘
        │                       │
-       │                       │
        ▼                       ▼
 ┌──────────────────┐   ┌──────────────────┐
-│ beforeNavigate   │   │ authenticatedFetch│
-│ - checkSession() │   │ - Adds token     │
-│ - Validates user │   │ - Makes request  │
-│ - Cancels if ❌  │   │ - handleApiResponse│
-└──────┬───────────┘   └──────┬──────────┘
-       │                       │
+│ +layout.svelte   │   │ authenticatedFetch│
+│ - Checks         │   │ - Adds token     │
+│   isLoggedIn     │   │ - Makes request  │
+│ - Redirects if   │   │ - handleApiResponse│
+│   not logged in  │   └──────┬──────────┘
+└──────────────────┘          │
        │                       ▼
        │              ┌─────────────────────┐
        │              │ Backend Endpoint    │
-       │              │ - get_current_      │
-       │              │   active_user()     │
+       │              │ - AuthContext       │
+       │              │ - _build_auth_      │
+       │              │   context()         │
        │              │ - Checks enabled    │
        │              │ - Checks exists     │
        │              └──────┬──────────────┘
        │                     │
        │                     ▼
        │              ┌─────────────────────┐
-   
-
-### User Deletion
-```
-1. Admin deletes user from database (SQL: DELETE FROM LAMB_Creator_users)
-2. Deleted user (still logged in) tries to navigate or make API call
-3. Navigation: beforeNavigate() → checkSession() → 403 "Account no longer exists"
-   OR API call: authenticatedFetch() → 403 with X-Account-Status: deleted
-4. handleApiResponse() detects "deleted" status
-5. forceLogout() executed
-6. User redirected to login immediately
-```
-
-### MCP/AI Completion Protection
-```
-1. User tries to chat with assistant (e.g., frontend sends to /v1/mcp/completions)
-2. MCP router's get_current_user_email() dependency executes
-3. Validates LTI_SECRET token
-4. Checks user exists in database
-5. Verifies enabled == True
-6. If disabled/deleted → 403 (no AI completion executed, no API costs)
-7. If valid → completion proceeds normally
-```    │              │ Response 403?       │
+       │              │ Response 403?       │
        │              │ - X-Account-Status  │
        │              │   header present?   │
        │              └──────┬──────────────┘
@@ -969,23 +1062,50 @@ Timeline: Admin disables user account at T=0
                                     ▼
                         ┌──────────────────────┐
                         │ handleApiResponse()  │
+                        │ - Detects 401 or 403 │
+                        │ - Checks header first│
                         │ - Detects disabled   │
                         │ - Detects deleted    │
                         │ - forceLogout()      │
                         └──────────────────────┘
 ```
 
+### User Deletion Flow
+```
+1. Admin deletes user from database (SQL: DELETE FROM LAMB_Creator_users)
+2. Deleted user (still logged in) tries to make API call
+3. API call: authenticatedFetch() → Backend validates token
+4. Backend: AuthContext._build_auth_context() finds user doesn't exist
+5. Backend: Raises HTTPException(403) with X-Account-Status: deleted header
+6. Frontend: handleApiResponse() detects header immediately
+7. Frontend: forceLogout('deleted') executed
+8. User redirected to login immediately
+```
+
+### MCP/AI Completion Protection
+```
+1. User tries to chat with assistant (e.g., desktop app sends to /v1/mcp/tools/call)
+2. MCP router's get_current_user_email() dependency executes
+3. Validates LTI_SECRET token
+4. Calls validate_user_enabled(email) helper
+5. Helper checks user exists in database
+6. Helper verifies enabled == True
+7. If disabled/deleted → 403 with X-Account-Status header (no AI completion, no API costs)
+8. If valid → completion proceeds normally
+```
+
 ### Detection Speed Comparison
 
-| Scenario | Before (2026-02-12) | After (2026-02-13) |
+| Scenario | Before (Feb 12, 2026) | After (Feb 17, 2026) |
 |----------|---------------------|---------------------|
-| Active user (API call) | ~1 second | **~0.5 seconds** (header check faster) |
-| Navigation attempt | 0-60 seconds | **~0.5 seconds** (pre-navigation check) |
-| Idle user | 0-60 seconds | 0-60 seconds (unchanged, polling) |
-| Deleted user | ❌ Could continue | ✅ Immediate 403 |
-| MCP/AI completion | ❌ Not checked | ✅ Verified before execution |
+| Active user (API call) | ~1 second (body parse) | **~0.3 seconds** (header check first) |
+| Idle user | 0-60 seconds (polling only) | 0-60 seconds (unchanged, polling) |
+| Deleted user | ❌ Could continue until next API call | ✅ Immediate 403 on any API call |
+| Disabled user | ❌ Inconsistent (401 vs 403) | ✅ Consistent 403 with X-Account-Status |
+| MCP/AI completion | ❌ Not checked (security hole) | ✅ Verified via validate_user_enabled() |
+| LTI endpoints | ❌ Custom logic per endpoint | ✅ Unified via AuthContext or helper |
+| Status code consistency | ❌ Mixed 401/403 responses | ✅ Always 403 for disabled/deleted |
 
-## 
 ---
 
 ## Current Security Flow
@@ -1514,7 +1634,7 @@ The password change action is **pure JavaScript** - it doesn't trigger navigatio
 
 ---
 
-## Key Takeaways: AuthContext Integration (Feb 2026)
+## Key Takeaways: AuthContext Integration (Feb 2026, Updated Feb 17, 2026)
 
 ### What Changed
 - **Before:** 10+ routers with duplicated auth logic, NO `enabled` check
@@ -1522,10 +1642,14 @@ The password change action is **pure JavaScript** - it doesn't trigger navigatio
 
 ### The Critical Security Fix
 ```python
-# In AuthContext._build_auth_context() - line ~297
+# In AuthContext._build_auth_context() - line ~293-310
 if not creator_user.get('enabled', True):
     logger.warning(f"Disabled user {user_email} attempted API access")
-    return None  # → 401 to all requests
+    raise HTTPException(
+        status_code=403,
+        detail="Account has been disabled. Please contact your administrator.",
+        headers={"X-Account-Status": "disabled"}
+    )
 ```
 
 This ONE check protects:
@@ -1536,28 +1660,41 @@ This ONE check protects:
 - ✅ All KB operations (`/creator/knowledgebases/*`)
 - ✅ All prompt template operations (`/creator/prompt-templates/*`)
 
-**Result:** Disabled users cannot access ANY protected endpoint. Period.
+**Result:** Disabled users receive consistent 403 responses with X-Account-Status header. Frontend immediately logs them out.
+
+### Non-JWT Endpoints (MCP, LTI)
+For endpoints using alternative auth (LTI_SECRET, OAuth signatures), use the helper:
+
+```python
+from lamb.auth_context import validate_user_enabled
+
+# In any non-JWT endpoint
+validate_user_enabled(user_email)  # Raises 403 if disabled/deleted
+```
 
 ### How It Works Together
 
 | Layer | Component | Purpose |
 |-------|-----------|---------|
-| **Backend Auth** | `AuthContext._build_auth_context()` | Single validation point, checks `enabled` |
-| **Backend Endpoints** | `Depends(get_auth_context)` | All use centralized auth |
+| **Backend Auth (JWT)** | `AuthContext._build_auth_context()` | Single validation point, raises 403 if disabled |
+| **Backend Auth (Non-JWT)** | `validate_user_enabled()` | Helper for MCP/LTI endpoints |
+| **Backend Endpoints** | `Depends(get_auth_context)` | All JWT endpoints use centralized auth |
 | **Frontend Guard** | `+layout.svelte` auth guard | Redirect logged-out users |
-| **Frontend Navigation** | `beforeNavigate + checkSession` | Block disabled users from route changes |
-| **Frontend API** | `authenticatedFetch + handleApiResponse` | Detect disabled accounts on API calls |
+| **Frontend API** | `authenticatedFetch + handleApiResponse` | Detect 401/403, check X-Account-Status header |
 | **Frontend Polling** | `startSessionPolling` | Catch idle users within 60s |
 
 ### Migration Checklist (Completed ✅)
 
-- [x] Create `AuthContext` class with `enabled` check
+- [x] Create `AuthContext` class with `enabled` check raising 403
 - [x] Migrate all Creator Interface routers to `Depends(get_auth_context)`
 - [x] Migrate completions router
-- [x] Add manual `enabled` check to LTI creator endpoints  
-- [x] Add manual `enabled` check to MCP endpoints
-- [x] Frontend: create `sessionGuard.js` and `apiClient.js`
-- [x] Frontend: update `+layout.svelte` with guards and polling
+- [x] Create `validate_user_enabled()` helper for non-JWT flows
+- [x] Migrate MCP endpoints to use `validate_user_enabled()`
+- [x] Migrate LTI endpoints to use AuthContext or `validate_user_enabled()`
+- [x] Frontend: create `sessionGuard.js` detecting both 401 and 403
+- [x] Frontend: update `apiClient.js` to check headers first
+- [x] Frontend: update `+layout.svelte` with auth redirect
 - [x] Frontend: migrate services to `authenticatedFetch`
+- [x] Mark legacy `utils/pipelines/auth.py` as DEPRECATED
 - [x] Testing: verify disabled users blocked at all layers
-- [x] Documentation: update architecture docs
+- [x] Documentation: update architecture docs with consolidation changes
