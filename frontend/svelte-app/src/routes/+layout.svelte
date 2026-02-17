@@ -4,11 +4,11 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
-	import { goto, beforeNavigate } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { user } from '$lib/stores/userStore';
 	import { onDestroy } from 'svelte';
-	import { startSessionPolling, stopSessionPolling, checkSession } from '$lib/utils/sessionGuard';
+	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
 
 	let { children } = $props();
 
@@ -20,24 +20,6 @@
 			if (currentPath !== '/') {
 				goto(`${base}/`, { replaceState: true });
 			}
-		}
-	});
-
-	// Intercept navigation: verify user is still enabled before allowing route changes
-	// This prevents disabled/deleted users from navigating around the app
-	beforeNavigate(async (navigation) => {
-		if (!browser || !$user.isLoggedIn) return;
-		
-		// Allow navigation to root (logout page)
-		const targetPath = navigation.to?.url.pathname.replace(base, '') || '/';
-		if (targetPath === '/') return;
-		
-		// Check session before allowing navigation
-		const isValid = await checkSession();
-		if (!isValid) {
-			// Session is invalid (user disabled/deleted) - cancel navigation
-			// checkSession() already handled logout and redirect
-			navigation.cancel();
 		}
 	});
 

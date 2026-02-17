@@ -73,7 +73,7 @@ export async function authenticatedFetch(url, options = {}) {
 
 	// Check for disabled account and force logout if detected
 	// This happens BEFORE the caller processes the response
-	handleApiResponse(response);
+	await handleApiResponse(response);
 
 	return response;
 }

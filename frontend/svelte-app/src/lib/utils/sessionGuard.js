@@ -32,9 +32,9 @@ const ACCOUNT_DELETED_SIGNAL = 'Account no longer exists';
  * the polling mechanism for background detection.
  *
  * @param {Response | { status: number, data?: any }} response - A fetch Response or axios-like response object
- * @returns {boolean} `true` if the account was disabled/deleted (caller should abort further processing)
+ * @returns {Promise<boolean>} `true` if the account was disabled/deleted (caller should abort further processing)
  */
-export function handleApiResponse(response) {
+export async function handleApiResponse(response) {
 	if (!browser) return false;
 
 	const status = response.status ?? response?.status;
@@ -51,22 +51,21 @@ export function handleApiResponse(response) {
 	// For axios responses, data is already parsed
 	if (typeof response.json === 'function') {
 		// fetch Response - clone to avoid consuming the body
-		response
-			.clone()
-			.json()
-			.then((/** @type {any} */ body) => {
-				const detail = body?.detail || '';
-				if (typeof detail === 'string') {
-					if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
-						forceLogout('deleted');
-					} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-						forceLogout('disabled');
-					}
+		try {
+			const body = await response.clone().json();
+			const detail = body?.detail || '';
+			if (typeof detail === 'string') {
+				if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
+					forceLogout('deleted');
+					return true;
+				} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
+					forceLogout('disabled');
+					return true;
 				}
-			})
-			.catch(() => {
-				/* body is not JSON — not an account-disabled response */
-			});
+			}
+		} catch {
+			/* body is not JSON — not an account-disabled response */
+		}
 	} else if (response.data) {
 		// axios-style response
 		const detail = response.data?.detail || '';
