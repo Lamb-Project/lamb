@@ -130,6 +130,15 @@
 		}
 	});
 
+	// Reactive: load profile when user logs in after page has already mounted
+	// (onMount only fires once — if the login form was showing, it won't re-fire after login)
+	$effect(() => {
+		if ($user.isLoggedIn && !profileData && !isLoadingProfile && !profileError) {
+			loadProfile();
+			loadNews();
+		}
+	});
+
 	// Reload news when language changes
 	$effect(() => {
 		if ($locale && $user.isLoggedIn) {
