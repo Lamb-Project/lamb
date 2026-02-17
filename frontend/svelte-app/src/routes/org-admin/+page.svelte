@@ -948,12 +948,9 @@
         bulkActionError = null;
         
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, selectedUsers);
+           
+            //here was the token that  was deprecated in favor of using the adminService which already handles authentication internally, so we can remove the token retrieval and just call the service method directly
+            const result = await adminService.disableUsersBulk(selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk disable: ${result.disabled} users disabled`);
