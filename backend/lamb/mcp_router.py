@@ -15,6 +15,7 @@ from lamb.completions.main import (
 )
 from lamb.lamb_classes import Assistant
 from lamb.logging_config import get_logger
+from lamb.auth_context import validate_user_enabled
 
 # Initialize router
 router = APIRouter(tags=["MCP"])
@@ -67,22 +68,8 @@ async def get_current_user_email(
             detail="X-User-Email header required"
         )
     
-    # Verify user exists and is enabled
-    user = db_manager.get_creator_user_by_email(x_user_email)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account no longer exists. Please contact your administrator.",
-            headers={"X-Account-Status": "deleted"}
-        )
-    
-    if not user.get('enabled', True):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has been disabled. Please contact your administrator.",
-            headers={"X-Account-Status": "disabled"}
-        )
+    # Verify user exists and is enabled (delegates to AuthContext validation)
+    validate_user_enabled(x_user_email)
     
     logger.info(f"Authenticated user: {x_user_email}")
     return x_user_email
