@@ -133,7 +133,8 @@
   });
 
   // Load all assistants (with high limit for client-side processing)
-  async function loadAllAssistants() {
+  // retryAttempt tracks whether we've already retried (to avoid infinite loops)
+  async function loadAllAssistants(retryAttempt = false) {
     loading = true;
     error = null;
     try {
@@ -147,6 +148,12 @@
       applyFiltersAndPagination();
     } catch (err) {
       console.error('Error loading assistants:', err);
+      if (!retryAttempt) {
+        console.log('Will retry loading assistants in 1 second...');
+        loading = true;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return loadAllAssistants(true);
+      }
       error = err instanceof Error ? err.message : String(err);
       allAssistants = [];
       displayAssistants = [];
