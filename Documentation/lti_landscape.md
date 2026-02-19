@@ -405,7 +405,7 @@ The `lti_launch()` function is the single entry point. It decides what to do bas
 │  └── NO:                                                           │
 │       ├── Instructor → identify_instructor() →                     │
 │       │   ├── Found → Create setup token → Redirect to GET /setup  │
-│       │   └── Not found → Redirect to GET /link-account           │
+│       │   └── Not found → "Contact your LAMB administrator" page  │
 │       └── Student → Render "not set up yet" waiting page          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -1081,7 +1081,8 @@ Instructor publishes "Physics Tutor"
 | `lamb/templates/lti_dashboard.html` | Instructor dashboard (Jinja2) | Stats, student log, chat transcripts (with JS for AJAX) |
 | `lamb/templates/lti_consent.html` | Student consent page (Jinja2) | Chat visibility notice + accept button |
 | `lamb/templates/lti_waiting.html` | "Not set up" page (Jinja2) | Shown to students at unconfigured activities |
-| `lamb/templates/lti_link_account.html` | Account linking form (Jinja2) | Email/password form for unidentified instructors |
+| `lamb/templates/lti_contact_admin.html` | "Contact admin" page (Jinja2) | Shown to instructors without a Creator account at unconfigured activities |
+| `lamb/templates/lti_link_account.html` | Account linking form (Jinja2) | Legacy — email/password form for unidentified instructors (no longer used in launch flow) |
 
 ### Legacy Student LTI
 
