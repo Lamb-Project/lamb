@@ -1,3 +1,21 @@
+"""
+DEPRECATED (2026-02-17): This module is no longer used in the codebase.
+
+All authentication now goes through lamb.auth_context.AuthContext for centralized
+validation including the 'enabled' field check.
+
+Migration guide:
+- For crypto functions (hash_password, create_token): Use lamb/auth.py
+- For authentication dependencies: Use lamb/auth_context.py (get_auth_context)
+- For enabled/deleted user checks: Handled automatically by AuthContext
+
+This file is kept for backward compatibility with external integrations (if any).
+DO NOT use get_current_active_user() in new code - it duplicates logic that
+AuthContext already provides.
+
+Last usage removed: 2026-02-17 (lti_users_router.py migrated to AuthContext)
+"""
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import HTTPException, status, Depends
 
@@ -63,3 +81,51 @@ def get_current_user(
 ) -> Optional[dict]:
     token = credentials.credentials
     return token
+
+
+def get_current_active_user(
+    token: str = Depends(get_current_user),
+) -> str:
+    """
+    Validate that the current user exists and is enabled.
+    Returns the user email from the token.
+    Raises HTTPException 403 if user is disabled or doesn't exist.
+    """
+    # Decode token to get user email
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+    
+    user_email = payload.get("email")
+    if not user_email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload"
+        )
+    
+    # Check if user exists and is enabled
+    from lamb.database_manager import LambDatabaseManager
+    db = LambDatabaseManager()
+    
+    user = db.get_creator_user_by_email(user_email)
+    
+    # User doesn't exist (deleted)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
+    
+    # User is disabled
+    if not user.get('enabled', True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been disabled. Please contact your administrator.",
+            headers={"X-Account-Status": "disabled"}
+        )
+    
+    return user_email

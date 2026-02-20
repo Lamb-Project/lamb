@@ -160,7 +160,12 @@ openai_connector = OpenAIConnector()
 
 def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get creator user from authentication token.
+    LEGACY: Get creator user from authentication token.
+    
+    IMPORTANT: This function does NOT check the `enabled` field.
+    New endpoints should use AuthContext (get_auth_context) instead,
+    which provides centralized validation including enabled status,
+    organization scoping, and role-based access control.
 
     Tries LAMB JWT first; falls back to OWI token validation for
     pre-migration tokens.
@@ -169,8 +174,14 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
         auth_header: The authorization header containing the token
 
     Returns:
-        Optional[Dict[str, Any]]: Creator user object if found and valid, None otherwise
-        Includes full organization data in 'organization' field for access control
+        Optional[Dict[str, Any]]: Creator user object if found and valid, None otherwise.
+        Includes full organization data in 'organization' field for access control.
+        Returns None for invalid tokens or non-existent users.
+        
+    Note:
+        This function is maintained for backward compatibility with a few
+        legacy endpoints. All new code should use the AuthContext pattern:
+        `auth: AuthContext = Depends(get_auth_context)`
     """
     try:
         if not auth_header:
@@ -234,6 +245,8 @@ def get_creator_user_from_token(auth_header: str) -> Optional[Dict[str, Any]]:
 
         return creator_user
 
+    except HTTPException:
+        raise  # Re-raise HTTPException (e.g. 403 for disabled accounts) without catching it
     except Exception as e:
         logger.error(f"Error getting creator user from token: {str(e)}")
         return None
