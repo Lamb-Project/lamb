@@ -218,20 +218,11 @@ async def lti_launch(request: Request):
         )
 
         if not creator_users:
-            # Cannot auto-identify → show link-account page
-            setup_token = _create_setup_token({
-                "creator_users": [],
-                "lms_user_id": lms_user_id,
-                "lms_email": lms_email,
-                "resource_link_id": resource_link_id,
-                "context_id": context_id,
-                "context_title": context_title,
+            # Instructor has no associated Creator account → show contact-admin page
+            logger.info(f"Instructor {lms_user_id} has no Creator account — showing contact-admin page")
+            return templates.TemplateResponse("lti_contact_admin.html", {
+                "request": request,
             })
-            public_base = manager.get_public_base_url(request)
-            return RedirectResponse(
-                url=f"{public_base}/lamb/v1/lti/link-account?token={setup_token}",
-                status_code=303
-            )
 
         # Instructor identified — create setup token and redirect to setup page
         setup_token = _create_setup_token({
@@ -327,7 +318,6 @@ async def lti_configure_activity(request: Request):
             return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link in your LMS again.</p>", status_code=403)
 
         organization_id = int(form_data.get("organization_id", 0))
-        activity_name = form_data.get("activity_name", "").strip()
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
         chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
@@ -356,7 +346,7 @@ async def lti_configure_activity(request: Request):
             configured_by_name=creator_user.get("user_name"),
             context_id=context_id,
             context_title=context_title,
-            activity_name=activity_name or context_title or f"Activity {resource_link_id[:8]}",
+            activity_name=context_title or resource_link_id,
             chat_visibility_enabled=chat_visibility_enabled,
         )
 
@@ -501,10 +491,6 @@ async def lti_reconfigure_activity(request: Request):
         assistant_ids = [int(x) for x in assistant_ids_str if x]
         if not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
-
-        activity_name = form_data.get("activity_name", "").strip()
-        if activity_name:
-            db_manager.update_lti_activity(activity['id'], activity_name=activity_name)
 
         # Handle chat_visibility toggle
         chat_visibility_str = form_data.get("chat_visibility_enabled")

@@ -512,16 +512,21 @@ async def login(email: str = Form(...), password: str = Form(...)):
 )
 async def get_current_user(auth: AuthContext = Depends(get_auth_context)):
     """Return the current user's profile based on their auth token."""
+    email = auth.user.get("email", "")
+    name = auth.user.get("name", "")
+    owi_manager = OwiUserManager()
+    launch_url = owi_manager.get_login_url(email, name)
+
     return {
         "success": True,
         "data": {
-            "name": auth.user.get("name", ""),
-            "email": auth.user.get("email", ""),
+            "name": name,
+            "email": email,
             "user_id": auth.user.get("id"),
             "role": auth.user.get("role", "user"),
             "user_type": auth.user.get("user_type", "creator"),
             "organization_role": auth.organization_role,
-            "launch_url": auth.user.get("launch_url"),
+            "launch_url": launch_url,
         }
     }
 
