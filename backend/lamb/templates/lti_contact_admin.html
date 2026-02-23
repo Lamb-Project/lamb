@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAMB — Setup Not Available</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-8 text-center">
+        <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">&#x1F512;</div>
+        <h1 class="text-xl font-bold text-gray-900 mb-3">Unable to Set Up This Activity</h1>
+
+        <p class="text-gray-600 mb-4">
+            You have been identified as an <strong>instructor</strong> in your LMS, but we could not find an
+            associated LAMB Creator account linked to your identity.
+        </p>
+
+        <p class="text-gray-600 mb-6">
+            To configure AI assistant activities, you need a LAMB Creator account
+            that has been set up by your institution's LAMB administrator.
+        </p>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-lg px-5 py-4 text-left mb-6">
+            <p class="text-sm font-semibold text-blue-800 mb-1">What should I do?</p>
+            <p class="text-sm text-blue-700">
+                Please contact the <strong>LAMB administrator</strong> at your institution and ask them to
+                create an LTI Creator account for you, or to link your existing LAMB account to your LMS identity.
+            </p>
+        </div>
+
+        <div class="mt-2">
+            <button onclick="window.history.back()" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                &larr; Go Back
+            </button>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,4 +1,5 @@
 <script>
+    import { onMount } from 'svelte';
     import { _ } from '$lib/i18n';
     import { base } from '$app/paths';
 
@@ -9,6 +10,16 @@
         error = null,
         onRetry = () => {}
     } = $props();
+
+    // Auto-retry: if dashboard has no data 1.5s after mount, trigger reload
+    onMount(() => {
+        const timer = setTimeout(() => {
+            if (!profile && !isLoading && !error) {
+                onRetry();
+            }
+        }, 1500);
+        return () => clearTimeout(timer);
+    });
 
     // Collapse state for each section (all collapsed by default)
     let expandedOwned = $state({ assistants: false, kbs: false, rubrics: false, templates: false });

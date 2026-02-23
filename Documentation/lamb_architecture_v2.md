@@ -836,10 +836,11 @@ User clicks LTI link in LMS
     → LAMB checks resource_link_id:
         │
         ├── Activity NOT configured:
-        │     ├── Instructor → Identify as Creator user → Setup page
+        │     ├── Instructor with Creator account → Setup page
         │     │     (pick assistants, name, chat visibility option)
         │     │     → First instructor becomes OWNER
         │     │     → Redirect to Instructor Dashboard
+        │     ├── Instructor without Creator account → "Contact LAMB admin" page
         │     └── Student → "Not set up yet" waiting page
         │
         └── Activity IS configured:
