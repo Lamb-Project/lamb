@@ -49,6 +49,10 @@ backend/timelog.md
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
 
 # Configuration files
 config.json

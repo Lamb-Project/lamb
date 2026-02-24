@@ -171,7 +171,10 @@ class QueryService:
                     )
                 
                 # Add ChromaDB collection and embedding function to plugin params
-                params = plugin_params.copy()
+                params = PluginRegistry.sanitize_query_params(
+                    plugin_name,
+                    plugin_params or {}
+                )
                 params["db"] = db
                 params["embedding_function"] = collection_embedding_function
                 params["chroma_collection"] = chroma_collection
