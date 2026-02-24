@@ -20,6 +20,7 @@ from utils.main_helpers import completions_get_form_data, helper_get_assistant_i
 
 from lamb.main import app as lamb_app
 from lamb.completions.main import run_lamb_assistant
+from lamb.modules import discover_modules
 
 
 from contextlib import asynccontextmanager
@@ -53,6 +54,8 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     # Startup
     logger.info("Starting LAMB application")
+    discover_modules()
+    logger.info("Activity modules discovered")
     await start_news_cache_refresh_loop()
     logger.info("News cache refresh loop started")
     

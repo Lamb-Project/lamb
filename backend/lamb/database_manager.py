@@ -812,6 +812,7 @@ class LambDatabaseManager:
                             configured_by_email TEXT NOT NULL,
                             configured_by_name TEXT,
                             chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
+                            activity_type TEXT NOT NULL DEFAULT 'chat',
                             status TEXT NOT NULL DEFAULT 'active',
                             created_at INTEGER NOT NULL,
                             updated_at INTEGER NOT NULL,
@@ -827,6 +828,10 @@ class LambDatabaseManager:
                     # Migrate existing table: add new columns if missing
                     cursor.execute(f"PRAGMA table_info({self.table_prefix}lti_activities)")
                     existing_cols = {row[1] for row in cursor.fetchall()}
+                    if 'activity_type' not in existing_cols:
+                        logger.info("Migrating lti_activities: adding activity_type")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
+                        logger.info("Migrated lti_activities with activity_type field")
                     if 'owner_email' not in existing_cols:
                         logger.info("Migrating lti_activities: adding owner_email, owner_name, chat_visibility_enabled")
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
@@ -7296,7 +7301,8 @@ class LambDatabaseManager:
                             configured_by_email: str, configured_by_name: str = None,
                             context_id: str = None, context_title: str = None,
                             activity_name: str = None,
-                            chat_visibility_enabled: bool = False) -> Optional[int]:
+                            chat_visibility_enabled: bool = False,
+                            activity_type: str = 'chat') -> Optional[int]:
         """Create a new LTI activity. Returns the activity id."""
         connection = self.get_connection()
         if not connection:
@@ -7310,13 +7316,13 @@ class LambDatabaseManager:
                     (resource_link_id, organization_id, context_id, context_title, activity_name,
                      owi_group_id, owi_group_name, owner_email, owner_name,
                      configured_by_email, configured_by_name,
-                     chat_visibility_enabled, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                     chat_visibility_enabled, activity_type, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (resource_link_id, organization_id, context_id, context_title,
                       activity_name, owi_group_id, owi_group_name,
                       configured_by_email, configured_by_name,
                       configured_by_email, configured_by_name,
-                      1 if chat_visibility_enabled else 0, now, now))
+                      1 if chat_visibility_enabled else 0, activity_type, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity: {e}")

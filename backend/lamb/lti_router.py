@@ -22,6 +22,7 @@ import json
 import time
 import secrets
 from datetime import datetime
+from lamb.modules import get_all_modules
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -147,57 +148,53 @@ async def lti_launch(request: Request):
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
         if activity and activity['status'] == 'active':
-            public_base = manager.get_public_base_url(request)
+            from lamb.modules import get_module
+            from lamb.modules.base import LTIContext
+            
+            activity_type = activity.get('activity_type', 'chat')
+            module = get_module(activity_type)
+            if not module:
+                logger.error(f"Module {activity_type} not found for activity {resource_link_id}")
+                raise HTTPException(status_code=500, detail=f"Module {activity_type} is not installed.")
 
-            # ── CONFIGURED: Is this an instructor? → Dashboard ──
-            if manager.is_instructor(roles):
-                logger.info(f"Instructor accessing configured activity {resource_link_id} → dashboard")
-                is_owner = (lms_email and lms_email == activity.get('owner_email'))
-                dashboard_token = _create_token({
-                    "type": "dashboard",
-                    "resource_link_id": resource_link_id,
-                    "lms_user_id": lms_user_id,
-                    "lms_email": lms_email,
-                    "username": username,
-                    "display_name": display_name,
-                    "is_owner": is_owner,
-                }, ttl=DASHBOARD_TOKEN_TTL)
-                return RedirectResponse(
-                    url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
-                    status_code=303
-                )
-
-            # ── CONFIGURED: Student flow ──
-            # Check if consent is needed
-            student_email = manager.generate_student_email(username, resource_link_id)
-            if manager.check_student_consent(activity, student_email):
-                logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
-                consent_token = _create_token({
-                    "type": "consent",
-                    "resource_link_id": resource_link_id,
-                    "username": username,
-                    "display_name": display_name,
-                    "lms_user_id": lms_user_id,
-                    "student_email": student_email,
-                }, ttl=CONSENT_TOKEN_TTL)
-                return RedirectResponse(
-                    url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
-                    status_code=303
-                )
-
-            # No consent needed — launch into OWI
-            owi_token = manager.handle_student_launch(
-                activity=activity,
+            ctx = LTIContext(
+                resource_link_id=resource_link_id,
+                lms_user_id=lms_user_id,
+                lms_email=lms_email,
                 username=username,
                 display_name=display_name,
-                lms_user_id=lms_user_id
+                roles=roles,
+                is_instructor=manager.is_instructor(roles),
+                context_id=context_id,
+                context_title=context_title
             )
-            if not owi_token:
-                raise HTTPException(status_code=500, detail="Failed to process launch")
 
-            redirect_url = manager.get_owi_redirect_url(owi_token)
-            logger.info(f"Redirecting student to OWI: {redirect_url}")
-            return RedirectResponse(url=redirect_url, status_code=303)
+            # ── CONFIGURED: Module Dispatch ──
+            if ctx.is_instructor:
+                logger.info(f"Instructor accessing configured activity {resource_link_id} → delegating to module {activity_type}")
+                return module.on_instructor_launch(ctx)
+            else:
+                logger.info(f"Student accessing configured activity {resource_link_id} → delegating to module {activity_type}")
+                # For chat (the only one right now), consent is still needed inside the router 
+                # before we dispatch to the module, to avoid making every module re-implement consent checking.
+                student_email = manager.generate_student_email(username, resource_link_id)
+                if manager.check_student_consent(activity, student_email):
+                    public_base = manager.get_public_base_url(request)
+                    logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
+                    consent_token = _create_token({
+                        "type": "consent",
+                        "resource_link_id": resource_link_id,
+                        "username": username,
+                        "display_name": display_name,
+                        "lms_user_id": lms_user_id,
+                        "student_email": student_email,
+                    }, ttl=CONSENT_TOKEN_TTL)
+                    return RedirectResponse(
+                        url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
+                        status_code=303
+                    )
+                
+                return module.on_student_launch(ctx)
 
         # ── NOT CONFIGURED ──
         if not manager.is_instructor(roles):
@@ -288,6 +285,13 @@ async def lti_setup_page(request: Request, token: str = ""):
         "needs_org_selection": needs_org_selection,
         "orgs_with_assistants": orgs_with_assistants,
         "org_names": org_names,
+        "modules": get_all_modules(),
+        "modules_json": json.dumps({
+            m.name: [
+                {"name": f.name, "label": f.label, "type": f.field_type, "required": f.required} 
+                for f in m.get_setup_fields()
+            ] for m in get_all_modules()
+        }),
         "orgs_json": json.dumps({
             str(org_id): [
                 {"id": a["id"], "name": a["name"], "owner": a["owner"],
@@ -337,7 +341,6 @@ async def lti_configure_activity(request: Request):
         context_id = data.get("context_id", "")
         context_title = data.get("context_title", "")
 
-        # Configure the activity
         activity = manager.configure_activity(
             resource_link_id=resource_link_id,
             organization_id=organization_id,
@@ -348,6 +351,7 @@ async def lti_configure_activity(request: Request):
             context_title=context_title,
             activity_name=context_title or resource_link_id,
             chat_visibility_enabled=chat_visibility_enabled,
+            activity_type=activity_type,
         )
 
         if not activity:
