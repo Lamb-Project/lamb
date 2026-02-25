@@ -938,7 +938,7 @@ async def update_user_password_admin(
             }
         )
 
-    # User is admin, proceed with updating the password
+    # User is admin and enabled, proceed with updating the password
     try:
         user_creator = UserCreatorManager()
         result = await user_creator.update_user_password(email, new_password)

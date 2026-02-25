@@ -5026,7 +5026,7 @@ class LambDatabaseManager:
             token (str): JWT token to verify
 
         Returns:
-            Optional[Dict]: User details if token is valid, None otherwise
+            Optional[Dict]: User details if token is valid and account is enabled, None otherwise
         """
         try:
             # Decode JWT token
@@ -5038,7 +5038,14 @@ class LambDatabaseManager:
                 return None
 
             # Get user details from database
-            return self.get_creator_user_by_email(user_email)
+            user = self.get_creator_user_by_email(user_email)
+
+            # Check if the user account is disabled
+            if user and not user.get('enabled', True):
+                logger.warning(f"Disabled user {user_email} attempted API access with valid JWT token")
+                return None
+
+            return user
 
         except jwt.InvalidTokenError:
             logger.error("Invalid JWT token")

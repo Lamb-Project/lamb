@@ -21,6 +21,8 @@ from lamb.owi_bridge.owi_group import OwiGroupManager
 from lamb.owi_bridge.owi_model import OWIModel
 from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.logging_config import get_logger
+from lamb.auth_context import validate_user_enabled
+from fastapi import HTTPException
 
 logger = get_logger(__name__, component="LTI_ACTIVITY")
 
@@ -148,12 +150,14 @@ class LtiActivityManager:
         verified = self.owi_user_manager.verify_user(email, password)
         if not verified:
             return None
-        # Get the Creator user from LAMB DB
-        creator_user = self.db_manager.get_creator_user_by_email(email)
-        if not creator_user:
+        
+        # Verify user exists and is enabled (delegates to AuthContext validation)
+        try:
+            creator_user = validate_user_enabled(email)
+        except HTTPException:
+            # User doesn't exist or is disabled
             return None
-        if not creator_user.get('enabled', True):
-            return None
+        
         # Normalize field names (get_creator_user_by_email uses 'email'/'name',
         # but the rest of the LTI code uses 'user_email'/'user_name')
         return {

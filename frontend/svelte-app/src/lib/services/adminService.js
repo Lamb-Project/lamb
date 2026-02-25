@@ -1,19 +1,14 @@
 import { getApiUrl } from '$lib/config';
+import { authenticatedFetch } from '$lib/utils/apiClient';
 
 /**
  * Fetch the current user's profile (resource overview)
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @returns {Promise<any>} - Promise resolving to user profile data
  */
-export async function getMyProfile(token) {
+export async function getMyProfile() {
 	try {
-		const response = await fetch(getApiUrl('/user/profile'), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
+		const response = await authenticatedFetch(getApiUrl('/user/profile'));
 
 		if (!response.ok) {
 			const error = await response.json();
@@ -29,19 +24,13 @@ export async function getMyProfile(token) {
 
 /**
  * Fetch a specific user's profile (admin/org-admin)
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number} userId - User ID to fetch profile for
  * @returns {Promise<any>} - Promise resolving to user profile data
  */
-export async function getUserProfile(token, userId) {
+export async function getUserProfile(userId) {
 	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/profile`), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
+		const response = await authenticatedFetch(getApiUrl(`/admin/users/${userId}/profile`));
 
 		if (!response.ok) {
 			const error = await response.json();
@@ -57,18 +46,14 @@ export async function getUserProfile(token, userId) {
 
 /**
  * Disable a user account
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number} userId - User ID to disable
  * @returns {Promise<any>} - Promise resolving to operation result
  */
-export async function disableUser(token, userId) {
+export async function disableUser(userId) {
 	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/disable`), {
-			method: 'PUT',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
+		const response = await authenticatedFetch(getApiUrl(`/admin/users/${userId}/disable`), {
+			method: 'PUT'
 		});
 
 		if (!response.ok) {
@@ -85,18 +70,14 @@ export async function disableUser(token, userId) {
 
 /**
  * Enable a user account
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number} userId - User ID to enable
  * @returns {Promise<any>} - Promise resolving to operation result
  */
-export async function enableUser(token, userId) {
+export async function enableUser(userId) {
 	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/enable`), {
-			method: 'PUT',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
+		const response = await authenticatedFetch(getApiUrl(`/admin/users/${userId}/enable`), {
+			method: 'PUT'
 		});
 
 		if (!response.ok) {
@@ -113,18 +94,14 @@ export async function enableUser(token, userId) {
 
 /**
  * Disable multiple user accounts
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number[]} userIds - Array of user IDs to disable
  * @returns {Promise<any>} - Promise resolving to bulk operation result
  */
-export async function disableUsersBulk(token, userIds) {
+export async function disableUsersBulk(userIds) {
 	try {
-		const response = await fetch(getApiUrl('/admin/users/disable-bulk'), {
+		const response = await authenticatedFetch(getApiUrl('/admin/users/disable-bulk'), {
 			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			},
 			body: JSON.stringify({ user_ids: userIds })
 		});
 
@@ -142,18 +119,14 @@ export async function disableUsersBulk(token, userIds) {
 
 /**
  * Enable multiple user accounts
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number[]} userIds - Array of user IDs to enable
  * @returns {Promise<any>} - Promise resolving to bulk operation result
  */
-export async function enableUsersBulk(token, userIds) {
+export async function enableUsersBulk(userIds) {
 	try {
-		const response = await fetch(getApiUrl('/admin/users/enable-bulk'), {
+		const response = await authenticatedFetch(getApiUrl('/admin/users/enable-bulk'), {
 			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			},
 			body: JSON.stringify({ user_ids: userIds })
 		});
 
@@ -171,19 +144,13 @@ export async function enableUsersBulk(token, userIds) {
 
 /**
  * Check user dependencies (assistants and knowledge bases)
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number} userId - User ID to check
  * @returns {Promise<any>} - Promise resolving to dependencies info
  */
-export async function checkUserDependencies(token, userId) {
+export async function checkUserDependencies(userId) {
 	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/dependencies`), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
+		const response = await authenticatedFetch(getApiUrl(`/admin/users/${userId}/dependencies`));
 
 		if (!response.ok) {
 			const error = await response.json();
@@ -199,18 +166,14 @@ export async function checkUserDependencies(token, userId) {
 
 /**
  * Delete a disabled user (must have no dependencies)
- * @param {string} token - Authorization token
+ * Automatically detects disabled accounts and forces logout.
  * @param {number} userId - User ID to delete
  * @returns {Promise<any>} - Promise resolving to operation result
  */
-export async function deleteUser(token, userId) {
+export async function deleteUser(userId) {
 	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}`), {
-			method: 'DELETE',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
+		const response = await authenticatedFetch(getApiUrl(`/admin/users/${userId}`), {
+			method: 'DELETE'
 		});
 
 		if (!response.ok) {
