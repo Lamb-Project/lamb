@@ -1,6 +1,10 @@
 import os
 import traceback
+import time
+import signal
 from datetime import datetime
+from threading import Semaphore, Thread
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, Form, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 import json # Needed for ingest-file params
@@ -38,6 +42,96 @@ from services.query import QueryService
 
 # Dependency imports
 from dependencies import verify_token
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONCURRENCY CONTROL FOR BACKGROUND TASKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Maximum concurrent ingestion tasks to prevent ChromaDB/SQLite lock contention
+MAX_CONCURRENT_INGESTION_TASKS = int(os.getenv("MAX_CONCURRENT_INGESTION_TASKS", "3"))
+ingestion_semaphore = Semaphore(MAX_CONCURRENT_INGESTION_TASKS)
+
+# Maximum time (seconds) a single ingestion task is allowed to run
+# If exceeded, task is marked as FAILED to prevent stuck jobs
+INGESTION_TASK_TIMEOUT_SECONDS = int(os.getenv("INGESTION_TASK_TIMEOUT_SECONDS", "360"))  # 6 minutes
+
+# Thread pool for executing background tasks with timeout
+_task_executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_INGESTION_TASKS)
+
+print(f"INFO: Ingestion concurrency limiter initialized (max: {MAX_CONCURRENT_INGESTION_TASKS}, timeout: {INGESTION_TASK_TIMEOUT_SECONDS}s)")
+
+
+def _run_with_semaphore(func, *args, **kwargs):
+    """
+    Execute a function with semaphore control and timeout protection.
+    
+    This wrapper:
+    1. Limits concurrent background tasks via semaphore (prevents DB contention)
+    2. Enforces per-task timeout (prevents stuck jobs from blocking the queue)
+    3. Logs queue wait times for monitoring
+    
+    If a task exceeds INGESTION_TASK_TIMEOUT_SECONDS, it's marked as FAILED and the
+    semaphore token is released so other tasks can proceed.
+    
+    Args:
+        func: The function to execute (usually a background task function)
+        *args, **kwargs: Arguments to pass to func
+    """
+    def task_with_cleanup():
+        """Execute task and ensure semaphore is released even if timeout/error."""
+        ingestion_semaphore.acquire()  # Block until token available
+        try:
+            func(*args, **kwargs)
+        finally:
+            ingestion_semaphore.release()  # ALWAYS release token
+    
+    # Submit task to executor with timeout
+    future = _task_executor.submit(task_with_cleanup)
+    
+    try:
+        # Wait for task with timeout
+        future.result(timeout=INGESTION_TASK_TIMEOUT_SECONDS)
+    except TimeoutError:
+        # Task exceeded timeout - need to mark file_registry as FAILED
+        print(f"ERROR: Ingestion task exceeded timeout ({INGESTION_TASK_TIMEOUT_SECONDS}s) - marking as FAILED")
+        
+        # Extract file_registry_id from args (it's the 4th positional arg in both functions)
+        try:
+            if len(args) >= 4:
+                file_registry_id = args[3]  # ingest functions have: file_path, plugin_name, params, collection_id, file_registry_id
+                db_timeout = SessionLocal()
+                try:
+                    file_reg = db_timeout.query(FileRegistry).filter(
+                        FileRegistry.id == file_registry_id
+                    ).first()
+                    if file_reg and file_reg.status == FileStatus.PROCESSING:
+                        file_reg.status = FileStatus.FAILED
+                        file_reg.processing_completed_at = datetime.utcnow()
+                        file_reg.error_message = f"Task timeout exceeded ({INGESTION_TASK_TIMEOUT_SECONDS}s)"
+                        file_reg.error_details = {
+                            "exception_type": "TimeoutError",
+                            "timeout_seconds": INGESTION_TASK_TIMEOUT_SECONDS,
+                            "stage": "ingestion"
+                        }
+                        file_reg.progress_message = f"Timeout: task took too long"
+                        db_timeout.commit()
+                        print(f"INFO: Marked file_registry {file_registry_id} as FAILED due to timeout")
+                finally:
+                    db_timeout.close()
+        except Exception as e:
+            print(f"WARNING: Could not mark task as failed on timeout: {str(e)}")
+        
+        # Cancel the future to allow executor to clean up
+        future.cancel()
+    except Exception as e:
+        # Other exceptions from the task itself (not our timeout)
+        print(f"ERROR: Ingestion task failed with exception: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONCURRENCY CONTROL FOR BACKGROUND TASKS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -897,8 +991,9 @@ async def ingest_url_to_collection(
             status=FileStatus.PROCESSING  # Set initial status to PROCESSING
         )
         
-        # Step 2: Schedule enhanced background task for processing
+        # Step 2: Schedule enhanced background task for processing (with concurrency control)
         background_tasks.add_task(
+            _run_with_semaphore,
             process_urls_in_background_enhanced, 
             request.urls, 
             plugin_name, 
@@ -1115,8 +1210,9 @@ async def ingest_file_to_collection(
             status=FileStatus.PROCESSING  # Set initial status to PROCESSING
         )
         
-        # Step 3: Schedule enhanced background task for processing
+        # Step 3: Schedule enhanced background task for processing (with concurrency control)
         background_tasks.add_task(
+            _run_with_semaphore,
             process_file_in_background_enhanced, 
             file_path, 
             plugin_name, 
@@ -1440,10 +1536,11 @@ async def ingest_base_to_collection(
             status=FileStatus.PROCESSING
         )
         
-        # Step 2: Schedule enhanced background task for processing
+        # Step 2: Schedule enhanced background task for processing (with concurrency control)
         # Note: For base-ingest plugins, we use the file processing function
         # since the plugin creates its own file
         background_tasks.add_task(
+            _run_with_semaphore,
             process_file_in_background_enhanced, 
             str(file_path), 
             plugin_name, 
