@@ -1,7 +1,7 @@
 import importlib
 from pathlib import Path
 
-# Registry for LTI Activity Modules
+# Registry for LTI Activity Modules, is it filled during the discover_modules() function
 _registry = {}
 
 def register_module(module):
