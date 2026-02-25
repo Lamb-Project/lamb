@@ -2088,6 +2088,26 @@ async def get_current_user(request: Request, auth: AuthContext = Depends(get_aut
 
 
 @router.get(
+    "/user/status",
+    tags=["User Management"],
+    summary="Get User Status (Polling)",
+    description="""Lightweight endpoint to verify the user's session is active.
+    Returns 200 OK if the user is authenticated and active.
+    Returns 403 or 401 if the user is disabled or token is invalid.
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User is active"},
+        401: {"description": "Authentication invalid"},
+        403: {"description": "User is disabled or deleted"}
+    }
+)
+async def get_user_status(auth: AuthContext = Depends(get_auth_context)):
+    """Lightweight endpoint for frontend session polling"""
+    return {"status": "ok"}
+
+
+@router.get(
     "/user/profile",
     tags=["User Management"],
     summary="Get Current User Profile (Resource Overview)",

@@ -292,7 +292,11 @@ def _build_auth_context(token: str) -> Optional[AuthContext]:
     creator_user = _db.get_creator_user_by_email(user_email)
     if not creator_user:
         logger.error(f"No creator user found for email: {user_email}")
-        return None
+        raise HTTPException(
+            status_code=403,
+            detail="Account no longer exists. Please contact your administrator.",
+            headers={"X-Account-Status": "deleted"}
+        )
 
     if not creator_user.get('enabled', True):
         logger.warning(f"Disabled user {user_email} attempted API access")

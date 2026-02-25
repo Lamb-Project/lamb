@@ -20,9 +20,6 @@ import { get } from 'svelte/store';
 /** @type {ReturnType<typeof setInterval> | null} */
 let pollingInterval = null;
 
-/** Sentinel strings the backend includes in the 403 detail for disabled/deleted accounts */
-const ACCOUNT_DISABLED_SIGNAL = 'Account disabled';
-const ACCOUNT_DELETED_SIGNAL = 'Account no longer exists';
 
 /**
  * Check whether a fetch Response indicates the account has been disabled or deleted.
@@ -40,47 +37,19 @@ export async function handleApiResponse(response) {
 	const status = response.status ?? response?.status;
 	if (status !== 403 && status !== 401) return false;
 
-	// Check for X-Account-Status header first (more reliable)
-	const accountStatus = response.headers?.get?.('X-Account-Status');
-	if (accountStatus === 'disabled' || accountStatus === 'deleted') {
-		forceLogout(accountStatus === 'deleted' ? 'deleted' : 'disabled');
-		return true;
+	// 403: check X-Account-Status header (disabled or deleted account)
+	if (status === 403) {
+		const accountStatus = response.headers?.get?.('X-Account-Status');
+		if (accountStatus === 'disabled' || accountStatus === 'deleted') {
+			forceLogout(accountStatus === 'deleted' ? 'deleted' : 'disabled');
+			return true;
+		}
+		return false; // 403 for other reasons (e.g. permissions) — don't logout
 	}
 
-	// For fetch Response objects we need to clone before reading body
-	// For axios responses, data is already parsed
-	if (typeof response.json === 'function') {
-		// fetch Response - clone to avoid consuming the body
-		try {
-			const body = await response.clone().json();
-			const detail = body?.detail || '';
-			if (typeof detail === 'string') {
-				if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
-					forceLogout('deleted');
-					return true;
-				} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-					forceLogout('disabled');
-					return true;
-				}
-			}
-		} catch {
-			/* body is not JSON — not an account-disabled response */
-		}
-	} else if (response.data) {
-		// axios-style response
-		const detail = response.data?.detail || '';
-		if (typeof detail === 'string') {
-			if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
-				forceLogout('deleted');
-				return true;
-			} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-				forceLogout('disabled');
-				return true;
-			}
-		}
-	}
-
-	return false;
+	// 401: token is invalid or expired
+	forceLogout('expired');
+	return true;
 }
 
 /**
@@ -96,7 +65,7 @@ export async function checkSession() {
 	if (!currentUser.isLoggedIn || !currentUser.token) return false;
 
 	try {
-		const response = await fetch(getApiUrl('/user/profile'), {
+		const response = await fetch(getApiUrl('/user/status'), {
 			method: 'GET',
 			headers: {
 				Authorization: `Bearer ${currentUser.token}`,
@@ -104,37 +73,9 @@ export async function checkSession() {
 			}
 		});
 
-		if (response.status === 403) {
-			// Check X-Account-Status header first
-			const accountStatus = response.headers.get('X-Account-Status');
-			if (accountStatus === 'disabled' || accountStatus === 'deleted') {
-				forceLogout(accountStatus);
-				return false;
-			}
-
-			// Fallback: check response body
-			try {
-				const body = await response.json();
-				const detail = body?.detail || '';
-				if (typeof detail === 'string') {
-					if (detail.includes(ACCOUNT_DELETED_SIGNAL)) {
-						forceLogout('deleted');
-						return false;
-					} else if (detail.includes(ACCOUNT_DISABLED_SIGNAL)) {
-						forceLogout('disabled');
-						return false;
-					}
-				}
-			} catch {
-				/* body is not JSON */
-			}
-		}
-
-		if (response.status === 401) {
-			// Token is invalid/expired — force logout
-			forceLogout('expired');
-			return false;
-		}
+		// Delegate all auth-error handling to handleApiResponse
+		const handled = await handleApiResponse(response);
+		if (handled) return false;
 
 		return response.ok;
 	} catch (error) {
@@ -155,7 +96,8 @@ export function startSessionPolling(intervalMs = 60000) {
 	pollingInterval = setInterval(() => {
 		const currentUser = get(user);
 		if (currentUser.isLoggedIn) {
-			checkSession();
+			// Add catch to handle potential unhandled promise rejections during polling
+			checkSession().catch(err => console.error('Error during session polling check:', err));
 		} else {
 			// User already logged out — stop polling
 			stopSessionPolling();

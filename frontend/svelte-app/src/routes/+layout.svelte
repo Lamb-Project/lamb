@@ -9,6 +9,8 @@
 	import { user } from '$lib/stores/userStore';
 	import { onDestroy } from 'svelte';
 	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
+	// Import apiClient to register global axios interceptors on app startup
+	import '$lib/utils/apiClient';
 
 	let { children } = $props();
 
