@@ -56,6 +56,7 @@ lamb
     publish <id>           Publish an assistant
     unpublish <id>         Unpublish an assistant
     export <id>            Export assistant config as JSON
+    config                 Show available connectors, models, processors
 
   model
     list                   List available models
@@ -82,6 +83,46 @@ lamb
     cancel <kb-id> <job-id> Cancel a running job
     watch <kb-id> <job-id> Watch job progress live
     status <kb-id>         Ingestion status summary
+
+  org
+    list                   List all organizations
+    get <slug>             Get organization details
+    create <name>          Create an organization
+    update <slug>          Update an organization
+    delete <slug>          Delete an organization (with confirmation)
+    export <slug>          Export organization data as JSON
+    set-role <slug> <uid> <role>  Set user role in org
+    dashboard              Show organization dashboard stats
+
+  user
+    list                   List users in the organization
+    get <user-id>          Get user details
+    create <email> <name> <pw>  Create a new user
+    update <user-id>       Update a user
+    delete <user-id>       Delete a user (with confirmation)
+    enable <user-id>       Enable a user
+    disable <user-id>      Disable a user
+    reset-password <uid> <pw>  Reset a user's password
+    bulk-import <file>     Bulk import users from JSON
+
+  template
+    list                   List your prompt templates
+    list-shared            List shared prompt templates
+    get <id>               Get template details
+    create <name>          Create a prompt template
+    update <id>            Update a prompt template
+    delete <id>            Delete a prompt template
+    duplicate <id>         Duplicate a prompt template
+    share <id>             Enable/disable sharing
+    export <ids...>        Export templates as JSON
+
+  analytics
+    chats <id>             List chats for an assistant
+    chat-detail <id> <cid> Get full chat with messages
+    stats <id>             Get usage statistics
+    timeline <id>          Get activity timeline
+
+  chat <id>                Chat with an assistant (interactive/single-message)
 ```
 
 ## Output Formats
@@ -184,8 +225,8 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 |-------|----------------------------------------|---------|
 | 1     | Core + Assistants + Models             | Done    |
 | 2     | Knowledge Bases + Ingestion Jobs       | Done    |
-| 3     | Organizations + Users (admin commands) | Planned |
-| 4     | Templates + Analytics + Chat           | Planned |
+| 3     | Organizations + Users (admin commands) | Done    |
+| 4     | Templates + Analytics + Chat           | Done    |
 | 5     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.

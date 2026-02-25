@@ -524,3 +524,354 @@ lamb job watch --help
 ```
 
 The version is printed to stderr on every command execution, so you always know which version you're running.
+
+## 11. Managing Organizations (Admin)
+
+Organization commands require admin privileges. They let you create, configure, and monitor the multi-tenant structure of your LAMB platform.
+
+### List organizations
+
+```bash
+lamb org list
+```
+
+### Get organization details
+
+```bash
+lamb org get university-a
+```
+
+### Create an organization
+
+```bash
+lamb org create "University A" --slug university-a
+```
+
+Assign an admin during creation:
+
+```bash
+lamb org create "University A" --slug university-a --admin-user-id user-123
+```
+
+Enable self-signup with a key:
+
+```bash
+lamb org create "Open Lab" --slug open-lab --signup-enabled --signup-key secret123
+```
+
+### Update an organization
+
+```bash
+lamb org update university-a --name "University A (Renamed)"
+lamb org update university-a --status inactive
+```
+
+### Delete an organization
+
+```bash
+lamb org delete university-a --confirm
+```
+
+### Export an organization
+
+Save the full organization data (members, assistants, etc.) as JSON:
+
+```bash
+lamb org export university-a -f backup.json
+```
+
+### Set a user's role within an organization
+
+```bash
+lamb org set-role university-a user-123 admin
+lamb org set-role university-a user-456 member
+```
+
+### View organization dashboard
+
+```bash
+lamb org dashboard
+```
+
+System admins can view a specific org's dashboard:
+
+```bash
+lamb org dashboard --org university-a
+```
+
+## 12. Managing Users (Admin)
+
+User commands let org admins and system admins manage user accounts. System admins can pass `--org <slug>` to target a specific organization.
+
+### List users
+
+```bash
+lamb user list
+```
+
+System admin targeting a specific org:
+
+```bash
+lamb user list --org university-a
+```
+
+### Get user details
+
+```bash
+lamb user get <user-id>
+```
+
+### Create a user
+
+```bash
+lamb user create alice@uni.edu "Alice Smith" password123
+```
+
+Create an end-user (instead of the default creator):
+
+```bash
+lamb user create student@uni.edu "Student One" pass --user-type end_user
+```
+
+Create a user in disabled state:
+
+```bash
+lamb user create pending@uni.edu "Pending User" pass --disabled
+```
+
+### Update a user
+
+```bash
+lamb user update <user-id> --name "Alice Renamed"
+```
+
+### Enable and disable users
+
+```bash
+lamb user enable <user-id>
+lamb user disable <user-id>
+```
+
+### Reset a user's password
+
+```bash
+lamb user reset-password <user-id> newpassword456
+```
+
+### Delete a user
+
+```bash
+lamb user delete <user-id> --confirm
+```
+
+### Bulk import users
+
+Prepare a JSON file:
+
+```json
+{
+  "version": "1.0",
+  "users": [
+    {"email": "a@uni.edu", "name": "User A", "user_type": "creator", "enabled": true},
+    {"email": "b@uni.edu", "name": "User B", "user_type": "creator", "enabled": true}
+  ]
+}
+```
+
+Validate first with `--dry-run`:
+
+```bash
+lamb user bulk-import users.json --dry-run
+```
+
+Then execute the import:
+
+```bash
+lamb user bulk-import users.json
+```
+
+## 13. Prompt Templates
+
+Prompt templates let you save and reuse system prompts and prompt structures across assistants.
+
+### List your templates
+
+```bash
+lamb template list
+```
+
+With pagination:
+
+```bash
+lamb template list --limit 10 --offset 20
+```
+
+### List shared templates
+
+See templates shared by others in your organization:
+
+```bash
+lamb template list-shared
+```
+
+### Get template details
+
+```bash
+lamb template get <template-id>
+```
+
+### Create a template
+
+```bash
+lamb template create "Socratic Tutor" \
+  --description "Ask guiding questions instead of giving answers" \
+  --system-prompt "You are a Socratic tutor. Never give direct answers." \
+  --prompt-template "Student question: {{question}}"
+```
+
+Share it with your organization immediately:
+
+```bash
+lamb template create "Essay Feedback" --shared \
+  --system-prompt "Provide structured writing feedback."
+```
+
+### Update a template
+
+```bash
+lamb template update <template-id> --name "Improved Tutor"
+lamb template update <template-id> --system-prompt "Updated instructions..."
+```
+
+### Duplicate a template
+
+Copy an existing template (yours or shared):
+
+```bash
+lamb template duplicate <template-id>
+lamb template duplicate <template-id> --new-name "My Copy"
+```
+
+### Share a template
+
+```bash
+lamb template share <template-id> --enable
+lamb template share <template-id> --disable
+```
+
+### Export templates
+
+Export one or more templates as JSON:
+
+```bash
+# To stdout
+lamb template export 1 2 3
+
+# To a file
+lamb template export 1 2 3 -f templates-backup.json
+```
+
+### Delete a template
+
+```bash
+lamb template delete <template-id> --confirm
+```
+
+## 14. Assistant Analytics
+
+View chat analytics and usage statistics for your assistants.
+
+### List chats
+
+```bash
+lamb analytics chats <assistant-id>
+```
+
+Filter by user, content, or date range:
+
+```bash
+lamb analytics chats <assistant-id> \
+  --user-id u123 \
+  --search "algorithm" \
+  --start-date 2024-01-01 \
+  --end-date 2024-01-31
+```
+
+### View chat detail
+
+See the full message history of a chat:
+
+```bash
+lamb analytics chat-detail <assistant-id> <chat-id>
+```
+
+### Usage statistics
+
+Get aggregate stats for an assistant:
+
+```bash
+lamb analytics stats <assistant-id>
+```
+
+With a date range:
+
+```bash
+lamb analytics stats <assistant-id> --start-date 2024-01-01 --end-date 2024-01-31
+```
+
+### Activity timeline
+
+See chat activity over time:
+
+```bash
+lamb analytics timeline <assistant-id>
+lamb analytics timeline <assistant-id> --period week
+lamb analytics timeline <assistant-id> --period month --start-date 2024-01-01
+```
+
+## 15. Chat
+
+Chat with a learning assistant directly from the terminal.
+
+### Single message
+
+```bash
+lamb chat <assistant-id> --message "What is Big-O notation?"
+```
+
+The response streams to stdout in real time.
+
+### Interactive mode
+
+Run without `--message` for a REPL:
+
+```bash
+lamb chat <assistant-id>
+```
+
+Type messages and see responses. Type `/quit` to exit.
+
+### Continue a conversation
+
+Use `--chat-id` to continue a previous chat:
+
+```bash
+lamb chat <assistant-id> --chat-id <chat-id> --message "Tell me more"
+```
+
+### Disable chat persistence
+
+By default, chat history is saved on the server. To disable:
+
+```bash
+lamb chat <assistant-id> --message "Quick question" --no-persist
+```
+
+### Pipe mode
+
+Pipe text from another command:
+
+```bash
+echo "Explain this code" | lamb chat <assistant-id>
+cat essay.txt | lamb chat <assistant-id>
+```

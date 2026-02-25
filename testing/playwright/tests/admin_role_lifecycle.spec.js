@@ -71,7 +71,7 @@ test.describe.serial("Admin Role Lifecycle (issue #245)", () => {
     await expect(emailInput).toBeVisible({ timeout: 5_000 });
 
     // Wait for org dropdown to finish loading
-    const orgSelect = modal.getByRole("combobox", { name: /organization/i });
+    const orgSelect = modal.locator("select#organization");
     await expect(orgSelect).toBeVisible({ timeout: 10_000 });
     await expect(
       page.getByText(/loading organizations/i)

@@ -122,3 +122,10 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 ## Version Bumping
 
 Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `node frontend/svelte-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
+
+## Git commits 
+
+* DO NOT include authoriship information in commits (No Co-authored-By, signed-off-by , or similar)
+* Commit messages should be concise and descriptive without aditional metadata.
+* Include the Issue ID in commit messages like #{issue number} 
+ 

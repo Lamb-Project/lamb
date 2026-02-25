@@ -51,21 +51,31 @@ class UserCreatorManager:
                     "data": None
                 }
             
-            # Update password using OWI manager directly
-            success = self.owi_user_manager.update_user_password(email, new_password)
-            
-            if success:
-                return {
-                    "success": True,
-                    "message": "Password updated successfully",
-                    "error": None
-                }
-            else:
+            # Update password in LAMB (primary) and OWI (mirror)
+            from lamb import auth as lamb_auth
+
+            # LAMB primary: hash and store in Creator_users
+            new_hash = lamb_auth.hash_password(new_password)
+            lamb_success = db_manager.update_creator_user_password_hash(email, new_hash)
+
+            if not lamb_success:
                 return {
                     "success": False,
                     "error": "Failed to update password",
                     "data": None
                 }
+
+            # OWI mirror (best-effort, non-fatal)
+            try:
+                self.owi_user_manager.update_user_password(email, new_password)
+            except Exception as owi_err:
+                logger.warning(f"OWI password mirror failed for {email} (non-fatal): {owi_err}")
+
+            return {
+                "success": True,
+                "message": "Password updated successfully",
+                "error": None
+            }
                     
         except Exception as e:
             import traceback
@@ -100,24 +110,21 @@ class UserCreatorManager:
             
             if user_id is None:
                 return {"success": False, "error": "User already exists"}
-            
-            # If role needs to be set to admin, update the OWI user role
+
+            # If role needs to be set to admin, update in LAMB primary + OWI mirror
             if role == "admin":
-                # Get the OWI user and update their role
-                owi_user = self.owi_user_manager.get_user_by_email(email)
-                if owi_user:
-                    success = self.owi_user_manager.update_user_role(owi_user['id'], 'admin')
-                    if not success:
-                        logger.warning(f"User created but failed to set admin role for {email}")
-                        return {
-                            "success": True, 
-                            "warning": "User created but failed to set admin role",
-                            "error": None,
-                            "user_id": user_id
-                        }
-                else:
-                    logger.warning(f"User created but OWI user not found for {email}")
-            
+                from lamb.database_manager import LambDatabaseManager
+                db_mgr = LambDatabaseManager()
+                db_mgr.update_creator_user_role(email, "admin")
+
+                # OWI mirror (best-effort)
+                try:
+                    owi_user = self.owi_user_manager.get_user_by_email(email)
+                    if owi_user:
+                        self.owi_user_manager.update_user_role(owi_user['id'], 'admin')
+                except Exception as owi_err:
+                    logger.warning(f"OWI role mirror failed for {email}: {owi_err}")
+
             return {"success": True, "error": None, "user_id": user_id}
             
         except ValueError as e:
@@ -213,47 +220,27 @@ class UserCreatorManager:
     
     async def list_all_creator_users(self) -> Dict[str, Any]:
         """
-        Get a list of all creator users using service layer and enrich with OWI role information
-        
+        Get a list of all creator users using service layer.
+        Role now comes from LAMB DB (no OWI lookup needed).
+
         Returns:
             Dict[str, Any]: Response containing list of users or error information
         """
         try:
-            # Get creator users from service
+            # Get creator users from service (role is included from LAMB DB)
             creator_users = self.creator_user_service.list_users()
-            
+
             if creator_users is None:
                 return {"success": False, "error": "Failed to retrieve users", "data": None}
-            
-            logger.debug(f"Raw creator users from service: {creator_users}")
-            
-            # Enrich with OWI role information using manager directly
-            for user in creator_users:
-                try:
-                    # Get OWI user info to determine role
-                    owi_user = self.owi_user_manager.get_user_by_email(user['email'])
-                    
-                    if owi_user:
-                        user['role'] = owi_user.get('role', 'user')
-                        user['owi_id'] = owi_user.get('id', None)
-                        logger.debug(f"Found OWI user with role '{user['role']}' and ID '{user['owi_id']}' for email {user['email']}")
-                    else:
-                        user['role'] = 'user'
-                        user['owi_id'] = None
-                        logger.debug(f"No OWI user found for email {user['email']}, using default role 'user'")
-                except Exception as e:
-                    user['role'] = 'user'
-                    user['owi_id'] = None
-                    logger.error(f"Error fetching OWI role for user {user['email']}: {e}")
-            
-            logger.debug(f"Users list with roles being returned: {creator_users}")
-            
+
+            logger.debug(f"Users list being returned: {creator_users}")
+
             return {
                 "success": True,
                 "data": creator_users,
                 "error": None
             }
-            
+
         except ValueError as e:
             logger.error(f"Error listing creator users: {str(e)}")
             return {"success": False, "error": str(e), "data": None}

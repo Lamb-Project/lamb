@@ -10,6 +10,7 @@ import requests
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
+from lamb.auth_context import AuthContext, get_optional_auth_context
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -23,7 +24,7 @@ db_manager = LambDatabaseManager()
 
 @router.get("/list")
 async def list_processors_and_connectors(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    auth: Optional[AuthContext] = Depends(get_optional_auth_context)
 ):
     """
     List available Prompt Processors, Connectors, and RAG processors with their supported features
@@ -38,18 +39,10 @@ async def list_processors_and_connectors(
     connectors = load_plugins('connectors')
     rag_processors = load_plugins('rag')
     
-    # Determine assistant_owner (user email) from credentials for organization-aware model lists
-    assistant_owner = None
-    if credentials:
-        try:
-            from lamb.owi_bridge.owi_users import OwiUserManager
-            user_manager = OwiUserManager()
-            owi_user = user_manager.get_user_auth(credentials.credentials)
-            if owi_user:
-                assistant_owner = owi_user.get('email')
-                logger.info(f"Fetching capabilities for user: {assistant_owner}")
-        except Exception as e:
-            logger.warning(f"Could not resolve user from token for capabilities: {e}")
+    # Determine assistant_owner (user email) from AuthContext for organization-aware model lists
+    assistant_owner = auth.user['email'] if auth else None
+    if assistant_owner:
+        logger.info(f"Fetching capabilities for user: {assistant_owner}")
     
     # Get available LLMs for each connector (organization-aware if assistant_owner is set)
     connector_info = {}
@@ -293,6 +286,39 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
     plugins = {}
     plugin_dir = os.path.join(os.path.dirname(__file__), plugin_type)
+
+    def _is_plugin_enabled(module_name: str) -> bool:
+        """
+        Temporary plugin governance for connectors/rag via env vars.
+        Accepted values:
+        - DISABLE -> plugin disabled
+        - ENABLE -> plugin enabled
+        Any other value falls back to ENABLE.
+        """
+        if plugin_type not in {"connectors", "rag"}:
+            return True
+
+        env_var_name = f"PLUGIN_{module_name.upper()}"
+        env_value = os.getenv(env_var_name, "ENABLE").upper().strip()
+
+        if env_value == "DISABLE":
+            logger.info(
+                "Skipping %s plugin '%s' via %s=DISABLE",
+                plugin_type,
+                module_name,
+                env_var_name
+            )
+            return False
+
+        if env_value != "ENABLE":
+            logger.warning(
+                "Unknown %s value '%s' for %s. Supported values: ENABLE|DISABLE. Treating as ENABLE.",
+                env_var_name,
+                env_value,
+                module_name
+            )
+
+        return True
     
     # Get all .py files in the directory
     plugin_files = glob.glob(os.path.join(plugin_dir, "*.py"))
@@ -302,6 +328,9 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
             continue
             
         module_name = os.path.basename(plugin_file)[:-3]  # Remove .py
+        if not _is_plugin_enabled(module_name):
+            continue
+
         try:
             module = importlib.import_module(f"lamb.completions.{plugin_type}.{module_name}")
             if plugin_type == 'pps' and hasattr(module, 'prompt_processor'):
