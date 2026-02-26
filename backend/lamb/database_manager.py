@@ -1733,7 +1733,50 @@ class LambDatabaseManager:
                     logger.error("Cannot delete system organization")
                     return False
 
-                # Delete organization (cascade will handle related records)
+                # Explicitly delete related records in dependency order before
+                # deleting the organization.  Several child tables reference
+                # LAMB_organizations without ON DELETE CASCADE, so the DELETE
+                # below would raise a FOREIGN KEY constraint error without
+                # these explicit cleanups.
+
+                # 1. usage_logs references organizations, assistants and users –
+                #    must be deleted first so later steps can remove assistants/users.
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}usage_logs
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 2. lti_activities (child tables lti_activity_assistants and
+                #    lti_activity_users carry ON DELETE CASCADE so they follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}lti_activities
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 3. assistants (assistant_publish, assistant_shares and
+                #    lamb_chats all carry ON DELETE CASCADE and follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 4. Creator_users (organization_roles, lti_identity_links,
+                #    kb_registry, prompt_templates and bulk_import_logs all
+                #    carry ON DELETE CASCADE / SET NULL and follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}Creator_users
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 5. collections
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}collections
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 6. Delete organization itself (remaining FK children such as
+                #    organization_roles, rubrics, prompt_templates, kb_registry,
+                #    bulk_import_logs and lti_creator_keys carry ON DELETE CASCADE).
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
