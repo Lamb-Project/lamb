@@ -19,8 +19,13 @@ from typing import Any, Dict, List, Optional
 import json
 import logging
 import os
+from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
+
+# Load Moodle credentials from the .env file in this directory
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=False)
 
 from lamb.lamb_classes import Assistant
 
