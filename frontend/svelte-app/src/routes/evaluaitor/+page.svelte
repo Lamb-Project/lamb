@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { page } from '$app/stores';
-  import { user } from '$lib/stores/userStore';
   import { _, locale } from '$lib/i18n';
   import RubricsList from '$lib/components/evaluaitor/RubricsList.svelte';
   import RubricForm from '$lib/components/evaluaitor/RubricForm.svelte';
@@ -21,12 +20,7 @@
   /** @type {Function|null} */
   let unsubscribePage = null;
 
-  // Redirect to login if not authenticated
-  $effect(() => {
-    if (!$user.isLoggedIn) {
-      window.location.href = '/';
-    }
-  });
+  // Auth is handled by layout-level guard in +layout.svelte
 
   // Handle rubric creation success
   function handleRubricCreated(event) {

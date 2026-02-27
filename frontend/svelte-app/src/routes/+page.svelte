@@ -44,7 +44,7 @@
 		try {
 			isLoadingProfile = true;
 			profileError = null;
-			profileData = await getMyProfile($user.token);
+			profileData = await getMyProfile();
 		} catch (error) {
 			console.error('Error loading profile:', error);
 			profileError = error instanceof Error ? error.message : 'Failed to load profile';

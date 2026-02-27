@@ -166,9 +166,18 @@ static/
 data/
 Documentation/test-scripts/package-lock.json
 testing/package-lock.json
-testing/playwright/test-results/.last-run.json
+test-results/
+.last-run.json
 backend/static/cache
 docker-compose.yaml
+
+#OPENCODE
+.opencode/                # Carpeta de skills y caché local
+opencode.json             # Tu configuración con paths absolutos
+.env                      # SIEMPRE ignora esto (aquí van las API keys)
+AGENTS.md                 # Tu archivo de contexto (si quieres que sea privado)
+CONTEXT.md
+
 
 
 ./clinerules
