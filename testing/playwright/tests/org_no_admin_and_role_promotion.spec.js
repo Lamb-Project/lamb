@@ -37,18 +37,31 @@ const { test, expect } = require("@playwright/test");
  */
 
 test.describe.serial("Organization Without Admin & Role Promotion (issue #249)", () => {
-  const timestamp = Date.now();
+  // Variables initialized in beforeAll to ensure consistency across retries
+  let timestamp;
+  let noAdminOrgSlug;
+  let noAdminOrgName;
+  let testUserEmail;
+  let testUserName;
+  let testUserPassword;
+  let promoOrgSlug;
+  let promoOrgName;
 
-  // Test data for org without admin
-  const noAdminOrgSlug = `no-admin-org-${timestamp}`;
-  const noAdminOrgName = `No Admin Org ${timestamp}`;
+  test.beforeAll(async () => {
+    // Generate timestamp once to ensure all tests use consistent data
+    timestamp = Date.now();
 
-  // Test data for user/org used in promotion tests
-  const testUserEmail = `promo_user_${timestamp}@test.com`;
-  const testUserName = `Promo User ${timestamp}`;
-  const testUserPassword = "TestPromo_249!";
-  const promoOrgSlug = `promo-org-${timestamp}`;
-  const promoOrgName = `Promo Org ${timestamp}`;
+    // Test data for org without admin
+    noAdminOrgSlug = `no-admin-org-${timestamp}`;
+    noAdminOrgName = `No Admin Org ${timestamp}`;
+
+    // Test data for user/org used in promotion tests
+    testUserEmail = `promo_user_${timestamp}@test.com`;
+    testUserName = `Promo User ${timestamp}`;
+    testUserPassword = "TestPromo_249!";
+    promoOrgSlug = `promo-org-${timestamp}`;
+    promoOrgName = `Promo Org ${timestamp}`;
+  });
 
   // ============================================
   // PART 1: Create organization without admin
