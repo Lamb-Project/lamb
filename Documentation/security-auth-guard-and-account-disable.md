@@ -548,61 +548,6 @@ async def create_lti_user(request: Request, auth: AuthContext = Depends(get_auth
 
 ## 4. Frontend Navigation Interception
 
-### Problem: Navigation Bypass Window
-
-Even with request interception, disabled users could navigate between routes (e.g., `/admin` → `/assistants` → `/knowledgebases`) for up to 60 seconds before the polling mechanism detected their disabled status. During this window:
-- UI fully renders (tabs, navigation, forms)
-- User can click around and explore the interface
-- Only API calls fail (but user sees the UI first)
-
-### Solution: Pre-Navigation Session Validation
-
-**File: `frontend/svelte-app/src/routes/+layout.svelte`**
-
-Added `beforeNavigate` hook that validates session **before allowing route changes**:
-
-```svelte
-<script>
-    import { beforeNavigate } from '$app/navigation';
-    import { checkSession } from '$lib/utils/sessionGuard';
-
-    // Intercept navigation: verify user is still enabled before allowing route changes
-    beforeNavigate(async (navigation) => {
-        if (!browser || !$user.isLoggedIn) return;
-        
-        // Allow navigation to root (logout page)
-        const targetPath = navigation.to?.url.pathname.replace(base, '') || '/';
-        if (targetPath === '/') return;
-        
-        // Check session before allowing navigation
-        const isValid = await checkSession();
-        if (!isValid) {
-            // Session is invalid (user disabled/deleted) - cancel navigation
-            // checkSession() already handled logout and redirect
-            navigation.cancel();
-        }
-    });
-</script>
-```
-
-**Behavior:**
-1. User clicks link or navigates to new route
-2. `beforeNavigate` intercepts the navigation
-3. `checkSession()` makes quick API call to validate token
-4. Backend checks `enabled` status
-5. If disabled/deleted:
-   - Navigation is **cancelled** (user stays on current page)
-   - `checkSession()` triggers logout
-   - User redirected to login
-6. If valid:
-   - Navigation proceeds normally
-
-**Result:**
-- ✅ Disabled users cannot navigate **at all**
-- ✅ No ~60 second window of UI exploration
-- ✅ Immediate feedback (user sees they're logged out)
-
----
 
 ## 5. Disabled Account Detection (Frontend)
 
@@ -808,31 +753,11 @@ import { authenticatedFetch } from '$lib/utils/apiClient';
 // BEFORE: Manual token handling, no disabled account detection
 export async function disableUser(token, userId) {
     const response = await fetch(getApiUrl(`/admin/users/${userId}/disable`), {
-        method: 'PUT', (Enhanced - 2026-02-13)
-
-**File: `frontend/svelte-app/src/routes/+layout.svelte`**
-
-```svelte
-<script>
-    import { onDestroy } from 'svelte';
-    import { beforeNavigate } from '$app/navigation';
-    import { startSessionPolling, stopSessionPolling, checkSession } from '$lib/utils/sessionGuard';
-
-    // Intercept navigation: verify user is still enabled before allowing route changes
-    beforeNavigate(async (navigation) => {
-        if (!browser || !$user.isLoggedIn) return;
-        
-        // Allow navigation to root (logout page)
-        const targetPath = navigation.to?.url.pathname.replace(base, '') || '/';
-        if (targetPath === '/') return;
-        
-        // Check session before allowing navigation
-        const isValid = await checkSession();
-        if (!isValid) {
-            // Session is invalid - cancel navigation and force logout
-            navigation.cancel();
-        }
-    })
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    // Manual error checking needed...
+    return await response.json();
 }
 
 // AFTER: Automatic token + disabled account detection
@@ -869,6 +794,60 @@ export async function disableUser(userId) {
     });
 </script>
 ```
+
+## Automatic Auth Coverage (Feb 2026)
+
+All API calls in the frontend now have automatic disabled-account detection, via two complementary mechanisms that share the same detection logic (`handleApiResponse`):
+
+### Path 1 — `fetch`-based services: `authenticatedFetch` wrapper
+
+Services that use the native `fetch` API call `authenticatedFetch()` from `apiClient.js` instead of calling `fetch()` directly. The wrapper:
+- Adds the `Authorization` header automatically
+- Calls `handleApiResponse(response)` on every response before returning
+
+**Currently using this path:** `adminService.js`, specific calls in `authService.js`
+
+### Path 2 — `axios`-based services: Global interceptor
+
+A global axios interceptor registered in `apiClient.js` (on app startup, via `+layout.svelte`) covers all services using axios with **zero changes to those service files**:
+
+```javascript
+// REQUEST interceptor — auto-injects token
+axios.interceptors.request.use(config => {
+    config.headers.set('Authorization', `Bearer ${token}`);
+    return config;
+});
+
+// RESPONSE interceptor — detects disabled/deleted/expired accounts
+axios.interceptors.response.use(
+    response => response,   // 2xx: zero-cost pass-through
+    async error => {
+        if (error.response) await handleApiResponse(adapted);
+        return Promise.reject(error);   // still propagates to service .catch()
+    }
+);
+```
+
+**Currently using this path:** `assistantService.js`, `knowledgeBaseService.js`, `templateService.js`, `analyticsService.js`
+
+### Detection convergence point
+
+Both paths funnel into the same `handleApiResponse()`:
+
+```
+fetch call  →  authenticatedFetch()  ─┐
+                                       ├→  handleApiResponse()  →  forceLogout()
+axios call  →  response interceptor  ─┘
+```
+
+### Future Unification (Optional)
+
+The two-path approach is a pragmatic solution that avoids rewriting all service files. A future refactoring could unify to a single HTTP mechanism:
+
+- **Option A — All to axios:** Move `authenticatedFetch` consumers to axios (interceptor covers everything, `authenticatedFetch` can be removed)
+- **Option B — All to fetch:** Rewrite all axios services to use `authenticatedFetch` (removes the axios dependency entirely)
+
+Either option would require migrating the manual `localStorage.getItem('userToken')` calls still present in some axios services, since the interceptor already handles token injection centrally.
 
 ---
 
@@ -1244,7 +1223,6 @@ Timeline: Admin disables user account at T=0
 ```
 Scenario: Admin disables user account
 ├─ Active user (clicking): ✅ Detected immediately via authenticatedFetch
-├─ Navigating user: ✅ Detected immediately via beforeNavigate
 └─ IDLE user (just reading): ❌ NEVER detected without polling
     - User can read sensitive information indefinitely
     - Can take screenshots of confidential data
@@ -1257,7 +1235,7 @@ Scenario: Admin disables user account
 
 **Polling Configuration:**
 - Interval: 60 seconds per user
-- Endpoint: `GET /user/profile` (lightweight, ~500 bytes response)
+- Endpoint: `GET /user/status` (lightweight, ~15 bytes response)
 - Type: Simple database query (user exists + enabled check)
 
 **Load by Scale:**
@@ -1618,13 +1596,13 @@ const response = await authenticatedFetch(apiUrl, {
 
 ### Why This Was Missed Initially
 
-The password change action is **pure JavaScript** - it doesn't trigger navigation, so the `beforeNavigate` hook doesn't catch it. The previous implementation relied solely on per-endpoint backend validation, but the password endpoint had a shortcut in its auth check.
+The password change action is **pure JavaScript**. The previous implementation relied solely on per-endpoint backend validation, but the password endpoint had a shortcut in its auth check.
 
 ### Complete Protection Now
 
 | Action | Frontend Protection | Backend Protection | Result |
 |--------|-------------------|-------------------|---------|
-| Navigate routes | `beforeNavigate` + `authenticatedFetch` | `get_creator_user_from_token()` | ✅ Blocked |
+| Navigate routes | `authenticatedFetch` | `get_creator_user_from_token()` | ✅ Blocked |
 | API calls (assistants, KB, etc.) | `authenticatedFetch` | `get_creator_user_from_token()` | ✅ Blocked |
 | MCP completions | `authenticatedFetch` | `get_current_user_email()` | ✅ Blocked |
 | Password change | `authenticatedFetch` (**NEW**) | `get_creator_user_from_token()` (**FIXED**) | ✅ Blocked |

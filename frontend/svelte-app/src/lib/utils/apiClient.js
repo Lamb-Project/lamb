@@ -45,7 +45,7 @@ function getAuthToken() {
  */
 export async function authenticatedFetch(url, options = {}) {
 	const token = getAuthToken();
-	
+
 	if (!token) {
 		throw new Error('No authentication token available');
 	}
@@ -104,11 +104,11 @@ export async function authenticatedFetch(url, options = {}) {
  */
 export async function authenticatedFetchJson(url, options = {}) {
 	const response = await authenticatedFetch(url, options);
-	
+
 	if (!response.ok) {
 		const errorText = await response.text();
 		let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-		
+
 		try {
 			const errorJson = JSON.parse(errorText);
 			errorMessage = errorJson.detail || errorJson.message || errorMessage;
@@ -116,9 +116,60 @@ export async function authenticatedFetchJson(url, options = {}) {
 			// Not JSON, use text
 			if (errorText) errorMessage = errorText;
 		}
-		
+
 		throw new Error(errorMessage);
 	}
-	
+
 	return await response.json();
 }
+
+// =============================================================================
+// Global Axios interceptors
+//
+// These register once when apiClient.js is first imported (in +layout.svelte).
+// Because axios is a singleton, these intercept every axios call in the app —
+// no changes needed in individual service files.
+// =============================================================================
+
+import axios from 'axios';
+
+/**
+ * REQUEST interceptor: automatically inject the Authorization header.
+ * Services no longer need to read the token from localStorage manually.
+ */
+axios.interceptors.request.use(config => {
+	const token = getAuthToken();
+	if (token) {
+		// Use the existing headers object (AxiosHeaders instance) or let axios handle default
+		config.headers.set('Authorization', `Bearer ${token}`);
+	}
+	return config;
+});
+
+/**
+ * RESPONSE interceptor: detect disabled / deleted / expired accounts.
+ *
+ * Axios only calls the error handler for non-2xx responses, so the success
+ * path (response => response) is a true zero-cost pass-through.
+ *
+ * We wrap the axios error.response so that handleApiResponse can call
+ * .headers.get() exactly as it would on a native fetch Response.
+ */
+axios.interceptors.response.use(
+	response => response,
+	async error => {
+		if (error.response) {
+			// Adapt axios response headers (plain object) to the fetch-style .get() API
+			const adapted = {
+				status: error.response.status,
+				headers: {
+					/** @param {string} name */
+					get: (name) => error.response.headers?.[name.toLowerCase()] ?? null
+				}
+			};
+			await handleApiResponse(adapted);
+		}
+		// Always re-reject so existing .catch() handlers in services still work
+		return Promise.reject(error);
+	}
+);

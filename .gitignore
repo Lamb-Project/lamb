@@ -166,7 +166,8 @@ static/
 data/
 Documentation/test-scripts/package-lock.json
 testing/package-lock.json
-testing/playwright/test-results/.last-run.json
+test-results/
+.last-run.json
 backend/static/cache
 docker-compose.yaml
 
