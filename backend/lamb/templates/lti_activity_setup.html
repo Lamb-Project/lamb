@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LAMB Activity Setup</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
     </style>
 </head>
+
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-2xl w-full p-8">
         <div class="flex items-center gap-3 mb-6">
@@ -24,6 +28,25 @@
         <form id="setupForm" method="POST" action="/lamb/v1/lti/configure">
             <input type="hidden" name="token" value="{{ token }}">
 
+            <!-- Step 0: Activity Type Selection -->
+            <div id="activityTypeStep" class="mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-3">Activity Type</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for mod in modules %}
+                    <label
+                        class="flex items-start gap-3 p-4 border rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all {% if loop.first %}border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-opacity-50{% endif %} module-card"
+                        data-module="{{ mod.name }}">
+                        <input type="radio" name="activity_type" value="{{ mod.name }}"
+                            class="mt-1 text-blue-600 activity-radio" {% if loop.first %}checked{% endif %} required>
+                        <div>
+                            <span class="font-medium text-gray-900 block mb-1">{{ mod.display_name }}</span>
+                            <span class="text-sm text-gray-500">{{ mod.description }}</span>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
             <!-- Step 1: Organization Selection (only if multiple orgs) -->
             {% if needs_org_selection %}
             <div id="orgStep" class="mb-6">
@@ -33,11 +56,15 @@
                     <span class="text-amber-600 font-medium">This cannot be changed later.</span>
                 </p>
                 {% for org_id, assistants in orgs_with_assistants.items() %}
-                <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-blue-50 transition-colors">
-                    <input type="radio" name="organization_id" value="{{ org_id }}" class="org-radio text-blue-600" required>
+                <label
+                    class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-blue-50 transition-colors">
+                    <input type="radio" name="organization_id" value="{{ org_id }}" class="org-radio text-blue-600"
+                        required>
                     <div>
-                        <span class="font-medium text-gray-900">{{ org_names.get(org_id, 'Organization ' ~ org_id) }}</span>
-                        <span class="text-sm text-gray-500 ml-2">({{ assistants|length }} published assistant{{ 's' if assistants|length != 1 else '' }})</span>
+                        <span class="font-medium text-gray-900">{{ org_names.get(org_id, 'Organization ' ~ org_id)
+                            }}</span>
+                        <span class="text-sm text-gray-500 ml-2">({{ assistants|length }} published assistant{{ 's' if
+                            assistants|length != 1 else '' }})</span>
                     </div>
                 </label>
                 {% endfor %}
@@ -59,12 +86,15 @@
                     {% if not needs_org_selection %}
                     {% for org_id, assistants in orgs_with_assistants.items() %}
                     {% for a in assistants %}
-                    <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
-                        <input type="checkbox" name="assistant_ids" value="{{ a.id }}" class="mt-1 text-blue-600 rounded">
+                    <label
+                        class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                        <input type="checkbox" name="assistant_ids" value="{{ a.id }}"
+                            class="mt-1 text-blue-600 rounded">
                         <div>
                             <span class="font-medium text-gray-900">{{ a.name }}</span>
                             {% if a.access_type == 'shared' %}
-                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">shared</span>
+                            <span
+                                class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">shared</span>
                             {% endif %}
                             <p class="text-sm text-gray-500">by {{ a.owner }}</p>
                         </div>
@@ -75,27 +105,24 @@
                 </div>
 
                 {% if needs_org_selection %}
-                <p id="noOrgSelected" class="text-sm text-gray-400 italic">Select an organization above to see available assistants.</p>
+                <p id="noOrgSelected" class="text-sm text-gray-400 italic">Select an organization above to see available
+                    assistants.</p>
                 {% endif %}
             </div>
 
             <!-- Options -->
             <div id="optionsStep" class="{% if needs_org_selection %}hidden{% endif %} mb-6">
                 <h2 class="text-lg font-semibold text-gray-800 mb-3">Options</h2>
-                <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
-                    <input type="checkbox" name="chat_visibility_enabled" value="1" class="mt-1 text-blue-600 rounded">
-                    <div>
-                        <span class="font-medium text-gray-900">Allow instructors to review anonymized chat transcripts</span>
-                        <p class="text-sm text-gray-500 mt-0.5">Students will be notified and must accept before using the tool. Chat content is always anonymized — student identities are never revealed.</p>
-                    </div>
-                </label>
+                <div id="dynamicFieldsContainer" class="space-y-3">
+                    <!-- Javascript will render fields here -->
+                </div>
             </div>
 
             <!-- Submit -->
             <div class="flex justify-end">
                 <button type="submit" id="submitBtn"
-                        class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled>
+                    class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
                     Save &amp; Launch
                 </button>
             </div>
@@ -103,13 +130,66 @@
     </div>
 
     <script>
-        const orgsData = {{ orgs_json | safe }};
+        const orgsData = {{ orgs_json | tojson | safe }};
+        const modulesData = {{ modules_json | tojson | safe }};
         const needsOrgSelection = {{ 'true' if needs_org_selection else 'false' }};
         const assistantList = document.getElementById('assistantList');
         const assistantStep = document.getElementById('assistantStep');
         const noOrgSelected = document.getElementById('noOrgSelected');
         const optionsStep = document.getElementById('optionsStep');
         const submitBtn = document.getElementById('submitBtn');
+
+        function renderOptions() {
+            const selectedActivity = document.querySelector('input[name="activity_type"]:checked')?.value;
+            const fields = modulesData[selectedActivity] || [];
+            const container = document.getElementById('dynamicFieldsContainer');
+
+            if (fields.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-500 italic">No extra options needed for this activity type.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            fields.forEach(f => {
+                if (f.type === 'checkbox') {
+                    // Quick map for chat visibility text since it's hardcoded for chat right now
+                    const desc = f.name === 'chat_visibility_enabled' ? 'Students will be notified and must accept before using the tool. Chat content is always anonymized — student identities are never revealed.' : '';
+                    container.innerHTML += `
+                        <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors">
+                            <input type="checkbox" name="${f.name}" value="1" class="mt-1 text-blue-600 rounded">
+                            <div>
+                                <span class="font-medium text-gray-900">${f.label}</span>
+                                ${desc ? `<p class="text-sm text-gray-500 mt-0.5">${desc}</p>` : ''}
+                            </div>
+                        </label>
+                    `;
+                } else if (f.type === 'select') {
+                    // Basic select implementation
+                    let optionsHtml = (f.options || []).map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('');
+                    container.innerHTML += `
+                        <div class="p-3 border rounded-lg">
+                            <label class="block font-medium text-gray-900 mb-1">${f.label}</label>
+                            <select name="${f.name}" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // Module selection styles and logic
+        document.querySelectorAll('.activity-radio').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.querySelectorAll('.module-card').forEach(card => {
+                    card.classList.remove('border-blue-500', 'bg-blue-50', 'ring-2', 'ring-blue-500', 'ring-opacity-50');
+                    if (card.dataset.module === e.target.value) {
+                        card.classList.add('border-blue-500', 'bg-blue-50', 'ring-2', 'ring-blue-500', 'ring-opacity-50');
+                    }
+                });
+                renderOptions();
+            });
+        });
 
         function renderAssistants(orgId) {
             const assistants = orgsData[orgId] || [];
@@ -160,7 +240,9 @@
         });
 
         // Initial state
+        renderOptions();
         updateSubmitState();
     </script>
 </body>
+
 </html>

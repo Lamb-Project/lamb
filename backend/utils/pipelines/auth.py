@@ -1,3 +1,21 @@
+"""
+DEPRECATED (2026-02-17): This module is no longer used in the codebase.
+
+All authentication now goes through lamb.auth_context.AuthContext for centralized
+validation including the 'enabled' field check.
+
+Migration guide:
+- For crypto functions (hash_password, create_token): Use lamb/auth.py
+- For authentication dependencies: Use lamb/auth_context.py (get_auth_context)
+- For enabled/deleted user checks: Handled automatically by AuthContext
+
+This file is kept for backward compatibility with external integrations (if any).
+DO NOT use get_current_active_user() in new code - it duplicates logic that
+AuthContext already provides.
+
+Last usage removed: 2026-02-17 (lti_users_router.py migrated to AuthContext)
+"""
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import HTTPException, status, Depends
 

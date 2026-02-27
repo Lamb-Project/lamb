@@ -5,6 +5,7 @@
     import { base } from '$app/paths';
     import axios from 'axios';
     import { user } from '$lib/stores/userStore';
+    import { authenticatedFetch } from '$lib/utils/apiClient';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
@@ -947,12 +948,9 @@
         bulkActionError = null;
         
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-            
-            const result = await adminService.disableUsersBulk(token, selectedUsers);
+           
+            //here was the token that  was deprecated in favor of using the adminService which already handles authentication internally, so we can remove the token retrieval and just call the service method directly
+            const result = await adminService.disableUsersBulk(selectedUsers);
             
             if (result.success) {
                 console.log(`Bulk disable: ${result.disabled} users disabled`);
@@ -1124,24 +1122,23 @@
         isChangingPassword = true;
 
         try {
-            const token = getAuthToken();
-            if (!token) {
-                throw new Error('Authentication token not found. Please log in again.');
-            }
-
             const apiUrl = getApiUrl(`/org-admin/users/${passwordChangeData.user_id}/password`);
             console.log(`Changing password for user ${passwordChangeData.user_email} at: ${apiUrl}`);
 
-            const response = await axios.post(apiUrl, {
-                new_password: passwordChangeData.new_password
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+            const response = await authenticatedFetch(apiUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                    new_password: passwordChangeData.new_password
+                })
             });
 
-            console.log('Change password response:', response.data);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to change password');
+            }
+
+            const data = await response.json();
+            console.log('Change password response:', data);
 
             changePasswordSuccess = true;
             // Wait 1.5 seconds to show success message, then close modal
@@ -1153,9 +1150,7 @@
             console.error('Error changing password:', err);
 
             let errorMessage = 'Failed to change password.';
-            if (axios.isAxiosError(err) && err.response?.data?.detail) {
-                errorMessage = err.response.data.detail;
-            } else if (err instanceof Error) {
+            if (err instanceof Error) {
                 errorMessage = err.message;
             }
 
@@ -2161,10 +2156,10 @@
             userData = userState;
         });
 
-        // Check if user is logged in
+        // Auth is handled by layout-level guard in +layout.svelte
+        // Additional check for early mount race condition
         if (!userData || !userData.isLoggedIn) {
-            console.log("User not logged in, redirecting to login");
-            goto(`${base}/auth`, { replaceState: true });
+            console.log("User not logged in, layout guard will handle redirect");
             return;
         }
 

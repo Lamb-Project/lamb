@@ -114,6 +114,37 @@ class PluginRegistry:
     
     _ingest_plugins: Dict[str, Type[IngestPlugin]] = {}
     _query_plugins: Dict[str, Type['QueryPlugin']] = {}
+    _ingest_plugin_modes: Dict[str, str] = {}
+    _query_plugin_modes: Dict[str, str] = {}
+    _ALLOWED_ENV_MODES = {"DISABLE", "SIMPLIFIED", "ADVANCED", "ENABLE"}
+    _SIMPLIFIED_INGEST_ESSENTIAL_PARAMS = {"url", "urls", "video_url", "language"}
+    _SIMPLIFIED_QUERY_ESSENTIAL_PARAMS = {"top_k", "threshold"}
+
+    @classmethod
+    def _param_has_non_null_default(cls, param_spec: Dict[str, Any]) -> bool:
+        """Whether a parameter explicitly defines a non-null default value."""
+        if not isinstance(param_spec, dict):
+            return False
+        return "default" in param_spec and param_spec.get("default") is not None
+
+    @classmethod
+    def _filter_simplified_public_params(
+        cls,
+        params: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        In SIMPLIFIED mode, hide parameters that already have a default value.
+        Keep only parameters that truly require user input.
+        """
+        filtered: Dict[str, Dict[str, Any]] = {}
+        for name, spec in (params or {}).items():
+            if not isinstance(spec, dict):
+                filtered[name] = spec
+                continue
+            if cls._param_has_non_null_default(spec):
+                continue
+            filtered[name] = spec
+        return filtered
     
     @classmethod
     def register(cls, plugin_class: Type[Union[IngestPlugin, 'QueryPlugin']]) -> Type[Union[IngestPlugin, 'QueryPlugin']]:
@@ -127,7 +158,17 @@ class PluginRegistry:
         """
 
         env_var_name = f"PLUGIN_{plugin_class.name.upper()}"
-        env_var_value = os.getenv(env_var_name, "ENABLE").upper()
+        env_var_value = os.getenv(env_var_name, "ADVANCED").upper().strip()
+        if env_var_value not in cls._ALLOWED_ENV_MODES:
+            logger.warning(
+                "Invalid value for %s=%s. Supported values: DISABLE, SIMPLIFIED, ADVANCED (ENABLE alias supported). Falling back to ADVANCED.",
+                env_var_name,
+                env_var_value
+            )
+            env_var_value = "ADVANCED"
+        if env_var_value == "ENABLE":
+            env_var_value = "ADVANCED"
+
         logger.debug("Checking %s=%s", env_var_name, env_var_value)
         if env_var_value == "DISABLE":
             logger.info("Plugin %s disabled via %s=DISABLE", plugin_class.name, env_var_name)
@@ -136,9 +177,11 @@ class PluginRegistry:
         if issubclass(plugin_class, IngestPlugin):
             plugin_name = plugin_class.name
             cls._ingest_plugins[plugin_name] = plugin_class
+            cls._ingest_plugin_modes[plugin_name] = env_var_value
         elif issubclass(plugin_class, QueryPlugin):
             plugin_name = plugin_class.name
             cls._query_plugins[plugin_name] = plugin_class
+            cls._query_plugin_modes[plugin_name] = env_var_value
         else:
             raise TypeError(f"{plugin_class.__name__} is not a supported plugin type")
         
@@ -196,16 +239,24 @@ class PluginRegistry:
         Returns:
             List of plugin metadata
         """
-        return [
-            {
-                "name": plugin_class.name,
-                "description": plugin_class.description,
-                "kind": plugin_class.kind,
-                "supported_file_types": list(plugin_class.supported_file_types),
-                "parameters": plugin_class().get_parameters()
-            }
-            for plugin_class in cls._ingest_plugins.values()
-        ]
+        plugin_list: List[Dict[str, Any]] = []
+        for plugin_class in cls._ingest_plugins.values():
+            mode = cls.get_ingest_plugin_mode(plugin_class.name)
+            params = plugin_class().get_parameters()
+            if mode == "SIMPLIFIED":
+                params = cls._filter_simplified_public_params(params)
+
+            plugin_list.append(
+                {
+                    "name": plugin_class.name,
+                    "description": plugin_class.description,
+                    "kind": plugin_class.kind,
+                    "mode": mode,
+                    "supported_file_types": list(plugin_class.supported_file_types),
+                    "parameters": params,
+                }
+            )
+        return plugin_list
     
     @classmethod
     def list_query_plugins(cls) -> List[Dict[str, Any]]:
@@ -214,14 +265,104 @@ class PluginRegistry:
         Returns:
             List of plugin metadata
         """
-        return [
-            {
-                "name": plugin_class.name,
-                "description": plugin_class.description,
-                "parameters": plugin_class().get_parameters()
-            }
-            for plugin_class in cls._query_plugins.values()
-        ]
+        plugin_list: List[Dict[str, Any]] = []
+        for plugin_class in cls._query_plugins.values():
+            mode = cls.get_query_plugin_mode(plugin_class.name)
+            params = plugin_class().get_parameters()
+            if mode == "SIMPLIFIED":
+                params = cls._filter_simplified_public_params(params)
+
+            plugin_list.append(
+                {
+                    "name": plugin_class.name,
+                    "description": plugin_class.description,
+                    "mode": mode,
+                    "parameters": params,
+                }
+            )
+        return plugin_list
+
+    @classmethod
+    def get_ingest_plugin_mode(cls, name: str) -> str:
+        """Get configured mode for an ingestion plugin."""
+        return cls._ingest_plugin_modes.get(name, "ADVANCED")
+
+    @classmethod
+    def get_query_plugin_mode(cls, name: str) -> str:
+        """Get configured mode for a query plugin."""
+        return cls._query_plugin_modes.get(name, "ADVANCED")
+
+    @classmethod
+    def sanitize_ingest_params(cls, plugin_name: str, plugin_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize ingestion plugin params based on configured plugin mode.
+        In SIMPLIFIED mode, only essential and required parameters are kept.
+        """
+        plugin_class = cls.get_ingest_plugin(plugin_name)
+        if not plugin_class:
+            return plugin_params
+
+        mode = cls.get_ingest_plugin_mode(plugin_name)
+        if mode != "SIMPLIFIED":
+            return plugin_params
+
+        safe_params = dict(plugin_params or {})
+        plugin_schema = plugin_class().get_parameters()
+        required_params = {
+            key for key, spec in plugin_schema.items()
+            if isinstance(spec, dict) and spec.get("required")
+        }
+        no_default_params = {
+            key for key, spec in plugin_schema.items()
+            if isinstance(spec, dict) and not cls._param_has_non_null_default(spec)
+        }
+        allowed_params = required_params.union(no_default_params).union(cls._SIMPLIFIED_INGEST_ESSENTIAL_PARAMS)
+
+        filtered = {k: v for k, v in safe_params.items() if k in allowed_params}
+        removed = sorted(set(safe_params.keys()) - set(filtered.keys()))
+        if removed:
+            logger.info(
+                "Plugin %s in SIMPLIFIED mode removed advanced params: %s",
+                plugin_name,
+                ", ".join(removed)
+            )
+        return filtered
+
+    @classmethod
+    def sanitize_query_params(cls, plugin_name: str, plugin_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize query plugin params based on configured plugin mode.
+        In SIMPLIFIED mode, only essential and required parameters are kept.
+        """
+        plugin_class = cls.get_query_plugin(plugin_name)
+        if not plugin_class:
+            return plugin_params
+
+        mode = cls.get_query_plugin_mode(plugin_name)
+        if mode != "SIMPLIFIED":
+            return plugin_params
+
+        safe_params = dict(plugin_params or {})
+        plugin_schema = plugin_class().get_parameters()
+        required_params = {
+            key for key, spec in plugin_schema.items()
+            if isinstance(spec, dict) and spec.get("required")
+        }
+        no_default_params = {
+            key for key, spec in plugin_schema.items()
+            if isinstance(spec, dict) and not cls._param_has_non_null_default(spec)
+        }
+        allowed_params = required_params.union(no_default_params).union(cls._SIMPLIFIED_QUERY_ESSENTIAL_PARAMS)
+
+        filtered = {k: v for k, v in safe_params.items() if k in allowed_params}
+        removed = sorted(set(safe_params.keys()) - set(filtered.keys()))
+        if removed:
+            logger.info(
+                "Plugin %s in SIMPLIFIED mode removed advanced params: %s",
+                plugin_name,
+                ", ".join(removed)
+            )
+        return filtered
     
     @classmethod
     def get_plugin_for_file_type(cls, file_extension: str) -> List[Type[IngestPlugin]]:
