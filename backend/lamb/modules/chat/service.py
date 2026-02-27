@@ -5,8 +5,9 @@ import os
 
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
-from lamb.owi_bridge.owi_groups import OwiGroupManager
-from lamb.owi_bridge.owi_database import OwiDatabaseManager, OWIModel
+from lamb.owi_bridge.owi_group import OwiGroupManager
+from lamb.owi_bridge.owi_database import OwiDatabaseManager
+from lamb.owi_bridge.owi_model import OWIModel
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="CHAT_MODULE_SERVICE")
