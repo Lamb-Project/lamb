@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+backend/.env
+backend/tests/
+
+frontend/
+docs/
+
+*.log
+*.md

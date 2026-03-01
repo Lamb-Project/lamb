@@ -116,7 +116,7 @@ Status legend:
 | ID | Phase | Task | Status | Notes |
 |---|---|---|---|---|
 | P1 | Dockerfiles | Create `backend/Dockerfile` multi-stage (build frontend + run backend) | DONE | Added `backend/Dockerfile` + root `.dockerignore` |
-| P2 | Dockerfiles | Create/harden KB production Dockerfile | TODO | Deterministic deps |
+| P2 | Dockerfiles | Create/harden KB production Dockerfile | DONE | Hardened `lamb-kb-server-stable/Dockerfile` + KB `.dockerignore` |
 | P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | TODO | Image-based only |
 | P4 | Compose | Add named volumes and healthchecks | TODO | No source mounts |
 | P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | TODO | Temporary migration aid |
@@ -197,6 +197,7 @@ The new architecture is considered ready when:
 |---|---|---|
 | 2026-03-01 | LAMB Team | Initial plan draft |
 | 2026-03-01 | LAMB Team | Completed P1 with multi-stage `backend/Dockerfile` |
+| 2026-03-01 | LAMB Team | Completed P2 with hardened KB production Dockerfile |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
 | 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
