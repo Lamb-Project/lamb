@@ -86,6 +86,24 @@ Access rules:
 - Keep env explicit and minimal for production
 - Preserve backward-compatible env behavior where possible during transition
 
+### Frontend Runtime Config Strategy
+
+To preserve current deployment flexibility (`frontend/svelte-app/static/config.js` customization),
+the new production image will generate `config.js` at container startup from environment variables.
+
+- Implement a startup entrypoint script in the `lamb` container that writes runtime `config.js`.
+- Do not patch compiled JS bundles; only generate/overwrite `config.js`.
+- Keep defaults so local development still works when env vars are not set.
+- Keep current file-based customization available as a fallback during migration.
+
+Planned frontend runtime env vars:
+
+- `LAMB_FRONTEND_BASE_URL` (example: `/creator` or `https://lamb.example.com/creator`)
+- `LAMB_FRONTEND_LAMB_SERVER` (example: `https://lamb.example.com`)
+- `LAMB_FRONTEND_OPENWEBUI_SERVER` (example: `https://owi.example.com`)
+- `LAMB_ENABLE_OPENWEBUI` (default: `true`)
+- `LAMB_ENABLE_DEBUG` (default: `false` in production)
+
 ## Implementation Phases and Task Status
 
 Status legend:
@@ -105,9 +123,11 @@ Status legend:
 | P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | TODO | Production overlay |
 | P7 | Backend | Support stable frontend path inside container | TODO | Decouple from `../frontend/build` assumptions |
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | `OWI_PATH`, `LAMB_DB_PATH`, host URLs |
+| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Runtime config without image rebuild |
+| P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | `LAMB_FRONTEND_*` + feature flags |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | TODO | Buildx + cache + tags |
 | P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
-| P11 | Docs | Create deployment guide for new compose stack | TODO | Install/upgrade/migrate |
+| P11 | Docs | Create deployment guide for new compose stack | TODO | Install/upgrade/migrate + runtime frontend env config |
 | P12 | Docs | Add migration notes from current compose | TODO | Volumes, env vars, service rename |
 | P13 | Validation | Cold-start benchmark and restart behavior validation | TODO | No runtime builds |
 | P14 | Validation | Upgrade validation (`pull && up -d`) | TODO | Confirm no rebuild required |
@@ -179,3 +199,4 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Completed P1 with multi-stage `backend/Dockerfile` |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
+| 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
