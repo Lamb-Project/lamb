@@ -134,7 +134,7 @@ Status legend:
 | P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | DONE | Added image-only compose with single root `.env` model |
 | P4 | Compose | Add named volumes and healthchecks | DONE | Named volumes added; healthchecks pending per-image (partially covered in Dockerfiles) |
 | P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | CANCELLED | Not needed for new deployment path |
-| P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | TODO | Production overlay |
+| P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | DONE | Added `docker-compose.next.prod.yaml` + `Caddyfile.next` |
 | P7 | Backend | Support stable frontend path inside container | TODO | Decouple from `../frontend/build` assumptions |
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | `OWI_PATH`, `LAMB_DB_PATH`, host URLs |
 | P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Runtime config without image rebuild |
@@ -240,6 +240,18 @@ Resulting deployment modes:
 - Binary/compose-only: `docker compose -f docker-compose.next.yaml --env-file .env up -d`
 - Source-build overlay (optional): `docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml --env-file .env up -d`
 
+## P6 Production Overlay Notes
+
+Optional production overlay has been added:
+
+- `docker-compose.next.prod.yaml` provides a Caddy TLS/reverse-proxy service.
+- `Caddyfile.next` routes to new service names (`lamb`, `kb`, `openwebui`) and supports env-based host/domain configuration.
+- Overlay uses these env vars from root `.env`: `CADDY_EMAIL`, `LAMB_PUBLIC_HOST`, `OWI_PUBLIC_HOST`.
+
+Production run command:
+
+- `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml --env-file .env up -d`
+
 ## Migration Strategy for Existing Deployments
 
 Backward compatibility for old compose service names is no longer planned in the new stack.
@@ -284,6 +296,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Completed P4 base volume model in `docker-compose.next.yaml` |
 | 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
+| 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
 | 2026-03-01 | LAMB Team | Cancelled P5 alias task and defined migration-by-volume strategy for legacy deployments |
