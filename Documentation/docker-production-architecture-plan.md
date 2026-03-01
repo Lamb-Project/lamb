@@ -148,7 +148,7 @@ Status legend:
 | P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Deferred to avoid backend code changes in this phase |
 | P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | Deferred with P8a until backend/runtime changes are allowed |
 | P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
-| P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | TODO | Buildx + cache + tags |
+| P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | DONE | Added `.github/workflows/build-images.yml` (includes `openwebui`) |
 | P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
 | P11 | Docs | Create deployment guide for new compose stack | TODO | Install/upgrade/migrate + runtime frontend env config |
 | P12 | Docs | Add migration notes from current compose | TODO | Volumes, env vars, service rename |
@@ -268,6 +268,21 @@ P7/P8/P8a/P8b were intentionally deferred to avoid backend runtime code modifica
 - Compose enforces a subset of required variables for current backend expectations.
 - Future work will implement runtime defaults and optional `.env` behavior under P8c and related tasks.
 
+## P9 CI/CD Notes
+
+Added GitHub Actions workflow at `.github/workflows/build-images.yml` to build and publish Docker images to GHCR.
+
+- Triggered on push to `main`, version tags (`v*`), and manual dispatch.
+- Publishes:
+  - `ghcr.io/lamb-project/lamb`
+  - `ghcr.io/lamb-project/lamb-kb`
+  - `ghcr.io/lamb-project/openwebui`
+- Tag strategy currently implemented:
+  - `edge` on `main`
+  - `latest` on semver-like tags (`v*`)
+  - git tag ref + `sha-<shortsha>` tags
+- Uses Buildx + GHA cache (`cache-from/cache-to`) for faster rebuilds.
+
 ## Migration Strategy for Existing Deployments
 
 Backward compatibility for old compose service names is no longer planned in the new stack.
@@ -314,6 +329,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
 | 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
 | 2026-03-01 | LAMB Team | Deferred P7/P8/P8a/P8b to avoid backend code changes in current iteration |
+| 2026-03-01 | LAMB Team | Completed P9 with GHCR image build/publish workflow for `lamb`, `lamb-kb`, and `openwebui` |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
 | 2026-03-01 | LAMB Team | Marked critical env vars as required in compose for current backend compatibility |
