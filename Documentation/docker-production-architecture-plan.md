@@ -90,6 +90,15 @@ Access rules:
 - Keep env explicit and minimal for production
 - Preserve backward-compatible env behavior where possible during transition
 
+### Deployment Requirement: Optional `.env`
+
+For `docker-compose.next.yaml`, `.env` must be optional.
+
+- Users should be able to deploy with only the compose file(s) and no `.env` file.
+- Images must include safe runtime defaults so services start without extra configuration.
+- `.env` should be used only to override defaults (tokens, domains, provider keys, ports, feature toggles).
+- Compose defaults are acceptable during migration, but target state is image-backed defaults (app config and/or entrypoint) to reduce compose coupling.
+
 ### Frontend Runtime Config Strategy
 
 To preserve current deployment flexibility (`frontend/svelte-app/static/config.js` customization),
@@ -129,6 +138,7 @@ Status legend:
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | `OWI_PATH`, `LAMB_DB_PATH`, host URLs |
 | P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Runtime config without image rebuild |
 | P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | `LAMB_FRONTEND_*` + feature flags |
+| P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | TODO | Buildx + cache + tags |
 | P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
 | P11 | Docs | Create deployment guide for new compose stack | TODO | Install/upgrade/migrate + runtime frontend env config |
@@ -143,7 +153,9 @@ To keep deployment simple, `.env.next.example` now documents a unified root `.en
 
 - Variable descriptions are aligned with existing `backend/.env.example` and `lamb-kb-server-stable/backend/.env.example` semantics.
 - `docker-compose.next.yaml` maps key backend and KB runtime variables explicitly via `${VAR:-default}` so users can deploy with a single `.env` file.
-- Goal: users only need the compose file(s) and one `.env` to deploy, without maintaining separate per-service env files.
+- Goal: users only need the compose file(s) to deploy; `.env` is optional and used to override defaults.
+- Current state: most defaults are expressed in compose interpolation.
+- Target state: defaults move into image runtime config (entrypoint/app defaults), with compose primarily passing overrides.
 
 ## P1 Validation Notes
 
@@ -237,6 +249,7 @@ The new architecture is considered ready when:
 - Service healthchecks reflect real readiness
 - Existing users are not broken (parallel rollout maintained)
 - Documentation is complete for install, upgrade, and migration
+- `docker-compose.next.yaml` works without `.env` file (optional overrides only)
 
 ## Risks and Mitigations
 
@@ -259,6 +272,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
+| 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
 | 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |
