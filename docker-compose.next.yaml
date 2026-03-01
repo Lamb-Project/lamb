@@ -4,26 +4,29 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${LAMB_PORT:-9099}
-      OWI_BASE_URL: ${OWI_BASE_URL:-http://openwebui:8080}
+      OWI_BASE_URL: ${OWI_BASE_URL?Set OWI_BASE_URL}
       OWI_PUBLIC_BASE_URL: ${OWI_PUBLIC_BASE_URL:-http://localhost:8080}
-      OWI_PATH: ${OWI_PATH:-/data/openwebui}
-      LAMB_DB_PATH: ${LAMB_DB_PATH:-/data/lamb}
+      OWI_PATH: ${OWI_PATH?Set OWI_PATH}
+      LAMB_DB_PATH: ${LAMB_DB_PATH?Set LAMB_DB_PATH}
       LAMB_KB_SERVER: ${LAMB_KB_SERVER:-http://kb:9090}
-      LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST:-http://localhost:9099}
-      LAMB_WEB_HOST: ${LAMB_WEB_HOST:-http://localhost:9099}
-      LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN:-0p3n-w3bu!}
+      LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST?Set LAMB_BACKEND_HOST}
+      LAMB_WEB_HOST: ${LAMB_WEB_HOST?Set LAMB_WEB_HOST}
+      LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN?Set LAMB_BEARER_TOKEN}
       LAMB_KB_SERVER_TOKEN: ${LAMB_KB_SERVER_TOKEN:-0p3n-w3bu!}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL?Set OPENAI_BASE_URL}
+      OPENAI_MODEL: ${OPENAI_MODEL?Set OPENAI_MODEL}
       OPENAI_MODELS: ${OPENAI_MODELS:-gpt-4o-mini,gpt-4o}
       SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
-      SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY:-pepino-secret-key}
+      SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY?Set SIGNUP_SECRET_KEY}
       LTI_SECRET: ${LTI_SECRET:-lamb-lti-secret-key-2024}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-nomic-embed-text}
       DEV_MODE: ${DEV_MODE:-false}
       GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-WARNING}
+      OWI_ADMIN_NAME: ${OWI_ADMIN_NAME?Set OWI_ADMIN_NAME}
+      OWI_ADMIN_EMAIL: ${OWI_ADMIN_EMAIL?Set OWI_ADMIN_EMAIL}
+      OWI_ADMIN_PASSWORD: ${OWI_ADMIN_PASSWORD?Set OWI_ADMIN_PASSWORD}
     ports:
       - "9099:9099"
     volumes:

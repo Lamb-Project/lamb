@@ -99,6 +99,14 @@ For `docker-compose.next.yaml`, `.env` must be optional.
 - `.env` should be used only to override defaults (tokens, domains, provider keys, ports, feature toggles).
 - Compose defaults are acceptable during migration, but target state is image-backed defaults (app config and/or entrypoint) to reduce compose coupling.
 
+### Current Constraint (No backend/ code changes)
+
+Current iteration avoids modifying `backend/` runtime code.
+
+- Some variables are intentionally required in `docker-compose.next.yaml` (`${VAR?error}`) to match current backend expectations.
+- `.env.next.example` documents these required variables explicitly.
+- Future phase (`P8c`) should move these defaults into image/app runtime so `.env` becomes optional.
+
 ### Frontend Runtime Config Strategy
 
 To preserve current deployment flexibility (`frontend/svelte-app/static/config.js` customization),
@@ -135,10 +143,10 @@ Status legend:
 | P4 | Compose | Add named volumes and healthchecks | DONE | Named volumes added; healthchecks pending per-image (partially covered in Dockerfiles) |
 | P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | CANCELLED | Not needed for new deployment path |
 | P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | DONE | Added `docker-compose.next.prod.yaml` + `Caddyfile.next` |
-| P7 | Backend | Support stable frontend path inside container | TODO | Decouple from `../frontend/build` assumptions |
-| P8 | Backend | Validate env defaults/requirements for container mode | TODO | `OWI_PATH`, `LAMB_DB_PATH`, host URLs |
-| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Runtime config without image rebuild |
-| P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | `LAMB_FRONTEND_*` + feature flags |
+| P7 | Backend | Support stable frontend path inside container | TODO | Deferred to avoid backend code changes in this phase |
+| P8 | Backend | Validate env defaults/requirements for container mode | TODO | Keep key vars required via compose until backend defaults phase |
+| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Deferred to avoid backend code changes in this phase |
+| P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | Deferred with P8a until backend/runtime changes are allowed |
 | P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | TODO | Buildx + cache + tags |
 | P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
@@ -155,8 +163,8 @@ To keep deployment simple, `.env.next.example` now documents a unified root `.en
 - Variable descriptions are aligned with existing `backend/.env.example` and `lamb-kb-server-stable/backend/.env.example` semantics.
 - `docker-compose.next.yaml` maps key backend and KB runtime variables explicitly via `${VAR:-default}` so users can deploy with a single `.env` file.
 - Goal: users only need the compose file(s) to deploy; `.env` is optional and used to override defaults.
-- Current state: most defaults are expressed in compose interpolation.
-- Target state: defaults move into image runtime config (entrypoint/app defaults), with compose primarily passing overrides.
+- Current state: mixed model; many values have defaults, but a subset is intentionally required to avoid backend code changes.
+- Target state: defaults move into image runtime config (entrypoint/app defaults), with compose primarily passing overrides and `.env` becoming optional.
 
 ## P1 Validation Notes
 
@@ -252,6 +260,14 @@ Production run command:
 
 - `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml --env-file .env up -d`
 
+## Deferred Runtime Defaults Notes
+
+P7/P8/P8a/P8b were intentionally deferred to avoid backend runtime code modifications in this phase.
+
+- No new backend entrypoint/runtime config generation was introduced.
+- Compose enforces a subset of required variables for current backend expectations.
+- Future work will implement runtime defaults and optional `.env` behavior under P8c and related tasks.
+
 ## Migration Strategy for Existing Deployments
 
 Backward compatibility for old compose service names is no longer planned in the new stack.
@@ -297,8 +313,10 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
 | 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
+| 2026-03-01 | LAMB Team | Deferred P7/P8/P8a/P8b to avoid backend code changes in current iteration |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
+| 2026-03-01 | LAMB Team | Marked critical env vars as required in compose for current backend compatibility |
 | 2026-03-01 | LAMB Team | Cancelled P5 alias task and defined migration-by-volume strategy for legacy deployments |
 | 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
