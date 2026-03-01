@@ -125,6 +125,7 @@ Status legend:
 - `IN_PROGRESS`
 - `BLOCKED`
 - `DONE`
+- `CANCELLED`
 
 | ID | Phase | Task | Status | Notes |
 |---|---|---|---|---|
@@ -132,7 +133,7 @@ Status legend:
 | P2 | Dockerfiles | Create/harden KB production Dockerfile | DONE | Hardened `lamb-kb-server-stable/Dockerfile` + KB `.dockerignore` |
 | P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | DONE | Added image-only compose with single root `.env` model |
 | P4 | Compose | Add named volumes and healthchecks | DONE | Named volumes added; healthchecks pending per-image (partially covered in Dockerfiles) |
-| P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | TODO | Temporary migration aid |
+| P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | CANCELLED | Not needed for new deployment path |
 | P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | TODO | Production overlay |
 | P7 | Backend | Support stable frontend path inside container | TODO | Decouple from `../frontend/build` assumptions |
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | `OWI_PATH`, `LAMB_DB_PATH`, host URLs |
@@ -239,6 +240,18 @@ Resulting deployment modes:
 - Binary/compose-only: `docker compose -f docker-compose.next.yaml --env-file .env up -d`
 - Source-build overlay (optional): `docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml --env-file .env up -d`
 
+## Migration Strategy for Existing Deployments
+
+Backward compatibility for old compose service names is no longer planned in the new stack.
+
+- No `backend` alias is required in `docker-compose.next.yaml`.
+- Migration focus is data continuity: map existing SQLite and service data into the new named volumes.
+- Key migration paths:
+  - LAMB DB (`lamb_v4.db`) -> `lamb-data`
+  - Open WebUI data directory (`webui.db` and vector/cache data) -> `openwebui-data`
+  - KB database/vector data -> `kb-data`
+- P12 documentation must include explicit copy/mount instructions for these paths.
+
 ## Acceptance Criteria
 
 The new architecture is considered ready when:
@@ -273,6 +286,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
+| 2026-03-01 | LAMB Team | Cancelled P5 alias task and defined migration-by-volume strategy for legacy deployments |
 | 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |
