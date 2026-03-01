@@ -171,6 +171,36 @@ Optimization ideas for later phases:
 - Pin or constrain high-backtracking dependency groups to reduce resolver time.
 - Revisit heavy packages that are not required in all production deployments.
 
+## P2 Validation Notes
+
+`lamb-kb-server-stable/Dockerfile` builds successfully after hardening and rename from `Dockerfile.server`.
+
+- Rename note: `Dockerfile.server` did not appear to be used in the main root deployment path (`docker-compose.yaml`), so we renamed it to the canonical `Dockerfile` to make the production image path explicit and reduce ambiguity.
+- Runtime now starts with `uvicorn` (no `reload=True`) and includes container healthcheck (`/health`).
+- Build is deterministic through wheel building/install flow, but still very heavy.
+- No blocking build errors were found during P2 validation.
+
+## KB Image Size and Build Time Analysis (P2)
+
+Observed image size for `lamb-kb-p2-test` is approximately 12.82 GB.
+
+Main reasons this image is large and slow to build:
+
+- Heavy ML stack from KB requirements, especially `sentence-transformers` and transitive `torch` dependencies.
+- CUDA-enabled Torch dependency chain pulls many large `nvidia-*` wheels (`nvidia-cudnn-cu12`, `nvidia-cublas-cu12`, `nvidia-cusparse-cu12`, `nvidia-nccl-cu12`, etc.).
+- Additional large packages (`onnxruntime`, `chromadb`, `transformers`, `scipy`, `scikit-learn`, `pandas`, `numpy`) increase wheel download/install time.
+
+Important layer-level observation from image history:
+
+- The runtime contains a large `COPY /wheels` layer (~4.38 GB) plus the installed Python packages layer (~8.3 GB), which makes total image size significantly larger.
+
+Optimization ideas for later phases:
+
+- Prefer CPU-only `torch` builds for default deployments unless GPU support is explicitly required.
+- Split KB requirements into minimal/core vs optional extras (GPU, advanced document parsing, cloud integrations).
+- Rework wheel install flow to avoid persisting a large intermediate wheels layer in runtime image.
+- Pin heavy dependency families and evaluate alternatives for large optional integrations.
+
 ## Acceptance Criteria
 
 The new architecture is considered ready when:
@@ -198,6 +228,8 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Initial plan draft |
 | 2026-03-01 | LAMB Team | Completed P1 with multi-stage `backend/Dockerfile` |
 | 2026-03-01 | LAMB Team | Completed P2 with hardened KB production Dockerfile |
+| 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
+| 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
 | 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
