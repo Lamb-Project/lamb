@@ -98,6 +98,12 @@ All variables below are configurable via shell env or a root `.env` file.
 | `OWI_ADMIN_NAME` | `lamb` | none | **Yes** | Open WebUI bootstrap admin name required by backend config. |
 | `OWI_ADMIN_EMAIL` | `lamb` | none | **Yes** | Open WebUI bootstrap admin email required by backend config. |
 | `OWI_ADMIN_PASSWORD` | `lamb` | none | **Yes** | Open WebUI bootstrap admin password required by backend config. |
+| `LAMB_FRONTEND_BUILD_PATH` | `lamb` | `/app/frontend/build` | No | Path where startup entrypoint writes runtime `config.js`. |
+| `LAMB_FRONTEND_BASE_URL` | `lamb` | `/creator` | No | Frontend runtime `config.js` value for API base URL. |
+| `LAMB_FRONTEND_LAMB_SERVER` | `lamb` | falls back to `LAMB_WEB_HOST` | No | Frontend runtime `config.js` value for LAMB server URL. |
+| `LAMB_FRONTEND_OPENWEBUI_SERVER` | `lamb` | falls back to `OWI_PUBLIC_BASE_URL` | No | Frontend runtime `config.js` value for Open WebUI URL. |
+| `LAMB_ENABLE_OPENWEBUI` | `lamb` | `true` | No | Frontend runtime feature flag for Open WebUI integration. |
+| `LAMB_ENABLE_DEBUG` | `lamb` | `false` | No | Frontend runtime debug flag in generated `config.js`. |
 | `KB_PORT` | `kb` | `9090` | No | Port exposed by KB service. |
 | `KB_HOME_URL` | `kb` | `http://localhost:9090` | No | Base URL used by KB for generated links. |
 | `LAMB_API_KEY` | `kb` | `0p3n-w3bu!` | No (should override in prod) | KB API auth key. |

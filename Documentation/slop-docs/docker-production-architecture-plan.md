@@ -145,7 +145,7 @@ Status legend:
 | P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | DONE | Added `docker-compose.next.prod.yaml` + `Caddyfile.next` |
 | P7 | Backend | Support stable frontend path inside container | TODO | Deferred to avoid backend code changes in this phase |
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | Keep key vars required via compose until backend defaults phase |
-| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | TODO | Deferred to avoid backend code changes in this phase |
+| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | DONE | Added `backend/docker-entrypoint.py` and Dockerfile `ENTRYPOINT` |
 | P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | Deferred with P8a until backend/runtime changes are allowed |
 | P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | DONE | Added `.github/workflows/build-images.yml` (includes `openwebui`) |
@@ -262,11 +262,26 @@ Production run command:
 
 ## Deferred Runtime Defaults Notes
 
-P7/P8/P8a/P8b were intentionally deferred to avoid backend runtime code modifications in this phase.
+P7/P8/P8b remain deferred to avoid broader backend runtime code modifications in this phase.
 
-- No new backend entrypoint/runtime config generation was introduced.
 - Compose enforces a subset of required variables for current backend expectations.
 - Future work will implement runtime defaults and optional `.env` behavior under P8c and related tasks.
+
+## P8a Frontend Runtime Config Notes
+
+Frontend runtime configuration is now generated at container startup.
+
+- Added `backend/docker-entrypoint.py` and wired it in `backend/Dockerfile` as container `ENTRYPOINT`.
+- Entrypoint generates `${LAMB_FRONTEND_BUILD_PATH}/config.js` from env vars before starting `uvicorn`.
+- Supported vars:
+  - `LAMB_FRONTEND_BUILD_PATH`
+  - `LAMB_FRONTEND_BASE_URL`
+  - `LAMB_FRONTEND_LAMB_SERVER`
+  - `LAMB_FRONTEND_OPENWEBUI_SERVER`
+  - `LAMB_ENABLE_OPENWEBUI`
+  - `LAMB_ENABLE_DEBUG`
+- `LAMB_FRONTEND_LAMB_SERVER` falls back to `LAMB_WEB_HOST`.
+- `LAMB_FRONTEND_OPENWEBUI_SERVER` falls back to `OWI_PUBLIC_BASE_URL`.
 
 ## P9 CI/CD Notes
 
@@ -329,6 +344,8 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
 | 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
 | 2026-03-01 | LAMB Team | Deferred P7/P8/P8a/P8b to avoid backend code changes in current iteration |
+| 2026-03-01 | LAMB Team | Completed P8a by adding backend entrypoint runtime generation of frontend `config.js` |
+| 2026-03-01 | LAMB Team | Switched entrypoint implementation to Python (`backend/docker-entrypoint.py`) for maintainability |
 | 2026-03-01 | LAMB Team | Completed P9 with GHCR image build/publish workflow for `lamb`, `lamb-kb`, and `openwebui` |
 | 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
@@ -339,3 +356,4 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
 | 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
+| 2026-03-01 | LAMB Team | Added Docker Next deployment guide with env variable reference tables |

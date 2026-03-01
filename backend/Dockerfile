@@ -31,9 +31,11 @@ RUN python -m pip install --no-cache-dir --upgrade pip && pip install --no-cache
 
 COPY backend/ ./
 COPY --from=frontend-build /frontend/build /app/frontend/build
+RUN chmod +x /app/backend/docker-entrypoint.py
 
 EXPOSE 9099
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 CMD curl --fail http://127.0.0.1:${PORT}/status || exit 1
 
+ENTRYPOINT ["python", "/app/backend/docker-entrypoint.py"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9099", "--forwarded-allow-ips", "*"]
