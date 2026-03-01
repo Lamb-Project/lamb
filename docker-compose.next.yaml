@@ -1,0 +1,73 @@
+services:
+  lamb:
+    image: ghcr.io/lamb-project/lamb:latest
+    restart: unless-stopped
+    environment:
+      PORT: ${LAMB_PORT:-9099}
+      OWI_BASE_URL: ${OWI_BASE_URL:-http://openwebui:8080}
+      OWI_PUBLIC_BASE_URL: ${OWI_PUBLIC_BASE_URL:-http://localhost:8080}
+      OWI_PATH: ${OWI_PATH:-/data/openwebui}
+      LAMB_DB_PATH: ${LAMB_DB_PATH:-/data/lamb}
+      LAMB_KB_SERVER: ${LAMB_KB_SERVER:-http://kb:9090}
+      LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST:-http://localhost:9099}
+      LAMB_WEB_HOST: ${LAMB_WEB_HOST:-http://localhost:9099}
+      LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN:-0p3n-w3bu!}
+      LAMB_KB_SERVER_TOKEN: ${LAMB_KB_SERVER_TOKEN:-0p3n-w3bu!}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_MODELS: ${OPENAI_MODELS:-gpt-4o-mini,gpt-4o}
+      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY:-pepino-secret-key}
+      LTI_SECRET: ${LTI_SECRET:-lamb-lti-secret-key-2024}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-nomic-embed-text}
+      DEV_MODE: ${DEV_MODE:-false}
+      GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-WARNING}
+    ports:
+      - "9099:9099"
+    volumes:
+      - lamb-data:/data/lamb
+      - openwebui-data:/data/openwebui:ro
+    depends_on:
+      - kb
+      - openwebui
+
+  kb:
+    image: ghcr.io/lamb-project/lamb-kb:latest
+    restart: unless-stopped
+    environment:
+      PORT: ${KB_PORT:-9090}
+      HOME_URL: ${KB_HOME_URL:-http://localhost:9090}
+      LAMB_API_KEY: ${LAMB_API_KEY:-0p3n-w3bu!}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-nomic-embed-text}
+      EMBEDDINGS_VENDOR: ${EMBEDDINGS_VENDOR:-ollama}
+      EMBEDDINGS_ENDPOINT: ${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434/api/embeddings}
+      EMBEDDINGS_APIKEY: ${EMBEDDINGS_APIKEY:-}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+    ports:
+      - "9090:9090"
+    volumes:
+      - kb-data:/app/backend/data
+      - kb-static:/app/backend/static
+
+  openwebui:
+    image: ghcr.io/lamb-project/openwebui:latest
+    restart: unless-stopped
+    environment:
+      PORT: ${OPENWEBUI_PORT:-8080}
+      WEBUI_AUTH_TRUSTED_EMAIL_HEADER: ${WEBUI_AUTH_TRUSTED_EMAIL_HEADER:-X-User-Email}
+      WEBUI_AUTH_TRUSTED_NAME_HEADER: ${WEBUI_AUTH_TRUSTED_NAME_HEADER:-X-User-Name}
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-user}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - openwebui-data:/app/backend/data
+
+volumes:
+  lamb-data:
+  kb-data:
+  kb-static:
+  openwebui-data:

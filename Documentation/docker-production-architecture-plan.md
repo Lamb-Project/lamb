@@ -21,7 +21,7 @@ Current root `docker-compose.yaml` is development-oriented and introduces produc
 
 - `lamb` (FastAPI backend + bundled Svelte frontend)
 - `kb` (LAMB knowledge base service)
-- `openwebui` (Open WebUI, upstream image)
+- `openwebui` (LAMB-managed Open WebUI image)
 - Optional: `caddy` (TLS reverse proxy, production overlay)
 
 ### Key Principles
@@ -42,9 +42,10 @@ To avoid breaking existing users, we will not replace current compose immediatel
 - `backend/Dockerfile` (new): multi-stage build, bundles Svelte frontend into backend image
 - `lamb-kb-server-stable/Dockerfile` (new or hardened): production KB image
 - `docker-compose.next.yaml` (new): new production-first architecture
+- `docker-compose.next.build.yaml` (new, optional): source-build overlay (currently used for local Open WebUI builds)
 - `docker-compose.next.prod.yaml` (new, optional): Caddy/TLS overlay
 - `.github/workflows/build-images.yml` (new): build/publish images to GHCR
-- `.env.next.example` (new): simplified container-oriented env template
+- `.env.next.example` (new): documented unified root env template for compose-only deployments
 - Documentation updates (new docs and migration notes)
 
 ### Existing Files (kept for now)
@@ -58,8 +59,11 @@ To avoid breaking existing users, we will not replace current compose immediatel
 
 - `ghcr.io/lamb-project/lamb` (backend + frontend bundled)
 - `ghcr.io/lamb-project/lamb-kb` (KB server)
-- Open WebUI from upstream:
-  - `ghcr.io/open-webui/open-webui:<pinned-tag-or-digest>`
+- `ghcr.io/lamb-project/openwebui` (LAMB-managed Open WebUI image)
+
+Optional local source-build path for Open WebUI:
+
+- Use `docker-compose.next.build.yaml` overlay to build from `./open-webui/Dockerfile` during local development/contributor workflows.
 
 ### Service Naming
 
@@ -117,8 +121,8 @@ Status legend:
 |---|---|---|---|---|
 | P1 | Dockerfiles | Create `backend/Dockerfile` multi-stage (build frontend + run backend) | DONE | Added `backend/Dockerfile` + root `.dockerignore` |
 | P2 | Dockerfiles | Create/harden KB production Dockerfile | DONE | Hardened `lamb-kb-server-stable/Dockerfile` + KB `.dockerignore` |
-| P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | TODO | Image-based only |
-| P4 | Compose | Add named volumes and healthchecks | TODO | No source mounts |
+| P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | DONE | Added image-only compose with single root `.env` model |
+| P4 | Compose | Add named volumes and healthchecks | DONE | Named volumes added; healthchecks pending per-image (partially covered in Dockerfiles) |
 | P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | TODO | Temporary migration aid |
 | P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | TODO | Production overlay |
 | P7 | Backend | Support stable frontend path inside container | TODO | Decouple from `../frontend/build` assumptions |
@@ -132,6 +136,14 @@ Status legend:
 | P13 | Validation | Cold-start benchmark and restart behavior validation | TODO | No runtime builds |
 | P14 | Validation | Upgrade validation (`pull && up -d`) | TODO | Confirm no rebuild required |
 | P15 | Cutover | Decide if/when root `docker-compose.yaml` is replaced | OPTIONAL | Final phase only |
+
+## Unified `.env` Documentation Notes
+
+To keep deployment simple, `.env.next.example` now documents a unified root `.env` model for `docker-compose.next.yaml`.
+
+- Variable descriptions are aligned with existing `backend/.env.example` and `lamb-kb-server-stable/backend/.env.example` semantics.
+- `docker-compose.next.yaml` maps key backend and KB runtime variables explicitly via `${VAR:-default}` so users can deploy with a single `.env` file.
+- Goal: users only need the compose file(s) and one `.env` to deploy, without maintaining separate per-service env files.
 
 ## P1 Validation Notes
 
@@ -201,6 +213,20 @@ Optimization ideas for later phases:
 - Rework wheel install flow to avoid persisting a large intermediate wheels layer in runtime image.
 - Pin heavy dependency families and evaluate alternatives for large optional integrations.
 
+## P3/P4 Compose Design Notes
+
+`docker-compose.next.yaml` is now aligned to compose-only deployment with a single root `.env` file.
+
+- Removed per-service `env_file` references to avoid requiring repository-specific `.env` files.
+- Runtime configuration is centralized in `environment:` using `${VAR:-default}` interpolation.
+- Default deployment path uses prebuilt images for all services (`lamb`, `kb`, `openwebui`).
+- Added `docker-compose.next.build.yaml` as an optional source-build overlay for Open WebUI (for contributors or custom image builds).
+
+Resulting deployment modes:
+
+- Binary/compose-only: `docker compose -f docker-compose.next.yaml --env-file .env up -d`
+- Source-build overlay (optional): `docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml --env-file .env up -d`
+
 ## Acceptance Criteria
 
 The new architecture is considered ready when:
@@ -228,6 +254,11 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Initial plan draft |
 | 2026-03-01 | LAMB Team | Completed P1 with multi-stage `backend/Dockerfile` |
 | 2026-03-01 | LAMB Team | Completed P2 with hardened KB production Dockerfile |
+| 2026-03-01 | LAMB Team | Completed P3 with new `docker-compose.next.yaml` and `.env.next.example` |
+| 2026-03-01 | LAMB Team | Completed P4 base volume model in `docker-compose.next.yaml` |
+| 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
+| 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
+| 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
 | 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
 | 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
 | 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |

@@ -1,0 +1,5 @@
+services:
+  openwebui:
+    build:
+      context: ./open-webui
+      dockerfile: Dockerfile
