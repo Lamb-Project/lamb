@@ -1,6 +1,6 @@
 services:
   lamb:
-    image: ghcr.io/lamb-project/lamb:latest
+    image: ghcr.io/xezpeleta/lamb:latest
     restart: unless-stopped
     environment:
       PORT: ${LAMB_PORT:-9099}
@@ -37,13 +37,13 @@ services:
       - "9099:9099"
     volumes:
       - lamb-data:/data/lamb
-      - openwebui-data:/data/openwebui:ro
+      - openwebui-data:/data/openwebui
     depends_on:
       - kb
       - openwebui
 
   kb:
-    image: ghcr.io/lamb-project/lamb-kb:latest
+    image: ghcr.io/xezpeleta/lamb-kb:latest
     restart: unless-stopped
     environment:
       PORT: ${KB_PORT:-9090}
@@ -62,7 +62,7 @@ services:
       - kb-static:/app/backend/static
 
   openwebui:
-    image: ghcr.io/lamb-project/openwebui:latest
+    image: ghcr.io/xezpeleta/openwebui:latest
     restart: unless-stopped
     environment:
       PORT: ${OPENWEBUI_PORT:-8080}

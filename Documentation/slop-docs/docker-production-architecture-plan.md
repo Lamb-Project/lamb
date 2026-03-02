@@ -81,7 +81,7 @@ Named volumes:
 Access rules:
 
 - `openwebui` mounts `openwebui-data` read-write
-- `lamb` mounts same volume read-only where needed for user sync
+- `lamb` mounts same volume read-write where needed for OWI user sync operations
 
 ## Environment Model
 
@@ -259,6 +259,19 @@ Optional production overlay has been added:
 Production run command:
 
 - `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml --env-file .env up -d`
+
+## Scenario 1 Validation Note (Localhost Quick Deploy)
+
+Observed in manual validation:
+
+- On first startup, `lamb` may attempt OWI auth calls before `openwebui` is fully ready, causing temporary `connection refused` and early login failures.
+- A retry after a short wait succeeds once `openwebui` is ready.
+
+Current handling:
+
+- Treat this as an expected startup race in quick local deploys.
+- Document retry guidance for first-login flow.
+- Consider health-gated dependency startup as future hardening (optional).
 
 ## Deferred Runtime Defaults Notes
 
