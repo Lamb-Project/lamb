@@ -286,6 +286,39 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
     plugins = {}
     plugin_dir = os.path.join(os.path.dirname(__file__), plugin_type)
+
+    def _is_plugin_enabled(module_name: str) -> bool:
+        """
+        Temporary plugin governance for connectors/rag via env vars.
+        Accepted values:
+        - DISABLE -> plugin disabled
+        - ENABLE -> plugin enabled
+        Any other value falls back to ENABLE.
+        """
+        if plugin_type not in {"connectors", "rag"}:
+            return True
+
+        env_var_name = f"PLUGIN_{module_name.upper()}"
+        env_value = os.getenv(env_var_name, "ENABLE").upper().strip()
+
+        if env_value == "DISABLE":
+            logger.info(
+                "Skipping %s plugin '%s' via %s=DISABLE",
+                plugin_type,
+                module_name,
+                env_var_name
+            )
+            return False
+
+        if env_value != "ENABLE":
+            logger.warning(
+                "Unknown %s value '%s' for %s. Supported values: ENABLE|DISABLE. Treating as ENABLE.",
+                env_var_name,
+                env_value,
+                module_name
+            )
+
+        return True
     
     # Get all .py files in the directory
     plugin_files = glob.glob(os.path.join(plugin_dir, "*.py"))
@@ -295,6 +328,9 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
             continue
             
         module_name = os.path.basename(plugin_file)[:-3]  # Remove .py
+        if not _is_plugin_enabled(module_name):
+            continue
+
         try:
             module = importlib.import_module(f"lamb.completions.{plugin_type}.{module_name}")
             if plugin_type == 'pps' and hasattr(module, 'prompt_processor'):

@@ -10,7 +10,7 @@ from typing import Dict, Any, Union, Callable
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction, OllamaEmbeddingFunction
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from .models import Base, Collection, Visibility
@@ -27,8 +27,26 @@ CHROMA_DB_PATH.mkdir(exist_ok=True)
 
 # Create SQLite engine
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={
-                       "check_same_thread": False})
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    pool_size=20,        # Increased from default 5 to support higher concurrency
+    max_overflow=30,     # Increased from default 10 to support 50+ concurrent requests
+    pool_pre_ping=True,  # Verify connections before using them
+    pool_recycle=3600    # Recycle connections after 1 hour
+)
+
+# Enable WAL mode for better concurrency
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    """Enable WAL mode and other optimizations for SQLite."""
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe
+    cursor.execute("PRAGMA cache_size=-64000")   # 64MB cache
+    cursor.execute("PRAGMA temp_store=MEMORY")   # Store temp tables in memory
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create ChromaDB client

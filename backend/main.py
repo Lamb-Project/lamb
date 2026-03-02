@@ -40,6 +40,10 @@ import traceback
 import random
 
 from config import API_KEY, PIPELINES_DIR
+import asyncio
+import re
+from datetime import datetime, timedelta
+from lamb.database_manager import LambDatabaseManager
 from creator_interface.main import router as creator_router, start_news_cache_refresh_loop, stop_news_cache_refresh_loop
 from lamb.logging_config import get_logger
 
@@ -50,16 +54,142 @@ multimodal_logger = get_logger('multimodal', component="MAIN")
 # Lifespan context manager for startup and shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events"""
+    """Handle startup and shutdown events and schedule DB maintenance jobs."""
     # Startup
     logger.info("Starting LAMB application")
     await start_news_cache_refresh_loop()
     logger.info("News cache refresh loop started")
-    
+
+    # --- DB maintenance background tasks (asyncio-based, no external deps) ---
+    try:
+        # DB maintenance is OFF by default to avoid duplicate background jobs when using --reload in dev.
+        db_scheduler_enabled = os.getenv('DB_MAINTENANCE_ENABLED', 'false').lower() == 'true'
+        if db_scheduler_enabled:
+            # parse checkpoint interval from DB_CHECKPOINT_CRON (supports '*/N' or plain minutes)
+            def _parse_checkpoint_minutes(val: str) -> int:
+                try:
+                    if val.isdigit():
+                        return int(val)
+                    m = re.match(r'^\*/(\d+)$', (val or '').strip())
+                    if m:
+                        return int(m.group(1))
+                except Exception:
+                    pass
+                return 30
+
+            checkpoint_minutes = _parse_checkpoint_minutes(os.getenv('DB_CHECKPOINT_CRON', '*/30'))
+            optimize_hour = int(os.getenv('DB_OPTIMIZE_HOUR', '3'))
+            optimize_minute = int(os.getenv('DB_OPTIMIZE_MINUTE', '0'))
+            vacuum_day = os.getenv('DB_VACUUM_DAY', 'sun').lower()
+            vacuum_hour = int(os.getenv('DB_VACUUM_HOUR', '3'))
+            vacuum_minute = int(os.getenv('DB_VACUUM_MINUTE', '30'))
+
+            async def _checkpoint_loop():
+                try:
+                    while True:
+                        logger.info("DB maintenance: running checkpoint_wal job")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().checkpoint_wal)
+                        except Exception as e:
+                            logger.error(f"DB checkpoint task error: {e}")
+                        await asyncio.sleep(checkpoint_minutes * 60)
+                except asyncio.CancelledError:
+                    logger.info("DB checkpoint loop cancelled")
+                    return
+
+            async def _daily_optimize_loop():
+                try:
+                    while True:
+                        now = datetime.now()
+                        target = now.replace(hour=optimize_hour, minute=optimize_minute, second=0, microsecond=0)
+                        if target <= now:
+                            target += timedelta(days=1)
+                        delay = (target - now).total_seconds()
+                        await asyncio.sleep(delay)
+                        logger.info("DB maintenance: running daily optimize (ANALYZE + PRAGMA optimize, skip VACUUM)")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().optimize_database, False)
+                        except Exception as e:
+                            logger.error(f"DB daily optimize task error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("DB daily optimize loop cancelled")
+                    return
+
+            async def _weekly_vacuum_loop():
+                try:
+                    dow_map = {'mon':0,'tue':1,'wed':2,'thu':3,'fri':4,'sat':5,'sun':6}
+                    target_dow = dow_map.get(vacuum_day[:3], 6)
+                    while True:
+                        now = datetime.now()
+                        days_ahead = (target_dow - now.weekday() + 7) % 7
+                        if days_ahead == 0:
+                            target = now.replace(hour=vacuum_hour, minute=vacuum_minute, second=0, microsecond=0)
+                            if target <= now:
+                                days_ahead = 7
+                                target += timedelta(days=7)
+                        else:
+                            target = (now + timedelta(days=days_ahead)).replace(hour=vacuum_hour, minute=vacuum_minute, second=0, microsecond=0)
+
+                        delay = (target - now).total_seconds()
+                        await asyncio.sleep(delay)
+                        logger.info("DB maintenance: running weekly VACUUM (ANALYZE + VACUUM + PRAGMA optimize)")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().optimize_database, True)
+                        except Exception as e:
+                            logger.error(f"DB weekly vacuum task error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("DB weekly vacuum loop cancelled")
+                    return
+
+            # start background tasks and keep references for shutdown
+            tasks = [
+                asyncio.create_task(_checkpoint_loop(), name='db_checkpoint_loop'),
+                asyncio.create_task(_daily_optimize_loop(), name='db_daily_optimize_loop'),
+                asyncio.create_task(_weekly_vacuum_loop(), name='db_weekly_vacuum_loop'),
+            ]
+            app.state.db_maintenance_tasks = tasks
+            logger.info(f"DB maintenance tasks started (checkpoint every {checkpoint_minutes} min; daily-optimize: {optimize_hour}:{optimize_minute}; weekly-vacuum: {vacuum_day} {vacuum_hour}:{vacuum_minute})")
+        else:
+            logger.info("DB maintenance disabled by env var DB_MAINTENANCE_ENABLED")
+    except Exception as e:
+        logger.error(f"Failed to start DB maintenance tasks: {e}")
+    # --- end background-tasks setup ---
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down LAMB application")
+
+    # Stop DB maintenance scheduler / cancel asyncio background tasks if running
+    try:
+        # Legacy APScheduler instance (if present)
+        scheduler = getattr(app.state, 'db_maintenance_scheduler', None)
+        if scheduler:
+            logger.info("Shutting down DB maintenance scheduler (legacy)")
+            try:
+                scheduler.shutdown(wait=False)
+            except Exception:
+                logger.exception("Error stopping legacy DB scheduler")
+
+        # Cancel asyncio background tasks created by our lifespan
+        tasks = getattr(app.state, 'db_maintenance_tasks', None)
+        if tasks:
+            logger.info("Cancelling DB maintenance background tasks")
+            for t in tasks:
+                try:
+                    t.cancel()
+                except Exception:
+                    logger.exception("Failed to cancel DB maintenance task")
+
+            # Give tasks a short moment to finish cancellation
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception:
+                logger.debug("Exception while awaiting DB maintenance tasks cancellation")
+
+    except Exception as e:
+        logger.error(f"Error shutting down DB scheduler/tasks: {e}")
+
     await stop_news_cache_refresh_loop()
     logger.info("News cache refresh loop stopped")
 

@@ -35,7 +35,7 @@ class MarkItDownIngestPlugin(IngestPlugin):
     supports_progress = True  # This plugin supports progress callbacks
 
     supported_file_types = {
-        "pdf", "pptx", "docx", "xlsx", "xls", "mp3", "wav", "html", "csv", "json", "xml", "zip", "epub"
+        "pdf", "pptx", "docx", "xlsx", "xls", "mp3", "wav", "html", "csv", "json", "xml", "zip", "epub", "txt", "md"
     }
     
     # Placeholder for CSS content - replace with actual CSS
@@ -1184,7 +1184,7 @@ class MarkItDownIngestPlugin(IngestPlugin):
             "chunk_size": {
                 "type": "integer",
                 "description": "Size of each chunk (uses LangChain default if not specified)",
-                "default": 1000,
+                "default": 2000,
                 "required": False
             },
             "chunk_overlap": {

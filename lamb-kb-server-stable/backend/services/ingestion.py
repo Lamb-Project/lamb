@@ -299,8 +299,14 @@ class IngestionService:
             file_url = cls.get_file_url(file_path)
             print(f"DEBUG: [ingest_file] File URL: {file_url}")
             
+            # Apply plugin mode governance before calling plugin logic.
+            governed_plugin_params = PluginRegistry.sanitize_ingest_params(
+                plugin_name,
+                plugin_params or {}
+            )
+
             # Add file_url to plugin params
-            plugin_params_with_url = plugin_params.copy()
+            plugin_params_with_url = governed_plugin_params.copy()
             plugin_params_with_url["file_url"] = file_url
             
             # Ingest the file with the plugin
