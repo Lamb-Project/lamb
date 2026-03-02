@@ -1,0 +1,41 @@
+{
+  "name": "@lamb/ui",
+  "version": "0.0.1",
+  "description": "Shared UI components, stores, and utilities for LAMB modules",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "svelte": "./dist/index.js",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./components": "./src/components/index.js",
+    "./stores": "./src/stores/index.js",
+    "./services": "./src/services/index.js",
+    "./i18n": "./src/i18n/index.js",
+    "./styles": "./src/styles/index.css"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "svelte-package && tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@sveltejs/package": "^2.3.4",
+    "svelte": "^5.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "svelte-i18n": "^3.7.4"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  }
+}
