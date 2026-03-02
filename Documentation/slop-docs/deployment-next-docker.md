@@ -40,6 +40,12 @@ Base + local Open WebUI build:
 docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml up -d
 ```
 
+Base + local inference with optional Ollama profile:
+
+```bash
+docker compose -f docker-compose.next.yaml --profile ollama up -d
+```
+
 With custom env overrides file:
 
 ```bash
@@ -57,6 +63,7 @@ Core services:
 Optional service:
 
 - `caddy` (`caddy:2.8`) via `docker-compose.next.prod.yaml`
+- `ollama` (`ollama/ollama:latest`) via `--profile ollama`
 
 Persistent volumes:
 
@@ -64,6 +71,7 @@ Persistent volumes:
 - `kb-data` (KB storage)
 - `kb-static` (KB static files)
 - `openwebui-data` (Open WebUI DB + vector/cache)
+- `ollama-data` (Ollama models cache)
 - `caddy-data`, `caddy-config` (only with TLS overlay)
 
 ## Configurable Environment Variables
@@ -88,7 +96,7 @@ All variables below are configurable via shell env or a root `.env` file.
 | `OPENAI_BASE_URL` | `lamb` | none | **Yes** | OpenAI-compatible API endpoint. |
 | `OPENAI_MODEL` | `lamb` | none | **Yes** | Default main OpenAI model. |
 | `OPENAI_MODELS` | `lamb` | `gpt-4o-mini,gpt-4o` | No | Comma-separated model list exposed by backend. |
-| `OLLAMA_BASE_URL` | `lamb` | `http://host.docker.internal:11434` | No | Ollama endpoint for embedding/completion integrations. |
+| `OLLAMA_BASE_URL` | `lamb` | `http://ollama:11434` | No | Ollama endpoint for embedding/completion integrations. |
 | `OLLAMA_MODEL` | `lamb` | `nomic-embed-text` | No | Default Ollama embedding model name. |
 | `SIGNUP_ENABLED` | `lamb` | `true` | No | Enables/disables signup flow. |
 | `SIGNUP_SECRET_KEY` | `lamb` | none | **Yes** | Secret used for signup token handling. |
@@ -109,7 +117,7 @@ All variables below are configurable via shell env or a root `.env` file.
 | `LAMB_API_KEY` | `kb` | `0p3n-w3bu!` | No (should override in prod) | KB API auth key. |
 | `EMBEDDINGS_MODEL` | `kb` | `nomic-embed-text` | No | Default embeddings model for KB collections. |
 | `EMBEDDINGS_VENDOR` | `kb` | `ollama` | No | Embedding provider (`ollama`, `local`, `openai`). |
-| `EMBEDDINGS_ENDPOINT` | `kb` | `http://host.docker.internal:11434/api/embeddings` | No | Embeddings API endpoint used by KB. |
+| `EMBEDDINGS_ENDPOINT` | `kb` | `http://ollama:11434` | No | Embeddings API endpoint used by KB (base URL for current Ollama integration). |
 | `EMBEDDINGS_APIKEY` | `kb` | empty | No | Optional API key for embedding provider. |
 | `FIRECRAWL_API_URL` | `kb` | `http://host.docker.internal:3002` | No | Firecrawl API endpoint for URL ingestion plugin. |
 | `FIRECRAWL_API_KEY` | `kb` | empty | No | Optional Firecrawl API key. |

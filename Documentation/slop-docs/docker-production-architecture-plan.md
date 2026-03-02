@@ -146,13 +146,13 @@ Status legend:
 | P7 | Backend | Support stable frontend path inside container | TODO | Deferred to avoid backend code changes in this phase |
 | P8 | Backend | Validate env defaults/requirements for container mode | TODO | Keep key vars required via compose until backend defaults phase |
 | P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | DONE | Added `backend/docker-entrypoint.py` and Dockerfile `ENTRYPOINT` |
-| P8b | Backend/Frontend | Define and document frontend runtime env vars | TODO | Deferred with P8a until backend/runtime changes are allowed |
+| P8b | Backend/Frontend | Define and document frontend runtime env vars | DONE | Documented `LAMB_FRONTEND_*` vars in compose and deployment guide |
 | P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | DONE | Added `.github/workflows/build-images.yml` (includes `openwebui`) |
 | P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
-| P11 | Docs | Create deployment guide for new compose stack | TODO | Install/upgrade/migrate + runtime frontend env config |
+| P11 | Docs | Create deployment guide for new compose stack | DONE | Added `Documentation/slop-docs/deployment-next-docker.md` |
 | P12 | Docs | Add migration notes from current compose | TODO | Volumes, env vars, service rename |
-| P13 | Validation | Cold-start benchmark and restart behavior validation | TODO | No runtime builds |
+| P13 | Validation | Cold-start benchmark and restart behavior validation | IN_PROGRESS | Localhost scenario validated (startup race documented, Ollama inference/RAG verified) |
 | P14 | Validation | Upgrade validation (`pull && up -d`) | TODO | Confirm no rebuild required |
 | P15 | Cutover | Decide if/when root `docker-compose.yaml` is replaced | OPTIONAL | Final phase only |
 | P16 | Compose/Runtime | Add optional Ollama service profile for local inference | DONE | Added `ollama` profile service in `docker-compose.next.yaml` |
@@ -399,5 +399,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
 | 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
 | 2026-03-01 | LAMB Team | Added Docker Next deployment guide with env variable reference tables |
+| 2026-03-01 | LAMB Team | Marked P8b and P11 as completed based on implemented env/runtime docs |
 | 2026-03-01 | LAMB Team | Added optional `ollama` profile service and documented light-image strategy alignment |
 | 2026-03-01 | LAMB Team | Updated default `EMBEDDINGS_ENDPOINT` to Ollama base URL for KB validation compatibility |
+| 2026-03-01 | LAMB Team | Started P13 with localhost scenario validation (startup race + Ollama inference/RAG) |
