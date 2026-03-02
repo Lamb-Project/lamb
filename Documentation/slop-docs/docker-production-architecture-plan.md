@@ -155,6 +155,8 @@ Status legend:
 | P13 | Validation | Cold-start benchmark and restart behavior validation | TODO | No runtime builds |
 | P14 | Validation | Upgrade validation (`pull && up -d`) | TODO | Confirm no rebuild required |
 | P15 | Cutover | Decide if/when root `docker-compose.yaml` is replaced | OPTIONAL | Final phase only |
+| P16 | Compose/Runtime | Add optional Ollama service profile for local inference | DONE | Added `ollama` profile service in `docker-compose.next.yaml` |
+| P17 | Image Profiles | Define light image profile strategy using optional Ollama service | TODO | Use this to reduce default image size by removing heavy local-inference deps |
 
 ## Unified `.env` Documentation Notes
 
@@ -273,6 +275,33 @@ Current handling:
 - Document retry guidance for first-login flow.
 - Consider health-gated dependency startup as future hardening (optional).
 
+Additional finding:
+
+- Some provider env vars (for example `OLLAMA_BASE_URL`) are synced into organization config and persisted in the database during initialization/sync.
+- In Org Admin settings views, persisted org config values can take precedence over direct env fallbacks, so changing env values later may not immediately change what users see.
+- This should be documented as current behavior; future hardening may define clearer precedence and refresh semantics between env and persisted org config.
+
+Scenario 1 Ollama note:
+
+- KB collection validation with Ollama requires `EMBEDDINGS_ENDPOINT` to point to Ollama base URL (`http://ollama:11434`) for current KB embedding integration.
+- Using `/api/embeddings` as endpoint can produce validation errors in this stack path.
+- Default compose/env values were updated accordingly.
+
+## Optional Ollama Service Note
+
+To support local inference without relying on `host.docker.internal`, an optional `ollama` service profile is now included in `docker-compose.next.yaml`.
+
+- Disabled by default; enable with `--profile ollama`.
+- Persists models in `ollama-data` volume.
+- When enabled, recommended overrides:
+  - `OLLAMA_BASE_URL=http://ollama:11434`
+  - `EMBEDDINGS_ENDPOINT=http://ollama:11434/api/embeddings`
+
+Recommendation:
+
+- Keep optional Ollama service as the path for local inference.
+- Use this to justify publishing smaller default `lamb`/`lamb-kb` images that exclude heavy local-inference dependencies by default.
+
 ## Deferred Runtime Defaults Notes
 
 P7/P8/P8b remain deferred to avoid broader backend runtime code modifications in this phase.
@@ -370,3 +399,5 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
 | 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
 | 2026-03-01 | LAMB Team | Added Docker Next deployment guide with env variable reference tables |
+| 2026-03-01 | LAMB Team | Added optional `ollama` profile service and documented light-image strategy alignment |
+| 2026-03-01 | LAMB Team | Updated default `EMBEDDINGS_ENDPOINT` to Ollama base URL for KB validation compatibility |

@@ -20,7 +20,7 @@ services:
       SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
       SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY?Set SIGNUP_SECRET_KEY}
       LTI_SECRET: ${LTI_SECRET:-lamb-lti-secret-key-2024}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-nomic-embed-text}
       DEV_MODE: ${DEV_MODE:-false}
       GLOBAL_LOG_LEVEL: ${GLOBAL_LOG_LEVEL:-WARNING}
@@ -51,7 +51,7 @@ services:
       LAMB_API_KEY: ${LAMB_API_KEY:-0p3n-w3bu!}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-nomic-embed-text}
       EMBEDDINGS_VENDOR: ${EMBEDDINGS_VENDOR:-ollama}
-      EMBEDDINGS_ENDPOINT: ${EMBEDDINGS_ENDPOINT:-http://host.docker.internal:11434/api/embeddings}
+      EMBEDDINGS_ENDPOINT: ${EMBEDDINGS_ENDPOINT:-http://ollama:11434}
       EMBEDDINGS_APIKEY: ${EMBEDDINGS_APIKEY:-}
       FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
@@ -75,8 +75,18 @@ services:
     volumes:
       - openwebui-data:/app/backend/data
 
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
 volumes:
   lamb-data:
   kb-data:
   kb-static:
   openwebui-data:
+  ollama-data:
