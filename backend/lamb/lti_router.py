@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
+from lamb.auth_context import validate_user_enabled
 from lamb.logging_config import get_logger
 import os
 import json
@@ -324,6 +325,7 @@ async def lti_configure_activity(request: Request):
         organization_id = int(form_data.get("organization_id", 0))
         assistant_ids_str = form_data.getlist("assistant_ids")
         assistant_ids = [int(x) for x in assistant_ids_str if x]
+        activity_type = form_data.get("activity_type", "chat")
         chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
 
         if not organization_id:
@@ -428,8 +430,29 @@ async def lti_link_account_submit(request: Request):
                 "error": "Please enter your email and password.",
             })
 
-        # Verify credentials
-        creator_user = manager.verify_creator_credentials(email, password)
+        # Verify credentials via OWI + check user is enabled
+        owi_user_mgr = OwiUserManager()
+        verified = owi_user_mgr.verify_user(email, password)
+        if not verified:
+            return templates.TemplateResponse("lti_link_account.html", {
+                "request": request,
+                "token": token,
+                "error": "Invalid credentials. Please check your LAMB Creator email and password.",
+            })
+        try:
+            creator_user_raw = validate_user_enabled(email)
+        except HTTPException:
+            return templates.TemplateResponse("lti_link_account.html", {
+                "request": request,
+                "token": token,
+                "error": "Your account is disabled or does not exist.",
+            })
+        creator_user = {
+            'id': creator_user_raw['id'],
+            'organization_id': creator_user_raw['organization_id'],
+            'user_email': creator_user_raw.get('email') or creator_user_raw.get('user_email'),
+            'user_name': creator_user_raw.get('name') or creator_user_raw.get('user_name'),
+        }
         if not creator_user:
             return templates.TemplateResponse("lti_link_account.html", {
                 "request": request,

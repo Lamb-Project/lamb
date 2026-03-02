@@ -21,8 +21,7 @@ from lamb.owi_bridge.owi_group import OwiGroupManager
 from lamb.owi_bridge.owi_model import OWIModel
 from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.logging_config import get_logger
-from lamb.auth_context import validate_user_enabled
-from fastapi import HTTPException
+
 
 logger = get_logger(__name__, component="LTI_ACTIVITY")
 
@@ -140,34 +139,9 @@ class LtiActivityManager:
             lms_email=lms_email
         )
 
-    def verify_creator_credentials(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """
-        Verify Creator user credentials for the identity-linking flow.
-        Returns a normalized Creator user dict if valid, None otherwise.
-        Keys: id, organization_id, user_email, user_name, user_type, enabled
-        """
-        # Check password via OWI
-        verified = self.owi_user_manager.verify_user(email, password)
-        if not verified:
-            return None
-        
-        # Verify user exists and is enabled (delegates to AuthContext validation)
-        try:
-            creator_user = validate_user_enabled(email)
-        except HTTPException:
-            # User doesn't exist or is disabled
-            return None
-        
-        # Normalize field names (get_creator_user_by_email uses 'email'/'name',
-        # but the rest of the LTI code uses 'user_email'/'user_name')
-        return {
-            'id': creator_user['id'],
-            'organization_id': creator_user['organization_id'],
-            'user_email': creator_user.get('email') or creator_user.get('user_email'),
-            'user_name': creator_user.get('name') or creator_user.get('user_name'),
-            'user_type': creator_user.get('user_type', 'creator'),
-            'enabled': creator_user.get('enabled', True),
-        }
+    # NOTE: verify_creator_credentials was moved to lti_router.py (inline)
+    # as part of the OWI decoupling. The router now uses OwiUserManager
+    # and validate_user_enabled directly.
 
     # =========================================================================
     # Published Assistants
