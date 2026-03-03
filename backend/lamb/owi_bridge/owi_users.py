@@ -1,5 +1,6 @@
 import uuid
 import json
+import sqlite3
 from passlib.context import CryptContext
 from typing import Optional, Dict
 import time
@@ -120,6 +121,15 @@ class OwiUserManager:
 
                 # Return the created user
                 return self.db.get_user_by_id(user_id)
+            except sqlite3.IntegrityError as e:
+                conn.rollback()
+                # Handle race condition: another worker may have created the user
+                if "UNIQUE constraint" in str(e) and "email" in str(e).lower():
+                    logger.warning(f"User {email} already exists (race condition), fetching existing user")
+                    return self.db.get_user_by_email(email)
+                else:
+                    logger.error(f"Integrity error creating user: {e}")
+                    return None
             except Exception as e:
                 conn.rollback()
                 logger.error(f"Error creating user: {e}")
