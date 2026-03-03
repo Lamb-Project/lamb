@@ -172,3 +172,7 @@ docker-compose.yaml
 
 
 ./clinerules
+
+
+
+.playwright-mcp
