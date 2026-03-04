@@ -50,6 +50,7 @@
     "title": "Asistentes de Aprendizaje",
     "view": "Ver Asistentes de Aprendizaje",
     "myAssistantsTab": "Mis Asistentes",
+    "sharedWithMeTab": "Compartidos Conmigo",
     "createAssistantTab": "Crear Asistente",
     "detailViewTab": "Detalle del Asistente",
     "myAssistants": "Mis Asistentes",
@@ -240,6 +241,13 @@
       "ltiConsumerKey": "Clave del Consumidor",
       "ltiSecret": "Secreto",
       "configuration": "Configuración"
+    },
+    "sharing": {
+      "title": "Usuarios Compartidos",
+      "description": "Gestiona quién tiene acceso a este asistente",
+      "noShares": "Este asistente aún no se ha compartido con nadie.",
+      "manageButton": "Gestionar Usuarios Compartidos",
+      "sharedWith": "Compartido con {count} {count, plural, =1 {usuario} other {usuarios}}"
     },
     "table": {
       "name": "Nombre",
@@ -446,7 +454,13 @@
     "page": "Página",
     "of": "de",
     "resultsSimple": "Resultados",
-    "to": "a"
+    "to": "a",
+    "firstPage": "Primera página",
+    "lastPage": "Última página",
+    "previousPage": "Página anterior",
+    "nextPage": "Página siguiente",
+    "noResults": "Sin resultados",
+    "pageN": "Página {page}"
   },
   "rubrics": {
     "title": "Evaluador",
@@ -529,6 +543,38 @@
       "errorTitle": "Generación Fallida",
       "tryAgain": "Intentar de Nuevo",
       "saveError": "Error al guardar rúbrica"
+    },
+    "metadataForm": {
+      "heading": "Información de la Rúbrica",
+      "titlePlaceholder": "Introduce el título de la rúbrica",
+      "descriptionPlaceholder": "Describe el propósito y contexto de esta rúbrica",
+      "scoringConfig": "Configuración de Puntuación",
+      "points": "Puntos",
+      "percentage": "Porcentaje",
+      "holistic": "Holística",
+      "singlePoint": "Punto Único",
+      "checklist": "Lista de Verificación",
+      "optionalInfo": "Información Opcional",
+      "optionalHint": "Estos campos son completamente opcionales. Déjalos en blanco si no aplican a tu rúbrica.",
+      "optional": "opcional",
+      "gradeLevelPlaceholder": "ej., 6-8, 9-12, K-2, Educación de Adultos"
+    },
+    "aiChat": {
+      "title": "Asistente IA",
+      "thinking": "Pensando...",
+      "clear": "Limpiar",
+      "clearChat": "Limpiar chat",
+      "welcomeMessage": "Pídeme que te ayude a crear o modificar esta rúbrica. Aquí tienes algunos ejemplos:",
+      "modifyPlaceholder": "Pídeme que modifique esta rúbrica...",
+      "createPlaceholder": "Describe la rúbrica que quieres crear...",
+      "helpText": "Pulsa Enter para enviar, Shift+Enter para nueva línea",
+      "minimize": "Minimizar chat IA",
+      "maximize": "Maximizar chat IA",
+      "example1": "Crear una rúbrica para evaluar ensayos de 5 párrafos en inglés de 8º grado",
+      "example2": "Adaptar esta rúbrica para 6º grado simplificando el lenguaje",
+      "example3": "Añadir un criterio de creatividad a esta rúbrica",
+      "example4": "Convertir a escala de 4 puntos en lugar de 5",
+      "example5": "Hacer las descripciones más específicas y observables"
     }
   },
   "promptTemplates": {

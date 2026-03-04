@@ -50,6 +50,7 @@
     "title": "Assistents d'Aprenentatge",
     "view": "Veure Assistents d'Aprenentatge",
     "myAssistantsTab": "Els Meus Assistents",
+    "sharedWithMeTab": "Compartits Amb Mi",
     "createAssistantTab": "Crear Assistent",
     "detailViewTab": "Detall de l'Assistent",
     "myAssistants": "Els Meus Assistents",
@@ -240,6 +241,13 @@
       "ltiConsumerKey": "Clau del Consumidor",
       "ltiSecret": "Secret",
       "configuration": "Configuració"
+    },
+    "sharing": {
+      "title": "Usuaris Compartits",
+      "description": "Gestiona qui té accés a aquest assistent",
+      "noShares": "Aquest assistent encara no s'ha compartit amb ningú.",
+      "manageButton": "Gestionar Usuaris Compartits",
+      "sharedWith": "Compartit amb {count} {count, plural, =1 {usuari} other {usuaris}}"
     },
     "table": {
       "name": "Nom",
@@ -435,7 +443,13 @@
     "page": "Pàgina",
     "of": "de",
     "resultsSimple": "Resultats",
-    "to": "a"
+    "to": "a",
+    "firstPage": "Primera pàgina",
+    "lastPage": "Última pàgina",
+    "previousPage": "Pàgina anterior",
+    "nextPage": "Pàgina següent",
+    "noResults": "Sense resultats",
+    "pageN": "Pàgina {page}"
   },
   "rubrics": {
     "title": "Avaluador",
@@ -518,6 +532,38 @@
       "errorTitle": "Generació Fallida",
       "tryAgain": "Tornar-ho a provar",
       "saveError": "Error en desar rúbrica"
+    },
+    "metadataForm": {
+      "heading": "Informació de la Rúbrica",
+      "titlePlaceholder": "Introdueix el títol de la rúbrica",
+      "descriptionPlaceholder": "Descriu el propòsit i context d'aquesta rúbrica",
+      "scoringConfig": "Configuració de Puntuació",
+      "points": "Punts",
+      "percentage": "Percentatge",
+      "holistic": "Holística",
+      "singlePoint": "Punt Únic",
+      "checklist": "Llista de Verificació",
+      "optionalInfo": "Informació Opcional",
+      "optionalHint": "Aquests camps són completament opcionals. Deixa'ls en blanc si no apliquen a la teva rúbrica.",
+      "optional": "opcional",
+      "gradeLevelPlaceholder": "ex., 6-8, 9-12, K-2, Educació d'Adults"
+    },
+    "aiChat": {
+      "title": "Assistent IA",
+      "thinking": "Pensant...",
+      "clear": "Netejar",
+      "clearChat": "Netejar xat",
+      "welcomeMessage": "Demana'm que t'ajudi a crear o modificar aquesta rúbrica. Aquí tens alguns exemples:",
+      "modifyPlaceholder": "Demana'm que modifiqui aquesta rúbrica...",
+      "createPlaceholder": "Descriu la rúbrica que vols crear...",
+      "helpText": "Prem Enter per enviar, Shift+Enter per a nova línia",
+      "minimize": "Minimitzar xat IA",
+      "maximize": "Maximitzar xat IA",
+      "example1": "Crear una rúbrica per avaluar assaigs de 5 paràgrafs en anglès de 8è curs",
+      "example2": "Adaptar aquesta rúbrica per a 6è curs simplificant el llenguatge",
+      "example3": "Afegir un criteri de creativitat a aquesta rúbrica",
+      "example4": "Convertir a escala de 4 punts en lloc de 5",
+      "example5": "Fer les descripcions més específiques i observables"
     }
   },
   "promptTemplates": {
