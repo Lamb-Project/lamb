@@ -101,7 +101,7 @@ test.describe("Organization Form Modal", () => {
     const signupCheckbox = page.locator('input[name="signup_enabled"]');
     await expect(signupCheckbox).toBeVisible();
     await expect(signupCheckbox).not.toBeChecked();
-    
+
     // Click the checkbox to enable
     await signupCheckbox.click();
     await page.waitForTimeout(300);
@@ -119,7 +119,26 @@ test.describe("Organization Form Modal", () => {
     console.log("Signup key field conditional display works correctly.");
   });
 
-  test("Admin dropdown loads system users", async ({ page }) => {
+  test("Admin dropdown loads system users", async ({ page, request }) => {
+    // 1. Seed a dummy user so the dropdown is not empty (since Admin is filtered out)
+    const token = await page.evaluate(() => localStorage.getItem('userToken'));
+    const seedUserEmail = `system-user-${Date.now()}@lamb.com`;
+
+    // Create user in system organization (ID 1)
+    await request.post('creator/admin/users/create', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      form: {
+        email: seedUserEmail,
+        name: 'System User For Dropdown',
+        password: 'password123',
+        role: 'user',
+        user_type: 'creator',
+        organization_id: 1 // System org
+      }
+    });
+
     // Click Create Organization button
     const createButton = page.getByRole("button", { name: /create organization/i }).first();
     await createButton.click();
@@ -163,7 +182,7 @@ test.describe("Organization Form Modal", () => {
 
     // Fill with valid slug
     await slugInput.fill('valid-slug-123');
-    
+
     // Verify help text mentions the format
     const helpText = page.getByText(/url-friendly identifier/i);
     await expect(helpText).toBeVisible();
@@ -194,7 +213,7 @@ test.describe("Organization Form Modal", () => {
     // Wait for admin dropdown to be visible
     const adminSelect = page.locator('select#admin_user');
     await expect(adminSelect).toBeVisible({ timeout: 10_000 });
-    
+
     // Wait for dropdown to load
     await page.waitForTimeout(1500);
 
@@ -206,13 +225,13 @@ test.describe("Organization Form Modal", () => {
     // Test that clicking submit triggers form validation (without needing actual success)
     await submitButton.click();
     await page.waitForTimeout(500);
-    
+
     // At this point, either:
     // 1. An error message appears (no admin selected or other validation error)
     // 2. Success message appears (if a user was auto-selected somehow)
     // 3. The modal is still open (form didn't submit due to HTML5 validation)
     // All are valid outcomes for this UI test
-    
+
     console.log("Form fill and submit interaction completed successfully.");
   });
 });

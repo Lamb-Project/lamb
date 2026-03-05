@@ -54,7 +54,7 @@ export async function getUserKnowledgeBases() {
 
     const token = localStorage.getItem('userToken');
     if (!token) {
-        throw new Error('User not authenticated.'); 
+        throw new Error('User not authenticated.');
     }
 
     const url = getApiUrl('/knowledgebases/user');
@@ -78,9 +78,9 @@ export async function getUserKnowledgeBases() {
             const detail = response.data?.detail || response.data?.message || JSON.stringify(response.data);
             throw new Error(`Failed to fetch owned knowledge bases: Invalid response format. Received: ${detail}`);
         }
-    } catch (error) {       
+    } catch (error) {
         console.error('Raw Error fetching owned knowledge bases:', error);
-        
+
         let errorMessage = 'Failed to fetch owned knowledge bases.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
@@ -106,7 +106,7 @@ export async function getSharedKnowledgeBases() {
 
     const token = localStorage.getItem('userToken');
     if (!token) {
-        throw new Error('User not authenticated.'); 
+        throw new Error('User not authenticated.');
     }
 
     const url = getApiUrl('/knowledgebases/shared');
@@ -130,9 +130,9 @@ export async function getSharedKnowledgeBases() {
             const detail = response.data?.detail || response.data?.message || JSON.stringify(response.data);
             throw new Error(`Failed to fetch shared knowledge bases: Invalid response format. Received: ${detail}`);
         }
-    } catch (error) {       
+    } catch (error) {
         console.error('Raw Error fetching shared knowledge bases:', error);
-        
+
         let errorMessage = 'Failed to fetch shared knowledge bases.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
@@ -159,7 +159,72 @@ export async function getKnowledgeBases() {
         getSharedKnowledgeBases().catch(() => [])
     ]);
     return [...owned, ...shared];
-} 
+}
+
+/**
+ * Fetches available embeddings setups for the user's organization.
+ * Used when creating a new knowledge base to let users choose the embeddings model.
+ * 
+ * @typedef {Object} EmbeddingsSetup
+ * @property {string} setup_key - Unique identifier for the setup
+ * @property {string} name - Human-readable name
+ * @property {string} [description] - Optional description
+ * @property {string} model_name - Model name (e.g., "text-embedding-3-small")
+ * @property {number} embedding_dimensions - Vector dimensions (e.g., 1536)
+ * @property {boolean} is_default - Whether this is the default setup
+ * 
+ * @returns {Promise<EmbeddingsSetup[]>} A promise that resolves to an array of available setups
+ * @throws {Error} If the request fails or the user is not authenticated
+ */
+export async function getAvailableEmbeddingsSetups() {
+    if (!browser) {
+        throw new Error('This operation is only available in the browser.');
+    }
+
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        throw new Error('User not authenticated.');
+    }
+
+    const url = getApiUrl('/knowledgebases/embeddings-setups/available');
+    console.log(`Fetching available embeddings setups from: ${url}`);
+
+    try {
+        const response = await axios.get(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        console.log('Available embeddings setups response:', response.data);
+
+        // Handle both array response and {setups: [...]} response
+        if (Array.isArray(response.data)) {
+            return response.data;
+        } else if (response.data && Array.isArray(response.data.setups)) {
+            return response.data.setups;
+        } else {
+            console.error('Unexpected response structure for embeddings setups:', response.data);
+            return [];
+        }
+    } catch (error) {
+        console.error('Error fetching embeddings setups:', error);
+
+        let errorMessage = 'Failed to fetch embeddings setups.';
+        if (axios.isAxiosError(error)) {
+            if (error.response?.data?.kb_server_available === false) {
+                errorMessage = 'Knowledge Base server offline.';
+            } else if (error.response) {
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
+            }
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+
+        throw new Error(errorMessage);
+    }
+}
 
 /**
  * Creates a new knowledge base.
@@ -168,6 +233,7 @@ export async function getKnowledgeBases() {
  * @property {string} name - The name of the knowledge base
  * @property {string} [description] - Optional description of the knowledge base
  * @property {string} access_control - Access control setting ('private' or 'public')
+ * @property {string} [embeddings_setup_key] - Optional key of the embeddings setup to use
  * 
  * @typedef {Object} KnowledgeBaseCreateResponse
  * @property {string} kb_id - The ID of the newly created knowledge base
@@ -201,7 +267,7 @@ export async function createKnowledgeBase(data) {
         });
 
         console.log('Knowledge base creation response:', response.data);
-        
+
         if (response.data && (response.data.kb_id || response.data.status === 'success')) {
             return response.data;
         } else {
@@ -211,7 +277,7 @@ export async function createKnowledgeBase(data) {
         }
     } catch (error) {
         console.error('Error creating knowledge base:', error);
-        
+
         let errorMessage = 'Failed to create knowledge base.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
@@ -224,10 +290,10 @@ export async function createKnowledgeBase(data) {
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
-} 
+}
 
 /**
  * Fetches details of a specific knowledge base by ID.
@@ -267,12 +333,12 @@ export async function getKnowledgeBaseDetails(kbId) {
         });
 
         console.log('Knowledge base details response:', response.data);
-        
+
         // Check for KB server offline response
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         // Validate the response structure
         if (response.data && response.data.id) {
             return response.data;
@@ -283,27 +349,27 @@ export async function getKnowledgeBaseDetails(kbId) {
         }
     } catch (error) {
         console.error('Error fetching knowledge base details:', error);
-        
+
         let errorMessage = 'Failed to fetch knowledge base details.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
-            
+
             // Check for specific error cases
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response?.status === 404) {
                 errorMessage = `Knowledge base not found. ID: ${kbId}`;
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                               `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
-} 
+}
 
 /**
  * Fetches available ingestion plugins for knowledge bases
@@ -356,12 +422,12 @@ export async function getIngestionPlugins() {
         });
 
         console.log('Ingestion plugins response:', response.data);
-        
+
         // Check for KB server offline response
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         // Validate the response structure and return plugins array
         if (response.data && response.data.plugins && Array.isArray(response.data.plugins)) {
             return response.data.plugins;
@@ -372,22 +438,22 @@ export async function getIngestionPlugins() {
         }
     } catch (error) {
         console.error('Error fetching ingestion plugins:', error);
-        
+
         let errorMessage = 'Failed to fetch ingestion plugins.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
-            
+
             // Check for specific error cases
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -419,7 +485,7 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('plugin_name', pluginName);
-    
+
     // Add plugin parameters to form data
     Object.entries(pluginParams).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
@@ -436,34 +502,34 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
         });
 
         console.log('File upload response:', response.data);
-        
+
         // Check for KB server offline response
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error uploading file:', error);
-        
+
         let errorMessage = 'Failed to upload file.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
-            
+
             // Check for specific error cases
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
-} 
+}
 
 /**
  * Fetches available query plugins for knowledge bases
@@ -504,11 +570,11 @@ export async function getQueryPlugins() {
         });
 
         console.log('Query plugins response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         if (response.data && response.data.plugins && Array.isArray(response.data.plugins)) {
             return response.data.plugins;
         } else {
@@ -524,8 +590,8 @@ export async function getQueryPlugins() {
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
@@ -585,20 +651,20 @@ export async function queryKnowledgeBase(kbId, queryText, pluginName, pluginPara
         });
 
         console.log('Query response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         // Basic validation: Check if results array exists if status is success
         if (response.data && response.data.status === 'success' && Array.isArray(response.data.results)) {
-             return response.data;
+            return response.data;
         } else if (response.data && response.data.status !== 'success') {
             // If status is not success, throw an error with the message if available
             const detail = response.data?.detail || response.data?.message || JSON.stringify(response.data);
             throw new Error(`Query failed: ${detail}`);
         } else {
-             // Handle unexpected successful response format
+            // Handle unexpected successful response format
             console.error('Unexpected response structure for KB query:', response.data);
             throw new Error('Failed to execute query: Invalid response format.');
         }
@@ -610,15 +676,15 @@ export async function queryKnowledgeBase(kbId, queryText, pluginName, pluginPara
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
         throw new Error(errorMessage);
     }
-} 
+}
 
 /**
  * Runs a base ingestion plugin (without file upload) on a knowledge base.
@@ -657,39 +723,39 @@ export async function runBaseIngestionPlugin(kbId, pluginName, pluginParams = {}
         });
 
         console.log('Base ingestion response:', response.data);
-        
+
         // Check for KB server offline response
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         // Assuming success if no specific error status or message is present
         if (response.data?.status === 'error') {
             throw new Error(response.data.message || 'Base ingestion failed with an unspecified error.');
         }
-        
+
         return response.data; // Return the response, e.g., { status: 'success', message: '... '} or similar
     } catch (error) {
         console.error('Error running base ingestion:', error);
-        
+
         let errorMessage = 'Failed to run base ingestion.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
-            
+
             // Check for specific error cases
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
-} 
+}
 
 /**
  * Deletes a file from a knowledge base
@@ -872,7 +938,7 @@ export async function listIngestionJobs(kbId, options = {}) {
     }
 
     const { status, limit = 50, offset = 0, sort_by = 'created_at', sort_order = 'desc' } = options;
-    
+
     const params = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
@@ -894,27 +960,27 @@ export async function listIngestionJobs(kbId, options = {}) {
         });
 
         console.log('Ingestion jobs response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error listing ingestion jobs:', error);
-        
+
         let errorMessage = 'Failed to list ingestion jobs.';
         if (axios.isAxiosError(error)) {
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -948,15 +1014,15 @@ export async function getIngestionJobStatus(kbId, jobId) {
         });
 
         console.log('Ingestion job status response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error getting ingestion job status:', error);
-        
+
         let errorMessage = 'Failed to get ingestion job status.';
         if (axios.isAxiosError(error)) {
             if (error.response?.status === 404) {
@@ -964,13 +1030,13 @@ export async function getIngestionJobStatus(kbId, jobId) {
             } else if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -1003,27 +1069,27 @@ export async function getIngestionStatusSummary(kbId) {
         });
 
         console.log('Ingestion status summary response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error getting ingestion status summary:', error);
-        
+
         let errorMessage = 'Failed to get ingestion status summary.';
         if (axios.isAxiosError(error)) {
             if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -1061,15 +1127,15 @@ export async function retryIngestionJob(kbId, jobId, overrideParams = null) {
         });
 
         console.log('Retry ingestion job response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error retrying ingestion job:', error);
-        
+
         let errorMessage = 'Failed to retry ingestion job.';
         if (axios.isAxiosError(error)) {
             if (error.response?.status === 400) {
@@ -1081,13 +1147,13 @@ export async function retryIngestionJob(kbId, jobId, overrideParams = null) {
             } else if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -1121,15 +1187,15 @@ export async function cancelIngestionJob(kbId, jobId) {
         });
 
         console.log('Cancel ingestion job response:', response.data);
-        
+
         if (response.data?.status === 'error' && response.data?.kb_server_available === false) {
             throw new Error('Knowledge Base server offline. Please try again later.');
         }
-        
+
         return response.data;
     } catch (error) {
         console.error('Error cancelling ingestion job:', error);
-        
+
         let errorMessage = 'Failed to cancel ingestion job.';
         if (axios.isAxiosError(error)) {
             if (error.response?.status === 400) {
@@ -1141,13 +1207,13 @@ export async function cancelIngestionJob(kbId, jobId) {
             } else if (error.response?.data?.kb_server_available === false) {
                 errorMessage = 'Knowledge Base server offline. Please try again later.';
             } else if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
@@ -1189,18 +1255,18 @@ export async function toggleKBSharing(kbId, isShared) {
         return response.data;
     } catch (error) {
         console.error('Error toggling KB sharing:', error);
-        
+
         let errorMessage = 'Failed to toggle sharing status.';
         if (axios.isAxiosError(error)) {
             console.error('Axios Error Response Data:', error.response?.data);
             if (error.response) {
-                errorMessage = error.response.data?.detail || error.response.data?.message || 
-                             `Request failed with status ${error.response.status}`;
+                errorMessage = error.response.data?.detail || error.response.data?.message ||
+                    `Request failed with status ${error.response.status}`;
             }
         } else if (error instanceof Error) {
             errorMessage = error.message;
         }
-        
+
         throw new Error(errorMessage);
     }
 }
