@@ -34,22 +34,17 @@ logger = get_logger(__name__, component="DB")
 
 class LambDatabaseManager:
     def __init__(self):
-
-        #        logger.debug("Initializing LambDatabaseManager")
         try:
             # Load environment variables
             load_dotenv()
 
             # Get database configuration from environment variables
             self.table_prefix = os.getenv('LAMB_DB_PREFIX', '')
-#            logger.debug(f"Table prefix: {self.table_prefix}")
 
             lamb_db_path = os.getenv('LAMB_DB_PATH')
             if not lamb_db_path:
-                logger.error(
-                    "LAMB_DB_PATH not found in environment variables")
-                raise ValueError(
-                    "LAMB_DB_PATH must be specified in environment variables")
+                logger.error("LAMB_DB_PATH not found in environment variables")
+                raise ValueError("LAMB_DB_PATH must be specified in environment variables")
 
             self.db_path = os.path.join(lamb_db_path, 'lamb_v4.db')
             if not os.path.exists(self.db_path):
@@ -57,8 +52,10 @@ class LambDatabaseManager:
                 os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
                 self.create_database_and_tables()
                 logger.info(f"Created database at: {self.db_path}")
-#            logger.debug(f"Found database at: {self.db_path}")
 
+            # Configure database optimizations
+            self._configure_database_optimizations()
+            
             # Always run migrations on initialization (handles existing databases)
             self.run_migrations()
 
@@ -66,16 +63,217 @@ class LambDatabaseManager:
             logger.error(f"Error during initialization: {e}")
             raise
 
-    def get_connection(self):
-        # logger.debug(f"Attempting to connect to database at: {self.db_path}")
+    def _configure_database_optimizations(self):
+        """
+        Configure SQLite PRAGMA settings for optimal performance and scalability.
+        This should be called once during initialization.
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish connection for optimization")
+            return
+        
         try:
-            connection = sqlite3.connect(self.db_path)
- #           logger.debug("Database connection established successfully")
+            cursor = connection.cursor()
+            
+            # Enable WAL (Write-Ahead Logging) mode for better concurrency
+            # WAL allows multiple readers while a write is in progress
+            cursor.execute("PRAGMA journal_mode=WAL")
+            logger.info("WAL mode enabled")
+            
+            # Set synchronous to NORMAL for better performance
+            # NORMAL is safe with WAL mode and provides good balance
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            
+            # Set page size (must be set before any tables are created, but we can check)
+            # 4096 is a good balance for modern systems
+            cursor.execute("PRAGMA page_size=4096")
+            
+            # Set cache size to 10MB (-10000 pages = ~40MB with 4KB pages)
+            # Negative value means KB, positive means pages
+            cursor.execute("PRAGMA cache_size=-10000")
+            
+            # Enable memory-mapped I/O for better performance (256MB)
+            cursor.execute("PRAGMA mmap_size=268435456")
+            
+            # Set temp store to memory for faster temporary operations
+            cursor.execute("PRAGMA temp_store=MEMORY")
+            
+            # Enable automatic indexing for optimization
+            cursor.execute("PRAGMA automatic_index=ON")
+            
+            # Set busy timeout to 5 seconds to handle concurrent access
+            cursor.execute("PRAGMA busy_timeout=5000")
+            
+            connection.commit()
+            
+            # Log current settings for verification
+            cursor.execute("PRAGMA journal_mode")
+            journal_mode = cursor.fetchone()[0]
+            
+            cursor.execute("PRAGMA synchronous")
+            sync_mode = cursor.fetchone()[0]
+            
+            cursor.execute("PRAGMA cache_size")
+            cache_size = cursor.fetchone()[0]
+            
+            logger.info(f"Database optimizations applied - Journal: {journal_mode}, Sync: {sync_mode}, Cache: {cache_size}")
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error configuring database optimizations: {e}")
+        finally:
+            connection.close()
+
+    def get_connection(self):
+        """
+        Get a database connection with per-connection optimizations.
+        """
+        try:
+            connection = sqlite3.connect(self.db_path, timeout=10.0)
+            
+            # Per-connection optimizations
+            cursor = connection.cursor()
+            
+            # Set busy timeout for this connection (5 seconds)
+            cursor.execute("PRAGMA busy_timeout=5000")
+            
+            # Enable foreign keys for referential integrity
+            cursor.execute("PRAGMA foreign_keys=ON")
+            
             return connection
         except sqlite3.Error as e:
             logger.error(f"Failed to connect to database: {e}")
             return None
 
+    def optimize_database(self, vacuum: bool = True):
+        """
+        Perform database optimization operations.
+
+        Args:
+            vacuum (bool): If True perform VACUUM (costly). If False run only ANALYZE and PRAGMA optimize.
+
+        Should be called periodically (e.g., during maintenance windows).
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish connection for optimization")
+            return False
+        
+        try:
+            cursor = connection.cursor()
+            
+            # Analyze the database to update statistics for query optimization
+            logger.info("Running ANALYZE on database...")
+            cursor.execute("ANALYZE")
+            
+            # VACUUM is optional because it's expensive; perform only when requested
+            if vacuum:
+                # Ensure WAL is checkpointed before VACUUM
+                logger.info("Checkpointing WAL before VACUUM...")
+                try:
+                    self.checkpoint_wal()
+                except Exception as e:
+                    logger.warning(f"Failed to checkpoint WAL before VACUUM: {e}")
+
+                # Vacuum the database to reclaim space and defragment
+                # Note: VACUUM requires exclusive access and can take time
+                logger.info("Running VACUUM on database...")
+                cursor.execute("VACUUM")
+            else:
+                logger.info("Skipping VACUUM (scheduled optimize without vacuum)")
+            
+            # Optimize the database
+            cursor.execute("PRAGMA optimize")
+            
+            connection.commit()
+            logger.info("Database optimization completed successfully (vacuum=%s)" % vacuum)
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error during database optimization: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def checkpoint_wal(self):
+        """
+        Checkpoint the WAL file to move data into the main database.
+        This is useful for periodic maintenance.
+        """
+        connection = self.get_connection()
+        if not connection:
+            logger.error("Could not establish connection for WAL checkpoint")
+            return False
+        
+        try:
+            cursor = connection.cursor()
+            
+            # Perform WAL checkpoint
+            cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            result = cursor.fetchone()
+            
+            logger.info(f"WAL checkpoint completed: {result}")
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error during WAL checkpoint: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_database_stats(self):
+        """
+        Get database statistics for monitoring.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return {}
+        
+        try:
+            cursor = connection.cursor()
+            stats = {}
+            
+            # Get database size
+            cursor.execute("PRAGMA page_count")
+            page_count = cursor.fetchone()[0]
+            cursor.execute("PRAGMA page_size")
+            page_size = cursor.fetchone()[0]
+            stats['database_size_mb'] = (page_count * page_size) / (1024 * 1024)
+            
+            # Get WAL file size
+            cursor.execute("PRAGMA journal_mode")
+            journal_mode = cursor.fetchone()[0]
+            stats['journal_mode'] = journal_mode
+            
+            if journal_mode == 'wal':
+                wal_path = self.db_path + '-wal'
+                if os.path.exists(wal_path):
+                    stats['wal_size_mb'] = os.path.getsize(wal_path) / (1024 * 1024)
+            
+            # Get table counts
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM {self.table_prefix}Creator_users
+            """)
+            stats['user_count'] = cursor.fetchone()[0]
+            
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM {self.table_prefix}assistants
+            """)
+            stats['assistant_count'] = cursor.fetchone()[0]
+            
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM {self.table_prefix}organizations
+            """)
+            stats['organization_count'] = cursor.fetchone()[0]
+            
+            return stats
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting database stats: {e}")
+            return {}
+        finally:
+            connection.close()
+        
     def create_database_and_tables(self):
         logger.debug("Starting database and tables creation")
         try:
@@ -871,6 +1069,7 @@ class LambDatabaseManager:
                             user_display_name TEXT NOT NULL DEFAULT '',
                             lms_user_id TEXT,
                             owi_user_id TEXT,
+                            is_instructor INTEGER NOT NULL DEFAULT 0,
                             consent_given_at INTEGER,
                             last_access_at INTEGER,
                             access_count INTEGER NOT NULL DEFAULT 0,
@@ -891,6 +1090,10 @@ class LambDatabaseManager:
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN last_access_at INTEGER")
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0")
                         logger.info("Migrated lti_activity_users with dashboard fields")
+                    if 'is_instructor' not in existing_cols:
+                        logger.info("Migrating lti_activity_users: adding is_instructor column")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN is_instructor INTEGER NOT NULL DEFAULT 0")
+                        logger.info("Migrated lti_activity_users with is_instructor field")
 
                 # lti_identity_links — map LMS identities to LAMB Creator users
                 cursor.execute(
@@ -1536,7 +1739,50 @@ class LambDatabaseManager:
                     logger.error("Cannot delete system organization")
                     return False
 
-                # Delete organization (cascade will handle related records)
+                # Explicitly delete related records in dependency order before
+                # deleting the organization.  Several child tables reference
+                # LAMB_organizations without ON DELETE CASCADE, so the DELETE
+                # below would raise a FOREIGN KEY constraint error without
+                # these explicit cleanups.
+
+                # 1. usage_logs references organizations, assistants and users –
+                #    must be deleted first so later steps can remove assistants/users.
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}usage_logs
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 2. lti_activities (child tables lti_activity_assistants and
+                #    lti_activity_users carry ON DELETE CASCADE so they follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}lti_activities
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 3. assistants (assistant_publish, assistant_shares and
+                #    lamb_chats all carry ON DELETE CASCADE and follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}assistants
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 4. Creator_users (organization_roles, lti_identity_links,
+                #    kb_registry, prompt_templates and bulk_import_logs all
+                #    carry ON DELETE CASCADE / SET NULL and follow).
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}Creator_users
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 5. collections
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}collections
+                    WHERE organization_id = ?
+                """, (org_id,))
+
+                # 6. Delete organization itself (remaining FK children such as
+                #    organization_roles, rubrics, prompt_templates, kb_registry,
+                #    bulk_import_logs and lti_creator_keys carry ON DELETE CASCADE).
                 cursor.execute(f"""
                     DELETE FROM {self.table_prefix}organizations WHERE id = ?
                 """, (org_id,))
@@ -7448,7 +7694,8 @@ class LambDatabaseManager:
     def create_lti_activity_user(self, activity_id: int, user_email: str,
                                   user_name: str = '', user_display_name: str = '',
                                   lms_user_id: str = None,
-                                  owi_user_id: str = None) -> Optional[int]:
+                                  owi_user_id: str = None,
+                                  is_instructor: bool = False) -> Optional[int]:
         """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
         connection = self.get_connection()
         if not connection:
@@ -7477,15 +7724,22 @@ class LambDatabaseManager:
                             SET owi_user_id = ?
                             WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
                         """, (owi_user_id, existing[0]))
+                    # Promote to instructor if needed (never demote)
+                    if is_instructor:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET is_instructor = 1
+                            WHERE id = ? AND is_instructor = 0
+                        """, (existing[0],))
                     return existing[0]
                 # Create
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activity_users
                     (activity_id, user_email, user_name, user_display_name,
-                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                     lms_user_id, owi_user_id, is_instructor, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """, (activity_id, user_email, user_name, user_display_name,
-                      lms_user_id, owi_user_id, now, now))
+                      lms_user_id, owi_user_id, 1 if is_instructor else 0, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity user: {e}")

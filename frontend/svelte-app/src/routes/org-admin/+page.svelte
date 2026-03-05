@@ -4508,6 +4508,7 @@
                                             <input
                                                 id="lti-consumer-key"
                                                 type="text"
+                                                autocomplete="off"
                                                 bind:value={newLtiCreatorSettings.oauth_consumer_key}
                                                 placeholder="e.g., myorg_creator"
                                                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
@@ -4526,6 +4527,7 @@
                                                 <input
                                                     id="lti-consumer-secret"
                                                     type={showLtiCreatorSecret && newLtiCreatorSettings.oauth_consumer_secret ? 'text' : 'password'}
+                                                    autocomplete="new-password"
                                                     bind:value={newLtiCreatorSettings.oauth_consumer_secret}
                                                     placeholder={ltiCreatorSettings.has_key ? '••••••••  (leave blank to keep current)' : 'Enter a strong secret key'}
                                                     class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 {newLtiCreatorSettings.oauth_consumer_secret ? 'pr-10' : ''} focus:outline-none focus:ring-brand focus:border-brand sm:text-sm"
