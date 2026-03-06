@@ -23,7 +23,8 @@ import json
 import time
 import secrets
 from datetime import datetime
-from lamb.modules import get_all_modules
+from lamb.modules import get_all_modules, get_module
+from lamb.modules.base import LTIContext
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -149,8 +150,6 @@ async def lti_launch(request: Request):
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
         if activity and activity['status'] == 'active':
-            from lamb.modules import get_module
-            from lamb.modules.base import LTIContext
             
             activity_type = activity.get('activity_type', 'chat')
             module = get_module(activity_type)

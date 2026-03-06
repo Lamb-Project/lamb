@@ -75,6 +75,21 @@ config.json
 /frontend/vite.config.js.timestamp-*
 /frontend/vite.config.ts.timestamp-*
 
+# pnpm store and lockfiles
+.pnpm-store/
+frontend/.pnpm-store/
+**/.pnpm-store/
+pnpm-lock.yaml
+frontend/pnpm-lock.yaml
+frontend/packages/**/pnpm-lock.yaml
+
+# SvelteKit generated files (all packages)
+frontend/packages/**/.svelte-kit/
+
+# package-lock.json files (using pnpm instead)
+frontend/package-lock.json
+frontend/packages/**/package-lock.json
+
 # Allow committing Svelte/Vite config for the frontend app
 !frontend/svelte-app/svelte.config.js
 !frontend/svelte-app/vite.config.js
