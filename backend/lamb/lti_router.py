@@ -13,15 +13,14 @@ Endpoint: POST /lamb/v1/lti/launch
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from lamb import auth as lamb_auth
 from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.logging_config import get_logger
 import os
 import json
-import time
-import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -35,49 +34,46 @@ templates = Jinja2Templates(directory=[
 
 
 # =============================================================================
-# Token store — short-lived tokens for setup, dashboard, and consent flows
-# In-memory store (cleared on restart, which is fine)
+# Token helpers — short-lived signed tokens for setup, dashboard, and consent
+# flows. These are stateless so they remain valid across multiple workers.
 # =============================================================================
-_tokens: dict = {}
 SETUP_TOKEN_TTL = 600       # 10 minutes (setup / reconfigure)
 DASHBOARD_TOKEN_TTL = 1800  # 30 minutes (dashboard)
 CONSENT_TOKEN_TTL = 600     # 10 minutes (consent flow)
+LTI_TOKEN_SCOPE = "lti_unified"
 
 
 def _create_token(data: dict, ttl: int = SETUP_TOKEN_TTL) -> str:
-    """Create a short-lived token."""
-    token = secrets.token_urlsafe(32)
-    _tokens[token] = {**data, "expires": time.time() + ttl}
-    # Prune expired tokens occasionally
-    now = time.time()
-    expired = [k for k, v in _tokens.items() if v["expires"] < now]
-    for k in expired:
-        del _tokens[k]
-    return token
+    """Create a short-lived signed token that works across workers."""
+    payload = {
+        **data,
+        "scope": LTI_TOKEN_SCOPE,
+    }
+    return lamb_auth.create_token(payload, expires_delta=timedelta(seconds=ttl))
 
 
 def _validate_token(token: str) -> dict | None:
-    """Validate a token (does NOT consume it). Returns data or None."""
-    data = _tokens.get(token)
-    if not data:
-        return None
-    if time.time() > data["expires"]:
-        del _tokens[token]
+    """Validate a signed token (does NOT consume it). Returns data or None."""
+    data = lamb_auth.decode_token(token)
+    if not data or data.get("scope") != LTI_TOKEN_SCOPE:
         return None
     return data
 
 
 def _consume_token(token: str):
-    """Remove a token from the store."""
-    _tokens.pop(token, None)
+    """Compatibility no-op for stateless signed tokens."""
+    return None
 
 
 # Backward compatibility aliases
 def _create_setup_token(data: dict) -> str:
-    return _create_token(data, SETUP_TOKEN_TTL)
+    return _create_token({**data, "type": "setup"}, SETUP_TOKEN_TTL)
 
 def _validate_setup_token(token: str) -> dict | None:
-    return _validate_token(token)
+    data = _validate_token(token)
+    if not data or data.get("type") != "setup":
+        return None
+    return data
 
 
 def _format_timestamp(ts):
@@ -444,18 +440,22 @@ async def lti_link_account_submit(request: Request):
 
         logger.info(f"Linked LMS user {lms_user_id} to Creator user {creator_user['user_email']}")
 
-        # Update setup token with the identified creator user
-        data["creator_users"] = [{
+        # Reissue the setup token with the identified creator user. Stateless
+        # tokens cannot be mutated in place across worker hops.
+        updated_token = _create_setup_token({
+            **data,
+            "creator_users": [{
             "id": creator_user["id"],
             "organization_id": creator_user["organization_id"],
             "user_email": creator_user["user_email"],
             "user_name": creator_user["user_name"],
-        }]
+            }],
+        })
 
-        # Redirect to setup page with same token
+        # Redirect to setup page with refreshed token
         public_base = manager.get_public_base_url(request)
         return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/setup?token={token}",
+            url=f"{public_base}/lamb/v1/lti/setup?token={updated_token}",
             status_code=303
         )
 
