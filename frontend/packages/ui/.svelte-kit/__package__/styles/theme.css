@@ -1,0 +1,59 @@
+/* Shared Tailwind theme for all LAMB applications */
+/* This file should be imported by each SvelteKit app */
+
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --lamb-primary: #3b82f6;
+  --lamb-secondary: #10b981;
+  --lamb-accent: #f59e0b;
+  --lamb-danger: #ef4444;
+}
+
+/* Base typography */
+@layer base {
+  body {
+    @apply antialiased;
+  }
+
+  h1 {
+    @apply text-3xl font-bold;
+  }
+
+  h2 {
+    @apply text-2xl font-bold;
+  }
+
+  h3 {
+    @apply text-xl font-bold;
+  }
+}
+
+/* Utility classes used across modules */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 font-medium rounded-lg transition-colors;
+  }
+
+  .btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700;
+  }
+
+  .btn-secondary {
+    @apply btn bg-gray-200 text-gray-800 hover:bg-gray-300;
+  }
+
+  .card {
+    @apply rounded-lg border border-gray-200 bg-white p-4 shadow-sm;
+  }
+
+  .form-group {
+    @apply mb-4;
+  }
+
+  .form-input {
+    @apply w-full rounded-lg border border-gray-300 px-3 py-2 placeholder-gray-400 focus:border-blue-500 focus:outline-none;
+  }
+}

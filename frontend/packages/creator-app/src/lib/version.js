@@ -3,8 +3,8 @@
 
 export const VERSION_INFO = {
   "version": "0.5",
-  "commit": "e4a54fe",
+  "commit": "2c26e1e3",
   "branch": "feature/issue#277/Architecture_Activity_Module_System_Extensible_LTI_App_Framework",
-  "commitDate": "2026-02-27",
-  "buildDate": "2026-03-02"
+  "commitDate": "2026-03-06",
+  "buildDate": "2026-03-06"
 };

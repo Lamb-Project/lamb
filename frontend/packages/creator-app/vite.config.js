@@ -18,23 +18,27 @@ export default defineConfig({
 	// Allow overriding the proxy target via environment variable so the
 	// containerized frontend can proxy to the backend service name (backend:9099)
 	server: {
+		host: '0.0.0.0',
 		proxy: {
 			'/creator': {
 				// Use PROXY_TARGET if set (e.g. http://backend:9099 inside docker),
 				// otherwise default to localhost for host-based dev runs.
-				target: process.env.PROXY_TARGET || 'http://localhost:9099',
+				target: 'http://backend:9099',
 				changeOrigin: true,
-				secure: false
+				secure: false,
+				rewrite: (path) => path
 			},
 			'/lamb': {
-				target: process.env.PROXY_TARGET || 'http://localhost:9099',
+				target: 'http://backend:9099',
 				changeOrigin: true,
-				secure: false
+				secure: false,
+				rewrite: (path) => path
 			},
 			'/static': {
-				target: process.env.PROXY_TARGET || 'http://localhost:9099',
+				target: 'http://backend:9099',
 				changeOrigin: true,
-				secure: false
+				secure: false,
+				rewrite: (path) => path
 			}
 		}
 	},
