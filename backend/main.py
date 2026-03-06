@@ -60,6 +60,14 @@ async def lifespan(app: FastAPI):
     logger.info("Starting LAMB application")
     discover_modules()
     logger.info("Activity modules discovered")
+    
+    # --- Mount module routers (BUG-B1) ---
+    from lamb.modules import get_all_modules
+    for module in get_all_modules():
+        for router in module.get_routers():
+            app.include_router(router, prefix=f"/lamb/v1/modules/{module.name}")
+            logger.info(f"Mounted router for module: {module.name}")
+            
     await start_news_cache_refresh_loop()
     logger.info("News cache refresh loop started")
 

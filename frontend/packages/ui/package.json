@@ -9,22 +9,22 @@
   "svelte": "./dist/index.js",
   "exports": {
     ".": {
-      "svelte": "./src/index.js",
+      "svelte": "./src/lib/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./components": "./src/components/index.js",
-    "./stores": "./src/stores/index.js",
-    "./services": "./src/services/index.js",
-    "./i18n": "./src/i18n/index.js",
-    "./styles": "./src/styles/index.css"
+    "./components": "./src/lib/components/index.js",
+    "./stores": "./src/lib/stores/index.js",
+    "./services": "./src/lib/services/index.js",
+    "./i18n": "./src/lib/i18n/index.js",
+    "./styles": "./src/lib/styles/theme.css"
   },
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "svelte-package && tsc",
+    "build": "svelte-package",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
@@ -33,7 +33,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "svelte-i18n": "^3.7.4"
+    "svelte-i18n": "^4.0.1"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"

@@ -1,0 +1,53 @@
+<script>
+	import '../app.css';
+	import { Nav, Footer, userStore as user, initI18n } from '@lamb/ui';
+	import { browser } from '$app/environment';
+	import { base } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
+	import { onDestroy, onMount } from 'svelte';
+	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
+	// Import apiClient to register global axios interceptors on app startup
+	import '$lib/utils/apiClient';
+
+	onMount(() => {
+		initI18n();
+	});
+
+	let { children } = $props();
+
+	// Layout-level auth guard: redirect unauthenticated users to root (login page)
+	// The root path '/' is the only public route — it shows Login/Signup when not logged in.
+	$effect(() => {
+		if (browser && !$user.isLoggedIn) {
+			const currentPath = $page.url.pathname.replace(base, '') || '/';
+			if (currentPath !== '/') {
+				goto(`${base}/`, { replaceState: true });
+			}
+		}
+	});
+
+	// Session guard: periodically check if the account has been disabled mid-session.
+	// When logged in, polls the backend every 60 seconds; forces logout on 403 "Account disabled".
+	$effect(() => {
+		if (browser && $user.isLoggedIn) {
+			startSessionPolling(60000);
+		} else {
+			stopSessionPolling();
+		}
+	});
+
+	onDestroy(() => {
+		stopSessionPolling();
+	});
+</script>
+
+<div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+	<Nav />
+	
+	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
+		{@render children()}
+	</main>
+
+	<Footer />
+</div>
