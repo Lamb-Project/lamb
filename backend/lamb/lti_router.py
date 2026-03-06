@@ -26,7 +26,10 @@ import json
 import time
 import secrets
 from datetime import datetime, timedelta
+<<<<<<< HEAD
 from lamb.modules import get_all_modules
+=======
+>>>>>>> dev
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
@@ -43,7 +46,10 @@ SESSION_EXPIRED_HTML = "<h2>Session expired.</h2><p>Please click the LTI link in
 # LAMB JWT expiry for LTI instructor sessions (dashboard, setup)
 LTI_DASHBOARD_JWT_EXPIRY = timedelta(days=7)
 LTI_SETUP_JWT_EXPIRY = timedelta(hours=2)
+<<<<<<< HEAD
 
+=======
+>>>>>>> dev
 
 # =============================================================================
 # In-memory tokens — kept ONLY for student consent (short one-shot flow)
@@ -83,7 +89,10 @@ def _consume_consent_token(token: str):
 # LAMB JWT helpers for instructor sessions
 # =============================================================================
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> dev
 def _create_dashboard_jwt(activity, instructor_user, lms_user_id: str,
                            lms_email: str = "",
                            username: str = "") -> str:
@@ -147,16 +156,15 @@ async def lti_launch(request: Request):
     Decision tree:
     1. Validate OAuth signature
     2. Is there a configured activity for this resource_link_id?
-       YES → launch user into OWI (student flow)
-       NO  → is the user an instructor?
-             YES → identify as Creator user → show setup
-             NO  → show "not configured yet" page
+       YES + instructor → create activity user, issue LAMB JWT → dashboard
+       YES + student    → consent check → OWI redirect
+       NO  + instructor → identify as Creator user → setup (LAMB JWT)
+       NO  + student    → "not configured yet" page
     """
     try:
         form_data = await request.form()
         post_data = dict(form_data)
 
-        # Validate we have a consumer key
         consumer_key = post_data.get("oauth_consumer_key")
         expected_key, _ = manager.get_lti_credentials()
         if not expected_key:
@@ -166,12 +174,10 @@ async def lti_launch(request: Request):
             logger.error(f"Consumer key mismatch: got '{consumer_key}', expected '{expected_key}'")
             raise HTTPException(status_code=401, detail="Invalid consumer key")
 
-        # Validate OAuth signature
         base_url = manager.build_base_url(request)
         if not manager.validate_oauth_signature(post_data, "POST", base_url):
             raise HTTPException(status_code=401, detail="Invalid OAuth signature")
 
-        # Extract key LTI parameters
         resource_link_id = post_data.get("resource_link_id")
         if not resource_link_id:
             raise HTTPException(status_code=400, detail="Missing resource_link_id")
@@ -188,7 +194,6 @@ async def lti_launch(request: Request):
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
 
-        # Check if activity is already configured
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
 
         if activity and activity['status'] == 'active':
@@ -201,10 +206,53 @@ async def lti_launch(request: Request):
                 logger.error(f"Module {activity_type} not found for activity {resource_link_id}")
                 raise HTTPException(status_code=500, detail=f"Module {activity_type} is not installed.")
 
+<<<<<<< HEAD
             ctx = LTIContext(
                 resource_link_id=resource_link_id,
                 lms_user_id=lms_user_id,
                 lms_email=lms_email,
+=======
+            # ── CONFIGURED: Instructor → issue dashboard JWT (no OWI calls) ──
+            if manager.is_instructor(roles):
+                logger.info(f"Instructor accessing configured activity {resource_link_id} → dashboard")
+
+                # Build instructor info from LTI params only — no OWI user
+                # creation here. OWI user is created when "Enter Chat" is clicked.
+                instructor_email = manager.generate_student_email(username, resource_link_id)
+                instructor_user = {
+                    "email": instructor_email,
+                    "display_name": display_name,
+                }
+
+                dashboard_token = _create_dashboard_jwt(
+                    activity, instructor_user, lms_user_id, lms_email,
+                    username=username)
+
+                return RedirectResponse(
+                    url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
+                    status_code=303
+                )
+
+            # ── CONFIGURED: Student flow ──
+            student_email = manager.generate_student_email(username, resource_link_id)
+            if manager.check_student_consent(activity, student_email):
+                logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
+                consent_token = _create_consent_token({
+                    "type": "consent",
+                    "resource_link_id": resource_link_id,
+                    "username": username,
+                    "display_name": display_name,
+                    "lms_user_id": lms_user_id,
+                    "student_email": student_email,
+                })
+                return RedirectResponse(
+                    url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
+                    status_code=303
+                )
+
+            owi_token = manager.handle_student_launch(
+                activity=activity,
+>>>>>>> dev
                 username=username,
                 display_name=display_name,
                 roles=roles,
@@ -242,7 +290,6 @@ async def lti_launch(request: Request):
 
         # ── NOT CONFIGURED ──
         if not manager.is_instructor(roles):
-            # Student at unconfigured activity
             logger.info(f"Student arrived at unconfigured activity {resource_link_id}")
             return templates.TemplateResponse("lti_waiting.html", {
                 "request": request,
@@ -252,20 +299,21 @@ async def lti_launch(request: Request):
         # ── INSTRUCTOR at unconfigured activity → Setup flow ──
         logger.info(f"Instructor setup flow for {resource_link_id}")
 
-        # Identify instructor
         creator_users = manager.identify_instructor(
             lms_user_id=lms_user_id,
             lms_email=lms_email
         )
 
         if not creator_users:
-            # Instructor has no associated Creator account → show contact-admin page
             logger.info(f"Instructor {lms_user_id} has no Creator account — showing contact-admin page")
             return templates.TemplateResponse("lti_contact_admin.html", {
                 "request": request,
             })
 
+<<<<<<< HEAD
         # Instructor identified — issue setup JWT and redirect to setup page
+=======
+>>>>>>> dev
         setup_token = _create_setup_jwt(
             creator_users=[
                 {"id": cu["id"], "organization_id": cu["organization_id"],
@@ -337,10 +385,8 @@ async def lti_setup_page(request: Request, token: str = ""):
     if not creator_users:
         return HTMLResponse("<h2>Error</h2><p>Could not identify your Creator account.</p>", status_code=403)
 
-    # Get organizations the instructor belongs to
     orgs_with_assistants = manager.get_published_assistants_for_instructor(creator_users)
 
-    # Get org names for display
     org_names = {}
     for org_id in orgs_with_assistants:
         org = db_manager.get_organization_by_id(org_id)
@@ -591,7 +637,6 @@ async def lti_reconfigure_activity(request: Request):
         if not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
 
-        # Handle chat_visibility toggle
         chat_visibility_str = form_data.get("chat_visibility_enabled")
         if chat_visibility_str is not None:
             new_chat_vis = 1 if chat_visibility_str == "1" else 0
@@ -602,7 +647,6 @@ async def lti_reconfigure_activity(request: Request):
         if not success:
             return HTMLResponse("<h2>Error</h2><p>Failed to reconfigure.</p>", status_code=500)
 
-        # Redirect back to dashboard
         public_base = manager.get_public_base_url(request)
         return RedirectResponse(
             url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={token}",
@@ -693,7 +737,6 @@ async def lti_consent_submit(request: Request):
         if not activity:
             return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
 
-        # Record consent (need to ensure user record exists first)
         db_manager.create_lti_activity_user(
             activity_id=activity['id'],
             user_email=student_email,
@@ -704,7 +747,6 @@ async def lti_consent_submit(request: Request):
         db_manager.record_student_consent(activity['id'], student_email)
         logger.info(f"Student {student_email} gave consent for activity {resource_link_id}")
 
-        # Now launch into OWI
         owi_token = manager.handle_student_launch(
             activity=activity,
             username=username,
@@ -749,20 +791,16 @@ async def lti_dashboard(request: Request, resource_link_id: str = "", token: str
         lms_email=data.get("lti_lms_email", "")
     )
 
-    # Get org name
     org = db_manager.get_organization_by_id(activity['organization_id'])
     org_name = org.get('name', 'Unknown') if org else 'Unknown'
 
-    # Get dashboard data
     stats = manager.get_dashboard_stats(activity)
     students = manager.get_dashboard_students(activity['id'])
 
-    # Get chats if chat_visibility enabled
     chats = {"chats": [], "total": 0}
     if activity.get('chat_visibility_enabled'):
         chats = manager.get_dashboard_chats(activity)
 
-    # Format created date
     created_date = _format_timestamp(activity.get('created_at'))
 
     return templates.TemplateResponse("lti_dashboard.html", {
