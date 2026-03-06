@@ -1,1 +1,0 @@
-{"version":3,"file":"chat-synchronization.svelte.d.ts","sourceRoot":"","sources":["../../src/tests/chat-synchronization.svelte.ts"],"names":[],"mappings":"AAGA,OAAO,EAAE,IAAI,EAAE,MAAM,mBAAmB,CAAC;AAGxC,KAAK,gBAAgB,GAAI;IAAE,EAAE,CAAC,EAAE,MAAM,CAAA;CAAE,CAAC;AAgB1C,QAAA,MAAM,mBAAmB;;;MAAsC,CAAC;AAChE,KAAK,mBAAmB,GAAG,UAAU,CAAC,OAAO,mBAAmB,CAAC,CAAC;AAClE,eAAe,mBAAmB,CAAC"}
