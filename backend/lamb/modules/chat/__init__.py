@@ -62,25 +62,26 @@ class ChatModule(ActivityModule):
 
     def on_instructor_launch(self, ctx: LTIContext):
         """Called when an instructor launches an activity of this type."""
-        from lamb.lti_router import _create_token, DASHBOARD_TOKEN_TTL
+        from lamb.lti_router import _create_dashboard_jwt
+        from lamb.lti_activity_manager import LtiActivityManager
+
         activity = self.db_manager.get_lti_activity_by_resource_link(ctx.resource_link_id)
         if not activity:
              raise HTTPException(status_code=404, detail="Activity not found")
-        
-        is_owner = (ctx.lms_email and ctx.lms_email == activity.get('owner_email'))
-        
+
+        lti_manager = LtiActivityManager()
+        instructor_email = lti_manager.generate_student_email(ctx.username, ctx.resource_link_id)
+        instructor_user = {"email": instructor_email, "display_name": ctx.display_name}
+
         # We need the request base url. While not in context directly, it's safer to use the env var
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:8000") 
 
-        dashboard_token = _create_token({
-            "type": "dashboard",
-            "resource_link_id": ctx.resource_link_id,
-            "lms_user_id": ctx.lms_user_id,
-            "lms_email": ctx.lms_email,
-            "username": ctx.username,
-            "display_name": ctx.display_name,
-            "is_owner": is_owner,
-        }, ttl=DASHBOARD_TOKEN_TTL)
+        dashboard_token = _create_dashboard_jwt(
+            activity, instructor_user,
+            lms_user_id=ctx.lms_user_id,
+            lms_email=ctx.lms_email,
+            username=ctx.username
+        )
         
         return RedirectResponse(
             url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}",

@@ -31,6 +31,8 @@ class LtiActivityManager:
 
     def __init__(self):
         self.db_manager = LambDatabaseManager()
+        self.owi_user_manager = OwiUserManager()
+        self.owi_group_manager = OwiGroupManager()
 
     # =========================================================================
     # Credential Resolution
@@ -139,9 +141,22 @@ class LtiActivityManager:
             lms_email=lms_email
         )
 
-    # NOTE: verify_creator_credentials was moved to lti_router.py (inline)
-    # as part of the OWI decoupling. The router now uses OwiUserManager
-    # and validate_user_enabled directly.
+    def verify_creator_credentials(self, email: str, password: str) -> Optional[Dict[str, Any]]:
+        """Verify creator credentials via OWI and return creator user dict or None."""
+        from lamb.auth_context import validate_user_enabled
+        verified = self.owi_user_manager.verify_user(email, password)
+        if not verified:
+            return None
+        try:
+            creator_user_raw = validate_user_enabled(email)
+        except Exception:
+            return None
+        return {
+            'id': creator_user_raw['id'],
+            'organization_id': creator_user_raw['organization_id'],
+            'user_email': creator_user_raw.get('email') or creator_user_raw.get('user_email'),
+            'user_name': creator_user_raw.get('name') or creator_user_raw.get('user_name'),
+        }
 
     # =========================================================================
     # Published Assistants
@@ -257,6 +272,149 @@ class LtiActivityManager:
         safe_user = self.sanitize_for_email(username)
         safe_rlid = self.sanitize_for_email(resource_link_id, max_length=60)
         return f"{safe_user}_{safe_rlid}@lamb-lti.local"
+
+    def handle_student_launch(
+        self,
+        activity: Dict[str, Any],
+        username: str,
+        display_name: str,
+        lms_user_id: str = None,
+        is_instructor: bool = False,
+    ) -> Optional[str]:
+        """
+        Handle a student (or instructor-as-user) launch into a configured activity.
+        1. Generate synthetic email
+        2. Get/create OWI user
+        3. Add to activity's OWI group
+        4. Record in lti_activity_users
+        5. Get auth token
+        Returns the OWI auth token or None on failure.
+        """
+        email = self.generate_student_email(username, activity['resource_link_id'])
+        logger.info(f"{'Instructor' if is_instructor else 'Student'} launch: {email} for activity {activity['resource_link_id']}")
+
+        # Get or create OWI user
+        owi_user = self.owi_user_manager.get_user_by_email(email)
+        if not owi_user:
+            logger.info(f"Creating new OWI user for {email}")
+            owi_user = self.owi_user_manager.create_user(
+                name=display_name,
+                email=email,
+                password=f"lti_activity_{activity['id']}",
+                role="user"
+            )
+            if not owi_user:
+                logger.error(f"Failed to create OWI user for {email}")
+                return None
+
+        # Capture OWI user ID for dashboard chat queries
+        owi_user_id = owi_user.get('id', '') if owi_user else ''
+
+        # Add to activity's OWI group
+        add_result = self.owi_group_manager.add_user_to_group_by_email(
+            group_id=activity['owi_group_id'],
+            user_email=email
+        )
+        if add_result.get("status") == "error" and "already a member" not in add_result.get("error", "").lower():
+            logger.warning(f"Could not add {email} to group: {add_result.get('error')}")
+
+        # Record in LAMB DB (also updates access tracking)
+        self.db_manager.create_lti_activity_user(
+            activity_id=activity['id'],
+            user_email=email,
+            user_name=username,
+            user_display_name=display_name,
+            lms_user_id=lms_user_id,
+            owi_user_id=owi_user_id,
+            is_instructor=is_instructor,
+        )
+
+        # Get auth token
+        token = self.owi_user_manager.get_auth_token(email, display_name)
+        if not token:
+            logger.error(f"Failed to get auth token for {email}")
+            return None
+
+        return token
+
+    def create_instructor_activity_user(
+        self,
+        activity: Dict[str, Any],
+        username: str,
+        display_name: str,
+        lms_user_id: str = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create/get the activity-specific OWI user for an instructor.
+        Same as handle_student_launch but marks as instructor and returns
+        user metadata instead of an OWI token (the OWI token is obtained
+        later only when "Enter Chat" is clicked).
+        """
+        email = self.generate_student_email(username, activity['resource_link_id'])
+        logger.info(f"Instructor activity user: {email} for activity {activity['resource_link_id']}")
+
+        owi_user = self.owi_user_manager.get_user_by_email(email)
+        if not owi_user:
+            logger.info(f"Creating new OWI user for instructor {email}")
+            owi_user = self.owi_user_manager.create_user(
+                name=display_name,
+                email=email,
+                password=f"lti_activity_{activity['id']}",
+                role="user"
+            )
+            if not owi_user:
+                logger.error(f"Failed to create OWI user for instructor {email}")
+                return None
+
+        owi_user_id = owi_user.get('id', '') if owi_user else ''
+
+        add_result = self.owi_group_manager.add_user_to_group_by_email(
+            group_id=activity['owi_group_id'],
+            user_email=email
+        )
+        if add_result.get("status") == "error" and "already a member" not in add_result.get("error", "").lower():
+            logger.warning(f"Could not add instructor {email} to group: {add_result.get('error')}")
+
+        user_id = self.db_manager.create_lti_activity_user(
+            activity_id=activity['id'],
+            user_email=email,
+            user_name=username,
+            user_display_name=display_name,
+            lms_user_id=lms_user_id,
+            owi_user_id=owi_user_id,
+            is_instructor=True,
+        )
+
+        return {
+            "user_id": user_id,
+            "email": email,
+            "owi_user_id": owi_user_id,
+            "display_name": display_name,
+        }
+
+    def determine_is_owner(self, activity: Dict[str, Any],
+                            lms_user_id: str, lms_email: str = None) -> bool:
+        """
+        Check if the LMS user is the owner of the activity by resolving
+        their LMS identity to a Creator user and comparing with owner_email.
+        """
+        owner_email = activity.get('owner_email')
+        if not owner_email:
+            return False
+
+        # Quick check: direct email match
+        if lms_email and lms_email == owner_email:
+            return True
+
+        # Full resolution: find Creator users for this LMS identity
+        creator_users = self.db_manager.get_creator_users_by_lms_identity(
+            lms_user_id=lms_user_id,
+            lms_email=lms_email
+        )
+        return any(
+            cu.get('user_email') == owner_email
+            for cu in (creator_users or [])
+        )
 
     # =========================================================================
     # URL helpers
