@@ -185,6 +185,25 @@
         return result;
     });
     
+    // Advanced mode toggle: when off, hide plugin params that have default values
+    let advancedMode = $state(false);
+
+    let hasAdvancedParams = $derived(
+        visibleParamKeys.some(paramName => {
+            const paramDef = selectedPlugin?.parameters?.[paramName];
+            return paramDef && paramDef.default !== undefined && paramDef.default !== null;
+        })
+    );
+
+    let displayedParamKeys = $derived.by(() => {
+        if (advancedMode) return visibleParamKeys;
+        return visibleParamKeys.filter(paramName => {
+            const paramDef = selectedPlugin?.parameters?.[paramName];
+            if (!paramDef) return false;
+            return paramDef.default === undefined || paramDef.default === null;
+        });
+    });
+
     /** @type {File | null} */
     let selectedFile = $state(null);
     // Derived flag: treat only explicit 'file-ingest' as requiring a file. Other kinds (base-ingest, remote-ingest, etc.) run without file upload.
@@ -699,9 +718,8 @@
         if (index >= 0 && index < plugins.length) {
             selectedPluginIndex = index;
             selectedPlugin = plugins[index];
+            advancedMode = false;
             
-            // Initialize parameters with defaults from the parameters object
-            // Skip underscore-prefixed parameters (informational only, not submitted)
             pluginParams = {};
             if (selectedPlugin && selectedPlugin.parameters) {
                 // Iterate over the parameters object
@@ -1393,11 +1411,33 @@
                                     <!-- Plugin parameters (excluding underscore-prefixed info params) -->
                                     {#if selectedPlugin && selectedPlugin.parameters && visibleParamKeys.length > 0}
                                         <div class="space-y-4 border-t border-gray-200 pt-4">
-                                            <h5 class="font-medium text-gray-700">
-                                                {$_('knowledgeBases.fileUpload.parametersLabel', { default: 'Plugin Parameters' })}
-                                            </h5>
+                                            <div class="flex items-center justify-between">
+                                                <h5 class="font-medium text-gray-700">
+                                                    {$_('knowledgeBases.fileUpload.parametersLabel', { default: 'Plugin Parameters' })}
+                                                </h5>
+                                                {#if hasAdvancedParams}
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                                                        onclick={() => { advancedMode = !advancedMode; }}
+                                                    >
+                                                        <span class="text-xs font-medium">
+                                                            {$_('knowledgeBases.fileUpload.advancedMode', { default: 'Advanced' })}
+                                                        </span>
+                                                        <span
+                                                            class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out {advancedMode ? 'bg-[#2271b3]' : 'bg-gray-300'}"
+                                                            role="switch"
+                                                            aria-checked={advancedMode}
+                                                        >
+                                                            <span
+                                                                class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {advancedMode ? 'translate-x-4' : 'translate-x-0'}"
+                                                            ></span>
+                                                        </span>
+                                                    </button>
+                                                {/if}
+                                            </div>
                                             
-                                            {#each visibleParamKeys as paramName (paramName)}
+                                            {#each displayedParamKeys as paramName (paramName)}
                                                 {@const paramDef = selectedPlugin.parameters[paramName]}
                                                     <!-- Parameter container with conditional indentation for dependent params -->
                                                     <div class={paramDef.visible_when ? 'ml-6 pl-4 border-l-2 border-gray-200' : ''}>

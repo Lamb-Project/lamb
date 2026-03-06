@@ -1,5 +1,8 @@
 import uuid
 import json
+import sqlite3
+import fcntl
+import tempfile
 from passlib.context import CryptContext
 from typing import Optional, Dict
 import time
@@ -31,6 +34,59 @@ pwd_context = CryptContext(
 )
 
 
+class UserCreationLock:
+    """
+    File-based lock to prevent race conditions during user creation across multiple workers.
+    
+    Uses fcntl for POSIX systems (Linux, macOS). Falls back to no-op on Windows
+    (where uvicorn workers aren't typically used in production).
+    """
+    def __init__(self, email: str):
+        self.email = email
+        self.lock_file = None
+        self.lock_fd = None
+        
+    def __enter__(self):
+        try:
+            # Create lock file in temp directory
+            lock_dir = os.path.join(tempfile.gettempdir(), 'lamb_owi_locks')
+            os.makedirs(lock_dir, exist_ok=True)
+            
+            # Use email hash as filename to avoid path issues
+            import hashlib
+            email_hash = hashlib.md5(self.email.encode()).hexdigest()
+            lock_path = os.path.join(lock_dir, f'user_create_{email_hash}.lock')
+            
+            # Open lock file
+            self.lock_file = open(lock_path, 'w')
+            self.lock_fd = self.lock_file.fileno()
+            
+            # Acquire exclusive lock (blocks if another worker holds it)
+            logger.debug(f"Acquiring user creation lock for {self.email}")
+            fcntl.flock(self.lock_fd, fcntl.LOCK_EX)
+            logger.debug(f"Lock acquired for {self.email}")
+            
+        except (OSError, AttributeError) as e:
+            # fcntl not available (Windows) or other OS error
+            logger.warning(f"Could not acquire file lock for {self.email}: {e}. Proceeding without lock.")
+            
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.lock_fd is not None:
+                # Release lock
+                fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
+                logger.debug(f"Lock released for {self.email}")
+        except Exception as e:
+            logger.warning(f"Error releasing lock for {self.email}: {e}")
+        finally:
+            if self.lock_file:
+                self.lock_file.close()
+        
+        return False  # Don't suppress exceptions
+
+
 class OwiUserManager:
     def __init__(self):
         import config
@@ -45,7 +101,10 @@ class OwiUserManager:
 
     def create_user(self, name: str, email: str, password: str, role: str = "user") -> Optional[Dict]:
         """
-        Create a new user with authentication
+        Create a new user with authentication.
+        
+        Uses file-based locking to prevent race conditions when multiple workers
+        try to create the same user simultaneously.
 
         Args:
             name (str): User's name
@@ -57,75 +116,84 @@ class OwiUserManager:
             Optional[Dict]: Created user data or None if creation fails
         """
         try:
-            # get admin token
-            # we will not use the admin token for this operation
-            # but we will ensure the admin user is created
-            #
+            # Acquire lock to prevent race condition across multiple workers
+            with UserCreationLock(email):
+                # Check if user already exists (inside lock to prevent TOCTOU)
+                existing_user = self.db.get_user_by_email(email)
+                if existing_user:
+                    logger.info(f"User with email {email} already exists")
+                    return existing_user
 
-            if self.db.get_user_by_email(email):
-                logger.error(f"User with email {email} already exists")
-                return None
+                # Generate user ID and hash password
+                user_id = str(uuid.uuid4())
+                hashed_password = pwd_context.hash(password)
+                current_time = int(time.time())
 
-            # Generate user ID and hash password
-            user_id = str(uuid.uuid4())
-            hashed_password = pwd_context.hash(password)
-            current_time = int(time.time())
+                profile_image_url = f"{PIPELINES_HOST}/static/img/lamb_icon.png"
 
-            profile_image_url = f"{PIPELINES_HOST}/static/img/lamb_icon.png"
-
-            # Open WebUI stores per-user UI preferences under settings.ui.
-            # If these values are missing, the frontend defaults them to true.
-            default_settings = {
-                "ui": {
-                    "showUpdateToast": False,
-                    "showChangelog": False,
+                # Open WebUI stores per-user UI preferences under settings.ui.
+                # If these values are missing, the frontend defaults them to true.
+                default_settings = {
+                    "ui": {
+                        "showUpdateToast": False,
+                        "showChangelog": False,
+                    }
                 }
-            }
 
-            # Create user entry
-            user_query = """
-                INSERT INTO user (id, name, email, role, profile_image_url, settings,
-                                created_at, updated_at, last_active_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            user_params = (
-                user_id,
-                name,
-                email,
-                role,
-                profile_image_url,
-                json.dumps(default_settings),
-                current_time,
-                current_time,
-                current_time,
-            )
+                # Create user entry
+                user_query = """
+                    INSERT INTO user (id, name, email, role, profile_image_url, settings,
+                                    created_at, updated_at, last_active_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                user_params = (
+                    user_id,
+                    name,
+                    email,
+                    role,
+                    profile_image_url,
+                    json.dumps(default_settings),
+                    current_time,
+                    current_time,
+                    current_time,
+                )
 
-            # Create auth entry
-            auth_query = """
-                INSERT INTO auth (id, email, password, active)
-                VALUES (?, ?, ?, ?)
-            """
-            auth_params = (user_id, email, hashed_password, 1)  # 1 = active
+                # Create auth entry
+                auth_query = """
+                    INSERT INTO auth (id, email, password, active)
+                    VALUES (?, ?, ?, ?)
+                """
+                auth_params = (user_id, email, hashed_password, 1)  # 1 = active
 
-            # Execute both queries
-            conn = self.db.get_connection()
-            if not conn:
-                return None
+                # Execute both queries
+                conn = self.db.get_connection()
+                if not conn:
+                    return None
 
-            try:
-                cursor = conn.cursor()
-                cursor.execute(user_query, user_params)
-                cursor.execute(auth_query, auth_params)
-                conn.commit()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(user_query, user_params)
+                    cursor.execute(auth_query, auth_params)
+                    conn.commit()
 
-                # Return the created user
-                return self.db.get_user_by_id(user_id)
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error creating user: {e}")
-                return None
-            finally:
-                conn.close()
+                    logger.info(f"Successfully created user {email} with role {role}")
+                    return self.db.get_user_by_id(user_id)
+                    
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    # Defense in depth: handle race condition if it somehow bypasses the lock
+                    if "UNIQUE constraint" in str(e) and "email" in str(e).lower():
+                        logger.warning(f"User {email} already exists (rare race bypassed lock), fetching existing user")
+                        return self.db.get_user_by_email(email)
+                    else:
+                        logger.error(f"Integrity error creating user: {e}")
+                        return None
+                except Exception as e:
+                    conn.rollback()
+                    logger.error(f"Error creating user: {e}")
+                    return None
+                finally:
+                    conn.close()
 
         except Exception as e:
             logger.error(f"Unexpected error in create_user: {e}")

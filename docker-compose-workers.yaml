@@ -27,7 +27,7 @@ services:
       pip install -r requirements.txt && \
       mkdir -p data && \
       LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
-      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --workers 4 --log-level $$LOG_LEVEL --no-access-log"
+      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --log-level $$LOG_LEVEL --no-access-log"
   openwebui-build:
     image: node:20-alpine
     working_dir: ${LAMB_PROJECT_PATH}/open-webui

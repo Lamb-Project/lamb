@@ -1068,6 +1068,7 @@ class LambDatabaseManager:
                             user_display_name TEXT NOT NULL DEFAULT '',
                             lms_user_id TEXT,
                             owi_user_id TEXT,
+                            is_instructor INTEGER NOT NULL DEFAULT 0,
                             consent_given_at INTEGER,
                             last_access_at INTEGER,
                             access_count INTEGER NOT NULL DEFAULT 0,
@@ -1088,6 +1089,10 @@ class LambDatabaseManager:
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN last_access_at INTEGER")
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0")
                         logger.info("Migrated lti_activity_users with dashboard fields")
+                    if 'is_instructor' not in existing_cols:
+                        logger.info("Migrating lti_activity_users: adding is_instructor column")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activity_users ADD COLUMN is_instructor INTEGER NOT NULL DEFAULT 0")
+                        logger.info("Migrated lti_activity_users with is_instructor field")
 
                 # lti_identity_links — map LMS identities to LAMB Creator users
                 cursor.execute(
@@ -7684,7 +7689,8 @@ class LambDatabaseManager:
     def create_lti_activity_user(self, activity_id: int, user_email: str,
                                   user_name: str = '', user_display_name: str = '',
                                   lms_user_id: str = None,
-                                  owi_user_id: str = None) -> Optional[int]:
+                                  owi_user_id: str = None,
+                                  is_instructor: bool = False) -> Optional[int]:
         """Create or get an LTI activity user record. Updates access tracking on each call. Returns the user record id."""
         connection = self.get_connection()
         if not connection:
@@ -7713,15 +7719,22 @@ class LambDatabaseManager:
                             SET owi_user_id = ?
                             WHERE id = ? AND (owi_user_id IS NULL OR owi_user_id = '')
                         """, (owi_user_id, existing[0]))
+                    # Promote to instructor if needed (never demote)
+                    if is_instructor:
+                        cursor.execute(f"""
+                            UPDATE {self.table_prefix}lti_activity_users
+                            SET is_instructor = 1
+                            WHERE id = ? AND is_instructor = 0
+                        """, (existing[0],))
                     return existing[0]
                 # Create
                 cursor.execute(f"""
                     INSERT INTO {self.table_prefix}lti_activity_users
                     (activity_id, user_email, user_name, user_display_name,
-                     lms_user_id, owi_user_id, last_access_at, access_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                     lms_user_id, owi_user_id, is_instructor, last_access_at, access_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """, (activity_id, user_email, user_name, user_display_name,
-                      lms_user_id, owi_user_id, now, now))
+                      lms_user_id, owi_user_id, 1 if is_instructor else 0, now, now))
                 return cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"Error creating LTI activity user: {e}")
