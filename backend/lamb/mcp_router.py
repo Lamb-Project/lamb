@@ -15,6 +15,7 @@ from lamb.completions.main import (
 )
 from lamb.lamb_classes import Assistant
 from lamb.logging_config import get_logger
+from lamb.auth_context import validate_user_enabled
 
 # Initialize router
 router = APIRouter(tags=["MCP"])
@@ -38,6 +39,8 @@ async def get_current_user_email(
     Expects:
     - Authorization: Bearer <LTI_SECRET>
     - X-User-Email: <user_email>
+    
+    Also verifies the user exists and is enabled.
     """
     if not authorization:
         raise HTTPException(
@@ -64,6 +67,9 @@ async def get_current_user_email(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="X-User-Email header required"
         )
+    
+    # Verify user exists and is enabled (delegates to AuthContext validation)
+    validate_user_enabled(x_user_email)
     
     logger.info(f"Authenticated user: {x_user_email}")
     return x_user_email

@@ -1,9 +1,6 @@
 <script>
   import { onMount } from 'svelte';
   import { _, locale } from '$lib/i18n';
-  import { user } from '$lib/stores/userStore';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
   import {
     currentTab,
     currentTemplates,
@@ -61,13 +58,8 @@
   let totalPages = $state(1);
   let totalItems = $state(0);
   
-  // Check authentication
+  // Load templates on mount (auth is handled by layout-level guard)
   onMount(() => {
-    if (!$user.isLoggedIn) {
-      goto(`${base}/`);
-      return;
-    }
-    
     // Load all templates for client-side filtering
     loadAllUserTemplates();
   });

@@ -938,7 +938,7 @@ async def update_user_password_admin(
             }
         )
 
-    # User is admin, proceed with updating the password
+    # User is admin and enabled, proceed with updating the password
     try:
         user_creator = UserCreatorManager()
         result = await user_creator.update_user_password(email, new_password)
@@ -2085,6 +2085,26 @@ async def get_current_user(request: Request, auth: AuthContext = Depends(get_aut
     except Exception as e:
         logger.error(f"Error getting current user: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/user/status",
+    tags=["User Management"],
+    summary="Get User Status (Polling)",
+    description="""Lightweight endpoint to verify the user's session is active.
+    Returns 200 OK if the user is authenticated and active.
+    Returns 403 or 401 if the user is disabled or token is invalid.
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User is active"},
+        401: {"description": "Authentication invalid"},
+        403: {"description": "User is disabled or deleted"}
+    }
+)
+async def get_user_status(auth: AuthContext = Depends(get_auth_context)):
+    """Lightweight endpoint for frontend session polling"""
+    return {"status": "ok"}
 
 
 @router.get(

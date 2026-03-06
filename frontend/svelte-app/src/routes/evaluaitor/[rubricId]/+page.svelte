@@ -1,24 +1,18 @@
 <script>
-  import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { user } from '$lib/stores/userStore';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import RubricEditor from '$lib/components/evaluaitor/RubricEditor.svelte';
 
   // Get rubric ID from URL params
   let rubricId = $derived($page.params.rubricId);
 
-  // Redirect to login if not authenticated
-  $effect(() => {
-    if (!$user.isLoggedIn) {
-      goto('/');
-    }
-  });
+  // Auth is handled by layout-level guard in +layout.svelte
 
   // Redirect if no rubric ID (shouldn't happen with SvelteKit routing)
   $effect(() => {
     if (!rubricId) {
-      goto('/evaluaitor');
+      goto(`${base}/evaluaitor`);
     }
   });
 </script>
