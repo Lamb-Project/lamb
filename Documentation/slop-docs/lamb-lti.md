@@ -193,3 +193,59 @@ From Moodle's point of view, the integration is straightforward:
 5. LAMB redirects the browser to the right destination without asking the user to log in again.
 
 So the essential role of LTI in LAMB is not just authentication. It is also automatic user provisioning, context mapping, and redirection into the correct application surface.
+
+## Multi-worker fix for unified LTI
+
+The unified route at `/lamb/v1/lti/launch` is a multi-step flow.
+
+After the initial LTI POST, LAMB may redirect the browser to internal follow-up pages such as:
+
+- `/lamb/v1/lti/setup`
+- `/lamb/v1/lti/consent`
+- `/lamb/v1/lti/dashboard`
+
+Originally, the router stored temporary setup, consent, and dashboard tokens in process memory inside `backend/lamb/lti_router.py`.
+
+That worked with a single worker, but it broke intermittently with multiple Uvicorn workers:
+
+1. One worker handled the initial launch request.
+2. That worker created the temporary token in its own memory.
+3. The browser followed the redirect.
+4. A different worker received the next request.
+5. That second worker could not see the in-memory token.
+6. LAMB returned a "Session expired" page.
+
+To make the unified LTI flow work correctly with multiple workers, the temporary token mechanism was changed.
+
+Instead of storing those tokens in memory, LAMB now creates short-lived signed stateless tokens using the regular LAMB JWT utility in `backend/lamb/auth.py`.
+
+The lifetimes remain the same as before:
+
+- setup tokens: 10 minutes,
+- consent tokens: 10 minutes,
+- dashboard tokens: 30 minutes.
+
+Those values come from SETUP_TOKEN_TTL = 600, CONSENT_TOKEN_TTL = 600, and DASHBOARD_TOKEN_TTL = 1800 in `backend/lamb/lti_router.py`
+
+That means:
+
+- any worker can validate the token,
+- redirects can hop across workers safely,
+- the unified LTI setup, consent, and dashboard flow is no longer tied to one Python process.
+
+### Subtle consequence
+
+There is one important tradeoff.
+
+Before the change, a temporary token could be consumed server-side by deleting it from the in-memory store.
+
+After the change, the token is stateless, so there is no shared server-side record to delete. In practice, this means:
+
+- the token is no longer truly one-time-use,
+- validity is controlled by signature verification and expiration time,
+- ordinary token use does not renew or extend its lifetime,
+- `_consume_token()` in the unified router is effectively a no-op.
+
+The only time a lifetime is refreshed is when LAMB explicitly issues a brand new token, for example when the account-linking flow reissues a setup token after updating the available creator identity data.
+
+So the fix improves correctness under multiple workers, but it changes token behavior from server-consumed to expiry-based.
