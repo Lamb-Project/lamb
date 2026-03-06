@@ -1,0 +1,1 @@
+import{x as u,y as o,z as _,h as t,n as g,C as m,k as i,A as l,m as n,j as p}from"./BGLSpct9.js";function E(d,r){let s=null,y=t;var a;if(t){s=p;for(var e=g(document.head);e!==null&&(e.nodeType!==m||e.data!==d);)e=i(e);if(e===null)l(!1);else{var f=i(e);e.remove(),n(f)}}t||(a=document.head.appendChild(u()));try{o(()=>r(a),_)}finally{y&&(l(!0),n(s))}}export{E as h};

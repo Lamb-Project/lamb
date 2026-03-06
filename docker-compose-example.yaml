@@ -40,13 +40,18 @@ services:
     # This service only runs the build step and exits
   frontend-build:
     image: node:20-alpine
-    working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
+    working_dir: ${LAMB_PROJECT_PATH}/frontend
+    environment:
+      - CI=true
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     command: >
       sh -lc "apk add --no-cache git && \
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
-      npm install && npm run build"
+      corepack enable && \
+      corepack prepare pnpm@latest --activate && \
+      pnpm install && \
+      pnpm --filter creator-app build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
@@ -101,10 +106,11 @@ services:
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload --log-level $$LOG_LEVEL --no-access-log"
   frontend:
     image: node:20-alpine
-    working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
+    working_dir: ${LAMB_PROJECT_PATH}/frontend
     environment:
       - HOST=0.0.0.0
       - PROXY_TARGET=http://backend:9099
+      - CI=true
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
     ports:
@@ -117,12 +123,14 @@ services:
     command: >
       sh -lc "apk add --no-cache git && \
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
-      test -f static/config.js || cp static/config.js.sample static/config.js; \
+      test -f packages/creator-app/static/config.js || cp packages/creator-app/static/config.js.sample packages/creator-app/static/config.js; \
       mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/img && \
       mkdir -p ${LAMB_PROJECT_PATH}/frontend/build/static/md && \
       cp ${LAMB_PROJECT_PATH}/backend/static/img/lamb_icon.png ${LAMB_PROJECT_PATH}/frontend/build/static/img/ && \
       cp ${LAMB_PROJECT_PATH}/backend/static/md/lamb-news.md ${LAMB_PROJECT_PATH}/frontend/build/static/md/ && \
-      npm run dev -- --host 0.0.0.0"
+      corepack enable && \
+      corepack prepare pnpm@latest --activate && \
+      pnpm install && pnpm --filter creator-app dev -- --host 0.0.0.0"
 networks:
   default:
     name: lamb-${COMPOSE_PROJECT_NAME:-default}

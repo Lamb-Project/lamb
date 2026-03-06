@@ -26,7 +26,8 @@ import os
 import json
 import time
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, get_module
+from lamb.modules.base import LTIContext
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
 
