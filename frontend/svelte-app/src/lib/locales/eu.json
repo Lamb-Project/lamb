@@ -46,6 +46,7 @@
     "title": "Ikaskuntza Laguntzaileak",
     "view": "Ikusi Ikaskuntza Laguntzaileak",
     "myAssistantsTab": "Nire Laguntzaileak",
+    "sharedWithMeTab": "Nirekin Partekatuak",
     "createAssistantTab": "Sortu Laguntzailea",
     "detailViewTab": "Laguntzailearen Xehetasuna",
     "myAssistants": "Nire Laguntzaileak",
@@ -158,6 +159,13 @@
       "ltiConsumerKey": "Kontsumitzailearen Gakoa",
       "ltiSecret": "Sekretua",
       "configuration": "Konfigurazioa"
+    },
+    "sharing": {
+      "title": "Partekatutako Erabiltzaileak",
+      "description": "Kudeatu nork duen laguntzaile honetarako sarbidea",
+      "noShares": "Laguntzaile hau oraindik ez da inorekin partekatu.",
+      "manageButton": "Kudeatu Partekatutako Erabiltzaileak",
+      "sharedWith": "{count} erabiltzailerekin partekatua"
     },
     "table": {
       "name": "Izena",
@@ -442,7 +450,13 @@
     "page": "Orria",
     "of": "/ ",
     "resultsSimple": "Emaitzak",
-    "to": "-"
+    "to": "-",
+    "firstPage": "Lehen orria",
+    "lastPage": "Azken orria",
+    "previousPage": "Aurreko orria",
+    "nextPage": "Hurrengo orria",
+    "noResults": "Emaitzarik ez",
+    "pageN": "{page}. orria"
   },
   "rubrics": {
     "title": "Ebaluatzailea",
@@ -525,6 +539,38 @@
       "errorTitle": "Sorkuntza Hutsegin",
       "tryAgain": "Saiatu Berriro",
       "saveError": "Errorea errubirka gordetzean"
+    },
+    "metadataForm": {
+      "heading": "Errubrikaren Informazioa",
+      "titlePlaceholder": "Sartu errubrikaren izenburua",
+      "descriptionPlaceholder": "Deskribatu errubrika honen helburua eta testuingurua",
+      "scoringConfig": "Puntuazio Konfigurazioa",
+      "points": "Puntuak",
+      "percentage": "Ehunekoa",
+      "holistic": "Holistikoa",
+      "singlePoint": "Puntu Bakarra",
+      "checklist": "Kontrol Zerrenda",
+      "optionalInfo": "Aukerako Informazioa",
+      "optionalHint": "Eremu hauek guztiz aukerakoak dira. Utzi hutsik zure errubrikan aplikagarriak ez badira.",
+      "optional": "aukerakoa",
+      "gradeLevelPlaceholder": "adib., 6-8, 9-12, K-2, Helduen Hezkuntza"
+    },
+    "aiChat": {
+      "title": "AA Laguntzailea",
+      "thinking": "Pentsatzen...",
+      "clear": "Garbitu",
+      "clearChat": "Garbitu txata",
+      "welcomeMessage": "Eskatu errubrika hau sortzen edo aldatzen laguntzeko. Hona hemen adibide batzuk:",
+      "modifyPlaceholder": "Eskatu errubrika hau aldatzeko...",
+      "createPlaceholder": "Deskribatu sortu nahi duzun errubrika...",
+      "helpText": "Sakatu Enter bidaltzeko, Shift+Enter lerro berrirako",
+      "minimize": "Minimizatu AA txata",
+      "maximize": "Maximizatu AA txata",
+      "example1": "Sortu 8. mailako ingeleseko 5 paragrafoko saiakerako errubrika bat",
+      "example2": "Egokitu errubrika hau 6. mailarako hizkuntza sinplifikatuz",
+      "example3": "Gehitu sormena irizpide bat errubrika honetara",
+      "example4": "Bihurtu 4 puntuko eskalara 5 ordez",
+      "example5": "Egin deskribapenak zehatzagoak eta behagarriagoak"
     }
   },
   "promptTemplates": {
