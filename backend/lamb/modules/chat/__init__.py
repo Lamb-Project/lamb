@@ -3,6 +3,7 @@ from lamb.modules.chat.service import ChatModuleService
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from lamb.database_manager import LambDatabaseManager
+from typing import Dict, Any, List, Optional
 import os
 
 
@@ -14,6 +15,14 @@ class ChatModule(ActivityModule):
     def __init__(self):
         self.service = ChatModuleService()
         self.db_manager = LambDatabaseManager()
+
+    def _get_owi_redirect_url(self, owi_token: str) -> str:
+        """Build the OWI redirect URL with token."""
+        import config
+        owi_public = (os.getenv("OWI_PUBLIC_BASE_URL")
+                      or os.getenv("OWI_BASE_URL")
+                      or config.OWI_PUBLIC_BASE_URL)
+        return f"{owi_public}/api/v1/auths/complete?token={owi_token}"
 
     def get_migrations(self):
         return []
@@ -32,8 +41,24 @@ class ChatModule(ActivityModule):
         ]
 
     def on_activity_configured(self, activity_id, setup_data):
-        """Called when an instructor finishes the setup form."""
+        """Called after the router saves the activity DB record.
+        Creates the OWI group and adds assistant model permissions.
+        """
         self.service.configure_activity(activity_id, setup_data)
+
+    def on_activity_reconfigured(self, activity, added_ids, removed_ids):
+        """Update OWI model permissions when assistants change."""
+        from lamb.owi_bridge.owi_database import OwiDatabaseManager
+        from lamb.owi_bridge.owi_model import OWIModel
+
+        owi_group_id = activity['owi_group_id']
+        owi_db = OwiDatabaseManager()
+        owi_model = OWIModel(owi_db)
+
+        for aid in added_ids:
+            owi_model.add_group_to_model(f"lamb_assistant.{aid}", owi_group_id, "read")
+        for aid in removed_ids:
+            owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
 
     def on_student_launch(self, ctx: LTIContext):
         """Called when a student launches an activity of this type."""
@@ -50,15 +75,7 @@ class ChatModule(ActivityModule):
         if not owi_token:
             raise HTTPException(status_code=500, detail="Failed to process chat launch")
 
-        # Get OWI redirect URL
-        import config
-        owi_public = (os.getenv("OWI_PUBLIC_BASE_URL")
-                      or os.getenv("OWI_BASE_URL")
-                      or config.OWI_PUBLIC_BASE_URL)
-        redirect_url = f"{owi_public}/api/v1/auths/complete?token={owi_token}"
-        
-        return RedirectResponse(url=redirect_url, status_code=303)
-
+        return RedirectResponse(url=self._get_owi_redirect_url(owi_token), status_code=303)
 
     def on_instructor_launch(self, ctx: LTIContext):
         """Called when an instructor launches an activity of this type."""
@@ -73,7 +90,6 @@ class ChatModule(ActivityModule):
         instructor_email = lti_manager.generate_student_email(ctx.username, ctx.resource_link_id)
         instructor_user = {"email": instructor_email, "display_name": ctx.display_name}
 
-        # We need the request base url. While not in context directly, it's safer to use the env var
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:8000") 
 
         dashboard_token = _create_dashboard_jwt(
@@ -87,6 +103,29 @@ class ChatModule(ActivityModule):
             url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}",
             status_code=303
         )
+
+    def launch_user(self, activity, username, display_name, lms_user_id,
+                     is_instructor=False):
+        """Launch a user into OWI. Returns redirect URL or None."""
+        owi_token = self.service.handle_student_launch(
+            activity=activity,
+            username=username,
+            display_name=display_name,
+            lms_user_id=lms_user_id,
+            is_instructor=is_instructor,
+        )
+        if not owi_token:
+            return None
+        return self._get_owi_redirect_url(owi_token)
+
+    def get_dashboard_stats(self, activity):
+        return self.service.get_dashboard_stats(activity)
+
+    def get_dashboard_chats(self, activity, assistant_id=None, page=1, per_page=20):
+        return self.service.get_dashboard_chats(activity, assistant_id, page, per_page)
+
+    def get_dashboard_chat_detail(self, activity, chat_id):
+        return self.service.get_dashboard_chat_detail(activity, chat_id)
 
     def get_frontend_build_path(self):
         return None
