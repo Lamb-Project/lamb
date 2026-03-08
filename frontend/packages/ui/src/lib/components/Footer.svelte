@@ -1,7 +1,7 @@
 <script>
   import { base } from '$app/paths';
   import { VERSION_INFO } from '../version.js';
-  import { _, locale } from '$lib/i18n';
+  import { _, locale } from '../i18n/index.js';
   
   // Format version display: v0.1 (commit_hash)
   let versionDisplay = `v${VERSION_INFO.version} (${VERSION_INFO.commit})`;
