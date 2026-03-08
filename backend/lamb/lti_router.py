@@ -231,7 +231,7 @@ async def lti_launch(request: Request):
                     "student_email": student_email,
                 })
                 return RedirectResponse(
-                    url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
+                    url=f"{public_base}/m/chat/consent?token={consent_token}",
                     status_code=303
                 )
 
@@ -281,7 +281,7 @@ async def lti_launch(request: Request):
 
         public_base = manager.get_public_base_url(request)
         return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/setup?token={setup_token}",
+            url=f"{public_base}/m/chat/setup?token={setup_token}",
             status_code=303
         )
 
@@ -296,10 +296,10 @@ async def lti_launch(request: Request):
 # Setup Page
 # =============================================================================
 
-@router.get("/setup")
-async def lti_setup_page(request: Request, token: str = ""):
+@router.get("/setup/info")
+async def lti_setup_info(request: Request, token: str = ""):
     """
-    Serve the activity setup page for instructors.
+    Return JSON data for the SvelteKit frontend to render the setup page.
     Accepts a setup JWT (first time) or dashboard JWT (reconfigure).
     """
     data = _validate_lti_jwt(token, "setup")
@@ -335,7 +335,7 @@ async def lti_setup_page(request: Request, token: str = ""):
         ]
 
     if not creator_users:
-        return HTMLResponse("<h2>Error</h2><p>Could not identify your Creator account.</p>", status_code=403)
+        return JSONResponse({"detail": "Could not identify your Creator account."}, status_code=403)
 
     orgs_with_assistants = manager.get_published_assistants_for_instructor(creator_users)
 
@@ -347,29 +347,19 @@ async def lti_setup_page(request: Request, token: str = ""):
 
     needs_org_selection = len(orgs_with_assistants) > 1
 
-    return templates.TemplateResponse("lti_activity_setup.html", {
-        "request": request,
-        "token": token,
+    return JSONResponse({
         "resource_link_id": resource_link_id,
         "context_title": data.get("lti_context_title", ""),
         "needs_org_selection": needs_org_selection,
-        "orgs_with_assistants": orgs_with_assistants,
         "org_names": org_names,
-        "modules": get_all_modules(),
-        "modules_json": json.dumps({
+        "orgs_with_assistants": orgs_with_assistants,
+        "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name), "description": getattr(m, 'description', '')} for m in get_all_modules()],
+        "modules_fields": {
             m.name: [
                 {"name": f.name, "label": f.label, "type": f.field_type, "required": f.required}
                 for f in m.get_setup_fields()
             ] for m in get_all_modules()
-        }),
-        "orgs_json": json.dumps({
-            str(org_id): [
-                {"id": a["id"], "name": a["name"], "owner": a["owner"],
-                 "access_type": a.get("access_type", "owned")}
-                for a in assistants
-            ]
-            for org_id, assistants in orgs_with_assistants.items()
-        }),
+        }
     })
 
 
@@ -386,22 +376,22 @@ async def lti_configure_activity(request: Request):
     Then redirects the instructor to the dashboard.
     """
     try:
-        form_data = await request.form()
-        token = form_data.get("token", "")
+        payload = await request.json()
+        token = payload.get("token", "")
         data = _validate_lti_jwt(token, "setup")
         if not data:
-            return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+            return JSONResponse({"detail": "Session expired"}, status_code=403)
 
-        organization_id = int(form_data.get("organization_id", 0))
-        assistant_ids_str = form_data.getlist("assistant_ids")
-        assistant_ids = [int(x) for x in assistant_ids_str if x]
-        activity_type = form_data.get("activity_type", "chat")
-        chat_visibility_enabled = form_data.get("chat_visibility_enabled") == "1"
+        organization_id = int(payload.get("organization_id", 0))
+        assistant_ids_raw = payload.get("assistant_ids", [])
+        assistant_ids = [int(x) for x in assistant_ids_raw if x]
+        activity_type = payload.get("activity_type", "chat")
+        chat_visibility_enabled = bool(payload.get("chat_visibility_enabled"))
 
         if not organization_id:
-            return HTMLResponse("<h2>Error</h2><p>No organization selected.</p>", status_code=400)
+            return JSONResponse({"detail": "No organization selected"}, status_code=400)
         if not assistant_ids:
-            return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
+            return JSONResponse({"detail": "Please select at least one assistant"}, status_code=400)
 
         # Re-fetch creator user from JWT (never trust form data for identity)
         creator_user_ids = data.get("lti_creator_user_ids", [])
@@ -418,7 +408,7 @@ async def lti_configure_activity(request: Request):
                 break
 
         if not creator_user:
-            return HTMLResponse("<h2>Error</h2><p>You don't have access to this organization.</p>", status_code=403)
+            return JSONResponse({"detail": "You don't have access to this organization"}, status_code=403)
 
         resource_link_id = data.get("lti_resource_link_id")
         context_id = data.get("lti_context_id", "")
@@ -440,11 +430,11 @@ async def lti_configure_activity(request: Request):
 
         if not activity:
             logger.error(f"Failed to configure activity {resource_link_id}")
-            return HTMLResponse("<h2>Error</h2><p>Failed to configure activity. Please try again.</p>", status_code=500)
+            return JSONResponse({"detail": "Failed to configure activity"}, status_code=500)
 
         # Phase 2: module hook (creates OWI group, adds model permissions, updates DB)
         module = _get_activity_module(activity)
-        module.on_activity_configured(activity['id'], dict(form_data))
+        module.on_activity_configured(activity['id'], payload)
 
         # Re-fetch activity: module may have filled in OWI fields
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
@@ -465,16 +455,16 @@ async def lti_configure_activity(request: Request):
             activity, instructor_user, lms_user_id, lms_email, username=username)
 
         public_base = manager.get_public_base_url(request)
-        return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}",
-            status_code=303
-        )
+        return JSONResponse({
+            "status": "success",
+            "redirect_url": f"{public_base}/m/chat/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}"
+        })
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error configuring activity: {str(e)}", exc_info=True)
-        return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
+        return JSONResponse({"detail": str(e)}, status_code=500)
 
 
 # =============================================================================
@@ -660,21 +650,19 @@ async def lti_info():
 # Student Consent (in-memory tokens — short one-shot flow)
 # =============================================================================
 
-@router.get("/consent")
-async def lti_consent_page(request: Request, token: str = ""):
-    """Show the student consent page for chat visibility."""
+@router.get("/consent/info")
+async def lti_consent_info(request: Request, token: str = ""):
+    """Return JSON data for the student consent page."""
     data = _validate_consent_token(token)
     if not data or data.get("type") != "consent":
-        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+        return JSONResponse({"detail": "Session expired"}, status_code=403)
 
     resource_link_id = data["resource_link_id"]
     activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
     if not activity:
-        return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
+        return JSONResponse({"detail": "Activity not found"}, status_code=404)
 
-    return templates.TemplateResponse("lti_consent.html", {
-        "request": request,
-        "token": token,
+    return JSONResponse({
         "activity_name": activity.get("activity_name", "LTI Activity"),
         "context_title": activity.get("context_title", ""),
     })
@@ -682,13 +670,13 @@ async def lti_consent_page(request: Request, token: str = ""):
 
 @router.post("/consent")
 async def lti_consent_submit(request: Request):
-    """Process student consent acceptance and launch into the activity."""
+    """Process student consent acceptance and return redirect URL."""
     try:
-        form_data = await request.form()
-        token = form_data.get("token", "")
+        payload = await request.json()
+        token = payload.get("token", "")
         data = _validate_consent_token(token)
         if not data or data.get("type") != "consent":
-            return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+            return JSONResponse({"detail": "Session expired"}, status_code=403)
 
         resource_link_id = data["resource_link_id"]
         student_email = data["student_email"]
@@ -698,7 +686,7 @@ async def lti_consent_submit(request: Request):
 
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
         if not activity:
-            return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
+            return JSONResponse({"detail": "Activity not found"}, status_code=404)
 
         # Record consent before launching
         db_manager.create_lti_activity_user(
@@ -723,32 +711,32 @@ async def lti_consent_submit(request: Request):
         )
 
         if not redirect_url:
-            return HTMLResponse("<h2>Error</h2><p>Failed to launch. Please try again.</p>", status_code=500)
+            return JSONResponse({"detail": "Failed to launch. Please try again."}, status_code=500)
 
-        return RedirectResponse(url=redirect_url, status_code=303)
+        return JSONResponse({"status": "success", "redirect_url": redirect_url})
 
     except Exception as e:
         logger.error(f"Error processing consent: {str(e)}", exc_info=True)
-        return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
+        return JSONResponse({"detail": str(e)}, status_code=500)
 
 
 # =============================================================================
 # Instructor Dashboard
 # =============================================================================
 
-@router.get("/dashboard")
-async def lti_dashboard(request: Request, resource_link_id: str = "", token: str = ""):
-    """Serve the instructor dashboard page."""
+@router.get("/dashboard/info")
+async def lti_dashboard_info(request: Request, resource_link_id: str = "", token: str = ""):
+    """Return JSON data for the instructor dashboard header."""
     data = _validate_lti_jwt(token, "dashboard")
     if not data:
-        return HTMLResponse(SESSION_EXPIRED_HTML, status_code=403)
+        return JSONResponse({"detail": "Session expired"}, status_code=403)
 
     if data.get("lti_resource_link_id") != resource_link_id:
-        return HTMLResponse("<h2>Invalid request.</h2>", status_code=400)
+        return JSONResponse({"detail": "Invalid request"}, status_code=400)
 
     activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
     if not activity:
-        return HTMLResponse("<h2>Activity not found.</h2>", status_code=404)
+        return JSONResponse({"detail": "Activity not found"}, status_code=404)
 
     is_owner = manager.determine_is_owner(
         activity,
@@ -759,27 +747,14 @@ async def lti_dashboard(request: Request, resource_link_id: str = "", token: str
     org = db_manager.get_organization_by_id(activity['organization_id'])
     org_name = org.get('name', 'Unknown') if org else 'Unknown'
 
-    module = _get_activity_module(activity)
-    stats = module.get_dashboard_stats(activity)
-    students = manager.get_dashboard_students(activity['id'])
-
-    chats = {"chats": [], "total": 0}
-    if activity.get('chat_visibility_enabled'):
-        chats = module.get_dashboard_chats(activity)
-
-    created_date = _format_timestamp(activity.get('created_at'))
-
-    return templates.TemplateResponse("lti_dashboard.html", {
-        "request": request,
-        "activity": activity,
-        "token": token,
-        "is_owner": is_owner,
+    return JSONResponse({
+        "activity_name": activity.get('activity_name', 'LTI Activity'),
+        "context_title": activity.get('context_title', ''),
         "org_name": org_name,
-        "stats": stats,
-        "students": students,
-        "chats": chats,
-        "created_date": created_date,
-        "format_ts": _format_timestamp,
+        "owner_name": activity.get('owner_name') or activity.get('owner_email'),
+        "created_at": activity.get('created_at').timestamp() if activity.get('created_at') else None,
+        "chat_visibility_enabled": bool(activity.get('chat_visibility_enabled')),
+        "is_owner": is_owner
     })
 
 

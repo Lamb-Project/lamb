@@ -100,7 +100,7 @@ class ChatModule(ActivityModule):
         )
         
         return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}",
+            url=f"{public_base}/m/chat/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}",
             status_code=303
         )
 

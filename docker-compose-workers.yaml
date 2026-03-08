@@ -50,8 +50,8 @@ services:
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
       corepack enable && \
       corepack prepare pnpm@latest --activate && \
-      pnpm install && \
-      pnpm --filter creator-app build"
+      pnpm install --no-frozen-lockfile && \
+      pnpm --filter creator-app --filter module-chat build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim

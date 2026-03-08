@@ -872,6 +872,12 @@ if os.path.isdir(abs_frontend_build_dir):
     else:
         logger.warning(f"SvelteKit app directory not found: {svelte_app_dir}")
 
+    # For module-chat
+    module_chat_app_dir = os.path.join(abs_frontend_build_dir, "m", "chat", "app")
+    if os.path.isdir(module_chat_app_dir):
+        logger.info(f"Mounting module-chat SvelteKit assets from: {module_chat_app_dir} at /m/chat/app")
+        app.mount("/m/chat/app", StaticFiles(directory=module_chat_app_dir), name="module_chat_assets")
+
     svelte_img_dir = os.path.join(abs_frontend_build_dir, "img")
     if os.path.isdir(svelte_img_dir):
         logger.info(f"Mounting images from: {svelte_img_dir} at /img")
@@ -924,11 +930,9 @@ if os.path.isdir(abs_frontend_build_dir):
                 return Response(content=f"Resource not found at '{full_path}'", status_code=404)
 
 
-            # Check if the path looks like a file extension commonly used for assets served by static mounts
-            # e.g. /app/xxx.js, /img/yyy.png
             if '.' in full_path.split('/')[-1] and not full_path.endswith(".html"):
-                 # Check if it's likely served by '/app' or '/img' mounts
-                 if full_path.startswith(('/app/', '/img/')):
+                 # Check if it's likely served by '/app', '/m/chat/app', or '/img' mounts
+                 if full_path.startswith(('app/', 'img/', 'm/chat/app/')):
                       # Let the StaticFiles mount handle this (FastAPI does this automatically if the route isn't matched)
                       logger.debug(f"SPA Catch-all: Path '{full_path}' looks like a mounted asset, letting StaticFiles handle.")
                       # Return 404 here because if we reached this point, StaticFiles didn't find it.
@@ -939,8 +943,16 @@ if os.path.isdir(abs_frontend_build_dir):
                       return Response(content=f"File not found at '{full_path}'", status_code=404)
             else:
                 # If the path doesn't look like a static file asset (or is .html) and wasn't an API/static path,
-                # assume it's an SPA route and serve the main index.html file.
-                logger.debug(f"SPA Catch-all triggered for path: {full_path}. Serving index.html")
+                # assume it's an SPA route. Decide which SPA to serve based on the path prefix.
+                if full_path.startswith("m/chat"):
+                    module_chat_index = os.path.join(abs_frontend_build_dir, "m", "chat", "index.html")
+                    if os.path.isfile(module_chat_index):
+                        logger.debug(f"SPA Catch-all triggered for module-chat path: {full_path}. Serving m/chat/index.html")
+                        return FileResponse(module_chat_index)
+                    else:
+                        logger.warning(f"module-chat index.html not found at {module_chat_index}")
+                
+                logger.debug(f"SPA Catch-all triggered for path: {full_path}. Serving root index.html")
                 return FileResponse(frontend_index_html)
     else:
         logger.error(f"index.html not found in frontend build directory: {frontend_index_html}")
