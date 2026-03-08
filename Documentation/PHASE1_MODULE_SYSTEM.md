@@ -17,7 +17,7 @@ Phase 1 establishes the backend foundation for LAMB's Activity Module System, a 
 
 ### Module Contract (`ActivityModule`)
 
-Every module must implement 11 abstract methods:
+Every module must implement 12 abstract methods:
 
 ```python
 class ActivityModule(ABC):
@@ -35,6 +35,7 @@ class ActivityModule(ABC):
     def on_activity_configured(self, activity_id, setup_data)  # Called after manager creates DB record
     def on_activity_reconfigured(self, activity, added_ids, removed_ids)  # Called after manager updates DB
     def on_student_launch(self, ctx: LTIContext) -> RedirectResponse  # No-consent path only
+    def on_instructor_launch(self, ctx: LTIContext) -> RedirectResponse  # Instructor launch at configured activity
 
     # --- User provisioning ---
     def launch_user(self, activity, username, display_name, lms_user_id, is_instructor=False) -> str
@@ -54,9 +55,13 @@ class ActivityModule(ABC):
 
 ## Files Modified
 
-### `backend/main.py`
+### `backend/main.py` (outer — the main FastAPI app)
+
+> **Note:** This is the outer `backend/main.py` (the root FastAPI application), NOT `backend/lamb/main.py` (the LAMB sub-app).
+
 - **Added**: `from lamb.modules import discover_modules`
-- **Added**: `discover_modules()` call during FastAPI lifespan startup
+- **Added**: `discover_modules()` call during FastAPI lifespan startup (line 61)
+- **Added**: Module router mounting loop — iterates `get_all_modules()` and mounts each module's routers at `/lamb/v1/modules/{name}` (lines 64-69)
 
 ### `backend/lamb/database_manager.py`
 - **Schema**: Added `activity_type TEXT NOT NULL DEFAULT 'chat'` column to `lti_activities` table
@@ -65,7 +70,7 @@ class ActivityModule(ABC):
 
 ### `backend/lamb/lti_activity_manager.py`
 
-**Final state: DB-only business logic (~380 lines).** All OWI operations were moved out of the manager into modules. This is the key architectural boundary of Phase 1.
+**Final state: DB-only business logic (~381 lines).** All OWI user-provisioning and group-management operations were moved out of the manager into modules. This is the key architectural boundary of Phase 1.
 
 **Removed** (moved to `modules/chat/service.py` or modules in general):
 - `handle_student_launch` — now `module.launch_user()`
@@ -74,7 +79,9 @@ class ActivityModule(ABC):
 - `get_dashboard_chats` — now `module.get_dashboard_chats()`
 - `get_dashboard_chat_detail` — now `module.get_dashboard_chat_detail()`
 - All private OWI helper methods (`_get_owi_user`, `_add_user_to_owi_group`, etc.)
-- `self.owi_user_manager`, `self.owi_group_manager` instance attributes
+
+**Retained `OwiUserManager`** (intentionally):
+- `self.owi_user_manager = OwiUserManager()` is kept because `verify_creator_credentials()` uses `self.owi_user_manager.verify_user(email, password)` to check passwords via the OWI auth system during the `/link-account` identity-linking flow. This is the **only** remaining OWI dependency in the manager — all user provisioning and group management was moved to modules.
 
 **Added / kept** (DB-only operations):
 
@@ -145,6 +152,28 @@ Called before every module delegation. Raises HTTP 500 if the activity's type ha
 | `GET /dashboard/chats/{chat_id}` | `module.get_dashboard_chat_detail(activity, chat_id)` → JSON. Requires `chat_visibility_enabled`. |
 | `GET /enter-chat` | `redirect_url = module.launch_user(activity, ..., is_instructor=True)` — provisions instructor user in OWI on demand. |
 
+### `backend/lamb/lti_creator_router.py`
+
+#### JWT migration
+
+The LTI Creator Router handles a separate LTI endpoint for Creator Interface login (educators logging into the Creator UI via LTI from their LMS). This is independent from the Unified LTI activity endpoint but shares the same JWT infrastructure.
+
+**Before**: Used OWI-native tokens for authentication.
+**After**: Uses LAMB JWT via `lamb_auth.create_token()`:
+
+```python
+from lamb import auth as lamb_auth
+auth_token = lamb_auth.create_token({
+    "sub": str(creator_user['id']),
+    "email": user_email,
+    "role": creator_user.get('role', 'user')
+})
+```
+
+The JWT is passed as a query parameter in the redirect to the Creator UI (`/assistants?token={auth_token}`), where the frontend stores it for subsequent API calls.
+
+This router does NOT participate in the module system (it's not an LTI activity type) — it's a direct LTI-to-JWT authentication bridge for the Creator Interface.
+
 ### `backend/lamb/templates/lti_activity_setup.html`
 
 - **Added**: Activity Type radio selector that loops through `modules` context variable
@@ -153,19 +182,18 @@ Called before every module delegation. Raises HTTP 500 if the activity's type ha
 
 ### `backend/lamb/modules/chat/__init__.py`
 
-`ChatModule` implements all 11 abstract methods:
+`ChatModule` implements all 12 abstract methods:
 
 | Method | Implementation |
 |--------|---------------|
 | `on_activity_configured(activity_id, setup_data)` | Calls `self.service.configure_activity(activity_id, setup_data)` — creates the OWI group for this activity. |
 | `on_activity_reconfigured(activity, added_ids, removed_ids)` | Uses `OwiDatabaseManager` + `OWIModel` directly to add/remove model permissions for the changed assistant IDs. |
 | `on_student_launch(ctx)` | Called only for students who have already given consent (consent check is router-level). Delegates to `service.handle_student_launch()`. Returns `RedirectResponse`. |
+| `on_instructor_launch(ctx)` | Handles instructor launch at a configured activity. Issues a dashboard JWT and redirects to `/dashboard`. Imports `_create_dashboard_jwt` from `lti_router`. |
 | `launch_user(activity, username, display_name, lms_user_id, is_instructor)` | Calls `service.handle_student_launch(...)` → returns OWI redirect URL string. `is_instructor=True` marks the user entry appropriately. |
 | `get_dashboard_stats(activity)` | Delegates to `service.get_dashboard_stats(activity)` → dict with total sessions, active users, etc. |
 | `get_dashboard_chats(activity, assistant_id, page, per_page)` | Delegates to `service.get_dashboard_chats(activity, ...)` → dict with paginated chat list. |
 | `get_dashboard_chat_detail(activity, chat_id)` | Delegates to `service.get_dashboard_chat_detail(activity, chat_id)` → dict or `None`. |
-
-**Note on `on_instructor_launch`**: This hook handles the instructor's launch into a configured activity. The `ChatModule` uses this to directly issue the dashboard JWT and redirect to `/dashboard`.
 
 ## Architecture: Module Dispatch and Separation of Concerns
 
@@ -233,22 +261,23 @@ ALTER TABLE lti_activities ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'
 
 ## Known Limitations (to address in future phases)
 
-1. **Module routers not mounted**: `ActivityModule.get_routers()` is defined but `main.py` does not yet mount them. Future modules with custom API endpoints will need this.
+1. ~~**Module routers not mounted**~~ — ✅ **Resolved.** `backend/main.py` now iterates `get_all_modules()` and mounts routers at `/lamb/v1/modules/{name}` during lifespan startup.
 2. **`on_activity_configured` is now called** from `/configure` — ✅ resolved in Phase 1.2.
-3. **Manager OWI methods now in modules** — ✅ resolved in Phase 1.2. Manager is now DB-only.
+3. **Manager OWI methods now in modules** — ✅ resolved in Phase 1.2. Manager is now DB-only (except `verify_creator_credentials` which uses `OwiUserManager` for password checking only).
 4. **Frontend**: LTI-facing pages still use Jinja2 templates. Phase 3 will port these to SvelteKit.
 
 ## Verification
 
-All five Phase 1 files parse correctly:
-- `backend/lamb/lti_router.py` — 890 lines, syntax OK, no old manager method calls
-- `backend/lamb/lti_activity_manager.py` — ~380 lines (stripped from 863), DB-only, returns tuple from `reconfigure_activity`
-- `backend/lamb/modules/base.py` — 11 abstract methods in `ActivityModule` ABC
-- `backend/lamb/modules/chat/__init__.py` — all abstract methods implemented
+All Phase 1 files parse correctly:
+- `backend/lamb/lti_router.py` — ~898 lines, syntax OK, no old manager method calls
+- `backend/lamb/lti_activity_manager.py` — ~381 lines (stripped from 863), DB-only (retains `OwiUserManager` only for `verify_creator_credentials`), returns tuple from `reconfigure_activity`
+- `backend/lamb/modules/base.py` — 12 abstract methods in `ActivityModule` ABC
+- `backend/lamb/modules/chat/__init__.py` — all 12 abstract methods implemented
 - `backend/lamb/modules/chat/service.py` — all OWI operations, `handle_student_launch` with `is_instructor` param
+- `backend/lamb/lti_creator_router.py` — JWT via `lamb_auth.create_token()` for Creator Interface LTI login
 
 Verification commands:
 ```bash
 cd backend/lamb
-python3 -c "import ast; [ast.parse(open(f).read()) or print('OK:', f) for f in ['lti_router.py', 'lti_activity_manager.py', 'modules/base.py', 'modules/chat/__init__.py', 'modules/chat/service.py']]"
+python3 -c "import ast; [ast.parse(open(f).read()) or print('OK:', f) for f in ['lti_router.py', 'lti_activity_manager.py', 'modules/base.py', 'modules/chat/__init__.py', 'modules/chat/service.py', 'lti_creator_router.py']]"
 ```
