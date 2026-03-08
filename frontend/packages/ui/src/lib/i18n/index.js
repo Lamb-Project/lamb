@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+const browser = typeof window !== 'undefined';
 import { init, register, locale as svelteLocale, _, waitLocale } from 'svelte-i18n';
 
 // Ensure this runs only once

@@ -1,6 +1,6 @@
 <script>
   import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
-  import { _, locale } from '$lib/i18n';
+  import { _, locale } from '@lamb/ui/i18n';
 
   // Props
   let { isEditMode = false } = $props();
