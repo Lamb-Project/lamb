@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { _, locale } from '@lamb/ui/i18n';
+  import { _, locale } from '@lamb/ui';
 
   // Props
   let { rubricId, aiGenerating } = $props();
