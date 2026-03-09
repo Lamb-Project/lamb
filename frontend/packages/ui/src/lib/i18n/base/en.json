@@ -440,7 +440,13 @@
     "page": "Page",
     "of": "of",
     "resultsSimple": "Results",
-    "to": "to"
+    "to": "to",
+    "firstPage": "First page",
+    "lastPage": "Last page",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "noResults": "No results",
+    "pageN": "Page {page}"
   },
   "rubrics": {
     "title": "Evaluaitor",
@@ -523,6 +529,38 @@
       "errorTitle": "Generation Failed",
       "tryAgain": "Try Again",
       "saveError": "Failed to save rubric"
+    },
+    "metadataForm": {
+      "heading": "Rubric Information",
+      "titlePlaceholder": "Enter rubric title",
+      "descriptionPlaceholder": "Describe the purpose and context of this rubric",
+      "scoringConfig": "Scoring Configuration",
+      "points": "Points",
+      "percentage": "Percentage",
+      "holistic": "Holistic",
+      "singlePoint": "Single Point",
+      "checklist": "Checklist",
+      "optionalInfo": "Optional Information",
+      "optionalHint": "These fields are completely optional. Leave blank if not applicable to your rubric.",
+      "optional": "optional",
+      "gradeLevelPlaceholder": "e.g., 6-8, 9-12, K-2, Adult Education"
+    },
+    "aiChat": {
+      "title": "AI Assistant",
+      "thinking": "Thinking...",
+      "clear": "Clear",
+      "clearChat": "Clear chat",
+      "welcomeMessage": "Ask me to help you create or modify this rubric. Here are some examples:",
+      "modifyPlaceholder": "Ask me to modify this rubric...",
+      "createPlaceholder": "Describe the rubric you want to create...",
+      "helpText": "Press Enter to send, Shift+Enter for new line",
+      "minimize": "Minimize AI chat",
+      "maximize": "Maximize AI chat",
+      "example1": "Create a rubric for evaluating 5-paragraph essays in 8th grade English",
+      "example2": "Make this rubric suitable for 6th graders by simplifying the language",
+      "example3": "Add a creativity criterion to this rubric",
+      "example4": "Convert this to a 4-point scale instead of 5-point",
+      "example5": "Make the descriptions more specific and observable"
     }
   },
   "promptTemplates": {

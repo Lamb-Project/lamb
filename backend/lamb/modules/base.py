@@ -47,11 +47,18 @@ class ActivityModule(ABC):
         
     @abstractmethod
     def on_activity_configured(self, activity_id: int, setup_data: Dict[str, Any]) -> None:
-        """Called when an instructor finishes the setup form. 
+        """Called after the router saves the activity DB record.
+        The module should set up any external resources (e.g. OWI groups).
         Raise an HTTPException(status_code=400, detail="...") if the configuration is invalid.
         """
         pass
-        
+
+    @abstractmethod
+    def on_activity_reconfigured(self, activity: Dict[str, Any],
+                                  added_ids: List[int], removed_ids: List[int]) -> None:
+        """Called when assistants change. Update external resources (e.g. OWI model permissions)."""
+        pass
+
     @abstractmethod
     def on_student_launch(self, ctx: LTIContext) -> RedirectResponse:
         """Called when a student launches an activity of this type."""
@@ -60,6 +67,31 @@ class ActivityModule(ABC):
     @abstractmethod
     def on_instructor_launch(self, ctx: LTIContext) -> RedirectResponse:
         """Called when an instructor launches an activity of this type."""
+        pass
+
+    @abstractmethod
+    def launch_user(self, activity: Dict[str, Any], username: str, display_name: str,
+                     lms_user_id: str, is_instructor: bool = False) -> Optional[str]:
+        """Launch a user into this activity. Returns redirect URL or None on failure.
+        Used by the router for post-consent and enter-chat flows.
+        """
+        pass
+
+    @abstractmethod
+    def get_dashboard_stats(self, activity: Dict[str, Any]) -> Dict[str, Any]:
+        """Return dashboard statistics for this activity type."""
+        pass
+
+    @abstractmethod
+    def get_dashboard_chats(self, activity: Dict[str, Any], assistant_id: int = None,
+                             page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        """Return anonymized chat list for the dashboard."""
+        pass
+
+    @abstractmethod
+    def get_dashboard_chat_detail(self, activity: Dict[str, Any],
+                                   chat_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single chat transcript, anonymized."""
         pass
 
     @abstractmethod

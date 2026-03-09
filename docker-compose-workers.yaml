@@ -27,7 +27,7 @@ services:
       pip install -r requirements.txt && \
       mkdir -p data && \
       LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
-      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --workers 4 --log-level $$LOG_LEVEL --no-access-log"
+      uvicorn open_webui.main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --log-level $$LOG_LEVEL --no-access-log"
   openwebui-build:
     image: node:20-alpine
     working_dir: ${LAMB_PROJECT_PATH}/open-webui
@@ -50,8 +50,8 @@ services:
       git config --global --add safe.directory ${LAMB_PROJECT_PATH} && \
       corepack enable && \
       corepack prepare pnpm@latest --activate && \
-      pnpm install && \
-      pnpm --filter creator-app build"
+      pnpm install --no-frozen-lockfile && \
+      pnpm --filter creator-app --filter module-chat build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim

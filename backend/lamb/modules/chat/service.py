@@ -117,6 +117,7 @@ class ChatModuleService:
         username: str,
         display_name: str,
         lms_user_id: str = None,
+        is_instructor: bool = False,
     ) -> Optional[str]:
         """
         Handle a student (or instructor-as-user) launch into a configured chat activity.
@@ -128,7 +129,7 @@ class ChatModuleService:
         Returns the OWI auth token or None on failure.
         """
         email = self.generate_student_email(username, activity['resource_link_id'])
-        logger.info(f"Student launch: {email} for activity {activity['resource_link_id']}")
+        logger.info(f"{'Instructor' if is_instructor else 'Student'} launch: {email} for activity {activity['resource_link_id']}")
 
         # Get or create OWI user
         owi_user = self.owi_user_manager.get_user_by_email(email)
@@ -162,7 +163,8 @@ class ChatModuleService:
             user_name=username,
             user_display_name=display_name,
             lms_user_id=lms_user_id,
-            owi_user_id=owi_user_id
+            owi_user_id=owi_user_id,
+            is_instructor=is_instructor,
         )
 
         # Get auth token

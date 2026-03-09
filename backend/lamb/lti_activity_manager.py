@@ -8,7 +8,6 @@ activity configuration, and student launch.
 
 import os
 import re
-import time
 import hmac
 import hashlib
 import base64
@@ -17,9 +16,6 @@ from typing import Optional, Dict, List, Any, Tuple
 
 from lamb.database_manager import LambDatabaseManager
 from lamb.owi_bridge.owi_users import OwiUserManager
-from lamb.owi_bridge.owi_group import OwiGroupManager
-from lamb.owi_bridge.owi_model import OWIModel
-from lamb.owi_bridge.owi_database import OwiDatabaseManager
 from lamb.logging_config import get_logger
 
 
@@ -31,6 +27,7 @@ class LtiActivityManager:
 
     def __init__(self):
         self.db_manager = LambDatabaseManager()
+        self.owi_user_manager = OwiUserManager()
 
     # =========================================================================
     # Credential Resolution
@@ -139,9 +136,32 @@ class LtiActivityManager:
             lms_email=lms_email
         )
 
-    # NOTE: verify_creator_credentials was moved to lti_router.py (inline)
-    # as part of the OWI decoupling. The router now uses OwiUserManager
-    # and validate_user_enabled directly.
+    def verify_creator_credentials(self, email: str, password: str) -> Optional[Dict[str, Any]]:
+        """
+        Verify Creator user credentials for the identity-linking flow.
+        Returns a normalized Creator user dict if valid, None otherwise.
+        Keys: id, organization_id, user_email, user_name, user_type, enabled
+        """
+        # Check password via OWI
+        verified = self.owi_user_manager.verify_user(email, password)
+        if not verified:
+            return None
+        # Get the Creator user from LAMB DB
+        creator_user = self.db_manager.get_creator_user_by_email(email)
+        if not creator_user:
+            return None
+        if not creator_user.get('enabled', True):
+            return None
+        # Normalize field names (get_creator_user_by_email uses 'email'/'name',
+        # but the rest of the LTI code uses 'user_email'/'user_name')
+        return {
+            'id': creator_user['id'],
+            'organization_id': creator_user['organization_id'],
+            'user_email': creator_user.get('email') or creator_user.get('user_email'),
+            'user_name': creator_user.get('name') or creator_user.get('user_name'),
+            'user_type': creator_user.get('user_type', 'creator'),
+            'enabled': creator_user.get('enabled', True),
+        }
 
     # =========================================================================
     # Published Assistants
@@ -189,11 +209,12 @@ class LtiActivityManager:
         activity_type: str = "chat",
     ) -> Optional[Dict[str, Any]]:
         """
-        Configure a new LTI activity:
-        1. Store the activity and its assistant list in LAMB DB
+        Create the activity DB record and assistant links.
+        External resource setup (OWI groups, model permissions) is handled
+        by the module's on_activity_configured() hook.
         Returns the activity dict or None on failure.
         """
-        # Store in LAMB DB
+        # Store in LAMB DB (owi fields empty — module fills them in)
         activity_id = self.db_manager.create_lti_activity(
             resource_link_id=resource_link_id,
             organization_id=organization_id,
@@ -220,9 +241,12 @@ class LtiActivityManager:
         self,
         activity: Dict[str, Any],
         new_assistant_ids: List[int]
-    ) -> bool:
+    ) -> Tuple[List[int], List[int]]:
         """
-        Reconfigure an existing activity's assistant selection in LAMB db.
+        Reconfigure activity's assistant selection (DB-only).
+        External resource updates (OWI model permissions) are handled
+        by the module's on_activity_reconfigured() hook.
+        Returns (added_ids, removed_ids).
         """
         activity_id = activity['id']
 
@@ -230,17 +254,17 @@ class LtiActivityManager:
         current_ids = {a['id'] for a in current_assistants}
         new_ids = set(new_assistant_ids)
 
-        to_add = new_ids - current_ids
-        to_remove = current_ids - new_ids
+        to_add = list(new_ids - current_ids)
+        to_remove = list(current_ids - new_ids)
 
         # Update DB
         if to_remove:
-            self.db_manager.remove_assistants_from_activity(activity_id, list(to_remove))
+            self.db_manager.remove_assistants_from_activity(activity_id, to_remove)
         if to_add:
-            self.db_manager.add_assistants_to_activity(activity_id, list(to_add))
+            self.db_manager.add_assistants_to_activity(activity_id, to_add)
 
         self.db_manager.update_lti_activity(activity_id, status='active')
-        return True
+        return to_add, to_remove
 
     # =========================================================================
     # Student / User Launch
@@ -257,6 +281,31 @@ class LtiActivityManager:
         safe_user = self.sanitize_for_email(username)
         safe_rlid = self.sanitize_for_email(resource_link_id, max_length=60)
         return f"{safe_user}_{safe_rlid}@lamb-lti.local"
+
+    def determine_is_owner(self, activity: Dict[str, Any],
+                            lms_user_id: str, lms_email: str = None) -> bool:
+        """
+        Check if the LMS user is the owner of the activity by resolving
+        their LMS identity to a Creator user and comparing with owner_email.
+        Fixes the pre-existing bug where lms_email != lti_creator email.
+        """
+        owner_email = activity.get('owner_email')
+        if not owner_email:
+            return False
+
+        # Quick check: direct email match (works for regular password creators)
+        if lms_email and lms_email == owner_email:
+            return True
+
+        # Full resolution: find Creator users for this LMS identity
+        creator_users = self.db_manager.get_creator_users_by_lms_identity(
+            lms_user_id=lms_user_id,
+            lms_email=lms_email
+        )
+        return any(
+            cu.get('user_email') == owner_email
+            for cu in (creator_users or [])
+        )
 
     # =========================================================================
     # URL helpers
@@ -311,8 +360,7 @@ class LtiActivityManager:
         return self.db_manager.record_student_consent(activity_id, user_email)
 
     # =========================================================================
-    # =========================================================================
-    # Dashboard Data Base
+    # Dashboard Data (DB-only)
     # =========================================================================
 
     def get_dashboard_students(self, activity_id: int, page: int = 1,

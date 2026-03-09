@@ -451,7 +451,7 @@ export async function updateAssistant(assistantId, assistantData) {
 				typedObj[key] = ''; // Allow empty description
 			}
 			return typedObj;
-		}, /** @type {Partial<Assistant>} */ ({}));
+		}, /** @type {Partial<Assistant>} */({}));
 
 	const url = getApiUrl(`/assistant/update_assistant/${assistantId}`);
 

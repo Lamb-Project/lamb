@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { _ } from 'svelte-i18n';
+	import { _ } from '@lamb/ui';
 	import { getLambApiUrl } from '$lib/config';
 
 	// Props

@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  
+  import { _, locale } from '@lamb/ui/i18n';
+
   const dispatch = createEventDispatcher();
   
   /**
@@ -114,7 +115,7 @@
     <!-- Items per page selector -->
     <div class="flex items-center gap-2">
       <label for="items-per-page" class="text-sm text-gray-700 whitespace-nowrap">
-        Items per page:
+        {$locale ? $_('pagination.itemsPerPage', { default: 'Items per page:' }) : 'Items per page:'}
       </label>
       <select
         id="items-per-page"
@@ -136,7 +137,7 @@
         onclick={handleFirstPage}
         disabled={currentPage === 1}
         class="px-2 py-1 text-sm rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="First page"
+        aria-label={$locale ? $_('pagination.firstPage', { default: 'First page' }) : 'First page'}
       >
         «
       </button>
@@ -147,9 +148,9 @@
         onclick={handlePreviousPage}
         disabled={currentPage === 1}
         class="px-3 py-1 text-sm rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Previous page"
+        aria-label={$locale ? $_('pagination.previousPage', { default: 'Previous page' }) : 'Previous page'}
       >
-        Previous
+        {$locale ? $_('pagination.previous', { default: 'Previous' }) : 'Previous'}
       </button>
       
       <!-- Page numbers -->
@@ -165,7 +166,7 @@
                 ? 'bg-brand text-white hover:bg-brand-hover' 
                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'} 
                 px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand min-w-[2.5rem]"
-              aria-label="Page {page}"
+              aria-label={$locale ? $_('pagination.pageN', { default: 'Page {page}', values: { page } }) : `Page ${page}`}
               aria-current={page === currentPage ? 'page' : undefined}
             >
               {page}
@@ -185,9 +186,9 @@
         onclick={handleNextPage}
         disabled={currentPage === totalPages}
         class="px-3 py-1 text-sm rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Next page"
+        aria-label={$locale ? $_('pagination.nextPage', { default: 'Next page' }) : 'Next page'}
       >
-        Next
+        {$locale ? $_('pagination.next', { default: 'Next' }) : 'Next'}
       </button>
       
       <!-- Last page -->
@@ -196,7 +197,7 @@
         onclick={handleLastPage}
         disabled={currentPage === totalPages}
         class="px-2 py-1 text-sm rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Last page"
+        aria-label={$locale ? $_('pagination.lastPage', { default: 'Last page' }) : 'Last page'}
       >
         »
       </button>
@@ -205,9 +206,9 @@
     <!-- Results info -->
     <div class="text-sm text-gray-700 whitespace-nowrap">
       {#if totalItems > 0}
-        Showing <span class="font-medium">{startItem}</span> to <span class="font-medium">{endItem}</span> of <span class="font-medium">{totalItems}</span>
+        {$locale ? $_('pagination.showing', { default: 'Showing {first} to {last} of {total} results', values: { first: startItem, last: endItem, total: totalItems } }) : `Showing ${startItem} to ${endItem} of ${totalItems}`}
       {:else}
-        No results
+        {$locale ? $_('pagination.noResults', { default: 'No results' }) : 'No results'}
       {/if}
     </div>
   </div>
