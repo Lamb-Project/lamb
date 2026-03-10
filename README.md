@@ -81,7 +81,7 @@ LAMB features a modular, extensible architecture:
 
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/slop-docs/deployment.md)** - One-command deployment with all services configured
+📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
 
 ### Alternative: Manual Installation
 
