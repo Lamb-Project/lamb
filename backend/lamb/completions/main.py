@@ -141,6 +141,14 @@ async def create_completion(
         
         plugin_config = parse_plugin_config(assistant_details)
         logger.debug(f"Plugin config: {plugin_config}")
+
+        connector = plugin_config["connector"]
+        llm = plugin_config["llm"]
+        provider = _provider_for_connector(connector)
+
+        # Quota pre-check (skipped for ollama — free LLMs)
+        if connector != "ollama":
+            _check_quota(assistant, assistant_details)
         
         # Add trace metadata for plugins
         if is_tracing_enabled():
@@ -157,19 +165,50 @@ async def create_completion(
         logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
         logger.debug(f"Stream mode: {stream}")
-        logger.debug(f"Stream mode: {stream}")
         logger.info("Getting completion from LLM")
+
         if stream:
             logger.debug("Returning streaming response")
-            logger.debug(f"Returning streaming response")
-            return StreamingResponse(
-                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner),
-                media_type="text/event-stream"
-            )
+            if connector == "ollama":
+                # Ollama is free — no usage tracking needed
+                return StreamingResponse(
+                    connectors[connector](messages, stream=True, body=request, llm=llm, assistant_owner=assistant_details.owner),
+                    media_type="text/event-stream"
+                )
+            # For tracked connectors the function returns (generator, usage_out)
+            connector_result = connectors[connector](messages, stream=True, body=request, llm=llm, assistant_owner=assistant_details.owner)
+            if isinstance(connector_result, tuple):
+                generator, usage_out = connector_result
+            else:
+                # Fallback: connector doesn't support usage side-channel
+                generator, usage_out = connector_result, None
+
+            async def _tracked_stream():
+                async for chunk in generator:
+                    yield chunk
+                # Stream finished — fire-and-forget usage log
+                if usage_out and provider:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=provider,
+                        usage_data=usage_out
+                    )
+
+            return StreamingResponse(_tracked_stream(), media_type="text/event-stream")
         else:
             logger.debug("Returning direct response")
-            logger.debug(f"Returning direct response")
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner)
+            result = await connectors[connector](messages, stream=False, body=request, llm=llm, assistant_owner=assistant_details.owner)
+            if connector != "ollama" and isinstance(result, dict) and result.get("usage") and provider:
+                db_manager.log_token_usage(
+                    assistant_id=assistant,
+                    org_id=assistant_details.organization_id,
+                    model_name=llm,
+                    provider=provider,
+                    usage_data=result["usage"]
+                )
+            return result
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         logger.debug(f"Error in create_completion: {str(e)}")
@@ -194,6 +233,40 @@ def get_assistant_details(assistant: int) -> Any:
         logger.error(f"Assistant with ID '{assistant}' not found")
         raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found")
     return assistant_details
+
+
+def _provider_for_connector(connector: str) -> str | None:
+    """Map connector name to provider string used in model_pricing table."""
+    return {"openai": "openai", "anthropic": "anthropic"}.get(connector)
+
+
+def _check_quota(assistant_id: int, assistant_details) -> None:
+    """Raise HTTP 429 if the assistant has exceeded its configured cost limit."""
+    try:
+        metadata = json.loads(assistant_details.metadata or "{}")
+    except Exception:
+        return  # malformed metadata — skip check silently
+
+    quota = metadata.get("quota", {})
+    if not quota.get("enabled"):
+        return
+
+    limit = quota.get("cost_limit_usd")
+    if limit is None:
+        return
+
+    spent = db_manager.get_assistant_cost_usd(assistant_id)
+    if spent >= float(limit):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "message": f"This assistant has reached its usage quota (${float(limit):.2f} USD).",
+                    "type": "quota_exceeded",
+                    "code": "assistant_quota_exceeded"
+                }
+            }
+        )
 
 def parse_plugin_config(assistant_details) -> Dict[str, str]:
     """
@@ -383,11 +456,16 @@ async def run_lamb_assistant(
         )
 
         if stream:
+            # Tracked connectors return (generator, usage_out); others return the generator directly
+            if isinstance(llm_response, tuple):
+                generator, _usage_out = llm_response  # Usage not tracked in this code path
+            else:
+                generator = llm_response
             # The openai.py connector returns an async generator yielding SSE strings
             # Wrap this directly in StreamingResponse
             logger.debug("Returning StreamingResponse for async generator from connector.")
             return StreamingResponse(
-                llm_response, # llm_response is the async generator
+                generator,
                 media_type="text/event-stream",
                 headers=final_headers
             )

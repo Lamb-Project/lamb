@@ -1185,6 +1185,67 @@ class LambDatabaseManager:
                 except Exception as mig_err:
                     logger.warning(f"Migration 11b error (non-fatal): {mig_err}")
 
+                # ---- Migration 12: Token quota tracking ----
+                # Add model_name + provider columns to usage_logs, plus assistant index
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}usage_logs)")
+                usage_log_cols = {row[1] for row in cursor.fetchall()}
+
+                if 'model_name' not in usage_log_cols:
+                    logger.info("Migration 12: Adding model_name column to usage_logs")
+                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN model_name TEXT")
+
+                if 'provider' not in usage_log_cols:
+                    logger.info("Migration 12: Adding provider column to usage_logs")
+                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN provider TEXT")
+
+                # Index on assistant_id for fast per-assistant cost aggregation
+                cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_assistant
+                    ON {self.table_prefix}usage_logs(assistant_id)
+                """)
+
+                # model_pricing table — seed data kept up to date by operators
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}model_pricing'")
+                if not cursor.fetchone():
+                    logger.info("Migration 12: Creating model_pricing table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}model_pricing (
+                            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                            provider      TEXT NOT NULL,
+                            model_name    TEXT NOT NULL,
+                            input_per_1m  REAL NOT NULL DEFAULT 0,
+                            output_per_1m REAL NOT NULL DEFAULT 0,
+                            notes         TEXT,
+                            updated_at    INTEGER NOT NULL,
+                            UNIQUE(provider, model_name)
+                        )
+                    """)
+                    # Seed with known pricing (USD per 1M tokens, input / output)
+                    now = int(time.time())
+                    seed_rows = [
+                        ("openai", "gpt-4.1",                      2.00,  8.00),
+                        ("openai", "gpt-4.1-mini",                 0.40,  1.60),
+                        ("openai", "gpt-4.1-nano",                 0.10,  0.40),
+                        ("openai", "gpt-4o",                       2.50, 10.00),
+                        ("openai", "gpt-4o-mini",                  0.15,  0.60),
+                        ("openai", "gpt-4-turbo",                 10.00, 30.00),
+                        ("openai", "gpt-4",                       30.00, 60.00),
+                        ("openai", "o3-mini",                      1.10,  4.40),
+                        ("anthropic", "claude-3-5-sonnet-20241022", 3.00, 15.00),
+                        ("anthropic", "claude-3-5-haiku-20241022",  0.80,  4.00),
+                    ]
+                    cursor.executemany(
+                        f"""INSERT OR IGNORE INTO {self.table_prefix}model_pricing
+                            (provider, model_name, input_per_1m, output_per_1m, updated_at)
+                            VALUES (?, ?, ?, ?, ?)""",
+                        [(p, m, i, o, now) for p, m, i, o in seed_rows]
+                    )
+                    logger.info("Migration 12: model_pricing table created and seeded")
+
+                connection.commit()
+                logger.info("Migration 12 complete")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -4040,6 +4101,59 @@ class LambDatabaseManager:
 #                logger.debug("Database connection closed")
         return None
 
+    def log_token_usage(self, assistant_id: int, org_id: int, model_name: str, provider: str, usage_data: dict):
+        """Write one row to usage_logs for a completed request.
+
+        usage_data should contain: prompt_tokens, completion_tokens, total_tokens.
+        Errors are caught and logged — never propagated to callers.
+        """
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    f"""INSERT INTO {self.table_prefix}usage_logs
+                        (organization_id, assistant_id, usage_data, model_name, provider, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                    (org_id, assistant_id, json.dumps(usage_data), model_name, provider, int(time.time()))
+                )
+        except Exception as e:
+            logger.error(f"Failed to log token usage for assistant {assistant_id}: {e}")
+
+    def get_assistant_cost_usd(self, assistant_id: int) -> float:
+        """Return the total estimated cost in USD for all logged requests for this assistant.
+
+        Returns 0.0 when there is no pricing data or no usage logged.
+        Uses SQLite json_extract to pull token counts from the JSON blob.
+        """
+        query = f"""
+            SELECT
+              COALESCE(SUM(
+                COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0)
+                  * COALESCE(mp.input_per_1m, 0) / 1000000.0
+                +
+                COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)
+                  * COALESCE(mp.output_per_1m, 0) / 1000000.0
+              ), 0.0)
+            FROM {self.table_prefix}usage_logs ul
+            LEFT JOIN {self.table_prefix}model_pricing mp
+                   ON ul.model_name = mp.model_name
+                  AND ul.provider   = mp.provider
+            WHERE ul.assistant_id = ?
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return 0.0
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query, (assistant_id,))
+                row = cursor.fetchone()
+                return float(row[0]) if row and row[0] is not None else 0.0
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error computing cost for assistant {assistant_id}: {e}")
+            return 0.0
+
     def get_assistant_by_id(self, assistant_id: int) -> Optional[Assistant]:
         connection = self.get_connection()
         if not connection:
@@ -4063,6 +4177,7 @@ class LambDatabaseManager:
             # Create Assistant object from dictionary
             assistant = Assistant(
                 id=assistant_dict['id'],
+                organization_id=assistant_dict.get('organization_id'),
                 name=assistant_dict['name'],
                 description=assistant_dict['description'],
                 owner=assistant_dict['owner'],
