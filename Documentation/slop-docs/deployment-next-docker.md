@@ -65,6 +65,11 @@ Optional service:
 - `caddy` (`caddy:2.8`) via `docker-compose.next.prod.yaml`
 - `ollama` (`ollama/ollama:latest`) via `--profile ollama`
 
+Startup readiness note:
+
+- `openwebui` includes a healthcheck (`/health`), and `lamb` waits for `openwebui` to become healthy before starting.
+- On first boot, this avoids most early login race errors while OpenWebUI initializes.
+
 Persistent volumes:
 
 - `lamb-data` (LAMB SQLite and local app data)

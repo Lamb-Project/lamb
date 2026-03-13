@@ -281,6 +281,12 @@ Additional finding:
 - In Org Admin settings views, persisted org config values can take precedence over direct env fallbacks, so changing env values later may not immediately change what users see.
 - This should be documented as current behavior; future hardening may define clearer precedence and refresh semantics between env and persisted org config.
 
+Startup race mitigation applied:
+
+- Added `openwebui` healthcheck in `docker-compose.next.yaml` (`/health`, 10s interval, 5s timeout, 12 retries, 30s start period).
+- Updated `lamb` depends_on for `openwebui` to `condition: service_healthy`.
+- This reduces first-boot connection-refused errors by waiting for OpenWebUI readiness before starting `lamb`.
+
 Scenario 1 Ollama note:
 
 - KB collection validation with Ollama requires `EMBEDDINGS_ENDPOINT` to point to Ollama base URL (`http://ollama:11434`) for current KB embedding integration.
@@ -403,3 +409,4 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Added optional `ollama` profile service and documented light-image strategy alignment |
 | 2026-03-01 | LAMB Team | Updated default `EMBEDDINGS_ENDPOINT` to Ollama base URL for KB validation compatibility |
 | 2026-03-01 | LAMB Team | Started P13 with localhost scenario validation (startup race + Ollama inference/RAG) |
+| 2026-03-01 | LAMB Team | Added OpenWebUI healthcheck and `service_healthy` dependency to mitigate startup race |

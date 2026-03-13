@@ -39,8 +39,10 @@ services:
       - lamb-data:/data/lamb
       - openwebui-data:/data/openwebui
     depends_on:
-      - kb
-      - openwebui
+      kb:
+        condition: service_started
+      openwebui:
+        condition: service_healthy
 
   kb:
     image: ghcr.io/xezpeleta/lamb-kb:latest
@@ -74,6 +76,12 @@ services:
       - "8080:8080"
     volumes:
       - openwebui-data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   ollama:
     image: ollama/ollama:latest
