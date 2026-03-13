@@ -91,6 +91,7 @@ All variables below are configurable via shell env or a root `.env` file.
 | `LAMB_WEB_HOST` | `lamb` | none | **Yes** | Public base URL used for browser-facing LAMB links. |
 | `LAMB_BACKEND_HOST` | `lamb` | none | **Yes** | Internal backend URL for server-to-server requests. |
 | `LAMB_DB_PATH` | `lamb` | none | **Yes** | Path inside container where LAMB DB is stored. |
+| `LAMB_DB_PREFIX` | `lamb` | empty | No | Table prefix for LAMB DB schema (set `LAMB_` when migrating legacy prefixed databases). |
 | `LAMB_BEARER_TOKEN` | `lamb` | none | **Yes** | Main API bearer token for LAMB backend auth. |
 | `LAMB_KB_SERVER` | `lamb` | `http://kb:9090` | No | Internal URL for KB service integration. |
 | `LAMB_KB_SERVER_TOKEN` | `lamb` | `0p3n-w3bu!` | No (should override in prod) | Token used by LAMB to call KB service. |
@@ -168,8 +169,89 @@ Also ensure these are explicitly set (required variables):
 
 For existing installations, migrate data by mapping/copying current data into new named volumes:
 
-- LAMB DB (`lamb_v4.db`) -> `lamb-data`
-- Open WebUI data (`webui.db`, vector/cache) -> `openwebui-data`
-- KB DB/vector data -> `kb-data`
+| Legacy path (host bind-mount) | New named volume | Used by |
+|---|---|---|
+| `/opt/lamb/lamb_v4.db` | `lamb-next_lamb-data` | `lamb` container (`/data/lamb`) |
+| `/opt/lamb/open-webui/backend/data/` | `lamb-next_openwebui-data` | `openwebui` (`/app/backend/data`), `lamb` (`/data/openwebui`) |
+| `/opt/lamb/lamb-kb-server-stable/backend/data/` | `lamb-next_kb-data` | `kb` container (`/app/backend/data`) |
 
-No service-name aliasing is required in the new stack.
+Set the following `.env` values to match the new mount paths:
+
+```
+LAMB_DB_PATH=/data/lamb
+OWI_PATH=/data/openwebui
+```
+
+The `lamb-next_` prefix comes from Docker Compose using the project directory name as the project name. Adjust if you run Compose with a different `--project-name`.
+
+### Step-by-step migration
+
+**1. Stop the legacy stack**
+
+```bash
+cd /opt/lamb
+docker compose -f docker-compose-workers.yaml down
+```
+
+**2. Create the named volumes** (without starting any services yet)
+
+```bash
+cd /opt/lamb-next
+docker compose -f docker-compose.next.yaml up --no-start
+```
+
+**3. Copy the LAMB database**
+
+```bash
+docker run --rm \
+  -v /opt/lamb/lamb_v4.db:/src/lamb_v4.db:ro \
+  -v lamb-next_lamb-data:/dst \
+  alpine cp /src/lamb_v4.db /dst/lamb_v4.db
+```
+
+**4. Copy the Open WebUI data** (`webui.db`, `vector_db/`, `cache/`, `uploads/`)
+
+```bash
+docker run --rm \
+  -v /opt/lamb/open-webui/backend/data:/src:ro \
+  -v lamb-next_openwebui-data:/dst \
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+**5. Copy the KB server data** (`lamb-kb-server.db`, `chromadb/`, `audit_logs/`, `config.json`)
+
+```bash
+docker run --rm \
+  -v /opt/lamb/lamb-kb-server-stable/backend/data:/src:ro \
+  -v lamb-next_kb-data:/dst \
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+**6. Verify the volumes look correct**
+
+```bash
+docker run --rm -v lamb-next_lamb-data:/data alpine ls -la /data
+docker run --rm -v lamb-next_openwebui-data:/data alpine ls -la /data
+docker run --rm -v lamb-next_kb-data:/data alpine ls -la /data
+```
+
+**7. Start the new stack**
+
+```bash
+cd /opt/lamb-next
+docker compose -f docker-compose.next.yaml up -d
+```
+
+### Notes
+
+- The `kb-static` volume (`lamb-next_kb-static`) does not need migration — the KB service regenerates static files at startup.
+- Stop the legacy stack cleanly before copying databases. SQLite WAL files (`-shm`, `-wal`) are present in the KB data directory; copying them alongside the main `.db` file is safe, but a clean shutdown ensures no in-flight writes are lost.
+- No service-name aliasing is required in the new stack.
+
+If your legacy `lamb_v4.db` uses prefixed tables (for example `LAMB_Creator_users`), set:
+
+```env
+LAMB_DB_PREFIX=LAMB_
+```
+
+and recreate the `lamb` service so the backend queries the correct table names.

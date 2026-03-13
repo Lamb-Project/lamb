@@ -281,6 +281,11 @@ Additional finding:
 - In Org Admin settings views, persisted org config values can take precedence over direct env fallbacks, so changing env values later may not immediately change what users see.
 - This should be documented as current behavior; future hardening may define clearer precedence and refresh semantics between env and persisted org config.
 
+Legacy migration finding:
+
+- Some legacy installations use prefixed LAMB tables (for example `LAMB_Creator_users`).
+- In those cases, `LAMB_DB_PREFIX` must be set (typically `LAMB_`) in next compose env, otherwise backend queries unprefixed tables and fails with `no such table: Creator_users`.
+
 Startup race mitigation applied:
 
 - Added `openwebui` healthcheck in `docker-compose.next.yaml` (`/health`, 10s interval, 5s timeout, 12 retries, 30s start period).
