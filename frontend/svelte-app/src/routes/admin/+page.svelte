@@ -258,7 +258,7 @@
         try {
             const token = getAuthToken();
             if (!token) throw new Error('Authentication token not found.');
-            const limitVal = quotaEditLimitStr.trim();
+            const limitVal = String(quotaEditLimitStr ?? '').trim();
             /** @type {number | null} */
             const cost_limit_usd = limitVal === '' ? null : parseFloat(limitVal);
             if (limitVal !== '' && (cost_limit_usd === null || isNaN(cost_limit_usd) || cost_limit_usd < 0)) {
