@@ -4717,3 +4717,129 @@ async def update_lti_activity(activity_id: int, request: Request, auth: AuthCont
     except Exception as e:
         logger.error(f"Error updating LTI activity: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Cost / token usage overview (system admin only)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/cost-overview",
+    tags=["Organization Management"],
+    summary="Get cost and token usage overview for all assistants (Admin Only)",
+    description="Returns all assistants with their aggregate token counts, estimated USD cost, and quota config. System admin only.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "System admin required"},
+    }
+)
+async def get_cost_overview(request: Request):
+    """Return cost and usage summary for every assistant. System admin only."""
+    try:
+        await verify_admin_access(request)
+
+        rows = db_manager.get_all_assistants_with_usage()
+
+        result = []
+        for row in rows:
+            # Parse quota fields from api_callback JSON
+            raw_meta = row.get("api_callback") or "{}"
+            try:
+                metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+            except Exception:
+                metadata = {}
+
+            quota = metadata.get("quota", {})
+            quota_enabled = bool(quota.get("enabled", False))
+            cost_limit_usd = quota.get("cost_limit_usd")
+            cost_usd = row["cost_usd"]
+            quota_exceeded = (
+                quota_enabled
+                and cost_limit_usd is not None
+                and cost_usd >= float(cost_limit_usd)
+            )
+
+            # Determine model/provider from metadata connector config
+            model_name = metadata.get("llm") or ""
+            connector = metadata.get("connector") or ""
+
+            result.append({
+                "id": row["id"],
+                "name": row["name"],
+                "owner": row["owner"],
+                "organization_name": row["organization_name"],
+                "model_name": model_name,
+                "provider": connector,
+                "prompt_tokens": row["prompt_tokens"],
+                "completion_tokens": row["completion_tokens"],
+                "total_tokens": row["total_tokens"],
+                "cost_usd": round(cost_usd, 6),
+                "quota_enabled": quota_enabled,
+                "cost_limit_usd": float(cost_limit_usd) if cost_limit_usd is not None else None,
+                "quota_exceeded": quota_exceeded,
+            })
+
+        return {"assistants": result, "count": len(result)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching cost overview: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class QuotaUpdate(BaseModel):
+    enabled: bool = Field(..., description="Whether quota enforcement is active")
+    cost_limit_usd: Optional[float] = Field(None, description="Spending cap in USD (omit or null for no limit)")
+
+
+@router.put(
+    "/assistant/{assistant_id}/quota",
+    tags=["Organization Management"],
+    summary="Update quota config for an assistant (Admin Only)",
+    description="Enable or disable quota enforcement and set the USD cost cap for an assistant. System admin only.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "System admin required"},
+        404: {"description": "Assistant not found"},
+    }
+)
+async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: Request):
+    """Set or update the quota configuration for a single assistant. System admin only."""
+    try:
+        await verify_admin_access(request)
+
+        # Verify assistant exists
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        success = db_manager.update_assistant_quota(
+            assistant_id=assistant_id,
+            enabled=body.enabled,
+            cost_limit_usd=body.cost_limit_usd,
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update quota")
+
+        # Return the updated usage+quota state
+        cost_usd = db_manager.get_assistant_cost_usd(assistant_id)
+        quota_exceeded = body.enabled and body.cost_limit_usd is not None and cost_usd >= body.cost_limit_usd
+        return {
+            "success": True,
+            "assistant_id": assistant_id,
+            "quota": {
+                "enabled": body.enabled,
+                "cost_limit_usd": body.cost_limit_usd,
+            },
+            "quota_exceeded": quota_exceeded,
+            "spend_usd": round(cost_usd, 6),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating quota for assistant {assistant_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

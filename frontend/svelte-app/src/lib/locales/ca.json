@@ -605,7 +605,8 @@
     "tabs": {
       "dashboard": "Panell de Control",
       "users": "Gestió d'Usuaris",
-      "organizations": "Organitzacions"
+      "organizations": "Organitzacions",
+      "costManagement": "Gestió de Costos"
     },
     "dashboard": {
       "title": "Panell d'Administració",
@@ -771,6 +772,37 @@
         "authTokenNotFound": "Token d'autenticació no trobat. Si us plau inicia sessió novament.",
         "createFailed": "Error al crear organització.",
         "unknownError": "S'ha produït un error desconegut al crear l'organització."
+      }
+    },
+    "costManagement": {
+      "title": "Gestió de Costos",
+      "subtitle": "ús de tokens i cost estimat per assistent a la plataforma.",
+      "loading": "Carregant dades d'ús...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noData": "No s'han trobat assistents.",
+      "table": {
+        "assistant": "Assistent",
+        "owner": "Propietari",
+        "organization": "Organització",
+        "model": "Model",
+        "promptTokens": "Tokens d'entrada",
+        "completionTokens": "Tokens de sortida",
+        "totalTokens": "Total de tokens",
+        "cost": "Cost estimat",
+        "quota": "Quota",
+        "status": "Estat"
+      },
+      "quota": {
+        "noQuota": "Sense quota",
+        "disabled": "Deshabilitat",
+        "active": "Actiu",
+        "exceeded": "Exceïit"
+      },
+      "totals": {
+        "label": "Totals de la plataforma:",
+        "cost": "Cost total estimat:",
+        "tokens": "Total de tokens:"
       }
     }
   },

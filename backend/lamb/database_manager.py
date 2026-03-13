@@ -4154,6 +4154,102 @@ class LambDatabaseManager:
             logger.error(f"Error computing cost for assistant {assistant_id}: {e}")
             return 0.0
 
+    def get_assistant_token_usage(self, assistant_id: int) -> dict:
+        """Return aggregate token counts for a single assistant.
+
+        Returns a dict with prompt_tokens, completion_tokens, total_tokens (all int).
+        Falls back to zeros on error or no data.
+        """
+        query = f"""
+            SELECT
+                COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')), 0)     AS prompt_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')), 0)      AS total_tokens
+            FROM {self.table_prefix}usage_logs ul
+            WHERE ul.assistant_id = ?
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query, (assistant_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        "prompt_tokens": int(row[0] or 0),
+                        "completion_tokens": int(row[1] or 0),
+                        "total_tokens": int(row[2] or 0),
+                    }
+                return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error fetching token usage for assistant {assistant_id}: {e}")
+            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def get_all_assistants_with_usage(self) -> list:
+        """Return all assistants with aggregate token usage and estimated cost (admin view).
+
+        Each row contains: id, name, owner, organization_name, api_callback,
+        prompt_tokens, completion_tokens, total_tokens, cost_usd.
+        Quota fields are derived from api_callback in the calling layer.
+        """
+        query = f"""
+            SELECT
+                a.id,
+                a.name,
+                a.owner,
+                o.name  AS organization_name,
+                a.api_callback,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')),     0) AS prompt_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')),      0) AS total_tokens,
+                COALESCE(SUM(
+                    COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'),     0)
+                        * COALESCE(mp.input_per_1m,  0) / 1000000.0
+                    +
+                    COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)
+                        * COALESCE(mp.output_per_1m, 0) / 1000000.0
+                ), 0.0) AS cost_usd
+            FROM {self.table_prefix}assistants a
+            LEFT JOIN {self.table_prefix}organizations o   ON a.organization_id = o.id
+            LEFT JOIN {self.table_prefix}usage_logs ul     ON ul.assistant_id   = a.id
+            LEFT JOIN {self.table_prefix}model_pricing mp
+                   ON ul.model_name = mp.model_name
+                  AND ul.provider   = mp.provider
+            GROUP BY a.id, a.name, a.owner, o.name, a.api_callback
+            ORDER BY cost_usd DESC, a.id ASC
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return []
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                results = []
+                for row in rows:
+                    results.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner": row[2],
+                        "organization_name": row[3] or "",
+                        "api_callback": row[4],
+                        "prompt_tokens": int(row[5] or 0),
+                        "completion_tokens": int(row[6] or 0),
+                        "total_tokens": int(row[7] or 0),
+                        "cost_usd": float(row[8] or 0.0),
+                    })
+                return results
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error fetching all assistants with usage: {e}")
+            return []
+
     def get_assistant_by_id(self, assistant_id: int) -> Optional[Assistant]:
         connection = self.get_connection()
         if not connection:
@@ -5268,6 +5364,50 @@ class LambDatabaseManager:
         return None
 
     # ==================== End LTI Creator Methods ====================
+
+    def update_assistant_quota(self, assistant_id: int, enabled: bool, cost_limit_usd) -> bool:
+        """Patch only the quota key inside the assistant's api_callback JSON.
+
+        Cost_limit_usd can be a float or None (unlimited).
+        Leaves all other metadata fields untouched.
+        Returns True on success.
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return False
+            try:
+                cursor = connection.cursor()
+                # Read current api_callback
+                cursor.execute(
+                    f"SELECT api_callback FROM {self.table_prefix}assistants WHERE id = ?",
+                    (assistant_id,)
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return False
+                raw = row[0] or "{}"
+                try:
+                    metadata = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                except Exception:
+                    metadata = {}
+                # Patch quota section
+                quota = {"enabled": bool(enabled)}
+                if cost_limit_usd is not None:
+                    quota["cost_limit_usd"] = float(cost_limit_usd)
+                metadata["quota"] = quota
+                # Write back
+                cursor.execute(
+                    f"UPDATE {self.table_prefix}assistants SET api_callback = ? WHERE id = ?",
+                    (json.dumps(metadata), assistant_id)
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error updating quota for assistant {assistant_id}: {e}")
+            return False
 
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """
