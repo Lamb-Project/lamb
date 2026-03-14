@@ -58,12 +58,34 @@ class KnowledgeStorePlugin(abc.ABC):
         """Query chunks. Returns list of {similarity, data, metadata}."""
 
     @abc.abstractmethod
+    def get_chunks(
+        self, collection, where: dict = None,
+        include: List[str] = None, limit: int = None, offset: int = None
+    ) -> Dict[str, Any]:
+        """Get chunks by filter criteria. Returns {ids, documents, metadatas}."""
+
+    @abc.abstractmethod
+    def find_chunks_by_metadata(
+        self, collection, field_values: Dict[str, str]
+    ) -> List[str]:
+        """Find chunk IDs that match any of the given metadata field/value patterns.
+        Returns a list of matching chunk IDs."""
+
+    @abc.abstractmethod
     def delete_chunks(self, collection, chunk_ids: List[str]) -> None:
         """Delete specific chunks by ID."""
 
     @abc.abstractmethod
     def count_chunks(self, collection) -> int:
         """Count chunks in a collection."""
+
+    def collection_exists(self, name: str) -> bool:
+        """Check if a collection exists. Default: try get_collection."""
+        try:
+            self.get_collection(name, {})
+            return True
+        except Exception:
+            return False
 
 
 class KnowledgeStoreRegistry:

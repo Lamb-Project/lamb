@@ -24,8 +24,6 @@ from schemas.collection import (
     CollectionResponse, 
     CollectionList
 )
-from database.connection import get_embedding_function
-from database.connection import get_chroma_client
 
 # Audit log configuration
 AUDIT_LOG_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data" / "audit_logs"
@@ -393,17 +391,14 @@ class CollectionsService:
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(VALIDATION_TIMEOUT)
             
-            # Create temporary collection for validation
-            temp_collection = Collection(
-                id=-1, 
-                name="__validation_test__", 
-                owner="system", 
-                description="Temporary validation object", 
-                embeddings_model=json.dumps(embeddings_model)
+            # Get embedding function directly from params
+            from database.connection import get_embedding_function_by_params
+            embedding_function = get_embedding_function_by_params(
+                vendor=embeddings_model.get("vendor", ""),
+                model_name=embeddings_model.get("model", ""),
+                api_key=embeddings_model.get("apikey", ""),
+                api_endpoint=embeddings_model.get("api_endpoint", ""),
             )
-            
-            # Get embedding function
-            embedding_function = get_embedding_function(temp_collection)
             
             # Test with descriptive text
             test_text = "Embeddings validation test for collection creation"
@@ -468,7 +463,7 @@ class CollectionsService:
     ) -> Dict[str, Any]:
         """Create a new knowledge base collection with DUAL MODE support."""
         from database.models import Organization, KnowledgeStoreSetup, Collection
-        from database.connection import get_embedding_function_by_params, get_chroma_client
+        from knowledge_store import get_knowledge_store
 
         existing = DBCollectionService.get_collection_by_name(db, collection.name)
         if existing:
@@ -489,7 +484,6 @@ class CollectionsService:
             # ── OLD MODE: Inline embeddings_model (backward compatibility) ──
             print("INFO: [create_collection] Using OLD MODE (inline embeddings_model)")
 
-            chroma_client = get_chroma_client()
             model_info = collection.embeddings_model.model_dump()
 
             if model_info.get("vendor") == "default":
@@ -513,16 +507,16 @@ class CollectionsService:
                 is_custom_config=is_custom_config
             )
 
-            emb_func = get_embedding_function_by_params(
-                vendor=model_info["vendor"],
-                model_name=model_info["model"],
-                api_key=model_info.get("apikey", ""),
-                api_endpoint=model_info.get("api_endpoint", "")
-            )
-
-            chroma_collection = chroma_client.create_collection(
-                name=collection.name,
-                embedding_function=emb_func
+            # Use plugin to create the collection
+            plugin_config = {
+                "vendor": model_info.get("vendor", ""),
+                "model": model_info.get("model", ""),
+                "api_key": model_info.get("apikey", ""),
+                "api_endpoint": model_info.get("api_endpoint", ""),
+            }
+            ks_plugin = get_knowledge_store("chromadb")
+            backend_collection = ks_plugin.create_collection(
+                collection.name, plugin_config
             )
 
             db_collection = Collection(
@@ -534,7 +528,7 @@ class CollectionsService:
                 organization_id=None,
                 knowledge_store_setup_id=None,
                 embedding_dimensions=dimensions,
-                chromadb_uuid=str(chroma_collection.id)
+                chromadb_uuid=str(backend_collection.id)
             )
 
         elif collection.organization_external_id:
@@ -839,15 +833,20 @@ class CollectionsService:
                 detail=f"Collection with ID {file_registry.collection_id} not found"
             )
             
-        # Get ChromaDB client and collection
-        chroma_client = get_chroma_client()
-        chroma_collection = chroma_client.get_collection(name=collection.name)
-        
+        # Get backend collection via plugin
+        from knowledge_store import resolve_plugin_for_collection
+        ks_plugin, plugin_config, col_name = resolve_plugin_for_collection(collection, db)
+        try:
+            backend_collection = ks_plugin.get_collection(col_name, plugin_config)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to access collection '{col_name}': {e}")
+
         source = file_registry.original_filename
-        
-        # Get content from ChromaDB
-        results = chroma_collection.get(
-            where={"filename": source}, 
+
+        # Get content via plugin
+        results = ks_plugin.get_chunks(
+            backend_collection,
+            where={"filename": source},
             include=["documents", "metadatas"]
         )
 
@@ -890,54 +889,27 @@ class CollectionsService:
 
     # -------------------- File Deletion (Embeddings + Registry + Filesystem) -------------------- #
     @staticmethod
-    def _find_embedding_ids_for_file(chroma_collection, file_hash: str) -> List[str]:
-        """Locate all embedding IDs in a Chroma collection that reference a file.
+    def _find_embedding_ids_for_file(ks_plugin, backend_collection, file_hash: str) -> List[str]:
+        """Locate all chunk IDs in a collection that reference a file.
 
-        Strategy:
-          1. Attempt a metadata `where` filter using `$contains` (newer Chroma versions)
-          2. Fallback to paginated scan of metadatas (older versions / unsupported filter)
+        Uses the knowledge store plugin's find_chunks_by_metadata method.
 
         Args:
-            chroma_collection: Chroma collection handle
+            ks_plugin: Knowledge store plugin instance
+            backend_collection: Backend collection handle
             file_hash: Stem (basename without extension) of file URL or path
         Returns:
-            List of embedding/document IDs to delete
+            List of chunk IDs to delete
         """
-        ids: List[str] = []
-        # 1. Try metadata query first
-        try:
-            res = chroma_collection.get(
-                where={
-                    "$or": [
-                        {"file_url": {"$contains": file_hash}},
-                        {"source": {"$contains": file_hash}},
-                        {"path": {"$contains": file_hash}},
-                        {"filename": {"$contains": file_hash}},
-                    ]
-                },
-                include=["metadatas"],
-            )
-            if res and res.get("ids"):
-                return list(res["ids"])  # type: ignore
-        except Exception:
-            pass
-
-        # 2. Fallback: scan in batches
-        offset = 0
-        batch = 1000
-        while True:
-            res = chroma_collection.get(include=["metadatas"], limit=batch, offset=offset)
-            got = len(res.get("ids", []))
-            if got == 0:
-                break
-            for idx, md in enumerate(res.get("metadatas", [])):
-                if not isinstance(md, dict):
-                    continue
-                joined_vals = "|".join(str(v) for v in md.values())
-                if file_hash in joined_vals:
-                    ids.append(res["ids"][idx])
-            offset += got
-        return ids
+        return ks_plugin.find_chunks_by_metadata(
+            backend_collection,
+            {
+                "file_url": file_hash,
+                "source": file_hash,
+                "path": file_hash,
+                "filename": file_hash,
+            }
+        )
 
     @staticmethod
     def delete_file(
@@ -980,33 +952,33 @@ class CollectionsService:
                 detail=f"Collection with ID {collection_id} not found"
             )
 
-        # 3. Get Chroma collection (embedding function not required for delete)
-        chroma_client = get_chroma_client()
+        # 3. Get backend collection via plugin
+        from knowledge_store import resolve_plugin_for_collection
+        ks_plugin, plugin_config, col_name = resolve_plugin_for_collection(collection, db)
         try:
-            chroma_collection = chroma_client.get_collection(name=collection.name)
+            backend_collection = ks_plugin.get_collection(col_name, plugin_config)
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to access Chroma collection '{collection.name}': {e}"
+                detail=f"Failed to access collection '{col_name}': {e}"
             )
 
         # 4. Derive hash/stem from file URL (fallback to file_path stem)
         file_url = file_registry.file_url or ""
         file_hash = Path(file_url).stem if file_url else Path(file_registry.file_path).stem
 
-        embedding_ids = CollectionsService._find_embedding_ids_for_file(chroma_collection, file_hash)
+        embedding_ids = CollectionsService._find_embedding_ids_for_file(ks_plugin, backend_collection, file_hash)
 
-        # 5. Delete embeddings
+        # 5. Delete chunks
         deleted_embeddings = 0
         if embedding_ids:
             try:
-                chroma_collection.delete(ids=embedding_ids)
+                ks_plugin.delete_chunks(backend_collection, embedding_ids)
                 deleted_embeddings = len(embedding_ids)
             except Exception as e:
-                # Non-fatal: proceed but report error
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed deleting embeddings for file id={file_id}: {e}"
+                    detail=f"Failed deleting chunks for file id={file_id}: {e}"
                 )
 
         # 6. Remove physical file(s)
@@ -1060,7 +1032,7 @@ class CollectionsService:
         Deletion is idempotent regarding Chroma and filesystem missing resources.
         """
         from pathlib import Path as _Path
-        from database.connection import get_chroma_client
+        from knowledge_store import resolve_plugin_for_collection
         from database.models import Collection as DBCollection, FileRegistry as DBFileRegistry
 
         collection = db.query(DBCollection).filter(DBCollection.id == collection_id).first()
@@ -1070,10 +1042,10 @@ class CollectionsService:
                 detail=f"Collection with ID {collection_id} not found"
             )
 
-        chroma_client = get_chroma_client()
-        chroma_deleted = False
+        ks_plugin, plugin_config, _ = resolve_plugin_for_collection(collection, db)
+        backend_deleted = False
         embedding_count = 0
-        chroma_collection_name_used = None
+        backend_collection_name_used = None
 
         # Try to load collection by chromadb_uuid first, then by name
         potential_names = []
@@ -1082,20 +1054,18 @@ class CollectionsService:
         potential_names.append(collection.name)
 
         for candidate in potential_names:
-            if chroma_deleted:
+            if backend_deleted:
                 break
             try:
-                chroma_col = chroma_client.get_collection(name=candidate)
-                # Count embeddings if API supports it
+                backend_col = ks_plugin.get_collection(candidate, plugin_config)
                 try:
-                    embedding_count = chroma_col.count()
+                    embedding_count = ks_plugin.count_chunks(backend_col)
                 except Exception:
                     embedding_count = 0
-                chroma_client.delete_collection(name=candidate)
-                chroma_collection_name_used = candidate
-                chroma_deleted = True
+                ks_plugin.delete_collection(candidate)
+                backend_collection_name_used = candidate
+                backend_deleted = True
             except Exception:
-                # Ignore and try next
                 continue
 
         # Gather and remove files
@@ -1130,7 +1100,7 @@ class CollectionsService:
             "id": collection_id,
             "name": collection.name,
             "deleted_embeddings": embedding_count,
-            "chroma_collection": chroma_collection_name_used,
+            "backend_collection": backend_collection_name_used,
             "removed_files": removed_files,
             "status": "deleted"
         }

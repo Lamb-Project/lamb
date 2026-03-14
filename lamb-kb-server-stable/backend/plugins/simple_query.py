@@ -1,7 +1,8 @@
 """
 Simple query plugin for similarity search.
 
-This plugin performs a simple similarity search on a collection.
+This plugin performs a simple similarity search on a collection
+using the knowledge store plugin abstraction.
 """
 
 import time
@@ -17,16 +18,12 @@ from plugins.base import PluginRegistry, QueryPlugin
 @PluginRegistry.register
 class SimpleQueryPlugin(QueryPlugin):
     """Simple query plugin for similarity search."""
-    
+
     name = "simple_query"
     description = "Simple similarity search on a collection"
-    
+
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        """Get the parameters accepted by this plugin.
-        
-        Returns:
-            A dictionary mapping parameter names to their specifications
-        """
+        """Get the parameters accepted by this plugin."""
         return {
             "top_k": {
                 "type": "integer",
@@ -41,10 +38,10 @@ class SimpleQueryPlugin(QueryPlugin):
                 "default": 0.0
             }
         }
-    
+
     def query(self, collection_id: int, query_text: str, **kwargs) -> List[Dict[str, Any]]:
         """Query a collection and return results.
-        
+
         Args:
             collection_id: ID of the collection to query
             query_text: The query text
@@ -52,72 +49,44 @@ class SimpleQueryPlugin(QueryPlugin):
                 - top_k: Number of results to return (default: 5)
                 - threshold: Minimum similarity threshold (default: 0.0)
                 - db: SQLAlchemy database session (required)
-                - embedding_function: The embedding function to use (optional)
-                - chroma_collection: The ChromaDB collection to use (optional)
-                
+                - ks_plugin: Knowledge store plugin instance (required)
+                - backend_collection: Backend collection handle (required)
+
         Returns:
             A list of dictionaries, each containing:
                 - similarity: Similarity score
                 - data: The text content
                 - metadata: A dictionary of metadata for the chunk
-                
-        Raises:
-            ValueError: If the collection is not found
         """
-        # Extract parameters
         top_k = kwargs.get("top_k", 5)
         threshold = kwargs.get("threshold", 0.0)
         db = kwargs.get("db")
-        embedding_function = kwargs.get("embedding_function")
-        chroma_collection = kwargs.get("chroma_collection")
-        
+        ks_plugin = kwargs.get("ks_plugin")
+        backend_collection = kwargs.get("backend_collection")
+
         if not db:
             raise ValueError("Database session is required")
-            
-        # Validate query text
+
         if not query_text or query_text.strip() == "":
             raise ValueError("Query text cannot be empty")
-        
-        # If ChromaDB collection wasn't provided, it indicates a failure in query service delegation
-        if not chroma_collection:
-            raise ValueError("chroma_collection parameter is required for simple query execution")
-        else:
-            print(f"DEBUG: [simple_query] Using provided ChromaDB collection")
-        
-        # Record start time
+
+        if not backend_collection or not ks_plugin:
+            raise ValueError("backend_collection and ks_plugin parameters are required")
+
         start_time = time.time()
-        
-        # Perform query
-        results = chroma_collection.query(
-            query_texts=[query_text],
+
+        # Use the knowledge store plugin for technology-agnostic querying
+        results = ks_plugin.query_chunks(
+            backend_collection,
+            query_text=query_text,
             n_results=top_k
         )
-        
-        # Record end time
-        end_time = time.time()
-        
-        # Calculate elapsed time in milliseconds
-        elapsed_ms = (end_time - start_time) * 1000
-        
-        # Format results
-        formatted_results = []
-        if results and len(results["documents"]) > 0:
-            for i, doc in enumerate(results["documents"][0]):
-                if i < len(results["metadatas"][0]) and i < len(results["distances"][0]):
-                    # Convert distance to similarity (ChromaDB returns distance, we want similarity)
-                    similarity = 1.0 - results["distances"][0][i]
-                    
-                    # Apply threshold filter
-                    if similarity >= threshold:
-                        formatted_results.append({
-                            "similarity": similarity,
-                            "data": doc,
-                            "metadata": results["metadatas"][0][i]
-                        })
-        
-        # Just return the formatted results list - the QueryService will handle the rest
-        return formatted_results
 
+        elapsed_ms = (time.time() - start_time) * 1000
 
-# Initialize plugin
-simple_query_plugin = SimpleQueryPlugin()
+        # Apply threshold filter
+        filtered_results = [
+            r for r in results if r.get("similarity", 0) >= threshold
+        ]
+
+        return filtered_results

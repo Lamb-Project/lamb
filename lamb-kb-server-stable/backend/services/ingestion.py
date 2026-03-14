@@ -13,14 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, BinaryIO, Union
 
-import chromadb
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
-from database.connection import get_embedding_function
-from database.models import Collection, FileRegistry, FileStatus, KnowledgeStoreSetup
+from database.models import Collection, FileRegistry, FileStatus
 from database.service import CollectionService
-from knowledge_store import get_knowledge_store
+from knowledge_store import resolve_plugin_for_collection
 from plugins.base import PluginRegistry, IngestPlugin
 
 
@@ -364,97 +362,16 @@ class IngestionService:
         collection_name = db_collection['name'] if isinstance(db_collection, dict) else db_collection.name
         print(f"DEBUG: [add_documents_to_collection] Found collection: {collection_name}")
 
-        # ── Resolve knowledge store plugin and backend collection ──
-        plugin = None
-        plugin_config = None
-        vendor = ""
-        model_name = ""
+        # ── Resolve knowledge store plugin (handles both NEW and OLD MODE) ──
+        plugin, plugin_config, col_name = resolve_plugin_for_collection(db_collection, db)
+        vendor = plugin_config.get("vendor", "")
+        model_name = plugin_config.get("model", "")
 
-        # Determine setup_id from dict or object
-        setup_id = (
-            db_collection.get('knowledge_store_setup_id')
-            if isinstance(db_collection, dict)
-            else getattr(db_collection, 'knowledge_store_setup_id', None)
-        )
-
-        if setup_id:
-            # NEW MODE: resolve via knowledge store plugin
-            setup = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == setup_id).first()
-            if setup:
-                plugin_config = setup.plugin_config
-                if isinstance(plugin_config, str):
-                    import json as _json
-                    plugin_config = _json.loads(plugin_config)
-                plugin_config = plugin_config or {}
-
-                vendor = plugin_config.get("vendor", "")
-                model_name = plugin_config.get("model", "")
-
-                try:
-                    plugin = get_knowledge_store(setup.plugin_type)
-                    print(f"DEBUG: [add_documents_to_collection] Using plugin: {setup.plugin_type}")
-                except ValueError as e:
-                    print(f"WARNING: [add_documents_to_collection] Plugin '{setup.plugin_type}' not found, falling back")
-
-        # ── Get embedding config for logging (OLD MODE fallback) ──
-        if not plugin:
-            embedding_config = (
-                json.loads(db_collection['embeddings_model'])
-                if isinstance(db_collection, dict) and isinstance(db_collection.get('embeddings_model'), str)
-                else (db_collection.embeddings_model if not isinstance(db_collection, dict)
-                      else db_collection.get('embeddings_model', {}))
-            )
-            if isinstance(embedding_config, str):
-                embedding_config = json.loads(embedding_config)
-            embedding_config = embedding_config or {}
-            vendor = embedding_config.get("vendor", "")
-            model_name = embedding_config.get("model", "")
-
-        print(f"DEBUG: [add_documents_to_collection] Using embeddings - vendor: {vendor}, model: {model_name}")
+        print(f"DEBUG: [add_documents_to_collection] Using plugin: {plugin.name}, vendor: {vendor}, model: {model_name}")
 
         # ── Obtain the backend collection handle ──
         try:
-            if plugin and plugin_config:
-                # Plugin-based: use the knowledge store plugin to get the collection
-                print(f"DEBUG: [add_documents_to_collection] Getting collection via plugin")
-                backend_collection = plugin.get_collection(collection_name, plugin_config)
-                print(f"DEBUG: [add_documents_to_collection] Plugin returned collection handle")
-            else:
-                # OLD MODE fallback: use direct ChromaDB access
-                print(f"DEBUG: [add_documents_to_collection] OLD MODE: using direct ChromaDB access")
-                from database.connection import get_chroma_client
-                chroma_client = get_chroma_client()
-                collection_embedding_function = get_embedding_function(db_collection)
-
-                # Verify collection exists
-                collections = chroma_client.list_collections()
-                if collections and isinstance(collections[0], str):
-                    collection_exists = collection_name in collections
-                else:
-                    try:
-                        collection_exists = any(col.name == collection_name for col in collections)
-                    except (AttributeError, NotImplementedError):
-                        try:
-                            chroma_client.get_collection(name=collection_name)
-                            collection_exists = True
-                        except Exception:
-                            collection_exists = False
-
-                if not collection_exists:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Collection '{collection_name}' exists in database but not in ChromaDB. "
-                               f"This indicates data inconsistency. Please recreate the collection."
-                    )
-
-                backend_collection = chroma_client.get_collection(
-                    name=collection_name,
-                    embedding_function=collection_embedding_function
-                )
-                print(f"DEBUG: [add_documents_to_collection] OLD MODE: ChromaDB collection retrieved")
-
-        except HTTPException:
-            raise
+            backend_collection = plugin.get_collection(col_name, plugin_config)
         except Exception as e:
             print(f"DEBUG: [add_documents_to_collection] ERROR obtaining backend collection: {e}")
             import traceback
@@ -496,22 +413,13 @@ class IngestionService:
 
                 batch_start_time = time.time()
 
-                if plugin and plugin_config:
-                    # Plugin-based add
-                    plugin.add_chunks(
-                        backend_collection,
-                        chunk_ids=ids[i:batch_end],
-                        chunk_texts=texts[i:batch_end],
-                        chunk_metadata=metadatas[i:batch_end],
-                        plugin_config=plugin_config
-                    )
-                else:
-                    # OLD MODE: direct ChromaDB add
-                    backend_collection.add(
-                        ids=ids[i:batch_end],
-                        documents=texts[i:batch_end],
-                        metadatas=metadatas[i:batch_end],
-                    )
+                plugin.add_chunks(
+                    backend_collection,
+                    chunk_ids=ids[i:batch_end],
+                    chunk_texts=texts[i:batch_end],
+                    chunk_metadata=metadatas[i:batch_end],
+                    plugin_config=plugin_config
+                )
 
                 batch_end_time = time.time()
                 print(f"DEBUG: [add_documents_to_collection] Batch {i//batch_size + 1} completed in {batch_end_time - batch_start_time:.2f} seconds")

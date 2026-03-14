@@ -126,8 +126,73 @@ class ChromaDBPlugin(KnowledgeStorePlugin):
                 formatted.append({"similarity": similarity, "data": doc, "metadata": meta})
         return formatted
 
+    def get_chunks(
+        self, collection, where: dict = None,
+        include: List[str] = None, limit: int = None, offset: int = None
+    ) -> Dict[str, Any]:
+        kwargs = {}
+        if where:
+            kwargs["where"] = where
+        if include:
+            kwargs["include"] = include
+        if limit is not None:
+            kwargs["limit"] = limit
+        if offset is not None:
+            kwargs["offset"] = offset
+        return collection.get(**kwargs)
+
+    def find_chunks_by_metadata(
+        self, collection, field_values: Dict[str, str]
+    ) -> List[str]:
+        or_clauses = []
+        for field, pattern in field_values.items():
+            or_clauses.append({field: {"$contains": pattern}})
+
+        if not or_clauses:
+            return []
+
+        where = {"$or": or_clauses} if len(or_clauses) > 1 else or_clauses[0]
+
+        try:
+            res = collection.get(where=where, include=["metadatas"])
+            return res.get("ids", [])
+        except Exception:
+            # Fallback: scan all chunks and match manually
+            ids = []
+            batch, offset = 100, 0
+            while True:
+                res = collection.get(
+                    include=["metadatas"], limit=batch, offset=offset
+                )
+                batch_ids = res.get("ids", [])
+                if not batch_ids:
+                    break
+                batch_metas = res.get("metadatas", [])
+                for i, meta in enumerate(batch_metas):
+                    if meta and any(
+                        pattern in str(meta.get(field, ""))
+                        for field, pattern in field_values.items()
+                    ):
+                        ids.append(batch_ids[i])
+                offset += batch
+            return ids
+
     def delete_chunks(self, collection, chunk_ids: List[str]) -> None:
         collection.delete(ids=chunk_ids)
 
     def count_chunks(self, collection) -> int:
         return collection.count()
+
+    def collection_exists(self, name: str) -> bool:
+        client = self._get_client()
+        collections = client.list_collections()
+        if collections and isinstance(collections[0], str):
+            return name in collections
+        try:
+            return any(col.name == name for col in collections)
+        except (AttributeError, NotImplementedError):
+            try:
+                client.get_collection(name=name)
+                return True
+            except Exception:
+                return False
