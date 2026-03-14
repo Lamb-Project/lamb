@@ -49,22 +49,21 @@ class QueryService:
         plugin_name: str,
         plugin_params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Query a collection using the specified plugin.
-        
-        This method ensures the embedding function used for querying is consistent
-        with the one specified in the SQLite collection record, guaranteeing that
-        the same embedding model is used for both ingestion and querying.
-        
+        """Query a collection using the specified query plugin.
+
+        Resolves the collection's knowledge store setup to get the appropriate
+        backend, then passes the backend collection to the query plugin.
+
         Args:
             db: Database session
             collection_id: ID of the collection
             query_text: Query text
-            plugin_name: Name of the plugin to use
-            plugin_params: Parameters for the plugin
-            
+            plugin_name: Name of the query plugin to use
+            plugin_params: Parameters for the query plugin
+
         Returns:
             Query results with timing information
-            
+
         Raises:
             HTTPException: If the plugin is not found or query fails
         """
@@ -74,9 +73,9 @@ class QueryService:
                 status_code=404,
                 detail=f"Query plugin '{plugin_name}' not found"
             )
-        
+
         try:
-            # Get the collection from SQLite to ensure we use the same embedding function
+            # Get the collection from DB
             from database.service import CollectionService
             db_collection = CollectionService.get_collection(db, collection_id)
             if not db_collection:
@@ -84,137 +83,43 @@ class QueryService:
                     status_code=404,
                     detail=f"Collection with ID {collection_id} not found"
                 )
-            
-            # Get the embedding function for this collection using the SQLite record
-            from database.connection import get_embedding_function, get_chroma_client
-            try:
-                # Create embedding function from collection record
-                print(f"DEBUG: [query_collection] Creating embedding function from collection record")
-                collection_embedding_function = get_embedding_function(db_collection)
-                print(f"DEBUG: [query_collection] Created embedding function: {collection_embedding_function is not None}")
-                
-                # Verify ChromaDB collection exists and is accessible with this embedding function
-                chroma_client = get_chroma_client()
-                
-                # Check if collection exists
-                collections = chroma_client.list_collections()
-                
-                # In ChromaDB v0.6.0+, list_collections returns a list of collection names (strings)
-                # In older versions, it returned objects with a name attribute
-                if collections and isinstance(collections[0], str):
-                    # ChromaDB v0.6.0+ - collections is a list of strings
-                    collection_exists = db_collection["name"] in collections
-                    print(f"DEBUG: [query_collection] Using ChromaDB v0.6.0+ API: collections are strings")
-                else:
-                    # Older ChromaDB - collections is a list of objects with name attribute
-                    try:
-                        collection_exists = any(col.name == db_collection["name"] for col in collections)
-                        print(f"DEBUG: [query_collection] Using older ChromaDB API: collections have name attribute")
-                    except (AttributeError, NotImplementedError):
-                        # Fall back to checking if we can get the collection
-                        try:
-                            chroma_client.get_collection(name=db_collection["name"])
-                            collection_exists = True
-                            print(f"DEBUG: [query_collection] Verified collection exists by get_collection")
-                        except Exception:
-                            collection_exists = False
-                
-                if not collection_exists:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Collection '{db_collection['name']}' exists in database but not in ChromaDB. "
-                              f"This indicates data inconsistency. Please recreate the collection."
-                    )
-                
-                # Get the ChromaDB collection with our embedding function
-                try:
-                    if db_collection["chromadb_uuid"]:
-                        # Use ChromaDB UUID if available
-                        # In ChromaDB API, try with name parameter because id isn't supported here
-                        try:
-                            # Try first with name=uuid (this works in some versions)
-                            chroma_collection = chroma_client.get_collection(
-                                name=db_collection["chromadb_uuid"],
-                                embedding_function=collection_embedding_function
-                            )
-                            print(f"DEBUG: [query_collection] Retrieved collection by UUID as name: {db_collection['chromadb_uuid']}")
-                        except Exception as e1:
-                            # If that fails, try with the collection name
-                            try:
-                                chroma_collection = chroma_client.get_collection(
-                                    name=db_collection["name"],
-                                    embedding_function=collection_embedding_function
-                                )
-                                print(f"DEBUG: [query_collection] Retrieved collection by name: {db_collection['name']}")
-                            except Exception as e2:
-                                raise HTTPException(
-                                    status_code=500,
-                                    detail=f"Failed to get collection from ChromaDB. Errors: {str(e1)}, {str(e2)}"
-                                )
-                    else:
-                        # Fall back to name-based retrieval
-                        try:
-                            chroma_collection = chroma_client.get_collection(
-                                name=db_collection["name"],
-                                embedding_function=collection_embedding_function
-                            )
-                            print(f"DEBUG: [query_collection] Retrieved collection by name: {db_collection['name']}")
-                        except Exception as e:
-                            raise HTTPException(
-                                status_code=500,
-                                detail=f"Failed to get collection '{db_collection['name']}' from ChromaDB. Error: {str(e)}"
-                            )
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to get collection from ChromaDB. Error: {str(e)}"
-                    )
-                
-                # Add ChromaDB collection and embedding function to plugin params
-                params = PluginRegistry.sanitize_query_params(
-                    plugin_name,
-                    plugin_params or {}
-                )
-                params["db"] = db
-                params["embedding_function"] = collection_embedding_function
-                params["chroma_collection"] = chroma_collection
-                
-                # Extract embedding model info for debugging (handle both old and new mode)
-                embedding_config = db_collection.get("embeddings_model") or {}
-                embeddings_setup = db_collection.get("embeddings_setup") or {}
-                vendor = embedding_config.get("vendor", "") or embeddings_setup.get("vendor", "unknown")
-                model_name = embedding_config.get("model", "") or embeddings_setup.get("model_name", "unknown")
-                print(f"DEBUG: [query_collection] Using embeddings - vendor: {vendor}, model: {model_name}")
-                
-            except Exception as ef_e:
-                print(f"DEBUG: [query_collection] ERROR preparing embedding function: {str(ef_e)}")
-                import traceback
-                print(f"DEBUG: [query_collection] Stack trace:\n{traceback.format_exc()}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to prepare embedding function: {str(ef_e)}"
-                )
-            
-            # Record start time
+
+            collection_name = db_collection['name'] if isinstance(db_collection, dict) else db_collection.name
+
+            # ── Resolve knowledge store plugin (handles both NEW and OLD MODE) ──
+            from knowledge_store import resolve_plugin_for_collection
+            ks_plugin, plugin_config, col_name = resolve_plugin_for_collection(db_collection, db)
+            vendor = plugin_config.get("vendor", "")
+            model_name = plugin_config.get("model", "")
+
+            # Get the backend collection handle
+            backend_collection = ks_plugin.get_collection(col_name, plugin_config)
+
+            print(f"DEBUG: [query_collection] Using plugin: {ks_plugin.name}, vendor: {vendor}, model: {model_name}")
+
+            # Pass backend collection and plugin to the query plugin
+            params = PluginRegistry.sanitize_query_params(plugin_name, plugin_params or {})
+            params["db"] = db
+            params["ks_plugin"] = ks_plugin
+            params["backend_collection"] = backend_collection
+
+            # Record timing
             start_time = time.time()
-            
-            # Execute query
+
             results = plugin.query(
                 collection_id=collection_id,
                 query_text=query_text,
                 **params
             )
-            
-            # Record end time
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            
+
+            elapsed_time = time.time() - start_time
+
             return {
                 "results": results,
                 "count": len(results),
                 "timing": {
                     "total_seconds": elapsed_time,
-                    "total_ms": elapsed_time * 1000  # Add milliseconds for test script
+                    "total_ms": elapsed_time * 1000
                 },
                 "query": query_text,
                 "embedding_info": {

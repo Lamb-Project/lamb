@@ -81,7 +81,7 @@ LAMB features a modular, extensible architecture:
 
 For the easiest setup experience, we recommend using Docker Compose to run all LAMB services:
 
-📘 **[Docker Installation Guide](Documentation/slop-docs/deployment.md)** - One-command deployment with all services configured
+📘 **[Docker Installation Guide](Documentation/deployment.md)** - One-command deployment with all services configured
 
 ### Alternative: Manual Installation
 
@@ -217,7 +217,7 @@ We acknowledge the valuable contributions and research collaboration from the au
   - https://tknika.eus/en/ Basque VET Applied Research Centre 
 - **All Contributors** - For their dedication to improving education through technology
 
-### Funding projects directly or indirectly contruibuting to the project
+### Funding projects directly or indirectly contributing to the project
 
 - Universitat Politecnica de Cataluya. Galaxia d'Aprenentatge projecte PROPER, Factulat d'Informatica de Barcelona (2024-2025). 
 - Departament de Recerca i Universitats de la Generalitat de Catalunya through the 2021 SGR 01412 research groups award (2021-2025). 

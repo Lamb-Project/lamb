@@ -10,6 +10,11 @@ from datetime import datetime, timedelta
 import jwt
 import logging
 import os
+import warnings
+
+# passlib 1.7.4 + bcrypt 4.x: bcrypt removed __about__ module, passlib can't read version.
+# This is harmless — passlib falls back gracefully. Suppress the noise.
+warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
 
 import requests
 import uuid

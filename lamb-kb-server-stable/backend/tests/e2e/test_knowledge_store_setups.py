@@ -1,10 +1,10 @@
 """
-E2E tests for Organizations and Embeddings Setups feature.
+E2E tests for Organizations and Knowledge Store Setups feature.
 
 Tests verify:
 - Organization CRUD operations
-- Embeddings Setup CRUD operations
-- Collection creation with embeddings setup reference
+- Knowledge Store Setup CRUD operations
+- Collection creation with knowledge store setup reference
 - Setup deletion constraints
 - Available setups endpoint
 """
@@ -73,8 +73,8 @@ class TestOrganizations:
         assert response.status_code == 404
 
 
-class TestEmbeddingsSetups:
-    """Tests for embeddings setups endpoints."""
+class TestKnowledgeStoreSetups:
+    """Tests for knowledge store setups endpoints."""
 
     @pytest.fixture
     def test_org(self, client) -> Generator[Dict[str, Any], None, None]:
@@ -95,23 +95,26 @@ class TestEmbeddingsSetups:
         setup_data = {
             "name": "Test Ollama Setup",
             "setup_key": "ollama_test",
-            "vendor": "ollama",
-            "api_endpoint": "http://host.docker.internal:11434",
-            "model_name": "nomic-embed-text",
-            "embedding_dimensions": 768,
+            "plugin_type": "chromadb",
+            "plugin_config": {
+                "vendor": "ollama",
+                "api_endpoint": "http://host.docker.internal:11434",
+                "model": "nomic-embed-text",
+                "embedding_dimensions": 768
+            },
             "is_default": True
         }
 
         response = client.post(
-            f"/organizations/{org_ext_id}/embeddings-setups",
+            f"/organizations/{org_ext_id}/knowledge-store-setups",
             json=setup_data
         )
         assert response.status_code == 200 or response.status_code == 201, f"Got {response.status_code}: {response.text}"
         setup = response.json()
         assert setup["name"] == setup_data["name"]
         assert setup["setup_key"] == setup_data["setup_key"]
-        assert setup["vendor"] == setup_data["vendor"]
-        assert setup["embedding_dimensions"] == 768
+        assert setup["plugin_config_summary"]["vendor"] == setup_data["plugin_config"]["vendor"]
+        assert setup["plugin_config_summary"]["embedding_dimensions"] == 768
         assert setup["is_default"] == True
 
     def test_list_embeddings_setups(self, client, test_org):
@@ -127,10 +130,10 @@ class TestEmbeddingsSetups:
             "model_name": "nomic-embed-text",
             "embedding_dimensions": 768
         }
-        client.post(f"/organizations/{org_ext_id}/embeddings-setups", json=setup_data)
+        client.post(f"/organizations/{org_ext_id}/knowledge-store-setups", json=setup_data)
 
         # List setups
-        response = client.get(f"/organizations/{org_ext_id}/embeddings-setups")
+        response = client.get(f"/organizations/{org_ext_id}/knowledge-store-setups")
         assert response.status_code == 200
         setups = response.json()
         assert len(setups) >= 1
@@ -151,14 +154,14 @@ class TestEmbeddingsSetups:
             "embedding_dimensions": 768
         }
         create_response = client.post(
-            f"/organizations/{org_ext_id}/embeddings-setups",
+            f"/organizations/{org_ext_id}/knowledge-store-setups",
             json=setup_data
         )
         created_setup = create_response.json()
 
         # Get setup by ID or key
         response = client.get(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}"
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}"
         )
         assert response.status_code == 200
         setup = response.json()
@@ -179,7 +182,7 @@ class TestEmbeddingsSetups:
             "embedding_dimensions": 768
         }
         create_response = client.post(
-            f"/organizations/{org_ext_id}/embeddings-setups",
+            f"/organizations/{org_ext_id}/knowledge-store-setups",
             json=setup_data
         )
         created_setup = create_response.json()
@@ -189,14 +192,14 @@ class TestEmbeddingsSetups:
             "name": "Updated Name"
         }
         response = client.put(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}",
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}",
             json=update_data
         )
         assert response.status_code == 200
         updated_setup = response.json()
         assert updated_setup["name"] == "Updated Name"
         # Dimensions should NOT change
-        assert updated_setup["embedding_dimensions"] == 768
+        assert updated_setup.get("plugin_config_summary", {}).get("embedding_dimensions") == 768
 
     def test_dimension_update_blocked(self, client, test_org):
         """Test that embedding_dimensions cannot be changed after creation."""
@@ -212,7 +215,7 @@ class TestEmbeddingsSetups:
             "embedding_dimensions": 768
         }
         create_response = client.post(
-            f"/organizations/{org_ext_id}/embeddings-setups",
+            f"/organizations/{org_ext_id}/knowledge-store-setups",
             json=setup_data
         )
         created_setup = create_response.json()
@@ -222,16 +225,16 @@ class TestEmbeddingsSetups:
             "embedding_dimensions": 512  # Try to change
         }
         response = client.put(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}",
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}",
             json=update_data
         )
         
         # Check that dimensions are unchanged
         get_response = client.get(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}"
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}"
         )
         setup = get_response.json()
-        assert setup["embedding_dimensions"] == 768  # Should remain unchanged
+        assert setup.get("plugin_config_summary", {}).get("embedding_dimensions") == 768  # Should remain unchanged
 
     def test_delete_embeddings_setup_without_collections(self, client, test_org):
         """Test deleting an embeddings setup that has no associated collections."""
@@ -247,20 +250,20 @@ class TestEmbeddingsSetups:
             "embedding_dimensions": 768
         }
         create_response = client.post(
-            f"/organizations/{org_ext_id}/embeddings-setups",
+            f"/organizations/{org_ext_id}/knowledge-store-setups",
             json=setup_data
         )
         created_setup = create_response.json()
 
         # Delete setup
         response = client.delete(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}"
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}"
         )
         assert response.status_code == 200 or response.status_code == 204
 
         # Verify it's gone
         get_response = client.get(
-            f"/organizations/{org_ext_id}/embeddings-setups/{created_setup['setup_key']}"
+            f"/organizations/{org_ext_id}/knowledge-store-setups/{created_setup['setup_key']}"
         )
         assert get_response.status_code == 404
 
@@ -268,20 +271,21 @@ class TestEmbeddingsSetups:
         """Test the available setups endpoint."""
         org_ext_id = test_org["external_id"]
 
-        # Create an active setup
+        # Create an active setup using ollama (available in test env)
         setup_data = {
             "name": "Available Test Setup",
             "setup_key": f"avail_test_{int(time.time())}",
-            "vendor": "openai",
-            "model_name": "text-embedding-3-small",
-            "embedding_dimensions": 1536,
+            "vendor": "ollama",
+            "api_endpoint": "http://host.docker.internal:11434",
+            "model_name": "nomic-embed-text",
+            "embedding_dimensions": 768,
             "is_active": True
         }
-        client.post(f"/organizations/{org_ext_id}/embeddings-setups", json=setup_data)
+        client.post(f"/organizations/{org_ext_id}/knowledge-store-setups", json=setup_data)
 
         # Get available setups
         response = client.get(
-            f"/organizations/{org_ext_id}/embeddings-setups/available"
+            f"/organizations/{org_ext_id}/knowledge-store-setups/available"
         )
         assert response.status_code == 200
         setups = response.json()
@@ -316,7 +320,7 @@ class TestCollectionWithSetup:
             "is_default": True
         }
         setup_response = client.post(
-            f"/organizations/{org['external_id']}/embeddings-setups",
+            f"/organizations/{org['external_id']}/knowledge-store-setups",
             json=setup_data
         )
         setup = setup_response.json()
@@ -335,7 +339,7 @@ class TestCollectionWithSetup:
             "owner": "test-user",
             "visibility": "private",
             "organization_external_id": org["external_id"],
-            "embeddings_setup_key": setup["setup_key"]
+            "knowledge_store_setup_key": setup["setup_key"]
         }
 
         response = client.post("/collections", json=collection_data)
@@ -364,7 +368,7 @@ class TestCollectionWithSetup:
             "owner": "test-user",
             "visibility": "private",
             "organization_external_id": org["external_id"]
-            # No embeddings_setup_key - should use default
+            # No knowledge_store_setup_key - should use default
         }
 
         response = client.post("/collections", json=collection_data)
@@ -413,7 +417,7 @@ class TestSetupDeletionConstraints:
             "is_default": True
         }
         setup_response = client.post(
-            f"/organizations/{org['external_id']}/embeddings-setups",
+            f"/organizations/{org['external_id']}/knowledge-store-setups",
             json=setup_data
         )
         if setup_response.status_code not in [200, 201]:
@@ -425,7 +429,7 @@ class TestSetupDeletionConstraints:
             "name": f"blocking-collection-{timestamp}",
             "owner": "test-user",
             "organization_external_id": org["external_id"],
-            "embeddings_setup_key": setup["setup_key"]
+            "knowledge_store_setup_key": setup["setup_key"]
         }
         coll_response = client.post("/collections", json=collection_data)
         if coll_response.status_code not in [200, 201]:
@@ -436,7 +440,7 @@ class TestSetupDeletionConstraints:
         try:
             # Try to delete setup - should fail
             del_response = client.delete(
-                f"/organizations/{org['external_id']}/embeddings-setups/{setup['setup_key']}"
+                f"/organizations/{org['external_id']}/knowledge-store-setups/{setup['setup_key']}"
             )
             assert del_response.status_code in [400, 409, 422], \
                 f"Expected error when deleting setup with collections, got {del_response.status_code}"
@@ -446,3 +450,39 @@ class TestSetupDeletionConstraints:
                 client.delete(f"/collections/{collection['id']}")
             except Exception:
                 pass
+
+class TestKnowledgeStorePlugins:
+    """Tests for knowledge store plugins endpoints."""
+
+    def test_list_knowledge_store_plugins(self, client):
+        """Test listing available knowledge store plugins."""
+        response = client.get("/knowledge-store-plugins")
+        assert response.status_code == 200
+        data = response.json()
+        assert "plugins" in data
+        assert len(data["plugins"]) >= 1
+        assert any(p["plugin_type"] == "chromadb" for p in data["plugins"])
+
+    def test_validate_plugin_config(self, client):
+        """Test validating a plugin config."""
+        valid_config = {
+            "vendor": "ollama",
+            "api_endpoint": "http://host.docker.internal:11434",
+            "model": "nomic-embed-text",
+            "embedding_dimensions": 768
+        }
+        response = client.post(
+            "/knowledge-store-plugins/chromadb/validate-config",
+            json=valid_config
+        )
+        assert response.status_code == 200
+        assert response.json().get("valid") is True
+        
+        invalid_config = {"vendor": "ollama"}
+        err_response = client.post(
+            "/knowledge-store-plugins/chromadb/validate-config",
+            json=invalid_config
+        )
+        assert err_response.status_code == 200
+        assert err_response.json().get("valid") is False
+        assert "Missing required field: model" in str(err_response.json().get("errors"))

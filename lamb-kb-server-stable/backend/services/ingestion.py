@@ -13,13 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, BinaryIO, Union
 
-import chromadb
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
-from database.connection import get_chroma_client, get_embedding_function
 from database.models import Collection, FileRegistry, FileStatus
 from database.service import CollectionService
+from knowledge_store import resolve_plugin_for_collection
 from plugins.base import PluginRegistry, IngestPlugin
 
 
@@ -161,7 +160,7 @@ class IngestionService:
         if isinstance(plugin_params, str):
             try:
                 plugin_params = json.loads(plugin_params)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 plugin_params = {}
                 
         # Create the file registry entry
@@ -334,216 +333,99 @@ class IngestionService:
         embeddings_function: Optional[Any] = None,
         file_registry_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Add documents to a collection.
-        
-        This method validates both the SQL and ChromaDB collection existence.
-        ChromaDB collections must already exist - they are created together with SQLite records
-        during collection creation and should never need recreation during ingestion.
-        
+        """Add documents to a collection via the knowledge store plugin.
+
+        Resolves the collection's knowledge store setup to get the appropriate
+        plugin, then uses plugin.add_chunks() for technology-agnostic ingestion.
+
         Args:
             db: Database session
             collection_id: ID of the collection
             documents: List of document chunks with metadata
-            embeddings_function: Optional custom embeddings function (IGNORED - will always use collection config)
+            embeddings_function: IGNORED — always uses collection config
             file_registry_id: Optional ID of the file registry entry for progress updates
-            
+
         Returns:
             Status information about the ingestion
-            
+
         Raises:
-            HTTPException: If the collection is not found, ChromaDB collection doesn't exist,
-                          or adding documents fails
+            HTTPException: If the collection is not found or adding documents fails
         """
         print(f"DEBUG: [add_documents_to_collection] Starting for collection_id: {collection_id}")
         print(f"DEBUG: [add_documents_to_collection] Number of documents: {len(documents)}")
-        
-        # Get the collection
-        print(f"DEBUG: [add_documents_to_collection] Getting collection from database")
+
+        # Get the collection from DB
         db_collection = CollectionService.get_collection(db, collection_id)
         if not db_collection:
-            print(f"DEBUG: [add_documents_to_collection] ERROR: Collection not found")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Collection with ID {collection_id} not found"
-            )
-        
-        # Get collection name and attributes - handle both dict-like and attribute access
+            raise HTTPException(status_code=404, detail=f"Collection with ID {collection_id} not found")
+
         collection_name = db_collection['name'] if isinstance(db_collection, dict) else db_collection.name
-        
         print(f"DEBUG: [add_documents_to_collection] Found collection: {collection_name}")
-        
-        # Store the embedding config for logging/debugging
-        embedding_config = json.loads(db_collection['embeddings_model']) if isinstance(db_collection, dict) and isinstance(db_collection['embeddings_model'], str) else \
-                           db_collection.embeddings_model if not isinstance(db_collection, dict) else \
-                           db_collection['embeddings_model']
-        print(f"DEBUG: [add_documents_to_collection] Embedding config: {embedding_config}")
-        
-        # Extract key embedding model parameters for verification
-        vendor = embedding_config.get("vendor", "")
-        model_name = embedding_config.get("model", "")
-        print(f"DEBUG: [add_documents_to_collection] Using embeddings - vendor: {vendor}, model: {model_name}")
-        
-        # Get ChromaDB client
-        print(f"DEBUG: [add_documents_to_collection] Getting ChromaDB client")
-        chroma_client = get_chroma_client()
-        
-        # Get the embedding function for this collection using the collection
-        collection_embedding_function = None
+
+        # ── Resolve knowledge store plugin (handles both NEW and OLD MODE) ──
+        plugin, plugin_config, col_name = resolve_plugin_for_collection(db_collection, db)
+        vendor = plugin_config.get("vendor", "")
+        model_name = plugin_config.get("model", "")
+
+        print(f"DEBUG: [add_documents_to_collection] Using plugin: {plugin.name}, vendor: {vendor}, model: {model_name}")
+
+        # ── Obtain the backend collection handle ──
         try:
-            print(f"DEBUG: [add_documents_to_collection] Creating embedding function from collection record")
-            # Pass collection or collection_id to get_embedding_function
-            from database.connection import get_embedding_function
-            collection_embedding_function = get_embedding_function(db_collection)
-            print(f"DEBUG: [add_documents_to_collection] Created embedding function: {collection_embedding_function is not None}")
-            
-            # Test the embedding function to verify it works
-            test_result = collection_embedding_function(["Test embedding function verification"])
-            print(f"DEBUG: [add_documents_to_collection] Embedding function test successful, dimensions: {len(test_result[0])}")
-        except Exception as ef_e:
-            print(f"DEBUG: [add_documents_to_collection] ERROR creating embedding function: {str(ef_e)}")
-            import traceback
-            print(f"DEBUG: [add_documents_to_collection] Stack trace:\n{traceback.format_exc()}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create embedding function: {str(ef_e)}"
-            )
-        
-        # Verify ChromaDB collection exists (do not recreate it)
-        try:
-            print(f"DEBUG: [add_documents_to_collection] Verifying ChromaDB collection exists: {collection_name}")
-            
-            # First check if collection exists in ChromaDB
-            collections = chroma_client.list_collections()
-            
-            # In ChromaDB v0.6.0+, list_collections returns a list of collection names (strings)
-            # In older versions, it returned objects with a name attribute
-            if collections and isinstance(collections[0], str):
-                # ChromaDB v0.6.0+ - collections is a list of strings
-                collection_exists = collection_name in collections
-                print(f"DEBUG: [add_documents_to_collection] Using ChromaDB v0.6.0+ API: collections are strings")
-            else:
-                # Older ChromaDB - collections is a list of objects with name attribute
-                try:
-                    collection_exists = any(col.name == collection_name for col in collections)
-                    print(f"DEBUG: [add_documents_to_collection] Using older ChromaDB API: collections have name attribute")
-                except (AttributeError, NotImplementedError):
-                    # Fall back to checking if we can get the collection
-                    try:
-                        chroma_client.get_collection(name=collection_name)
-                        collection_exists = True
-                        print(f"DEBUG: [add_documents_to_collection] Verified collection exists by get_collection")
-                    except Exception:
-                        collection_exists = False
-            
-            if not collection_exists:
-                print(f"ERROR: [add_documents_to_collection] ChromaDB collection does not exist: {collection_name}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Collection '{collection_name}' exists in database but not in ChromaDB. "
-                          f"This indicates data inconsistency. Please recreate the collection."
-                )
-            
-            # Get the ChromaDB collection with our embedding function to ensure consistent embeddings
-            chroma_collection = chroma_client.get_collection(
-                name=collection_name,
-                embedding_function=collection_embedding_function
-            )
-            print(f"DEBUG: [add_documents_to_collection] ChromaDB collection retrieved successfully")
-            
-            # Verify embedding model configuration consistency
-            existing_metadata = chroma_collection.metadata
-            if existing_metadata:
-                # Extract embedding model info from metadata if available
-                existing_embeddings_model = existing_metadata.get("embeddings_model", "{}")
-                try:
-                    if isinstance(existing_embeddings_model, str):
-                        existing_config = json.loads(existing_embeddings_model)
-                    else:
-                        existing_config = existing_embeddings_model
-                        
-                    existing_vendor = existing_config.get("vendor", "")
-                    existing_model = existing_config.get("model", "")
-                    
-                    # Compare with what we expect
-                    if existing_vendor != vendor or existing_model != model_name:
-                        print(f"WARNING: [add_documents_to_collection] Embedding model mismatch detected!")
-                        print(f"WARNING: ChromaDB collection uses - vendor: {existing_vendor}, model: {existing_model}")
-                        print(f"WARNING: SQLite record specifies - vendor: {vendor}, model: {model_name}")
-                        print(f"WARNING: Will use the embedding function from SQLite record")
-                        # We continue with the SQLite embedding function but log the warning
-                except (json.JSONDecodeError, AttributeError) as e:
-                    print(f"WARNING: [add_documents_to_collection] Could not parse embedding model from metadata: {str(e)}")
-        except HTTPException:
-            # Pass through our specific HTTP exceptions
-            raise
+            backend_collection = plugin.get_collection(col_name, plugin_config)
         except Exception as e:
-            print(f"DEBUG: [add_documents_to_collection] ERROR with ChromaDB collection: {str(e)}")
+            print(f"DEBUG: [add_documents_to_collection] ERROR obtaining backend collection: {e}")
             import traceback
             print(f"DEBUG: [add_documents_to_collection] Stack trace:\n{traceback.format_exc()}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to access ChromaDB collection: {str(e)}"
-            )
-        
-        # Prepare documents for ChromaDB
-        print(f"DEBUG: [add_documents_to_collection] Preparing documents for ChromaDB")
+            raise HTTPException(status_code=500, detail=f"Failed to access backend collection: {e}")
+
+        # ── Prepare documents ──
+        print(f"DEBUG: [add_documents_to_collection] Preparing documents")
         ids = []
         texts = []
         metadatas = []
-        
-        for i, doc in enumerate(documents):
+
+        for doc in documents:
             doc_id = f"{uuid.uuid4().hex}"
             ids.append(doc_id)
             texts.append(doc["text"])
-            
-            # Add document ID and timestamp to metadata
+
             metadata = doc.get("metadata", {}).copy()
             metadata["document_id"] = doc_id
             metadata["ingestion_timestamp"] = datetime.utcnow().isoformat()
-            
-            # Add embedding model information to each document's metadata for debugging
             metadata["embedding_vendor"] = vendor
             metadata["embedding_model"] = model_name
-            
             metadatas.append(metadata)
-        
+
         print(f"DEBUG: [add_documents_to_collection] Prepared {len(ids)} documents")
-        
-        # Add documents to ChromaDB collection
+
+        # ── Add documents via plugin or direct call ──
         try:
-            print(f"DEBUG: [add_documents_to_collection] Adding documents to ChromaDB")
             if len(texts) > 0:
                 print(f"DEBUG: [add_documents_to_collection] First document sample: {texts[0][:100]}...")
-            
-            # Add timing for performance monitoring
-            import time
+
             start_time = time.time()
-            
-            # Add documents in smaller batches for better error handling and progress tracking
             batch_size = 5
             total_docs = len(ids)
-            
+
             for i in range(0, len(ids), batch_size):
                 batch_end = min(i + batch_size, len(ids))
-                
                 print(f"DEBUG: [add_documents_to_collection] Processing batch {i//batch_size + 1}/{(len(ids) + batch_size - 1)//batch_size}")
-                
+
                 batch_start_time = time.time()
-                
-                # Add documents - ALWAYS use the collection embedding function from SQLite record for consistency
-                chroma_collection.add(
-                    ids=ids[i:batch_end],
-                    documents=texts[i:batch_end],
-                    metadatas=metadatas[i:batch_end],
+
+                plugin.add_chunks(
+                    backend_collection,
+                    chunk_ids=ids[i:batch_end],
+                    chunk_texts=texts[i:batch_end],
+                    chunk_metadata=metadatas[i:batch_end],
+                    plugin_config=plugin_config
                 )
-                
+
                 batch_end_time = time.time()
                 print(f"DEBUG: [add_documents_to_collection] Batch {i//batch_size + 1} completed in {batch_end_time - batch_start_time:.2f} seconds")
-                
-                # Update progress in database if file_registry_id is provided
+
+                # Update progress
                 if file_registry_id:
-                    from database.models import FileRegistry
-                    
                     file_reg = db.query(FileRegistry).filter(FileRegistry.id == file_registry_id).first()
                     if file_reg:
                         file_reg.progress_current = batch_end
@@ -552,10 +434,10 @@ class IngestionService:
                         file_reg.updated_at = datetime.utcnow()
                         db.commit()
                         print(f"DEBUG: [add_documents_to_collection] Updated progress: {batch_end}/{total_docs}")
-            
+
             end_time = time.time()
-            print(f"DEBUG: [add_documents_to_collection] ChromaDB add operation completed in {end_time - start_time:.2f} seconds")
-            
+            print(f"DEBUG: [add_documents_to_collection] Add operation completed in {end_time - start_time:.2f} seconds")
+
             return {
                 "collection_id": collection_id,
                 "collection_name": collection_name,
@@ -567,26 +449,23 @@ class IngestionService:
                 }
             }
         except Exception as e:
-            print(f"DEBUG: [add_documents_to_collection] ERROR adding documents to ChromaDB: {str(e)}")
+            print(f"DEBUG: [add_documents_to_collection] ERROR adding documents: {e}")
             import traceback
             print(f"DEBUG: [add_documents_to_collection] Stack trace:\n{traceback.format_exc()}")
-            
-            # Try to provide more specific error information
+
             error_message = str(e)
             if "api_key" in error_message.lower() or "apikey" in error_message.lower():
-                print(f"DEBUG: [add_documents_to_collection] Likely an API key issue with embeddings")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to add documents: API key issue with embeddings provider. Check your API key configuration."
+                    detail="Failed to add documents: API key issue with embeddings provider."
                 )
             elif "timeout" in error_message.lower():
-                print(f"DEBUG: [add_documents_to_collection] Request timeout detected")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to add documents: Timeout when generating embeddings. The embedding service may be unavailable."
+                    detail="Failed to add documents: Timeout when generating embeddings."
                 )
             else:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to add documents to collection: {str(e)}"
+                    detail=f"Failed to add documents to collection: {e}"
                 )

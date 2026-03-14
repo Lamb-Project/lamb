@@ -559,23 +559,14 @@ class KBServerManager:
                 "visibility": kb_data.access_control or "private"
             }
 
-            # Use NEW MODE if organization is present
+            # Always send org if available
             if org:
                 collection_data["organization_external_id"] = str(org['id'])
-                # Include embeddings_setup_key if provided by frontend
-                if hasattr(kb_data, 'embeddings_setup_key') and kb_data.embeddings_setup_key:
-                    collection_data["embeddings_setup_key"] = kb_data.embeddings_setup_key
-                    logger.info(f"Using embeddings setup: {kb_data.embeddings_setup_key}")
-                # If no setup_key provided, KB-Server will use org's default setup
-            else:
-                # Fallback to OLD MODE for users without organization
-                collection_data["embeddings_model"] = {
-                    "model": "default",
-                    "vendor": "default",
-                    "api_endpoint": "default",
-                    "apikey": "default"
-                }
-                logger.info("Using default embeddings model (user has no organization)")
+
+            # If frontend explicitely requests a setup, use it
+            if hasattr(kb_data, 'embeddings_setup_key') and kb_data.embeddings_setup_key:
+                collection_data["embeddings_setup_key"] = kb_data.embeddings_setup_key
+                logger.info(f"Using embeddings setup: {kb_data.embeddings_setup_key}")
             
             # Log the final data being sent to the KB server
             logger.info(f"Sending collection data to KB server: {collection_data}")

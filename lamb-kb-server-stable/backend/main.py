@@ -114,7 +114,7 @@ from dependencies import verify_token
 # Import routers
 from routers import system, collections
 from routers import ingestion_status
-from routers import organizations, embeddings_setups
+from routers import organizations, knowledge_store_setups
 
 # Initialize databases on startup
 @app.on_event("startup")
@@ -143,7 +143,7 @@ async def startup_event():
     except Exception as e:
         logger.warning("Migration check failed: %s", e)
 
-    # Run organizations and embeddings setups migration
+    # Run organizations and knowledge store setups migration
     try:
         from database.migrations.migration_add_org_and_setups import check_migration_status as check_org_migration, run_migration as run_org_migration
         if not check_org_migration():
@@ -152,6 +152,20 @@ async def startup_event():
             logger.info("Organizations migration completed.")
     except Exception as e:
         logger.warning("Organizations migration check failed: %s", e)
+    
+    # Run knowledge store plugin migration
+    try:
+        from database.migrations.migration_knowledge_store_plugin import check_migration_status as check_ks_migration, run_migration as run_ks_migration
+        if not check_ks_migration():
+            logger.info("Running migration: Knowledge Store Plugin Architecture...")
+            run_ks_migration()
+            logger.info("Knowledge store migration completed.")
+    except Exception as e:
+        logger.warning("Knowledge store migration check failed: %s", e)
+    
+    # Initialize knowledge store plugins
+    from knowledge_store import list_knowledge_store_plugins
+    logger.info("Knowledge store plugins: %s", [p['plugin_type'] for p in list_knowledge_store_plugins()])
     
     # Discover ingestion plugins
     logger.info("Discovering ingestion plugins...")
@@ -166,7 +180,7 @@ app.include_router(system.router)
 app.include_router(collections.router)
 app.include_router(ingestion_status.router)
 app.include_router(organizations.router)
-app.include_router(embeddings_setups.router)
+app.include_router(knowledge_store_setups.router)
 
 # Configure static files
 static_dir = IngestionService.STATIC_DIR

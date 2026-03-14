@@ -63,6 +63,8 @@ services:
       - pip-cache:/root/.cache/pip
     ports:
       - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: >
       sh -lc "python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \

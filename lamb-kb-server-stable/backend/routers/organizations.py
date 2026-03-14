@@ -5,7 +5,7 @@ Router for organization management endpoints.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database.connection import get_db
-from database.models import Organization, EmbeddingsSetup, Collection
+from database.models import Organization, KnowledgeStoreSetup, Collection
 from schemas.organization import OrganizationCreate, OrganizationResponse
 from dependencies import verify_token
 
@@ -14,12 +14,7 @@ router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
 @router.post("/", response_model=OrganizationResponse, dependencies=[Depends(verify_token)])
 async def create_or_update_organization(org: OrganizationCreate, db: Session = Depends(get_db)):
-    """
-    Create or update organization (upsert).
-
-    If an organization with the given external_id exists, it will be updated.
-    Otherwise, a new organization will be created.
-    """
+    """Create or update organization (upsert)."""
     existing = db.query(Organization).filter(Organization.external_id == org.external_id).first()
 
     if existing:
@@ -27,8 +22,7 @@ async def create_or_update_organization(org: OrganizationCreate, db: Session = D
         db.commit()
         db.refresh(existing)
 
-        # Count setups and collections
-        setups_count = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.organization_id == existing.id).count()
+        setups_count = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.organization_id == existing.id).count()
         collections_count = db.query(Collection).filter(Collection.organization_id == existing.id).count()
 
         return OrganizationResponse(
@@ -62,8 +56,7 @@ async def get_organization(external_id: str, db: Session = Depends(get_db)):
     if not org:
         raise HTTPException(404, "Organization not found")
 
-    # Count setups and collections
-    setups_count = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.organization_id == org.id).count()
+    setups_count = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.organization_id == org.id).count()
     collections_count = db.query(Collection).filter(Collection.organization_id == org.id).count()
 
     return OrganizationResponse(

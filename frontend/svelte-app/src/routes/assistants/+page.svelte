@@ -42,6 +42,7 @@
     import Pagination from '$lib/components/common/Pagination.svelte';
     import FilterBar from '$lib/components/common/FilterBar.svelte';
     import { processListData } from '$lib/utils/listHelpers';
+    import { getAssistantMetadataObject, normalizeAssistantData } from '$lib/utils/assistantData';
     import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
 
     // --- State Management --- 
@@ -230,18 +231,8 @@
             console.log(`Fetching assistant ID: ${id}.`); // Removed edit log here
             const assistantData = await getAssistantById(id);
             if (assistantData) {
-                // Parse metadata (fallback to api_callback for backward compatibility)
-                let parsedCallbackData = {};
-                const metadataStr = assistantData.metadata || assistantData.api_callback;
-                if (metadataStr) {
-                    try {
-                        parsedCallbackData = JSON.parse(metadataStr);
-                    } catch (e) { console.error("Error parsing metadata JSON:", e); }
-                }
-                // Merge assistant data with parsed callback data
-                const fullAssistantData = { 
-                    ...assistantData, 
-                    ...parsedCallbackData, 
+                const fullAssistantData = {
+                    ...normalizeAssistantData(assistantData),
                     id: assistantData.id.toString() // Ensure ID is string and overwrites any potential callback ID
                 };
                 selectedAssistantData = fullAssistantData;
@@ -623,7 +614,10 @@
             const updatedAssistant = await setAssistantPublishStatus(assistantId, desiredStatus);
 
             // Update the local state with the full response from the API
-            selectedAssistantData = updatedAssistant;
+            selectedAssistantData = {
+                ...normalizeAssistantData(updatedAssistant),
+                id: updatedAssistant.id?.toString?.() || updatedAssistant.id
+            };
             console.log('Publish status updated successfully.');
 
             // Optional: Show success message (e.g., toast)
@@ -644,15 +638,8 @@
 
         // Check if the currently displayed assistant uses simple_rag
         let ragProcessor = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-            } catch(e) {
-                console.error("Error parsing metadata for KB fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
 
 		if (ragProcessor !== 'simple_rag') {
 			console.log('Skipping KB fetch for detail view (not simple_rag)');
@@ -688,16 +675,9 @@
         // Check if the currently displayed assistant uses rubric_rag
         let ragProcessor = '';
         let rubricId = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-                rubricId = callbackData.rubric_id;
-            } catch(e) {
-                console.error("Error parsing metadata for rubric fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
+        rubricId = callbackData.rubric_id || '';
 
         if (ragProcessor !== 'rubric_rag' || !rubricId) {
             console.log('Skipping rubric fetch for detail view (not rubric_rag or no rubric_id)');
@@ -1105,17 +1085,7 @@
 
                     <!-- Selected Rubric (if rubric_rag) - Moved here below prompt template -->
                     {#if selectedAssistantData}
-                        {@const apiCallback = (() => {
-                            try {
-                                const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                return typeof metadataStr === 'string' 
-                                    ? JSON.parse(metadataStr) 
-                                    : metadataStr || {};
-                            } catch (e) {
-                                console.error("Error parsing metadata:", e);
-                                return {};
-                            }
-                        })()}
+                        {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
                         {#if apiCallback.rag_processor === 'rubric_rag'}
                             <div class="mt-6 pt-6 border-t border-gray-200">
                                 <div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.selectedLabel', { default: 'Selected Rubric' })}</div>
@@ -1207,17 +1177,7 @@
 
                             <!-- Parse metadata -->
                             {#if selectedAssistantData}
-                                {@const apiCallback = (() => {
-                                    try {
-                                        const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                        return typeof metadataStr === 'string' 
-                                            ? JSON.parse(metadataStr) 
-                                            : metadataStr || {};
-                                    } catch (e) {
-                                        console.error("Error parsing metadata:", e);
-                                        return {};
-                                    }
-                                })()}
+                                {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
 
                                 <div class="space-y-3 text-sm">
                                     <!-- Prompt Processor -->
