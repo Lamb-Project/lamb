@@ -11,7 +11,7 @@ import json # Needed for ingest-file params
 from typing import List, Dict, Any # Needed for background tasks and helper
 
 # Database imports
-from database.connection import get_db, get_chroma_client, SessionLocal
+from database.connection import get_db, SessionLocal
 from database.service import CollectionService # Assuming this is the correct location
 from database.models import Collection # Import Collection model
 from database.models import FileRegistry, FileStatus # Needed for ingest background tasks
@@ -599,14 +599,15 @@ def _get_and_validate_collection(db: Session, collection_id: int):
     # Get collection name - handle both dict-like and attribute access
     collection_name = collection['name'] if isinstance(collection, dict) else collection.name
         
-    # Also verify ChromaDB collection exists
+    # Also verify backend collection exists via plugin
     try:
-        chroma_client = get_chroma_client()
-        chroma_collection = chroma_client.get_collection(name=collection_name)
+        from knowledge_store import resolve_plugin_for_collection
+        ks_plugin, plugin_config, col_name = resolve_plugin_for_collection(collection, db)
+        ks_plugin.get_collection(col_name, plugin_config)
     except Exception as e:
         raise HTTPException(
             status_code=404,
-            detail=f"Collection '{collection_name}' exists in database but not in ChromaDB. Please recreate the collection."
+            detail=f"Collection '{collection_name}' exists in database but not in backend store. Please recreate the collection."
         )
         
     return collection, collection_name

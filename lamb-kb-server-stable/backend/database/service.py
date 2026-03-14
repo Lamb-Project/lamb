@@ -6,7 +6,6 @@ This module provides service functions for managing collections in both SQLite a
 
 import os
 import json
-import chromadb
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
@@ -15,7 +14,7 @@ from sqlalchemy import desc, asc
 from sqlalchemy.orm.attributes import flag_modified
 
 from .models import Collection, Visibility
-from .connection import get_db, get_chroma_client, get_embedding_function, get_embedding_function_by_params
+from .connection import get_db
 
 
 class CollectionService:
@@ -48,59 +47,40 @@ class CollectionService:
             error_msg = "No embeddings model configuration provided. This is required for collection creation."
             print(f"ERROR: [create_collection] {error_msg}")
             raise ValueError(error_msg)
-        
-        # Create ChromaDB collection
-        chroma_client = get_chroma_client()
-        
-        # Get the appropriate embedding function based on model configuration
-        embedding_func = None
-        if embeddings_model:
-            print(f"DEBUG: [create_collection] Using embedding config from dict - Model: {embeddings_model['model']}, Vendor: {embeddings_model['vendor']}")
-            try:
-                embedding_func = get_embedding_function_by_params(
-                    vendor=embeddings_model['vendor'],
-                    model_name=embeddings_model['model'],
-                    api_key=embeddings_model.get('apikey', ''),
-                    api_endpoint=embeddings_model.get('api_endpoint', '')
-                )
-            except Exception as e:
-                print(f"ERROR: [create_collection] Failed to create embedding function: {str(e)}")
-                raise ValueError(f"Failed to create embedding function: {str(e)}")
-        
-        # Prepare collection parameters
-        collection_params = {
-            "name": name,
-            "metadata": {
-                "hnsw:space": "cosine",
-            }
+
+        from knowledge_store import get_knowledge_store
+
+        # Build plugin_config from embeddings_model
+        plugin_config = {
+            "vendor": embeddings_model.get("vendor", ""),
+            "model": embeddings_model.get("model", ""),
+            "api_key": embeddings_model.get("apikey", ""),
+            "api_endpoint": embeddings_model.get("api_endpoint", ""),
         }
-        
-        if embedding_func:
-            collection_params["embedding_function"] = embedding_func
-        
+
+        print(f"DEBUG: [create_collection] Using embedding config - Model: {embeddings_model.get('model')}, Vendor: {embeddings_model.get('vendor')}")
+
         try:
-            chroma_collection = chroma_client.create_collection(**collection_params)
-            print(f"DEBUG: [create_collection] Successfully created ChromaDB collection")
-            
-            # Create SQLite record
+            ks_plugin = get_knowledge_store("chromadb")
+            backend_collection = ks_plugin.create_collection(name, plugin_config)
+            print(f"DEBUG: [create_collection] Successfully created backend collection")
+
             db_collection = Collection(
                 name=name,
                 description=description,
                 owner=owner,
                 visibility=visibility,
-                embeddings_model=embeddings_model,  # SQLAlchemy JSON column handles serialization
-                chromadb_uuid=str(chroma_collection.id)
+                embeddings_model=embeddings_model,
+                chromadb_uuid=str(backend_collection.id)
             )
             db.add(db_collection)
             db.commit()
             db.refresh(db_collection)
 
-
             return db_collection
 
         except Exception as e:
-            print(f"ERROR: [create_collection] Failed to create ChromaDB collection: {str(e)}")
-
+            print(f"ERROR: [create_collection] Failed to create backend collection: {str(e)}")
             raise
     
 
@@ -242,11 +222,15 @@ class CollectionService:
         db.commit()
         db.refresh(db_collection)
 
-        # Rename ChromaDB collection if name changed
+        # Rename backend collection if name changed
         if name and name != old_name:
-            client = get_chroma_client()
-            chroma_col = client.get_collection(old_name)
-            chroma_col.modify(name=name)
+            from knowledge_store import resolve_plugin_for_collection
+            ks_plugin, plugin_config, _ = resolve_plugin_for_collection(db_collection, db)
+            try:
+                backend_col = ks_plugin.get_collection(old_name, plugin_config)
+                backend_col.modify(name=name)
+            except Exception as e:
+                print(f"WARNING: [update_collection] Could not rename backend collection: {e}")
 
         return db_collection
 
@@ -267,13 +251,14 @@ class CollectionService:
         if not db_collection:
             return False
 
-        # Delete from ChromaDB
+        # Delete from backend via plugin
         collection_name = db_collection.name
-        chroma_client = get_chroma_client()
+        from knowledge_store import resolve_plugin_for_collection
+        ks_plugin, plugin_config, _ = resolve_plugin_for_collection(db_collection, db)
         try:
-            chroma_client.delete_collection(collection_name)
+            ks_plugin.delete_collection(collection_name)
         except Exception as e:
-            print(f"Error deleting ChromaDB collection: {e}")
+            print(f"Warning: Could not delete backend collection: {e}")
 
         # Delete from SQLite
         db.delete(db_collection)

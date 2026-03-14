@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 
-from database.connection import get_db, init_databases, get_chroma_client
+from database.connection import get_db, init_databases
 from database.models import Collection
 from schemas.system import MessageResponse, HealthResponse, DatabaseStatusResponse, EmbeddingsConfigResponse, EmbeddingsConfigUpdate
 from dependencies import verify_token
@@ -101,10 +101,17 @@ async def database_status(token: str = Depends(verify_token), db: Session = Depe
     # Count collections in SQLite
     collections_count = db.query(Collection).count()
     
-    # Get ChromaDB collections
-    chroma_client = get_chroma_client()
-    chroma_collections = chroma_client.list_collections()
-    
+    # Get backend store status via plugin
+    try:
+        from knowledge_store import get_knowledge_store
+        ks_plugin = get_knowledge_store("chromadb")
+        # Use the plugin's internal client for status reporting
+        backend_client = ks_plugin._get_client()
+        backend_collections = backend_client.list_collections()
+        backend_count = len(backend_collections)
+    except Exception:
+        backend_count = 0
+
     return {
         "sqlite_status": {
             "initialized": db_status["sqlite_initialized"],
@@ -113,7 +120,7 @@ async def database_status(token: str = Depends(verify_token), db: Session = Depe
         },
         "chromadb_status": {
             "initialized": db_status["chromadb_initialized"],
-            "collections_count": len(chroma_collections)
+            "collections_count": backend_count
         },
         "collections_count": collections_count
     }
