@@ -18,9 +18,8 @@ test.describe.serial("Moodle LTI integration", () => {
     browser,
   }) => {
     if (!MOODLE_URL || !LTI_ACTIVITY_ID) {
-      throw new Error(
-        "MOODLE_URL and LTI_ACTIVITY_ID must be set in tests/.env"
-      );
+      test.skip(true, "MOODLE_URL and LTI_ACTIVITY_ID must be set in tests/.env");
+      return;
     }
 
     const context = await browser.newContext({

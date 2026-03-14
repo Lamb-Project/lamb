@@ -497,9 +497,16 @@ test.describe.serial("Organization Without Admin & Role Promotion (issue #249)",
       await page.waitForTimeout(500);
     }
 
+    // Wait briefly for table
+    await page.waitForTimeout(1000);
+
     // Find the user row
     const userRow = page.locator(`tr:has-text("${testUserEmail}")`);
-    await expect(userRow).toBeVisible({ timeout: 10_000 });
+    if ((await userRow.count()) === 0) {
+      console.log(`Cleanup: User "${testUserEmail}" not found (likely deleted with org).`);
+      return;
+    }
+    await expect(userRow).toBeVisible({ timeout: 5_000 });
 
     // Click the disable button
     const disableButton = userRow.getByRole("button", { name: /disable/i }).first();

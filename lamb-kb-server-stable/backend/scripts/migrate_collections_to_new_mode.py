@@ -3,11 +3,11 @@
 Migration script to convert OLD MODE collections to NEW MODE.
 
 OLD MODE: Collections with inline embeddings_model JSON config
-NEW MODE: Collections referencing organization + embeddings_setup
+NEW MODE: Collections referencing organization + knowledge_store_setup
 
 This script:
-1. Finds collections with embeddings_model but no embeddings_setup_id
-2. Creates matching EmbeddingsSetup records per org/vendor/model combo
+1. Finds collections with embeddings_model but no knowledge_store_setup_id
+2. Creates matching KnowledgeStoreSetup records per org/vendor/model combo
 3. Links collections to the appropriate setups
 4. Optionally clears the old embeddings_model field
 
@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.orm import Session
 from database.connection import SessionLocal
-from database.models import Collection, Organization, EmbeddingsSetup
+from database.models import Collection, Organization, KnowledgeStoreSetup
 from utils.encryption import encrypt_api_key
 
 
@@ -91,7 +91,7 @@ def find_or_create_setup(
     api_key: Optional[str],
     api_endpoint: Optional[str],
     dimensions: int = 1536
-) -> Tuple[EmbeddingsSetup, bool]:
+) -> Tuple[KnowledgeStoreSetup, bool]:
     """
     Find existing setup or create new one.
     
@@ -101,16 +101,16 @@ def find_or_create_setup(
     setup_key = generate_setup_key(vendor, model)
     
     # Look for existing setup with same key
-    existing = db.query(EmbeddingsSetup).filter(
-        EmbeddingsSetup.organization_id == org.id,
-        EmbeddingsSetup.setup_key == setup_key
+    existing = db.query(KnowledgeStoreSetup).filter(
+        KnowledgeStoreSetup.organization_id == org.id,
+        KnowledgeStoreSetup.setup_key == setup_key
     ).first()
     
     if existing:
         return existing, False
     
     # Create new setup
-    new_setup = EmbeddingsSetup(
+    new_setup = KnowledgeStoreSetup(
         organization_id=org.id,
         name=f"{vendor.title()} - {model}",
         setup_key=setup_key,
@@ -165,7 +165,7 @@ def migrate_collections(execute: bool = False, keep_old: bool = False) -> dict:
             coll_desc = f"[{collection.id}] {collection.name} (owner: {collection.owner})"
             
             # Check if already using NEW MODE
-            if collection.embeddings_setup_id:
+            if collection.knowledge_store_setup_id:
                 results["already_new_mode"] += 1
                 print(f"  SKIP (already NEW MODE): {coll_desc}")
                 continue
@@ -217,7 +217,7 @@ def migrate_collections(execute: bool = False, keep_old: bool = False) -> dict:
                     
                     # Update collection
                     collection.organization_id = org.id
-                    collection.embeddings_setup_id = setup.id
+                    collection.knowledge_store_setup_id = setup.id
                     collection.embedding_dimensions = dimensions
                     
                     if not keep_old:
@@ -272,7 +272,7 @@ def migrate_collections(execute: bool = False, keep_old: bool = False) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Migrate OLD MODE collections to NEW MODE with embeddings setups"
+        description="Migrate OLD MODE collections to NEW MODE with knowledge store setups"
     )
     parser.add_argument(
         "--execute",

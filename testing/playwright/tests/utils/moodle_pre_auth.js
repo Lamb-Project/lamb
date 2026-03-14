@@ -14,9 +14,8 @@ const statePath = path.join(authDir, "moodle-state.json");
 
 async function ensureMoodleAuth() {
   if (!MOODLE_URL || !MOODLE_LOGIN || !MOODLE_PASSWORD) {
-    throw new Error(
-      "MOODLE_URL, MOODLE_LOGIN and MOODLE_PASSWORD must be set in tests/.env"
-    );
+    console.warn("MOODLE_URL, MOODLE_LOGIN and MOODLE_PASSWORD must be set in tests/.env. Skipping Moodle auth.");
+    return;
   }
 
   fs.mkdirSync(authDir, { recursive: true });

@@ -5,7 +5,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 const TEST_URL =
   process.env.TEST_URL ||
   "https://www.cervantesvirtual.com/obra-visor/the-political-constitution-of-the-spanish-monarchy-promulgated-in-cadiz-the-nineteenth-day-of-march--0/html/ffd04084-82b1-11df-acc7-002185ce6064_1.html";
-const TEST_KB_BASE_NAME = process.env.KB_NAME || "url_test";
+const TEST_KB_BASE_NAME = process.env.KB_NAME || `url_test_${Date.now()}`;
 const TEST_QUERY =
   process.env.TEST_QUERY ||
   "What did the article number 14 in the Spanish Constitution of 1812 say?";

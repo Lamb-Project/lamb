@@ -54,7 +54,7 @@
         
         try {
             const token = getToken();
-            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/embeddings-setups`);
+            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/knowledge-store-setups`);
             const response = await axios.get(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -90,14 +90,15 @@
 
     function openEditForm(setup) {
         editingSetup = setup;
+        const cfg = setup.plugin_config_summary || {};
         formData = {
             name: setup.name || '',
             setup_key: setup.setup_key || '',
-            vendor: setup.vendor || 'openai',
-            api_endpoint: setup.api_endpoint || '',
+            vendor: cfg.vendor || 'openai',
+            api_endpoint: cfg.api_endpoint || '',
             api_key: '', // Don't pre-fill API key for security
-            model_name: setup.model_name || '',
-            embedding_dimensions: setup.embedding_dimensions || 1536,
+            model_name: cfg.model || '',
+            embedding_dimensions: cfg.embedding_dimensions || 1536,
             is_default: setup.is_default || false,
             description: setup.description || ''
         };
@@ -144,11 +145,11 @@
                 description: formData.description || null
             };
 
-            const baseUrl = getApiUrl(`/creator/admin/organizations/${organizationId}/embeddings-setups`);
+            const baseUrl = getApiUrl(`/creator/admin/organizations/${organizationId}/knowledge-store-setups`);
             
             if (editingSetup) {
                 // Update existing
-                await axios.put(`${baseUrl}/${editingSetup.id}`, payload, {
+                await axios.put(`${baseUrl}/${editingSetup.setup_key}`, payload, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
             } else {
@@ -173,7 +174,7 @@
         
         try {
             const token = getToken();
-            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/embeddings-setups/${setup.id}`);
+            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/knowledge-store-setups/${setup.setup_key}`);
             await axios.delete(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -187,7 +188,7 @@
     async function setAsDefault(setup) {
         try {
             const token = getToken();
-            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/embeddings-setups/${setup.id}`);
+            const url = getApiUrl(`/creator/admin/organizations/${organizationId}/knowledge-store-setups/${setup.setup_key}`);
             await axios.put(url, { ...setup, is_default: true }, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -210,8 +211,8 @@
     <!-- Header -->
     <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <div>
-            <h2 class="text-lg font-semibold text-gray-900">Embeddings Setups</h2>
-            <p class="text-sm text-gray-500 mt-1">Manage embeddings configurations for knowledge bases</p>
+            <h2 class="text-lg font-semibold text-gray-900">Knowledge Store Setups</h2>
+            <p class="text-sm text-gray-500 mt-1">Manage retrieval backend configurations for knowledge bases</p>
         </div>
         <button
             onclick={openCreateForm}
@@ -246,8 +247,8 @@
                 <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                 </svg>
-                <h3 class="mt-4 text-sm font-medium text-gray-900">No embeddings setups</h3>
-                <p class="mt-2 text-sm text-gray-500">Create your first embeddings configuration to get started.</p>
+                <h3 class="mt-4 text-sm font-medium text-gray-900">No knowledge store setups</h3>
+                <p class="mt-2 text-sm text-gray-500">Create your first retrieval backend configuration to get started.</p>
                 <button
                     onclick={openCreateForm}
                     class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-hover"
@@ -279,10 +280,11 @@
                                 </div>
                                 <p class="text-sm text-gray-500 mt-1">
                                     <span class="font-mono text-xs bg-gray-100 px-1 rounded">{setup.setup_key}</span>
-                                    · {setup.vendor} · {setup.model_name}
+                                    · <span class="capitalize text-xs font-semibold">{setup.plugin_type || 'chromadb'}</span>
+                                    · {setup.plugin_config_summary?.vendor || ''} · {setup.plugin_config_summary?.model || ''}
                                 </p>
                                 <p class="text-xs text-gray-400 mt-1">
-                                    {setup.embedding_dimensions} dimensions
+                                    {setup.plugin_config_summary?.embedding_dimensions || '?'} dimensions
                                     {#if setup.collections_count !== undefined}
                                         · {setup.collections_count} collection{setup.collections_count === 1 ? '' : 's'}
                                     {/if}
@@ -333,7 +335,7 @@
         <div class="flex min-h-screen items-center justify-center p-4">
             <div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6" onclick={e => e.stopPropagation()}>
                 <h3 class="text-lg font-medium text-gray-900 mb-4">
-                    {editingSetup ? 'Edit Embeddings Setup' : 'Create Embeddings Setup'}
+                    {editingSetup ? 'Edit Knowledge Store Setup' : 'Create Knowledge Store Setup'}
                 </h3>
 
                 <form onsubmit={handleSubmit} class="space-y-4">
@@ -485,7 +487,7 @@
         <div class="fixed inset-0 bg-black bg-opacity-50" onclick={() => deleteConfirmSetup = null}></div>
         <div class="flex min-h-screen items-center justify-center p-4">
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6" onclick={e => e.stopPropagation()}>
-                <h3 class="text-lg font-medium text-gray-900 mb-2">Delete Embeddings Setup</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Delete Knowledge Store Setup</h3>
                 <p class="text-sm text-gray-500 mb-4">
                     Are you sure you want to delete <strong>{deleteConfirmSetup.name}</strong>? This action cannot be undone.
                 </p>

@@ -98,8 +98,8 @@ def _run_with_semaphore(func, *args, **kwargs):
         
         # Extract file_registry_id from args (it's the 4th positional arg in both functions)
         try:
-            if len(args) >= 4:
-                file_registry_id = args[3]  # ingest functions have: file_path, plugin_name, params, collection_id, file_registry_id
+            if len(args) >= 5:
+                file_registry_id = args[4]  # ingest functions have: file_path, plugin_name, params, collection_id, file_registry_id
                 db_timeout = SessionLocal()
                 try:
                     file_reg = db_timeout.query(FileRegistry).filter(
@@ -214,19 +214,25 @@ def process_file_in_background_enhanced(file_path: str, plugin_name: str, params
             params['collection_name'] = collection_name
             
             # Extract embeddings config (handle both OLD and NEW modes)
-            from database.models import EmbeddingsSetup
+            from database.models import KnowledgeStoreSetup
 
             embeddings_config = {}
 
             # Check if using NEW MODE (setup reference)
-            if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
-                setup = db_background.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+            setup_id = collection.knowledge_store_setup_id if hasattr(collection, 'knowledge_store_setup_id') else collection.get('knowledge_store_setup_id')
+            if setup_id:
+                setup = db_background.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == setup_id).first()
                 if setup:
+                    cfg = setup.plugin_config
+                    if isinstance(cfg, str):
+                        import json as _json
+                        cfg = _json.loads(cfg)
+                    cfg = cfg or {}
                     embeddings_config = {
-                        "vendor": setup.vendor,
-                        "model": setup.model_name,
-                        "apikey": setup.api_key,
-                        "api_endpoint": setup.api_endpoint
+                        "vendor": cfg.get("vendor", ""),
+                        "model": cfg.get("model", ""),
+                        "apikey": cfg.get("api_key", ""),
+                        "api_endpoint": cfg.get("api_endpoint", "")
                     }
             else:
                 # OLD MODE: Use inline config
@@ -421,19 +427,25 @@ def process_urls_in_background_enhanced(urls: List[str], plugin_name: str, param
             params['collection_name'] = collection_name
             
             # Extract embeddings config (handle both OLD and NEW modes)
-            from database.models import EmbeddingsSetup
+            from database.models import KnowledgeStoreSetup
 
             embeddings_config = {}
 
             # Check if using NEW MODE (setup reference)
-            if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
-                setup = db_background.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+            setup_id = collection.knowledge_store_setup_id if hasattr(collection, 'knowledge_store_setup_id') else collection.get('knowledge_store_setup_id')
+            if setup_id:
+                setup = db_background.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == setup_id).first()
                 if setup:
+                    cfg = setup.plugin_config
+                    if isinstance(cfg, str):
+                        import json as _json
+                        cfg = _json.loads(cfg)
+                    cfg = cfg or {}
                     embeddings_config = {
-                        "vendor": setup.vendor,
-                        "model": setup.model_name,
-                        "apikey": setup.api_key,
-                        "api_endpoint": setup.api_endpoint
+                        "vendor": cfg.get("vendor", ""),
+                        "model": cfg.get("model", ""),
+                        "apikey": cfg.get("api_key", ""),
+                        "api_endpoint": cfg.get("api_endpoint", "")
                     }
             else:
                 # OLD MODE: Use inline config

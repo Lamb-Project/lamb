@@ -42,7 +42,7 @@ class FileStatus(str, Enum):
 class Organization(Base):
     """Model representing an organization.
 
-    Organizations own embeddings setups and collections.
+    Organizations own knowledge store setups and collections.
     """
     __tablename__ = "organizations"
 
@@ -57,24 +57,32 @@ class Organization(Base):
         return f"<Organization id={self.id}, external_id={self.external_id}, name={self.name}>"
 
 
-class EmbeddingsSetup(Base):
-    """Model representing an embeddings configuration setup.
+class KnowledgeStoreSetup(Base):
+    """Model representing a knowledge store configuration setup.
 
-    Embeddings setups are reusable configurations that collections can reference.
-    This allows organization-level management of embedding providers and API keys.
+    Setups are reusable, technology-agnostic configurations that collections reference.
+    The plugin_type determines which backend (ChromaDB, Neo4j, etc.) is used.
+    The plugin_config holds all backend-specific configuration as JSON.
     """
-    __tablename__ = "embeddings_setups"
+    __tablename__ = "knowledge_store_setups"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     setup_key = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    vendor = Column(String(50), nullable=False)
+
+    # Plugin architecture fields
+    plugin_type = Column(String(50), nullable=False, default='chromadb')
+    plugin_config = Column(JSON, nullable=True)
+
+    # Legacy fields (kept for rollback safety, no longer read by code)
+    vendor = Column(String(50), nullable=True)
     api_endpoint = Column(Text, nullable=True)
     api_key = Column(Text, nullable=True)
-    model_name = Column(String(255), nullable=False)
-    embedding_dimensions = Column(Integer, nullable=False)  # IMMUTABLE after creation
+    model_name = Column(String(255), nullable=True)
+    embedding_dimensions = Column(Integer, nullable=True)
+
     is_default = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -85,17 +93,15 @@ class EmbeddingsSetup(Base):
     )
 
     def __repr__(self):
-        return f"<EmbeddingsSetup id={self.id}, org_id={self.organization_id}, setup_key={self.setup_key}, model={self.model_name}>"
+        return f"<KnowledgeStoreSetup id={self.id}, org_id={self.organization_id}, plugin_type={self.plugin_type}, setup_key={self.setup_key}>"
 
 
 class Collection(Base):
     """Model representing a knowledge base collection.
 
-    Each collection has an associated ChromaDB collection.
-
     Collections support DUAL MODE:
     - OLD MODE: Inline embeddings_model JSON (backward compatibility)
-    - NEW MODE: Reference to embeddings_setup_id (organization-level management)
+    - NEW MODE: Reference to knowledge_store_setup_id (plugin architecture)
     """
     __tablename__ = "collections"
 
@@ -114,9 +120,9 @@ class Collection(Base):
                                   "apikey": None
                               }))
 
-    # NEW MODE: Reference to organization and embeddings setup
+    # NEW MODE: Reference to organization and knowledge store setup
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
-    embeddings_setup_id = Column(Integer, ForeignKey("embeddings_setups.id"), nullable=True, index=True)
+    knowledge_store_setup_id = Column(Integer, ForeignKey("knowledge_store_setups.id"), nullable=True, index=True)
     embedding_dimensions = Column(Integer, nullable=True)
 
     chromadb_uuid = Column(String(36), nullable=True, unique=True, index=True)
@@ -138,7 +144,10 @@ class Collection(Base):
             "owner": self.owner,
             "visibility": self.visibility.value,
             "embeddings_model": json.loads(self.embeddings_model) if isinstance(self.embeddings_model, str) else self.embeddings_model,
-            "chromadb_uuid": self.chromadb_uuid
+            "chromadb_uuid": self.chromadb_uuid,
+            "organization_id": self.organization_id,
+            "knowledge_store_setup_id": self.knowledge_store_setup_id,
+            "embedding_dimensions": self.embedding_dimensions,
         }
 
 
@@ -298,7 +307,7 @@ class FileRegistry(Base):
         if isinstance(processing_stats, str):
             try:
                 processing_stats = json.loads(processing_stats)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 processing_stats = None
         
         return {

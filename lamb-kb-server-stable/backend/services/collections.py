@@ -53,25 +53,21 @@ class CollectionsService:
         """
         Ensure default organization and setup exist (for tests and backward compatibility).
         Creates them from environment variables if needed.
-
-        Returns:
-            EmbeddingsSetup: The default setup
         """
-        from database.models import Organization, EmbeddingsSetup
+        from database.models import Organization, KnowledgeStoreSetup
         from database.connection import get_embedding_function_by_params
+        from utils.encryption import encrypt_api_key
         import os
 
-        # 1. Get or create default organization
         org = db.query(Organization).filter(Organization.external_id == "default").first()
         if not org:
             org = Organization(external_id="default", name="Default Organization")
             db.add(org)
             db.flush()
 
-        # 2. Get or create default setup
-        setup = db.query(EmbeddingsSetup).filter(
-            EmbeddingsSetup.organization_id == org.id,
-            EmbeddingsSetup.setup_key == "default"
+        setup = db.query(KnowledgeStoreSetup).filter(
+            KnowledgeStoreSetup.organization_id == org.id,
+            KnowledgeStoreSetup.setup_key == "default"
         ).first()
 
         if not setup:
@@ -80,20 +76,24 @@ class CollectionsService:
             endpoint = os.getenv("EMBEDDINGS_ENDPOINT", "http://localhost:11434/api/embeddings")
             api_key = os.getenv("EMBEDDINGS_APIKEY", "")
 
-            # Test to get dimensions
             emb_func = get_embedding_function_by_params(vendor, model, api_key, endpoint)
             test_emb = emb_func(["test"])
             dimensions = len(test_emb[0])
 
-            setup = EmbeddingsSetup(
+            plugin_config = {
+                "vendor": vendor,
+                "model": model,
+                "api_endpoint": endpoint,
+                "api_key": encrypt_api_key(api_key) if api_key else "",
+                "embedding_dimensions": dimensions,
+            }
+
+            setup = KnowledgeStoreSetup(
                 organization_id=org.id,
                 name="Default Setup",
                 setup_key="default",
-                vendor=vendor,
-                model_name=model,
-                api_endpoint=endpoint,
-                api_key=api_key,
-                embedding_dimensions=dimensions,
+                plugin_type="chromadb",
+                plugin_config=json.dumps(plugin_config),
                 is_default=True,
                 is_active=True
             )
@@ -143,32 +143,29 @@ class CollectionsService:
     @staticmethod
     def _resolve_embeddings_from_setup(setup) -> dict:
         """
-        Resolve embeddings configuration from an EmbeddingsSetup object.
-        
-        This helper centralizes the logic for extracting embeddings info from a setup,
-        used when synthesizing embeddings_model for backward compatibility.
-        
-        Args:
-            setup: EmbeddingsSetup model instance
-            
-        Returns:
-            Tuple of (embeddings_model dict, embeddings_setup dict) or (None, None) if setup is None
+        Resolve embeddings configuration from a KnowledgeStoreSetup for backward compat.
         """
         if not setup:
             return None, None
-            
+        
+        cfg = setup.plugin_config
+        if isinstance(cfg, str):
+            cfg = json.loads(cfg)
+        cfg = cfg or {}
+
         embeddings_model = {
-            "model": setup.model_name,
-            "vendor": setup.vendor,
-            "api_endpoint": setup.api_endpoint,
-            "apikey_configured": bool(setup.api_key)
+            "model": cfg.get("model", "unknown"),
+            "vendor": cfg.get("vendor", "unknown"),
+            "api_endpoint": cfg.get("api_endpoint"),
+            "apikey_configured": bool(cfg.get("api_key"))
         }
         
         embeddings_setup = {
             "id": setup.id,
             "name": setup.name,
             "setup_key": setup.setup_key,
-            "embedding_dimensions": setup.embedding_dimensions
+            "plugin_type": setup.plugin_type,
+            "embedding_dimensions": cfg.get("embedding_dimensions")
         }
         
         return embeddings_model, embeddings_setup
@@ -177,23 +174,11 @@ class CollectionsService:
     def _sanitize_collection(collection: Any, db: Session = None) -> Dict[str, Any]:
         """
         Sanitize a collection object before returning to frontend.
-        Removes API keys from embeddings_model.
-
         CRITICAL: Always includes embeddings_model field for backward compatibility.
-        For collections using NEW MODE, synthesizes embeddings_model from setup.
-
-        Args:
-            collection: Collection object (SQLAlchemy model or dict)
-            db: Database session (required for NEW MODE collections)
-
-        Returns:
-            Sanitized collection dict
         """
-        from database.models import EmbeddingsSetup
+        from database.models import KnowledgeStoreSetup
 
-        # Convert to dict if it's a model object
         if hasattr(collection, '__dict__'):
-            # SQLAlchemy model - extract relevant fields
             coll_dict = {
                 "id": collection.id,
                 "name": collection.name,
@@ -203,10 +188,8 @@ class CollectionsService:
                 "creation_date": collection.creation_date,
             }
 
-            # SYNTHESIZE embeddings_model for backward compatibility
-            if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id and db:
-                # NEW MODE: Get config from setup using helper
-                setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+            if hasattr(collection, 'knowledge_store_setup_id') and collection.knowledge_store_setup_id and db:
+                setup = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == collection.knowledge_store_setup_id).first()
                 emb_model, emb_setup = CollectionsService._resolve_embeddings_from_setup(setup)
                 
                 if emb_model:
@@ -214,28 +197,26 @@ class CollectionsService:
                     coll_dict["embeddings_setup"] = emb_setup
                     coll_dict["organization_id"] = collection.organization_id
                 else:
-                    # Setup not found - fallback
                     coll_dict["embeddings_model"] = {"model": "unknown", "vendor": "unknown", "apikey_configured": False}
             else:
-                # OLD MODE: Use inline config
                 coll_dict["embeddings_model"] = CollectionsService._sanitize_embeddings_model(collection.embeddings_model)
 
         elif isinstance(collection, dict):
             coll_dict = dict(collection)
-            # Check if dict has setup reference
-            if coll_dict.get("embeddings_setup_id") and db:
-                from database.models import EmbeddingsSetup
-                setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == coll_dict["embeddings_setup_id"]).first()
+            if coll_dict.get("knowledge_store_setup_id") and db:
+                setup = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == coll_dict["knowledge_store_setup_id"]).first()
                 emb_model, emb_setup = CollectionsService._resolve_embeddings_from_setup(setup)
                 if emb_model:
                     coll_dict["embeddings_model"] = emb_model
                     coll_dict["embeddings_setup"] = emb_setup
+                else:
+                    coll_dict["embeddings_model"] = {"model": "unknown", "vendor": "unknown", "apikey_configured": False}
             else:
                 coll_dict["embeddings_model"] = CollectionsService._sanitize_embeddings_model(
                     coll_dict.get("embeddings_model", {})
                 )
         else:
-            return collection  # Return as-is if unknown type
+            return collection
 
         return coll_dict
     
@@ -485,27 +466,10 @@ class CollectionsService:
         collection: CollectionCreate,
         db: Session,
     ) -> Dict[str, Any]:
-        """Create a new knowledge base collection with DUAL MODE support.
-
-        Supports three modes:
-        1. OLD MODE: Inline embeddings_model (backward compatibility)
-        2. NEW MODE: organization_external_id + embeddings_setup_key
-        3. DEFAULT MODE: Neither provided (creates default setup from env vars)
-
-        Args:
-            collection: Collection data from request body
-            db: Database session
-
-        Returns:
-            The created collection
-
-        Raises:
-            HTTPException: If collection creation fails
-        """
-        from database.models import Organization, EmbeddingsSetup, Collection
+        """Create a new knowledge base collection with DUAL MODE support."""
+        from database.models import Organization, KnowledgeStoreSetup, Collection
         from database.connection import get_embedding_function_by_params, get_chroma_client
 
-        # Check if collection with this name already exists
         existing = DBCollectionService.get_collection_by_name(db, collection.name)
         if existing:
             raise HTTPException(
@@ -513,7 +477,6 @@ class CollectionsService:
                 detail=f"Collection with name '{collection.name}' already exists"
             )
 
-        # Convert visibility string to enum
         try:
             visibility = Visibility(collection.visibility)
         except ValueError:
@@ -522,21 +485,13 @@ class CollectionsService:
                 detail=f"Invalid visibility value: {collection.visibility}. Must be 'private' or 'public'."
             )
 
-        chroma_client = get_chroma_client()
-
-        # ═══════════════════════════════════════════════════════════════
-        # DECISION TREE: Determine which mode to use
-        # ═══════════════════════════════════════════════════════════════
-
         if collection.embeddings_model:
-            # ============================================================
-            # OLD MODE: Inline embeddings_model (backward compatibility)
-            # ============================================================
+            # ── OLD MODE: Inline embeddings_model (backward compatibility) ──
             print("INFO: [create_collection] Using OLD MODE (inline embeddings_model)")
 
+            chroma_client = get_chroma_client()
             model_info = collection.embeddings_model.model_dump()
 
-            # Resolve "default" placeholders to env vars (existing behavior)
             if model_info.get("vendor") == "default":
                 model_info["vendor"] = os.getenv("EMBEDDINGS_VENDOR", "ollama")
             if model_info.get("model") == "default":
@@ -546,7 +501,6 @@ class CollectionsService:
             if model_info.get("apikey") == "default":
                 model_info["apikey"] = os.getenv("EMBEDDINGS_APIKEY", "")
 
-            # Validate embeddings config
             is_custom_config = any([
                 model_info.get("vendor") not in [None, ""],
                 model_info.get("model") not in [None, ""],
@@ -559,7 +513,6 @@ class CollectionsService:
                 is_custom_config=is_custom_config
             )
 
-            # Create embedding function
             emb_func = get_embedding_function_by_params(
                 vendor=model_info["vendor"],
                 model_name=model_info["model"],
@@ -567,30 +520,26 @@ class CollectionsService:
                 api_endpoint=model_info.get("api_endpoint", "")
             )
 
-            # Create ChromaDB collection
             chroma_collection = chroma_client.create_collection(
                 name=collection.name,
                 embedding_function=emb_func
             )
 
-            # Create SQLite record (OLD MODE)
             db_collection = Collection(
                 name=collection.name,
                 description=collection.description,
                 owner=collection.owner,
                 visibility=visibility,
-                embeddings_model=json.dumps(model_info),  # Store inline
-                organization_id=None,                     # Not using org
-                embeddings_setup_id=None,                 # Not using setup
+                embeddings_model=json.dumps(model_info),
+                organization_id=None,
+                knowledge_store_setup_id=None,
                 embedding_dimensions=dimensions,
                 chromadb_uuid=str(chroma_collection.id)
             )
 
         elif collection.organization_external_id:
-            # ============================================================
-            # NEW MODE: Reference organization setup
-            # ============================================================
-            print(f"INFO: [create_collection] Using NEW MODE (organization setup)")
+            # ── NEW MODE: Reference organization setup ──
+            print("INFO: [create_collection] Using NEW MODE (organization setup)")
 
             org = db.query(Organization).filter(
                 Organization.external_id == collection.organization_external_id
@@ -598,77 +547,78 @@ class CollectionsService:
             if not org:
                 raise HTTPException(404, f"Organization '{collection.organization_external_id}' not found")
 
-            # Resolve setup
-            if collection.embeddings_setup_key:
-                setup = db.query(EmbeddingsSetup).filter(
-                    EmbeddingsSetup.organization_id == org.id,
-                    EmbeddingsSetup.setup_key == collection.embeddings_setup_key,
-                    EmbeddingsSetup.is_active == True
+            # Resolve setup key (support both new and deprecated field names)
+            setup_key = collection.knowledge_store_setup_key or collection.embeddings_setup_key
+            if setup_key:
+                setup = db.query(KnowledgeStoreSetup).filter(
+                    KnowledgeStoreSetup.organization_id == org.id,
+                    KnowledgeStoreSetup.setup_key == setup_key,
+                    KnowledgeStoreSetup.is_active == True
                 ).first()
                 if not setup:
-                    raise HTTPException(404, f"Embeddings setup '{collection.embeddings_setup_key}' not found or inactive")
+                    raise HTTPException(404, f"Knowledge store setup '{setup_key}' not found or inactive")
             else:
-                # Use default setup
-                setup = db.query(EmbeddingsSetup).filter(
-                    EmbeddingsSetup.organization_id == org.id,
-                    EmbeddingsSetup.is_default == True,
-                    EmbeddingsSetup.is_active == True
+                setup = db.query(KnowledgeStoreSetup).filter(
+                    KnowledgeStoreSetup.organization_id == org.id,
+                    KnowledgeStoreSetup.is_default == True,
+                    KnowledgeStoreSetup.is_active == True
                 ).first()
                 if not setup:
-                    raise HTTPException(404, "No default embeddings setup found for this organization")
+                    print(f"INFO: [create_collection] Auto-provisioning default setup for org {org.external_id}")
+                    sys_setup = CollectionsService.ensure_default_setup(db)
+                    
+                    setup = KnowledgeStoreSetup(
+                        organization_id=org.id,
+                        name="Default Setup",
+                        setup_key="default",
+                        plugin_type=sys_setup.plugin_type,
+                        plugin_config=sys_setup.plugin_config,
+                        is_default=True,
+                        is_active=True
+                    )
+                    db.add(setup)
+                    db.commit()
+                    db.refresh(setup)
 
-            print(f"INFO: [create_collection] Using setup: {setup.name} (key={setup.setup_key})")
+            print(f"INFO: [create_collection] Using setup: {setup.name} (key={setup.setup_key}, plugin={setup.plugin_type})")
 
-            # Create embedding function from setup
-            emb_func = get_embedding_function_by_params(
-                vendor=setup.vendor,
-                model_name=setup.model_name,
-                api_key=setup.api_key or "",
-                api_endpoint=setup.api_endpoint or ""
-            )
+            # Delegate to knowledge store plugin
+            from knowledge_store import get_knowledge_store
+            plugin = get_knowledge_store(setup.plugin_type)
+            cfg = setup.plugin_config
+            if isinstance(cfg, str):
+                cfg = json.loads(cfg)
+            backend_collection = plugin.create_collection(collection.name, cfg)
 
-            # Create ChromaDB collection
-            chroma_collection = chroma_client.create_collection(
-                name=collection.name,
-                embedding_function=emb_func
-            )
+            dims = (cfg or {}).get("embedding_dimensions")
 
-            # Create SQLite record (NEW MODE)
             db_collection = Collection(
                 name=collection.name,
                 description=collection.description,
                 owner=collection.owner,
                 visibility=visibility,
-                embeddings_model=None,                    # Not storing inline
-                organization_id=org.id,                   # Reference org
-                embeddings_setup_id=setup.id,             # Reference setup
-                embedding_dimensions=setup.embedding_dimensions,  # Locked
-                chromadb_uuid=str(chroma_collection.id)
+                embeddings_model=None,
+                organization_id=org.id,
+                knowledge_store_setup_id=setup.id,
+                embedding_dimensions=dims,
+                chromadb_uuid=str(backend_collection.id) if hasattr(backend_collection, 'id') else None
             )
 
         else:
-            # ============================================================
-            # DEFAULT MODE: Create default setup from env vars (for tests)
-            # ============================================================
-            print("INFO: [create_collection] Using DEFAULT MODE (creating default setup from env vars)")
+            # ── DEFAULT MODE: Create default setup from env vars ──
+            print("INFO: [create_collection] Using DEFAULT MODE")
 
             setup = CollectionsService.ensure_default_setup(db)
 
-            # Create embedding function from default setup
-            emb_func = get_embedding_function_by_params(
-                vendor=setup.vendor,
-                model_name=setup.model_name,
-                api_key=setup.api_key or "",
-                api_endpoint=setup.api_endpoint or ""
-            )
+            from knowledge_store import get_knowledge_store
+            plugin = get_knowledge_store(setup.plugin_type)
+            cfg = setup.plugin_config
+            if isinstance(cfg, str):
+                cfg = json.loads(cfg)
+            backend_collection = plugin.create_collection(collection.name, cfg)
 
-            # Create ChromaDB collection
-            chroma_collection = chroma_client.create_collection(
-                name=collection.name,
-                embedding_function=emb_func
-            )
+            dims = (cfg or {}).get("embedding_dimensions")
 
-            # Create SQLite record (using default setup)
             db_collection = Collection(
                 name=collection.name,
                 description=collection.description,
@@ -676,17 +626,15 @@ class CollectionsService:
                 visibility=visibility,
                 embeddings_model=None,
                 organization_id=setup.organization_id,
-                embeddings_setup_id=setup.id,
-                embedding_dimensions=setup.embedding_dimensions,
-                chromadb_uuid=str(chroma_collection.id)
+                knowledge_store_setup_id=setup.id,
+                embedding_dimensions=dims,
+                chromadb_uuid=str(backend_collection.id) if hasattr(backend_collection, 'id') else None
             )
 
-        # Save to database
         db.add(db_collection)
         db.commit()
         db.refresh(db_collection)
 
-        # SECURITY: Sanitize response to remove API keys before returning
         return CollectionsService._sanitize_collection(db_collection, db)
     
     @staticmethod

@@ -19,6 +19,7 @@ from lamb.owi_bridge.owi_users import OwiUserManager
 from lamb.services import OrganizationService
 from schemas import BulkImportRequest, BulkUserActionRequest
 from .kb_server_manager import KBServerManager
+from .assistant_router import get_creator_user_from_token
 
 # Initialize router
 router = APIRouter()
@@ -74,8 +75,8 @@ def get_user_organization_admin_info(auth_header: str) -> Optional[Dict[str, Any
         
         return {
             'user_id': user_id,
-            'user_email': user_details['user_email'],
-            'user_name': user_details['user_name'],
+            'user_email': creator_user.get('email', ''),
+            'user_name': creator_user.get('name', ''),
             'organization_id': org_id,
             'organization': organization,
             'role': 'admin'
@@ -4551,13 +4552,13 @@ async def get_user_profile(request: Request, user_id: int, auth: AuthContext = D
 
 # Embeddings Setup Management (Organization Admin Endpoints)
 
-@router.get("/organizations/{org_id}/embeddings-setups")
+@router.get("/organizations/{org_id}/knowledge-store-setups")
 async def list_embeddings_setups(org_id: int, request: Request):
     """List all embeddings setups for an organization (admin only)"""
     try:
         # Verify organization admin access
         admin_info = await verify_organization_admin_access(request, org_id)
-        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization", ""))
 
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -4581,7 +4582,7 @@ async def list_embeddings_setups(org_id: int, request: Request):
         # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
+                f"{kb_url}/organizations/{org_external_id}/knowledge-store-setups",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 timeout=30.0
             )
@@ -4595,13 +4596,13 @@ async def list_embeddings_setups(org_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/organizations/{org_id}/embeddings-setups")
+@router.post("/organizations/{org_id}/knowledge-store-setups")
 async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dict[str, Any]):
     """Create a new embeddings setup (admin only)"""
     try:
         # Verify organization admin access
         admin_info = await verify_organization_admin_access(request, org_id)
-        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization", ""))
 
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -4625,7 +4626,7 @@ async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dic
         # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{kb_url}/organizations/{org_external_id}/embeddings-setups",
+                f"{kb_url}/organizations/{org_external_id}/knowledge-store-setups",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 json=setup_data,
                 timeout=60.0  # Longer timeout for validation
@@ -4640,13 +4641,13 @@ async def create_embeddings_setup(org_id: int, request: Request, setup_data: Dic
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/organizations/{org_id}/embeddings-setups/{setup_key}")
+@router.put("/organizations/{org_id}/knowledge-store-setups/{setup_key}")
 async def update_embeddings_setup(org_id: int, setup_key: str, request: Request, update_data: Dict[str, Any]):
     """Update an embeddings setup - API key rotation, provider migration (admin only)"""
     try:
         # Verify organization admin access
         admin_info = await verify_organization_admin_access(request, org_id)
-        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization", ""))
 
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -4670,7 +4671,7 @@ async def update_embeddings_setup(org_id: int, setup_key: str, request: Request,
         # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.put(
-                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
+                f"{kb_url}/organizations/{org_external_id}/knowledge-store-setups/{setup_key}",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 json=update_data,
                 timeout=60.0  # Longer timeout for validation
@@ -4685,7 +4686,7 @@ async def update_embeddings_setup(org_id: int, setup_key: str, request: Request,
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/organizations/{org_id}/embeddings-setups/{setup_key}")
+@router.delete("/organizations/{org_id}/knowledge-store-setups/{setup_key}")
 async def delete_embeddings_setup(
     org_id: int,
     setup_key: str,
@@ -4697,7 +4698,7 @@ async def delete_embeddings_setup(
     try:
         # Verify organization admin access
         admin_info = await verify_organization_admin_access(request, org_id)
-        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization", ""))
 
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -4728,7 +4729,7 @@ async def delete_embeddings_setup(
         # Call KB server API using external_id (slug)
         async with httpx.AsyncClient() as client:
             response = await client.delete(
-                f"{kb_url}/organizations/{org_external_id}/embeddings-setups/{setup_key}",
+                f"{kb_url}/organizations/{org_external_id}/knowledge-store-setups/{setup_key}",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 params=params,
                 timeout=30.0

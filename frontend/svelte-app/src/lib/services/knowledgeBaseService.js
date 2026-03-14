@@ -186,7 +186,7 @@ export async function getAvailableEmbeddingsSetups() {
         throw new Error('User not authenticated.');
     }
 
-    const url = getApiUrl('/knowledgebases/embeddings-setups/available');
+    const url = getApiUrl('/knowledgebases/knowledge-store-setups/available');
     console.log(`Fetching available embeddings setups from: ${url}`);
 
     try {

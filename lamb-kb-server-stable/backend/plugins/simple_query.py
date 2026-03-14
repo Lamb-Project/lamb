@@ -9,7 +9,6 @@ from typing import Dict, List, Any, Optional
 
 from sqlalchemy.orm import Session
 
-from database.connection import get_chroma_client, get_embedding_function
 from database.models import Collection
 from database.service import CollectionService
 from plugins.base import PluginRegistry, QueryPlugin
@@ -79,57 +78,9 @@ class SimpleQueryPlugin(QueryPlugin):
         if not query_text or query_text.strip() == "":
             raise ValueError("Query text cannot be empty")
         
-        # If ChromaDB collection wasn't provided, get it from the DB
+        # If ChromaDB collection wasn't provided, it indicates a failure in query service delegation
         if not chroma_collection:
-            # Get the collection
-            collection = CollectionService.get_collection(db, collection_id)
-            if not collection:
-                raise ValueError(f"Collection with ID {collection_id} not found")
-            
-            # Get collection name - handle both dict-like and attribute access
-            collection_name = collection['name'] if isinstance(collection, dict) else collection.name
-            
-            # Get ChromaDB client and collection
-            chroma_client = get_chroma_client()
-            try:
-                # Get the embedding function for this collection if not provided
-                if not embedding_function:
-                    print(f"DEBUG: [simple_query] Getting embedding function from collection")
-                    collection_id_for_embedding = collection['id'] if isinstance(collection, dict) else collection.id
-                    embedding_function = get_embedding_function(collection_id_for_embedding)
-                else:
-                    print(f"DEBUG: [simple_query] Using provided embedding function")
-                
-                # Get the collection with the embedding function
-                try:
-                    chroma_collection = chroma_client.get_collection(
-                        name=collection_name,
-                        embedding_function=embedding_function
-                    )
-                except Exception as e:
-                    # If getting by name fails, try getting by name=uuid (as a fallback)
-                    try:
-                        # Check if collection_name might be a UUID
-                        import uuid
-                        # Try to parse as UUID to validate if it looks like a UUID
-                        try:
-                            uuid_obj = uuid.UUID(collection_name)
-                            is_likely_uuid = True
-                        except ValueError:
-                            is_likely_uuid = False
-                        
-                        if is_likely_uuid:
-                            print(f"DEBUG: [SimpleQueryPlugin] Collection name appears to be a UUID, trying as UUID")
-                            chroma_collection = chroma_client.get_collection(
-                                name=collection_name,
-                                embedding_function=embedding_function
-                            )
-                        else:
-                            raise ValueError(f"Collection '{collection_name}' not found in ChromaDB")
-                    except Exception as e2:
-                        raise ValueError(f"Collection '{collection_name}' exists in database but not in ChromaDB. Please recreate the collection. Errors: {str(e)}, {str(e2)}")
-            except Exception as e:
-                raise ValueError(f"Collection '{collection_name}' exists in database but not in ChromaDB. Please recreate the collection. Error: {str(e)}")
+            raise ValueError("chroma_collection parameter is required for simple query execution")
         else:
             print(f"DEBUG: [simple_query] Using provided ChromaDB collection")
         

@@ -38,7 +38,7 @@ class CollectionCreate(CollectionBase):
 
     Supports DUAL MODE:
     - OLD MODE: Provide embeddings_model (inline configuration)
-    - NEW MODE: Provide organization_external_id + optional embeddings_setup_key
+    - NEW MODE: Provide organization_external_id + optional knowledge_store_setup_key
     - DEFAULT MODE: Provide neither (creates default setup from env vars)
     
     VALIDATION: Cannot specify both OLD MODE and NEW MODE simultaneously.
@@ -56,9 +56,14 @@ class CollectionCreate(CollectionBase):
         None,
         description="Organization external ID (NEW MODE)"
     )
+    knowledge_store_setup_key: Optional[str] = Field(
+        None,
+        description="Knowledge store setup key (NEW MODE, optional - uses default if omitted)"
+    )
+    # Backward compat alias
     embeddings_setup_key: Optional[str] = Field(
         None,
-        description="Embeddings setup key (NEW MODE, optional - uses default if omitted)"
+        description="Deprecated: use knowledge_store_setup_key"
     )
     
     @model_validator(mode='after')

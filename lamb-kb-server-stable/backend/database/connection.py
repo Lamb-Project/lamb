@@ -112,7 +112,6 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
     Get the embedding function for a collection.
     Handles both old mode (inline config) and new mode (setup reference).
     """
-    from .models import EmbeddingsSetup
 
     db = next(get_db())
 
@@ -144,21 +143,30 @@ def get_embedding_function(collection_id_or_obj: Union[int, Collection, Dict[str
             raise ValueError(f"Collection not found")
 
         # Check if using NEW MODE (setup reference)
-        if hasattr(collection, 'embeddings_setup_id') and collection.embeddings_setup_id:
+        if collection.knowledge_store_setup_id:
             # NEW MODE: Get config from setup
-            setup = db.query(EmbeddingsSetup).filter(EmbeddingsSetup.id == collection.embeddings_setup_id).first()
+            from .models import KnowledgeStoreSetup
+            setup = db.query(KnowledgeStoreSetup).filter(KnowledgeStoreSetup.id == collection.knowledge_store_setup_id).first()
             if not setup:
-                raise ValueError(f"Embeddings setup {collection.embeddings_setup_id} not found")
+                raise ValueError(f"Knowledge store setup {collection.knowledge_store_setup_id} not found")
+
+            # Read from plugin_config
+            plugin_config = setup.plugin_config
+            if isinstance(plugin_config, str):
+                plugin_config = json.loads(plugin_config)
+            if not plugin_config:
+                raise ValueError(f"Setup {setup.setup_key} has no plugin_config")
 
             # Decrypt API key if encrypted
             from utils.encryption import decrypt_api_key
-            decrypted_key = decrypt_api_key(setup.api_key) if setup.api_key else ""
+            api_key = plugin_config.get("api_key", "")
+            decrypted_key = decrypt_api_key(api_key) if api_key else ""
             
             return get_embedding_function_by_params(
-                vendor=setup.vendor,
-                model_name=setup.model_name,
+                vendor=plugin_config.get("vendor", ""),
+                model_name=plugin_config.get("model", ""),
                 api_key=decrypted_key,
-                api_endpoint=setup.api_endpoint or ""
+                api_endpoint=plugin_config.get("api_endpoint", "")
             )
         else:
             # OLD MODE: Use inline config

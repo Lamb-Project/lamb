@@ -20,6 +20,7 @@ from .knowledgebase_classes import (
     KnowledgeBaseListResponse
 )
 from .kb_server_manager import KBServerManager
+from .assistant_router import get_creator_user_from_token
 
 # --- Pydantic Models for Knowledges Router --- #
 
@@ -2544,11 +2545,11 @@ async def cancel_ingestion_job(
 # Embeddings Setups API Endpoints
 # ============================================================================
 
-@router.get("/embeddings-setups/available")
+@router.get("/knowledge-store-setups/available")
 async def get_available_embeddings_setups(request: Request):
     """Get available embeddings setups for collection creation (all org members)"""
     try:
-        creator_user = await get_creator_user_from_token(request.headers.get("Authorization", ""))
+        creator_user = get_creator_user_from_token(request.headers.get("Authorization", ""))
 
         if not creator_user:
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -2570,6 +2571,10 @@ async def get_available_embeddings_setups(request: Request):
             return []
 
         org_id = user_details['organization_id']
+        organization = db_manager.get_organization_by_id(org_id)
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_external_id = organization.get('slug') or str(org_id)
 
         # Get KB server config
         kb_config = kb_server_manager._get_kb_config_for_user(creator_user)
@@ -2579,7 +2584,7 @@ async def get_available_embeddings_setups(request: Request):
         # Call KB server API
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{kb_url}/organizations/{org_id}/embeddings-setups/available",
+                f"{kb_url}/organizations/{org_external_id}/knowledge-store-setups/available",
                 headers={"Authorization": f"Bearer {kb_token}"},
                 timeout=30.0
             )
