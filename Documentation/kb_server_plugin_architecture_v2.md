@@ -1,8 +1,8 @@
-# KB-Server Plugin Architecture v2.0
+# KB-Server Plugin Architecture v2.1
 
-**Version:** 2.0 Draft  
-**Date:** February 3, 2026  
-**Status:** Design Proposal  
+**Version:** 2.1
+**Date:** March 15, 2026
+**Status:** Design Proposal (Updated)
 **Authors:** Development Team
 
 ---
@@ -10,7 +10,7 @@
 ## Table of Contents
 
 1. [Executive Summary](#1-executive-summary)
-2. [Current State Analysis](#2-current-state-analysis)
+2. [Current State (Post #203 + #229)](#2-current-state-post-203--229)
 3. [Proposed Architecture](#3-proposed-architecture)
 4. [Content Object Model](#4-content-object-model)
 5. [Plugin Layer 1: Format Import Plugins](#5-plugin-layer-1-format-import-plugins)
@@ -23,13 +23,20 @@
 12. [API Design](#12-api-design)
 13. [Migration Strategy](#13-migration-strategy)
 14. [Trade-offs & Alternatives Considered](#14-trade-offs--alternatives-considered)
-15. [Open Questions](#15-open-questions)
+15. [Open Questions & Recommendations](#15-open-questions--recommendations)
 
 ---
 
 ## 1. Executive Summary
 
-This document proposes a significant evolution of the lamb-kb-server plugin architecture to address three interconnected challenges:
+This document proposes the next evolution of the lamb-kb-server architecture, **building on the foundation laid by Issues #203 and #229**. Those issues delivered:
+
+- **Organization-level management** of retrieval backend configurations (#203)
+- **Knowledge Store Plugin abstraction** enabling technology-agnostic retrieval backends (#229)
+- **Per-collection backend selection** via `KnowledgeStoreSetup` records
+- **Full service-layer decoupling** from ChromaDB internals
+
+This v2.1 proposal extends that foundation to address three remaining challenges:
 
 1. **Separation of Concerns**: Split monolithic ingestion plugins into two layers:
    - **Format Import Plugins**: Convert source files to standardized content bundles
@@ -43,50 +50,113 @@ This document proposes a significant evolution of the lamb-kb-server plugin arch
 
 | Principle | Description |
 |-----------|-------------|
+| **Partition → Chunk → Store** | Three-stage pipeline following Unstructured.io / LangChain best practices |
 | **Source Once, Chunk Many** | Import content once, apply different chunking strategies per KB |
-| **Stable Identifiers** | Content objects and chunks have permanent, linkable IDs |
+| **Stable Identifiers** | Nanoid primary keys + content hashes for deduplication |
 | **Reference Transparency** | Clear tracking of what KBs use what content |
-| **Safe Deletion** | Understand impact before removing shared content |
+| **Safe Deletion** | Soft delete + reference counting; "remove reference" vs "delete canonical" |
 | **Strategy Lock-in** | KB's ingestion strategy is fixed at creation (like embedding dimensions) |
+| **Backend Agnosticism** | Services work with chunks + metadata only, never touching backend internals |
+
+### Relationship to Completed Work
+
+| Foundation (Done) | This Proposal (New) |
+|-------------------|---------------------|
+| `KnowledgeStorePlugin` interface (11 methods) | `FormatImportPlugin` interface |
+| `ChromaDBPlugin` implementation | `IngestionStrategyPlugin` interface |
+| `KnowledgeStoreSetup` model with `plugin_type` + `plugin_config` | `ContentObject` model |
+| `resolve_plugin_for_collection()` helper | `ContentObject` model + `file_registry` enhanced with `content_object_id` |
+| Query plugins receive `ks_plugin` + `backend_collection` | Automatic query plugin selection via strategy pairing |
+| Dual-mode backward compat (OLD/NEW MODE) | Content deduplication by file hash |
 
 ---
 
-## 2. Current State Analysis
+## 2. Current State (Post #203 + #229)
 
-### Current Plugin Model (Monolithic)
+### Architecture as Implemented
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                   markitdown_ingest Plugin                       │
-├─────────────────────────────────────────────────────────────────┤
-│  1. Receive file (PDF, DOCX, etc.)                              │
-│  2. Convert to Markdown (format handling)                        │
-│  3. Split into chunks (chunking strategy)                        │
-│  4. Generate embeddings                                          │
-│  5. Store in ChromaDB                                            │
-│  6. Create file_registry entry                                   │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         lamb-kb-server (current)                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Organizations                                                              │
+│      ↓ 1:N                                                                  │
+│  KnowledgeStore Setups (plugin_type + plugin_config)                        │
+│    Setup 1: ChromaDB + OpenAI (plugin_type: "chromadb")                     │
+│    Setup 2: ChromaDB + Ollama (plugin_type: "chromadb")                     │
+│      ↓ 1:N                                                                  │
+│  Collections (reference setup_id)                                           │
+│      ↓                                                                      │
+│  Service Layer (technology-agnostic: chunks + metadata only)                │
+│      ↓                                                                      │
+│  KnowledgeStorePlugin Interface (11 abstract methods)                       │
+│      ↓                                                                      │
+│  ┌──────────┐                                                               │
+│  │ ChromaDB │  (only implementation today)                                  │
+│  │ Plugin   │                                                               │
+│  └──────────┘                                                               │
+│                                                                              │
+│  Ingestion Plugins (monolithic: format + chunking combined)                 │
+│  ┌────────────────┬──────────────┬──────────────┬────────────┐              │
+│  │markitdown_ingest│ url_ingest   │youtube_ingest│srt_ingest  │              │
+│  └────────────────┴──────────────┴──────────────┴────────────┘              │
+│                                                                              │
+│  Query Plugins (receive ks_plugin + backend_collection)                     │
+│  ┌──────────────┬───────────────────────┐                                   │
+│  │ simple_query │ parent_child_query    │                                   │
+│  └──────────────┴───────────────────────┘                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Problems with Current Model
+### What's Already Solved
+
+| Capability | How |
+|-----------|-----|
+| Technology-agnostic storage | `KnowledgeStorePlugin` interface + `resolve_plugin_for_collection()` |
+| Per-collection backend selection | `Collection.knowledge_store_setup_id` FK |
+| API key rotation | Update `KnowledgeStoreSetup.plugin_config` once, all collections affected |
+| Plugin discovery | `KnowledgeStoreRegistry.register` decorator + `list_knowledge_store_plugins()` |
+| Config validation | `KnowledgeStorePlugin.validate_plugin_config()` + `/knowledge-store-plugins/{type}/validate-config` endpoint |
+| Backward compatibility | `resolve_plugin_for_collection()` handles both OLD MODE (inline config) and NEW MODE (setup reference) |
+
+### Remaining Problems
 
 | Problem | Impact |
 |---------|--------|
-| **Mixed responsibilities** | Can't use hierarchical chunking with PDF import |
-| **No content reuse** | Same PDF imported 5 times = 5 copies |
-| **No stable links** | Can't create permalinks to chunks |
-| **Strategy coupling** | Changing chunking strategy requires re-import |
-| **Deletion complexity** | Deleting a file only affects one KB |
+| **Mixed responsibilities in ingestion** | Can't use hierarchical chunking with PDF import |
+| **No content reuse** | Same PDF imported 5 times = 5 copies stored |
+| **No stable links** | Can't create permalinks to chunks for citations |
+| **Strategy coupling** | Changing chunking strategy requires re-import of source files |
+| **No cross-KB content visibility** | Can't see "this PDF is used in 5 KBs" |
 
 ---
 
 ## 3. Proposed Architecture
 
+### Three-Stage Pipeline
+
+Following industry best practices (Unstructured.io, LangChain, Haystack), the ingestion pipeline is split into three independently cacheable stages:
+
+```
+Raw Source → [PARTITION] → Content Object → [CHUNK] → Chunks → [STORE] → Backend
+               Layer 1                       Layer 2              Layer 3 (done)
+         Format Import Plugin         Ingestion Strategy    KnowledgeStorePlugin
+                                          Plugin            (already implemented)
+```
+
+**Stage 1 — Partition (Format Import)**: Understands file formats. Converts PDF/DOCX/URL/YouTube to extracted text + metadata. Output is a **Content Object** stored once.
+
+**Stage 2 — Chunk (Ingestion Strategy)**: Understands text structure. Splits extracted text into chunks using a configurable strategy. Each KB can apply a different strategy to the same content.
+
+**Stage 3 — Store (Knowledge Store)**: Already implemented (#229). Stores chunks in the backend via `ks_plugin.add_chunks()`. Backend handles embeddings, indexing, graph construction, etc. internally.
+
 ### High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         lamb-kb-server v2.0                                  │
+│                         lamb-kb-server v2.1                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
@@ -94,17 +164,17 @@ This document proposes a significant evolution of the lamb-kb-server plugin arch
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐   │ │
 │  │  │  PDF Import  │ │ DOCX Import  │ │  URL Import  │ │YouTube Import│   │ │
 │  │  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘   │ │
-│  │         │                │                │                │           │ │
 │  │         └────────────────┴────────────────┴────────────────┘           │ │
 │  │                                   │                                     │ │
 │  │                                   ▼                                     │ │
 │  │                    ┌──────────────────────────┐                         │ │
 │  │                    │    Content Object        │ ← Stored once           │ │
 │  │                    │    (Source + Text)       │   Shared across KBs     │ │
+│  │                    │    Deduplicated by hash  │                         │ │
 │  │                    └──────────────────────────┘                         │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                   │                                          │
-│                                   │ Reference                                │
+│                                   │ Reference (many-to-many)                │
 │                                   ▼                                          │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │                    LAYER 2: Ingestion Strategy                          │ │
@@ -117,17 +187,16 @@ This document proposes a significant evolution of the lamb-kb-server plugin arch
 │  │  │ Chunk: 1000/200 │          │ Parent: 4000    │       │ By meaning  │ │ │
 │  │  │                 │          │ Child: 500      │       │             │ │ │
 │  │  └────────┬────────┘          └────────┬────────┘       └──────┬──────┘ │ │
-│  │           │                            │                       │        │ │
-│  │           ▼                            ▼                       ▼        │ │
-│  │  ┌─────────────────┐          ┌─────────────────┐       ┌─────────────┐ │ │
-│  │  │ ChromaDB Coll A │          │ ChromaDB Coll B │       │ChromaDB C   │ │ │
-│  │  │ 150 chunks      │          │ 50 parents +    │       │ 80 chunks   │ │ │
-│  │  │                 │          │ 200 children    │       │             │ │ │
-│  │  └─────────────────┘          └─────────────────┘       └─────────────┘ │ │
-│  │                                                                         │ │
-│  │  Paired Query Plugins:                                                  │ │
-│  │  simple_query              parent_child_query           semantic_query  │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
+│  └───────────┼───────────────────────────┼──────────────────────┼────────┘ │
+│              │                            │                       │          │
+│  ┌───────────┼───────────────────────────┼──────────────────────┼────────┐ │
+│  │           ▼          LAYER 3: Knowledge Store (DONE)         ▼        │ │
+│  │  KnowledgeStorePlugin.add_chunks() / query_chunks()                  │ │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐             │ │
+│  │  │ ChromaDB │  │  Qdrant  │  │  Neo4j   │  │ElasticSch│             │ │
+│  │  │ Plugin   │  │  Plugin  │  │  Plugin  │  │  Plugin  │             │ │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘             │ │
+│  └──────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -148,13 +217,10 @@ This document proposes a significant evolution of the lamb-kb-server plugin arch
                     ┌──────────────▼──────────────┐
                     │     Content Object          │
                     │  ┌────────────────────────┐ │
-                    │  │ id: "co_abc123"        │ │
-                    │  │ source_url: "..."      │ │
-                    │  │ source_file: "..."     │ │
-                    │  │ extracted_text: "..."  │ │
-                    │  │ metadata: {...}        │ │
-                    │  │ permalink: "/content/  │ │
-                    │  │   co_abc123"           │ │
+                    │  │ id: "co_abc123"        │ │  ← nanoid (stable)
+                    │  │ file_hash: "sha256:…"  │ │  ← for deduplication
+                    │  │ extracted_text: "…"    │ │
+                    │  │ metadata: {…}          │ │
                     │  └────────────────────────┘ │
                     └──────────────┬──────────────┘
                                    │
@@ -179,16 +245,21 @@ This document proposes a significant evolution of the lamb-kb-server plugin arch
 
 ### What is a Content Object?
 
-A **Content Object** represents imported source material before any chunking occurs. It's the canonical representation of a document, URL, or media file.
+A **Content Object** represents imported source material before any chunking occurs. It's the canonical representation of a document, URL, or media file. Content Objects are:
+
+- **Stored once** per organization (deduplicated by `file_hash`)
+- **Shared** across multiple Knowledge Bases via `file_registry.content_object_id`
+- **Immutable** after extraction (if the source changes, a new Content Object is created)
+- **Addressable** via stable nanoid-based permalinks
 
 ### Content Object Structure
 
 ```json
 {
   "id": "co_7f3a8b2c",
-  "organization_id": "org_123",
+  "organization_id": 1,
   "owner_id": "user_456",
-  
+
   "source": {
     "type": "file",
     "original_filename": "research_paper.pdf",
@@ -198,7 +269,7 @@ A **Content Object** represents imported source material before any chunking occ
     "file_hash": "sha256:abc123...",
     "source_url": null
   },
-  
+
   "extracted": {
     "text": "Full extracted text content...",
     "text_format": "markdown",
@@ -207,7 +278,7 @@ A **Content Object** represents imported source material before any chunking occ
     "extraction_params": {},
     "html_preview_path": "/storage/org_123/previews/7f3a8b2c.html"
   },
-  
+
   "metadata": {
     "title": "Research Paper Title",
     "author": "Dr. Smith",
@@ -215,22 +286,16 @@ A **Content Object** represents imported source material before any chunking occ
     "language": "en",
     "custom": {}
   },
-  
-  "permalinks": {
-    "content": "/content/co_7f3a8b2c",
-    "source": "/content/co_7f3a8b2c/source",
-    "preview": "/content/co_7f3a8b2c/preview",
-    "text": "/content/co_7f3a8b2c/text"
-  },
-  
+
   "usage": {
     "knowledge_bases": ["kb_001", "kb_002", "kb_003"],
     "total_chunk_count": 450,
     "first_used": "2026-01-15T10:00:00Z",
     "last_used": "2026-02-03T14:30:00Z"
   },
-  
+
   "visibility": "organization",
+  "status": "ready",
   "created_at": "2026-01-15T10:00:00Z",
   "updated_at": "2026-02-03T14:30:00Z"
 }
@@ -239,32 +304,18 @@ A **Content Object** represents imported source material before any chunking occ
 ### Content Object Lifecycle
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Content Object Lifecycle                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────┐      ┌──────────┐      ┌──────────┐      ┌──────────┐        │
-│  │ UPLOADED │ ───► │EXTRACTING│ ───► │  READY   │ ───► │ ARCHIVED │        │
-│  └──────────┘      └──────────┘      └──────────┘      └──────────┘        │
-│       │                 │                 │                 │               │
-│       │                 │                 │                 ▼               │
-│       │                 │                 │           ┌──────────┐          │
-│       │                 │                 └─────────► │ DELETED  │          │
-│       │                 │                             └──────────┘          │
-│       │                 │                                  ▲                │
-│       │                 ▼                                  │                │
-│       │           ┌──────────┐                             │                │
-│       └─────────► │  FAILED  │ ────────────────────────────┘                │
-│                   └──────────┘                                              │
-│                                                                              │
-│  State Descriptions:                                                         │
-│  - UPLOADED: File received, awaiting extraction                             │
-│  - EXTRACTING: Format import plugin is processing                           │
-│  - READY: Text extracted, available for chunking into KBs                   │
-│  - ARCHIVED: Soft-deleted, can be restored                                  │
-│  - DELETED: Hard-deleted (only if no KB references)                         │
-│  - FAILED: Extraction failed, can retry                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
+  ┌──────────┐      ┌──────────┐      ┌──────────┐      ┌──────────┐
+  │ UPLOADED │ ───► │EXTRACTING│ ───► │  READY   │ ───► │ ARCHIVED │
+  └──────────┘      └──────────┘      └──────────┘      └──────────┘
+       │                 │                 │                 │
+       │                 │                 │                 ▼
+       │                 │                 │           ┌──────────┐
+       │                 │                 └─────────► │ DELETED  │
+       │                 │                             └──────────┘
+       │                 ▼                                  ▲
+       │           ┌──────────┐                             │
+       └─────────► │  FAILED  │ ────────────────────────────┘
+                   └──────────┘
 ```
 
 ### Content Deduplication
@@ -272,21 +323,31 @@ A **Content Object** represents imported source material before any chunking occ
 Content Objects are deduplicated by `file_hash` within an organization:
 
 ```python
-def get_or_create_content_object(org_id: str, file: UploadFile) -> ContentObject:
+def get_or_create_content_object(org_id: int, file: UploadFile) -> ContentObject:
     file_hash = compute_sha256(file)
-    
-    # Check if content already exists
+
     existing = db.query(ContentObject).filter(
         ContentObject.organization_id == org_id,
-        ContentObject.source_file_hash == file_hash
+        ContentObject.file_hash == file_hash
     ).first()
-    
+
     if existing and existing.status == "ready":
         return existing  # Reuse existing content
-    
-    # Create new content object
+
     return create_new_content_object(org_id, file, file_hash)
 ```
+
+### ID Strategy
+
+Following industry best practices, Content Objects and Chunks use a **hybrid ID approach**:
+
+- **Primary key**: `{type_prefix}_{nanoid}` (e.g., `co_7f3a8b2c`, `ch_9d2e4f1a`, `pc_3b7c1d5e`)
+  - Stable across content changes
+  - No coordination needed for distributed generation
+  - Human-readable type prefix aids debugging
+- **Content hash**: Stored separately as `file_hash` / `text_hash` for deduplication
+  - Used at ingestion time to detect "this exact content was already indexed"
+  - Never used as a primary key (would change when content is updated)
 
 ---
 
@@ -294,12 +355,20 @@ def get_or_create_content_object(org_id: str, file: UploadFile) -> ContentObject
 
 ### Purpose
 
-Format Import Plugins are responsible for:
+Format Import Plugins implement Stage 1 of the pipeline (Partition). They are responsible for:
 1. Receiving source files/URLs
-2. Extracting text content
+2. Extracting text content in a standardized format
 3. Creating Content Objects
 4. Generating preview files (HTML)
 5. Extracting metadata (title, author, pages, etc.)
+
+### Design Note: Relationship to Existing Ingest Plugins
+
+Today's `IngestPlugin` classes (e.g., `markitdown_ingest`) combine format conversion AND chunking in a single plugin. The v2.1 migration path:
+
+1. Extract the format-conversion code from each `IngestPlugin` into a `FormatImportPlugin`
+2. The chunking code becomes part of `IngestionStrategyPlugin` (Section 6)
+3. Existing `IngestPlugin` remains functional during migration (dual-path support)
 
 ### Plugin Interface
 
@@ -320,165 +389,42 @@ class ImportResult:
     error_details: Optional[Dict] = None
 
 class FormatImportPlugin(ABC):
-    """Base class for format import plugins."""
-    
+    """Base class for format import plugins.
+
+    Responsibility: Convert raw source material into extracted text.
+    Does NOT chunk, embed, or store. Only extracts.
+    """
+
     name: str = "base_import"
     description: str = "Base import plugin"
     supported_types: set = set()  # MIME types or extensions
-    
+
     @abstractmethod
     def can_import(self, source: str, content_type: Optional[str] = None) -> bool:
         """Check if this plugin can handle the given source."""
-        pass
-    
+
     @abstractmethod
     def import_file(self, file_path: str, **kwargs) -> ImportResult:
-        """
-        Import a local file.
-        
-        Args:
-            file_path: Path to the file
-            **kwargs: Plugin-specific parameters
-            
-        Returns:
-            ImportResult with extracted text and metadata
-        """
-        pass
-    
+        """Import a local file. Returns extracted text and metadata."""
+
     @abstractmethod
     def import_url(self, url: str, **kwargs) -> ImportResult:
-        """
-        Import content from a URL.
-        
-        Args:
-            url: Source URL
-            **kwargs: Plugin-specific parameters
-            
-        Returns:
-            ImportResult with extracted text and metadata
-        """
-        pass
-    
+        """Import content from a URL. Returns extracted text and metadata."""
+
     @abstractmethod
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
         """Return plugin parameters schema."""
-        pass
 ```
 
 ### Available Format Import Plugins
 
-#### 5.1 `markitdown_import`
-
-Converts office documents and PDFs to Markdown using Microsoft's MarkItDown library.
-
-```python
-@PluginRegistry.register
-class MarkItDownImportPlugin(FormatImportPlugin):
-    name = "markitdown_import"
-    description = "Import PDF, DOCX, PPTX, XLSX using MarkItDown"
-    supported_types = {
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/html",
-        "text/markdown"
-    }
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "extract_images": {
-                "type": "boolean",
-                "default": False,
-                "description": "Extract and store images from document"
-            },
-            "ocr_enabled": {
-                "type": "boolean", 
-                "default": False,
-                "description": "Use OCR for scanned documents"
-            }
-        }
-```
-
-#### 5.2 `url_import`
-
-Fetches and extracts content from web URLs.
-
-```python
-@PluginRegistry.register
-class URLImportPlugin(FormatImportPlugin):
-    name = "url_import"
-    description = "Import content from web URLs"
-    supported_types = {"text/html", "application/xhtml+xml"}
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "follow_redirects": {
-                "type": "boolean",
-                "default": True
-            },
-            "extract_main_content": {
-                "type": "boolean",
-                "default": True,
-                "description": "Use readability to extract main content"
-            },
-            "include_links": {
-                "type": "boolean",
-                "default": False,
-                "description": "Preserve hyperlinks in extracted text"
-            }
-        }
-```
-
-#### 5.3 `youtube_import`
-
-Extracts transcripts from YouTube videos.
-
-```python
-@PluginRegistry.register
-class YouTubeImportPlugin(FormatImportPlugin):
-    name = "youtube_import"
-    description = "Import YouTube video transcripts"
-    supported_types = {"video/youtube"}
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "language": {
-                "type": "string",
-                "default": "en",
-                "description": "Preferred subtitle language (ISO 639-1)"
-            },
-            "include_auto_captions": {
-                "type": "boolean",
-                "default": True,
-                "description": "Fall back to auto-generated captions"
-            }
-        }
-```
-
-#### 5.4 `plain_text_import`
-
-Handles plain text and markdown files directly.
-
-```python
-@PluginRegistry.register
-class PlainTextImportPlugin(FormatImportPlugin):
-    name = "plain_text_import"
-    description = "Import plain text and markdown files"
-    supported_types = {"text/plain", "text/markdown", "text/x-markdown"}
-    
-    def import_file(self, file_path: str, **kwargs) -> ImportResult:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-        
-        return ImportResult(
-            success=True,
-            extracted_text=text,
-            text_format="markdown" if file_path.endswith('.md') else "plain",
-            metadata={"char_count": len(text), "line_count": text.count('\n')},
-            preview_html=self._render_preview(text)
-        )
-```
+| Plugin | Handles | Library |
+|--------|---------|---------|
+| `markitdown_import` | PDF, DOCX, PPTX, XLSX, HTML | MarkItDown |
+| `url_import` | Web pages | requests + readability |
+| `youtube_import` | YouTube video transcripts | youtube-transcript-api |
+| `plain_text_import` | TXT, MD files | built-in |
+| `srt_import` | Subtitle files (.srt) | built-in |
 
 ---
 
@@ -486,312 +432,74 @@ class PlainTextImportPlugin(FormatImportPlugin):
 
 ### Purpose
 
-Ingestion Strategy Plugins are responsible for:
-1. Taking a Content Object's extracted text
-2. Applying a chunking strategy
-3. Generating embeddings for chunks
-4. Storing chunks in ChromaDB
-5. Creating chunk metadata with permalinks
+Ingestion Strategy Plugins implement Stage 2 of the pipeline (Chunk). They:
+1. Take a Content Object's extracted text
+2. Apply a chunking strategy
+3. Return a list of chunks with metadata (including permalinks)
 
-### Key Concept: Strategy Lock-in
+**They do NOT embed or store.** The Knowledge Store Plugin (Layer 3) handles that.
+
+### Strategy Lock-in
 
 > **A Knowledge Base's ingestion strategy is FIXED at creation time.**
 
-This is analogous to how embedding dimensions are locked. The reason:
-- Different strategies produce incompatible chunk structures
-- Hierarchical chunks have parent-child relationships
-- Semantic chunks have meaning-based boundaries
-- Mixing strategies in one KB would break query consistency
+This is analogous to how embedding dimensions are locked. Different strategies produce incompatible chunk structures — mixing them in one KB would break query consistency.
+
+### Parameter History
+
+When a KB's `ingestion_params` are changed, the change only affects future ingestions. Each `file_registry` entry records the actual params used at ingestion time in its `plugin_params` JSON field. This means:
+- `collections.ingestion_params` = the **current default** for new ingestions
+- `file_registry.plugin_params` = the **actual params** used for each past ingestion
+
+This preserves full traceability: you can always determine exactly what parameters were used to chunk any given file.
 
 ### Plugin Interface
 
 ```python
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
-
 @dataclass
 class Chunk:
     """A single chunk produced by an ingestion strategy."""
-    id: str
-    text: str
+    id: str                                    # nanoid-based: "ch_xxx" or "pc_xxx"
+    text: str                                  # Chunk text — passed to KnowledgeStorePlugin.add_chunks()
+    text_start_char: int                       # Offset into content_objects.extracted_text
+    text_end_char: int                         # End offset — persisted to SQLite chunks table
     metadata: Dict[str, Any]
-    parent_id: Optional[str] = None  # For hierarchical strategies
-    children_ids: Optional[List[str]] = None  # For hierarchical strategies
+    parent_id: Optional[str] = None            # For hierarchical strategies
+    children_ids: Optional[List[str]] = None   # For hierarchical strategies
 
-@dataclass  
+@dataclass
 class IngestionResult:
     """Result of an ingestion operation."""
     success: bool
     chunks: List[Chunk]
     chunk_count: int
-    strategy_metadata: Dict[str, Any]  # Strategy-specific data for queries
+    strategy_metadata: Dict[str, Any]
     error_message: Optional[str] = None
 
 class IngestionStrategyPlugin(ABC):
     """Base class for ingestion strategy plugins."""
-    
+
     name: str = "base_strategy"
     description: str = "Base ingestion strategy"
-    paired_query_plugin: str = "base_query"  # Which query plugin to use
-    
+    paired_query_plugin: str = "simple_query"  # Which query plugin to use
+
     @abstractmethod
-    def ingest(
-        self, 
-        content_object: ContentObject,
-        embedding_function: callable,
-        **kwargs
-    ) -> IngestionResult:
-        """
-        Ingest a content object into chunks.
-        
-        Args:
-            content_object: The content to chunk
-            embedding_function: Function to generate embeddings
-            **kwargs: Strategy-specific parameters
-            
-        Returns:
-            IngestionResult with chunks and metadata
-        """
-        pass
-    
+    def ingest(self, content_text: str, content_object_id: str, **kwargs) -> IngestionResult:
+        """Split text into chunks. Does NOT embed or store."""
+
     @abstractmethod
     def get_parameters(self) -> Dict[str, Dict[str, Any]]:
         """Return strategy parameters schema."""
-        pass
-    
-    def supports_progress(self) -> bool:
-        """Whether this strategy can report progress."""
-        return False
 ```
 
-### Available Ingestion Strategy Plugins
+### Available Strategies
 
-#### 6.1 `simple_ingest` (Current Default)
-
-Classic fixed-size chunking with overlap.
-
-```python
-@PluginRegistry.register
-class SimpleIngestionStrategy(IngestionStrategyPlugin):
-    name = "simple_ingest"
-    description = "Fixed-size chunking with overlap"
-    paired_query_plugin = "simple_query"
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "chunk_size": {
-                "type": "integer",
-                "default": 1000,
-                "min": 100,
-                "max": 10000,
-                "description": "Target chunk size in characters"
-            },
-            "chunk_overlap": {
-                "type": "integer",
-                "default": 200,
-                "min": 0,
-                "max": 500,
-                "description": "Overlap between chunks"
-            },
-            "splitter_type": {
-                "type": "string",
-                "default": "recursive",
-                "enum": ["recursive", "character", "token"],
-                "description": "Text splitting algorithm"
-            }
-        }
-    
-    def ingest(self, content_object, embedding_function, **kwargs) -> IngestionResult:
-        chunk_size = kwargs.get("chunk_size", 1000)
-        chunk_overlap = kwargs.get("chunk_overlap", 200)
-        
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        
-        texts = splitter.split_text(content_object.extracted_text)
-        chunks = []
-        
-        for i, text in enumerate(texts):
-            chunk_id = generate_chunk_id()
-            chunks.append(Chunk(
-                id=chunk_id,
-                text=text,
-                metadata={
-                    "content_object_id": content_object.id,
-                    "chunk_index": i,
-                    "chunk_count": len(texts),
-                    "permalink": f"/chunks/{chunk_id}",
-                    "source_permalink": content_object.permalinks["content"]
-                }
-            ))
-        
-        return IngestionResult(
-            success=True,
-            chunks=chunks,
-            chunk_count=len(chunks),
-            strategy_metadata={"chunk_size": chunk_size, "overlap": chunk_overlap}
-        )
-```
-
-#### 6.2 `hierarchical_ingest` (Parent-Child)
-
-Two-level chunking for structure-aware retrieval.
-
-```python
-@PluginRegistry.register
-class HierarchicalIngestionStrategy(IngestionStrategyPlugin):
-    name = "hierarchical_ingest"
-    description = "Parent-child chunking for structure-aware queries"
-    paired_query_plugin = "parent_child_query"
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "parent_chunk_size": {
-                "type": "integer",
-                "default": 4000,
-                "description": "Size of parent (context) chunks"
-            },
-            "child_chunk_size": {
-                "type": "integer",
-                "default": 500,
-                "description": "Size of child (search) chunks"
-            },
-            "child_overlap": {
-                "type": "integer",
-                "default": 100,
-                "description": "Overlap between child chunks"
-            }
-        }
-    
-    def ingest(self, content_object, embedding_function, **kwargs) -> IngestionResult:
-        parent_size = kwargs.get("parent_chunk_size", 4000)
-        child_size = kwargs.get("child_chunk_size", 500)
-        child_overlap = kwargs.get("child_overlap", 100)
-        
-        # Create parent chunks
-        parent_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=parent_size,
-            chunk_overlap=0
-        )
-        parent_texts = parent_splitter.split_text(content_object.extracted_text)
-        
-        chunks = []
-        
-        for p_idx, parent_text in enumerate(parent_texts):
-            parent_id = generate_chunk_id()
-            
-            # Create child chunks from this parent
-            child_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=child_size,
-                chunk_overlap=child_overlap
-            )
-            child_texts = child_splitter.split_text(parent_text)
-            
-            children_ids = []
-            for c_idx, child_text in enumerate(child_texts):
-                child_id = generate_chunk_id()
-                children_ids.append(child_id)
-                
-                chunks.append(Chunk(
-                    id=child_id,
-                    text=child_text,
-                    parent_id=parent_id,
-                    metadata={
-                        "content_object_id": content_object.id,
-                        "chunk_type": "child",
-                        "parent_id": parent_id,
-                        "child_index": c_idx,
-                        "permalink": f"/chunks/{child_id}",
-                        "parent_permalink": f"/chunks/{parent_id}"
-                    }
-                ))
-            
-            # Parent chunk (stored but not embedded, or embedded separately)
-            chunks.append(Chunk(
-                id=parent_id,
-                text=parent_text,
-                children_ids=children_ids,
-                metadata={
-                    "content_object_id": content_object.id,
-                    "chunk_type": "parent",
-                    "parent_index": p_idx,
-                    "children_count": len(children_ids),
-                    "permalink": f"/chunks/{parent_id}",
-                    "source_permalink": content_object.permalinks["content"]
-                }
-            ))
-        
-        return IngestionResult(
-            success=True,
-            chunks=chunks,
-            chunk_count=len(chunks),
-            strategy_metadata={
-                "parent_count": len(parent_texts),
-                "child_count": len(chunks) - len(parent_texts),
-                "parent_size": parent_size,
-                "child_size": child_size
-            }
-        )
-```
-
-#### 6.3 `semantic_ingest` (Future)
-
-Chunks based on semantic boundaries (topic shifts).
-
-```python
-@PluginRegistry.register
-class SemanticIngestionStrategy(IngestionStrategyPlugin):
-    name = "semantic_ingest"
-    description = "Chunk by semantic boundaries and topic shifts"
-    paired_query_plugin = "semantic_query"
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "min_chunk_size": {
-                "type": "integer",
-                "default": 200,
-                "description": "Minimum chunk size"
-            },
-            "max_chunk_size": {
-                "type": "integer",
-                "default": 2000,
-                "description": "Maximum chunk size"
-            },
-            "similarity_threshold": {
-                "type": "number",
-                "default": 0.5,
-                "description": "Threshold for detecting topic boundary"
-            }
-        }
-```
-
-#### 6.4 `sliding_window_ingest` (Future)
-
-Overlapping windows for maximum context capture.
-
-```python
-@PluginRegistry.register  
-class SlidingWindowIngestionStrategy(IngestionStrategyPlugin):
-    name = "sliding_window_ingest"
-    description = "Heavily overlapping chunks for maximum recall"
-    paired_query_plugin = "simple_query"  # Can use simple query
-    
-    def get_parameters(self) -> Dict[str, Dict[str, Any]]:
-        return {
-            "window_size": {
-                "type": "integer",
-                "default": 1000
-            },
-            "stride": {
-                "type": "integer",
-                "default": 200,
-                "description": "Step size (smaller = more overlap)"
-            }
-        }
-```
+| Strategy | Paired Query | Description |
+|----------|-------------|-------------|
+| `simple_ingest` | `simple_query` | Fixed-size chunking with overlap (current default) |
+| `hierarchical_ingest` | `parent_child_query` | Two-level parent-child chunking |
+| `semantic_ingest` (future) | `semantic_query` | Chunks by semantic/topic boundaries |
+| `sliding_window_ingest` (future) | `simple_query` | Heavily overlapping windows |
 
 ---
 
@@ -799,132 +507,35 @@ class SlidingWindowIngestionStrategy(IngestionStrategyPlugin):
 
 ### The Pairing Principle
 
-Each Ingestion Strategy has a **paired Query Plugin** that knows how to retrieve from that strategy's chunks:
+Each Ingestion Strategy has a **paired Query Plugin** that knows how to retrieve from that strategy's chunks. The KB-Server automatically selects the correct query plugin based on the KB's strategy.
 
 | Ingestion Strategy | Paired Query Plugin | Retrieval Behavior |
 |-------------------|--------------------|--------------------|
 | `simple_ingest` | `simple_query` | Return matching chunks directly |
 | `hierarchical_ingest` | `parent_child_query` | Search children, return parents |
 | `semantic_ingest` | `semantic_query` | Cluster-aware retrieval |
-| `sliding_window_ingest` | `simple_query` | Return matching chunks (dedupe) |
 
-### Query Plugin Interface
+### Current Query Plugin Interface (Already Implemented)
 
-```python
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List
-from dataclasses import dataclass
-
-@dataclass
-class QueryResult:
-    """A single query result."""
-    chunk_id: str
-    text: str
-    similarity: float
-    metadata: Dict[str, Any]
-    permalink: str
-
-@dataclass
-class QueryResponse:
-    """Response from a query operation."""
-    results: List[QueryResult]
-    count: int
-    timing_ms: float
-    query: str
-    strategy_info: Dict[str, Any]
-
-class QueryPlugin(ABC):
-    """Base class for query plugins."""
-    
-    name: str = "base_query"
-    description: str = "Base query plugin"
-    compatible_strategies: List[str] = []  # Which ingestion strategies this works with
-    
-    @abstractmethod
-    def query(
-        self,
-        collection,  # ChromaDB collection
-        query_text: str,
-        embedding_function: callable,
-        top_k: int = 5,
-        threshold: float = 0.0,
-        **kwargs
-    ) -> QueryResponse:
-        """Execute a query against the collection."""
-        pass
-```
-
-### Parent-Child Query Plugin
-
-```python
-@PluginRegistry.register
-class ParentChildQueryPlugin(QueryPlugin):
-    name = "parent_child_query"
-    description = "Query children, return parent context"
-    compatible_strategies = ["hierarchical_ingest"]
-    
-    def query(
-        self,
-        collection,
-        query_text: str,
-        embedding_function: callable,
-        top_k: int = 5,
-        threshold: float = 0.0,
-        return_parent: bool = True,
-        **kwargs
-    ) -> QueryResponse:
-        # 1. Search child chunks (they have the embeddings)
-        child_results = collection.query(
-            query_embeddings=embedding_function([query_text]),
-            n_results=top_k * 3,  # Over-fetch to handle deduplication
-            where={"chunk_type": "child"}
-        )
-        
-        if not return_parent:
-            # Return children directly
-            return self._format_results(child_results)
-        
-        # 2. Collect unique parent IDs
-        parent_ids = set()
-        for metadata in child_results['metadatas'][0]:
-            parent_ids.add(metadata['parent_id'])
-        
-        # 3. Fetch parent chunks
-        parent_results = collection.get(
-            ids=list(parent_ids)[:top_k],
-            include=['documents', 'metadatas']
-        )
-        
-        # 4. Return parents with original similarity scores
-        return self._format_parent_results(
-            parent_results, 
-            child_results,
-            threshold
-        )
-```
-
-### Automatic Query Plugin Selection
-
-The KB-Server automatically selects the correct query plugin based on the KB's strategy:
+Query plugins already receive `ks_plugin` and `backend_collection` from the service layer (implemented in #229). The v2.1 change is minimal — add automatic plugin selection:
 
 ```python
 async def query_knowledge_base(kb_id: int, query_text: str, top_k: int = 5):
-    # Get KB with its strategy
     kb = await get_knowledge_base(kb_id)
-    
-    # Get the ingestion strategy's paired query plugin
-    strategy_plugin = PluginRegistry.get_strategy(kb.ingestion_strategy)
-    query_plugin_name = strategy_plugin.paired_query_plugin
-    query_plugin = PluginRegistry.get_query_plugin(query_plugin_name)
-    
-    # Get embedding function from KB's setup
-    embedding_fn = get_embedding_function(kb.embeddings_setup_id)
-    
-    # Execute query with the correct plugin
-    return await query_plugin.query(
-        collection=get_chroma_collection(kb),
+
+    # Auto-select query plugin from KB's ingestion strategy
+    strategy = StrategyRegistry.get(kb.ingestion_strategy)
+    query_plugin = PluginRegistry.get_query_plugin(strategy.paired_query_plugin)
+
+    # Resolve backend (already implemented)
+    ks_plugin, plugin_config, col_name = resolve_plugin_for_collection(kb, db)
+    backend_collection = ks_plugin.get_collection(col_name, plugin_config)
+
+    return query_plugin.query(
+        collection_id=kb_id,
         query_text=query_text,
-        embedding_function=embedding_fn,
+        ks_plugin=ks_plugin,
+        backend_collection=backend_collection,
         top_k=top_k
     )
 ```
@@ -933,114 +544,248 @@ async def query_knowledge_base(kb_id: int, query_text: str, top_k: int = 5):
 
 ## 8. Linkable Content & Permalinks
 
+### Design Principle: Separation of Concerns
+
+The permalink system spans two services with clear responsibilities:
+
+| Responsibility | Owner | Why |
+|----------------|-------|-----|
+| Store content & chunk data | **KB-Server** | KB-server is the source of truth for content |
+| Serve data via bearer-token API | **KB-Server** | Simple auth — if you have the API key, you're in |
+| Generate signed URLs for external sharing | **LAMB** | LAMB owns user identity and auth |
+| Verify signed URLs and render HTML pages | **LAMB** | LAMB is the user-facing gateway |
+| Manage link expiration and org scoping | **LAMB** | LAMB knows about organizations, roles, policies |
+
+**The KB-server doesn't change its auth model.** It continues to use bearer-token authentication for all requests. LAMB handles everything related to external sharing.
+
 ### Design Goals
 
-1. **Every piece of content has a stable URL**
-2. **URLs resolve to useful content** (not just raw data)
-3. **Citations in LLM responses can link back to sources**
-4. **Support for highlighting specific chunks within documents**
+1. Every piece of content has a stable, shareable URL
+2. Citations in LLM responses can include clickable source links
+3. Links work without requiring the recipient to have a LAMB account
+4. Links expire after a configurable period (default: 7 days)
+5. Organization boundary is enforced — links can't leak content across orgs
 
-### Permalink Structure
+### How It Works: Two Access Paths
+
+**Path A — Internal (logged-in users):**
+```
+User (logged in) → LAMB frontend → LAMB backend (bearer token) → KB-server (API key) → data
+```
+Normal authenticated flow. User sees content inline in the LAMB UI. No signed URLs needed.
+
+**Path B — External (shared links):**
+```
+External person → clicks signed URL → LAMB /share/ endpoint → verifies JWT
+                                          → proxies to KB-server (API key) → renders HTML page
+```
+The signed URL bypasses LAMB's login requirement but still goes through LAMB (never directly to KB-server).
+
+### Architecture
 
 ```
-https://kb-server.example.com/
-├── /content/{content_object_id}           # Content Object landing page
-│   ├── /content/{id}/source               # Original file download
-│   ├── /content/{id}/preview              # HTML preview
-│   ├── /content/{id}/text                 # Extracted text (markdown/plain)
-│   └── /content/{id}/metadata             # JSON metadata
-│
-├── /chunks/{chunk_id}                     # Individual chunk
-│   ├── /chunks/{chunk_id}/text            # Chunk text only
-│   └── /chunks/{chunk_id}/context         # Chunk with surrounding context
-│
-└── /kb/{kb_id}/search?q={query}           # Search within KB
+┌─────────────────┐     ┌──────────────────────────────┐     ┌──────────────────┐
+│  External User  │     │           LAMB               │     │    KB-Server     │
+│  (no account)   │     │                              │     │                  │
+└────────┬────────┘     │  ┌────────────────────────┐  │     │  Auth: bearer    │
+         │              │  │ /share/chunk/{id}       │  │     │  token only      │
+         │ GET /share/  │  │   ?sig=eyJ...           │  │     │                  │
+         │ chunk/ch_abc │  │                        │  │     │  Endpoints:      │
+         │ ?sig=eyJ...  │  │ 1. Verify JWT          │  │     │  GET /chunks/{id}│
+         │─────────────►│  │ 2. Check expiration    │  │     │  GET /content/{id│
+         │              │  │ 3. Check org scope     │  │     │                  │
+         │              │  │ 4. Proxy to KB-server  │──┼────►│  Returns data    │
+         │              │  │    with API key         │  │     │  with bearer     │
+         │              │  │ 5. Render HTML page    │◄─┼─────│  token auth      │
+         │◄─────────────│  └────────────────────────┘  │     │                  │
+         │ Rendered HTML │                              │     │                  │
+         │ with chunk    │  ┌────────────────────────┐  │     │                  │
+         │ in context    │  │ /creator/permalinks/   │  │     │                  │
+         │              │  │   generate             │  │     │                  │
+         │              │  │                        │  │     │                  │
+         │              │  │ Authenticated endpoint  │  │     │                  │
+         │              │  │ for generating signed  │  │     │                  │
+         │              │  │ URLs on demand         │  │     │                  │
+         │              │  └────────────────────────┘  │     │                  │
+         │              └──────────────────────────────┘     └──────────────────┘
 ```
 
-### Permalink Resolution
+### KB-Server: What It Provides (No Changes to Auth Model)
+
+The KB-server exposes content and chunk data through its existing bearer-token API. These endpoints are used by LAMB to serve permalink content:
+
+```http
+# Get chunk data (bearer-token authenticated, called by LAMB)
+GET /chunks/{chunk_id}
+Authorization: Bearer {kb_api_key}
+
+Response:
+{
+  "id": "ch_abc123",
+  "collection_id": 42,
+  "content_object_id": "co_xyz789",
+  "chunk_type": "standard",
+  "chunk_index": 3,
+  "text_start_char": 4200,
+  "text_end_char": 5200,
+  "metadata": {...}
+}
+
+# Get content object with extracted text (for offset resolution)
+GET /content/{content_id}
+Authorization: Bearer {kb_api_key}
+
+Response:
+{
+  "id": "co_xyz789",
+  "title": "Research Paper",
+  "extracted_text": "Full document text...",
+  "source": {...},
+  "metadata": {...}
+}
+```
+
+### LAMB: Signed URL Generation & Verification
+
+LAMB owns the signed URL lifecycle. It generates JWTs signed with LAMB's own secret key.
+
+**Signed URL format:**
+```
+https://lamb.example.com/share/chunk/ch_abc123?sig=eyJ...
+https://lamb.example.com/share/content/co_xyz789?sig=eyJ...
+```
+
+**Generation (LAMB backend):**
 
 ```python
-@app.get("/content/{content_id}")
-async def get_content_page(content_id: str, format: str = "html"):
-    """Resolve a content object permalink."""
-    content = await get_content_object(content_id)
-    
-    if format == "html":
-        # Return rich HTML page with:
-        # - Document preview
-        # - Metadata
-        # - List of KBs using this content
-        # - Download links
-        return render_content_page(content)
-    
-    elif format == "json":
-        return content.to_dict()
-    
-    elif format == "text":
-        return PlainTextResponse(content.extracted_text)
+import jwt
+from datetime import datetime, timedelta
 
-@app.get("/chunks/{chunk_id}")
-async def get_chunk_page(chunk_id: str, highlight: bool = True):
-    """Resolve a chunk permalink."""
-    chunk = await get_chunk(chunk_id)
-    content = await get_content_object(chunk.content_object_id)
-    
-    # Return HTML page showing:
-    # - The chunk text (highlighted)
-    # - Surrounding context from the document
-    # - Link to full document
-    # - Which KBs contain this chunk
-    return render_chunk_page(chunk, content, highlight=highlight)
+# LAMB's secret key (NOT the KB-server API key)
+PERMALINK_SECRET = os.getenv("PERMALINK_SECRET_KEY", SECRET_KEY)
+
+def generate_signed_url(resource_type: str, resource_id: str,
+                         user_id: str, org_id: int,
+                         expires_in: timedelta = timedelta(days=7)) -> str:
+    """Generate a signed URL for external sharing. Called by LAMB only."""
+    payload = {
+        "sub": resource_id,
+        "type": resource_type,       # "chunk" or "content"
+        "uid": user_id,              # who generated the link (audit trail)
+        "org": org_id,               # organization boundary
+        "exp": datetime.utcnow() + expires_in,
+        "iat": datetime.utcnow()
+    }
+    token = jwt.encode(payload, PERMALINK_SECRET, algorithm="HS256")
+    base_url = os.getenv("LAMB_BASE_URL", "")
+    return f"{base_url}/share/{resource_type}/{resource_id}?sig={token}"
 ```
 
-### Embedding Permalinks in LLM Responses
-
-When RAG retrieves chunks, the permalinks are available in metadata:
+**Verification and rendering (LAMB backend):**
 
 ```python
-# In LAMB's RAG processor
-def augment_with_sources(chunks: List[QueryResult], response: str) -> str:
-    """Add source citations to LLM response."""
-    
+@router.get("/share/{resource_type}/{resource_id}")
+async def resolve_shared_link(resource_type: str, resource_id: str, sig: str):
+    """Public endpoint — no login required. Verifies JWT signature."""
+    try:
+        payload = jwt.decode(sig, PERMALINK_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(410, "This link has expired.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid link.")
+
+    if payload["sub"] != resource_id or payload["type"] != resource_type:
+        raise HTTPException(401, "Invalid link.")
+
+    # Proxy to KB-server using the org's KB API key
+    org_id = payload["org"]
+    kb_config = get_kb_config_for_org(org_id)
+
+    if resource_type == "chunk":
+        chunk = await kb_client.get(f"/chunks/{resource_id}", kb_config)
+        content = await kb_client.get(f"/content/{chunk['content_object_id']}", kb_config)
+        # Reconstruct chunk text from content using offsets
+        chunk_text = content["extracted_text"][chunk["text_start_char"]:chunk["text_end_char"]]
+        # Render context (surrounding text)
+        context_margin = 500  # chars before and after
+        context_start = max(0, chunk["text_start_char"] - context_margin)
+        context_end = min(len(content["extracted_text"]), chunk["text_end_char"] + context_margin)
+        return render_chunk_page(chunk, chunk_text, content, context_start, context_end, payload)
+    elif resource_type == "content":
+        content = await kb_client.get(f"/content/{resource_id}", kb_config)
+        return render_content_page(content, payload)
+```
+
+**Design Parameters:**
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Default expiration | 7 days | Long enough for course discussions, short enough for security |
+| Scope | Per-resource (chunk or content object) | Granular control |
+| Signing secret | LAMB's own key (not KB-server API key) | KB-server never sees or validates JWTs |
+| Revocability | Stateless (no revocation) | Simplicity; expiration handles it. Add blocklist later if needed |
+| Org boundary | `org_id` in JWT payload; verified on access | Prevents cross-org leakage |
+| Audit trail | `uid` in JWT payload | Know who generated each link |
+
+### Integration with RAG Responses
+
+When LAMB's RAG processor retrieves chunks, it generates signed URLs automatically:
+
+```python
+# In LAMB's completion pipeline (backend/lamb/completions/rag/)
+def augment_with_sources(chunks, response, user_id, org_id):
     sources = []
     for i, chunk in enumerate(chunks):
-        sources.append(f"[{i+1}] {chunk.permalink}")
-    
+        signed_url = generate_signed_url(
+            "chunk", chunk["id"],
+            user_id, org_id, expires_in=timedelta(days=7)
+        )
+        sources.append(f"[{i+1}] {signed_url}")
     return f"{response}\n\n**Sources:**\n" + "\n".join(sources)
 ```
 
 ### Chunk Context View
 
-For educational use, seeing a chunk in context is valuable:
+When an external user clicks a signed URL, LAMB renders a self-contained HTML page:
 
-```html
-<!-- /chunks/ch_abc123 -->
-<div class="chunk-context-view">
-  <div class="document-title">
-    <a href="/content/co_xyz789">Research Paper on Machine Learning</a>
-  </div>
-  
-  <div class="context-before" style="opacity: 0.5">
-    ...previous paragraph text...
-  </div>
-  
-  <div class="chunk-highlight" style="background: yellow">
-    <!-- The actual chunk that was retrieved -->
-    Machine learning is a subset of artificial intelligence that enables
-    systems to learn and improve from experience without being explicitly
-    programmed...
-  </div>
-  
-  <div class="context-after" style="opacity: 0.5">
-    ...following paragraph text...
-  </div>
-  
-  <div class="chunk-metadata">
-    <span>Chunk 3 of 45</span>
-    <span>Used in: KB Alpha, KB Beta</span>
-  </div>
-</div>
 ```
+┌─────────────────────────────────────────────────────────────┐
+│ 📄 Source: research_paper.pdf                                │
+│ Chunk 3 of 45                                                │
+│ Shared by: Dr. Smith · Expires: March 22, 2026              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│ [dimmed] ...previous paragraph text...                       │
+│                                                              │
+│ [highlighted] Machine learning is a subset of artificial     │
+│ intelligence that enables systems to learn and improve       │
+│ from experience without being explicitly programmed...       │
+│                                                              │
+│ [dimmed] ...following paragraph text...                       │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│ Powered by LAMB · Log in for full access                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The chunk text is reconstructed from `content_objects.extracted_text` using the `text_start_char` / `text_end_char` offsets stored in the `chunks` table. Context (surrounding text) is sliced from the same source with a configurable margin.
+
+### Use Cases for Signed URLs
+
+| Scenario | Who generates | Who receives | Example |
+|----------|--------------|-------------|---------|
+| RAG citation | LAMB RAG pipeline (automatic) | Student viewing chat | "See source [1]" in assistant response |
+| Professor shares source | Professor (on-demand via UI) | Students in LMS forum | Pastes link in Moodle discussion |
+| Export to slides | Professor (on-demand via API) | Conference audience | QR code on a presentation slide |
+| Email reference | Creator (via "Copy link" button) | External colleague | Link in an email body |
+
+### What the KB-Server Does NOT Do
+
+- Does NOT generate signed URLs (that's LAMB's job)
+- Does NOT verify JWTs (LAMB does that before proxying)
+- Does NOT serve public/unauthenticated endpoints (bearer-token only)
+- Does NOT render HTML pages (LAMB renders the context view)
+- Does NOT know about individual users (only org-level API keys)
 
 ---
 
@@ -1049,434 +794,123 @@ For educational use, seeing a chunk in context is valuable:
 ### The Sharing Model
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Content Sharing Model                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│                      ┌─────────────────────┐                                │
-│                      │   Content Object    │                                │
-│                      │   "research.pdf"    │                                │
-│                      │   co_abc123         │                                │
-│                      └──────────┬──────────┘                                │
-│                                 │                                            │
-│                    ┌────────────┼────────────┐                              │
-│                    │            │            │                              │
-│                    ▼            ▼            ▼                              │
-│           ┌──────────────┐ ┌──────────────┐ ┌──────────────┐               │
-│           │ KB: Course A │ │ KB: Course B │ │ KB: Research │               │
-│           │ (simple)     │ │ (hierarchical)│ │ (simple)     │               │
-│           │              │ │              │ │              │               │
-│           │ 50 chunks    │ │ 10 parents   │ │ 50 chunks    │               │
-│           │ from co_abc  │ │ 40 children  │ │ from co_abc  │               │
-│           │              │ │ from co_abc  │ │              │               │
-│           └──────────────┘ └──────────────┘ └──────────────┘               │
-│                                                                              │
-│  STORAGE:                                                                    │
-│  - Content Object: 1 copy (source file + extracted text)                    │
-│  - Chunks: Generated per-KB (different strategies = different chunks)       │
-│  - Embeddings: Generated per-KB (same embedding dimensions required)        │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+                      ┌─────────────────────┐
+                      │   Content Object    │
+                      │   "research.pdf"    │
+                      │   co_abc123         │
+                      └──────────┬──────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+           ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+           │ KB: Course A │ │ KB: Course B │ │ KB: Research │
+           │ (simple)     │ │ (hierarchical)│ │ (simple)     │
+           │              │ │              │ │              │
+           │ 50 chunks    │ │ 10 parents + │ │ 50 chunks    │
+           │ from co_abc  │ │ 40 children  │ │ from co_abc  │
+           └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-### Reference Tracking
-
-```python
-# When adding content to a KB
-async def add_content_to_kb(kb_id: int, content_object_id: str):
-    kb = await get_knowledge_base(kb_id)
-    content = await get_content_object(content_object_id)
-    
-    # Validate embedding compatibility
-    if kb.embedding_dimensions != content.embedding_dimensions:
-        raise IncompatibleDimensionsError()
-    
-    # Create KB-Content relationship
-    await create_kb_content_link(
-        kb_id=kb_id,
-        content_object_id=content_object_id,
-        added_at=datetime.utcnow()
-    )
-    
-    # Generate chunks using KB's strategy
-    strategy = PluginRegistry.get_strategy(kb.ingestion_strategy)
-    result = await strategy.ingest(
-        content_object=content,
-        embedding_function=kb.get_embedding_function()
-    )
-    
-    # Store chunks in KB's ChromaDB collection
-    await store_chunks(kb, result.chunks)
-    
-    # Update content object usage stats
-    await update_content_usage(content_object_id, kb_id)
-```
+**What's Shared:** Source files, extracted text, metadata, stable resource IDs (for signed URL generation)
+**What's Per-KB:** Chunks, embeddings, ingestion strategy, query plugin
 
 ### Visibility & Access Control
-
-Content Objects have visibility levels:
 
 | Visibility | Who Can Use |
 |------------|-------------|
 | `private` | Only the owner |
 | `organization` | Any user in the organization |
-| `public` | Any user in the system (future) |
-
-```python
-async def list_available_content(user_id: str, org_id: str) -> List[ContentObject]:
-    """List content objects a user can add to their KBs."""
-    return await db.query(ContentObject).filter(
-        or_(
-            ContentObject.owner_id == user_id,  # Own content
-            and_(
-                ContentObject.organization_id == org_id,
-                ContentObject.visibility == "organization"
-            )
-        ),
-        ContentObject.status == "ready"
-    ).all()
-```
-
-### Content Discovery UI
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Add Content to Knowledge Base: "Course Materials"                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│ [Upload New File]  [Import from URL]  [Browse Organization Content]          │
-│                                                                              │
-│ ─────────────────────────────────────────────────────────────────────────── │
-│                                                                              │
-│ Organization Content Library:                                    🔍 Search   │
-│                                                                              │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ 📄 research_paper.pdf                                          [+ Add]  │ │
-│ │    Uploaded by: Dr. Smith  •  Used in: 3 KBs  •  150 potential chunks   │ │
-│ │    "Research Paper on Machine Learning Fundamentals"                    │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ 🎬 YouTube: "Intro to Neural Networks"                         [+ Add]  │ │
-│ │    Imported by: Prof. Lee  •  Used in: 5 KBs  •  45 min transcript      │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ 📄 lecture_notes.md                                    [Already Added]  │ │
-│ │    Uploaded by: You  •  Used in: 1 KB  •  Added to this KB              │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
 
 ---
 
 ## 10. Deletion Semantics & Reference Management
 
-### The Deletion Challenge
+### Layered Deletion Model
 
-When content is shared across KBs, deletion becomes complex:
+Following best practices from Notion (synced blocks), Google Cloud (soft delete), and Confluence (orphan management):
 
-```
-Scenario: User wants to delete "research.pdf" (co_abc123)
-          But it's used in 3 Knowledge Bases owned by different people!
+| Level | Action | Who | Impact |
+|-------|--------|-----|--------|
+| 1 | Remove from MY KB | Any KB owner | Only that KB's chunks deleted; Content Object untouched |
+| 2 | Archive Content Object | Content owner | Hidden from "Add to KB" listings; existing KB usages continue |
+| 3 | Delete with confirmation | Content owner | Shows impact first; deletes all chunks everywhere |
+| 4 | Admin force delete | Org admin | For policy/legal; audit logged |
 
-Options:
-A) Refuse deletion (content is in use)
-B) Delete from all KBs (dangerous!)
-C) Delete only from user's KBs, orphan the content object
-D) Soft-delete, hide from user, keep for others
-```
+### Reference Counting
 
-### Proposed Solution: Layered Deletion
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Deletion Model                                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  LEVEL 1: Remove from KB (Safe, Always Allowed)                             │
-│  ─────────────────────────────────────────────────────────                  │
-│  User removes content from THEIR Knowledge Base                              │
-│  - Deletes chunks from that KB's ChromaDB collection                        │
-│  - Removes KB-Content link                                                   │
-│  - Content Object remains (may still be used by other KBs)                  │
-│                                                                              │
-│  LEVEL 2: Archive Content Object (Owner Only)                               │
-│  ─────────────────────────────────────────────────────────                  │
-│  Owner archives a Content Object they uploaded                               │
-│  - Sets status to "archived"                                                │
-│  - Content hidden from "Add to KB" listings                                 │
-│  - Existing KB usages continue working                                      │
-│  - Can be restored by owner                                                 │
-│                                                                              │
-│  LEVEL 3: Request Deletion (Owner Only, With Warnings)                      │
-│  ─────────────────────────────────────────────────────────                  │
-│  Owner requests permanent deletion                                           │
-│  - System shows impact: "Used in 3 KBs by 2 other users"                    │
-│  - If other users' KBs are affected:                                        │
-│    • Require confirmation                                                   │
-│    • Notify affected users (optional)                                       │
-│    • OR refuse if org policy prohibits                                      │
-│  - Deletes: source file, extracted text, all chunks everywhere             │
-│                                                                              │
-│  LEVEL 4: Admin Force Delete (Org Admin Only)                               │
-│  ─────────────────────────────────────────────────────────                  │
-│  Organization admin can force-delete any content                             │
-│  - Used for: policy violations, legal requirements                          │
-│  - Audit logged                                                             │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Implementation
+Before hard-deleting a Content Object, the system checks reference count:
 
 ```python
-async def remove_content_from_kb(
-    kb_id: int, 
-    content_object_id: str,
-    user_id: str
-) -> RemovalResult:
-    """Level 1: Remove content from a specific KB."""
-    
-    kb = await get_knowledge_base(kb_id)
-    
-    # Verify user owns the KB
-    if kb.owner_id != user_id:
-        raise PermissionDeniedError("You don't own this Knowledge Base")
-    
-    # Delete chunks from ChromaDB
-    chunk_ids = await get_chunk_ids_for_content(kb_id, content_object_id)
-    await delete_chunks_from_collection(kb, chunk_ids)
-    
-    # Remove KB-Content link
-    await delete_kb_content_link(kb_id, content_object_id)
-    
-    # Update content usage stats
-    await update_content_usage(content_object_id)
-    
-    return RemovalResult(
-        success=True,
-        chunks_deleted=len(chunk_ids),
-        content_object_deleted=False,
-        message="Content removed from Knowledge Base"
-    )
-
-
-async def archive_content_object(
-    content_object_id: str,
-    user_id: str
-) -> ArchiveResult:
-    """Level 2: Archive a content object."""
-    
-    content = await get_content_object(content_object_id)
-    
-    # Verify ownership
-    if content.owner_id != user_id:
-        raise PermissionDeniedError("You don't own this content")
-    
-    # Archive (soft delete)
-    content.status = "archived"
-    content.archived_at = datetime.utcnow()
-    await content.save()
-    
-    return ArchiveResult(
-        success=True,
-        still_used_in=len(content.usage.knowledge_bases),
-        message="Content archived. It will continue working in existing KBs."
-    )
-
-
-async def delete_content_object(
-    content_object_id: str,
-    user_id: str,
-    force: bool = False
-) -> DeletionResult:
-    """Level 3: Request permanent deletion."""
-    
-    content = await get_content_object(content_object_id)
-    
-    # Verify ownership
-    if content.owner_id != user_id:
-        raise PermissionDeniedError("You don't own this content")
-    
-    # Check impact
-    affected_kbs = await get_kbs_using_content(content_object_id)
-    other_users_kbs = [kb for kb in affected_kbs if kb.owner_id != user_id]
-    
-    if other_users_kbs and not force:
-        return DeletionResult(
-            success=False,
-            requires_confirmation=True,
-            impact={
-                "total_kbs_affected": len(affected_kbs),
-                "your_kbs": len(affected_kbs) - len(other_users_kbs),
-                "other_users_kbs": len(other_users_kbs),
-                "other_users": list(set(kb.owner_id for kb in other_users_kbs)),
-                "total_chunks_to_delete": await count_all_chunks(content_object_id)
-            },
-            message="This content is used by other users. Confirm to proceed."
-        )
-    
-    # Proceed with deletion
-    # 1. Delete all chunks from all KBs
-    for kb in affected_kbs:
-        chunk_ids = await get_chunk_ids_for_content(kb.id, content_object_id)
-        await delete_chunks_from_collection(kb, chunk_ids)
-    
-    # 2. Delete all KB-Content links
-    await delete_all_kb_content_links(content_object_id)
-    
-    # 3. Delete source files
-    await delete_source_files(content.source.file_path)
-    if content.extracted.html_preview_path:
-        await delete_file(content.extracted.html_preview_path)
-    
-    # 4. Delete content object record
-    await content.delete()
-    
-    return DeletionResult(
-        success=True,
-        kbs_affected=len(affected_kbs),
-        chunks_deleted=await count_all_chunks(content_object_id),
-        message="Content permanently deleted"
-    )
+async def delete_content_object(content_id, user_id, force=False):
+    content = await get_content_object(content_id)
+    # Find all KBs using this content via file_registry
+    affected_entries = db.query(FileRegistry).filter(
+        FileRegistry.content_object_id == content_id
+    ).all()
+    affected_collection_ids = set(e.collection_id for e in affected_entries)
+    # ... impact analysis continues
 ```
 
-### Deletion Confirmation UI
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ⚠️  Delete Content: "research_paper.pdf"                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│ This content is currently used in multiple Knowledge Bases:                  │
-│                                                                              │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ YOUR Knowledge Bases:                                                   │ │
-│ │   • "Course Materials" - 45 chunks will be deleted                      │ │
-│ │   • "Research Archive" - 45 chunks will be deleted                      │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ ⚠️  OTHER USERS' Knowledge Bases (will be affected!):                   │ │
-│ │   • Prof. Lee's "AI Fundamentals" - 50 chunks                           │ │
-│ │   • Dr. Smith's "Graduate Seminar" - 50 chunks                          │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                              │
-│ IMPACT SUMMARY:                                                              │
-│   • 4 Knowledge Bases affected                                              │
-│   • 190 chunks will be deleted                                              │
-│   • 2 other users will lose access to this content                          │
-│                                                                              │
-│ ─────────────────────────────────────────────────────────────────────────── │
-│                                                                              │
-│ Alternatives:                                                                │
-│   • [Archive Instead] - Hide from listings but keep working in existing KBs │
-│   • [Remove from My KBs Only] - Keep available for other users              │
-│                                                                              │
-│                              [Cancel]  [Delete Permanently]                  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Reference Counting & Cleanup
+### Background Cleanup
 
 ```python
-# Background job: Clean up orphaned content
 async def cleanup_orphaned_content():
-    """Delete content objects with no KB references and archived > 30 days."""
-    
+    """Delete content objects with no KB references, archived > 30 days."""
     orphaned = await db.query(ContentObject).filter(
         ContentObject.status == "archived",
         ContentObject.archived_at < datetime.utcnow() - timedelta(days=30),
-        ~ContentObject.id.in_(
-            select(KBContentLink.content_object_id)
-        )
+        ~ContentObject.id.in_(select(FileRegistry.content_object_id))
     ).all()
-    
+
     for content in orphaned:
         await delete_content_object_permanent(content.id)
-        logger.info(f"Cleaned up orphaned content: {content.id}")
 ```
 
 ---
 
 ## 11. Database Schema
 
-### Complete Schema
+### New Tables (additions to existing schema)
 
 ```sql
--- ═══════════════════════════════════════════════════════════════════════════
--- ORGANIZATIONS (synced from LAMB)
--- ═══════════════════════════════════════════════════════════════════════════
-CREATE TABLE organizations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    external_id TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    config JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- ═══════════════════════════════════════════════════════════════════════════
--- EMBEDDINGS SETUPS (from Issue #203)
--- ═══════════════════════════════════════════════════════════════════════════
-CREATE TABLE embeddings_setups (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL REFERENCES organizations(id),
-    name TEXT NOT NULL,
-    setup_key TEXT NOT NULL,
-    description TEXT,
-    vendor TEXT NOT NULL,
-    api_endpoint TEXT,
-    api_key TEXT,  -- Encrypted
-    model_name TEXT NOT NULL,
-    embedding_dimensions INTEGER NOT NULL,
-    is_default BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(organization_id, setup_key)
-);
-
--- ═══════════════════════════════════════════════════════════════════════════
--- CONTENT OBJECTS (new - stores imported content before chunking)
--- ═══════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- CONTENT OBJECTS (new — stores imported content before chunking)
+-- ═══════════════════════════════════════════════════════════════
 CREATE TABLE content_objects (
-    id TEXT PRIMARY KEY,  -- "co_" + nanoid
+    id TEXT PRIMARY KEY,                    -- "co_" + nanoid
     organization_id INTEGER NOT NULL REFERENCES organizations(id),
     owner_id TEXT NOT NULL,
-    
+
     -- Source information
-    source_type TEXT NOT NULL,  -- "file", "url", "youtube", etc.
+    source_type TEXT NOT NULL,              -- "file", "url", "youtube"
     original_filename TEXT,
-    content_type TEXT,  -- MIME type
-    file_path TEXT,  -- Local storage path
+    content_type TEXT,                      -- MIME type
+    file_path TEXT,
     file_size INTEGER,
-    file_hash TEXT,  -- SHA256 for deduplication
-    source_url TEXT,  -- Original URL if applicable
-    
+    file_hash TEXT,                         -- SHA256 for deduplication
+    source_url TEXT,
+
     -- Extracted content
     extracted_text TEXT,
-    text_format TEXT DEFAULT 'markdown',  -- "markdown", "plain", "html"
+    text_format TEXT DEFAULT 'markdown',
     text_hash TEXT,
     extraction_plugin TEXT,
     extraction_params JSON,
     html_preview_path TEXT,
-    
+
     -- Metadata
     title TEXT,
     metadata JSON,
-    
+
     -- Status
-    status TEXT DEFAULT 'uploaded',  -- uploaded, extracting, ready, archived, failed
+    status TEXT DEFAULT 'uploaded',         -- uploaded/extracting/ready/archived/failed
     error_message TEXT,
     error_details JSON,
-    
+
     -- Visibility
-    visibility TEXT DEFAULT 'private',  -- private, organization, public
-    
+    visibility TEXT DEFAULT 'private',      -- private/organization
+
     -- Timestamps
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1486,130 +920,57 @@ CREATE TABLE content_objects (
 CREATE INDEX idx_content_objects_org ON content_objects(organization_id);
 CREATE INDEX idx_content_objects_owner ON content_objects(owner_id);
 CREATE INDEX idx_content_objects_hash ON content_objects(organization_id, file_hash);
-CREATE INDEX idx_content_objects_status ON content_objects(status);
 
--- ═══════════════════════════════════════════════════════════════════════════
--- KNOWLEDGE BASES (enhanced collections)
--- ═══════════════════════════════════════════════════════════════════════════
-CREATE TABLE knowledge_bases (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    organization_id INTEGER NOT NULL REFERENCES organizations(id),
-    owner_id TEXT NOT NULL,
-    
-    -- Embeddings configuration (reference to setup)
-    embeddings_setup_id INTEGER NOT NULL REFERENCES embeddings_setups(id),
-    embedding_dimensions INTEGER NOT NULL,  -- Locked at creation
-    
-    -- Ingestion configuration (LOCKED at creation)
-    ingestion_strategy TEXT NOT NULL DEFAULT 'simple_ingest',
-    ingestion_params JSON,  -- Strategy-specific defaults
-    
-    -- ChromaDB reference
-    chromadb_collection_name TEXT UNIQUE,
-    
-    -- Stats (cached, updated periodically)
-    content_count INTEGER DEFAULT 0,
-    chunk_count INTEGER DEFAULT 0,
-    
-    -- Visibility
-    visibility TEXT DEFAULT 'private',
-    
-    -- Timestamps
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
-    UNIQUE(organization_id, owner_id, name)
-);
 
-CREATE INDEX idx_kb_org ON knowledge_bases(organization_id);
-CREATE INDEX idx_kb_owner ON knowledge_bases(owner_id);
-CREATE INDEX idx_kb_setup ON knowledge_bases(embeddings_setup_id);
-
--- ═══════════════════════════════════════════════════════════════════════════
--- KB-CONTENT LINKS (many-to-many between KBs and Content Objects)
--- ═══════════════════════════════════════════════════════════════════════════
-CREATE TABLE kb_content_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kb_id INTEGER NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
-    content_object_id TEXT NOT NULL REFERENCES content_objects(id),
-    
-    -- Ingestion info for this KB
-    chunk_count INTEGER DEFAULT 0,
-    ingestion_status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
-    ingestion_error TEXT,
-    
-    -- Timestamps
-    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    ingested_at DATETIME,
-    
-    UNIQUE(kb_id, content_object_id)
-);
-
-CREATE INDEX idx_kb_content_kb ON kb_content_links(kb_id);
-CREATE INDEX idx_kb_content_content ON kb_content_links(content_object_id);
-
--- ═══════════════════════════════════════════════════════════════════════════
--- CHUNKS (metadata only - actual vectors in ChromaDB)
--- ═══════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════
+-- CHUNKS (metadata — actual vectors in backend via KnowledgeStorePlugin)
+-- ═══════════════════════════════════════════════════════════════
 CREATE TABLE chunks (
-    id TEXT PRIMARY KEY,  -- "ch_" + nanoid for child, "pc_" + nanoid for parent
-    kb_id INTEGER NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,                    -- "ch_" / "pc_" / "cc_" + nanoid
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     content_object_id TEXT NOT NULL REFERENCES content_objects(id),
-    
-    -- Chunk info
-    chunk_type TEXT DEFAULT 'standard',  -- standard, parent, child
+
+    chunk_type TEXT DEFAULT 'standard',     -- standard/parent/child
     chunk_index INTEGER,
     parent_chunk_id TEXT REFERENCES chunks(id),
-    
-    -- Text (duplicated from ChromaDB for permalinks)
-    text TEXT NOT NULL,
-    text_start_char INTEGER,  -- Position in original text
+
+    -- Chunk text is NOT duplicated here. It is reconstructed from
+    -- content_objects.extracted_text using text_start_char/text_end_char offsets.
+    -- The backend (via KnowledgeStorePlugin) stores the actual chunk text
+    -- alongside embeddings.
+    text_start_char INTEGER,
     text_end_char INTEGER,
-    
-    -- Metadata
+
     metadata JSON,
-    
-    -- Timestamps
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_chunks_kb ON chunks(kb_id);
+CREATE INDEX idx_chunks_collection ON chunks(collection_id);
 CREATE INDEX idx_chunks_content ON chunks(content_object_id);
 CREATE INDEX idx_chunks_parent ON chunks(parent_chunk_id);
-CREATE INDEX idx_chunks_type ON chunks(kb_id, chunk_type);
 
--- ═══════════════════════════════════════════════════════════════════════════
--- INGESTION JOBS (for tracking async processing)
--- ═══════════════════════════════════════════════════════════════════════════
-CREATE TABLE ingestion_jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kb_id INTEGER NOT NULL REFERENCES knowledge_bases(id),
-    content_object_id TEXT NOT NULL REFERENCES content_objects(id),
-    
-    -- Job status
-    status TEXT DEFAULT 'queued',  -- queued, processing, completed, failed, cancelled
-    progress_current INTEGER DEFAULT 0,
-    progress_total INTEGER DEFAULT 0,
-    progress_message TEXT,
-    
-    -- Error handling
-    error_message TEXT,
-    error_details JSON,
-    retry_count INTEGER DEFAULT 0,
-    
-    -- Timing
-    queued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    started_at DATETIME,
-    completed_at DATETIME,
-    
-    UNIQUE(kb_id, content_object_id)
-);
 
-CREATE INDEX idx_jobs_status ON ingestion_jobs(status);
-CREATE INDEX idx_jobs_kb ON ingestion_jobs(kb_id);
+-- ═══════════════════════════════════════════════════════════════
+-- MODIFICATIONS TO EXISTING TABLES
+-- ═══════════════════════════════════════════════════════════════
+
+-- Add ingestion_strategy to collections (LOCKED at creation)
+ALTER TABLE collections ADD COLUMN ingestion_strategy TEXT DEFAULT 'simple_ingest';
+ALTER TABLE collections ADD COLUMN ingestion_params JSON;
+
+-- Add content_object_id to file_registry (serves as BOTH ingestion job tracker
+-- AND KB-content relationship, replacing the need for a separate kb_content_links table)
+ALTER TABLE file_registry ADD COLUMN content_object_id TEXT REFERENCES content_objects(id);
+CREATE INDEX idx_file_registry_content ON file_registry(content_object_id);
 ```
+
+### Existing Tables (Unchanged from #203/#229)
+
+- `organizations` — already exists
+- `knowledge_store_setups` — already exists with `plugin_type` + `plugin_config`
+- `collections` — already has `knowledge_store_setup_id`, `organization_id`, `embedding_dimensions`
+- `file_registry` — enhanced with `content_object_id` FK; serves as both ingestion job tracker and KB-content link (replaces the need for a separate `kb_content_links` table)
 
 ---
 
@@ -1618,19 +979,15 @@ CREATE INDEX idx_jobs_kb ON ingestion_jobs(kb_id);
 ### Content Object Endpoints
 
 ```http
-# ═══════════════════════════════════════════════════════════════
-# CONTENT OBJECT MANAGEMENT
-# ═══════════════════════════════════════════════════════════════
-
 # Upload and import a file
 POST /content/upload
 Authorization: Bearer {token}
 Content-Type: multipart/form-data
 
 file: <binary>
-import_plugin: "markitdown_import"  # Optional, auto-detected if omitted
-import_params: {"ocr_enabled": true}  # Optional
-visibility: "organization"  # Optional, default "private"
+import_plugin: "markitdown_import"     # Optional, auto-detected
+import_params: {"ocr_enabled": true}   # Optional
+visibility: "organization"             # Optional, default "private"
 
 Response 202:
 {
@@ -1639,69 +996,43 @@ Response 202:
   "message": "Content uploaded, extraction in progress"
 }
 
+
 # Import from URL
 POST /content/import-url
-Authorization: Bearer {token}
-Content-Type: application/json
-
 {
   "url": "https://example.com/article",
   "import_plugin": "url_import",
-  "import_params": {"extract_main_content": true},
   "visibility": "organization"
 }
 
-# List content objects
+
+# List content objects (for content library)
 GET /content?visibility=organization&status=ready&limit=50
-Authorization: Bearer {token}
 
 # Get content object details
 GET /content/{content_id}
-Authorization: Bearer {token}
-
-# Get content preview (HTML)
-GET /content/{content_id}/preview
-Authorization: Bearer {token}
-
-# Download source file
-GET /content/{content_id}/source
-Authorization: Bearer {token}
-
-# Get extracted text
-GET /content/{content_id}/text
-Authorization: Bearer {token}
 
 # Archive content
 POST /content/{content_id}/archive
-Authorization: Bearer {token}
 
-# Delete content
+# Delete content (with impact check)
 DELETE /content/{content_id}?force=true
-Authorization: Bearer {token}
 ```
 
-### Knowledge Base Endpoints
+### Knowledge Base Endpoints (Modified)
 
 ```http
-# ═══════════════════════════════════════════════════════════════
-# KNOWLEDGE BASE MANAGEMENT
-# ═══════════════════════════════════════════════════════════════
-
-# Create KB (with strategy selection)
-POST /kb
-Authorization: Bearer {token}
-Content-Type: application/json
-
+# Create KB with strategy selection
+POST /collections
 {
   "name": "Course Materials",
-  "description": "Materials for AI 101",
-  "embeddings_setup_key": "openai-prod",
+  "organization_external_id": "org_123",
+  "knowledge_store_setup_key": "chromadb-openai",
   "ingestion_strategy": "hierarchical_ingest",
   "ingestion_params": {
     "parent_chunk_size": 4000,
     "child_chunk_size": 500
-  },
-  "visibility": "organization"
+  }
 }
 
 Response 201:
@@ -1710,40 +1041,32 @@ Response 201:
   "name": "Course Materials",
   "ingestion_strategy": "hierarchical_ingest",
   "paired_query_plugin": "parent_child_query",
-  "embedding_dimensions": 1536,
   "message": "Strategy locked. Cannot be changed after creation."
 }
 
-# Add content to KB
-POST /kb/{kb_id}/content
-Authorization: Bearer {token}
-Content-Type: application/json
 
+# Add content to KB (by content object reference)
+POST /collections/{id}/content
 {
   "content_object_id": "co_7f3a8b2c",
-  "ingestion_params": {}  # Optional override
+  "ingestion_params": {}
 }
 
 Response 202:
 {
   "job_id": 101,
-  "status": "queued",
-  "message": "Content queued for ingestion"
+  "status": "queued"
 }
 
-# List content in KB
-GET /kb/{kb_id}/content
-Authorization: Bearer {token}
 
-# Remove content from KB
-DELETE /kb/{kb_id}/content/{content_id}
-Authorization: Bearer {token}
+# List content in KB
+GET /collections/{id}/content
+
+# Remove content from KB (Level 1 deletion)
+DELETE /collections/{id}/content/{content_id}
 
 # Query KB (auto-selects query plugin)
-POST /kb/{kb_id}/query
-Authorization: Bearer {token}
-Content-Type: application/json
-
+POST /collections/{id}/query
 {
   "query_text": "What are the main steps?",
   "top_k": 5,
@@ -1758,25 +1081,71 @@ Response:
 }
 ```
 
-### Permalink Endpoints
+### KB-Server: Chunk & Content Data Endpoints (Bearer-Token Auth)
 
 ```http
-# ═══════════════════════════════════════════════════════════════
-# PERMALINKS (public-ish, may require auth based on visibility)
-# ═══════════════════════════════════════════════════════════════
-
-# Content landing page
-GET /content/{content_id}
-Accept: text/html  # Returns rich HTML page
-Accept: application/json  # Returns JSON
-
-# Chunk permalink
+# Get chunk metadata (used by LAMB to resolve permalinks)
 GET /chunks/{chunk_id}
-Accept: text/html  # Returns chunk-in-context view
-Accept: application/json  # Returns chunk data
+Authorization: Bearer {kb_api_key}
 
-# Chunk with context
-GET /chunks/{chunk_id}/context?lines=10
+Response:
+{
+  "id": "ch_abc123",
+  "collection_id": 42,
+  "content_object_id": "co_xyz789",
+  "chunk_type": "standard",
+  "chunk_index": 3,
+  "text_start_char": 4200,
+  "text_end_char": 5200,
+  "metadata": {...}
+}
+
+
+# Get content object with text (used by LAMB for offset resolution)
+GET /content/{content_id}
+Authorization: Bearer {kb_api_key}
+
+Response:
+{
+  "id": "co_xyz789",
+  "title": "Research Paper",
+  "extracted_text": "Full document text...",
+  "source": {...},
+  "metadata": {...}
+}
+```
+
+### LAMB: Permalink Endpoints (Signed URL Generation & Resolution)
+
+```http
+# Generate signed URL (authenticated LAMB user)
+POST /creator/permalinks/generate
+Authorization: Bearer {user_token}
+{
+  "resource_type": "chunk",
+  "resource_id": "ch_abc123",
+  "expires_in_hours": 168
+}
+
+Response:
+{
+  "url": "https://lamb.example.com/share/chunk/ch_abc123?sig=eyJ...",
+  "expires_at": "2026-03-22T14:00:00Z"
+}
+
+
+# Resolve signed URL (NO auth needed — public endpoint)
+GET /share/chunk/ch_abc123?sig=eyJ...
+→ Returns rendered HTML page with chunk in context
+
+GET /share/content/co_xyz789?sig=eyJ...
+→ Returns rendered HTML page with content overview
+
+# If JWT is expired:
+→ 410 Gone: "This link has expired."
+
+# If JWT is invalid:
+→ 401 Unauthorized: "Invalid link."
 ```
 
 ---
@@ -1785,170 +1154,149 @@ GET /chunks/{chunk_id}/context?lines=10
 
 ### Phase 1: Schema Evolution (Non-Breaking)
 
-1. Create new tables alongside existing ones
-2. Keep `file_registry` and `collections` working
-3. Add backward-compatible columns
+1. Create `content_objects` and `chunks` tables alongside existing ones; add `content_object_id` FK to `file_registry`
+2. Add `ingestion_strategy` column to `collections` (default `'simple_ingest'`)
+3. Keep `file_registry` working — it continues to serve as the job tracker
+4. All existing functionality preserved
 
-### Phase 2: Dual-Path Support
+### Phase 2: Format Import Plugin Extraction
 
-```python
-# Support both old and new paths during migration
-async def ingest_file(kb_id: int, file: UploadFile, plugin_name: str):
-    kb = await get_knowledge_base(kb_id)
-    
-    if kb.uses_new_architecture:
-        # New path: Content Object → Ingestion Strategy
-        content = await create_or_get_content_object(file)
-        return await ingest_content_to_kb(kb, content)
-    else:
-        # Old path: Direct ingestion (existing behavior)
-        return await legacy_ingest_file(kb, file, plugin_name)
-```
+1. Implement `FormatImportPlugin` base class
+2. Extract format-conversion code from existing `IngestPlugin` implementations
+3. Support dual paths: old (direct ingest) and new (Content Object → strategy)
 
-### Phase 3: Data Migration
+### Phase 3: Ingestion Strategy Plugins
+
+1. Implement `IngestionStrategyPlugin` base class
+2. Create `simple_ingest` strategy (equivalent to current chunking)
+3. Create `hierarchical_ingest` strategy (from existing parent-child plugin)
+4. Wire up automatic query plugin selection
+
+### Phase 4: Content Library & Sharing
+
+1. Implement Content Object CRUD endpoints
+2. Implement content library UI (browse, add to KB)
+3. Implement deletion confirmation with impact analysis
+
+### Phase 5: Permalinks
+
+1. Create permalink resolution endpoints
+2. Add chunk-in-context view
+3. Integrate permalinks into RAG response augmentation
+
+### Phase 6: Data Migration
 
 ```python
 async def migrate_kb_to_new_architecture(kb_id: int):
     """Migrate an existing KB to the new architecture."""
     kb = await get_knowledge_base(kb_id)
-    
-    # 1. Get all files from file_registry
-    files = await get_files_for_collection(kb.chromadb_collection_name)
-    
-    for file in files:
-        # 2. Create Content Object for each file
+
+    for file in await get_files_for_collection(kb.id):
+        # Create Content Object from existing file_registry
         content = await create_content_object_from_file_registry(file)
-        
-        # 3. Create KB-Content link
-        await create_kb_content_link(kb_id, content.id)
-        
-        # 4. Update chunk metadata with content_object_id
-        await update_chunks_with_content_id(kb_id, file.id, content.id)
-    
-    # 5. Mark KB as migrated
-    kb.uses_new_architecture = True
+        # Link content to KB via file_registry
+        await update_file_registry_content_link(file.id, content.id)
+        # Update chunk metadata
+        await update_chunks_with_content_id(kb.id, file.id, content.id)
+
+    kb.ingestion_strategy = 'simple_ingest'  # Current behavior
     await kb.save()
 ```
-
-### Phase 4: Deprecation
-
-1. New KBs always use new architecture
-2. Old KBs can be migrated on-demand or in batch
-3. Eventually remove legacy code paths
 
 ---
 
 ## 14. Trade-offs & Alternatives Considered
 
-### Alternative A: Full Deduplication (Shared Chunks)
+### Content Sharing Model
 
-**Approach:** Store chunks once, have KBs reference them.
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| **Full deduplication** (share chunks) | Max storage savings | Can't use different strategies per KB | Rejected |
+| **No sharing** (current model) | Simple | File duplication, no content library | Rejected |
+| **Hybrid** (share sources, chunk per-KB) | Flexibility + dedup | More complex schema | **Accepted** |
 
-```
-Content Object
-    └── Chunks (stored once)
-            └── Referenced by multiple KBs
-```
+### Chunk Text Storage
 
-**Pros:**
-- Maximum storage efficiency
-- Single embedding per chunk
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| Duplicate text in SQLite `chunks` table | Fast permalink resolution | 2x text storage, data drift risk | Rejected |
+| On-demand from backend only | No duplication | Requires backend call, slow | Rejected |
+| **Character offsets** into `content_objects.extracted_text` | No duplication, fast resolution (~5ms), enables context window | Requires content object to exist | **Accepted** |
 
-**Cons:**
-- Different KBs can't use different chunking strategies
-- Deletion is extremely complex
-- Embedding dimension lock-in across all KBs using the content
+### Permalink Auth & Ownership
 
-**Decision:** Rejected. Strategy flexibility is more important than storage savings.
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| KB-server generates signed URLs | Single service handles everything | Breaks KB-server's simple auth model; KB-server would need to know about users | Rejected |
+| Public KB-server endpoints (no auth) | Simple | Exposes all content without protection | Rejected |
+| **LAMB generates signed URLs, KB-server stays bearer-only** | Clean separation; KB-server unchanged; LAMB owns user identity and sharing | Two-hop for external access (LAMB proxies) | **Accepted** |
 
----
+The two-hop cost is negligible (LAMB and KB-server are co-located) and the architectural clarity is worth it: the KB-server never has to know about individual users, JWTs, or link expiration.
 
-### Alternative B: No Sharing (Current Model, Enhanced)
+### Strategy Mutability
 
-**Approach:** Each KB has completely independent copies.
-
-**Pros:**
-- Simple deletion
-- Complete independence
-
-**Cons:**
-- Storage duplication
-- No way to trace "this PDF is used in 5 KBs"
-- Can't offer content library/reuse
-
-**Decision:** Rejected. Content reuse is a valuable feature for educational institutions.
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| Mutable (can change strategy) | Flexibility | Requires re-chunking + re-embedding all content | Rejected |
+| Locked at creation | Consistency guaranteed | Must create new KB to try different strategy | **Accepted** |
 
 ---
 
-### Alternative C: Hybrid (Proposed)
+## 15. Open Questions & Recommendations
 
-**Approach:** Share Content Objects, generate chunks per-KB.
+### Q1: Deletion Notifications — Should users be notified when shared content they use gets deleted?
 
-**Pros:**
-- Source deduplication (files stored once)
-- Strategy flexibility (each KB chunks differently)
-- Clear deletion semantics
-- Content library/discovery
+**Recommendation: Yes, via in-app notification (not email).**
 
-**Cons:**
-- More complex than alternatives
-- Chunks are duplicated (but text, not files)
-- Need to track Content-KB relationships
+Rationale: In an educational context, a professor removing shared course material could break a colleague's knowledge base without warning. Notion's model (synced block deletion notifies viewers) is the right UX pattern. Implementation: when Level 3 deletion affects other users' KBs, create a notification record visible in the LAMB dashboard. Email is unnecessary overhead for a same-organization action.
 
-**Decision:** Accepted. Best balance of features and complexity.
+### Q2: Default Visibility — Should uploaded content default to `private` or `organization`?
 
----
+**Recommendation: Default to `private`, with a prominent toggle.**
 
-### Alternative for Permalinks: External URL Generation
+Rationale: Privacy-first is a core LAMB principle. Users should explicitly opt into sharing. Google Drive defaults to private for the same reason. However, the upload UI should prominently feature a "Share with organization" toggle — not bury it in settings — to encourage content reuse.
 
-**Approach:** Generate permalinks pointing to original sources.
+### Q3: Strategy Recommendations — Should we auto-suggest strategies based on content type?
 
-**Pros:**
-- No need to host content
+**Recommendation: Yes, as non-blocking suggestions.**
 
-**Cons:**
-- External sources may disappear
-- No control over presentation
-- Can't highlight specific chunks
+Rationale: Most educators won't understand the difference between chunking strategies. Show a recommendation badge: "Structured document detected — hierarchical chunking recommended" for PDFs with clear heading structure, "Short document — simple chunking recommended" for < 5 pages. Never auto-select; always let the user confirm.
 
-**Decision:** Rejected. Self-hosted permalinks provide better reliability and UX.
+Implementation approach: the Format Import Plugin can return a `recommended_strategy` field in its `ImportResult.metadata` based on heuristics (heading density, document length, content type).
 
----
+### Q4: Chunk Text Storage — How should chunk text be stored for permalink resolution?
 
-## 15. Open Questions
+**Decision: Use character offsets into `content_objects.extracted_text`.**
 
-### Technical Questions
+Rationale: Rather than duplicating chunk text in the SQLite `chunks` table (which doubles text storage and risks data drift), we store `text_start_char` and `text_end_char` offsets. Permalink resolution reconstructs the chunk text by slicing `content_objects.extracted_text[start:end]`, which is fast (~5ms) and guarantees consistency. This approach also enables context windows — surrounding text can be sliced from the same source with a configurable margin. The backend (via KnowledgeStorePlugin) stores the actual chunk text alongside embeddings for retrieval purposes.
 
-1. **Chunk Text Storage:** Should chunk text be duplicated in SQLite for permalinks, or fetched from ChromaDB on demand?
-   - *Proposal:* Store in SQLite for fast permalink resolution
+### Q5: Cross-Organization Content — Should content ever be shareable across organizations?
 
-2. **Embedding Dimension Validation:** When adding content to a KB, should we re-verify dimensions match?
-   - *Proposal:* Yes, validate on every add operation
+**Recommendation: Not in v2.1. Keep organization as a hard boundary.**
 
-3. **Cross-Organization Content:** Should content ever be shareable across organizations?
-   - *Proposal:* Not in v1. Keep organization as hard boundary.
+Rationale: Cross-org sharing introduces complex permission models (who can modify? who pays for embeddings?). The organization boundary is a clean security model. If needed in the future, implement it as a "content marketplace" — a separate mechanism where org admins explicitly publish content to a shared catalog.
 
-4. **Chunk ID Format:** How to generate stable, unique chunk IDs?
-   - *Proposal:* `{type}_{nanoid}` e.g., `ch_7f3a8b2c`, `pc_9d2e4f1a`
+### Q6: Content Ownership Transfer — Can content ownership be transferred?
 
-### Policy Questions
+**Recommendation: Yes, within the same organization, as an admin action.**
 
-5. **Deletion Notification:** Should users be notified when shared content they use is deleted?
-   - *Needs team decision*
+Rationale: When a faculty member leaves, their content should be transferable to a colleague. Implement as an admin-only API endpoint, not a self-service feature. Log the transfer for audit.
 
-6. **Content Ownership Transfer:** Can content ownership be transferred?
-   - *Proposal:* Yes, between users in same organization (admin action)
+### Q7: Archival Period — How long should archived content be kept before permanent deletion?
 
-7. **Archival Period:** How long should archived content be kept before permanent deletion?
-   - *Proposal:* 30 days, configurable per organization
+**Recommendation: 30 days, configurable per organization.**
 
-### UX Questions
+Rationale: 30 days matches Google Cloud's soft-delete default and is long enough for accidental deletions to be caught. Make it configurable at the organization level for institutions with specific retention policies.
 
-8. **Default Visibility:** Should new content default to `private` or `organization`?
-   - *Proposal:* `private` for safety, with easy toggle to `organization`
+### Q8: Where should signed URL logic live — KB-server or LAMB?
 
-9. **Strategy Recommendation:** Should we recommend strategies based on content type?
-   - *Proposal:* Yes. E.g., "This looks like a structured document. Hierarchical strategy recommended."
+**Decision: LAMB generates and verifies signed URLs. KB-server stays bearer-token only.**
+
+Rationale: The KB-server's auth model is simple by design — if you have the API key, you're trusted. It doesn't know about individual users, sessions, or link expiration. Adding signed URL logic to the KB-server would violate this principle and introduce user-awareness where none is needed.
+
+LAMB already handles all user-facing auth, knows about organizations, roles, and policies. Signed URLs are a user-facing sharing feature — they belong in the user-facing layer. LAMB generates the JWT (signed with its own secret), serves the public `/share/` endpoint, verifies the JWT on access, and proxies to the KB-server using the normal API key. The two-hop latency is negligible since both services are co-located.
+
+This keeps the KB-server focused on knowledge base operations and makes it trivially replaceable or scalable without affecting the sharing system.
 
 ---
 
@@ -1960,33 +1308,56 @@ Content Object
 | **Chunk** | A piece of text generated by an ingestion strategy |
 | **Parent Chunk** | In hierarchical strategy, a large context chunk |
 | **Child Chunk** | In hierarchical strategy, a small searchable chunk |
-| **Ingestion Strategy** | Algorithm for splitting content into chunks |
-| **Query Plugin** | Algorithm for retrieving chunks, paired with a strategy |
-| **Permalink** | Stable URL that resolves to content or a chunk |
-| **KB-Content Link** | Relationship between a Knowledge Base and a Content Object |
+| **Format Import Plugin** | Converts raw files to Content Objects (Stage 1) |
+| **Ingestion Strategy Plugin** | Splits Content Object text into chunks (Stage 2) |
+| **Knowledge Store Plugin** | Stores/retrieves chunks in a backend (Stage 3, already implemented) |
+| **Query Plugin** | Retrieves chunks using strategy-specific logic |
+| **Permalink / Signed URL** | Time-limited JWT-based URL generated by LAMB that grants access to a chunk or content object without requiring login. LAMB verifies the JWT and proxies to KB-server. Expires after a configurable period (default: 7 days) |
+| **Content-KB Reference** | Relationship between a KB and a Content Object, tracked via `file_registry.content_object_id` |
+| **KnowledgeStoreSetup** | Organization-level config for a retrieval backend |
 
 ---
 
-## Appendix B: Migration Checklist
+## Appendix B: Implementation Checklist
 
-- [ ] Create new database tables
-- [ ] Implement Content Object CRUD
-- [ ] Implement Format Import plugin interface
-- [ ] Migrate existing ingestion plugins to new interface
-- [ ] Implement Ingestion Strategy plugin interface
-- [ ] Create `simple_ingest` strategy (equivalent to current)
-- [ ] Create `hierarchical_ingest` strategy
-- [ ] Implement query plugin auto-selection
-- [ ] Create permalink endpoints
-- [ ] Build content library UI
-- [ ] Build deletion confirmation UI
-- [ ] Create migration scripts for existing KBs
-- [ ] Update LAMB integration layer
-- [ ] Documentation and testing
+### Already Done (Issues #203 + #229)
+- [x] Organization model and CRUD
+- [x] KnowledgeStoreSetup with plugin_type + plugin_config
+- [x] KnowledgeStorePlugin interface (11 methods)
+- [x] ChromaDB plugin implementation
+- [x] resolve_plugin_for_collection() dual-mode helper
+- [x] Services fully decoupled from ChromaDB
+- [x] Query plugins receive ks_plugin + backend_collection
+- [x] Plugin discovery and validation endpoints
+- [x] LAMB proxy endpoints for setup management
+- [x] Frontend setup management UI
+- [x] E2E and Playwright tests passing
+
+### To Do (This Proposal)
+- [ ] Create content_objects and chunks tables; add content_object_id FK to file_registry
+- [ ] Add ingestion_strategy to collections
+- [ ] Implement FormatImportPlugin base class and registry
+- [ ] Extract format code from existing ingest plugins
+- [ ] Implement IngestionStrategyPlugin base class
+- [ ] Create simple_ingest strategy
+- [ ] Create hierarchical_ingest strategy
+- [ ] Implement automatic query plugin selection
+- [ ] Content Object CRUD endpoints
+- [ ] Content deduplication by file hash
+- [ ] file_registry content_object_id link management
+- [ ] KB-server: chunk and content data endpoints (`GET /chunks/{id}`, `GET /content/{id}`)
+- [ ] LAMB: signed URL generation endpoint (`POST /creator/permalinks/generate`)
+- [ ] LAMB: public share endpoint (`GET /share/{type}/{id}?sig=...`)
+- [ ] LAMB: chunk context HTML renderer
+- [ ] LAMB: auto-generate signed URLs in RAG response augmentation
+- [ ] Content library browse UI
+- [ ] Deletion confirmation with impact analysis
+- [ ] Migration scripts for existing KBs
 
 ---
 
-**Document Version:** 2.0 Draft  
-**Last Updated:** February 3, 2026  
-**Status:** Proposal for Review  
+**Document Version:** 2.1
+**Last Updated:** March 15, 2026
+**Status:** Proposal for Review
+**Prerequisites:** Issues #203 and #229 (completed)
 **Next Steps:** Team review, address open questions, prioritize implementation phases
