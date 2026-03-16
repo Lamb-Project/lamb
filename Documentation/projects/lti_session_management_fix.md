@@ -1,6 +1,6 @@
 # LTI Session Management Fix
 
-**Status:** Implementation  
+**Status:** Design  
 **Created:** March 4, 2026  
 **Related:** `lti_router.py`, `lti_activity_manager.py`, `lamb/auth.py`
 
@@ -321,77 +321,7 @@ This is more accurate than email string matching and works even if the owner's e
 
 ---
 
-## 7. Pre-Existing Bug: `is_owner` Broken for LTI Creator Owners
-
-### 7.1 The Bug
-
-When an activity is configured, `owner_email` is stored as the **Creator user's LAMB email**:
-
-```python
-# database_manager.py — create_lti_activity()
-# owner_email = configured_by_email = creator_user["user_email"]
-# For lti_creator users: "lti_creator_physics_jsmith@lamb-lti.local"
-```
-
-At launch time, the owner check compares the **LMS email** with this stored email:
-
-```python
-# lti_router.py line 155
-is_owner = (lms_email and lms_email == activity.get('owner_email'))
-# lms_email = "john.smith@university.edu" (from lis_person_contact_email_primary)
-# owner_email = "lti_creator_physics_jsmith@lamb-lti.local"
-# → NEVER matches for lti_creator owners
-```
-
-**Result:** `lti_creator` owners (the primary use case in LTI-driven Moodle deployments) can never see the "Manage Assistants" button on the dashboard. The owner check only works for regular password-based Creator users whose LAMB email happens to be their institutional email.
-
-### 7.2 How This Fix Resolves It
-
-The new dynamic owner check uses `identify_instructor()` to resolve the LMS identity back to the Creator user, then compares Creator emails:
-
-```python
-creator_users = manager.identify_instructor(lms_user_id=..., lms_email=...)
-is_owner = any(cu['user_email'] == activity['owner_email'] for cu in (creator_users or []))
-```
-
-This works because `identify_instructor()` searches by `lti_user_id` match (strategy 2 in `get_creator_users_by_lms_identity`), which correctly resolves `lti_creator` users regardless of email mismatch.
-
----
-
-## 8. Backward Compatibility: Existing Activities
-
-### 8.1 No Impact
-
-| Aspect | Detail |
-|--------|--------|
-| **Student OWI accounts** | Untouched. `handle_student_launch()` does get-or-create — existing OWI users are reused. |
-| **Activity configuration** | `lti_activities` table unchanged. Existing resource_link_id → activity mappings remain. |
-| **OWI groups and model access** | Untouched. Group membership and model `access_control` are not modified. |
-| **Creator LTI flow** | No changes (`lti_creator_router.py` already uses LAMB JWTs). |
-| **Legacy Student LTI flow** | No changes (`lti_users_router.py` uses OWI tokens for OWI redirect). |
-
-### 8.2 One-Time Disruption
-
-Any instructor with an active in-memory dashboard token at the time of deployment will see "Session expired" when they next interact with the dashboard (server restart clears the `_tokens` dict). This is the same disruption that already occurs on every server restart — it just happens one final time. After re-clicking the LTI link, they get a LAMB JWT that lasts 7 days.
-
-### 8.3 Migrations
-
-| Migration | Effect on existing data |
-|-----------|----------------------|
-| `is_instructor` column on `lti_activity_users` | `DEFAULT 0` — all existing rows stay as students. Instructors who previously used "Enter Chat" are marked as students but get corrected to `is_instructor=1` on their next LTI launch. |
-| Owner check logic change | **Fixes** the pre-existing bug for `lti_creator` owners (§7). No data migration needed. |
-
-### 8.4 What Instructors Experience After Deployment
-
-1. Instructor clicks LTI link in Moodle (as before)
-2. New code creates their activity-specific OWI user upfront (was deferred to "Enter Chat")
-3. Instructor receives a LAMB JWT → redirected to dashboard
-4. Dashboard works for 7 days without "Session expired"
-5. "Enter Chat" obtains a fresh OWI token (OWI user already exists from step 2)
-
----
-
-## 9. Migration Notes
+## 7. Migration Notes
 
 - The in-memory token store (`_tokens` dict) is kept for the student consent flow only
 - Existing LTI activities are unaffected — no schema migration for `lti_activities`
@@ -401,9 +331,9 @@ Any instructor with an active in-memory dashboard token at the time of deploymen
 
 ---
 
-## 10. Security Considerations
+## 8. Security Considerations
 
-### 10.1 JWT in URL
+### 8.1 JWT in URL
 
 LAMB JWTs appear in the URL query string (`?token=...`). This is the same pattern the Creator LTI already uses (`/assistants?token={jwt}`). Risks and mitigations:
 
@@ -411,17 +341,17 @@ LAMB JWTs appear in the URL query string (`?token=...`). This is the same patter
 - **Referrer leakage:** If the dashboard page links to external resources, the `Referer` header could leak the token. Mitigated by adding `Referrer-Policy: no-referrer` to dashboard responses.
 - **Server logs:** URLs (including tokens) may appear in access logs. Same as existing Creator LTI behavior. Operational concern, not a code change.
 
-### 10.2 Token Scope
+### 8.2 Token Scope
 
 The LAMB JWT for dashboard sessions includes `lti_type: "dashboard"`. All LTI dashboard endpoints check this claim, preventing a dashboard token from being used to access the Creator Interface or other LAMB APIs that expect a standard Creator user token.
 
-### 10.3 Non-Creator Instructors
+### 8.3 Non-Creator Instructors
 
 Instructors without Creator accounts receive a LAMB JWT with `sub` set to their activity-specific user ID (not a Creator user ID). The `AuthContext` system (`get_auth_context()`) is NOT used for these tokens — the LTI router validates them directly via `lamb.auth.decode_token()` and checks the `lti_type` claim. This avoids any confusion with Creator Interface authentication.
 
 ---
 
-## 11. Testing Checklist
+## 9. Testing Checklist
 
 - [ ] Instructor launches configured activity → gets dashboard with LAMB JWT → session persists for hours
 - [ ] Instructor stays on dashboard > 30 minutes → no "Session expired"
@@ -440,7 +370,7 @@ Instructors without Creator accounts receive a LAMB JWT with `sub` set to their 
 
 ---
 
-## 12. Summary
+## 10. Summary
 
 The Unified LTI dashboard's "Session expired" problem exists because its session management predates LAMB's JWT infrastructure. The fix aligns the Unified LTI with the rest of LAMB by:
 

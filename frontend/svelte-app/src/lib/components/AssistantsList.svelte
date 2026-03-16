@@ -15,6 +15,7 @@
   import ConfirmationModal from './modals/ConfirmationModal.svelte';
   import { processListData } from '$lib/utils/listHelpers';
     import { formatDateForTable } from '$lib/utils/dateHelpers';
+  import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
     // State for the delete confirmation modal
     let showDeleteModal = $state(false);
@@ -290,18 +291,6 @@
     goto(targetUrl); 
   }
   
-  // --- Helper Functions ---
-  /** @param {string | undefined | null} jsonString */
-  function parseMetadata(jsonString) {
-    if (!jsonString) return {};
-    try {
-      return JSON.parse(jsonString);
-    } catch (e) {
-      console.error('Error parsing metadata:', e, jsonString);
-      return {};
-    }
-  }
-
   // --- SVG Icons (Ensure definitions are present) --- 
   const IconView = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`;
   const IconEdit = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>`;
@@ -465,7 +454,7 @@
                                         <span class="inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">{localeLoaded ? $_('assistants.status.sharedWithYou', { default: 'Shared with you' }) : 'Shared with you'}</span>
                                     {/if}
                                     {#if assistant.metadata}
-                                        {@const callback = parseMetadata(assistant.metadata)}
+                                        {@const callback = getAssistantMetadataObject(assistant)}
                                         {#if callback.capabilities?.vision}
                                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                                 <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -528,8 +517,8 @@
                         </tr>
                         
                         <!-- Configuration rows -->
-                                      {#if assistant.metadata}
-                {@const callback = parseMetadata(assistant.metadata)}
+              {#if assistant.metadata}
+                {@const callback = getAssistantMetadataObject(assistant)}
                             <!-- Single configuration row with all details -->
                             <tr class="bg-gray-50 border-b border-gray-200">
                                 <td colspan="2" class="px-6 py-2 text-sm">
