@@ -326,6 +326,7 @@ Frontend runtime configuration is now generated at container startup.
 
 - Added `backend/docker-entrypoint.py` and wired it in `backend/Dockerfile` as container `ENTRYPOINT`.
 - Entrypoint generates `${LAMB_FRONTEND_BUILD_PATH}/config.js` from env vars before starting `uvicorn`.
+- `docker-compose.next.yaml` no longer duplicates defaults for `LAMB_FRONTEND_*`; entrypoint owns defaults and compose stays simpler.
 - Supported vars:
   - `LAMB_FRONTEND_BUILD_PATH`
   - `LAMB_FRONTEND_BASE_URL`
