@@ -971,7 +971,11 @@ async def get_assistants_proxy(
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
     limit: int = Query(10, ge=1, le=100, description="Number of assistants per page"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    search: Optional[str] = Query(None, description="Search by name or description"),
+    status: Optional[str] = Query(None, description="published/unpublished"),
+    sort_by: str = Query("id", description="Sort field"),
+    sort_order: str = Query("desc", description="asc/desc")
 ):
     """
     Proxy endpoint that forwards request to get assistants for the authenticated user with pagination.
@@ -996,7 +1000,11 @@ async def get_assistants_proxy(
         assistants_list, total_count = db_manager.get_assistants_by_owner_paginated(
             owner=owner_email,
             limit=limit,
-            offset=offset
+            offset=offset,
+            search=search,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order
         )
         
         logger.info(f"[DEBUG] get_assistants_proxy: Database returned {len(assistants_list)} assistants, total count: {total_count}")
@@ -1004,7 +1012,7 @@ async def get_assistants_proxy(
         # Format the response to match expected structure
         paginated_data = {
             "assistants": assistants_list,
-            "total_count": total_count
+            "total_count": total_count,
         }
         
         logger.info(f"[DEBUG] get_assistants_proxy: Formatted response data: {paginated_data}")
