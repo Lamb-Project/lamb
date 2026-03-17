@@ -526,6 +526,95 @@ class LambDatabaseManager:
             if connection:
                 connection.close()
                 logger.debug("Database connection closed")
+    
+    def get_user_prompt_templates_filtered(
+    self,
+    owner_email,
+    organization_id,
+    limit,
+    offset,
+    search=None,
+    is_shared=None,
+    sort_by="created_at",
+    sort_order="desc"
+):
+    
+        """Get filtered prompt templates with pagination"""
+
+        connection = self.get_connection()
+        if not connection:
+            return [], 0
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+
+                # Table name (use prefix if exists)
+                templates_table = self._get_table_name('prompt_templates')
+
+                filters = ["owner_email = ?", "organization_id = ?"]
+                params = [owner_email, organization_id]
+
+                if search:
+                    filters.append("(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?))")
+                    search_param = f"%{search}%"
+                    params.extend([search_param, search_param])
+
+                if is_shared is not None:
+                    filters.append("is_shared = ?")
+                    params.append(is_shared)
+
+                where_clause = " AND ".join(filters)
+
+                allowed_sort_fields = {
+                    "name": "name",
+                    "created_at": "created_at",
+                    "updated_at": "updated_at"
+                }
+
+                if sort_by not in allowed_sort_fields:
+                    sort_by = "created_at"
+
+                sort_order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+                count_query = f"""
+                    SELECT COUNT(*)
+                    FROM {templates_table}
+                    WHERE {where_clause}
+                """
+
+                cursor.execute(count_query, params)
+                total_count = cursor.fetchone()[0]
+
+                query = f"""
+                    SELECT *
+                    FROM {templates_table}
+                    WHERE {where_clause}
+                    ORDER BY {allowed_sort_fields[sort_by]} {sort_order}
+                    LIMIT ? OFFSET ?
+                """
+
+                params_with_pagination = params + [limit, offset]
+                cursor.execute(query, params_with_pagination)
+
+                rows = cursor.fetchall()
+
+                # Column names
+                columns = [desc[0] for desc in cursor.description]
+
+                templates = []
+                for row in rows:
+                    template_dict = dict(zip(columns, row))
+                    templates.append(template_dict)
+
+                return templates, total_count
+
+        except Exception as e:
+            logger.error(f"Error fetching filtered prompt templates: {e}")
+            return [], 0
+
+        finally:
+            connection.close()
 
     def create_admin_user(self):
         """Create the system admin user in both OWI and LAMB systems"""
@@ -8279,3 +8368,76 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
+
+def get_creator_users_filtered(
+    self,
+    limit,
+    offset,
+    search=None,
+    role=None,
+    user_type=None,
+    enabled=None,
+    sort_by="created_at",
+    sort_order="desc"
+):
+    connection = self.get_connection()
+    if not connection:
+        return [], 0
+
+    try:
+        with connection:
+            cursor = connection.cursor()
+
+            filters = ["1=1"]
+            params = []
+
+            if search:
+                filters.append("(LOWER(user_name) LIKE LOWER(?) OR LOWER(user_email) LIKE LOWER(?))")
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            if role:
+                filters.append("role = ?")
+                params.append(role)
+
+            if user_type:
+                filters.append("user_type = ?")
+                params.append(user_type)
+
+            if enabled is not None:
+                filters.append("enabled = ?")
+                params.append(enabled)
+
+            where_clause = " AND ".join(filters)
+
+            # total count
+            count_query = f"""
+                SELECT COUNT(*) FROM {self.table_prefix}Creator_users
+                WHERE {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total_count = cursor.fetchone()[0]
+
+            # main query
+            query = f"""
+                SELECT * FROM {self.table_prefix}Creator_users
+                WHERE {where_clause}
+                ORDER BY {sort_by} {sort_order}
+                LIMIT ? OFFSET ?
+            """
+
+            params_with_pagination = params + [limit, offset]
+            cursor.execute(query, params_with_pagination)
+
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+            users = [dict(zip(columns, row)) for row in rows]
+
+            return users, total_count
+
+    except Exception as e:
+        logger.error(f"Error getting filtered users: {e}")
+        return [], 0
+
+    finally:
+        connection.close()
