@@ -1,6 +1,6 @@
 # LLM & RAG Evaluation Frameworks — Complete Analysis for LAMB
 
-> **Date:** 2026-03-16
+> **Date:** 2026-03-17
 > **Context:** LAMB (Learning Assistants Manager and Builder) — FastAPI backend, plugin-based RAG pipeline (`simple_rag`, `context_aware_rag`, `rubric_rag`, `single_file_rag`), multi-model LLM support, Docker Compose deployment, privacy-first, educational domain.
 > **Future features under evaluation:** Context-Aware RAG (enhanced multi-turn) and Knowledge Graphs (KG).
 
@@ -19,6 +19,7 @@
 9. [Final Ranking — All Frameworks Combined](#9-final-ranking--all-frameworks-combined)
 10. [Recommended Evaluation Stack & Implementation Plans](#10-recommended-evaluation-stack--implementation-plans)
 11. [Decision Matrix — When to Use What](#11-decision-matrix--when-to-use-what)
+12. [Execution Model — Optimized Metric-to-Model Assignment](#12-execution-model--optimized-metric-to-model-assignment)
 
 ---
 
@@ -608,3 +609,263 @@ langfuse.flush()
 | "I want zero-API-cost local evaluation" | **W&B Weave** local scorers or **RAGAS `FaithfulnesswithHHEM`** or **Vectara HHEM** |
 | "I want human-in-the-loop review" | **Langfuse** (annotation queues) |
 | "I want bias detection" | **Opik** (5 dedicated bias judges) |
+
+---
+
+## 12. Execution Model — Optimized Metric-to-Model Assignment
+
+### 12.1 Judge Model Reliability Data
+
+Based on the Judge's Verdict benchmark (Oct 2025, 54 models tested) and OpenAI benchmarks:
+
+| Model | Cohen's κ | IFEval | MMLU | Cost ($/MTok in/out) | Reliability estimate |
+|---|---|---|---|---|---|
+| **GPT-4.1** | 0.792 (Tier 1, human-like) | 87.4% | 90.2% | $2.00 / $8.00 | ~98% |
+| **GPT-4.1-mini** | Not tested (est. Tier 1) | 84.1% | 87.5% | $0.40 / $1.60 | ~93% |
+| **GPT-4o** | 0.728 (below Tier 1) | 81.0% | ~87% | $2.50 / $10.00 | ~90% |
+| **GPT-4o-mini** | 0.709 (below Tier 1) | 76.5% | 82.0% | $0.15 / $0.60 | ~85% |
+| **GPT-4.1-nano** | Not tested (est. below Tier 1) | 74.5% | 80.1% | $0.10 / $0.40 | ~75% (complex) / ~88% (classification) |
+
+*Human-human Cohen's κ baseline: 0.801. Reliability = estimated agreement with GPT-4.1 as reference judge.*
+
+**Key findings:**
+- GPT-4.1-nano is designed for "classification, autocompletion, and tagging" — NOT multi-step reasoning. AIME 2024: 29.4% vs mini's 49.6%
+- GPT-4o-mini falls below Tier 1 in judge quality but remains the industry standard for cost-effective evaluation
+- GPT-4.1-mini matches or exceeds GPT-4o on most benchmarks at 83% lower cost
+- DeepEval warns: "We CANNOT guarantee evaluations will work as expected with custom/smaller models"
+
+### 12.2 Estimated Reliability by Model × Task Complexity
+
+| Model | Complex (multi-step reasoning) | Medium (scoring/evaluation) | Simple (binary classification) |
+|---|---|---|---|
+| **GPT-4.1** | ~98% | ~99% | ~99% |
+| **GPT-4.1-mini** | ~93% | ~95% | ~97% |
+| **GPT-4o-mini** | ~85% | ~90% | ~93% |
+| **GPT-4.1-nano** | ~70% | ~80% | ~88% |
+
+### 12.3 Complete Metric Inventory with Execution Assignment
+
+#### Group L — Local (deterministic/small model, always free)
+
+| # | Metric | Framework | Execution | Local Model | Params | RAM |
+|---|---|---|---|---|---|---|
+| L1 | HHEM Hallucination | RAGAS `FaithfulnesswithHHEM` | Local model | `vectara/hallucination_evaluation_model` (FLAN-T5-base) | 250M | <600 MB |
+| L2 | BERTScore | Opik / DeepEval `Scorer` | Local model | `roberta-large` | 355M | ~1.5 GB |
+| L3 | Semantic Answer Similarity | Haystack `SASEvaluator` | Local model | `paraphrase-multilingual-mpnet-base-v2` | 278M | ~1.1 GB |
+| L4 | Embeddings (for RAGAS) | RAGAS `SemanticSimilarity` | Local model | `all-MiniLM-L6-v2` | 22.7M | ~200 MB |
+| L5 | Language Adherence | Opik | Local model | fastText lang-id | ~1M | ~2 MB |
+| L6 | BLEU | Opik `SentenceBLEU` / RAGAS `BleuScore` | Algorithmic | None | 0 | 0 |
+| L7 | ROUGE (5 variants) | Opik `ROUGE` / RAGAS `RougeScore` | Algorithmic | None | 0 | 0 |
+| L8 | METEOR | Opik | Algorithmic | None (NLTK) | 0 | 0 |
+| L9 | ChrF | Opik `ChrF` / RAGAS `ChrfScore` | Algorithmic | None | 0 | 0 |
+| L10 | Levenshtein | Opik `LevenshteinRatio` / RAGAS `NonLLMStringSimilarity` | Algorithmic | None | 0 | 0 |
+| L11 | Exact Match | DeepEval / RAGAS / Opik | Algorithmic | None | 0 | 0 |
+| L12 | Sentiment | Opik `Sentiment` / `VADERSentiment` | Lexicon | VADER lexicon | ~1M | ~1 MB |
+| L13 | Readability | Opik `Readability` | Algorithmic | None (textstat) | 0 | 0 |
+| L14 | Tone | Opik `Tone` | Algorithmic | None | 0 | 0 |
+| L15 | IsJson | Opik | Algorithmic | None | 0 | 0 |
+| L16 | Contains / RegexMatch | Opik | Algorithmic | None | 0 | 0 |
+| L17 | MRR | Haystack `DocumentMRREvaluator` | Algorithmic | None | 0 | 0 |
+| L18 | MAP | Haystack `DocumentMAPEvaluator` | Algorithmic | None | 0 | 0 |
+| L19 | NDCG | Haystack `DocumentNDCGEvaluator` | Algorithmic | None | 0 | 0 |
+| L20 | Recall | Haystack `DocumentRecallEvaluator` | Algorithmic | None | 0 | 0 |
+| L21 | JsonCorrectness | DeepEval `JsonCorrectnessMetric` | Algorithmic | None | 0 | 0 |
+| L22 | ConversationDegeneration | Opik (heuristic) | Algorithmic | None | 0 | 0 |
+| L23 | KnowledgeRetention | Opik (heuristic) | Algorithmic | None | 0 | 0 |
+| L24 | PromptInjection | Opik (heuristic) | Algorithmic | None | 0 | 0 |
+| L25 | Custom Entity F1 | DeepEval `BaseMetric` | Algorithmic | None | 0 | 0 |
+| L26 | Custom Relation F1 | RAGAS `@numeric_metric` | Algorithmic | None | 0 | 0 |
+| L27 | Consistency (CAI) | Vectara ConsistencyEvaluator | Local model | `xlm-roberta-large` (BERTScore) + ROUGE-L | 560M | ~2.5 GB |
+
+**Group L total: 27 metrics. Cost: 0 €. Peak RAM: ~3.5 GB (if running L1+L2+L3 simultaneously, or ~1.5 GB sequential).**
+
+#### Group A — API: Complex Reasoning (multi-step, claim decomposition, rubrics)
+
+| # | Metric | Framework | LLM Calls/test | Task Complexity |
+|---|---|---|---|---|
+| A1 | Faithfulness | DeepEval `FaithfulnessMetric` | 2 (claim extraction + verification) | Complex |
+| A2 | Noise Sensitivity | RAGAS `NoiseSensitivity` | 1 | Complex |
+| A3 | Factual Correctness | RAGAS `FactualCorrectness` | 2 (claim decomposition + NLI) | Complex |
+| A4 | ConversationalCoherence | Opik `ConversationalCoherence` | 1 | Complex |
+| A5 | SessionCompleteness | Opik `SessionCompletenessQuality` | 1 | Complex |
+| A6 | Pedagogical Rubric | RAGAS `RubricsScore` | 1 | Complex |
+| A7 | TurnFaithfulness | DeepEval `TurnFaithfulnessMetric` | 2/test | Complex |
+| A8 | Giskard RAGET | Giskard (60 questions) | ~4/question | Complex |
+
+**Group A per 100 tests: (2+1+2+1+1+1+2) × 100 + (60×4) = 1,240 calls**
+**Tokens: ~2,108,000 input / ~248,000 output**
+
+#### Group B — API: Medium Complexity (direct scoring, evaluation)
+
+| # | Metric | Framework | LLM Calls/test | Task Complexity |
+|---|---|---|---|---|
+| B1 | Answer Relevancy | DeepEval `AnswerRelevancyMetric` | 1 | Medium |
+| B2 | Context Precision | RAGAS `LLMContextPrecisionWithoutReference` | 1 | Medium |
+| B3 | Context Recall | RAGAS `LLMContextRecall` | 1 | Medium |
+| B4 | Context Relevancy | DeepEval `ContextualRelevancyMetric` | 1 | Medium |
+| B5 | Context Entities Recall | RAGAS `ContextEntityRecall` | 1 | Medium |
+| B6 | TopicAdherence | RAGAS `TopicAdherence` | 1 | Medium |
+| B7 | RoleAdherence | DeepEval `RoleAdherenceMetric` | 1 | Medium |
+| B8 | UserFrustration | Opik `UserFrustration` | 1 | Medium |
+| B9 | TurnContextualRelevancy | DeepEval `TurnContextualRelevancyMetric` | 1 | Medium |
+| B10 | TurnContextualRecall | DeepEval `TurnContextualRecallMetric` | 1 | Medium |
+
+**Group B per 100 tests: 10 × 100 = 1,000 calls**
+**Tokens: ~1,700,000 input / ~200,000 output**
+
+#### Group C — API: Simple Classification (binary/categorical)
+
+| # | Metric | Framework | LLM Calls/test | Task Complexity |
+|---|---|---|---|---|
+| C1-C5 | Bias (5 judges) | Opik `DemographicBiasJudge` etc. | 5 | Simple |
+| C6 | Toxicity | DeepEval `ToxicityMetric` | 1 | Simple |
+| C7 | PII Leakage | DeepEval `PIILeakageMetric` | 1 | Simple |
+| C8 | Misuse | DeepEval `MisuseMetric` | 1 | Simple |
+| C9 | NonAdvice | DeepEval `NonAdviceMetric` | 1 | Simple |
+
+**Group C per 100 tests: 9 × 100 = 900 calls**
+**Tokens: ~1,530,000 input / ~180,000 output**
+
+---
+
+### 12.4 Three Optimization Profiles
+
+#### Profile 1: ≥95% Reliability Floor
+
+*Every LLM-judged metric achieves ≥95% agreement with GPT-4.1 gold standard.*
+
+| Group | Judge Model | Reliability | Cost ($/MTok in/out) |
+|---|---|---|---|
+| **L** (local) | No LLM | 100% (deterministic) | $0 |
+| **A** (complex) | **GPT-4.1** | ~98% | $2.00 / $8.00 |
+| **B** (medium) | **GPT-4.1-mini** | ~95% | $0.40 / $1.60 |
+| **C** (simple) | **GPT-4.1-mini** | ~97% | $0.40 / $1.60 |
+
+*Why GPT-4.1-mini for C, not GPT-4o-mini? GPT-4o-mini reliability for classification (~93%) falls below the 95% floor.*
+
+**Cost per full suite (100 test cases):**
+
+| Group | Input tokens | Output tokens | Model | Input cost | Output cost | Total |
+|---|---|---|---|---|---|---|
+| L | — | — | Local | $0 | $0 | **$0.00** |
+| A | 2,108,000 | 248,000 | GPT-4.1 | $4.22 | $1.98 | **$6.20** |
+| B | 1,700,000 | 200,000 | GPT-4.1-mini | $0.68 | $0.32 | **$1.00** |
+| C | 1,530,000 | 180,000 | GPT-4.1-mini | $0.61 | $0.29 | **$0.90** |
+| **TOTAL** | | | | | | **$8.10 (~7.51 €)** |
+
+| Cadence | Cost |
+|---|---|
+| Per full suite (100 tests) | **7.51 €** |
+| Per month (1 suite/day × 30 days) | **225.30 €** |
+| Per year | **~2,704 €** |
+
+---
+
+#### Profile 2: ≥90% Reliability Floor (Recommended)
+
+*Every LLM-judged metric achieves ≥90% agreement with GPT-4.1 gold standard.*
+
+| Group | Judge Model | Reliability | Cost ($/MTok in/out) |
+|---|---|---|---|
+| **L** (local) | No LLM | 100% (deterministic) | $0 |
+| **A** (complex) | **GPT-4.1-mini** | ~93% | $0.40 / $1.60 |
+| **B** (medium) | **GPT-4o-mini** | ~90% | $0.15 / $0.60 |
+| **C** (simple) | **GPT-4o-mini** | ~93% | $0.15 / $0.60 |
+
+*Why GPT-4o-mini for B and C, not GPT-4.1-nano? Nano reliability for medium tasks (~80%) and classification (~88%) both fall below the 90% floor.*
+
+**Cost per full suite (100 test cases):**
+
+| Group | Input tokens | Output tokens | Model | Input cost | Output cost | Total |
+|---|---|---|---|---|---|---|
+| L | — | — | Local | $0 | $0 | **$0.00** |
+| A | 2,108,000 | 248,000 | GPT-4.1-mini | $0.84 | $0.40 | **$1.24** |
+| B | 1,700,000 | 200,000 | GPT-4o-mini | $0.26 | $0.12 | **$0.38** |
+| C | 1,530,000 | 180,000 | GPT-4o-mini | $0.23 | $0.11 | **$0.34** |
+| **TOTAL** | | | | | | **$1.96 (~1.82 €)** |
+
+| Cadence | Cost |
+|---|---|
+| Per full suite (100 tests) | **1.82 €** |
+| Per month (1 suite/day × 30 days) | **54.60 €** |
+| Per year | **~655 €** |
+
+---
+
+#### Profile 3: ≥85% Reliability Floor
+
+*Every LLM-judged metric achieves ≥85% agreement with GPT-4.1 gold standard.*
+
+| Group | Judge Model | Reliability | Cost ($/MTok in/out) |
+|---|---|---|---|
+| **L** (local) | No LLM | 100% (deterministic) | $0 |
+| **A** (complex) | **GPT-4o-mini** | ~85% | $0.15 / $0.60 |
+| **B** (medium) | **GPT-4o-mini** | ~90% | $0.15 / $0.60 |
+| **C** (simple) | **GPT-4.1-nano** | ~88% | $0.10 / $0.40 |
+
+*Why GPT-4o-mini for B, not nano? Nano reliability for medium tasks (~80%) falls below 85%. Only simple classification (C) can use nano safely.*
+
+**Cost per full suite (100 test cases):**
+
+| Group | Input tokens | Output tokens | Model | Input cost | Output cost | Total |
+|---|---|---|---|---|---|---|
+| L | — | — | Local | $0 | $0 | **$0.00** |
+| A | 2,108,000 | 248,000 | GPT-4o-mini | $0.32 | $0.15 | **$0.47** |
+| B | 1,700,000 | 200,000 | GPT-4o-mini | $0.26 | $0.12 | **$0.38** |
+| C | 1,530,000 | 180,000 | GPT-4.1-nano | $0.15 | $0.07 | **$0.22** |
+| **TOTAL** | | | | | | **$1.07 (~0.99 €)** |
+
+| Cadence | Cost |
+|---|---|
+| Per full suite (100 tests) | **0.99 €** |
+| Per month (1 suite/day × 30 days) | **29.70 €** |
+| Per year | **~356 €** |
+
+---
+
+### 12.5 Comparison Across Profiles
+
+| | ≥95% Reliability | ≥90% Reliability | ≥85% Reliability |
+|---|---|---|---|
+| **Group A judge** | GPT-4.1 | GPT-4.1-mini | GPT-4o-mini |
+| **Group B judge** | GPT-4.1-mini | GPT-4o-mini | GPT-4o-mini |
+| **Group C judge** | GPT-4.1-mini | GPT-4o-mini | GPT-4.1-nano |
+| **Cost per suite** | **7.51 €** | **1.82 €** | **0.99 €** |
+| **Cost per month** | **225.30 €** | **54.60 €** | **29.70 €** |
+| **Cost per year** | **~2,704 €** | **~655 €** | **~356 €** |
+| **Reliability range** | 95-98% | 90-93% | 85-90% |
+| **Best for** | Production, final release validation | Daily CI/CD, recommended default | Development, rapid iteration |
+
+### 12.6 Execution Time per Full Suite (100 test cases)
+
+API calls can be parallelized. Local models run sequentially. Total time is `max(local_time, api_time)`.
+
+| Step | LG Gram 2022 | MacBook Air M5 16GB |
+|---|---|---|
+| **Group L (local models)** | | |
+| └ HHEM (250M, CPU) | ~5-8 min | ~1.5-2.5 min |
+| └ BERTScore (355M, CPU) | ~5-15 min | ~1.5-3 min |
+| └ SAS multilingual (278M) | ~3-8 min | ~1-2 min |
+| └ Embeddings (22.7M) | ~30 seg | ~10 seg |
+| └ Heuristics (BLEU, ROUGE, etc.) | <5 seg | <3 seg |
+| └ IR metrics (MRR, MAP, NDCG) | <1 seg | <1 seg |
+| **Group L subtotal** | **~14-31 min** | **~4-8 min** |
+| **Groups A+B+C (API, 10 concurrent)** | | |
+| └ 3,140 calls ÷ 10 × ~3 seg | ~16 min | ~16 min |
+| **Groups A+B+C (API, 50 concurrent)** | ~3-5 min | ~3-5 min |
+| **Total (sequential local + parallel API)** | **~20-35 min** | **~10-15 min** |
+| **Total (all maximally parallel)** | **~16-31 min** | **~5-10 min** |
+
+*API time is identical on both machines (network-bound). The difference is only in local model inference.*
+
+### 12.7 Monthly Summary — Recommended Profile (≥90%)
+
+Running 1 full suite per day (30/month) on current LG Gram:
+
+| Component | Metric count | Execution | Time/suite | Cost/suite | Cost/month |
+|---|---|---|---|---|---|
+| Group L (local) | 27 metrics | Local (deterministic + small models) | ~14-31 min | 0 € | 0 € |
+| Group A (complex) | 8 metrics | API (GPT-4.1-mini) | ~5 min | 1.15 € | 34.50 € |
+| Group B (medium) | 10 metrics | API (GPT-4o-mini) | ~5 min | 0.35 € | 10.50 € |
+| Group C (simple) | 9 metrics | API (GPT-4o-mini) | ~4 min | 0.32 € | 9.60 € |
+| **TOTAL** | **54 metrics** | | **~20-35 min** | **1.82 €** | **54.60 €** |
