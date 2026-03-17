@@ -81,64 +81,85 @@ Persistent volumes:
 
 ## Configurable Environment Variables
 
-All variables below are configurable via shell env or a root `.env` file.
+All variables below can be set via shell env or root `.env` file.
 
-### LAMB and KB Variables (Complete)
+Conventions:
+- Envars in **bold** are currently required because there is no effective fallback default at runtime.
+- "Where default is set" can be `docker-compose.next.yaml`, `backend/docker-entrypoint.py`, `backend/config.py`, or `.env.next.example` (example override only).
 
-| Variable | Scope | Default | Required | Description |
-|---|---|---|---|---|
-| `LAMB_PORT` | `lamb` | `9099` | No | Container port exposed by LAMB backend service. |
-| `LAMB_WEB_HOST` | `lamb` | none | **Yes** | Public base URL used for browser-facing LAMB links. |
-| `LAMB_BACKEND_HOST` | `lamb` | none | **Yes** | Internal backend URL for server-to-server requests. |
-| `LAMB_DB_PATH` | `lamb` | none | **Yes** | Path inside container where LAMB DB is stored. |
-| `LAMB_DB_PREFIX` | `lamb` | empty | No | Table prefix for LAMB DB schema (set `LAMB_` when migrating legacy prefixed databases). |
-| `LAMB_BEARER_TOKEN` | `lamb` | none | **Yes** | Main API bearer token for LAMB backend auth. |
-| `LAMB_KB_SERVER` | `lamb` | `http://kb:9090` | No | Internal URL for KB service integration. |
-| `LAMB_KB_SERVER_TOKEN` | `lamb` | `0p3n-w3bu!` | No (should override in prod) | Token used by LAMB to call KB service. |
-| `OWI_BASE_URL` | `lamb` | none | **Yes** | Internal Open WebUI API base URL. |
-| `OWI_PUBLIC_BASE_URL` | `lamb` | `http://localhost:8080` | No | Public Open WebUI URL for redirects/browser flows. |
-| `OWI_PATH` | `lamb` | none | **Yes** | Mounted Open WebUI data path visible from LAMB container. |
-| `OPENAI_API_KEY` | `lamb` | empty | No | API key for OpenAI provider calls. |
-| `OPENAI_BASE_URL` | `lamb` | none | **Yes** | OpenAI-compatible API endpoint. |
-| `OPENAI_MODEL` | `lamb` | none | **Yes** | Default main OpenAI model. |
-| `OPENAI_MODELS` | `lamb` | `gpt-4o-mini,gpt-4o` | No | Comma-separated model list exposed by backend. |
-| `OLLAMA_BASE_URL` | `lamb` | `http://ollama:11434` | No | Ollama endpoint for embedding/completion integrations. |
-| `OLLAMA_MODEL` | `lamb` | `nomic-embed-text` | No | Default Ollama embedding model name. |
-| `SIGNUP_ENABLED` | `lamb` | `true` | No | Enables/disables signup flow. |
-| `SIGNUP_SECRET_KEY` | `lamb` | none | **Yes** | Secret used for signup token handling. |
-| `LTI_SECRET` | `lamb` | `lamb-lti-secret-key-2024` | No (should override in prod) | Shared secret used by LTI integration. |
-| `DEV_MODE` | `lamb` | `false` | No | Enables development-oriented backend behavior. |
-| `GLOBAL_LOG_LEVEL` | `lamb` | `WARNING` | No | Base log level (`CRITICAL`, `ERROR`, `WARNING`, `INFO`, `DEBUG`). |
-| `OWI_ADMIN_NAME` | `lamb` | none | **Yes** | Open WebUI bootstrap admin name required by backend config. |
-| `OWI_ADMIN_EMAIL` | `lamb` | none | **Yes** | Open WebUI bootstrap admin email required by backend config. |
-| `OWI_ADMIN_PASSWORD` | `lamb` | none | **Yes** | Open WebUI bootstrap admin password required by backend config. |
-| `LAMB_FRONTEND_BUILD_PATH` | `lamb` | `/app/frontend/build` | No | Path where startup entrypoint writes runtime `config.js`. |
-| `LAMB_FRONTEND_BASE_URL` | `lamb` | `/creator` | No | Frontend runtime `config.js` value for API base URL. |
-| `LAMB_FRONTEND_LAMB_SERVER` | `lamb` | falls back to `LAMB_WEB_HOST` | No | Frontend runtime `config.js` value for LAMB server URL. |
-| `LAMB_FRONTEND_OPENWEBUI_SERVER` | `lamb` | falls back to `OWI_PUBLIC_BASE_URL` | No | Frontend runtime `config.js` value for Open WebUI URL. |
-| `LAMB_ENABLE_OPENWEBUI` | `lamb` | `true` | No | Frontend runtime feature flag for Open WebUI integration. |
-| `LAMB_ENABLE_DEBUG` | `lamb` | `false` | No | Frontend runtime debug flag in generated `config.js`. |
-| `KB_PORT` | `kb` | `9090` | No | Port exposed by KB service. |
-| `KB_HOME_URL` | `kb` | `http://localhost:9090` | No | Base URL used by KB for generated links. |
-| `LAMB_API_KEY` | `kb` | `0p3n-w3bu!` | No (should override in prod) | KB API auth key. |
-| `EMBEDDINGS_MODEL` | `kb` | `nomic-embed-text` | No | Default embeddings model for KB collections. |
-| `EMBEDDINGS_VENDOR` | `kb` | `ollama` | No | Embedding provider (`ollama`, `local`, `openai`). |
-| `EMBEDDINGS_ENDPOINT` | `kb` | `http://ollama:11434` | No | Embeddings API endpoint used by KB (base URL for current Ollama integration). |
-| `EMBEDDINGS_APIKEY` | `kb` | empty | No | Optional API key for embedding provider. |
-| `FIRECRAWL_API_URL` | `kb` | `http://host.docker.internal:3002` | No | Firecrawl API endpoint for URL ingestion plugin. |
-| `FIRECRAWL_API_KEY` | `kb` | empty | No | Optional Firecrawl API key. |
+### `lamb` service
 
-### OpenWebUI and Caddy Variables (Common)
+| Envar | Default value | Where default value is set | Description / Notes |
+|---|---|---|---|
+| `LAMB_PORT` | `9099` | `docker-compose.next.yaml` | Container port for lamb service. |
+| **`LAMB_WEB_HOST`** | none | required in `docker-compose.next.yaml` | Public LAMB URL for browser flows. Also used by frontend runtime fallback (`LAMB_FRONTEND_LAMB_SERVER`). |
+| **`LAMB_BACKEND_HOST`** | none | required in `docker-compose.next.yaml` | Internal backend URL for server-side requests. |
+| **`LAMB_BEARER_TOKEN`** | none | required in `docker-compose.next.yaml` | Main backend bearer token (security-sensitive). |
+| **`LAMB_DB_PATH`** | none | required in `docker-compose.next.yaml` | Filesystem path containing `lamb_v4.db`. |
+| `LAMB_DB_PREFIX` | empty (`""`) | `docker-compose.next.yaml` + `backend/config.py` fallback | Set `LAMB_` when migrating legacy prefixed schemas (`LAMB_*`). |
+| `LAMB_KB_SERVER` | `http://kb:9090` | `docker-compose.next.yaml` | KB service URL consumed by lamb. Shared with `kb` service connectivity. |
+| `LAMB_KB_SERVER_TOKEN` | `0p3n-w3bu!` | `docker-compose.next.yaml` | Token lamb uses to call KB. Must match `kb` `LAMB_API_KEY` when org config does not override token. |
+| **`OWI_BASE_URL`** | none | required in `docker-compose.next.yaml` | Internal OpenWebUI API URL used by lamb bridge/auth flows. |
+| `OWI_PUBLIC_BASE_URL` | `http://localhost:8080` | `docker-compose.next.yaml`; fallback behavior in `backend/config.py` | Browser-facing OpenWebUI URL. Used by frontend runtime fallback (`LAMB_FRONTEND_OPENWEBUI_SERVER`). |
+| **`OWI_PATH`** | none | required in `docker-compose.next.yaml` | OpenWebUI data mount path visible from lamb (`/data/openwebui`). |
+| `OPENAI_API_KEY` | empty | `docker-compose.next.yaml` | Optional unless OpenAI provider is used. |
+| **`OPENAI_BASE_URL`** | none | required in `docker-compose.next.yaml` | OpenAI-compatible API base URL. |
+| **`OPENAI_MODEL`** | none | required in `docker-compose.next.yaml` | Default OpenAI model. |
+| `OPENAI_MODELS` | `gpt-4o-mini,gpt-4o` | `docker-compose.next.yaml` | Exposed/allowed OpenAI model list. |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | `docker-compose.next.yaml` (`backend/config.py` has older fallback) | Ollama base URL for lamb inference paths. Shared concept with `kb` `EMBEDDINGS_ENDPOINT`. |
+| `OLLAMA_MODEL` | `nomic-embed-text` | `docker-compose.next.yaml` + `backend/config.py` fallback | Default Ollama model reference in lamb. |
+| `SIGNUP_ENABLED` | `true` | `docker-compose.next.yaml` | Signup feature toggle. |
+| **`SIGNUP_SECRET_KEY`** | none | required in `docker-compose.next.yaml` | Signup token secret (security-sensitive). |
+| `LTI_SECRET` | `lamb-lti-secret-key-2024` | `docker-compose.next.yaml` | LTI shared secret; should be overridden in production. |
+| `DEV_MODE` | `false` | `docker-compose.next.yaml` + `backend/config.py` | Runtime mode flag. |
+| `GLOBAL_LOG_LEVEL` | `WARNING` | `docker-compose.next.yaml` + `backend/config.py` | Base log level for backend modules. |
+| **`OWI_ADMIN_NAME`** | none | required in `docker-compose.next.yaml` | OpenWebUI admin bootstrap name used by lamb bridge. |
+| **`OWI_ADMIN_EMAIL`** | none | required in `docker-compose.next.yaml` | OpenWebUI admin bootstrap email. |
+| **`OWI_ADMIN_PASSWORD`** | none | required in `docker-compose.next.yaml` | OpenWebUI admin bootstrap password (security-sensitive). |
+| `LAMB_FRONTEND_BUILD_PATH` | `/app/frontend/build` | `backend/docker-entrypoint.py` | Path used by entrypoint to patch/generate frontend runtime `config.js`. |
+| `LAMB_FRONTEND_BASE_URL` | `/creator` | `backend/docker-entrypoint.py` | Frontend runtime `api.baseUrl`. |
+| `LAMB_FRONTEND_LAMB_SERVER` | fallback to `LAMB_WEB_HOST` | `backend/docker-entrypoint.py` | Frontend runtime `api.lambServer`; depends on `LAMB_WEB_HOST`. |
+| `LAMB_FRONTEND_OPENWEBUI_SERVER` | fallback to `OWI_PUBLIC_BASE_URL` | `backend/docker-entrypoint.py` | Frontend runtime `api.openWebUiServer`; depends on `OWI_PUBLIC_BASE_URL`. |
+| `LAMB_ENABLE_OPENWEBUI` | `true` | `backend/docker-entrypoint.py` | Frontend feature toggle. |
+| `LAMB_ENABLE_DEBUG` | `false` | `backend/docker-entrypoint.py` | Frontend debug feature toggle. |
 
-This table lists the most common variables for OpenWebUI/Caddy. Advanced OpenWebUI knobs can be added later if needed.
+### `kb` service
 
-| Variable | Scope | Default | Required | Description |
-|---|---|---|---|---|
-| `OPENWEBUI_PORT` | `openwebui` | `8080` | No | Port exposed by Open WebUI service. |
-| `WEBUI_SECRET_KEY` | `openwebui` | empty | No (recommended in prod) | Open WebUI session/security secret. |
-| `CADDY_EMAIL` | `caddy` (prod overlay) | `admin@yourdomain.com` | No | Email used by Caddy for ACME/TLS registration. |
-| `LAMB_PUBLIC_HOST` | `caddy` (prod overlay) | `lamb.yourdomain.com` | No | Main public hostname routed to LAMB/KB endpoints. |
-| `OWI_PUBLIC_HOST` | `caddy` (prod overlay) | `owi.lamb.yourdomain.com` | No | Public hostname routed to Open WebUI. |
+| Envar | Default value | Where default value is set | Description / Notes |
+|---|---|---|---|
+| `KB_PORT` (`PORT`) | `9090` | `docker-compose.next.yaml` (KB app also has fallback) | KB API port. |
+| `KB_HOME_URL` (`HOME_URL`) | `http://localhost:9090` | `docker-compose.next.yaml` | Base URL used by KB metadata/routes. |
+| `LAMB_API_KEY` | `0p3n-w3bu!` | `docker-compose.next.yaml` + KB app fallback | KB bearer token expected by API. Should match lamb-side token usage (`LAMB_KB_SERVER_TOKEN` or org-specific `api_token`). |
+| `EMBEDDINGS_MODEL` | `nomic-embed-text` | `docker-compose.next.yaml` + KB app fallback | Default embedding model for new collections. |
+| `EMBEDDINGS_VENDOR` | `ollama` | `docker-compose.next.yaml` + KB app fallback | Embedding provider (`ollama`, `local`, `openai`). |
+| `EMBEDDINGS_ENDPOINT` | `http://ollama:11434` | `docker-compose.next.yaml` | For current Ollama integration in KB, base URL is expected (not `/api/embeddings`). Related to `lamb` `OLLAMA_BASE_URL`. |
+| `EMBEDDINGS_APIKEY` | empty | `docker-compose.next.yaml` | Optional API key for embedding provider. |
+| `FIRECRAWL_API_URL` | `http://host.docker.internal:3002` | `docker-compose.next.yaml` | Optional URL ingestion integration endpoint. |
+| `FIRECRAWL_API_KEY` | empty | `docker-compose.next.yaml` | Optional Firecrawl API key. |
+
+### `openwebui` service
+
+| Envar | Default value | Where default value is set | Description / Notes |
+|---|---|---|---|
+| `OPENWEBUI_PORT` (`PORT`) | `8080` | `docker-compose.next.yaml` | OpenWebUI service port. |
+| `WEBUI_AUTH_TRUSTED_EMAIL_HEADER` | `X-User-Email` | `docker-compose.next.yaml` | Trusted email header for bridge/SSO flows. |
+| `WEBUI_AUTH_TRUSTED_NAME_HEADER` | `X-User-Name` | `docker-compose.next.yaml` | Trusted name header for bridge/SSO flows. |
+| `DEFAULT_USER_ROLE` | `user` | `docker-compose.next.yaml` | Default role for new users. |
+| `WEBUI_SECRET_KEY` | empty | `docker-compose.next.yaml` | Session/signing secret; should be set in production. |
+
+### `ollama` service (`--profile ollama`)
+
+| Envar | Default value | Where default value is set | Description / Notes |
+|---|---|---|---|
+| _(none currently mapped)_ | n/a | n/a | `ollama` is optional via profile. Behavior is controlled indirectly by `lamb` (`OLLAMA_BASE_URL`) and `kb` (`EMBEDDINGS_ENDPOINT`). |
+
+### `caddy` service (`docker-compose.next.prod.yaml`)
+
+| Envar | Default value | Where default value is set | Description / Notes |
+|---|---|---|---|
+| `CADDY_EMAIL` | `admin@yourdomain.com` | `docker-compose.next.prod.yaml` | ACME/TLS registration email. |
+| `LAMB_PUBLIC_HOST` | `lamb.yourdomain.com` | `docker-compose.next.prod.yaml` | Public host for main LAMB routes. |
+| `OWI_PUBLIC_HOST` | `owi.lamb.yourdomain.com` | `docker-compose.next.prod.yaml` | Public host for OpenWebUI routes. |
 
 ## Recommended Production Overrides
 
