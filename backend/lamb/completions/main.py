@@ -454,6 +454,9 @@ async def run_lamb_assistant(
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Run assistant, details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
+        connector = plugin_config["connector"]
+        provider = _provider_for_connector(connector)
+        
         task_response = await maybe_route_non_streaming_task(
             request=request,
             assistant_owner=assistant_details.owner,
@@ -465,17 +468,16 @@ async def run_lamb_assistant(
                 media_type="application/json",
                 headers=final_headers
             )
-
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
-        logger.debug(f"Calling connector '{plugin_config['connector']}' with stream={stream}, llm={llm}")
+        logger.debug(f"Calling connector '{connector}' with stream={stream}, llm={llm}")
 
         # Get the connector function
-        connector_func = connectors[plugin_config["connector"]]
+        connector_func = connectors[connector]
 
         # Call the connector function, passing all necessary arguments
         # The openai.py connector expects: messages, stream, body (original request), llm, assistant_owner
@@ -490,14 +492,28 @@ async def run_lamb_assistant(
         if stream:
             # Tracked connectors return (generator, usage_out); others return the generator directly
             if isinstance(llm_response, tuple):
-                generator, _usage_out = llm_response  # Usage not tracked in this code path
+                generator, usage_out = llm_response
             else:
-                generator = llm_response
+                generator, usage_out = llm_response, None
+
+            async def _tracked_stream():
+                async for chunk in generator:
+                    yield chunk
+                # Log usage when stream completes for tracked connectors
+                if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=provider,
+                        usage_data=usage_out
+                    )
+
             # The openai.py connector returns an async generator yielding SSE strings
             # Wrap this directly in StreamingResponse
             logger.debug("Returning StreamingResponse for async generator from connector.")
             return StreamingResponse(
-                generator,
+                _tracked_stream(),
                 media_type="text/event-stream",
                 headers=final_headers
             )
@@ -508,6 +524,16 @@ async def run_lamb_assistant(
             if not isinstance(llm_response, dict):
                  logger.error(f"Non-streaming connector did not return a dict, got: {type(llm_response)}")
                  raise HTTPException(status_code=500, detail="Internal server error: Connector returned unexpected type for non-streaming response.")
+
+            # Log usage for tracked connectors on non-streaming responses
+            if connector != "ollama" and llm_response.get("usage") and provider and assistant_details.organization_id is not None:
+                db_manager.log_token_usage(
+                    assistant_id=assistant,
+                    org_id=assistant_details.organization_id,
+                    model_name=llm,
+                    provider=provider,
+                    usage_data=llm_response["usage"]
+                )
 
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired
