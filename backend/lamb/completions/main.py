@@ -11,6 +11,7 @@ from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
 from lamb.auth_context import AuthContext, get_optional_auth_context
+from lamb.completions.task_routing import maybe_route_non_streaming_task
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -148,6 +149,14 @@ async def create_completion(
             add_trace_metadata("llm", plugin_config["llm"])
             add_trace_metadata("prompt_processor", plugin_config["prompt_processor"])
             add_trace_metadata("rag_processor", plugin_config["rag_processor"])
+
+        task_response = await maybe_route_non_streaming_task(
+            request=request,
+            assistant_owner=assistant_details.owner,
+        )
+        if task_response is not None:
+            logger.info("Returning routed task response without RAG")
+            return task_response
         
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
@@ -160,16 +169,29 @@ async def create_completion(
         logger.debug(f"Stream mode: {stream}")
         logger.info("Getting completion from LLM")
         if stream:
+            llm_response = await connectors[plugin_config["connector"]](
+                messages,
+                stream=True,
+                body=request,
+                llm=plugin_config["llm"],
+                assistant_owner=assistant_details.owner,
+            )
             logger.debug("Returning streaming response")
             logger.debug(f"Returning streaming response")
             return StreamingResponse(
-                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner),
+                llm_response,
                 media_type="text/event-stream"
             )
         else:
             logger.debug("Returning direct response")
             logger.debug(f"Returning direct response")
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner)
+            return await connectors[plugin_config["connector"]](
+                messages,
+                stream=False,
+                body=request,
+                llm=plugin_config["llm"],
+                assistant_owner=assistant_details.owner,
+            )
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         logger.debug(f"Error in create_completion: {str(e)}")
@@ -361,6 +383,18 @@ async def run_lamb_assistant(
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Run assistant, details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
+        task_response = await maybe_route_non_streaming_task(
+            request=request,
+            assistant_owner=assistant_details.owner,
+        )
+        if task_response is not None:
+            logger.info("Returning routed task response without RAG")
+            return Response(
+                content=json.dumps(task_response, indent=2),
+                media_type="application/json",
+                headers=final_headers
+            )
+
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
