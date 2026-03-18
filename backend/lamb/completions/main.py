@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional, Union, Tuple
 import importlib
 import os
 import glob
-import requests
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
@@ -177,7 +176,6 @@ async def create_completion(
                 assistant_owner=assistant_details.owner,
             )
             logger.debug("Returning streaming response")
-            logger.debug(f"Returning streaming response")
             return StreamingResponse(
                 llm_response,
                 media_type="text/event-stream"
