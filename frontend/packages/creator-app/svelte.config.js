@@ -13,11 +13,11 @@ const config = {
 		// See https://kit.svelte.dev/docs/adapters for more information about adapters.
 		adapter: adapter({
 			// Output to the top-level frontend/build directory
-			pages: '../build',
-			assets: '../build',
+			pages: '../../build',
+			assets: '../../build',
 			fallback: 'index.html',
 			precompress: false,
-			strict: true
+			strict: false
 		}),
 		// Ensure appDir matches the base path structure if needed
 		appDir: 'app'

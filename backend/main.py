@@ -61,9 +61,13 @@ async def lifespan(app: FastAPI):
     discover_modules()
     logger.info("Activity modules discovered")
     
-    # --- Mount module routers (BUG-B1) ---
+    # --- LOG: Check which modules were discovered ---
     from lamb.modules import get_all_modules
-    for module in get_all_modules():
+    discovered = get_all_modules()
+    logger.info(f"Discovered {len(discovered)} module(s): {[m.name for m in discovered]}")
+    
+    # --- Mount module routers (BUG-B1) ---
+    for module in discovered:
         for router in module.get_routers():
             app.include_router(router, prefix=f"/lamb/v1/modules/{module.name}")
             logger.info(f"Mounted router for module: {module.name}")
@@ -873,10 +877,26 @@ if os.path.isdir(abs_frontend_build_dir):
         logger.warning(f"SvelteKit app directory not found: {svelte_app_dir}")
 
     # For module-chat
-    module_chat_app_dir = os.path.join(abs_frontend_build_dir, "m", "chat", "app")
+    module_chat_dir = os.path.join(abs_frontend_build_dir, "m", "chat")
+    module_chat_app_dir = os.path.join(module_chat_dir, "app")
+    
+    # LOG: Check if module-chat build exists
+    if os.path.isdir(module_chat_dir):
+        logger.info(f"✓ Module-chat build directory found at {module_chat_dir}")
+        try:
+            contents = os.listdir(module_chat_dir)
+            logger.info(f"  Contents: {contents}")
+        except Exception as e:
+            logger.warning(f"  Could not list contents: {e}")
+    else:
+        logger.error(f"✗ Module-chat build directory NOT found at {module_chat_dir}")
+        logger.error(f"  Available in frontend/build: {os.listdir(abs_frontend_build_dir)}")
+    
     if os.path.isdir(module_chat_app_dir):
         logger.info(f"Mounting module-chat SvelteKit assets from: {module_chat_app_dir} at /m/chat/app")
         app.mount("/m/chat/app", StaticFiles(directory=module_chat_app_dir), name="module_chat_assets")
+    else:
+        logger.error(f"Module-chat app directory not found: {module_chat_app_dir}")
 
     svelte_img_dir = os.path.join(abs_frontend_build_dir, "img")
     if os.path.isdir(svelte_img_dir):
