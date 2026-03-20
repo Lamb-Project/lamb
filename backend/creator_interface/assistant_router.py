@@ -904,6 +904,60 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
         )
 
 @router.get(
+    "/{assistant_id}/usage",
+    tags=["Assistant Management"],
+    summary="Get Assistant Usage & Quota",
+    description="Returns current token usage, estimated cost, and quota configuration for an assistant.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        404: {"description": "Assistant not found or access denied"},
+    }
+)
+async def get_assistant_usage(assistant_id: int, auth: AuthContext = Depends(get_auth_context)):
+    """Return usage summary and quota config for a single assistant."""
+    try:
+        # Verify access (owner or org admin can view usage)
+        access = auth.can_access_assistant(assistant_id)
+        if access == "none":
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Parse quota config from metadata/api_callback
+        raw_meta = assistant_data.get("api_callback") or assistant_data.get("metadata") or "{}"
+        try:
+            metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+        except Exception:
+            metadata = {}
+        quota = metadata.get("quota", {})
+        quota_enabled = bool(quota.get("enabled", False))
+        cost_limit_usd = quota.get("cost_limit_usd")
+
+        tokens = db_manager.get_assistant_token_usage(assistant_id)
+        cost_usd = db_manager.get_assistant_cost_usd(assistant_id)
+        quota_exceeded = quota_enabled and cost_limit_usd is not None and cost_usd >= float(cost_limit_usd)
+
+        return {
+            "assistant_id": assistant_id,
+            "name": assistant_data.get("name", ""),
+            "spend_usd": round(cost_usd, 6),
+            "tokens": tokens,
+            "quota": {
+                "enabled": quota_enabled,
+                "cost_limit_usd": float(cost_limit_usd) if cost_limit_usd is not None else None,
+            },
+            "quota_exceeded": quota_exceeded,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching usage for assistant {assistant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get(
     "/get_assistants",
     tags=["Assistant Management"],
     summary="Get Assistants Proxy",

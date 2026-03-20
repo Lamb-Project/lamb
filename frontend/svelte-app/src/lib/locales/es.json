@@ -616,7 +616,8 @@
     "tabs": {
       "dashboard": "Panel de Control",
       "users": "Gestión de Usuarios",
-      "organizations": "Organizaciones"
+      "organizations": "Organizaciones",
+      "costManagement": "Gestión de Costes"
     },
     "dashboard": {
       "title": "Panel de Administración",
@@ -782,6 +783,37 @@
         "authTokenNotFound": "Token de autenticación no encontrado. Por favor inicia sesión nuevamente.",
         "createFailed": "Error al crear organización.",
         "unknownError": "Ocurrió un error desconocido al crear la organización."
+      }
+    },
+    "costManagement": {
+      "title": "Gestión de Costes",
+      "subtitle": "Uso de tokens y coste estimado por asistente en la plataforma.",
+      "loading": "Cargando datos de uso...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noData": "No se encontraron asistentes.",
+      "table": {
+        "assistant": "Asistente",
+        "owner": "Propietario",
+        "organization": "Organización",
+        "model": "Modelo",
+        "promptTokens": "Tokens de entrada",
+        "completionTokens": "Tokens de salida",
+        "totalTokens": "Total de tokens",
+        "cost": "Coste estimado",
+        "quota": "Cuota",
+        "status": "Estado"
+      },
+      "quota": {
+        "noQuota": "Sin cuota",
+        "disabled": "Deshabilitado",
+        "active": "Activo",
+        "exceeded": "Excedido"
+      },
+      "totals": {
+        "label": "Totales de la plataforma:",
+        "cost": "Coste total estimado:",
+        "tokens": "Total de tokens:"
       }
     }
   },
