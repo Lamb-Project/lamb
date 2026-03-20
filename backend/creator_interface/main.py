@@ -29,7 +29,7 @@ from fastapi import Body  # Import Body for request body definitions
 from lamb.logging_config import get_logger
 import time
 import asyncio
-
+from fastapi import Query
 # Set up logger for creator interface
 logger = get_logger(__name__, component="API")
 
@@ -205,6 +205,7 @@ class UserResponse(BaseModel):
 class ListUsersResponse(BaseModel):
     success: bool = True
     data: list[UserResponse]
+    total_count: int
 
 
 class CreateUserAdminRequest(BaseModel):
@@ -595,7 +596,7 @@ Example Forbidden Response:
         200: {"model": ListUsersResponse, "description": "Successfully retrieved users."},
     },
 )
-async def list_users(credentials: HTTPAuthorizationCredentials = Depends(security), auth: AuthContext = Depends(get_auth_context)):
+async def list_users(credentials: HTTPAuthorizationCredentials = Depends(security),auth: AuthContext = Depends(get_auth_context),limit: int = Query(10, ge=1),offset: int = Query(0, ge=0),search: Optional[str] = Query(None),role: Optional[str] = Query(None),user_type: Optional[str] = Query(None),enabled: Optional[bool] = Query(None),sort_by: str = Query("created_at"),sort_order: str = Query("desc")):    
     """List all creator users (admin only) as JSON"""
     # Check admin privileges via AuthContext
     if not auth.is_system_admin:
@@ -613,7 +614,16 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
         from lamb.database_manager import LambDatabaseManager
         db_manager = LambDatabaseManager()
 
-        users = db_manager.get_creator_users()
+        users, total_count = db_manager.get_creator_users_filtered(
+            limit=limit,
+            offset=offset,
+            search=search,
+            role=role,
+            user_type=user_type,
+            enabled=enabled,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
 
         if users is None:
             return JSONResponse(
@@ -645,7 +655,8 @@ async def list_users(credentials: HTTPAuthorizationCredentials = Depends(securit
 
         return {
             "success": True,
-            "data": users_with_roles
+            "data": users_with_roles,
+            "total_count": total_count
         }
 
     except Exception as e:
