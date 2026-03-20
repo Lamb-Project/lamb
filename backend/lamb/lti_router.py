@@ -280,8 +280,13 @@ async def lti_launch(request: Request):
         )
 
         public_base = manager.get_public_base_url(request)
+        redirect_url = f"{public_base}/m/chat/setup?token={setup_token}"
+        logger.info(f"Redirecting instructor to setup page: {redirect_url}")
+        logger.info(f"  Token length: {len(setup_token)}")
+        logger.info(f"  Public base URL: {public_base}")
+        
         return RedirectResponse(
-            url=f"{public_base}/m/chat/setup?token={setup_token}",
+            url=redirect_url,
             status_code=303
         )
 
@@ -434,7 +439,13 @@ async def lti_configure_activity(request: Request):
 
         # Phase 2: module hook (creates OWI group, adds model permissions, updates DB)
         module = _get_activity_module(activity)
-        module.on_activity_configured(activity['id'], payload)
+        setup_data = {
+            "resource_link_id": resource_link_id,
+            "assistant_ids": assistant_ids,
+            "configured_by_email": creator_user["user_email"],
+            "activity_name": context_title or resource_link_id,
+        }
+        module.on_activity_configured(activity['id'], setup_data)
 
         # Re-fetch activity: module may have filled in OWI fields
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
@@ -752,7 +763,7 @@ async def lti_dashboard_info(request: Request, resource_link_id: str = "", token
         "context_title": activity.get('context_title', ''),
         "org_name": org_name,
         "owner_name": activity.get('owner_name') or activity.get('owner_email'),
-        "created_at": activity.get('created_at').timestamp() if activity.get('created_at') else None,
+        "created_at": activity.get('created_at'),
         "chat_visibility_enabled": bool(activity.get('chat_visibility_enabled')),
         "is_owner": is_owner
     })

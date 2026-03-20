@@ -13,14 +13,15 @@ const config = {
 		// See https://kit.svelte.dev/docs/adapters for more information about adapters.
 		adapter: adapter({
 			// Output to the top-level frontend/build/m/chat directory
-			pages: '../build/m/chat',
-			assets: '../build/m/chat',
+			pages: '../../build/m/chat',
+			assets: '../../build/m/chat',
 			fallback: 'index.html',
 			precompress: false,
-			strict: true
+			strict: false
 		}),
 		paths: {
-			base: '/m/chat'
+			base: '/m/chat',
+			relative: false
 		},
 		// Ensure appDir matches the base path structure if needed
 		appDir: 'app'

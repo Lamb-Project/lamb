@@ -69,9 +69,10 @@ class ChatModuleService:
                 logger.warning(f"Failed to add activity group to model {model_id}")
 
         # Update LAMB DB activity record with the OWI details
-        self.db_manager.execute_query(
-            "UPDATE lti_activities SET owi_group_id = ?, owi_group_name = ? WHERE id = ?",
-            (owi_group_id, group_name, activity_id)
+        self.db_manager.update_lti_activity(
+            activity_id,
+            owi_group_id=owi_group_id,
+            owi_group_name=group_name
         )
 
     def reconfigure_activity(self, activity_id: int, activity_data: Dict[str, Any], new_assistant_ids: List[int]) -> bool:

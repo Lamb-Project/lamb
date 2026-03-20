@@ -3,8 +3,11 @@ from lamb.modules.chat.service import ChatModuleService
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from lamb.database_manager import LambDatabaseManager
+from lamb.logging_config import get_logger
 from typing import Dict, Any, List, Optional
 import os
+
+logger = get_logger(__name__, component="CHAT_MODULE")
 
 
 class ChatModule(ActivityModule):
@@ -86,11 +89,14 @@ class ChatModule(ActivityModule):
         if not activity:
              raise HTTPException(status_code=404, detail="Activity not found")
 
+        logger.info(f"ChatModule.on_instructor_launch called for activity {ctx.resource_link_id}")
+        logger.info(f"  Instructor: {ctx.display_name} ({ctx.lms_email})")
+
         lti_manager = LtiActivityManager()
         instructor_email = lti_manager.generate_student_email(ctx.username, ctx.resource_link_id)
         instructor_user = {"email": instructor_email, "display_name": ctx.display_name}
 
-        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:8000") 
+        public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099") 
 
         dashboard_token = _create_dashboard_jwt(
             activity, instructor_user,
@@ -99,8 +105,11 @@ class ChatModule(ActivityModule):
             username=ctx.username
         )
         
+        redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}"
+        logger.info(f"Redirecting to dashboard: {redirect_url}")
+        
         return RedirectResponse(
-            url=f"{public_base}/m/chat/dashboard?resource_link_id={ctx.resource_link_id}&token={dashboard_token}",
+            url=redirect_url,
             status_code=303
         )
 
