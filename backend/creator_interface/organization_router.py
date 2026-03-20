@@ -4750,19 +4750,46 @@ async def get_cost_overview(request: Request):
             except Exception:
                 metadata = {}
 
-            quota = metadata.get("quota", {})
-            quota_enabled = bool(quota.get("enabled", False))
-            cost_limit_usd = quota.get("cost_limit_usd")
+            quota_obj = metadata.get("quota", {})
+            if isinstance(quota_obj, bool):
+                quota_enabled = quota_obj
+                cost_limit_usd = None
+            else:
+                quota_enabled = bool(quota_obj.get("enabled", False))
+                # Safely parse the DB stored limit
+                raw_cl = quota_obj.get("cost_limit_usd")
+                if raw_cl is not None and str(raw_cl).strip() != "":
+                    try:
+                        cost_limit_usd = float(raw_cl)
+                    except ValueError:
+                        cost_limit_usd = None
+                else:
+                    cost_limit_usd = None
+
             cost_usd = row["cost_usd"]
             quota_exceeded = (
                 quota_enabled
                 and cost_limit_usd is not None
-                and cost_usd >= float(cost_limit_usd)
+                and cost_usd >= cost_limit_usd
             )
 
             # Determine model/provider from metadata connector config
             model_name = metadata.get("llm") or ""
             connector = metadata.get("connector") or ""
+
+            alert_thresholds = []
+            if row.get("thresholds_config"):
+                try:
+                    tc = json.loads(row["thresholds_config"])
+                    if isinstance(tc, list):
+                        alert_thresholds = tc
+                    elif isinstance(tc, dict):
+                        alert_thresholds = tc.get("alert_percentages", [])
+                except Exception:
+                    pass
+            
+            if not alert_thresholds and isinstance(quota_obj, dict):
+                alert_thresholds = quota_obj.get("alert_thresholds", [])
 
             result.append({
                 "id": row["id"],
@@ -4776,7 +4803,8 @@ async def get_cost_overview(request: Request):
                 "total_tokens": row["total_tokens"],
                 "cost_usd": round(cost_usd, 6),
                 "quota_enabled": quota_enabled,
-                "cost_limit_usd": float(cost_limit_usd) if cost_limit_usd is not None else None,
+                "cost_limit_usd": cost_limit_usd,
+                "alert_thresholds": alert_thresholds,
                 "quota_exceeded": quota_exceeded,
             })
 
@@ -4791,13 +4819,13 @@ async def get_cost_overview(request: Request):
 class QuotaUpdate(BaseModel):
     enabled: bool = Field(..., description="Whether quota enforcement is active")
     cost_limit_usd: Optional[float] = Field(None, description="Spending cap in USD (omit or null for no limit)")
-
+    alert_thresholds: Optional[List[float]] = Field(None, description="List of alert percentages (e.g., [50, 80])")
 
 @router.put(
     "/assistant/{assistant_id}/quota",
     tags=["Organization Management"],
     summary="Update quota config for an assistant (Admin Only)",
-    description="Enable or disable quota enforcement and set the USD cost cap for an assistant. System admin only.",
+    description="Enable or disable quota enforcement, set the USD cost cap, and configure alert thresholds. System admin only.",
     dependencies=[Depends(security)],
     responses={
         401: {"description": "Invalid authentication"},
@@ -4819,6 +4847,7 @@ async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: 
             assistant_id=assistant_id,
             enabled=body.enabled,
             cost_limit_usd=body.cost_limit_usd,
+            alert_thresholds=body.alert_thresholds
         )
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update quota")
@@ -4832,6 +4861,7 @@ async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: 
             "quota": {
                 "enabled": body.enabled,
                 "cost_limit_usd": body.cost_limit_usd,
+                "alert_thresholds": body.alert_thresholds or [],
             },
             "quota_exceeded": quota_exceeded,
             "spend_usd": round(cost_usd, 6),

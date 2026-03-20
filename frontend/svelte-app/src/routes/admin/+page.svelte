@@ -229,6 +229,7 @@
     let quotaEditAssistant = $state(null); // the assistant row being edited
     let quotaEditEnabled = $state(false);
     let quotaEditLimitStr = $state(''); // string representation of cost_limit_usd (empty = unlimited)
+    let quotaEditAlertThresholdsStr = $state(''); // comma-separated percentage thresholds
     let isSavingQuota = $state(false);
     /** @type {string | null} */
     let quotaSaveError = $state(null);
@@ -240,6 +241,8 @@
         quotaEditAssistant = assistant;
         quotaEditEnabled = !!assistant.quota_enabled;
         quotaEditLimitStr = assistant.cost_limit_usd != null ? String(assistant.cost_limit_usd) : '';
+        const thresholds = assistant.alert_thresholds || [];
+        quotaEditAlertThresholdsStr = thresholds.length > 0 ? thresholds.join(', ') : '';
         quotaSaveError = null;
         quotaSaveSuccess = null;
     }
@@ -265,9 +268,22 @@
                 quotaSaveError = 'Cost limit must be a positive number (or leave blank for unlimited).';
                 return;
             }
+
+            // Parse alert thresholds
+            let alert_thresholds = [];
+            const thresholdsVal = String(quotaEditAlertThresholdsStr ?? '').trim();
+            if (thresholdsVal !== '') {
+                const parts = thresholdsVal.split(',').map(s => parseFloat(s.trim()));
+                if (parts.some(isNaN) || parts.some(p => p <= 0)) {
+                    quotaSaveError = 'Alert thresholds must be a comma-separated list of positive numbers (e.g. 50, 80).';
+                    return;
+                }
+                alert_thresholds = parts;
+            }
+
             const response = await axios.put(
                 getApiUrl(`/admin/assistant/${quotaEditAssistant.id}/quota`),
-                { enabled: quotaEditEnabled, cost_limit_usd },
+                { enabled: quotaEditEnabled, cost_limit_usd, alert_thresholds },
                 { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
             );
             // Patch the row in costData
@@ -277,6 +293,7 @@
                     ...a,
                     quota_enabled: updated.quota.enabled,
                     cost_limit_usd: updated.quota.cost_limit_usd,
+                    alert_thresholds: updated.quota.alert_thresholds || [],
                     quota_exceeded: updated.quota_exceeded,
                 }
                 : a
@@ -3154,11 +3171,13 @@
                                             {#if !assistant.quota_enabled}
                                                 <span class="text-xs text-gray-400">{localeLoaded ? $_('admin.costManagement.quota.noQuota', { default: 'No quota' }) : 'No quota'}</span>
                                             {:else if assistant.cost_limit_usd != null}
+                                                {@const tablePct = (assistant.cost_usd / assistant.cost_limit_usd) * 100}
+                                                {@const hasAlert = assistant.alert_thresholds && assistant.alert_thresholds.some(t => t <= tablePct)}
                                                 <span class="text-xs text-gray-600">${assistant.cost_limit_usd.toFixed(2)}</span>
                                                 <div class="mt-1 w-full bg-gray-200 rounded-full h-1.5">
                                                     <div
-                                                        class="h-1.5 rounded-full {assistant.quota_exceeded ? 'bg-red-500' : assistant.cost_usd / assistant.cost_limit_usd > 0.8 ? 'bg-yellow-400' : 'bg-green-500'}"
-                                                        style="width: {Math.min(100, (assistant.cost_usd / assistant.cost_limit_usd) * 100).toFixed(1)}%"
+                                                        class="h-1.5 rounded-full {assistant.quota_exceeded ? 'bg-red-500' : hasAlert ? 'bg-yellow-400' : 'bg-green-500'}"
+                                                        style="width: {Math.min(100, tablePct).toFixed(1)}%"
                                                     ></div>
                                                 </div>
                                                 <div class="text-xs text-gray-400 mt-0.5">{((assistant.cost_usd / assistant.cost_limit_usd) * 100).toFixed(1)}% used</div>
@@ -3431,17 +3450,60 @@
                     {#if quotaEditEnabled && quotaEditLimitStr && quotaEditAssistant.cost_usd > 0}
                         {@const limit = parseFloat(quotaEditLimitStr)}
                         {#if !isNaN(limit) && limit > 0}
+                            {@const currentPct = (quotaEditAssistant.cost_usd / limit) * 100}
+                            {@const breakpoints = quotaEditAlertThresholdsStr.split(',').map(s=>parseFloat(s.trim())).filter(p=>!isNaN(p))}
+                            {@const breached = breakpoints.filter(p => p <= currentPct).sort((a,b)=>b-a)[0]}
                             <div class="mt-2">
-                                <div class="w-full bg-gray-200 rounded-full h-1.5">
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 flex mb-1">
                                     <div
-                                        class="h-1.5 rounded-full {quotaEditAssistant.cost_usd >= limit ? 'bg-red-500' : quotaEditAssistant.cost_usd / limit > 0.8 ? 'bg-yellow-400' : 'bg-green-500'}"
-                                        style="width: {Math.min(100, (quotaEditAssistant.cost_usd / limit) * 100).toFixed(1)}%"
+                                        class="h-1.5 rounded-full {quotaEditAssistant.cost_usd >= limit ? 'bg-red-500' : breached ? 'bg-yellow-400' : 'bg-green-500'}"
+                                        style="width: {Math.min(100, currentPct).toFixed(1)}%"
                                     ></div>
                                 </div>
-                                <p class="text-xs text-gray-400 mt-1">{((quotaEditAssistant.cost_usd / limit) * 100).toFixed(1)}% of limit used</p>
+                                <div class="flex justify-between items-center text-xs mt-1">
+                                    <span class="text-gray-400">{currentPct.toFixed(1)}% of limit used</span>
+                                    {#if quotaEditAssistant.cost_usd >= limit}
+                                        <span class="text-red-600 font-medium flex items-center">
+                                            <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            Limit exceeded
+                                        </span>
+                                    {:else if breached}
+                                        <span class="text-yellow-600 font-medium flex items-center bg-yellow-50 px-1.5 py-0.5 rounded">
+                                            <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            Threshold {breached}% reached
+                                        </span>
+                                    {/if}
+                                </div>
                             </div>
                         {/if}
                     {/if}
+                </div>
+
+                <!-- Alert Thresholds input -->
+                <div class="mb-5">
+                    <label for="quota-alerts" class="block text-sm font-medium text-gray-700 mb-1">
+                        Alert thresholds (%)
+                        <span class="font-normal text-gray-400">— comma separated percentages</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 text-sm pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
+                        </span>
+                        <input
+                            type="text"
+                            id="quota-alerts"
+                            placeholder="e.g. 50, 80"
+                            bind:value={quotaEditAlertThresholdsStr}
+                            class="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                        />
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Receive notifications when usage reaches these percentages of the cost limit.</p>
                 </div>
 
                 <!-- Feedback messages -->

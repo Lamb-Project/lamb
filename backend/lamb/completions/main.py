@@ -261,7 +261,22 @@ def _provider_for_connector(connector: str) -> str | None:
 
 
 def _check_quota(assistant_id: int, assistant_details) -> None:
-    """Raise HTTP 429 if the assistant has exceeded its configured cost limit."""
+    """Raise HTTP 429 if the assistant has exceeded its configured cost limit or is blocked in quota alerts."""
+    # First check the new fast checking table
+    is_under_quota = db_manager.check_assistant_quota(assistant_id)
+    if not is_under_quota:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "message": "This assistant has been blocked due to exceeding its usage quota.",
+                    "type": "quota_exceeded",
+                    "code": "assistant_quota_exceeded"
+                }
+            }
+        )
+
+    # Legacy check for quota defined in metadata (assistant_details.metadata)
     try:
         metadata = json.loads(assistant_details.metadata or "{}")
     except Exception:

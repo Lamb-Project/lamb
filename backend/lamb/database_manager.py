@@ -449,12 +449,46 @@ class LambDatabaseManager:
                         UNIQUE(assistant_id, shared_with_user_id)
                     )
                 """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_shares' created successfully")
+
+                # Create the assistant_usage_totals table
+                logger.debug("Creating assistant_usage_totals table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_usage_totals (
+                        assistant_id INTEGER PRIMARY KEY,
+                        prompt_tokens_total INTEGER DEFAULT 0,
+                        completion_tokens_total INTEGER DEFAULT 0,
+                        total_tokens_total INTEGER DEFAULT 0,
+                        cost_usd_total REAL DEFAULT 0.0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_usage_totals' created successfully")
+
+                # Create the assistant_quota_alerts table
+                logger.debug("Creating assistant_quota_alerts table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_quota_alerts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assistant_id INTEGER UNIQUE NOT NULL,
+                        quota_limit_usd REAL,
+                        thresholds_config JSON,
+                        current_alert_level INTEGER DEFAULT 0,
+                        is_blocked BOOLEAN DEFAULT 0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_quota_alerts' created successfully")
+
                 cursor.execute(
                     f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
                 cursor.execute(
                     f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                logger.info(
-                    f"Table '{self.table_prefix}assistant_shares' created successfully")
 
                 # Create the Creator_users table
                 logger.debug("Creating Creator_users table")
@@ -1243,8 +1277,65 @@ class LambDatabaseManager:
                     )
                     logger.info("Migration 12: model_pricing table created and seeded")
 
+                # Migration 13: Add token quota tracking tables
+                logger.info("Migration 13: Creating assistant_usage_totals table if not exists")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_usage_totals (
+                        assistant_id INTEGER PRIMARY KEY,
+                        prompt_tokens_total INTEGER DEFAULT 0,
+                        completion_tokens_total INTEGER DEFAULT 0,
+                        total_tokens_total INTEGER DEFAULT 0,
+                        cost_usd_total REAL DEFAULT 0.0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+
+                logger.info("Migration 13: Creating assistant_quota_alerts table if not exists")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_quota_alerts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assistant_id INTEGER UNIQUE NOT NULL,
+                        quota_limit_usd REAL,
+                        thresholds_config JSON,
+                        current_alert_level INTEGER DEFAULT 0,
+                        is_blocked BOOLEAN DEFAULT 0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+
+                # Backfill assistant_usage_totals from existing usage_logs if new
+                logger.info("Migration 13: Backfilling assistant_usage_totals from usage_logs")
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}assistant_usage_totals (
+                        assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at
+                    )
+                    SELECT
+                        a.id AS assistant_id,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')), 0) AS prompt_tokens_total,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens_total,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')), 0) AS total_tokens_total,
+                        COALESCE(SUM(
+                            COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0) * COALESCE(mp.input_per_1m, 0) / 1000000.0
+                            + 
+                            COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0) * COALESCE(mp.output_per_1m, 0) / 1000000.0
+                        ), 0.0) AS cost_usd_total,
+                        strftime('%s', 'now') AS updated_at
+                    FROM {self.table_prefix}assistants a
+                    JOIN {self.table_prefix}usage_logs ul ON ul.assistant_id = a.id
+                    LEFT JOIN {self.table_prefix}model_pricing mp ON ul.model_name = mp.model_name AND ul.provider = mp.provider
+                    GROUP BY a.id
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        prompt_tokens_total = excluded.prompt_tokens_total,
+                        completion_tokens_total = excluded.completion_tokens_total,
+                        total_tokens_total = excluded.total_tokens_total,
+                        cost_usd_total = excluded.cost_usd_total,
+                        updated_at = excluded.updated_at
+                """)
+
                 connection.commit()
-                logger.info("Migration 12 complete")
+                logger.info("Migration 12 and 13 complete")
 
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
@@ -4108,15 +4199,85 @@ class LambDatabaseManager:
         Errors are caught and logged — never propagated to callers.
         """
         try:
+            prompt_tokens = usage_data.get('prompt_tokens', 0)
+            completion_tokens = usage_data.get('completion_tokens', 0)
+            total_tokens = usage_data.get('total_tokens', 0)
+            now = int(time.time())
+
             with self.get_connection() as conn:
                 conn.execute(
                     f"""INSERT INTO {self.table_prefix}usage_logs
                         (organization_id, assistant_id, usage_data, model_name, provider, created_at)
                         VALUES (?, ?, ?, ?, ?, ?)""",
-                    (org_id, assistant_id, json.dumps(usage_data), model_name, provider, int(time.time()))
+                    (org_id, assistant_id, json.dumps(usage_data), model_name, provider, now)
                 )
+
+                conn.execute(
+                    f"""
+                    INSERT INTO {self.table_prefix}assistant_usage_totals 
+                    (assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at)
+                    VALUES (
+                        ?, 
+                        ?, 
+                        ?, 
+                        ?, 
+                        COALESCE((SELECT COALESCE(input_per_1m, 0) * ? / 1000000.0 + COALESCE(output_per_1m, 0) * ? / 1000000.0 
+                         FROM {self.table_prefix}model_pricing 
+                         WHERE provider = ? AND model_name = ?), 0.0),
+                        ?
+                    )
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        prompt_tokens_total = prompt_tokens_total + excluded.prompt_tokens_total,
+                        completion_tokens_total = completion_tokens_total + excluded.completion_tokens_total,
+                        total_tokens_total = total_tokens_total + excluded.total_tokens_total,
+                        cost_usd_total = cost_usd_total + COALESCE(excluded.cost_usd_total, 0),
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        assistant_id, 
+                        prompt_tokens, 
+                        completion_tokens, 
+                        total_tokens, 
+                        prompt_tokens, completion_tokens, provider, model_name,
+                        now
+                    )
+                )
+                conn.commit()
         except Exception as e:
             logger.error(f"Failed to log token usage for assistant {assistant_id}: {e}")
+
+    def check_assistant_quota(self, assistant_id: int) -> bool:
+        """
+        Check if the assistant is within its quota limit and isn't blocked.
+        Returns True if they can continue, False if blocked or over hard limit.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"""
+                    SELECT a.is_blocked, a.quota_limit_usd, u.cost_usd_total
+                    FROM {self.table_prefix}assistant_quota_alerts a
+                    LEFT JOIN {self.table_prefix}assistant_usage_totals u ON a.assistant_id = u.assistant_id
+                    WHERE a.assistant_id = ?
+                """, (assistant_id,))
+
+                row = cursor.fetchone()
+                if not row:
+                    return True # No limits configured
+
+                is_blocked, quota_limit_usd, cost_usd_total = row
+
+                if is_blocked:
+                    return False
+
+                if quota_limit_usd is not None and cost_usd_total is not None:
+                    if float(cost_usd_total) >= float(quota_limit_usd):
+                        return False
+
+                return True
+        except Exception as e:
+            logger.error(f"Error checking assistant quota for {assistant_id}: {e}")
+            return True # Fail open to avoid blocking
 
     def get_assistant_cost_usd(self, assistant_id: int) -> float:
         """Return the total estimated cost in USD for all logged requests for this assistant.
@@ -4203,23 +4364,15 @@ class LambDatabaseManager:
                 a.owner,
                 o.name  AS organization_name,
                 a.api_callback,
-                COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')),     0) AS prompt_tokens,
-                COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens,
-                COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')),      0) AS total_tokens,
-                COALESCE(SUM(
-                    COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'),     0)
-                        * COALESCE(mp.input_per_1m,  0) / 1000000.0
-                    +
-                    COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)
-                        * COALESCE(mp.output_per_1m, 0) / 1000000.0
-                ), 0.0) AS cost_usd
+                COALESCE(ut.prompt_tokens_total, 0) AS prompt_tokens,
+                COALESCE(ut.completion_tokens_total, 0) AS completion_tokens,
+                COALESCE(ut.total_tokens_total, 0) AS total_tokens,
+                COALESCE(ut.cost_usd_total, 0.0) AS cost_usd,
+                qa.thresholds_config
             FROM {self.table_prefix}assistants a
             LEFT JOIN {self.table_prefix}organizations o   ON a.organization_id = o.id
-            LEFT JOIN {self.table_prefix}usage_logs ul     ON ul.assistant_id   = a.id
-            LEFT JOIN {self.table_prefix}model_pricing mp
-                   ON ul.model_name = mp.model_name
-                  AND ul.provider   = mp.provider
-            GROUP BY a.id, a.name, a.owner, o.name, a.api_callback
+            LEFT JOIN {self.table_prefix}assistant_usage_totals ut ON ut.assistant_id = a.id
+            LEFT JOIN {self.table_prefix}assistant_quota_alerts qa ON qa.assistant_id = a.id
             ORDER BY cost_usd DESC, a.id ASC
         """
         try:
@@ -4242,6 +4395,7 @@ class LambDatabaseManager:
                         "completion_tokens": int(row[6] or 0),
                         "total_tokens": int(row[7] or 0),
                         "cost_usd": float(row[8] or 0.0),
+                        "thresholds_config": row[9]
                     })
                 return results
             finally:
@@ -5365,20 +5519,18 @@ class LambDatabaseManager:
 
     # ==================== End LTI Creator Methods ====================
 
-    def update_assistant_quota(self, assistant_id: int, enabled: bool, cost_limit_usd) -> bool:
-        """Patch only the quota key inside the assistant's api_callback JSON.
+    def update_assistant_quota(self, assistant_id: int, enabled: bool, cost_limit_usd, alert_thresholds=None) -> bool:
+        """Patch only the quota key inside the assistant's api_callback JSON, and update the alerts table.
 
         Cost_limit_usd can be a float or None (unlimited).
         Leaves all other metadata fields untouched.
         Returns True on success.
         """
         try:
-            connection = self.get_connection()
-            if not connection:
-                return False
-            try:
-                cursor = connection.cursor()
-                # Read current api_callback
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Update the assistant table JSON config
                 cursor.execute(
                     f"SELECT api_callback FROM {self.table_prefix}assistants WHERE id = ?",
                     (assistant_id,)
@@ -5386,25 +5538,53 @@ class LambDatabaseManager:
                 row = cursor.fetchone()
                 if row is None:
                     return False
-                raw = row[0] or "{}"
+                    
+                import json
                 try:
-                    metadata = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                    cb = json.loads(row[0]) if row[0] else {}
                 except Exception:
-                    metadata = {}
-                # Patch quota section
-                quota = {"enabled": bool(enabled)}
-                if cost_limit_usd is not None:
-                    quota["cost_limit_usd"] = float(cost_limit_usd)
-                metadata["quota"] = quota
-                # Write back
+                    cb = {}
+                
+                # Update quota dict inside metadata
+                quota_dict = {"enabled": bool(enabled)}
+                if enabled and cost_limit_usd is not None and str(cost_limit_usd).strip() != "":
+                    try:
+                        cost_limit_val = float(cost_limit_usd)
+                        if cost_limit_val > 0:
+                            quota_dict["cost_limit_usd"] = cost_limit_val
+                    except ValueError:
+                        pass
+                cb['quota'] = quota_dict
+                
+                new_cb_json = json.dumps(cb)
+                
                 cursor.execute(
-                    f"UPDATE {self.table_prefix}assistants SET api_callback = ? WHERE id = ?",
-                    (json.dumps(metadata), assistant_id)
+                    f"UPDATE {self.table_prefix}assistants SET api_callback = ?, updated_at = ? WHERE id = ?",
+                    (new_cb_json, int(time.time()), assistant_id)
                 )
-                connection.commit()
-                return cursor.rowcount > 0
-            finally:
-                connection.close()
+
+                # Now update the assistant_quota_alerts table
+                if enabled:
+                    cost_limit_val = float(cost_limit_usd) if cost_limit_usd is not None and str(cost_limit_usd).strip() != "" else None
+                    if cost_limit_val is not None and cost_limit_val <= 0:
+                        cost_limit_val = None
+                else:
+                    cost_limit_val = None
+
+                thresholds_json = json.dumps(alert_thresholds) if alert_thresholds else None
+
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}assistant_quota_alerts 
+                    (assistant_id, quota_limit_usd, thresholds_config, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        quota_limit_usd = excluded.quota_limit_usd,
+                        thresholds_config = excluded.thresholds_config,
+                        updated_at = excluded.updated_at
+                """, (assistant_id, cost_limit_val, thresholds_json, int(time.time())))
+                
+                conn.commit()
+                return True
         except Exception as e:
             logger.error(f"Error updating quota for assistant {assistant_id}: {e}")
             return False
