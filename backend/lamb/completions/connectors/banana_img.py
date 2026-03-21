@@ -15,14 +15,12 @@ import logging
 import base64
 import time
 import uuid
-import re
 from typing import Dict, Any, Optional, List
 from io import BytesIO
 from pathlib import Path
 from google import genai
 from google.genai import types
 from PIL import Image
-from openai import AsyncOpenAI
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.database_manager import LambDatabaseManager
 import config
@@ -388,144 +386,9 @@ async def _dict_to_streaming_response(response_dict: Dict[str, Any]):
     yield "data: [DONE]\n\n"
 
 
-def _is_title_generation_request(messages: List[Dict[str, Any]]) -> bool:
-    """
-    Detect if the request is asking for a chat title/tags instead of image generation
-    
-    Args:
-        messages: List of message dictionaries (may have prompt template applied)
-        
-    Returns:
-        bool: True if this is a title/tags generation request
-    """
-    if not messages:
-        return False
-    
-    # Get the last user message
-    last_message = messages[-1] if messages else None
-    if not last_message:
-        return False
-    
-    content = last_message.get("content", "")
-    if isinstance(content, list):
-        # Multimodal format - extract text
-        text_parts = []
-        for item in content:
-            if item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-        content = " ".join(text_parts)
-    
-    # Log the content for debugging (trimmed)
-    content_preview = content[:200] if len(content) > 200 else content
-    logger.debug(f"🔍 Checking title detection on content: {content_preview}...")
-    
-    # Look for title/tags generation patterns
-    # Note: Content may have prompt template wrapper like " --- {content} --- "
-    # OpenWebUI sends: "### Task:\nGenerate 1-3 broad tags..."
-    
-    content_lower = content.lower()
-    
-    # Quick check for OpenWebUI title format (starts with "### Task:")
-    if content_lower.strip().startswith("### task:") or "### task:" in content_lower:
-        logger.info(f"🎯 Detected title generation request: OpenWebUI format (### Task:)")
-        return True
-    
-    title_patterns = [
-        r"generate.*title",
-        r"create.*title",
-        r"suggest.*title",
-        r"generate.*tags",
-        r"categorizing.*themes",
-        r"chat history",
-        r"conversation title",
-        r"summarize.*conversation",
-        r"task:\s*generate",  # "Task: Generate..." pattern
-        r"output:\s*json\s*format",  # "Output: JSON format" pattern
-        r"broad tags",  # "Generate 1-3 broad tags"
-        r"subtopic tags",  # "more specific subtopic tags"
-        r"guidelines:",  # OpenWebUI title requests have "### Guidelines:"
-        r"use the chat's primary language",  # OpenWebUI specific text
-    ]
-    
-    for pattern in title_patterns:
-        if re.search(pattern, content_lower):
-            logger.info(f"🎯 Detected title generation request: matched pattern '{pattern}'")
-            logger.debug(f"   Content snippet: {content_lower[:150]}...")
-            return True
-    
-    logger.debug(f"❌ Not a title request - no patterns matched")
-    return False
-
-async def _generate_title_with_gpt(
-    messages: List[Dict[str, Any]],
-    assistant_owner: Optional[str],
-    api_key: str = None
-) -> Dict[str, Any]:
-    """
-    Use GPT-4o-mini to generate a title/tags response
-    
-    Args:
-        messages: Original messages
-        assistant_owner: Assistant owner email for org config
-        api_key: Optional API key (for consistency)
-        
-    Returns:
-        OpenAI-compatible response dictionary
-    """
-    logger.info("📝 Generating title using GPT-4o-mini")
-    
-    # Get organization-specific OpenAI configuration
-    openai_api_key = None
-    base_url = None
-    model = "gpt-4o-mini"
-    
-    if assistant_owner:
-        try:
-            config_resolver = OrganizationConfigResolver(assistant_owner)
-            openai_config = config_resolver.get_provider_config("openai")
-            
-            if openai_config:
-                openai_api_key = openai_config.get("api_key")
-                base_url = openai_config.get("base_url")
-                # Use gpt-4o-mini or the smallest available model
-                available_models = openai_config.get("models", [])
-                if "gpt-4o-mini" in available_models:
-                    model = "gpt-4o-mini"
-                elif available_models:
-                    model = available_models[0]  # Use first available
-        except Exception as e:
-            logger.warning(f"Error getting OpenAI config: {e}")
-    
-    # Fallback to environment variables
-    if not openai_api_key:
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("OPENAI_BASE_URL")
-    
-    if not openai_api_key:
-        raise ValueError("No OpenAI API key found for title generation")
-    
-    # Create OpenAI client
-    client = AsyncOpenAI(api_key=openai_api_key, base_url=base_url)
-    
-    # Call GPT-4o-mini
-    response = await client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=0.7
-    )
-    
-    logger.info(f"✅ Title generated successfully with {model}")
-    
-    # Return OpenAI-compatible format
-    return response.model_dump()
-
 async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None):
     """
     Banana Image connector for Google Gen AI (Gemini) image generation
-    
-    This connector intelligently routes requests:
-    - Title/tags requests → GPT-4o-mini for text generation
-    - Image prompts → Google Gen AI (Gemini) for image generation
     
     For image generation, it saves images to /backend/static/public/{user_id}/img/
     and returns markdown with the image link.
@@ -556,20 +419,7 @@ async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any]
     # return the correct format based on what was requested
     if stream:
         logger.info("🔄 Streaming requested - will convert response to SSE format")
-    
-    # Check if this is a title generation request
-    if _is_title_generation_request(messages):
-        logger.info("🔀 Routing to GPT-4o-mini for title generation")
-        # Use GPT-4o-mini to generate title
-        title_response = await _generate_title_with_gpt(messages, assistant_owner)
-        logger.info(f"📤 Returning title generation response: {type(title_response)}, stream_requested={original_stream}")
-        
-        # If streaming was requested, convert to SSE format
-        if original_stream:
-            return _dict_to_streaming_response(title_response)
-        return title_response
-    
-    logger.info("🖼️ NOT a title request - proceeding with IMAGE GENERATION")
+    logger.info("🖼️ Proceeding with image generation")
     
     # Validate model name - use actual API model names from env config
     available_models = get_available_llms(assistant_owner)

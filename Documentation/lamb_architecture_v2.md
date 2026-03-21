@@ -867,7 +867,7 @@ User clicks LTI link in LMS
 
 **Key Design Decisions:**
 - Activities are bound to one organization (no cross-org mixing)
-- **Activity ownership:** first instructor to configure = owner (can manage assistants, toggle chat visibility)
+- **Activity ownership:** first instructor to configure = owner (can manage assistants for the activity; chat visibility is fixed at creation time)
 - **Instructor dashboard:** any instructor sees stats; only owner can reconfigure
 - **Chat visibility:** opt-in per activity at creation; students must consent on first access; all transcripts anonymized ("Student 1", "Student 2", ...)
 - Student identity is per `resource_link_id` (each LTI placement = separate identity)

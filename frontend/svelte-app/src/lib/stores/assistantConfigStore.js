@@ -318,14 +318,19 @@ function createAssistantConfigStore() {
 		clearCache: () => {
 			console.log('assistantConfigStore: Clearing cached capabilities and defaults.');
 			if (browser) {
-				// Clear both user-scoped and legacy global cache keys
-				const capsCacheKey = getUserScopedCacheKey(CAPABILITIES_CACHE_PREFIX);
-				const defaultsCacheKey = getUserScopedCacheKey(DEFAULTS_CACHE_PREFIX);
-				localStorage.removeItem(capsCacheKey);
-				localStorage.removeItem(defaultsCacheKey);
-				// Also clear legacy non-scoped keys for clean migration
-				localStorage.removeItem(CAPABILITIES_CACHE_PREFIX);
-				localStorage.removeItem(DEFAULTS_CACHE_PREFIX);
+				// Clear all user-scoped and legacy cache keys during session replacement.
+				const keysToRemove = [];
+				for (let index = 0; index < localStorage.length; index += 1) {
+					const key = localStorage.key(index);
+					if (
+						key &&
+						(key.startsWith(CAPABILITIES_CACHE_PREFIX) ||
+							key.startsWith(DEFAULTS_CACHE_PREFIX))
+					) {
+						keysToRemove.push(key);
+					}
+				}
+				keysToRemove.forEach((key) => localStorage.removeItem(key));
 			}
 			set(initialState);
 		}

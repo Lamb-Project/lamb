@@ -492,12 +492,15 @@ async def lti_reconfigure_activity(request: Request):
         if not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
 
-        # Handle chat_visibility toggle
+        # Chat transcript visibility is fixed at initial configuration time.
         chat_visibility_str = form_data.get("chat_visibility_enabled")
         if chat_visibility_str is not None:
             new_chat_vis = 1 if chat_visibility_str == "1" else 0
             if new_chat_vis != activity.get('chat_visibility_enabled', 0):
-                db_manager.update_lti_activity(activity['id'], chat_visibility_enabled=new_chat_vis)
+                return HTMLResponse(
+                    "<h2>Invalid request</h2><p>Chat transcript visibility can only be set when the activity is first configured.</p>",
+                    status_code=400
+                )
 
         success = manager.reconfigure_activity(activity, assistant_ids)
         if not success:
