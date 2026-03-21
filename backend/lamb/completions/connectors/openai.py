@@ -741,13 +741,22 @@ Returns:
         logger.debug(f"Original Stream completed")
 
     # --- Helper function for EXPERIMENTAL stream generation ---
-    async def _generate_experimental_stream():
+    async def _generate_experimental_stream(usage_out: dict | None = None):
         logger.debug(f"Experimental Stream created")
+        # Request usage in the final streaming chunk so callers can log it
+        stream_params = params.copy()
+        stream_params["stream_options"] = {"include_usage": True}
+
         # Create a streaming response
-        stream_obj = await _make_api_call_with_fallback(params) # Use helper with fallback
+        stream_obj = await _make_api_call_with_fallback(stream_params) # Use helper with fallback
 
         # Iterate through the stream and yield the JSON representation of each chunk
         async for chunk in stream_obj: # Changed to async for
+            # Capture usage when the final chunk carries it
+            if usage_out is not None and hasattr(chunk, "usage") and chunk.usage:
+                usage_out["prompt_tokens"]     = chunk.usage.prompt_tokens
+                usage_out["completion_tokens"] = chunk.usage.completion_tokens
+                usage_out["total_tokens"]      = chunk.usage.total_tokens
             yield f"data: {chunk.model_dump_json()}\n\n"
 
         yield "data: [DONE]\n\n"
@@ -757,7 +766,8 @@ Returns:
     if stream:
         # --- CHOOSE IMPLEMENTATION HERE ---
         # return _generate_original_stream()
-        return _generate_experimental_stream()
+        usage_out = {}
+        return _generate_experimental_stream(usage_out=usage_out), usage_out
     else:
         # Non-streaming call with fallback
         response = await _make_api_call_with_fallback(params) # Use helper with fallback
