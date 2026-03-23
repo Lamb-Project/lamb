@@ -77,7 +77,7 @@
         <div class="flex-shrink-0 flex items-center">
           <div class="flex items-center space-x-2">
             <!-- Image path updated to be relative to static dir -->
-            <img src="{base}/img/lamb_1.png" alt="LAMB Logo" class="h-14">
+            <img src="{base}/img/lamb_1.png" alt="LAMB Logo" class="h-12">
             <div class="text-lg font-bold">
               <a href="{base}/">{localeLoaded ? $_('app.logoText', { default: 'LAMB' }) : 'LAMB'}</a> 
               <span class="text-xs bg-gray-200 px-1 py-0.5 rounded" title="Version: {VERSION_INFO.version}, Commit: {VERSION_INFO.commit}, Branch: {VERSION_INFO.branch}">{versionDisplay}</span>

@@ -51,7 +51,7 @@ services:
       corepack enable && \
       corepack prepare pnpm@latest --activate && \
       pnpm install --no-frozen-lockfile && \
-      pnpm --filter creator-app --filter module-chat build"
+      pnpm --filter creator-app build && pnpm --filter module-chat build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
