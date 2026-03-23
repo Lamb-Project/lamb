@@ -7,6 +7,21 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      image:
+        description: "Image to build and push"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - lamb
+          - lamb-kb
+          - openwebui
+      manual_tag:
+        description: "Tag to publish for manual runs (for example: dev or v0.5.0)"
+        required: true
+        default: dev
 
 permissions:
   contents: read
@@ -51,16 +66,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker metadata
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.image_name }}
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ matrix.image_name }}
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.manual_tag, 'v')) }}
+            type=raw,value=dev,enable=${{ github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/dev' }}
             type=ref,event=tag
+            type=raw,value=${{ github.event.inputs.manual_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.image == 'all' || github.event.inputs.image == matrix.image_name }}
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
