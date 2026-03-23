@@ -149,7 +149,7 @@ Status legend:
 | P8b | Backend/Frontend | Define and document frontend runtime env vars | DONE | Documented `LAMB_FRONTEND_*` vars in compose and deployment guide |
 | P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
 | P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | DONE | Added `.github/workflows/build-images.yml` (includes `openwebui`) |
-| P10 | CI/CD | Define release tagging policy (`edge`, semver, `latest`) | TODO | Document in workflow/docs |
+| P10 | CI/CD | Define release tagging policy (`dev`, semver, `latest`) | DONE | `dev` on `dev` branch, `latest` + semver on `v*` tags |
 | P11 | Docs | Create deployment guide for new compose stack | DONE | Added `Documentation/slop-docs/deployment-next-docker.md` |
 | P12 | Docs | Add migration notes from current compose | TODO | Volumes, env vars, service rename |
 | P13 | Validation | Cold-start benchmark and restart behavior validation | IN_PROGRESS | Localhost scenario validated (startup race documented, Ollama inference/RAG verified) |
@@ -341,15 +341,16 @@ Frontend runtime configuration is now generated at container startup.
 
 Added GitHub Actions workflow at `.github/workflows/build-images.yml` to build and publish Docker images to GHCR.
 
-- Triggered on push to `main`, version tags (`v*`), and manual dispatch.
+- Triggered on push to `dev`, version tags (`v*`), and manual dispatch.
 - Publishes:
   - `ghcr.io/lamb-project/lamb`
   - `ghcr.io/lamb-project/lamb-kb`
   - `ghcr.io/lamb-project/openwebui`
 - Tag strategy currently implemented:
-  - `edge` on `main`
-  - `latest` on semver-like tags (`v*`)
-  - git tag ref + `sha-<shortsha>` tags
+  - `dev` on `dev`
+  - `latest` on release tags (`v*`)
+  - git tag ref (for example `v0.5.0`) on release tags
+- Builds and publishes multi-platform images for `linux/amd64` and `linux/arm64`.
 - Uses Buildx + GHA cache (`cache-from/cache-to`) for faster rebuilds.
 
 ## Migration Strategy for Existing Deployments
