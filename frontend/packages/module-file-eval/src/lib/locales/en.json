@@ -1,0 +1,65 @@
+{
+	"fileEval": {
+		"upload": {
+			"title": "File Submission",
+			"dropzone": "Drag and drop your file here, or click to browse",
+			"formats": "Supported formats: PDF, DOCX, TXT",
+			"noteLabel": "Note to instructor (optional)",
+			"notePlaceholder": "Add any comments about your submission...",
+			"submit": "Submit File",
+			"submitting": "Uploading...",
+			"submitted": "Submitted successfully!",
+			"alreadySubmitted": "You have already submitted a file",
+			"resubmit": "Replace Submission",
+			"groupCode": "Your group code",
+			"groupCodeHint": "Share this code with your group members",
+			"joinGroup": "Join Group",
+			"joinGroupPlaceholder": "Enter group code",
+			"joining": "Joining...",
+			"download": "Download submitted file",
+			"grade": "Grade",
+			"aiGrade": "AI Proposed Grade",
+			"feedback": "Feedback",
+			"deadline": "Deadline",
+			"deadlinePassed": "Deadline has passed"
+		},
+		"grading": {
+			"title": "Grading Dashboard",
+			"stats": {
+				"total": "Total Submissions",
+				"evaluated": "AI Evaluated",
+				"graded": "Graded",
+				"sentToMoodle": "Sent to Moodle"
+			},
+			"table": {
+				"file": "File",
+				"student": "Student",
+				"group": "Group",
+				"aiScore": "AI Score",
+				"finalScore": "Final Score",
+				"status": "Status",
+				"actions": "Actions"
+			},
+			"evaluate": "Start AI Evaluation",
+			"evaluateAll": "Evaluate All",
+			"evaluating": "Evaluating...",
+			"acceptAll": "Accept All AI Grades",
+			"syncMoodle": "Sync Grades to Moodle",
+			"syncing": "Syncing...",
+			"syncSuccess": "Grades sent to Moodle successfully",
+			"editGrade": "Edit Grade",
+			"saveGrade": "Save",
+			"noSubmissions": "No submissions yet"
+		},
+		"status": {
+			"pending": "Pending",
+			"processing": "Processing",
+			"completed": "Completed",
+			"error": "Error",
+			"not_started": "Not evaluated",
+			"idle": "Idle",
+			"in_progress": "In Progress",
+			"completed_with_errors": "Completed with Errors"
+		}
+	}
+}

@@ -783,5 +783,62 @@
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
     }
+  },
+  "fileEval": {
+    "grading": {
+      "title": "Avaluació de fitxers — professorat",
+      "syncSuccess": "Qualificacions enviades a l'LMS.",
+      "evaluating": "Avaluant…",
+      "evaluateAll": "Avaluar-ho tot",
+      "acceptAll": "Acceptar totes les notes IA",
+      "syncing": "Sincronitzant…",
+      "syncMoodle": "Enviar notes a Moodle",
+      "noSubmissions": "Encara no hi ha lliuraments.",
+      "saveGrade": "Desar",
+      "editGrade": "Editar",
+      "stats": {
+        "total": "Lliuraments",
+        "evaluated": "Avaluades per IA",
+        "graded": "Qualificació final",
+        "sentToMoodle": "Enviades a l'LMS"
+      },
+      "table": {
+        "file": "Fitxer",
+        "group": "Grup",
+        "aiScore": "Nota IA",
+        "finalScore": "Nota final",
+        "status": "Estat",
+        "actions": "Accions"
+      }
+    },
+    "upload": {
+      "title": "Lliurament de treball",
+      "submitted": "Lliurament desat.",
+      "alreadySubmitted": "Ja has lliurat",
+      "groupCode": "Codi de grup",
+      "groupCodeHint": "Comparteix aquest codi per unir-se al grup.",
+      "aiGrade": "Nota IA",
+      "grade": "Nota",
+      "download": "Descarregar fitxer",
+      "resubmit": "Substituir lliurament",
+      "dropzone": "Arrossega un fitxer o usa el botó.",
+      "formats": "PDF, Word o text.",
+      "noteLabel": "Nota per al professor (opcional)",
+      "notePlaceholder": "Comentari opcional…",
+      "submitting": "Enviant…",
+      "submit": "Enviar",
+      "joinGroup": "Unir-se al grup",
+      "joinGroupPlaceholder": "Codi de grup",
+      "joining": "Unint…"
+    },
+    "status": {
+      "idle": "En espera",
+      "pending": "Pendent",
+      "processing": "Processant",
+      "completed": "Completat",
+      "completed_with_errors": "Completat amb errors",
+      "error": "Error",
+      "not_started": "No iniciat"
+    }
   }
 }

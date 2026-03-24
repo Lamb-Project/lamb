@@ -783,5 +783,62 @@
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
     }
+  },
+  "fileEval": {
+    "grading": {
+      "title": "Fitxategien ebaluazioa — irakaslea",
+      "syncSuccess": "Kalifikazioak LMSra bidali dira.",
+      "evaluating": "Ebaluatzen…",
+      "evaluateAll": "Dena ebaluatu",
+      "acceptAll": "Onartu IAren nota guztiak",
+      "syncing": "Sinkronizatzen…",
+      "syncMoodle": "Bidali notak Moodlera",
+      "noSubmissions": "Oraindik ez dago bidalketarik.",
+      "saveGrade": "Gorde",
+      "editGrade": "Editatu",
+      "stats": {
+        "total": "Bidalketak",
+        "evaluated": "IAk ebaluatuak",
+        "graded": "Azken nota",
+        "sentToMoodle": "LMSra bidaliak"
+      },
+      "table": {
+        "file": "Fitxategia",
+        "group": "Taldea",
+        "aiScore": "IA nota",
+        "finalScore": "Azken nota",
+        "status": "Egoera",
+        "actions": "Ekintzak"
+      }
+    },
+    "upload": {
+      "title": "Lana bidali",
+      "submitted": "Bidalketa gordeta.",
+      "alreadySubmitted": "Dagoeneko bidali duzu",
+      "groupCode": "Taldearen kodea",
+      "groupCodeHint": "Partekatu kode hau taldekideek batzeko.",
+      "aiGrade": "IA nota",
+      "grade": "Nota",
+      "download": "Deskargatu fitxategia",
+      "resubmit": "Ordezkatu bidalketa",
+      "dropzone": "Arrastra fitxategi bat edo erabili botoia.",
+      "formats": "PDF, Word edo testua.",
+      "noteLabel": "Oharra irakasleari (aukerakoa)",
+      "notePlaceholder": "Iruzkin aukerakoa…",
+      "submitting": "Bidaltzen…",
+      "submit": "Bidali",
+      "joinGroup": "Taldera elkartu",
+      "joinGroupPlaceholder": "Taldearen kodea",
+      "joining": "Elkartzen…"
+    },
+    "status": {
+      "idle": "Itxaroten",
+      "pending": "Zain",
+      "processing": "Prozesatzen",
+      "completed": "Osatuta",
+      "completed_with_errors": "Errorekin osatuta",
+      "error": "Errorea",
+      "not_started": "Hasi gabe"
+    }
   }
 }

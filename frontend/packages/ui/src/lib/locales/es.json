@@ -783,5 +783,62 @@
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
     }
+  },
+  "fileEval": {
+    "grading": {
+      "title": "Evaluación de archivos — profesorado",
+      "syncSuccess": "Calificaciones enviadas al LMS.",
+      "evaluating": "Evaluando…",
+      "evaluateAll": "Evaluar todas",
+      "acceptAll": "Aceptar todas las notas IA",
+      "syncing": "Sincronizando…",
+      "syncMoodle": "Enviar notas a Moodle",
+      "noSubmissions": "Aún no hay entregas.",
+      "saveGrade": "Guardar",
+      "editGrade": "Editar",
+      "stats": {
+        "total": "Entregas",
+        "evaluated": "Evaluadas por IA",
+        "graded": "Calificación final",
+        "sentToMoodle": "Enviadas al LMS"
+      },
+      "table": {
+        "file": "Archivo",
+        "group": "Grupo",
+        "aiScore": "Nota IA",
+        "finalScore": "Nota final",
+        "status": "Estado",
+        "actions": "Acciones"
+      }
+    },
+    "upload": {
+      "title": "Entrega de trabajo",
+      "submitted": "Entrega guardada.",
+      "alreadySubmitted": "Ya has entregado",
+      "groupCode": "Código de grupo",
+      "groupCodeHint": "Comparte este código para que otros se unan al grupo.",
+      "aiGrade": "Nota IA",
+      "grade": "Nota",
+      "download": "Descargar archivo",
+      "resubmit": "Reemplazar entrega",
+      "dropzone": "Arrastra un archivo aquí o usa el botón.",
+      "formats": "PDF, Word o texto.",
+      "noteLabel": "Nota para el profesor (opcional)",
+      "notePlaceholder": "Comentario opcional…",
+      "submitting": "Enviando…",
+      "submit": "Enviar",
+      "joinGroup": "Unirse al grupo",
+      "joinGroupPlaceholder": "Código de grupo",
+      "joining": "Uniendo…"
+    },
+    "status": {
+      "idle": "En espera",
+      "pending": "Pendiente",
+      "processing": "Procesando",
+      "completed": "Completado",
+      "completed_with_errors": "Completado con errores",
+      "error": "Error",
+      "not_started": "Sin iniciar"
+    }
   }
 }

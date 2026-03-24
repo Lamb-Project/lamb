@@ -1,0 +1,65 @@
+{
+	"fileEval": {
+		"upload": {
+			"title": "Entrega de Archivo",
+			"dropzone": "Arrastra y suelta tu archivo aquí, o haz clic para explorar",
+			"formats": "Formatos soportados: PDF, DOCX, TXT",
+			"noteLabel": "Nota para el profesor (opcional)",
+			"notePlaceholder": "Añade comentarios sobre tu entrega...",
+			"submit": "Entregar Archivo",
+			"submitting": "Subiendo...",
+			"submitted": "¡Entregado correctamente!",
+			"alreadySubmitted": "Ya has entregado un archivo",
+			"resubmit": "Reemplazar Entrega",
+			"groupCode": "Tu código de grupo",
+			"groupCodeHint": "Comparte este código con los miembros de tu grupo",
+			"joinGroup": "Unirse al Grupo",
+			"joinGroupPlaceholder": "Introduce código de grupo",
+			"joining": "Uniéndose...",
+			"download": "Descargar archivo entregado",
+			"grade": "Nota",
+			"aiGrade": "Nota Propuesta por IA",
+			"feedback": "Comentarios",
+			"deadline": "Fecha límite",
+			"deadlinePassed": "La fecha límite ha pasado"
+		},
+		"grading": {
+			"title": "Panel de Corrección",
+			"stats": {
+				"total": "Total Entregas",
+				"evaluated": "Evaluadas por IA",
+				"graded": "Calificadas",
+				"sentToMoodle": "Enviadas a Moodle"
+			},
+			"table": {
+				"file": "Archivo",
+				"student": "Estudiante",
+				"group": "Grupo",
+				"aiScore": "Nota IA",
+				"finalScore": "Nota Final",
+				"status": "Estado",
+				"actions": "Acciones"
+			},
+			"evaluate": "Iniciar Evaluación IA",
+			"evaluateAll": "Evaluar Todas",
+			"evaluating": "Evaluando...",
+			"acceptAll": "Aceptar Todas las Notas IA",
+			"syncMoodle": "Enviar Notas a Moodle",
+			"syncing": "Enviando...",
+			"syncSuccess": "Notas enviadas a Moodle correctamente",
+			"editGrade": "Editar Nota",
+			"saveGrade": "Guardar",
+			"noSubmissions": "Sin entregas todavía"
+		},
+		"status": {
+			"pending": "Pendiente",
+			"processing": "Procesando",
+			"completed": "Completada",
+			"error": "Error",
+			"not_started": "Sin evaluar",
+			"idle": "Inactivo",
+			"in_progress": "En Progreso",
+			"completed_with_errors": "Completada con Errores"
+		}
+	}
+}

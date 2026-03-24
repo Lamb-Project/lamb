@@ -1,0 +1,26 @@
+{
+	"fileEval": {
+		"upload": {
+			"title": "Fitxategiaren Bidalketa",
+			"dropzone": "Arrastatu eta jaregin zure fitxategia hemen, edo egin klik arakatzeko",
+			"formats": "Onartutako formatuak: PDF, DOCX, TXT",
+			"submit": "Fitxategia Bidali",
+			"submitting": "Igotzen...",
+			"submitted": "Ondo bidali da!",
+			"alreadySubmitted": "Dagoeneko fitxategi bat bidali duzu",
+			"resubmit": "Bidalketa Ordeztu",
+			"groupCode": "Zure talde kodea",
+			"joinGroup": "Taldera Batu",
+			"download": "Bidalitako fitxategia deskargatu",
+			"grade": "Nota",
+			"deadline": "Muga data"
+		},
+		"grading": {
+			"title": "Kalifikazio Panela",
+			"evaluate": "IA Ebaluazioa Hasi",
+			"acceptAll": "IA Nota Guztiak Onartu",
+			"syncMoodle": "Notak Moodle-ra Bidali",
+			"noSubmissions": "Ez dago bidalketarik oraindik"
+		}
+	}
+}

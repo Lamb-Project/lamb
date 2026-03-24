@@ -1011,6 +1011,8 @@ class LambDatabaseManager:
                             configured_by_name TEXT,
                             chat_visibility_enabled INTEGER NOT NULL DEFAULT 0,
                             activity_type TEXT NOT NULL DEFAULT 'chat',
+                            setup_config TEXT DEFAULT '{{}}',
+                            lis_outcome_service_url TEXT,
                             status TEXT NOT NULL DEFAULT 'active',
                             created_at INTEGER NOT NULL,
                             updated_at INTEGER NOT NULL,
@@ -1030,6 +1032,14 @@ class LambDatabaseManager:
                         logger.info("Migrating lti_activities: adding activity_type")
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'chat'")
                         logger.info("Migrated lti_activities with activity_type field")
+                    if 'setup_config' not in existing_cols:
+                        logger.info("Migrating lti_activities: adding setup_config")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN setup_config TEXT DEFAULT '{{}}'")
+                        logger.info("Migrated lti_activities with setup_config field")
+                    if 'lis_outcome_service_url' not in existing_cols:
+                        logger.info("Migrating lti_activities: adding lis_outcome_service_url")
+                        cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN lis_outcome_service_url TEXT")
+                        logger.info("Migrated lti_activities with lis_outcome_service_url field")
                     if 'owner_email' not in existing_cols:
                         logger.info("Migrating lti_activities: adding owner_email, owner_name, chat_visibility_enabled")
                         cursor.execute(f"ALTER TABLE {self.table_prefix}lti_activities ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")

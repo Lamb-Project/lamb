@@ -352,6 +352,12 @@ async def lti_setup_info(request: Request, token: str = ""):
 
     needs_org_selection = len(orgs_with_assistants) > 1
 
+    def _field_to_json(f):
+        row = {"name": f.name, "label": f.label, "type": f.field_type, "required": f.required}
+        if f.field_type == "select" and getattr(f, "options", None):
+            row["options"] = [{"value": o["value"], "label": o["label"]} for o in f.options]
+        return row
+
     return JSONResponse({
         "resource_link_id": resource_link_id,
         "context_title": data.get("lti_context_title", ""),
@@ -360,10 +366,8 @@ async def lti_setup_info(request: Request, token: str = ""):
         "orgs_with_assistants": orgs_with_assistants,
         "modules": [{"name": m.name, "display_name": getattr(m, 'display_name', m.name), "description": getattr(m, 'description', '')} for m in get_all_modules()],
         "modules_fields": {
-            m.name: [
-                {"name": f.name, "label": f.label, "type": f.field_type, "required": f.required}
-                for f in m.get_setup_fields()
-            ] for m in get_all_modules()
+            m.name: [_field_to_json(f) for f in m.get_setup_fields()]
+            for m in get_all_modules()
         }
     })
 
@@ -439,11 +443,15 @@ async def lti_configure_activity(request: Request):
 
         # Phase 2: module hook (creates OWI group, adds model permissions, updates DB)
         module = _get_activity_module(activity)
+        reserved = {"token", "organization_id", "assistant_ids", "activity_type", "chat_visibility_enabled"}
+        extras = {k: v for k, v in payload.items() if k not in reserved}
         setup_data = {
             "resource_link_id": resource_link_id,
             "assistant_ids": assistant_ids,
             "configured_by_email": creator_user["user_email"],
             "activity_name": context_title or resource_link_id,
+            "chat_visibility_enabled": chat_visibility_enabled,
+            **extras,
         }
         module.on_activity_configured(activity['id'], setup_data)
 
@@ -466,9 +474,16 @@ async def lti_configure_activity(request: Request):
             activity, instructor_user, lms_user_id, lms_email, username=username)
 
         public_base = manager.get_public_base_url(request)
+        at = activity.get("activity_type") or "chat"
+        if at == "file_evaluation":
+            redirect_url = (
+                f"{public_base}/m/file-eval/grading?activity_id={activity['id']}&token={dashboard_token}"
+            )
+        else:
+            redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}"
         return JSONResponse({
             "status": "success",
-            "redirect_url": f"{public_base}/m/chat/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}"
+            "redirect_url": redirect_url,
         })
 
     except HTTPException:

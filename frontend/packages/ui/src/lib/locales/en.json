@@ -783,5 +783,62 @@
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
     }
+  },
+  "fileEval": {
+    "grading": {
+      "title": "File evaluation — instructor",
+      "syncSuccess": "Grades synced to the LMS.",
+      "evaluating": "Evaluating…",
+      "evaluateAll": "Evaluate all",
+      "acceptAll": "Accept all AI grades",
+      "syncing": "Syncing…",
+      "syncMoodle": "Sync grades to Moodle",
+      "noSubmissions": "No submissions yet.",
+      "saveGrade": "Save",
+      "editGrade": "Edit",
+      "stats": {
+        "total": "Submissions",
+        "evaluated": "AI evaluated",
+        "graded": "Final graded",
+        "sentToMoodle": "Sent to LMS"
+      },
+      "table": {
+        "file": "File",
+        "group": "Group",
+        "aiScore": "AI score",
+        "finalScore": "Final score",
+        "status": "Status",
+        "actions": "Actions"
+      }
+    },
+    "upload": {
+      "title": "Submit your work",
+      "submitted": "Submission saved.",
+      "alreadySubmitted": "You already submitted",
+      "groupCode": "Group code",
+      "groupCodeHint": "Share this code so classmates can join your group.",
+      "aiGrade": "AI grade",
+      "grade": "Grade",
+      "download": "Download file",
+      "resubmit": "Replace submission",
+      "dropzone": "Drag a file here or use the button below.",
+      "formats": "PDF, Word, or text files.",
+      "noteLabel": "Note to instructor (optional)",
+      "notePlaceholder": "Optional comment for your instructor…",
+      "submitting": "Submitting…",
+      "submit": "Submit",
+      "joinGroup": "Join group",
+      "joinGroupPlaceholder": "Enter group code",
+      "joining": "Joining…"
+    },
+    "status": {
+      "idle": "Idle",
+      "pending": "Pending",
+      "processing": "Processing",
+      "completed": "Completed",
+      "completed_with_errors": "Completed with errors",
+      "error": "Error",
+      "not_started": "Not started"
+    }
   }
 }

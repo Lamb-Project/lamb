@@ -51,7 +51,7 @@ services:
       corepack enable && \
       corepack prepare pnpm@latest --activate && \
       pnpm install --no-frozen-lockfile && \
-      pnpm --filter creator-app --filter module-chat build"
+      pnpm --filter creator-app build && pnpm --filter module-chat build && pnpm --filter module-file-eval build"
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
@@ -100,8 +100,9 @@ services:
       frontend-build:
         condition: service_completed_successfully
     command: >
-      sh -lc "python -m pip install --upgrade pip && \
-      pip install -r requirements.txt && \
+      sh -lc "      python -m pip install --upgrade pip && \
+      pip install -r requirements-base.txt && \
+      pip install -r requirements-ml.txt && \
       LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --workers 4 --log-level $$LOG_LEVEL --no-access-log"
   frontend:

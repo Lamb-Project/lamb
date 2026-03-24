@@ -1,0 +1,40 @@
+{
+	"fileEval": {
+		"upload": {
+			"title": "Lliurament d'Arxiu",
+			"dropzone": "Arrossega i deixa anar el teu arxiu aquí, o fes clic per explorar",
+			"formats": "Formats suportats: PDF, DOCX, TXT",
+			"noteLabel": "Nota per al professor (opcional)",
+			"notePlaceholder": "Afegeix comentaris sobre el teu lliurament...",
+			"submit": "Lliurar Arxiu",
+			"submitting": "Pujant...",
+			"submitted": "Lliurat correctament!",
+			"alreadySubmitted": "Ja has lliurat un arxiu",
+			"resubmit": "Reemplaçar Lliurament",
+			"groupCode": "El teu codi de grup",
+			"groupCodeHint": "Comparteix aquest codi amb els membres del teu grup",
+			"joinGroup": "Unir-se al Grup",
+			"joinGroupPlaceholder": "Introdueix codi de grup",
+			"joining": "Unint-se...",
+			"download": "Descarregar arxiu lliurat",
+			"grade": "Nota",
+			"aiGrade": "Nota Proposada per IA",
+			"feedback": "Comentaris",
+			"deadline": "Data límit",
+			"deadlinePassed": "La data límit ha passat"
+		},
+		"grading": {
+			"title": "Panell de Correcció",
+			"stats": {
+				"total": "Total Lliuraments",
+				"evaluated": "Avaluats per IA",
+				"graded": "Qualificats",
+				"sentToMoodle": "Enviats a Moodle"
+			},
+			"evaluate": "Iniciar Avaluació IA",
+			"acceptAll": "Acceptar Totes les Notes IA",
+			"syncMoodle": "Enviar Notes a Moodle",
+			"noSubmissions": "Sense lliuraments encara"
+		}
+	}
+}

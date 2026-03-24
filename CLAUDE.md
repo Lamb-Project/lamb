@@ -18,6 +18,9 @@ docker compose up frontend # just the frontend dev server
 
 ### Running services individually (without Docker)
 ```bash
+# Backend — install Python deps once (two files; avoids pip resolution-too-deep)
+cd backend && pip install -r requirements-base.txt && pip install -r requirements-ml.txt
+
 # Backend (FastAPI on port 9099)
 cd backend && PORT=9099 uvicorn main:app --port 9099 --host 0.0.0.0 --forwarded-allow-ips '*' --reload
 

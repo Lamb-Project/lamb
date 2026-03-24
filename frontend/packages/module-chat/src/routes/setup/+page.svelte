@@ -5,18 +5,20 @@
     let token = $state('');
     let loading = $state(true);
     let saving = $state(false);
+    /** @type {string | null} */
     let error = $state(null);
     let success = $state(false);
 
+    /** LTI /lamb/v1/lti/setup/info JSON @type {any} */
     let setupData = $state(null);
     let selectedActivity = $state('');
     let selectedOrg = $state('');
     let selectedAssistants = $state([]);
-    // dynamic fields will be stored here
+    /** Dynamic module fields from setup (checkbox, select, text, …) @type {Record<string, any>} */
     let dynamicOptions = $state({});
 
     onMount(async () => {
-        token = $page.url.searchParams.get('token');
+        token = $page.url.searchParams.get('token') ?? '';
         if (!token) {
             error = "Missing LTI authorization token.";
             loading = false;
@@ -39,7 +41,7 @@
                 selectedOrg = Object.keys(setupData.orgs_with_assistants)[0];
             }
         } catch (e) {
-            error = e.message;
+            error = e instanceof Error ? e.message : String(e);
         } finally {
             loading = false;
         }
@@ -56,6 +58,24 @@
             ? (setupData.orgs_with_assistants[selectedOrg] || []) 
             : []
     );
+
+    // Default first option for required <select> fields (options come from /lti/setup/info)
+    $effect(() => {
+        if (!setupData?.modules_fields || !selectedActivity) return;
+        const fields = setupData.modules_fields[selectedActivity] || [];
+        const next = { ...dynamicOptions };
+        let changed = false;
+        for (const f of fields) {
+            if (f.type === 'select' && f.options?.length) {
+                const v = next[f.name];
+                if (v === undefined || v === '') {
+                    next[f.name] = f.options[0].value;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) dynamicOptions = next;
+    });
 
     let canSubmit = $derived(selectedActivity && selectedOrg && selectedAssistants.length > 0 && !saving);
 
@@ -75,14 +95,13 @@
         error = null;
 
         try {
-            // Transform dynamic options into the flat structure backend expects
+            // Module id last so it is never overwritten by module-specific field names (e.g. submission_type).
             const payload = {
                 token: token,
-                activity_type: selectedActivity,
                 organization_id: selectedOrg,
                 assistant_ids: selectedAssistants,
-                // Include any dynamic checkbox or select inputs explicitly
-                ...dynamicOptions
+                ...dynamicOptions,
+                activity_type: selectedActivity,
             };
 
             const res = await fetch('/lamb/v1/lti/configure', {
@@ -95,10 +114,16 @@
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.detail || "Failed to save configuration");
             }
-            
+
+            const data = await res.json();
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url;
+                return;
+            }
             success = true;
+            saving = false;
         } catch (e) {
-            error = e.message;
+            error = e instanceof Error ? e.message : String(e);
             saving = false;
         }
     }
@@ -206,7 +231,7 @@
                             {/if}
                         </div>
                     </div>
-                {:else if setupData.needs_org_selection}
+                {:else if setupData?.needs_org_selection}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
                         <p class="text-sm text-gray-400 italic">Select an organization above to see available assistants.</p>
@@ -233,16 +258,52 @@
                                         </div>
                                     </label>
                                 {:else if f.type === 'select'}
-                                    <div class="p-3 border rounded-lg">
-                                        <label class="block font-medium text-gray-900 mb-1">{f.label}</label>
-                                        <select 
-                                            name={f.name} 
+                                    <div class="p-3 border rounded-lg bg-white">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <select
+                                            id="dyn-{f.name}"
+                                            name={f.name}
                                             bind:value={dynamicOptions[f.name]}
-                                            class="w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
                                             {#each (f.options || []) as opt}
-                                                <option value={opt.value}>{opt.label}</option>
+                                                <option class="bg-white text-gray-900" value={opt.value}>{opt.label}</option>
                                             {/each}
                                         </select>
+                                    </div>
+                                {:else if f.type === 'text'}
+                                    <div class="p-3 border rounded-lg bg-white">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <input
+                                            id="dyn-{f.name}"
+                                            type="text"
+                                            name={f.name}
+                                            bind:value={dynamicOptions[f.name]}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder={f.label}
+                                        />
+                                    </div>
+                                {:else if f.type === 'number'}
+                                    <div class="p-3 border rounded-lg bg-white">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <input
+                                            id="dyn-{f.name}"
+                                            type="number"
+                                            min="1"
+                                            name={f.name}
+                                            bind:value={dynamicOptions[f.name]}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                {:else if f.type === 'datetime'}
+                                    <div class="p-3 border rounded-lg bg-white">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <input
+                                            id="dyn-{f.name}"
+                                            type="datetime-local"
+                                            name={f.name}
+                                            bind:value={dynamicOptions[f.name]}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
                                     </div>
                                 {/if}
                             {/each}
