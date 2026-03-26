@@ -74,7 +74,7 @@ LAMB_ENABLE_OPENWEBUI = _env_bool('LAMB_ENABLE_OPENWEBUI', True)
 LAMB_ENABLE_DEBUG = _env_bool('LAMB_ENABLE_DEBUG', False)
 
 # Database Configuration
-LAMB_DB_PATH = os.getenv('LAMB_DB_PATH')
+LAMB_DB_PATH = os.getenv('LAMB_DB_PATH', '/data/lamb')
 LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', 'LAMB_')
 
 # Logging Configuration
@@ -134,7 +134,7 @@ LLM_MAX_CONNECTIONS = int(os.getenv('LLM_MAX_CONNECTIONS', '50'))
 OLLAMA_REQUEST_TIMEOUT = int(os.getenv('OLLAMA_REQUEST_TIMEOUT', '120'))
 
 # Validate required environment variables
-required_vars = ['LAMB_DB_PATH', 'OWI_PATH']
+required_vars = ['OWI_PATH']
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
