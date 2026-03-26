@@ -1,0 +1,137 @@
+=== 2026-03-26T14:22:10+01:00  DB=..//lamb_v4.db ===
+
+=== mod_file_eval_submissions ===
+id                                    activity_id  file_name                   file_path                                                     file_size  file_type        uploaded_by                                            uploaded_at  group_code  group_display_name  max_group_members  student_note  evaluation_status  evaluation_started_at  evaluation_error
+------------------------------------  -----------  --------------------------  ------------------------------------------------------------  ---------  ---------------  -----------------------------------------------------  -----------  ----------  ------------------  -----------------  ------------  -----------------  ---------------------  ----------------
+b1c0e80a-49b4-42a5-b1c2-d7f31c424068  13           Aviso ascensor.pdf          /home/franpv2004/proyecto/lamb/backend/uploads/file-eval/13/  34389      application/pdf  3_1f257d8a-71d2-4fb5-a2d1-1d4b4ded219e@lamb-lti.local  1774357813   U6P15S2B    GROUP_1             1                                completed          1774357868                             
+                                                                               b1c0e80a-49b4-42a5-b1c2-d7f31c424068_20260324_131013_Aviso_a                                                                                                                                                                                                                             
+                                                                               scensor.pdf                                                                                                                                                                                                                                                                              
+
+af4693b6-ea05-4367-8acb-1d85a37ca532  14           Aviso ascensor (1).pdf      /home/franpv2004/proyecto/lamb/backend/uploads/file-eval/14/  34389      application/pdf  3_7e65800d-231c-4e0c-b68d-bc2ddcf07adf@lamb-lti.local  1774434810                                   1                                                                                          
+                                                                               af4693b6-ea05-4367-8acb-1d85a37ca532_20260325_103330_Aviso_a                                                                                                                                                                                                                             
+                                                                               scensor__1_.pdf                                                                                                                                                                                                                                                                          
+
+7001d7c0-390a-4dc1-a6c8-417e3d7c778b  17           Aviso ascensor (1) (1).pdf  /home/franpv2004/proyecto/lamb/backend/uploads/file-eval/17/  34389      application/pdf  3_ba3aafa0-a326-4292-9c7c-d6eec55d3d39@lamb-lti.local  1774438928   SFAYXNFX    GROUP_1             2                                                                                          
+                                                                               7001d7c0-390a-4dc1-a6c8-417e3d7c778b_20260325_114208_Aviso_a                                                                                                                                                                                                                             
+                                                                               scensor__1___1_.pdf                                                                                                                                                                                                                                                                      
+
+69c02d77-2eb7-4d18-ad61-3a6e1c6cc18b  17           Aviso ascensor.pdf          /home/franpv2004/proyecto/lamb/backend/uploads/file-eval/17/  34389      application/pdf  5_ba3aafa0-a326-4292-9c7c-d6eec55d3d39@lamb-lti.local  1774439829   OCQ4B5ZM    GROUP_2             2                                                                                          
+                                                                               69c02d77-2eb7-4d18-ad61-3a6e1c6cc18b_20260325_115709_Aviso_a                                                                                                                                                                                                                             
+                                                                               scensor.pdf                                                                                                                                                                                                                                                                              
+
+d9b6fbda-c171-46a7-a82a-3b2c3dc07526  18           Aviso ascensor (2).pdf      /home/franpv2004/proyecto/lamb/backend/uploads/file-eval/18/  34389      application/pdf  4_9c689851-769b-49be-9539-8043357a8ce3@lamb-lti.local  1774531167   YKDI2KGJ    GROUP_1             1                                completed          1774531172                             
+                                                                               d9b6fbda-c171-46a7-a82a-3b2c3dc07526_20260326_131927_Aviso_a                                                                                                                                                                                                                             
+                                                                               scensor__2_.pdf                                                                                                                                                                                                                                                                          
+
+=== mod_file_eval_student_submissions ===
+id                                    file_submission_id                    student_id                                             activity_id  lis_result_sourcedid  joined_at   sent_to_moodle  sent_to_moodle_at
+------------------------------------  ------------------------------------  -----------------------------------------------------  -----------  --------------------  ----------  --------------  -----------------
+dedd51be-202f-4c9d-a653-009dfd92113a  b1c0e80a-49b4-42a5-b1c2-d7f31c424068  3_1f257d8a-71d2-4fb5-a2d1-1d4b4ded219e@lamb-lti.local  13                                 1774357813  0                                
+2f0909cb-b84e-449d-bc41-ae6a6c031ad5  af4693b6-ea05-4367-8acb-1d85a37ca532  3_7e65800d-231c-4e0c-b68d-bc2ddcf07adf@lamb-lti.local  14                                 1774434810  0                                
+dfcc1009-daec-4925-bb35-858b591df3d5  7001d7c0-390a-4dc1-a6c8-417e3d7c778b  3_ba3aafa0-a326-4292-9c7c-d6eec55d3d39@lamb-lti.local  17                                 1774438797  0                                
+a7804862-448f-4340-be0e-8027b084936b  7001d7c0-390a-4dc1-a6c8-417e3d7c778b  4_ba3aafa0-a326-4292-9c7c-d6eec55d3d39@lamb-lti.local  17                                 1774438804  0                                
+b949c1c6-def1-4be6-8622-c678e5d6cabe  69c02d77-2eb7-4d18-ad61-3a6e1c6cc18b  5_ba3aafa0-a326-4292-9c7c-d6eec55d3d39@lamb-lti.local  17                                 1774439764  0                                
+a868750d-51ed-4249-bfb8-a1c0bb6636a1  d9b6fbda-c171-46a7-a82a-3b2c3dc07526  4_9c689851-769b-49be-9539-8043357a8ce3@lamb-lti.local  18                                 1774531167  0                                
+
+=== mod_file_eval_grades ===
+id                                    file_submission_id                    ai_score  ai_comment                                                    ai_evaluated_at  score  comment  created_at  updated_at
+------------------------------------  ------------------------------------  --------  ------------------------------------------------------------  ---------------  -----  -------  ----------  ----------
+8f27ca6f-8dde-4921-b276-179ff354fc56  b1c0e80a-49b4-42a5-b1c2-d7f31c424068            {'success': True, 'response': <starlette.responses.Response   1774357906       0.0             1774357856  1774357955
+                                                                                      object at 0x70625fb59050>}                                                                                           
+
+6c0da350-e045-4ce1-a2b2-ddb4686ae8da  d9b6fbda-c171-46a7-a82a-3b2c3dc07526            Hola. Como asistente de aprendizaje, he revisado el contexto  1774531209                       1774531209  1774531209
+                                                                                       que me has proporcionado. Dado que no hay una pregunta espe                                                         
+                                                                                      cífica formulada, voy a realizar un análisis de este texto p                                                         
+                                                                                      ara ayudarte a comprender su propósito, estructura y conteni                                                         
+                                                                                      do clave. Esto podría ser útil si estás estudiando **redacci                                                         
+                                                                                      ón de comunicados**, **convivencia cívica** o **comprensión                                                          
+                                                                                      lectora**.                                                                                                           
+                                                                                                                                                                                                           
+                                                                                      Aquí tienes un desglose del texto:                                                                                   
+                                                                                                                                                                                                           
+                                                                                      ### 1. Tipo de Documento                                                                                             
+                                                                                      Se trata de una **circulares o aviso oficial** emitido por l                                                         
+                                                                                      a **Junta o Administración de una Comunidad de Propietarios*                                                         
+                                                                                      * (vecindad).                                                                                                        
+                                                                                                                                                                                                           
+                                                                                      ### 2. Objetivo Principal                                                                                            
+                                                                                      El mensaje busca concienciar a los vecinos sobre la importan                                                         
+                                                                                      cia de cuidar los bienes compartidos del edificio. Es un lla                                                         
+                                                                                      mado al comportamiento responsable.                                                                                  
+                                                                                                                                                                                                           
+                                                                                      ### 3. Puntos Clave (Instrucciones)                                                                                  
+                                                                                      El texto hace dos peticiones concretas:                                                                              
+                                                                                      *   **Uso adecuado del ascensor:** Esto implica no sobrecarg                                                         
+                                                                                      arlo, no golpear las puertas, no usarlo de forma irrespectuo                                                         
+                                                                                      sa, etc.                                                                                                             
+                                                                                      *   **Cuidar las zonas comunes:** Incluye pasillos, escalera                                                         
+                                                                                      s, portales, jardines o espacios que comparten todos los hab                                                         
+                                                                                      itantes.                                                                                                             
+                                                                                                                                                                                                           
+                                                                                      ### 4. Argumento Central                                                                                             
+                                                                                      La justificación se basa en el concepto de **propiedad colec                                                         
+                                                                                      tiva**: *"Entre todos mantenemos en buen estado lo que es de                                                         
+                                                                                       todos"*. Se apela al sentido de responsabilidad compartida                                                          
+                                                                                      y gratitud (*"Gracias por vuestra colaboración"*).                                                                   
+                                                                                                                                                                                                           
+                                                                                      ### 5. Tono y Estilo                                                                                                 
+                                                                                      *   **Formalidad:** Utiliza frases como *"Se ruega"*, lo cua                                                         
+                                                                                      l es un lenguaje cortés pero firme típico de comunicaciones                                                          
+                                                                                      institucionales.                                                                                                     
+                                                                                      *   **Inclusivo:** Usa *"entre todos"*, *"vuestra colaboraci                                                         
+                                                                                      ón"*, fomentando el trabajo en equipo.                                                                               
+                                                                                                                                                                                                           
+                                                                                      ---                                                                                                                  
+                                                                                                                                                                                                           
+                                                                                      **¿Cómo quieres seguir aprendiendo con este contexto?** Pued                                                         
+                                                                                      o ayudarte a:                                                                                                        
+                                                                                      1.  **Vocabulario:** Explicar términos como "Comunidad de Pr                                                         
+                                                                                      opietarios", "ruega" o "zonas comunes".                                                                              
+                                                                                      2.  **Gramática:** Analizar el uso de la voz pasiva o el imp                                                         
+                                                                                      erativo impersonal ("Se ruega").                                                                                     
+                                                                                      3.  **Redacción:** Practicar escribiendo un comunicado simil                                                         
+                                                                                      ar pero para otro problema (ej. ruido nocturno).                                                                     
+                                                                                      4.  **Civismo:** Discutir la ética de la convivencia en edif                                                         
+                                                                                      icios.                                                                                                               
+                                                                                                                                                                                                           
+                                                                                      Quedo a la espera de tu indicación.                                                                                  
+
+=== LAMB_lti_activities (solo file_evaluation) ===
+id  activity_type    setup_config                                                  lis_outcome_service_url  resource_link_id                    
+--  ---------------  ------------------------------------------------------------  -----------------------  ------------------------------------
+9   file_evaluation  {}                                                                                     3b051b1c-84ef-4ff3-9152-91321e89c5fc
+
+10  file_evaluation  {"evaluator_id": "95", "submission_type": "individual", "max                           3e0a63ce-84be-441e-b3da-bbdff3c5d8eb
+                     _group_size": 1, "deadline": "2026-03-24T13:17", "language":                                                               
+                      "es"}                                                                                                                     
+
+11  file_evaluation  {"evaluator_id": "95", "submission_type": "individual", "max                           335d62a1-4ef2-4184-b523-6093ad0c5cd9
+                     _group_size": 1, "deadline": "2026-03-04T13:37", "language":                                                               
+                      "en"}                                                                                                                     
+
+12  file_evaluation  {"evaluator_id": "95", "submission_type": "group", "max_grou                           7aed1b76-1afb-4768-b6a8-7b838ea81ef9
+                     p_size": 1, "deadline": "2026-03-26T13:44", "language": "es"                                                               
+                     }                                                                                                                          
+
+13  file_evaluation  {"evaluator_id": "95", "submission_type": "group", "max_grou                           1f257d8a-71d2-4fb5-a2d1-1d4b4ded219e
+                     p_size": 1, "deadline": "2026-03-20T13:53", "language": "en"                                                               
+                     }                                                                                                                          
+
+14  file_evaluation  {"evaluator_id": "95", "submission_type": "individual", "max                           7e65800d-231c-4e0c-b68d-bc2ddcf07adf
+                     _group_size": 6, "deadline": "2026-03-25T14:32", "language":                                                               
+                      "ca"}                                                                                                                     
+
+15  file_evaluation  {"evaluator_id": "95", "submission_type": "individual", "max                           1a3ef9eb-6152-41d4-90a9-c1f03a1afd85
+                     _group_size": null, "deadline": null, "language": "en"}                                                                    
+
+16  file_evaluation  {"evaluator_id": "2", "submission_type": "individual", "max_                           2bc43d24-45ed-4973-8bf5-317f11a409c1
+                     group_size": 2, "deadline": "2026-03-13T12:25", "language":                                                                
+                     "es"}                                                                                                                      
+
+17  file_evaluation  {"evaluator_id": "95", "submission_type": "group", "max_grou                           ba3aafa0-a326-4292-9c7c-d6eec55d3d39
+                     p_size": 2, "deadline": "2026-03-20T12:39", "language": "en"                                                               
+                     }                                                                                                                          
+
+18  file_evaluation  {"evaluator_id": "95", "submission_type": "group", "max_grou                           9c689851-769b-49be-9539-8043357a8ce3
+                     p_size": 1, "deadline": "2026-03-26T14:19", "language": "en"                                                               
+                     }                                                                                                                          
