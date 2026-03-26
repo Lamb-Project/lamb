@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 # Server Configuration
 DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'false'
 
@@ -57,9 +64,18 @@ if not OWI_BASE_URL:
 OWI_PUBLIC_BASE_URL = os.getenv('OWI_PUBLIC_BASE_URL') or OWI_BASE_URL
 CHROMA_PATH = os.path.join(OWI_PATH, "vector_db") 
 
+# Frontend Runtime Configuration
+LAMB_FRONTEND_BASE_URL = os.getenv('LAMB_FRONTEND_BASE_URL', '/creator')
+LAMB_FRONTEND_LAMB_SERVER = os.getenv('LAMB_FRONTEND_LAMB_SERVER') or LAMB_WEB_HOST or 'http://localhost:9099'
+LAMB_FRONTEND_OPENWEBUI_SERVER = (
+    os.getenv('LAMB_FRONTEND_OPENWEBUI_SERVER') or OWI_PUBLIC_BASE_URL or 'http://localhost:8080'
+)
+LAMB_ENABLE_OPENWEBUI = _env_bool('LAMB_ENABLE_OPENWEBUI', True)
+LAMB_ENABLE_DEBUG = _env_bool('LAMB_ENABLE_DEBUG', False)
+
 # Database Configuration
 LAMB_DB_PATH = os.getenv('LAMB_DB_PATH')
-LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', '')
+LAMB_DB_PREFIX = os.getenv('LAMB_DB_PREFIX', 'LAMB_')
 
 # Logging Configuration
 GLOBAL_LOG_LEVEL = os.getenv('GLOBAL_LOG_LEVEL', 'WARNING')

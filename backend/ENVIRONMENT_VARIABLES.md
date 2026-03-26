@@ -160,7 +160,11 @@ These variables are used for initial admin account setup:
 
 **Purpose**: Database table prefix for multi-tenant setups
 
-**Default**: Empty string
+**Default**: `LAMB_`
+
+**Notes**:
+- Optional in next Docker deployments.
+- Set empty (`LAMB_DB_PREFIX=`) only when your DB uses unprefixed tables (`Creator_*`).
 
 ### `PIPELINES_DIR` (deprecated)
 
@@ -260,4 +264,3 @@ For production deployments:
    ```bash
    SIGNUP_ENABLED=false
    ```
-

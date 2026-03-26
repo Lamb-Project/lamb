@@ -43,8 +43,8 @@ Edit `.env` - the minimum required vars are:
 LAMB_DB_PATH=/data/lamb
 OWI_PATH=/data/openwebui
 
-# Required if your DB was created with the old stack (prefixed tables LAMB_*)
-LAMB_DB_PREFIX=LAMB_
+# Optional DB prefix override
+# Default is LAMB_. If your schema is unprefixed, set LAMB_DB_PREFIX=
 
 # Internal OWI URL (leave as-is)
 OWI_BASE_URL=http://openwebui:8080
@@ -205,7 +205,7 @@ Set `CADDY_EMAIL`, `LAMB_PUBLIC_HOST`, and `OWI_PUBLIC_HOST` in `.env` before us
 The healthcheck on `openwebui` gives it up to 2 minutes to become ready. On first boot with an empty DB it may take longer. Wait and check `docker logs lamb-next-openwebui-1`.
 
 **`LAMB_DB_PREFIX` - which value do I need?**
-If your `lamb_v4.db` has tables named `LAMB_Creator_users`, `LAMB_Creator_assistants`, etc., set `LAMB_DB_PREFIX=LAMB_`. If tables are named `Creator_users` etc., leave it empty.
+Default is `LAMB_` (no override needed for `LAMB_*` tables). If your tables are unprefixed (`Creator_users`, etc.), set `LAMB_DB_PREFIX=`.
 
 **Platform warning (`linux/amd64` on Apple Silicon)**
 This is expected and harmless. The containers run via Rosetta 2.

@@ -283,7 +283,7 @@ Additional finding:
 Legacy migration finding:
 
 - Some legacy installations use prefixed LAMB tables (for example `LAMB_Creator_users`).
-- In those cases, `LAMB_DB_PREFIX` must be set (typically `LAMB_`) in next compose env, otherwise backend queries unprefixed tables and fails with `no such table: Creator_users`.
+- `LAMB_DB_PREFIX` now defaults to `LAMB_` for legacy-prefixed schemas; set it explicitly to empty (`""`) only when migrating unprefixed schemas (`Creator_*`).
 
 Startup race mitigation applied:
 

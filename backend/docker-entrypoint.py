@@ -5,11 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-
-def to_bool(value: str | None, default: bool) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+import config
 
 
 def replace_string(text: str, key: str, value: str) -> tuple[str, int]:
@@ -29,16 +25,14 @@ def patch_frontend_config() -> None:
     config_js_path = Path(frontend_build_path) / "config.js"
     config_js_path.parent.mkdir(parents=True, exist_ok=True)
 
-    base_url = os.getenv("LAMB_FRONTEND_BASE_URL", "/creator")
-    lamb_server = os.getenv("LAMB_FRONTEND_LAMB_SERVER") or os.getenv("LAMB_WEB_HOST", "http://localhost:9099")
-    openwebui_server = os.getenv("LAMB_FRONTEND_OPENWEBUI_SERVER") or os.getenv(
-        "OWI_PUBLIC_BASE_URL", "http://localhost:8080"
-    )
-    enable_openwebui = to_bool(os.getenv("LAMB_ENABLE_OPENWEBUI"), True)
-    enable_debug = to_bool(os.getenv("LAMB_ENABLE_DEBUG"), False)
+    base_url = config.LAMB_FRONTEND_BASE_URL
+    lamb_server = config.LAMB_FRONTEND_LAMB_SERVER
+    openwebui_server = config.LAMB_FRONTEND_OPENWEBUI_SERVER
+    enable_openwebui = config.LAMB_ENABLE_OPENWEBUI
+    enable_debug = config.LAMB_ENABLE_DEBUG
 
     if not config_js_path.exists():
-        config = {
+        config_payload = {
             "api": {
                 "baseUrl": base_url,
                 "lambServer": lamb_server,
@@ -50,7 +44,7 @@ def patch_frontend_config() -> None:
                 "enableDebugMode": enable_debug,
             },
         }
-        config_js_path.write_text("window.LAMB_CONFIG = " + json.dumps(config, indent=2) + ";\n", encoding="utf-8")
+        config_js_path.write_text("window.LAMB_CONFIG = " + json.dumps(config_payload, indent=2) + ";\n", encoding="utf-8")
         return
 
     text = config_js_path.read_text(encoding="utf-8")

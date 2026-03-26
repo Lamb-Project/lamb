@@ -40,7 +40,7 @@ class LambDatabaseManager:
             load_dotenv()
 
             # Get database configuration from environment variables
-            self.table_prefix = os.getenv('LAMB_DB_PREFIX', '')
+            self.table_prefix = config.LAMB_DB_PREFIX
 #            logging.debug(f"Table prefix: {self.table_prefix}")
 
             lamb_db_path = os.getenv('LAMB_DB_PATH')

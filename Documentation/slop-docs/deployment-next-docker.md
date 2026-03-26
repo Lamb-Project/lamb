@@ -96,7 +96,7 @@ Conventions:
 | **`LAMB_BACKEND_HOST`** | none | required in `docker-compose.next.yaml` | Internal backend URL for server-side requests. |
 | **`LAMB_BEARER_TOKEN`** | none | required in `docker-compose.next.yaml` | Main backend bearer token (security-sensitive). |
 | **`LAMB_DB_PATH`** | none | required in `docker-compose.next.yaml` | Filesystem path containing `lamb_v4.db`. |
-| `LAMB_DB_PREFIX` | empty (`""`) | `docker-compose.next.yaml` + `backend/config.py` fallback | Set `LAMB_` when migrating legacy prefixed schemas (`LAMB_*`). |
+| `LAMB_DB_PREFIX` | `LAMB_` | `backend/config.py` (consumed by `backend/lamb/database_manager.py`) | Optional override. Set empty (`""`) for unprefixed schemas (`Creator_*`); keep `LAMB_` for legacy prefixed schemas (`LAMB_*`). |
 | `LAMB_KB_SERVER` | `http://kb:9090` | `docker-compose.next.yaml` | KB service URL consumed by lamb. Shared with `kb` service connectivity. |
 | `LAMB_KB_SERVER_TOKEN` | `0p3n-w3bu!` | `docker-compose.next.yaml` | Token lamb uses to call KB. Must match `kb` `LAMB_API_KEY` when org config does not override token. |
 | **`OWI_BASE_URL`** | none | required in `docker-compose.next.yaml` | Internal OpenWebUI API URL used by lamb bridge/auth flows. |
@@ -269,10 +269,12 @@ docker compose -f docker-compose.next.yaml up -d
 - Stop the legacy stack cleanly before copying databases. SQLite WAL files (`-shm`, `-wal`) are present in the KB data directory; copying them alongside the main `.db` file is safe, but a clean shutdown ensures no in-flight writes are lost.
 - No service-name aliasing is required in the new stack.
 
-If your legacy `lamb_v4.db` uses prefixed tables (for example `LAMB_Creator_users`), set:
+If your legacy `lamb_v4.db` uses prefixed tables (for example `LAMB_Creator_users`), no override is required because the default is `LAMB_`.
+
+Only set an override when your DB is unprefixed:
 
 ```env
-LAMB_DB_PREFIX=LAMB_
+LAMB_DB_PREFIX=
 ```
 
-and recreate the `lamb` service so the backend queries the correct table names.
+Then recreate the `lamb` service so the backend queries the correct table names.
