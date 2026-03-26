@@ -21,7 +21,9 @@
 			"aiGrade": "Nota Proposada per IA",
 			"feedback": "Comentaris",
 			"deadline": "Data límit",
-			"deadlinePassed": "La data límit ha passat"
+			"deadlinePassed": "La data límit ha passat",
+			"activityInfo": "Informació de l'Activitat",
+			"course": "Curs"
 		},
 		"grading": {
 			"title": "Panell de Correcció",
@@ -31,10 +33,47 @@
 				"graded": "Qualificats",
 				"sentToMoodle": "Enviats a Moodle"
 			},
+			"table": {
+				"file": "Arxiu",
+				"student": "Estudiant",
+				"group": "Grup",
+				"aiScore": "Nota IA",
+				"finalScore": "Nota Final",
+				"status": "Estat",
+				"actions": "Accions",
+				"studentNote": "Nota",
+				"uploadedAt": "Pujat",
+				"download": "Descarregar",
+				"member": "membre",
+				"members": "membres"
+			},
 			"evaluate": "Iniciar Avaluació IA",
+			"evaluateAll": "Avaluar Totes",
+			"evaluating": "Avaluant...",
 			"acceptAll": "Acceptar Totes les Notes IA",
 			"syncMoodle": "Enviar Notes a Moodle",
-			"noSubmissions": "Sense lliuraments encara"
+			"syncing": "Enviant...",
+			"syncSuccess": "Notes enviades a Moodle correctament",
+			"editGrade": "Editar Nota",
+			"saveGrade": "Guardar",
+			"noSubmissions": "Sense lliuraments encara",
+			"evalProgress": "Progrés d'Avaluació",
+			"sortBy": "Ordenar per",
+			"perPage": "Per pàgina",
+			"page": "Pàgina",
+			"showing": "Mostrant {from}–{to} de {total}",
+			"previous": "Anterior",
+			"next": "Següent"
+		},
+		"status": {
+			"pending": "Pendent",
+			"processing": "Processant",
+			"completed": "Completada",
+			"error": "Error",
+			"not_started": "Sense avaluar",
+			"idle": "Inactiu",
+			"in_progress": "En Progrés",
+			"completed_with_errors": "Completada amb Errors"
 		}
 	}
 }

@@ -42,3 +42,25 @@ export async function acceptAiGrades(activityId) {
 export async function syncGradesToMoodle(activityId) {
 	return apiFetch(`/activities/${activityId}/grades/sync`, { method: 'POST' });
 }
+
+/**
+ * Download a submission file by file_submission_id
+ * @param {string} fileSubmissionId
+ * @param {string} fileName
+ */
+export async function downloadSubmission(fileSubmissionId, fileName) {
+	const token = new URLSearchParams(window.location.search).get('token') || '';
+	const cfg = /** @type {any} */ (window).LAMB_CONFIG || {};
+	const base = cfg.API_BASE_URL || '';
+	const url = `${base}/lamb/v1/modules/file_evaluation/submissions/${fileSubmissionId}/download?token=${token}`;
+	const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	const blob = await res.blob();
+	const a = document.createElement('a');
+	a.href = URL.createObjectURL(blob);
+	const cd = res.headers.get('content-disposition') || '';
+	const match = cd.match(/filename="?([^"]+)"?/);
+	a.download = match ? match[1] : fileName || 'download';
+	a.click();
+	URL.revokeObjectURL(a.href);
+}

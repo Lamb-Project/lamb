@@ -19,6 +19,17 @@
 	let error = $state('');
 	let success = $state('');
 
+	function formatDate(timestamp) {
+		if (!timestamp) return '';
+		const date = new Date(timestamp * 1000);
+		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+	}
+
+	function isDeadlinePast(deadline) {
+		if (!deadline) return false;
+		return Date.now() > deadline * 1000;
+	}
+
 	let selectedFile = $state(null);
 	let studentNote = $state('');
 	let groupCodeInput = $state('');
@@ -123,6 +134,37 @@
 	{#if success}
 		<div class="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
 			{success}
+		</div>
+	{/if}
+
+	<!-- Activity Info Section -->
+	{#if activityView?.activity_info}
+		<div class="mb-6 rounded-lg border bg-blue-50 p-5 shadow-sm">
+			<h2 class="mb-3 text-lg font-semibold text-blue-900">{$_('fileEval.upload.activityInfo')}</h2>
+			<div class="space-y-2 text-sm text-blue-800">
+				{#if activityView.activity_info.description}
+					<p class="whitespace-pre-wrap">{activityView.activity_info.description}</p>
+				{/if}
+				{#if activityView.activity_info.deadline}
+					<p class="flex items-center gap-2">
+						<span class="font-medium">{$_('fileEval.upload.deadline')}:</span>
+						<span class="{isDeadlinePast(activityView.activity_info.deadline) ? 'text-red-600 font-medium' : 'text-green-600'}">
+							{formatDate(activityView.activity_info.deadline)}
+						</span>
+						{#if isDeadlinePast(activityView.activity_info.deadline)}
+							<span class="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+								{$_('fileEval.upload.deadlinePassed')}
+							</span>
+						{/if}
+					</p>
+				{/if}
+				{#if activityView.activity_info.course_name}
+					<p>
+						<span class="font-medium">{$_('fileEval.upload.course')}:</span>
+						{activityView.activity_info.course_name}
+					</p>
+				{/if}
+			</div>
 		</div>
 	{/if}
 

@@ -4,23 +4,76 @@
 			"title": "Fitxategiaren Bidalketa",
 			"dropzone": "Arrastatu eta jaregin zure fitxategia hemen, edo egin klik arakatzeko",
 			"formats": "Onartutako formatuak: PDF, DOCX, TXT",
+			"noteLabel": "Irakaslearentzako oharra (aukerazkoa)",
+			"notePlaceholder": "Gehitu iruzkinak zure bidalketari buruz...",
 			"submit": "Fitxategia Bidali",
 			"submitting": "Igotzen...",
 			"submitted": "Ondo bidali da!",
 			"alreadySubmitted": "Dagoeneko fitxategi bat bidali duzu",
 			"resubmit": "Bidalketa Ordeztu",
 			"groupCode": "Zure talde kodea",
+			"groupCodeHint": "Partekatu kode hau zure taldekideekin",
 			"joinGroup": "Taldera Batu",
+			"joinGroupPlaceholder": "Sartu talde kodea",
+			"joining": "Elkartzen...",
 			"download": "Bidalitako fitxategia deskargatu",
 			"grade": "Nota",
-			"deadline": "Muga data"
+			"aiGrade": "IAk Proposatutako Nota",
+			"feedback": "Iruzkinak",
+			"deadline": "Muga data",
+			"deadlinePassed": "Muga data igaro da",
+			"activityInfo": "Jardueraren Informazioa",
+			"course": "Ikastaroa"
 		},
 		"grading": {
 			"title": "Kalifikazio Panela",
+			"stats": {
+				"total": "Bidalketa Guztiak",
+				"evaluated": "IAk Ebaluatuta",
+				"graded": "Kalifikatuta",
+				"sentToMoodle": "Moodle-ra Bidalita"
+			},
+			"table": {
+				"file": "Fitxategia",
+				"student": "Ikaslea",
+				"group": "Taldea",
+				"aiScore": "IA Nota",
+				"finalScore": "Nota Finala",
+				"status": "Egoera",
+				"actions": "Ekintzak",
+				"studentNote": "Oharra",
+				"uploadedAt": "Igotze data",
+				"download": "Deskargatu",
+				"member": "kide",
+				"members": "kide"
+			},
 			"evaluate": "IA Ebaluazioa Hasi",
+			"evaluateAll": "Guztiak Ebaluatu",
+			"evaluating": "Ebaluatzen...",
 			"acceptAll": "IA Nota Guztiak Onartu",
 			"syncMoodle": "Notak Moodle-ra Bidali",
-			"noSubmissions": "Ez dago bidalketarik oraindik"
+			"syncing": "Bidaltzen...",
+			"syncSuccess": "Notak Moodle-ra ondo bidali dira",
+			"editGrade": "Nota Editatu",
+			"saveGrade": "Gorde",
+			"noSubmissions": "Ez dago bidalketarik oraindik",
+			"evalProgress": "Ebaluazioaren Aurrerapena",
+			"sortBy": "Ordenatu",
+			"perPage": "Orriko",
+			"page": "Orria",
+			"showing": "{from}–{to} erakusten, guztira {total}",
+			"previous": "Aurrekoa",
+			"next": "Hurrengoa"
+		},
+		"status": {
+			"pending": "Zain",
+			"processing": "Prozesatzen",
+			"completed": "Osatuta",
+			"error": "Errorea",
+			"not_started": "Ebaluatu gabe",
+			"idle": "Inaktibo",
+			"in_progress": "Lanean",
+			"completed_with_errors": "Erroreekin Osatuta"
 		}
 	}
 }
