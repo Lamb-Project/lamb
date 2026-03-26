@@ -1,6 +1,9 @@
 services:
   lamb:
     image: ghcr.io/xezpeleta/lamb:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       PORT: ${LAMB_PORT:-9099}
@@ -41,6 +44,9 @@ services:
 
   kb:
     image: ghcr.io/xezpeleta/lamb-kb:latest
+    build:
+      context: ./lamb-kb-server-stable
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       PORT: ${KB_PORT:-9090}
@@ -60,6 +66,9 @@ services:
 
   openwebui:
     image: ghcr.io/xezpeleta/openwebui:latest
+    build:
+      context: ./open-webui
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       PORT: ${OPENWEBUI_PORT:-8080}

@@ -42,7 +42,6 @@ To avoid breaking existing users, we will not replace current compose immediatel
 - `backend/Dockerfile` (new): multi-stage build, bundles Svelte frontend into backend image
 - `lamb-kb-server-stable/Dockerfile` (new or hardened): production KB image
 - `docker-compose.next.yaml` (new): new production-first architecture
-- `docker-compose.next.build.yaml` (new, optional): source-build overlay (currently used for local Open WebUI builds)
 - `docker-compose.next.prod.yaml` (new, optional): Caddy/TLS overlay
 - `.github/workflows/build-images.yml` (new): build/publish images to GHCR
 - `.env.next.example` (new): documented unified root env template for compose-only deployments
@@ -61,9 +60,9 @@ To avoid breaking existing users, we will not replace current compose immediatel
 - `ghcr.io/lamb-project/lamb-kb` (KB server)
 - `ghcr.io/lamb-project/openwebui` (LAMB-managed Open WebUI image)
 
-Optional local source-build path for Open WebUI:
+Optional local source-build path:
 
-- Use `docker-compose.next.build.yaml` overlay to build from `./open-webui/Dockerfile` during local development/contributor workflows.
+- Use `docker compose -f docker-compose.next.yaml build` to build `lamb`, `kb`, and `openwebui` from local Dockerfiles.
 
 ### Service Naming
 
@@ -243,12 +242,12 @@ Optimization ideas for later phases:
 - Removed per-service `env_file` references to avoid requiring repository-specific `.env` files.
 - Runtime configuration is centralized in `environment:` using `${VAR:-default}` interpolation.
 - Default deployment path uses prebuilt images for all services (`lamb`, `kb`, `openwebui`).
-- Added `docker-compose.next.build.yaml` as an optional source-build overlay for Open WebUI (for contributors or custom image builds).
+- Added per-service `build` definitions in `docker-compose.next.yaml` so local source builds can be run without overlays.
 
 Resulting deployment modes:
 
 - Binary/compose-only: `docker compose -f docker-compose.next.yaml --env-file .env up -d`
-- Source-build overlay (optional): `docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml --env-file .env up -d`
+- Local source build (optional): `docker compose -f docker-compose.next.yaml --env-file .env build`
 
 ## P6 Production Overlay Notes
 
@@ -396,7 +395,7 @@ The new architecture is considered ready when:
 | 2026-03-01 | LAMB Team | Completed P3 with new `docker-compose.next.yaml` and `.env.next.example` |
 | 2026-03-01 | LAMB Team | Completed P4 base volume model in `docker-compose.next.yaml` |
 | 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
-| 2026-03-01 | LAMB Team | Added `docker-compose.next.build.yaml` optional overlay for local Open WebUI source builds |
+| 2026-03-26 | LAMB Team | Removed `docker-compose.next.build.yaml`; moved local source builds into per-service `build` in `docker-compose.next.yaml` |
 | 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
 | 2026-03-01 | LAMB Team | Deferred P7/P8/P8a/P8b to avoid backend code changes in current iteration |
 | 2026-03-01 | LAMB Team | Completed P8a by adding backend entrypoint runtime generation of frontend `config.js` |

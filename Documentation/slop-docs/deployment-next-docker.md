@@ -4,7 +4,7 @@ This guide explains how to deploy the new production-first Docker stack using:
 
 - `docker-compose.next.yaml` (base stack)
 - `docker-compose.next.prod.yaml` (optional Caddy/TLS overlay)
-- `docker-compose.next.build.yaml` (optional local Open WebUI source build overlay)
+- Local source builds are supported directly from `docker-compose.next.yaml` via per-service `build` definitions.
 
 ## Goals
 
@@ -34,10 +34,10 @@ Base + TLS reverse proxy:
 docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml up -d
 ```
 
-Base + local Open WebUI build:
+Build images from local source:
 
 ```bash
-docker compose -f docker-compose.next.yaml -f docker-compose.next.build.yaml up -d
+docker compose -f docker-compose.next.yaml build
 ```
 
 Base + local inference with optional Ollama profile:
