@@ -1,6 +1,6 @@
 services:
   lamb:
-    image: ghcr.io/xezpeleta/lamb:latest
+    image: ghcr.io/lamb-project/lamb:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -43,7 +43,7 @@ services:
         condition: service_healthy
 
   kb:
-    image: ghcr.io/xezpeleta/lamb-kb:latest
+    image: ghcr.io/lamb-project/lamb-kb:latest
     build:
       context: ./lamb-kb-server-stable
       dockerfile: Dockerfile
@@ -65,7 +65,7 @@ services:
       - kb-static:/app/backend/static
 
   openwebui:
-    image: ghcr.io/xezpeleta/openwebui:latest
+    image: ghcr.io/lamb-project/openwebui:latest
     build:
       context: ./open-webui
       dockerfile: Dockerfile
