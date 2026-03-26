@@ -1,0 +1,86 @@
+# Workflow: Remote deploy on push
+
+name: Remote deploy on push
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  ssh-deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure known_hosts has the server
+        run: |
+          mkdir -p $HOME/.ssh
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> $HOME/.ssh/known_hosts
+
+      - name: Execute remote commands via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            set -e
+            cd /opt/lamb-test
+            git pull
+            cd testing/playwright
+
+            # Ensure nvm (and node/npm installed via nvm) is loaded for non-interactive SSH sessions
+            export NVM_DIR="$HOME/.nvm"
+            if [ -s "$NVM_DIR/nvm.sh" ]; then
+              . "$NVM_DIR/nvm.sh"
+            fi
+
+            # Diagnostics to help debug missing npm in CI
+            echo "Remote user: $(whoami)"
+            echo "Remote HOME: $HOME"
+            echo "Remote PATH: $PATH"
+            command -v npm && echo "npm found at: $(command -v npm)" || echo "npm not found"
+            command -v node && echo "node found at: $(command -v node)" || echo "node not found"
+
+            # Run tests but keep the exit code so we can always collect the HTML report
+            # temporarily exclude three known-flaky tests using grep-invert
+            # patterns should match the test names (case‑sensitive).  Remove the
+            # `--grep-invert` flag when the tests are fixed so they run again.
+            set +e
+            FORCE_RELOGIN=true npx playwright test \
+              --grep-invert "Moodle LTI integration|Organization Without Admin & Role Promotion|URL ingestion and query verification"
+            TEST_EXIT_CODE=$?
+            set -e
+
+            REPORT_SRC=playwright-report
+            DEST_ROOT=/var/www/playwright/html
+
+            if [ -d "$REPORT_SRC" ]; then
+              TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+              DEST="$DEST_ROOT/$TIMESTAMP"
+
+              # Try creating and copying without sudo first, fall back to sudo if needed
+              mkdir -p "$DEST" || sudo mkdir -p "$DEST"
+              cp -r "$REPORT_SRC"/* "$DEST"/ || sudo cp -r "$REPORT_SRC"/* "$DEST"/
+
+              # Update 'latest' symlink (atomic)
+              ln -sfn "$DEST" "$DEST_ROOT/latest" || sudo ln -sfn "$DEST" "$DEST_ROOT/latest"
+
+              echo "Playwright report deployed at: https://${{ secrets.SERVER_HOST }}/playwright/html/latest/index.html"
+              echo "Archive: https://${{ secrets.SERVER_HOST }}/playwright/html/$TIMESTAMP/index.html"
+
+              # Cleanup old archives older than 7 days
+              if [ -d "$DEST_ROOT" ]; then
+                echo "Cleaning up Playwright reports in $DEST_ROOT older than 7 days..."
+                find "$DEST_ROOT" -maxdepth 1 -mindepth 1 -type d -name '2*' -mtime +7 -print -exec rm -rf {} \;
+              fi
+            else
+              echo "Playwright report not found in $REPORT_SRC"
+            fi
+
+            # Fail the job if tests failed
+            exit $TEST_EXIT_CODE

@@ -1,0 +1,52 @@
+# Rules for Bug Reporting and Technical Documentation
+
+When I ask you to "create a bug report" or "analyze an issue," you must follow the "Deep Dive Technical Schema" below. Do not just summarize; perform a root cause analysis (RCA) across the stack.
+
+## BUG REPORT STRUCTURE
+
+### 1. ## Summary
+Provide a high-level overview. Mention specifically **who** is affected (roles/users), **what** is the visible symptom in the UI, and **what** the backend returns (HTTP status/error messages).
+
+### 2. ## Root Cause
+Perform a code-level audit. You must:
+- Identify the specific file and line ranges where the logic fails.
+- Explain the **logic mismatch** (e.g., ID namespaces, missing fields in dicts, wrong types).
+- Use code snippets to illustrate the error.
+- Identify "masks" (like hardcoded IDs or bypasses) that hide the bug in certain conditions.
+
+### 3. ## Inconsistent Code Paths
+If applicable, create a comparison table showing:
+- **Called with**: The input type/source.
+- **Mechanism**: How the check is performed.
+- **Outcome**: Does it work for all relevant cases?
+List specific **Broken vs. Working endpoints**.
+
+### 4. ## UI/UX Coherence Analysis
+Analyze if the technical bug is mirrored by a confusing UI. Check for:
+- Overlapping concepts (e.g., Role vs. User Type vs. Org Role).
+- Incoherent filtering logic.
+- Misleading visual badges.
+
+### 5. ## Proposed Solution Plan
+Divide the fix into phases:
+- **Phase 1 (Immediate):** The technical fix for the core bug.
+- **Phase 2 (Architectural/UI):** Cleanup of the interface or user experience.
+- **Phase 3 (Refactor):** Long-term code health improvements.
+
+### 6. ## Reproduction Steps
+Provide a clear, step-by-step guide to reproduce the issue. Include:
+1. UI steps (Navigation/Buttons).
+2. **Terminal/Curl commands** with specific endpoints and payloads to bypass the UI for verification.
+
+### 7. ## Affected Files
+Categorize all files that need changes or are impacted:
+- **Backend:** Models, routers, helpers.
+- **Frontend:** Svelte components, stores, services, locales.
+
+---
+
+## CRITICAL THINKING GUIDELINES FOR CLINE
+- **Namespace Awareness:** Always check if IDs being compared belong to the same system (e.g., LAMB Integer vs. OWI UUID).
+- **Type Safety:** Verify if functions expect a `dict` or a `string` (auth header) and if they handle both correctly.
+- **Permissions Axis:** Remember there are three dimensions: System Role, Org Role, and Account Type. Never treat them as a single value.
+- **Cross-Reference:** Before finishing the report, check `frontend/locales` and `userStore.js` to see if the bug affects translations or global state.

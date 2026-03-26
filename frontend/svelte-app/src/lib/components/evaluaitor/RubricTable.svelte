@@ -1,5 +1,6 @@
 <script>
   import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
+  import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
   // Props
   let { isEditMode = false } = $props();
@@ -8,12 +9,52 @@
   let editingCell = $state(null); // {criterionId, levelId, field}
   let editValue = $state('');
   let ignoreNextBlur = $state(false); // Flag to prevent immediate blur on focus
+  
+  // Delete confirmation modal state
+  let showDeleteCriterionModal = $state(false);
+  /** @type {string|null} */
+  let criterionToDelete = $state(null);
+  
+  let showDeleteLevelModal = $state(false);
+  /** @type {string|null} */
+  let levelToDelete = $state(null);
 
   // Start editing a cell
   function startEditing(criterionId, levelId, field, currentValue) {
     editingCell = { criterionId, levelId, field };
     editValue = currentValue || '';
     ignoreNextBlur = true; // Set flag to ignore the first blur event
+  }
+
+  // Start editing a level cell, creating the level if it doesn't exist
+  function startEditingLevel(criterion, levelTemplate, level) {
+    if (!isEditMode) return;
+
+    // If level doesn't exist, create it first
+    if (!level) {
+      const newLevel = {
+        score: levelTemplate.score,
+        label: levelTemplate.label,
+        description: ''
+      };
+      
+      rubricStore.addLevelToCriterion(criterion.id, newLevel);
+      
+      // After adding, find the newly created level in the updated criterion
+      // We need to wait a tick for the store to update
+      setTimeout(() => {
+        const updatedCriterion = rubricStore.rubric.criteria.find(c => c.id === criterion.id);
+        if (updatedCriterion) {
+          const newlyAddedLevel = updatedCriterion.levels.find(l => l.score === levelTemplate.score);
+          if (newlyAddedLevel) {
+            startEditing(criterion.id, newlyAddedLevel.id, 'description', '');
+          }
+        }
+      }, 0);
+    } else {
+      // Level exists, start editing directly
+      startEditing(criterion.id, level.id, 'description', level.description || '');
+    }
   }
 
   // Focus input helper
@@ -117,11 +158,25 @@
     rubricStore.addCriterion(newCriterion);
   }
 
-  // Remove criterion
+  // Open remove criterion modal
   function removeCriterion(criterionId) {
-    if (confirm('Are you sure you want to remove this criterion?')) {
-      rubricStore.removeCriterion(criterionId);
+    criterionToDelete = criterionId;
+    showDeleteCriterionModal = true;
+  }
+  
+  // Confirm remove criterion
+  function confirmRemoveCriterion() {
+    if (criterionToDelete) {
+      rubricStore.removeCriterion(criterionToDelete);
     }
+    showDeleteCriterionModal = false;
+    criterionToDelete = null;
+  }
+  
+  // Cancel remove criterion
+  function cancelRemoveCriterion() {
+    showDeleteCriterionModal = false;
+    criterionToDelete = null;
   }
 
   // Add new performance level
@@ -135,11 +190,25 @@
     rubricStore.addLevel(newLevel);
   }
 
-  // Remove performance level
+  // Open remove level modal
   function removeLevel(levelId) {
-    if (confirm('Are you sure you want to remove this performance level from all criteria?')) {
-      rubricStore.removeLevel(levelId);
+    levelToDelete = levelId;
+    showDeleteLevelModal = true;
+  }
+  
+  // Confirm remove level
+  function confirmRemoveLevel() {
+    if (levelToDelete) {
+      rubricStore.removeLevel(levelToDelete);
     }
+    showDeleteLevelModal = false;
+    levelToDelete = null;
+  }
+  
+  // Cancel remove level
+  function cancelRemoveLevel() {
+    showDeleteLevelModal = false;
+    levelToDelete = null;
   }
 
   // Get common level structure based on first criterion
@@ -155,6 +224,19 @@
   function getCriterionLevel(criterion, targetScore) {
     return criterion.levels?.find(level => level.score === targetScore) || null;
   }
+
+  // Calculate total weight percentage
+  function getTotalWeight() {
+    if (!rubricStore.rubric?.criteria?.length) return 0;
+    
+    return rubricStore.rubric.criteria.reduce((sum, criterion) => {
+      const weight = parseFloat(criterion.weight) || 0;
+      return sum + weight;
+    }, 0);
+  }
+
+  // Derived state for total weight
+  let totalWeight = $derived(getTotalWeight());
 </script>
 
 <div class="bg-white shadow rounded-lg">
@@ -315,10 +397,10 @@
                   ></textarea>
                 {:else}
                   <div
-                    onclick={() => isEditMode && level && startEditing(criterion.id, level.id, 'description', level?.description)}
-                    onkeydown={(e) => e.key === 'Enter' && isEditMode && level && startEditing(criterion.id, level.id, 'description', level?.description)}
+                    onclick={() => isEditMode && startEditingLevel(criterion, levelTemplate, level)}
+                    onkeydown={(e) => e.key === 'Enter' && isEditMode && startEditingLevel(criterion, levelTemplate, level)}
                     role="button"
-                    tabindex="0"
+                    tabindex={isEditMode ? 0 : -1}
                     class="{isEditMode ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 border border-transparent' : 'cursor-default'} p-2 rounded text-sm text-gray-700 min-h-[60px]"
                   >
                     {level?.description || 'No description'}
@@ -344,6 +426,48 @@
             </td>
           </tr>
         {/each}
+
+        <!-- Total Weight Row -->
+        {#if rubricStore.rubric?.criteria?.length}
+          <tr class="bg-gray-50 border-t-2 border-gray-300 font-semibold">
+            <td class="px-6 py-4 text-sm text-gray-900" colspan="2">
+              Total
+            </td>
+            <td class="px-6 py-4 text-sm text-center">
+              <div class="flex items-center justify-center">
+                <span class="{totalWeight === 100 ? 'text-green-600' : totalWeight > 100 ? 'text-red-600' : 'text-yellow-600'}">
+                  {totalWeight.toFixed(1)}%
+                </span>
+                {#if totalWeight === 100}
+                  <svg class="ml-2 h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                {:else if totalWeight > 100}
+                  <svg class="ml-2 h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                {:else}
+                  <svg class="ml-2 h-5 w-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                {/if}
+              </div>
+              {#if totalWeight !== 100}
+                <div class="text-xs {totalWeight > 100 ? 'text-red-500' : 'text-yellow-500'} mt-1">
+                  {totalWeight > 100 ? 'Exceeds 100%' : 'Should equal 100%'}
+                </div>
+              {/if}
+            </td>
+            <!-- Empty cells for performance levels -->
+            {#each getCommonLevels() as _}
+              <td class="px-6 py-4"></td>
+            {/each}
+            <!-- Empty cell for actions -->
+            {#if isEditMode}
+              <td class="px-6 py-4"></td>
+            {/if}
+          </tr>
+        {/if}
       </tbody>
     </table>
   </div>
@@ -377,4 +501,26 @@
     </div>
   {/if}
 </div>
+
+<!-- Remove Criterion Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteCriterionModal}
+    title="Remove Criterion"
+    message="Are you sure you want to remove this criterion? This will delete all associated performance level descriptions."
+    confirmText="Remove"
+    variant="danger"
+    onconfirm={confirmRemoveCriterion}
+    oncancel={cancelRemoveCriterion}
+/>
+
+<!-- Remove Level Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteLevelModal}
+    title="Remove Performance Level"
+    message="Are you sure you want to remove this performance level from all criteria? This action cannot be undone."
+    confirmText="Remove"
+    variant="danger"
+    onconfirm={confirmRemoveLevel}
+    oncancel={cancelRemoveLevel}
+/>
 

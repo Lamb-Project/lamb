@@ -18,20 +18,33 @@ function getStoredJson(key) {
   }
 }
 
+function getUrlToken() {
+  if (!browser) return null;
+  try {
+    return new URL(window.location.href).searchParams.get('token');
+  } catch (e) {
+    console.error('Error reading token from URL:', e);
+    return null;
+  }
+}
+
 // Initialize user state from localStorage if available
+const bootstrapToken = getUrlToken();
 const storedUser = browser 
-  ? {
+  ? (bootstrapToken
+    ? { token: null, name: null, email: null, owiUrl: null, data: null }
+    : {
       token: localStorage.getItem('userToken'),
       name: localStorage.getItem('userName'),
       email: localStorage.getItem('userEmail'),
       owiUrl: localStorage.getItem('OWI_url'),
       data: getStoredJson('userData') // Use safe parse function
-    }
+    })
   : { token: null, name: null, email: null, owiUrl: null, data: null };
 
 // Create the user store
 const createUserStore = () => {
-  const { subscribe, set, update } = writable({
+  const { subscribe, set } = writable({
     isLoggedIn: !!storedUser.token,
     ...storedUser
   });
@@ -71,19 +84,70 @@ const createUserStore = () => {
       });
     },
     
+    /**
+     * Sets just the auth token (for LTI login scenarios where we don't have full user data yet).
+     * After setting the token, call fetchAndPopulateProfile() to load user info.
+     * @param {string} token - Authentication token.
+     */
+    setToken: (token) => {
+      if (browser && token) {
+        localStorage.setItem('userToken', token);
+        localStorage.removeItem('userName');
+        localStorage.removeItem('userEmail');
+        localStorage.removeItem('OWI_url');
+        localStorage.removeItem('userData');
+      }
+      set({
+        isLoggedIn: true,
+        token: token,
+        name: null,
+        email: null,
+        owiUrl: null,
+        data: null
+      });
+    },
+    
+    /**
+     * Fetches the user profile from the backend and populates the store.
+     * Should be called after setToken() for LTI login flows.
+     */
+    fetchAndPopulateProfile: async () => {
+      const { fetchUserProfile } = await import('$lib/services/authService.js');
+      const token = browser ? localStorage.getItem('userToken') : null;
+      if (!token) return null;
+      
+      const result = await fetchUserProfile(token);
+      if (result?.success && result.data) {
+        const userData = { ...result.data, token };
+        if (browser) {
+          localStorage.setItem('userName', userData.name || '');
+          localStorage.setItem('userEmail', userData.email || '');
+          if (userData.launch_url) {
+            localStorage.setItem('OWI_url', userData.launch_url);
+          }
+          localStorage.setItem('userData', JSON.stringify(userData));
+        }
+        set({
+          isLoggedIn: true,
+          token: token,
+          name: userData.name || null,
+          email: userData.email || null,
+          owiUrl: userData.launch_url || null,
+          data: userData
+        });
+      }
+      return result;
+    },
+    
     // Logout function
     logout: () => {
-      // Only remove from localStorage if in browser environment
       if (browser) {
-        console.log('Logging out: Clearing user and cache data from localStorage');
+        console.log('Logging out: Clearing user identity from localStorage');
         localStorage.removeItem('userToken');
         localStorage.removeItem('userName');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('OWI_url');
         localStorage.removeItem('userData');
-        // Clear assistant config cache on logout for debugging
-        localStorage.removeItem('lamb_assistant_capabilities');
-        localStorage.removeItem('lamb_assistant_defaults');
       }
       
       // Update the store

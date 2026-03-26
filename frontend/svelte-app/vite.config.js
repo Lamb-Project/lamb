@@ -5,6 +5,15 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
+	// Ensure Svelte and related packages are properly pre-bundled to avoid
+	// "lifecycle_outside_component" errors from duplicate Svelte instances
+	optimizeDeps: {
+		include: ['svelte', 'svelte-i18n', 'flowbite-svelte', 'flowbite-svelte-icons'],
+		exclude: ['@sveltejs/kit']
+	},
+	ssr: {
+		noExternal: ['svelte-i18n']
+	},
 	// Dev server proxy for API routes during local development
 	// Allow overriding the proxy target via environment variable so the
 	// containerized frontend can proxy to the backend service name (backend:9099)

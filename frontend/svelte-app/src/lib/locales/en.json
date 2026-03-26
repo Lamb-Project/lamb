@@ -39,7 +39,7 @@
     "openWebUI": "OpenWebUI",
     "admin": "Admin",
     "orgAdmin": "Org Admin",
-    "tools": "Tools",
+    "sources": "Sources of Knowledge",
     "rubrics": "Rubrics"
   },
   "assistants": {
@@ -148,7 +148,17 @@
       "propertiesTab": "Properties",
       "editTab": "Edit",
       "shareTab": "Share",
-      "chatTab": "Chat"
+      "chatTab": "Chat",
+      "activityTab": "Activity",
+      "chatWith": "with",
+      "readOnlyBanner": "Read-only view — This assistant belongs to {owner}",
+      "ltiTitle": "LTI Publish Details",
+      "ltiAssistantName": "Assistant Name",
+      "ltiModelId": "Model ID",
+      "ltiToolUrl": "Tool URL",
+      "ltiConsumerKey": "Consumer Key",
+      "ltiSecret": "Secret",
+      "configuration": "Configuration"
     },
     "sharing": {
       "title": "Shared Users",
@@ -430,7 +440,13 @@
     "page": "Page",
     "of": "of",
     "resultsSimple": "Results",
-    "to": "to"
+    "to": "to",
+    "firstPage": "First page",
+    "lastPage": "Last page",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "noResults": "No results",
+    "pageN": "Page {page}"
   },
   "rubrics": {
     "title": "Evaluaitor",
@@ -513,6 +529,38 @@
       "errorTitle": "Generation Failed",
       "tryAgain": "Try Again",
       "saveError": "Failed to save rubric"
+    },
+    "metadataForm": {
+      "heading": "Rubric Information",
+      "titlePlaceholder": "Enter rubric title",
+      "descriptionPlaceholder": "Describe the purpose and context of this rubric",
+      "scoringConfig": "Scoring Configuration",
+      "points": "Points",
+      "percentage": "Percentage",
+      "holistic": "Holistic",
+      "singlePoint": "Single Point",
+      "checklist": "Checklist",
+      "optionalInfo": "Optional Information",
+      "optionalHint": "These fields are completely optional. Leave blank if not applicable to your rubric.",
+      "optional": "optional",
+      "gradeLevelPlaceholder": "e.g., 6-8, 9-12, K-2, Adult Education"
+    },
+    "aiChat": {
+      "title": "AI Assistant",
+      "thinking": "Thinking...",
+      "clear": "Clear",
+      "clearChat": "Clear chat",
+      "welcomeMessage": "Ask me to help you create or modify this rubric. Here are some examples:",
+      "modifyPlaceholder": "Ask me to modify this rubric...",
+      "createPlaceholder": "Describe the rubric you want to create...",
+      "helpText": "Press Enter to send, Shift+Enter for new line",
+      "minimize": "Minimize AI chat",
+      "maximize": "Maximize AI chat",
+      "example1": "Create a rubric for evaluating 5-paragraph essays in 8th grade English",
+      "example2": "Make this rubric suitable for 6th graders by simplifying the language",
+      "example3": "Add a creativity criterion to this rubric",
+      "example4": "Convert this to a 4-point scale instead of 5-point",
+      "example5": "Make the descriptions more specific and observable"
     }
   },
   "promptTemplates": {
@@ -542,11 +590,20 @@
     "export": "Export",
     "search": "Search templates..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "chats",
+      "users": "users",
+      "messages": "messages",
+      "messagesPerChat": "messages per chat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Dashboard",
-      "users": "User Management",
-      "organizations": "Organizations"
+      "users": "Users",
+      "organizations": "Organizations",
+      "costManagement": "Cost Management"
     },
     "dashboard": {
       "title": "Admin Dashboard",
@@ -582,6 +639,8 @@
         "system": "System",
         "noOrganization": "No Organization"
       },
+      "viewProfile": "View user profile",
+      "backToList": "Back to Users",
       "actions": {
         "create": "Create User",
         "changePassword": "Change Password",
@@ -711,6 +770,88 @@
         "createFailed": "Failed to create organization.",
         "unknownError": "An unknown error occurred while creating the organization."
       }
+    },
+    "costManagement": {
+      "title": "Cost Management",
+      "subtitle": "Token usage and estimated cost per assistant across the platform.",
+      "loading": "Loading usage data...",
+      "errorTitle": "Error:",
+      "retry": "Retry",
+      "noData": "No assistants found.",
+      "table": {
+        "assistant": "Assistant",
+        "owner": "Owner",
+        "organization": "Organization",
+        "model": "Model",
+        "promptTokens": "Prompt Tokens",
+        "completionTokens": "Completion Tokens",
+        "totalTokens": "Total Tokens",
+        "cost": "Estimated Cost",
+        "quota": "Quota",
+        "status": "Status"
+      },
+      "quota": {
+        "noQuota": "No quota",
+        "disabled": "Disabled",
+        "active": "Active",
+        "exceeded": "Exceeded"
+      },
+      "totals": {
+        "label": "Platform totals:",
+        "cost": "Total estimated cost:",
+        "tokens": "Total tokens:"
+      }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Dashboard",
+      "help": "Help & News"
+    },
+    "dashboard": {
+      "title": "My Dashboard",
+      "subtitle": "Overview of your resources and activity",
+      "loading": "Loading your dashboard...",
+      "error": "Could not load dashboard data.",
+      "retry": "Try Again",
+      "welcome": "Welcome back, {name}!",
+      "organization": "Organization",
+      "role": "Role",
+      "memberSince": "Member since",
+      "viewAll": "View all",
+      "quickActions": "Quick Actions",
+      "owned": "My Resources",
+      "sharedWithMe": "Shared with Me",
+      "assistants": "Assistants",
+      "knowledgeBases": "Knowledge Bases",
+      "rubrics": "Rubrics",
+      "templates": "Prompt Templates",
+      "published": "published",
+      "shared": "shared",
+      "public": "public",
+      "private": "private",
+      "total": "total",
+      "noResources": "No resources yet",
+      "noSharedResources": "Nothing shared with you yet",
+      "sharedBy": "Shared by",
+      "ownedBy": "by",
+      "createAssistant": "Create Assistant",
+      "createKnowledgeBase": "Create Knowledge Base",
+      "createRubric": "Create Rubric",
+      "createTemplate": "Create Template",
+      "manageAssistants": "Manage Assistants",
+      "orgRole": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member"
+      }
+    },
+    "help": {
+      "title": "Help & News",
+      "subtitle": "Latest updates and information",
+      "loadingNews": "Loading news...",
+      "noNews": "No news to display.",
+      "viewAssistants": "View Learning Assistants"
     }
   }
 }

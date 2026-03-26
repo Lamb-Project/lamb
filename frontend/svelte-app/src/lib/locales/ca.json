@@ -43,13 +43,14 @@
     "openWebUI": "OpenWebUI",
     "admin": "Administració",
     "orgAdmin": "Admin Org",
-    "tools": "Eines",
+    "sources": "Fonts de Coneixement",
     "rubrics": "Rúbriques"
   },
   "assistants": {
     "title": "Assistents d'Aprenentatge",
     "view": "Veure Assistents d'Aprenentatge",
     "myAssistantsTab": "Els Meus Assistents",
+    "sharedWithMeTab": "Compartits Amb Mi",
     "createAssistantTab": "Crear Assistent",
     "detailViewTab": "Detall de l'Assistent",
     "myAssistants": "Els Meus Assistents",
@@ -224,6 +225,29 @@
       "ragTopKHint": "Nombre de chunks rellevants a recuperar (1-10).",
       "successMessage": "Assistent '{name}' creat correctament! Redirigint...",
       "unknownError": "Error al crear assistent: Error desconegut"
+    },
+    "detail": {
+      "propertiesTab": "Propietats",
+      "editTab": "Editar",
+      "shareTab": "Compartir",
+      "chatTab": "Xat",
+      "activityTab": "Activitat",
+      "chatWith": "amb",
+      "readOnlyBanner": "Vista de només lectura — Aquest assistent pertany a {owner}",
+      "ltiTitle": "Detalls de Publicació LTI",
+      "ltiAssistantName": "Nom de l'Assistent",
+      "ltiModelId": "ID del Model",
+      "ltiToolUrl": "URL d'Eina",
+      "ltiConsumerKey": "Clau del Consumidor",
+      "ltiSecret": "Secret",
+      "configuration": "Configuració"
+    },
+    "sharing": {
+      "title": "Usuaris Compartits",
+      "description": "Gestiona qui té accés a aquest assistent",
+      "noShares": "Aquest assistent encara no s'ha compartit amb ningú.",
+      "manageButton": "Gestionar Usuaris Compartits",
+      "sharedWith": "Compartit amb {count} {count, plural, =1 {usuari} other {usuaris}}"
     },
     "table": {
       "name": "Nom",
@@ -419,7 +443,13 @@
     "page": "Pàgina",
     "of": "de",
     "resultsSimple": "Resultats",
-    "to": "a"
+    "to": "a",
+    "firstPage": "Primera pàgina",
+    "lastPage": "Última pàgina",
+    "previousPage": "Pàgina anterior",
+    "nextPage": "Pàgina següent",
+    "noResults": "Sense resultats",
+    "pageN": "Pàgina {page}"
   },
   "rubrics": {
     "title": "Avaluador",
@@ -502,6 +532,38 @@
       "errorTitle": "Generació Fallida",
       "tryAgain": "Tornar-ho a provar",
       "saveError": "Error en desar rúbrica"
+    },
+    "metadataForm": {
+      "heading": "Informació de la Rúbrica",
+      "titlePlaceholder": "Introdueix el títol de la rúbrica",
+      "descriptionPlaceholder": "Descriu el propòsit i context d'aquesta rúbrica",
+      "scoringConfig": "Configuració de Puntuació",
+      "points": "Punts",
+      "percentage": "Percentatge",
+      "holistic": "Holística",
+      "singlePoint": "Punt Únic",
+      "checklist": "Llista de Verificació",
+      "optionalInfo": "Informació Opcional",
+      "optionalHint": "Aquests camps són completament opcionals. Deixa'ls en blanc si no apliquen a la teva rúbrica.",
+      "optional": "opcional",
+      "gradeLevelPlaceholder": "ex., 6-8, 9-12, K-2, Educació d'Adults"
+    },
+    "aiChat": {
+      "title": "Assistent IA",
+      "thinking": "Pensant...",
+      "clear": "Netejar",
+      "clearChat": "Netejar xat",
+      "welcomeMessage": "Demana'm que t'ajudi a crear o modificar aquesta rúbrica. Aquí tens alguns exemples:",
+      "modifyPlaceholder": "Demana'm que modifiqui aquesta rúbrica...",
+      "createPlaceholder": "Descriu la rúbrica que vols crear...",
+      "helpText": "Prem Enter per enviar, Shift+Enter per a nova línia",
+      "minimize": "Minimitzar xat IA",
+      "maximize": "Maximitzar xat IA",
+      "example1": "Crear una rúbrica per avaluar assaigs de 5 paràgrafs en anglès de 8è curs",
+      "example2": "Adaptar aquesta rúbrica per a 6è curs simplificant el llenguatge",
+      "example3": "Afegir un criteri de creativitat a aquesta rúbrica",
+      "example4": "Convertir a escala de 4 punts en lloc de 5",
+      "example5": "Fer les descripcions més específiques i observables"
     }
   },
   "promptTemplates": {
@@ -531,11 +593,20 @@
     "export": "Exportar",
     "search": "Cercar plantilles..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "xats",
+      "users": "usuaris",
+      "messages": "missatges",
+      "messagesPerChat": "missatges per xat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Panell de Control",
       "users": "Gestió d'Usuaris",
-      "organizations": "Organitzacions"
+      "organizations": "Organitzacions",
+      "costManagement": "Gestió de Costos"
     },
     "dashboard": {
       "title": "Panell d'Administració",
@@ -571,6 +642,8 @@
         "system": "Sistema",
         "noOrganization": "Sense Organització"
       },
+      "viewProfile": "Veure perfil de l'usuari",
+      "backToList": "Tornar a Usuaris",
       "actions": {
         "create": "Crear Usuari",
         "changePassword": "Canviar Contrasenya",
@@ -700,6 +773,88 @@
         "createFailed": "Error al crear organització.",
         "unknownError": "S'ha produït un error desconegut al crear l'organització."
       }
+    },
+    "costManagement": {
+      "title": "Gestió de Costos",
+      "subtitle": "ús de tokens i cost estimat per assistent a la plataforma.",
+      "loading": "Carregant dades d'ús...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noData": "No s'han trobat assistents.",
+      "table": {
+        "assistant": "Assistent",
+        "owner": "Propietari",
+        "organization": "Organització",
+        "model": "Model",
+        "promptTokens": "Tokens d'entrada",
+        "completionTokens": "Tokens de sortida",
+        "totalTokens": "Total de tokens",
+        "cost": "Cost estimat",
+        "quota": "Quota",
+        "status": "Estat"
+      },
+      "quota": {
+        "noQuota": "Sense quota",
+        "disabled": "Deshabilitat",
+        "active": "Actiu",
+        "exceeded": "Exceïit"
+      },
+      "totals": {
+        "label": "Totals de la plataforma:",
+        "cost": "Cost total estimat:",
+        "tokens": "Total de tokens:"
+      }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panell",
+      "help": "Ajuda i Notícies"
+    },
+    "dashboard": {
+      "title": "El Meu Panell",
+      "subtitle": "Resum dels teus recursos i activitat",
+      "loading": "Carregant el teu panell...",
+      "error": "No s'han pogut carregar les dades del panell.",
+      "retry": "Reintenta",
+      "welcome": "Benvingut/da, {name}!",
+      "organization": "Organització",
+      "role": "Rol",
+      "memberSince": "Membre des de",
+      "viewAll": "Veure tot",
+      "quickActions": "Accions Ràpides",
+      "owned": "Els Meus Recursos",
+      "sharedWithMe": "Compartit Amb Mi",
+      "assistants": "Assistents",
+      "knowledgeBases": "Bases de Coneixement",
+      "rubrics": "Rúbriques",
+      "templates": "Plantilles de Prompt",
+      "published": "publicats",
+      "shared": "compartits",
+      "public": "públiques",
+      "private": "privades",
+      "total": "total",
+      "noResources": "Encara no tens recursos",
+      "noSharedResources": "Res compartit amb tu encara",
+      "sharedBy": "Compartit per",
+      "ownedBy": "per",
+      "createAssistant": "Crear Assistent",
+      "createKnowledgeBase": "Crear Base de Coneixement",
+      "createRubric": "Crear Rúbrica",
+      "createTemplate": "Crear Plantilla",
+      "manageAssistants": "Gestionar Assistents",
+      "orgRole": {
+        "owner": "Propietari",
+        "admin": "Administrador",
+        "member": "Membre"
+      }
+    },
+    "help": {
+      "title": "Ajuda i Notícies",
+      "subtitle": "Últimes novetats i informació",
+      "loadingNews": "Carregant notícies...",
+      "noNews": "No hi ha notícies per mostrar.",
+      "viewAssistants": "Veure Assistents d'Aprenentatge"
     }
   }
 }

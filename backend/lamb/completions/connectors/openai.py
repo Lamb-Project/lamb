@@ -8,14 +8,52 @@ import re
 import base64
 # import openai
 from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError, AuthenticationError
+from httpx import Timeout, Limits
+import config as app_config
 from lamb.logging_config import get_logger
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 
-logger = get_logger(__name__, component="MAIN")
+logger = get_logger(__name__, component="API")
 
-# Set up multimodal logging
-multimodal_logger = logging.getLogger('multimodal.openai')
-multimodal_logger.setLevel(logging.DEBUG)
+# Set up multimodal logging using centralized config
+multimodal_logger = get_logger('multimodal.openai', component="API")
+
+# ---------------------------------------------------------------------------
+# Shared AsyncOpenAI client pool
+# ---------------------------------------------------------------------------
+# Clients are cached by (api_key, base_url) so that all requests sharing the
+# same credentials reuse a single HTTP connection pool instead of creating a
+# new one per request.  This prevents TCP connection exhaustion under
+# concurrent load (see GitHub issue #255).
+# ---------------------------------------------------------------------------
+_openai_clients: Dict[tuple, AsyncOpenAI] = {}
+
+
+def _get_openai_client(api_key: str, base_url: str = None) -> AsyncOpenAI:
+    """Return a shared AsyncOpenAI client for the given credentials.
+
+    Creates a new client on the first call for each unique (api_key, base_url)
+    pair and reuses it on subsequent calls.  Timeout and connection-pool
+    parameters are read from config (backed by environment variables).
+    """
+    key = (api_key, base_url)
+    if key not in _openai_clients:
+        _openai_clients[key] = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=Timeout(
+                app_config.LLM_REQUEST_TIMEOUT,
+                connect=app_config.LLM_CONNECT_TIMEOUT,
+            ),
+            max_retries=2,
+        )
+        logger.info(
+            f"Created shared OpenAI client for base_url={base_url} "
+            f"(timeout={app_config.LLM_REQUEST_TIMEOUT}s, "
+            f"connect={app_config.LLM_CONNECT_TIMEOUT}s)"
+        )
+    return _openai_clients[key]
 
 def get_available_llms(assistant_owner: Optional[str] = None):
     """
@@ -47,14 +85,19 @@ def get_available_llms(assistant_owner: Optional[str] = None):
             
         models = openai_config.get("models", [])
         if not models:
-            import config
-            models = [openai_config.get("default_model") or config.OPENAI_MODEL]
+            # Only fall back to org-level default_model, never to system env vars
+            default_model = openai_config.get("default_model")
+            if default_model:
+                models = [default_model]
+            else:
+                logger.warning(f"No models configured for OpenAI in organization of user {assistant_owner}")
+                return []
             
         return models
     except Exception as e:
-        logger.error(f"Error getting OpenAI models for {assistant_owner}: {e}")
-        # Fallback to env vars
-        return get_available_llms(None)
+        logger.error(f"Error resolving organization OpenAI models for {assistant_owner}: {e}. "
+                     f"Returning empty model list instead of falling back to system defaults.")
+        return []
 
 def format_debug_response(messages: list, body: Dict[str, Any]) -> str:
     """Format debug response showing messages and body"""
@@ -240,6 +283,7 @@ def validate_image_urls(messages: List[Dict[str, Any]]) -> List[str]:
 
     return errors
 
+@traceable_llm_call(name="openai_completion", run_type="llm", tags=["openai", "lamb"])
 async def llm_connect(messages: list, stream: bool = False, body: Dict[str, Any] = None, llm: str = None, assistant_owner: Optional[str] = None, use_small_fast_model: bool = False):
     """
 Connects to the specified Large Language Model (LLM) using the OpenAI API.
@@ -429,6 +473,19 @@ Returns:
 
     multimodal_logger.info(f"Model: {resolved_model}{' (fallback)' if fallback_used else ''} | Config: {config_source} | Organization: {org_name}")
 
+    # Add trace metadata if LangSmith tracing is enabled
+    if is_tracing_enabled():
+        add_trace_metadata("provider", "openai")
+        add_trace_metadata("model", resolved_model)
+        add_trace_metadata("organization", org_name)
+        add_trace_metadata("assistant_owner", assistant_owner or "none")
+        add_trace_metadata("config_source", config_source)
+        add_trace_metadata("stream", stream)
+        add_trace_metadata("message_count", len(messages))
+        add_trace_metadata("use_small_fast_model", use_small_fast_model)
+        if fallback_used:
+            add_trace_metadata("fallback_used", True)
+
     # Store original model and get org default for potential runtime fallback
     original_requested_model = resolved_model
     org_default_for_fallback = None
@@ -473,13 +530,10 @@ Returns:
             vision_params["messages"] = vision_messages
             vision_params["stream"] = stream
 
-            # Create client for vision attempt
-            vision_client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url
-            )
+            # Get shared client for vision attempt
+            vision_client = _get_openai_client(api_key, base_url)
 
-            logger.debug(f"OpenAI vision client created")
+            logger.debug(f"OpenAI vision client acquired from pool")
 
             # Try the vision API call
             if stream:
@@ -520,13 +574,10 @@ Returns:
     params["messages"] = messages
     params["stream"] = stream
 
-    # client = openai.OpenAI(
-    client = AsyncOpenAI( # Use AsyncOpenAI
-        api_key=api_key,
-        base_url=base_url
-    )
+    # Get shared client from pool
+    client = _get_openai_client(api_key, base_url)
 
-    logger.debug(f"OpenAI client created")
+    logger.debug(f"OpenAI client acquired from pool")
 
     # Helper function to make API call with runtime fallback
     async def _make_api_call_with_fallback(params_to_use: dict, attempt_fallback: bool = True):
@@ -555,28 +606,24 @@ Returns:
             
             # Log the failure
             logger.error(f"OpenAI API error with model '{current_model}': [{error_type}] {error_msg}")
-            print(f"❌ [OpenAI] API call failed for model '{current_model}': [{error_type}] {error_msg}")
-            
+
             # Check if we should attempt fallback
             if attempt_fallback and org_default_for_fallback and current_model != org_default_for_fallback:
                 logger.warning(f"Attempting fallback to organization default model: '{org_default_for_fallback}'")
-                print(f"🔄 [OpenAI] Retrying with organization default model: '{org_default_for_fallback}'")
-                
+
                 # Retry with org default model
                 fallback_params = params_to_use.copy()
                 fallback_params["model"] = org_default_for_fallback
-                
+
                 try:
                     result = await _make_api_call_with_fallback(fallback_params, attempt_fallback=False)
                     logger.info(f"✅ Fallback to '{org_default_for_fallback}' succeeded")
-                    print(f"✅ [OpenAI] Fallback successful with model: '{org_default_for_fallback}'")
                     return result
-                    
+
                 except Exception as fallback_error:
                     fallback_error_type = type(fallback_error).__name__
                     fallback_error_msg = str(fallback_error)
                     logger.error(f"Fallback to '{org_default_for_fallback}' also failed: [{fallback_error_type}] {fallback_error_msg}")
-                    print(f"❌ [OpenAI] Fallback also failed: [{fallback_error_type}] {fallback_error_msg}")
                     
                     # Both attempts failed - raise comprehensive error
                     comprehensive_error = (
@@ -694,13 +741,22 @@ Returns:
         logger.debug(f"Original Stream completed")
 
     # --- Helper function for EXPERIMENTAL stream generation ---
-    async def _generate_experimental_stream():
+    async def _generate_experimental_stream(usage_out: dict | None = None):
         logger.debug(f"Experimental Stream created")
+        # Request usage in the final streaming chunk so callers can log it
+        stream_params = params.copy()
+        stream_params["stream_options"] = {"include_usage": True}
+
         # Create a streaming response
-        stream_obj = await _make_api_call_with_fallback(params) # Use helper with fallback
+        stream_obj = await _make_api_call_with_fallback(stream_params) # Use helper with fallback
 
         # Iterate through the stream and yield the JSON representation of each chunk
         async for chunk in stream_obj: # Changed to async for
+            # Capture usage when the final chunk carries it
+            if usage_out is not None and hasattr(chunk, "usage") and chunk.usage:
+                usage_out["prompt_tokens"]     = chunk.usage.prompt_tokens
+                usage_out["completion_tokens"] = chunk.usage.completion_tokens
+                usage_out["total_tokens"]      = chunk.usage.total_tokens
             yield f"data: {chunk.model_dump_json()}\n\n"
 
         yield "data: [DONE]\n\n"
@@ -710,7 +766,8 @@ Returns:
     if stream:
         # --- CHOOSE IMPLEMENTATION HERE ---
         # return _generate_original_stream()
-        return _generate_experimental_stream()
+        usage_out = {}
+        return _generate_experimental_stream(usage_out=usage_out), usage_out
     else:
         # Non-streaming call with fallback
         response = await _make_api_call_with_fallback(params) # Use helper with fallback

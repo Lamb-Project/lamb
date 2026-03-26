@@ -1,6 +1,9 @@
 import uuid
+import json
+import sqlite3
+import fcntl
+import tempfile
 from passlib.context import CryptContext
-import logging
 from typing import Optional, Dict
 import time
 from .owi_database import OwiDatabaseManager
@@ -8,6 +11,7 @@ import requests
 import os
 import warnings
 import config
+from lamb.logging_config import get_logger
 
 # Suppress the specific passlib warning about bcrypt version
 warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
@@ -15,19 +19,8 @@ warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
 # Use LAMB_WEB_HOST for profile image URLs (browsers need to access these)
 PIPELINES_HOST = config.LAMB_WEB_HOST
 
-
-# Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
-
-# If not already configured elsewhere, add this:
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.WARNING)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+# Set up logger for OWI users
+logger = get_logger(__name__, component="OWI")
 
 # Password hashing configuration
 # Using bcrypt with settings that work with newer bcrypt 4.x versions
@@ -39,6 +32,59 @@ pwd_context = CryptContext(
     bcrypt__ident="2b",
     bcrypt__rounds=12
 )
+
+
+class UserCreationLock:
+    """
+    File-based lock to prevent race conditions during user creation across multiple workers.
+    
+    Uses fcntl for POSIX systems (Linux, macOS). Falls back to no-op on Windows
+    (where uvicorn workers aren't typically used in production).
+    """
+    def __init__(self, email: str):
+        self.email = email
+        self.lock_file = None
+        self.lock_fd = None
+        
+    def __enter__(self):
+        try:
+            # Create lock file in temp directory
+            lock_dir = os.path.join(tempfile.gettempdir(), 'lamb_owi_locks')
+            os.makedirs(lock_dir, exist_ok=True)
+            
+            # Use email hash as filename to avoid path issues
+            import hashlib
+            email_hash = hashlib.md5(self.email.encode()).hexdigest()
+            lock_path = os.path.join(lock_dir, f'user_create_{email_hash}.lock')
+            
+            # Open lock file
+            self.lock_file = open(lock_path, 'w')
+            self.lock_fd = self.lock_file.fileno()
+            
+            # Acquire exclusive lock (blocks if another worker holds it)
+            logger.debug(f"Acquiring user creation lock for {self.email}")
+            fcntl.flock(self.lock_fd, fcntl.LOCK_EX)
+            logger.debug(f"Lock acquired for {self.email}")
+            
+        except (OSError, AttributeError) as e:
+            # fcntl not available (Windows) or other OS error
+            logger.warning(f"Could not acquire file lock for {self.email}: {e}. Proceeding without lock.")
+            
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.lock_fd is not None:
+                # Release lock
+                fcntl.flock(self.lock_fd, fcntl.LOCK_UN)
+                logger.debug(f"Lock released for {self.email}")
+        except Exception as e:
+            logger.warning(f"Error releasing lock for {self.email}: {e}")
+        finally:
+            if self.lock_file:
+                self.lock_file.close()
+        
+        return False  # Don't suppress exceptions
 
 
 class OwiUserManager:
@@ -55,7 +101,10 @@ class OwiUserManager:
 
     def create_user(self, name: str, email: str, password: str, role: str = "user") -> Optional[Dict]:
         """
-        Create a new user with authentication
+        Create a new user with authentication.
+        
+        Uses file-based locking to prevent race conditions when multiple workers
+        try to create the same user simultaneously.
 
         Args:
             name (str): User's name
@@ -67,58 +116,84 @@ class OwiUserManager:
             Optional[Dict]: Created user data or None if creation fails
         """
         try:
-            # get admin token
-            # we will not use the admin token for this operation
-            # but we will ensure the admin user is created
-            #
+            # Acquire lock to prevent race condition across multiple workers
+            with UserCreationLock(email):
+                # Check if user already exists (inside lock to prevent TOCTOU)
+                existing_user = self.db.get_user_by_email(email)
+                if existing_user:
+                    logger.info(f"User with email {email} already exists")
+                    return existing_user
 
-            if self.db.get_user_by_email(email):
-                logger.error(f"User with email {email} already exists")
-                return None
+                # Generate user ID and hash password
+                user_id = str(uuid.uuid4())
+                hashed_password = pwd_context.hash(password)
+                current_time = int(time.time())
 
-            # Generate user ID and hash password
-            user_id = str(uuid.uuid4())
-            hashed_password = pwd_context.hash(password)
-            current_time = int(time.time())
+                profile_image_url = f"{PIPELINES_HOST}/static/img/lamb_icon.png"
 
-            profile_image_url = f"{PIPELINES_HOST}/static/img/lamb_icon.png"
-            # Create user entry
-            user_query = """
-                INSERT INTO user (id, name, email, role, profile_image_url, 
-                                created_at, updated_at, last_active_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            user_params = (
-                user_id, name, email, role, profile_image_url,  # Empty profile image URL
-                current_time, current_time, current_time
-            )
+                # Open WebUI stores per-user UI preferences under settings.ui.
+                # If these values are missing, the frontend defaults them to true.
+                default_settings = {
+                    "ui": {
+                        "showUpdateToast": False,
+                        "showChangelog": False,
+                    }
+                }
 
-            # Create auth entry
-            auth_query = """
-                INSERT INTO auth (id, email, password, active)
-                VALUES (?, ?, ?, ?)
-            """
-            auth_params = (user_id, email, hashed_password, 1)  # 1 = active
+                # Create user entry
+                user_query = """
+                    INSERT INTO user (id, name, email, role, profile_image_url, settings,
+                                    created_at, updated_at, last_active_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                user_params = (
+                    user_id,
+                    name,
+                    email,
+                    role,
+                    profile_image_url,
+                    json.dumps(default_settings),
+                    current_time,
+                    current_time,
+                    current_time,
+                )
 
-            # Execute both queries
-            conn = self.db.get_connection()
-            if not conn:
-                return None
+                # Create auth entry
+                auth_query = """
+                    INSERT INTO auth (id, email, password, active)
+                    VALUES (?, ?, ?, ?)
+                """
+                auth_params = (user_id, email, hashed_password, 1)  # 1 = active
 
-            try:
-                cursor = conn.cursor()
-                cursor.execute(user_query, user_params)
-                cursor.execute(auth_query, auth_params)
-                conn.commit()
+                # Execute both queries
+                conn = self.db.get_connection()
+                if not conn:
+                    return None
 
-                # Return the created user
-                return self.db.get_user_by_id(user_id)
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error creating user: {e}")
-                return None
-            finally:
-                conn.close()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(user_query, user_params)
+                    cursor.execute(auth_query, auth_params)
+                    conn.commit()
+
+                    logger.info(f"Successfully created user {email} with role {role}")
+                    return self.db.get_user_by_id(user_id)
+                    
+                except sqlite3.IntegrityError as e:
+                    conn.rollback()
+                    # Defense in depth: handle race condition if it somehow bypasses the lock
+                    if "UNIQUE constraint" in str(e) and "email" in str(e).lower():
+                        logger.warning(f"User {email} already exists (rare race bypassed lock), fetching existing user")
+                        return self.db.get_user_by_email(email)
+                    else:
+                        logger.error(f"Integrity error creating user: {e}")
+                        return None
+                except Exception as e:
+                    conn.rollback()
+                    logger.error(f"Error creating user: {e}")
+                    return None
+                finally:
+                    conn.close()
 
         except Exception as e:
             logger.error(f"Unexpected error in create_user: {e}")
@@ -388,12 +463,13 @@ class OwiUserManager:
             # Check if user exists in OWI database
             user = self.db.get_user_by_email(email)
             if not user:
-                logger.warning(f"User with email {email} not found in OWI database (may only exist in LAMB)")
+                logger.warning(
+                    f"User with email {email} not found in OWI database (may only exist in LAMB)")
                 # Return True since there's nothing to delete in OWI - the user may only exist in LAMB
                 return True
 
             user_id = user.get('id')
-            
+
             # Prevent deletion of admin user (user ID 1)
             if user_id == "1":
                 logger.error(f"Cannot delete admin user (ID 1)")
@@ -407,22 +483,24 @@ class OwiUserManager:
 
             try:
                 cursor = conn.cursor()
-                
+
                 # Delete from auth table first (may or may not exist)
                 cursor.execute("DELETE FROM auth WHERE email = ?", (email,))
                 auth_deleted = cursor.rowcount
-                
+
                 # Delete from user table
                 cursor.execute("DELETE FROM user WHERE id = ?", (user_id,))
                 user_deleted = cursor.rowcount
-                
+
                 conn.commit()
 
                 if user_deleted > 0:
-                    logger.info(f"User {email} has been deleted successfully from OWI (auth: {auth_deleted > 0}, user: {user_deleted > 0})")
+                    logger.info(
+                        f"User {email} has been deleted successfully from OWI (auth: {auth_deleted > 0}, user: {user_deleted > 0})")
                     return True
                 else:
-                    logger.warning(f"User {email} record was not deleted (may have already been removed)")
+                    logger.warning(
+                        f"User {email} record was not deleted (may have already been removed)")
                     return True  # Return True anyway since the goal is achieved
 
             except Exception as e:
@@ -671,6 +749,34 @@ class OwiUserManager:
                     conn.close()
         except Exception as e:
             logger.error(f"Error connecting to database for schema check: {e}")
+
+    def ensure_mirror_user(self, name: str, email: str, role: str = "user") -> bool:
+        """
+        Ensure an OWI mirror user exists. If missing, create with random password.
+
+        Used during dual-write: LAMB is the source of truth but OWI needs
+        a corresponding user record for chat functionality.
+
+        Returns:
+            True if user exists or was created, False on error.
+        """
+        try:
+            existing = self.db.get_user_by_email(email)
+            if existing:
+                return True
+
+            import secrets
+            random_password = secrets.token_urlsafe(32)
+            result = self.create_user(name, email, random_password, role)
+            if result:
+                logger.info(f"Created OWI mirror user for {email}")
+                return True
+            else:
+                logger.warning(f"Failed to create OWI mirror user for {email}")
+                return False
+        except Exception as e:
+            logger.error(f"Error in ensure_mirror_user for {email}: {e}")
+            return False
 
     def get_user_auth(self, token) -> Optional[Dict]:
         """

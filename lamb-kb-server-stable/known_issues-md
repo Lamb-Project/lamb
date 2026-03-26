@@ -1,1 +1,0 @@
-* in create kb, the collection name is treated as unique when it shoudl be unique per username

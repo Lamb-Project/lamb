@@ -24,10 +24,22 @@ import axios from 'axios';
  * @property {number | null} lastLoadedTimestamp // Restore timestamp
  */
 
-// Restore cache constants
-const CAPABILITIES_CACHE_KEY = 'lamb_assistant_capabilities';
-const DEFAULTS_CACHE_KEY = 'lamb_assistant_defaults';
+// Cache constants - keys are made user-aware via helper function
+const CAPABILITIES_CACHE_PREFIX = 'lamb_assistant_capabilities';
+const DEFAULTS_CACHE_PREFIX = 'lamb_assistant_defaults';
 const CACHE_DURATION_MS = 60 * 60 * 1000; // Cache for 1 hour
+
+/**
+ * Get user-scoped cache key to prevent cross-user cache pollution.
+ * Falls back to base key if no user email is available.
+ * @param {string} prefix
+ * @returns {string}
+ */
+function getUserScopedCacheKey(prefix) {
+	if (!browser) return prefix;
+	const email = localStorage.getItem('userEmail');
+	return email ? `${prefix}_${email}` : prefix;
+}
 
 /** @type {AssistantConfigState} */
 const initialState = {
@@ -63,15 +75,16 @@ function getFallbackDefaults() {
 	return /** @type {ConfigDefaults} */ (defaults);
 }
 
-// Helper to get fallback capabilities matching legacy code
+// Helper to get fallback capabilities when API is unreachable.
+// Returns empty connectors to avoid showing models the org hasn't enabled.
 /** @returns {SystemCapabilities} */
 function getFallbackCapabilities() {
-	console.warn('Using hardcoded fallback capabilities');
+	console.warn('Using fallback capabilities (no models - org-specific models could not be loaded)');
 	/** @type {SystemCapabilities} */
 	const capabilities = {
-		prompt_processors: ['simple_augment'], // Keep simple_augment as fallback, zero_shot removed
-		connectors: { openai: { models: ['gpt-4o-mini', 'gpt-4'] } }, // Keep basic connector/model fallback
-		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag'] // Keep RAG options
+		prompt_processors: ['simple_augment'],
+		connectors: {},
+		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag']
 	};
 	return capabilities;
 }
@@ -104,6 +117,7 @@ async function fetchSystemCapabilities() {
 		return capabilities;
 	} catch (error) {
 		console.error('Error fetching system capabilities:', error);
+		// Return empty capabilities - never hardcode models that bypass org restrictions
 		return getFallbackCapabilities();
 	}
 }
@@ -239,13 +253,17 @@ function createAssistantConfigStore() {
 			return;
 		}
 
-		console.log('assistantConfigStore: Checking cache...');
-		let capabilities = getCachedData(CAPABILITIES_CACHE_KEY);
-		let cachedDefaults = getCachedData(DEFAULTS_CACHE_KEY);
+		const capsCacheKey = getUserScopedCacheKey(CAPABILITIES_CACHE_PREFIX);
+		const defaultsCacheKey = getUserScopedCacheKey(DEFAULTS_CACHE_PREFIX);
 
-		if (capabilities || cachedDefaults) {
+		console.log('assistantConfigStore: Checking cache...');
+		let cachedCapabilities = getCachedData(capsCacheKey);
+		let cachedDefaults = getCachedData(defaultsCacheKey);
+
+		if (cachedCapabilities || cachedDefaults) {
+			// Show cached data immediately while we re-fetch
 			set({
-				systemCapabilities: capabilities || null,
+				systemCapabilities: cachedCapabilities || null,
 				configDefaults: cachedDefaults || null,
 				loading: true,
 				error: null,
@@ -258,10 +276,9 @@ function createAssistantConfigStore() {
 		console.log('assistantConfigStore: Fetching latest configuration...');
 
 		try {
-			if (!capabilities) {
-				capabilities = await fetchSystemCapabilities();
-				setCachedData(CAPABILITIES_CACHE_KEY, capabilities);
-			}
+			// Always fetch fresh capabilities to respect org model changes
+			const capabilities = await fetchSystemCapabilities();
+			setCachedData(capsCacheKey, capabilities);
 
 			const staticConfig = await fetchStaticDefaults();
 			const organizationOverrides = await fetchOrganizationDefaults();
@@ -270,7 +287,7 @@ function createAssistantConfigStore() {
 				...(organizationOverrides || {})
 			};
 			const defaults = { config: mergedConfig };
-			setCachedData(DEFAULTS_CACHE_KEY, defaults);
+			setCachedData(defaultsCacheKey, defaults);
 
 			set({
 				systemCapabilities: capabilities,
@@ -282,7 +299,7 @@ function createAssistantConfigStore() {
 		} catch (err) {
 			console.error('Error in loadConfig process:', err);
 			set({
-				systemCapabilities: capabilities || getFallbackCapabilities(),
+				systemCapabilities: cachedCapabilities || getFallbackCapabilities(),
 				configDefaults: cachedDefaults || getFallbackDefaults(),
 				loading: false,
 				error: err instanceof Error ? err.message : 'Failed to load assistant configuration',
@@ -301,8 +318,19 @@ function createAssistantConfigStore() {
 		clearCache: () => {
 			console.log('assistantConfigStore: Clearing cached capabilities and defaults.');
 			if (browser) {
-				localStorage.removeItem(CAPABILITIES_CACHE_KEY);
-				localStorage.removeItem(DEFAULTS_CACHE_KEY);
+				// Clear all user-scoped and legacy cache keys during session replacement.
+				const keysToRemove = [];
+				for (let index = 0; index < localStorage.length; index += 1) {
+					const key = localStorage.key(index);
+					if (
+						key &&
+						(key.startsWith(CAPABILITIES_CACHE_PREFIX) ||
+							key.startsWith(DEFAULTS_CACHE_PREFIX))
+					) {
+						keysToRemove.push(key);
+					}
+				}
+				keysToRemove.forEach((key) => localStorage.removeItem(key));
 			}
 			set(initialState);
 		}

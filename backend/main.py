@@ -31,7 +31,6 @@ import shutil
 import aiohttp
 import os
 import importlib.util
-import logging
 import time
 import json
 import uuid
@@ -41,19 +40,167 @@ import traceback
 import random
 
 from config import API_KEY, PIPELINES_DIR
-from creator_interface.main import router as creator_router
+import asyncio
+import re
+from datetime import datetime, timedelta
+from lamb.database_manager import LambDatabaseManager
+from creator_interface.main import router as creator_router, start_news_cache_refresh_loop, stop_news_cache_refresh_loop
+from lamb.logging_config import get_logger
 
-logging.basicConfig(level=logging.WARNING)
+# Set up centralized logging
+logger = get_logger(__name__, component="MAIN")
+multimodal_logger = get_logger('multimodal', component="MAIN")
 
-# Set up detailed logging for multimodal debugging
-multimodal_logger = logging.getLogger('multimodal')
-multimodal_logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-multimodal_logger.addHandler(handler)
-multimodal_logger.propagate = False  # Don't propagate to root logger
+# Lifespan context manager for startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events and schedule DB maintenance jobs."""
+    # Startup
+    logger.info("Starting LAMB application")
+    await start_news_cache_refresh_loop()
+    logger.info("News cache refresh loop started")
 
-app = FastAPI(title="LAMB", description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
+    # --- DB maintenance background tasks (asyncio-based, no external deps) ---
+    try:
+        # DB maintenance is OFF by default to avoid duplicate background jobs when using --reload in dev.
+        db_scheduler_enabled = os.getenv('DB_MAINTENANCE_ENABLED', 'false').lower() == 'true'
+        if db_scheduler_enabled:
+            # parse checkpoint interval from DB_CHECKPOINT_CRON (supports '*/N' or plain minutes)
+            def _parse_checkpoint_minutes(val: str) -> int:
+                try:
+                    if val.isdigit():
+                        return int(val)
+                    m = re.match(r'^\*/(\d+)$', (val or '').strip())
+                    if m:
+                        return int(m.group(1))
+                except Exception:
+                    pass
+                return 30
+
+            checkpoint_minutes = _parse_checkpoint_minutes(os.getenv('DB_CHECKPOINT_CRON', '*/30'))
+            optimize_hour = int(os.getenv('DB_OPTIMIZE_HOUR', '3'))
+            optimize_minute = int(os.getenv('DB_OPTIMIZE_MINUTE', '0'))
+            vacuum_day = os.getenv('DB_VACUUM_DAY', 'sun').lower()
+            vacuum_hour = int(os.getenv('DB_VACUUM_HOUR', '3'))
+            vacuum_minute = int(os.getenv('DB_VACUUM_MINUTE', '30'))
+
+            async def _checkpoint_loop():
+                try:
+                    while True:
+                        logger.info("DB maintenance: running checkpoint_wal job")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().checkpoint_wal)
+                        except Exception as e:
+                            logger.error(f"DB checkpoint task error: {e}")
+                        await asyncio.sleep(checkpoint_minutes * 60)
+                except asyncio.CancelledError:
+                    logger.info("DB checkpoint loop cancelled")
+                    return
+
+            async def _daily_optimize_loop():
+                try:
+                    while True:
+                        now = datetime.now()
+                        target = now.replace(hour=optimize_hour, minute=optimize_minute, second=0, microsecond=0)
+                        if target <= now:
+                            target += timedelta(days=1)
+                        delay = (target - now).total_seconds()
+                        await asyncio.sleep(delay)
+                        logger.info("DB maintenance: running daily optimize (ANALYZE + PRAGMA optimize, skip VACUUM)")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().optimize_database, False)
+                        except Exception as e:
+                            logger.error(f"DB daily optimize task error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("DB daily optimize loop cancelled")
+                    return
+
+            async def _weekly_vacuum_loop():
+                try:
+                    dow_map = {'mon':0,'tue':1,'wed':2,'thu':3,'fri':4,'sat':5,'sun':6}
+                    target_dow = dow_map.get(vacuum_day[:3], 6)
+                    while True:
+                        now = datetime.now()
+                        days_ahead = (target_dow - now.weekday() + 7) % 7
+                        if days_ahead == 0:
+                            target = now.replace(hour=vacuum_hour, minute=vacuum_minute, second=0, microsecond=0)
+                            if target <= now:
+                                days_ahead = 7
+                                target += timedelta(days=7)
+                        else:
+                            target = (now + timedelta(days=days_ahead)).replace(hour=vacuum_hour, minute=vacuum_minute, second=0, microsecond=0)
+
+                        delay = (target - now).total_seconds()
+                        await asyncio.sleep(delay)
+                        logger.info("DB maintenance: running weekly VACUUM (ANALYZE + VACUUM + PRAGMA optimize)")
+                        try:
+                            await run_in_threadpool(LambDatabaseManager().optimize_database, True)
+                        except Exception as e:
+                            logger.error(f"DB weekly vacuum task error: {e}")
+                except asyncio.CancelledError:
+                    logger.info("DB weekly vacuum loop cancelled")
+                    return
+
+            # start background tasks and keep references for shutdown
+            tasks = [
+                asyncio.create_task(_checkpoint_loop(), name='db_checkpoint_loop'),
+                asyncio.create_task(_daily_optimize_loop(), name='db_daily_optimize_loop'),
+                asyncio.create_task(_weekly_vacuum_loop(), name='db_weekly_vacuum_loop'),
+            ]
+            app.state.db_maintenance_tasks = tasks
+            logger.info(f"DB maintenance tasks started (checkpoint every {checkpoint_minutes} min; daily-optimize: {optimize_hour}:{optimize_minute}; weekly-vacuum: {vacuum_day} {vacuum_hour}:{vacuum_minute})")
+        else:
+            logger.info("DB maintenance disabled by env var DB_MAINTENANCE_ENABLED")
+    except Exception as e:
+        logger.error(f"Failed to start DB maintenance tasks: {e}")
+    # --- end background-tasks setup ---
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down LAMB application")
+
+    # Stop DB maintenance scheduler / cancel asyncio background tasks if running
+    try:
+        # Legacy APScheduler instance (if present)
+        scheduler = getattr(app.state, 'db_maintenance_scheduler', None)
+        if scheduler:
+            logger.info("Shutting down DB maintenance scheduler (legacy)")
+            try:
+                scheduler.shutdown(wait=False)
+            except Exception:
+                logger.exception("Error stopping legacy DB scheduler")
+
+        # Cancel asyncio background tasks created by our lifespan
+        tasks = getattr(app.state, 'db_maintenance_tasks', None)
+        if tasks:
+            logger.info("Cancelling DB maintenance background tasks")
+            for t in tasks:
+                try:
+                    t.cancel()
+                except Exception:
+                    logger.exception("Failed to cancel DB maintenance task")
+
+            # Give tasks a short moment to finish cancellation
+            try:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception:
+                logger.debug("Exception while awaiting DB maintenance tasks cancellation")
+
+    except Exception as e:
+        logger.error(f"Error shutting down DB scheduler/tasks: {e}")
+
+    await stop_news_cache_refresh_loop()
+    logger.info("News cache refresh loop stopped")
+
+app = FastAPI(
+    title="LAMB",
+    description="Learning Assistant Manger and Builder (LAMB) https://lamb-project.org",
+    version="0.1.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+    lifespan=lifespan
+)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -147,7 +294,7 @@ def _get_assistant_capabilities(assistant: dict) -> dict:
             pass
         except Exception as e:
             # Any other error, keep defaults
-            print(f"Warning: Error parsing assistant capabilities: {e}")
+            logger.warning(f"Error parsing assistant capabilities: {e}")
 
     return capabilities
 
@@ -189,9 +336,8 @@ async def get_models(request: Request):
     ```
     """
   
-    assistants = helper_get_all_assistants(filter_deleted=True)
-    
-    # Filter out deleted assistants
+    # Only return published assistants (not deleted, not unpublished)
+    assistants = helper_get_all_assistants(filter_deleted=True, filter_unpublished=True)
     
     # Prepare response body
     response_body = {
@@ -208,8 +354,7 @@ async def get_models(request: Request):
             for assistant in assistants
         ]
     }
-    logging.info("Models: "+str(response_body))
-
+    
     # Generate Request ID and set headers
     request_id = f"req_{uuid.uuid4()}"
     # CORSMiddleware will set the correct Access-Control-Allow-Origin header.
@@ -340,7 +485,7 @@ async def filter_inlet(pipeline_id: str, form_data: FilterForm):
         else:
             return form_data.body
     except Exception as e:
-        print(e)
+        logger.error(f"Error in pipeline inlet: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"{str(e)}",
@@ -373,7 +518,7 @@ async def filter_outlet(pipeline_id: str, form_data: FilterForm):
         else:
             return form_data.body
     except Exception as e:
-        print(e)
+        logger.error(f"Error in pipeline outlet: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"{str(e)}",
@@ -467,7 +612,7 @@ async def generate_openai_chat_completion(request: Request):
         api_key = request.headers.get("Authorization")
         if api_key and api_key.startswith("Bearer "):
             api_key = api_key.split("Bearer ")[1].strip()
-            print(f"API Key received: {api_key[:4]}...{api_key[-4:]}")
+            logger.debug(f"API Key received: {api_key[:4]}...{api_key[-4:]}")
             if   api_key != API_KEY:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -479,7 +624,7 @@ async def generate_openai_chat_completion(request: Request):
                 detail="No API key provided in request headers",
             )
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Authentication error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Authorization header",
@@ -646,7 +791,7 @@ async def generate_openai_chat_completion(request: Request):
 
     try:
         assistant_id = helper_get_assistant_id(form_data.model)
-        print(f"Processing assistant: {assistant_id}")
+        logger.info(f"Processing assistant: {assistant_id}")
 
         # Define common headers
         request_id = f"req_{uuid.uuid4()}"
@@ -691,8 +836,7 @@ async def generate_openai_chat_completion(request: Request):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
-        print("\nError occurred:")
-        print(error_detail)
+        logger.error(f"Error occurred in chat completions: {error_detail}")
         # Ensure the error response is proper JSON
         return Response(
             content=json.dumps({"error": error_detail}),
@@ -706,23 +850,23 @@ abs_frontend_build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),
 frontend_index_html = os.path.join(abs_frontend_build_dir, 'index.html')
 
 if os.path.isdir(abs_frontend_build_dir):
-    print(f"Frontend build directory found: {abs_frontend_build_dir}")
+    logger.info(f"Frontend build directory found: {abs_frontend_build_dir}")
 
     # 1. Mount specific directories generated by SvelteKit build (e.g., app, img)
     # Adjust '/app' and 'app' based on your actual build output structure
     svelte_app_dir = os.path.join(abs_frontend_build_dir, "app")
     if os.path.isdir(svelte_app_dir):
-        print(f"Mounting SvelteKit assets from: {svelte_app_dir} at /app")
+        logger.info(f"Mounting SvelteKit assets from: {svelte_app_dir} at /app")
         app.mount("/app", StaticFiles(directory=svelte_app_dir), name="svelte_assets")
     else:
-        print(f"Warning: SvelteKit app directory not found: {svelte_app_dir}")
+        logger.warning(f"SvelteKit app directory not found: {svelte_app_dir}")
 
     svelte_img_dir = os.path.join(abs_frontend_build_dir, "img")
     if os.path.isdir(svelte_img_dir):
-        print(f"Mounting images from: {svelte_img_dir} at /img")
+        logger.info(f"Mounting images from: {svelte_img_dir} at /img")
         app.mount("/img", StaticFiles(directory=svelte_img_dir), name="svelte_images")
     else:
-        print(f"Info: Image directory not found, skipping mount: {svelte_img_dir}")
+        logger.info(f"Image directory not found, skipping mount: {svelte_img_dir}")
 
     # RESTORE specific routes for root files
     favicon_path = os.path.join(abs_frontend_build_dir, "favicon.png")
@@ -730,9 +874,9 @@ if os.path.isdir(abs_frontend_build_dir):
         @app.get("/favicon.png", include_in_schema=False)
         async def get_favicon():
             return FileResponse(favicon_path)
-        print(f"Serving favicon.png from: {favicon_path}")
+        logger.info(f"Serving favicon.png from: {favicon_path}")
     else:
-        print(f"Warning: favicon.png not found: {favicon_path}")
+        logger.warning(f"favicon.png not found: {favicon_path}")
 
     config_js_path = os.path.join(abs_frontend_build_dir, "config.js")
     if os.path.isfile(config_js_path):
@@ -740,13 +884,13 @@ if os.path.isdir(abs_frontend_build_dir):
         async def get_config_js():
             # Ensure correct MIME type for JavaScript
             return FileResponse(config_js_path, media_type="application/javascript")
-        print(f"Serving config.js from: {config_js_path}")
+        logger.info(f"Serving config.js from: {config_js_path}")
     else:
-        print(f"Warning: config.js not found: {config_js_path}")
+        logger.warning(f"config.js not found: {config_js_path}")
 
     # 3. SPA Catch-all Route (Defined last to avoid overriding API routes)
     if os.path.isfile(frontend_index_html):
-        print(f"SPA index.html found: {frontend_index_html}. Enabling catch-all route.")
+        logger.info(f"SPA index.html found: {frontend_index_html}. Enabling catch-all route.")
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(request: Request, full_path: str):
             # Skip API routes - let FastAPI handle these
@@ -762,7 +906,7 @@ if os.path.isdir(abs_frontend_build_dir):
 
             if full_path.startswith(api_prefixes) or full_path in static_files:
                 # Let FastAPI handle this path; if no specific route matches, it will 404.
-                print(f"SPA Catch-all: Path '{full_path}' is an API route or static file, letting FastAPI handle.")
+                logger.debug(f"SPA Catch-all: Path '{full_path}' is an API route or static file, letting FastAPI handle.")
                 # If FastAPI finds no matching route, it will handle the 404.
                 # We need to explicitly return a 404 here if the intention is *not* to serve index.html
                 # for unmatched API-like or static file paths.
@@ -775,23 +919,23 @@ if os.path.isdir(abs_frontend_build_dir):
                  # Check if it's likely served by '/app' or '/img' mounts
                  if full_path.startswith(('/app/', '/img/')):
                       # Let the StaticFiles mount handle this (FastAPI does this automatically if the route isn't matched)
-                      print(f"SPA Catch-all: Path '{full_path}' looks like a mounted asset, letting StaticFiles handle.")
+                      logger.debug(f"SPA Catch-all: Path '{full_path}' looks like a mounted asset, letting StaticFiles handle.")
                       # Return 404 here because if we reached this point, StaticFiles didn't find it.
                       return Response(content=f"Static asset not found at '{full_path}'", status_code=404)
                  else:
                       # It looks like a file but isn't under a known static mount or API prefix
-                      print(f"SPA Catch-all: Path '{full_path}' looks like an unhandled file, returning 404.")
+                      logger.debug(f"SPA Catch-all: Path '{full_path}' looks like an unhandled file, returning 404.")
                       return Response(content=f"File not found at '{full_path}'", status_code=404)
             else:
                 # If the path doesn't look like a static file asset (or is .html) and wasn't an API/static path,
                 # assume it's an SPA route and serve the main index.html file.
-                print(f"SPA Catch-all triggered for path: {full_path}. Serving index.html")
+                logger.debug(f"SPA Catch-all triggered for path: {full_path}. Serving index.html")
                 return FileResponse(frontend_index_html)
     else:
-        print(f"Error: index.html not found in frontend build directory: {frontend_index_html}")
+        logger.error(f"index.html not found in frontend build directory: {frontend_index_html}")
 
 else:
-    print(f"Frontend build directory not found, SPA serving disabled: {abs_frontend_build_dir}")
+    logger.warning(f"Frontend build directory not found, SPA serving disabled: {abs_frontend_build_dir}")
     # Optional: Add a simple fallback if the whole build dir is missing
     @app.get("/{full_path:path}", include_in_schema=False)
     async def frontend_build_missing(full_path: str):

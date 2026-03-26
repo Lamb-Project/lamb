@@ -39,13 +39,14 @@
     "openWebUI": "OpenWebUI",
     "admin": "Administrazioa",
     "orgAdmin": "Erakunde Admin",
-    "tools": "Tresnak",
+    "sources": "Ezagutza Iturriak",
     "rubrics": "Ebaluazio-eskalak"
   },
   "assistants": {
     "title": "Ikaskuntza Laguntzaileak",
     "view": "Ikusi Ikaskuntza Laguntzaileak",
     "myAssistantsTab": "Nire Laguntzaileak",
+    "sharedWithMeTab": "Nirekin Partekatuak",
     "createAssistantTab": "Sortu Laguntzailea",
     "detailViewTab": "Laguntzailearen Xehetasuna",
     "myAssistants": "Nire Laguntzaileak",
@@ -142,6 +143,29 @@
       "ragTopKHint": "Berreskuratzeko chunk garrantzitsuen kopurua (1-10).",
       "successMessage": "'{name}' laguntzailea behar bezala sortu da! Birbideratzen...",
       "unknownError": "Errorea laguntzailea sortzean: Errore ezezaguna"
+    },
+    "detail": {
+      "propertiesTab": "Propietateak",
+      "editTab": "Editatu",
+      "shareTab": "Partekatu",
+      "chatTab": "Txata",
+      "activityTab": "Jarduera",
+      "chatWith": "honekin",
+      "readOnlyBanner": "Irakurtzeko soilik — Laguntzaile hau {owner}-(r)ena da",
+      "ltiTitle": "LTI Argitaratze Xehetasunak",
+      "ltiAssistantName": "Laguntzailearen Izena",
+      "ltiModelId": "Ereduaren IDa",
+      "ltiToolUrl": "Tresnaren URLa",
+      "ltiConsumerKey": "Kontsumitzailearen Gakoa",
+      "ltiSecret": "Sekretua",
+      "configuration": "Konfigurazioa"
+    },
+    "sharing": {
+      "title": "Partekatutako Erabiltzaileak",
+      "description": "Kudeatu nork duen laguntzaile honetarako sarbidea",
+      "noShares": "Laguntzaile hau oraindik ez da inorekin partekatu.",
+      "manageButton": "Kudeatu Partekatutako Erabiltzaileak",
+      "sharedWith": "{count} erabiltzailerekin partekatua"
     },
     "table": {
       "name": "Izena",
@@ -426,7 +450,13 @@
     "page": "Orria",
     "of": "/ ",
     "resultsSimple": "Emaitzak",
-    "to": "-"
+    "to": "-",
+    "firstPage": "Lehen orria",
+    "lastPage": "Azken orria",
+    "previousPage": "Aurreko orria",
+    "nextPage": "Hurrengo orria",
+    "noResults": "Emaitzarik ez",
+    "pageN": "{page}. orria"
   },
   "rubrics": {
     "title": "Ebaluatzailea",
@@ -509,6 +539,38 @@
       "errorTitle": "Sorkuntza Hutsegin",
       "tryAgain": "Saiatu Berriro",
       "saveError": "Errorea errubirka gordetzean"
+    },
+    "metadataForm": {
+      "heading": "Errubrikaren Informazioa",
+      "titlePlaceholder": "Sartu errubrikaren izenburua",
+      "descriptionPlaceholder": "Deskribatu errubrika honen helburua eta testuingurua",
+      "scoringConfig": "Puntuazio Konfigurazioa",
+      "points": "Puntuak",
+      "percentage": "Ehunekoa",
+      "holistic": "Holistikoa",
+      "singlePoint": "Puntu Bakarra",
+      "checklist": "Kontrol Zerrenda",
+      "optionalInfo": "Aukerako Informazioa",
+      "optionalHint": "Eremu hauek guztiz aukerakoak dira. Utzi hutsik zure errubrikan aplikagarriak ez badira.",
+      "optional": "aukerakoa",
+      "gradeLevelPlaceholder": "adib., 6-8, 9-12, K-2, Helduen Hezkuntza"
+    },
+    "aiChat": {
+      "title": "AA Laguntzailea",
+      "thinking": "Pentsatzen...",
+      "clear": "Garbitu",
+      "clearChat": "Garbitu txata",
+      "welcomeMessage": "Eskatu errubrika hau sortzen edo aldatzen laguntzeko. Hona hemen adibide batzuk:",
+      "modifyPlaceholder": "Eskatu errubrika hau aldatzeko...",
+      "createPlaceholder": "Deskribatu sortu nahi duzun errubrika...",
+      "helpText": "Sakatu Enter bidaltzeko, Shift+Enter lerro berrirako",
+      "minimize": "Minimizatu AA txata",
+      "maximize": "Maximizatu AA txata",
+      "example1": "Sortu 8. mailako ingeleseko 5 paragrafoko saiakerako errubrika bat",
+      "example2": "Egokitu errubrika hau 6. mailarako hizkuntza sinplifikatuz",
+      "example3": "Gehitu sormena irizpide bat errubrika honetara",
+      "example4": "Bihurtu 4 puntuko eskalara 5 ordez",
+      "example5": "Egin deskribapenak zehatzagoak eta behagarriagoak"
     }
   },
   "promptTemplates": {
@@ -538,11 +600,20 @@
     "export": "Esportatu",
     "search": "Bilatu txantiloiak..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "txat",
+      "users": "erabiltzaile",
+      "messages": "mezu",
+      "messagesPerChat": "mezu txat bakoitzeko"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Kontrol Panela",
       "users": "Erabiltzaile Kudeaketa",
-      "organizations": "Erakundeak"
+      "organizations": "Erakundeak",
+      "costManagement": "Kostuen Kudeaketa"
     },
     "dashboard": {
       "title": "Administrazio Panela",
@@ -578,6 +649,8 @@
         "system": "Sistema",
         "noOrganization": "Erakunderik Gabe"
       },
+      "viewProfile": "Erabiltzailearen profila ikusi",
+      "backToList": "Erabiltzaileetara itzuli",
       "actions": {
         "create": "Sortu Erabiltzailea",
         "changePassword": "Aldatu Pasahitza",
@@ -707,6 +780,88 @@
         "createFailed": "Errorea erakundea sortzean.",
         "unknownError": "Errore ezezaguna gertatu da erakundea sortzean."
       }
+    },
+    "costManagement": {
+      "title": "Kostuen Kudeaketa",
+      "subtitle": "Plataformako token-erabilera eta laguntzaile bakoitzaren kostu estimatua.",
+      "loading": "Erabilera-datuak kargatzen...",
+      "errorTitle": "Errorea:",
+      "retry": "Berritu",
+      "noData": "Ez da laguntzailerik aurkitu.",
+      "table": {
+        "assistant": "Laguntzailea",
+        "owner": "Jabea",
+        "organization": "Erakundea",
+        "model": "Eredua",
+        "promptTokens": "Sarrerako tokenak",
+        "completionTokens": "Irteerako tokenak",
+        "totalTokens": "Token guztira",
+        "cost": "Kostu estimatua",
+        "quota": "Kuota",
+        "status": "Egoera"
+      },
+      "quota": {
+        "noQuota": "Kuotarik gabe",
+        "disabled": "Desgaituta",
+        "active": "Aktibo",
+        "exceeded": "Gaindituta"
+      },
+      "totals": {
+        "label": "Plataformaren totalak:",
+        "cost": "Kostu total estimatua:",
+        "tokens": "Token guztira:"
+      }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panela",
+      "help": "Laguntza eta Berriak"
+    },
+    "dashboard": {
+      "title": "Nire Panela",
+      "subtitle": "Zure baliabideen eta jardueraren laburpena",
+      "loading": "Zure panela kargatzen...",
+      "error": "Ezin izan dira panelaren datuak kargatu.",
+      "retry": "Saiatu berriro",
+      "welcome": "Ongi etorri, {name}!",
+      "organization": "Erakundea",
+      "role": "Rola",
+      "memberSince": "Kidea noiztik",
+      "viewAll": "Ikusi guztiak",
+      "quickActions": "Ekintza Azkarrak",
+      "owned": "Nire Baliabideak",
+      "sharedWithMe": "Nirekin Partekatua",
+      "assistants": "Laguntzaileak",
+      "knowledgeBases": "Ezagutza Baseak",
+      "rubrics": "Errubrikak",
+      "templates": "Prompt Txantiloiak",
+      "published": "argitaratuak",
+      "shared": "partekatuak",
+      "public": "publikoak",
+      "private": "pribatuak",
+      "total": "guztira",
+      "noResources": "Oraindik ez duzu baliabiderik",
+      "noSharedResources": "Oraindik ez dago zurekin partekatutakorik",
+      "sharedBy": "Nork partekatua",
+      "ownedBy": "nork",
+      "createAssistant": "Laguntzailea Sortu",
+      "createKnowledgeBase": "Ezagutza Basea Sortu",
+      "createRubric": "Errubrika Sortu",
+      "createTemplate": "Txantiloia Sortu",
+      "manageAssistants": "Laguntzaileak Kudeatu",
+      "orgRole": {
+        "owner": "Jabea",
+        "admin": "Administratzailea",
+        "member": "Kidea"
+      }
+    },
+    "help": {
+      "title": "Laguntza eta Berriak",
+      "subtitle": "Azken berriak eta informazioa",
+      "loadingNews": "Berriak kargatzen...",
+      "noNews": "Ez dago berririk erakusteko.",
+      "viewAssistants": "Ikaskuntza Laguntzaileak Ikusi"
     }
   }
 }

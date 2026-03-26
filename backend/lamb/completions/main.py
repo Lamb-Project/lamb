@@ -6,25 +6,17 @@ from typing import Any, Dict, Optional, Union, Tuple
 import importlib
 import os
 import glob
-import requests
-import logging
 from lamb.database_manager import LambDatabaseManager
 import json
 from lamb.logging_config import get_logger
+from lamb.auth_context import AuthContext, get_optional_auth_context
+from lamb.completions.task_routing import maybe_route_non_streaming_task
+from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
 
 # Set up logger for completions module
-logger = get_logger('lamb.completions', component="MAIN")
-logger.setLevel(logging.INFO)
-
-# Create handler if none exists
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+logger = get_logger('lamb.completions', component="API")
 
 router = APIRouter(tags=["completions"])
 security = HTTPBearer()
@@ -32,34 +24,42 @@ db_manager = LambDatabaseManager()
 
 @router.get("/list")
 async def list_processors_and_connectors(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    auth: Optional[AuthContext] = Depends(get_optional_auth_context)
 ):
     """
     List available Prompt Processors, Connectors, and RAG processors with their supported features
     Organization-aware: returns models enabled for the user's organization if authenticated
+    
+    Extended response includes:
+    - Connector metadata (description, capabilities)
+    - Model metadata (display_name, description, capabilities, forced_capabilities)
+    - Backward compatible: available_llms still returns list of model IDs
     """
     pps = load_plugins('pps')
     connectors = load_plugins('connectors')
     rag_processors = load_plugins('rag')
     
-    # Determine assistant_owner (user email) from credentials for organization-aware model lists
-    assistant_owner = None
-    if credentials:
-        try:
-            from lamb.owi_bridge.owi_users import OwiUserManager
-            user_manager = OwiUserManager()
-            owi_user = user_manager.get_user_auth(credentials.credentials)
-            if owi_user:
-                assistant_owner = owi_user.get('email')
-                logger.info(f"Fetching capabilities for user: {assistant_owner}")
-        except Exception as e:
-            logger.warning(f"Could not resolve user from token for capabilities: {e}")
+    # Determine assistant_owner (user email) from AuthContext for organization-aware model lists
+    assistant_owner = auth.user['email'] if auth else None
+    if assistant_owner:
+        logger.info(f"Fetching capabilities for user: {assistant_owner}")
     
     # Get available LLMs for each connector (organization-aware if assistant_owner is set)
     connector_info = {}
     for connector_name, connector_module in connectors.items():
         module = importlib.import_module(f"lamb.completions.connectors.{connector_name}")
         available_llms = []
+        models_with_metadata = []
+        connector_metadata = {}
+        
+        # Get connector metadata if available
+        if hasattr(module, 'get_connector_metadata'):
+            try:
+                connector_metadata = module.get_connector_metadata()
+            except Exception as e:
+                logger.warning(f"Could not get connector metadata for {connector_name}: {e}")
+        
+        # Get available LLMs
         if hasattr(module, 'get_available_llms'):
             get_llms_func = getattr(module, 'get_available_llms')
             
@@ -76,10 +76,36 @@ async def list_processors_and_connectors(
                 else:
                     available_llms = get_llms_func()
         
+        # Get models with full metadata if available (extended API)
+        if hasattr(module, 'get_available_llms_with_metadata'):
+            try:
+                get_meta_func = getattr(module, 'get_available_llms_with_metadata')
+                if asyncio.iscoroutinefunction(get_meta_func):
+                    models_with_metadata = await get_meta_func(assistant_owner=assistant_owner)
+                else:
+                    models_with_metadata = get_meta_func(assistant_owner=assistant_owner)
+            except TypeError:
+                try:
+                    if asyncio.iscoroutinefunction(get_meta_func):
+                        models_with_metadata = await get_meta_func()
+                    else:
+                        models_with_metadata = get_meta_func()
+                except Exception as e:
+                    logger.warning(f"Could not get model metadata for {connector_name}: {e}")
+            except Exception as e:
+                logger.warning(f"Could not get model metadata for {connector_name}: {e}")
+        
+        # Build connector info (backward compatible + extended)
         connector_info[connector_name] = {
             "name": connector_name,
-            "available_llms": available_llms
+            "available_llms": available_llms,  # Backward compatible: list of model IDs
         }
+        
+        # Add extended metadata if available
+        if connector_metadata:
+            connector_info[connector_name]["metadata"] = connector_metadata
+        if models_with_metadata:
+            connector_info[connector_name]["models"] = models_with_metadata
     
     return {
         "prompt_processors": list(pps.keys()),
@@ -88,6 +114,7 @@ async def list_processors_and_connectors(
     }
 
 @router.post("/")
+@traceable_llm_call(name="lamb_completion_pipeline", run_type="chain", tags=["lamb", "completion"])
 async def create_completion(
     request: Dict[str, Any],
     assistant: int,  # now expect only an assistant id as int
@@ -105,8 +132,39 @@ async def create_completion(
         # Use helper functions to structure the process:
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Assistant details: {assistant_details}")
+        
+        # Add trace metadata for the assistant
+        if is_tracing_enabled():
+            add_trace_metadata("assistant_id", assistant)
+            add_trace_metadata("assistant_name", assistant_details.name)
+            add_trace_metadata("assistant_owner", assistant_details.owner)
+        
         plugin_config = parse_plugin_config(assistant_details)
         logger.debug(f"Plugin config: {plugin_config}")
+
+        connector = plugin_config["connector"]
+        llm = plugin_config["llm"]
+        provider = _provider_for_connector(connector)
+
+        # Quota pre-check (skipped for ollama — free LLMs)
+        if connector != "ollama":
+            _check_quota(assistant, assistant_details)
+        
+        # Add trace metadata for plugins
+        if is_tracing_enabled():
+            add_trace_metadata("connector", plugin_config["connector"])
+            add_trace_metadata("llm", plugin_config["llm"])
+            add_trace_metadata("prompt_processor", plugin_config["prompt_processor"])
+            add_trace_metadata("rag_processor", plugin_config["rag_processor"])
+
+        task_response = await maybe_route_non_streaming_task(
+            request=request,
+            assistant_owner=assistant_details.owner,
+        )
+        if task_response is not None:
+            logger.info("Returning routed task response without RAG")
+            return task_response
+        
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
@@ -115,19 +173,62 @@ async def create_completion(
         logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
         logger.debug(f"Stream mode: {stream}")
-        logger.debug(f"Stream mode: {stream}")
         logger.info("Getting completion from LLM")
+
         if stream:
-            logger.debug("Returning streaming response")
-            logger.debug(f"Returning streaming response")
-            return StreamingResponse(
-                connectors[plugin_config["connector"]](messages, stream=True, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner),
-                media_type="text/event-stream"
+            llm_response = await connectors[plugin_config["connector"]](
+                messages,
+                stream=True,
+                body=request,
+                llm=plugin_config["llm"],
+                assistant_owner=assistant_details.owner,
             )
+            logger.debug("Returning streaming response")
+            if connector == "ollama":
+                # Ollama is free — no usage tracking needed
+                return StreamingResponse(
+                    llm_response[0] if isinstance(llm_response, tuple) else llm_response,
+                    media_type="text/event-stream"
+                )
+            
+            if isinstance(llm_response, tuple):
+                generator, usage_out = llm_response
+            else:
+                generator, usage_out = llm_response, None
+            
+            async def _tracked_stream():
+                async for chunk in generator:
+                    yield chunk
+                # Stream finished — fire-and-forget usage log
+                if usage_out and provider:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=provider,
+                        usage_data=usage_out
+                    )
+
+            return StreamingResponse(_tracked_stream(), media_type="text/event-stream")
         else:
             logger.debug("Returning direct response")
-            logger.debug(f"Returning direct response")
-            return connectors[plugin_config["connector"]](messages, stream=False, body=request, llm=plugin_config["llm"], assistant_owner=assistant_details.owner)
+            result = await connectors[connector](
+                messages, 
+                stream=False, 
+                body=request, 
+                llm=llm, 
+                assistant_owner=assistant_details.owner
+            )
+            
+            if connector != "ollama" and isinstance(result, dict) and result.get("usage") and provider:
+                db_manager.log_token_usage(
+                    assistant_id=assistant,
+                    org_id=assistant_details.organization_id,
+                    model_name=llm,
+                    provider=provider,
+                    usage_data=result["usage"]
+                )
+            return result
     except Exception as e:
         logger.error(f"Error in create_completion: {str(e)}", exc_info=True)
         logger.debug(f"Error in create_completion: {str(e)}")
@@ -152,6 +253,55 @@ def get_assistant_details(assistant: int) -> Any:
         logger.error(f"Assistant with ID '{assistant}' not found")
         raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found")
     return assistant_details
+
+
+def _provider_for_connector(connector: str) -> str | None:
+    """Map connector name to provider string used in model_pricing table."""
+    return {"openai": "openai", "anthropic": "anthropic"}.get(connector)
+
+
+def _check_quota(assistant_id: int, assistant_details) -> None:
+    """Raise HTTP 429 if the assistant has exceeded its configured cost limit or is blocked in quota alerts."""
+    # First check the new fast checking table
+    is_under_quota = db_manager.check_assistant_quota(assistant_id)
+    if not is_under_quota:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "message": "This assistant has been blocked due to exceeding its usage quota.",
+                    "type": "quota_exceeded",
+                    "code": "assistant_quota_exceeded"
+                }
+            }
+        )
+
+    # Legacy check for quota defined in metadata (assistant_details.metadata)
+    try:
+        metadata = json.loads(assistant_details.metadata or "{}")
+    except Exception:
+        return  # malformed metadata — skip check silently
+
+    quota = metadata.get("quota", {})
+    if not quota.get("enabled"):
+        return
+
+    limit = quota.get("cost_limit_usd")
+    if limit is None:
+        return
+
+    spent = db_manager.get_assistant_cost_usd(assistant_id)
+    if spent >= float(limit):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": {
+                    "message": f"This assistant has reached its usage quota (${float(limit):.2f} USD).",
+                    "type": "quota_exceeded",
+                    "code": "assistant_quota_exceeded"
+                }
+            }
+        )
 
 def parse_plugin_config(assistant_details) -> Dict[str, str]:
     """
@@ -244,6 +394,39 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
     plugins = {}
     plugin_dir = os.path.join(os.path.dirname(__file__), plugin_type)
+
+    def _is_plugin_enabled(module_name: str) -> bool:
+        """
+        Temporary plugin governance for connectors/rag via env vars.
+        Accepted values:
+        - DISABLE -> plugin disabled
+        - ENABLE -> plugin enabled
+        Any other value falls back to ENABLE.
+        """
+        if plugin_type not in {"connectors", "rag"}:
+            return True
+
+        env_var_name = f"PLUGIN_{module_name.upper()}"
+        env_value = os.getenv(env_var_name, "ENABLE").upper().strip()
+
+        if env_value == "DISABLE":
+            logger.info(
+                "Skipping %s plugin '%s' via %s=DISABLE",
+                plugin_type,
+                module_name,
+                env_var_name
+            )
+            return False
+
+        if env_value != "ENABLE":
+            logger.warning(
+                "Unknown %s value '%s' for %s. Supported values: ENABLE|DISABLE. Treating as ENABLE.",
+                env_var_name,
+                env_value,
+                module_name
+            )
+
+        return True
     
     # Get all .py files in the directory
     plugin_files = glob.glob(os.path.join(plugin_dir, "*.py"))
@@ -253,6 +436,9 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
             continue
             
         module_name = os.path.basename(plugin_file)[:-3]  # Remove .py
+        if not _is_plugin_enabled(module_name):
+            continue
+
         try:
             module = importlib.import_module(f"lamb.completions.{plugin_type}.{module_name}")
             if plugin_type == 'pps' and hasattr(module, 'prompt_processor'):
@@ -262,7 +448,7 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
             elif plugin_type == 'rag' and hasattr(module, 'rag_processor'):
                 plugins[module_name] = module.rag_processor
         except Exception as e:
-            print(f"Error loading plugin {module_name}: {str(e)}")            
+            logger.error(f"Error loading plugin {module_name}: {str(e)}")            
     return plugins
 
 
@@ -283,16 +469,30 @@ async def run_lamb_assistant(
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Run assistant, details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
+        connector = plugin_config["connector"]
+        provider = _provider_for_connector(connector)
+        
+        task_response = await maybe_route_non_streaming_task(
+            request=request,
+            assistant_owner=assistant_details.owner,
+        )
+        if task_response is not None:
+            logger.info("Returning routed task response without RAG")
+            return Response(
+                content=json.dumps(task_response, indent=2),
+                media_type="application/json",
+                headers=final_headers
+            )
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
-        logger.debug(f"Calling connector '{plugin_config['connector']}' with stream={stream}, llm={llm}")
+        logger.debug(f"Calling connector '{connector}' with stream={stream}, llm={llm}")
 
         # Get the connector function
-        connector_func = connectors[plugin_config["connector"]]
+        connector_func = connectors[connector]
 
         # Call the connector function, passing all necessary arguments
         # The openai.py connector expects: messages, stream, body (original request), llm, assistant_owner
@@ -305,11 +505,30 @@ async def run_lamb_assistant(
         )
 
         if stream:
+            # Tracked connectors return (generator, usage_out); others return the generator directly
+            if isinstance(llm_response, tuple):
+                generator, usage_out = llm_response
+            else:
+                generator, usage_out = llm_response, None
+
+            async def _tracked_stream():
+                async for chunk in generator:
+                    yield chunk
+                # Log usage when stream completes for tracked connectors
+                if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
+                    db_manager.log_token_usage(
+                        assistant_id=assistant,
+                        org_id=assistant_details.organization_id,
+                        model_name=llm,
+                        provider=provider,
+                        usage_data=usage_out
+                    )
+
             # The openai.py connector returns an async generator yielding SSE strings
             # Wrap this directly in StreamingResponse
             logger.debug("Returning StreamingResponse for async generator from connector.")
             return StreamingResponse(
-                llm_response, # llm_response is the async generator
+                _tracked_stream(),
                 media_type="text/event-stream",
                 headers=final_headers
             )
@@ -320,6 +539,16 @@ async def run_lamb_assistant(
             if not isinstance(llm_response, dict):
                  logger.error(f"Non-streaming connector did not return a dict, got: {type(llm_response)}")
                  raise HTTPException(status_code=500, detail="Internal server error: Connector returned unexpected type for non-streaming response.")
+
+            # Log usage for tracked connectors on non-streaming responses
+            if connector != "ollama" and llm_response.get("usage") and provider and assistant_details.organization_id is not None:
+                db_manager.log_token_usage(
+                    assistant_id=assistant,
+                    org_id=assistant_details.organization_id,
+                    model_name=llm,
+                    provider=provider,
+                    usage_data=llm_response["usage"]
+                )
 
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired

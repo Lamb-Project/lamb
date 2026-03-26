@@ -95,6 +95,20 @@ SIGNUP_SECRET_KEY = os.getenv('SIGNUP_SECRET_KEY')
 if not SIGNUP_SECRET_KEY:
     raise ValueError("SIGNUP_SECRET_KEY environment variable is required")
 
+# LAMB Native Authentication
+# JWT secret for signing LAMB-issued tokens. Resolution order:
+#   1. LAMB_JWT_SECRET (explicit, for full OWI decoupling)
+#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY env vars
+#   3. OWI's hardcoded default ("t0p-s3cr3t") — matches open_webui/env.py
+# This ensures zero-config compatibility: LAMB signs tokens with the same
+# secret OWI uses, so existing OWI tokens decode seamlessly.
+LAMB_JWT_SECRET = (
+    os.getenv('LAMB_JWT_SECRET')
+    or os.getenv('WEBUI_SECRET_KEY')
+    or os.getenv('WEBUI_JWT_SECRET_KEY')
+    or 't0p-s3cr3t'
+)
+
 # OWI Admin Configuration
 OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME')
 if not OWI_ADMIN_NAME:
@@ -105,6 +119,19 @@ if not OWI_ADMIN_EMAIL:
 OWI_ADMIN_PASSWORD = os.getenv('OWI_ADMIN_PASSWORD')
 if not OWI_ADMIN_PASSWORD:
     raise ValueError("OWI_ADMIN_PASSWORD environment variable is required")
+
+# Google Gemini Image Generation Configuration
+# GEMINI_MODELS: Comma-separated list of available Gemini image generation models
+# GEMINI_DEFAULT_MODEL: Default model to use when assistant specifies an invalid model
+GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
+GEMINI_MODELS = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
+
+# LLM Client Pool Configuration
+# Controls shared HTTP client pools for OpenAI and Ollama connectors
+LLM_REQUEST_TIMEOUT = int(os.getenv('LLM_REQUEST_TIMEOUT', '120'))
+LLM_CONNECT_TIMEOUT = int(os.getenv('LLM_CONNECT_TIMEOUT', '10'))
+LLM_MAX_CONNECTIONS = int(os.getenv('LLM_MAX_CONNECTIONS', '50'))
+OLLAMA_REQUEST_TIMEOUT = int(os.getenv('OLLAMA_REQUEST_TIMEOUT', '120'))
 
 # Validate required environment variables
 required_vars = ['LAMB_DB_PATH', 'OWI_PATH']

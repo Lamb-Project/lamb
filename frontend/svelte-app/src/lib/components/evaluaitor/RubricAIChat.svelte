@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { _, locale } from '$lib/i18n';
 
   // Props
   let { rubricId, aiGenerating } = $props();
@@ -63,14 +64,20 @@
     isMinimized = !isMinimized;
   }
 
-  // Example prompts
-  const examplePrompts = [
-    "Create a rubric for evaluating 5-paragraph essays in 8th grade English",
-    "Make this rubric suitable for 6th graders by simplifying the language",
-    "Add a creativity criterion to this rubric",
-    "Convert this to a 4-point scale instead of 5-point",
-    "Make the descriptions more specific and observable"
-  ];
+  // Example prompts - use i18n keys with English defaults
+  let examplePrompts = $derived($locale ? [
+    $_('rubrics.aiChat.example1', { default: 'Create a rubric for evaluating 5-paragraph essays in 8th grade English' }),
+    $_('rubrics.aiChat.example2', { default: 'Make this rubric suitable for 6th graders by simplifying the language' }),
+    $_('rubrics.aiChat.example3', { default: 'Add a creativity criterion to this rubric' }),
+    $_('rubrics.aiChat.example4', { default: 'Convert this to a 4-point scale instead of 5-point' }),
+    $_('rubrics.aiChat.example5', { default: 'Make the descriptions more specific and observable' })
+  ] : [
+    'Create a rubric for evaluating 5-paragraph essays in 8th grade English',
+    'Make this rubric suitable for 6th graders by simplifying the language',
+    'Add a creativity criterion to this rubric',
+    'Convert this to a 4-point scale instead of 5-point',
+    'Make the descriptions more specific and observable'
+  ]);
 
   // Use example prompt
   function useExamplePrompt(prompt) {
@@ -85,12 +92,14 @@
       <svg class="mr-2 h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4-4-4z"/>
       </svg>
-      AI Assistant
+      {$locale ? $_('rubrics.aiChat.title', { default: 'AI Assistant' }) : 'AI Assistant'}
     </h3>
     <button
       onclick={toggleMinimize}
       class="text-gray-400 hover:text-gray-600"
-      aria-label={isMinimized ? "Maximize AI chat" : "Minimize AI chat"}
+      aria-label={isMinimized
+        ? ($locale ? $_('rubrics.aiChat.maximize', { default: 'Maximize AI chat' }) : 'Maximize AI chat')
+        : ($locale ? $_('rubrics.aiChat.minimize', { default: 'Minimize AI chat' }) : 'Minimize AI chat')}
     >
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={isMinimized ? "M19 9l-7 7-7-7" : "M5 15l7-7 7 7"}/>
@@ -105,7 +114,7 @@
         <!-- Welcome message and examples -->
         <div class="text-center py-4">
           <div class="text-sm text-gray-600 mb-4">
-            Ask me to help you create or modify this rubric. Here are some examples:
+            {$locale ? $_('rubrics.aiChat.welcomeMessage', { default: 'Ask me to help you create or modify this rubric. Here are some examples:' }) : 'Ask me to help you create or modify this rubric. Here are some examples:'}
           </div>
           <div class="space-y-2">
             {#each examplePrompts as prompt}
@@ -137,7 +146,7 @@
           <div class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">
             <div class="flex items-center space-x-2">
               <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-              <span class="text-sm">Thinking...</span>
+              <span class="text-sm">{$locale ? $_('rubrics.aiChat.thinking', { default: 'Thinking...' }) : 'Thinking...'}</span>
             </div>
           </div>
         </div>
@@ -150,7 +159,9 @@
         <textarea
           bind:value={currentPrompt}
           onkeydown={handleKeydown}
-          placeholder={rubricId ? "Ask me to modify this rubric..." : "Describe the rubric you want to create..."}
+          placeholder={rubricId
+            ? ($locale ? $_('rubrics.aiChat.modifyPlaceholder', { default: 'Ask me to modify this rubric...' }) : 'Ask me to modify this rubric...')
+            : ($locale ? $_('rubrics.aiChat.createPlaceholder', { default: 'Describe the rubric you want to create...' }) : 'Describe the rubric you want to create...')}
           rows="2"
           class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 resize-none"
           disabled={aiGenerating}
@@ -176,9 +187,9 @@
             <button
               onclick={clearChat}
               class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
-              title="Clear chat"
+              title={$locale ? $_('rubrics.aiChat.clearChat', { default: 'Clear chat' }) : 'Clear chat'}
             >
-              Clear
+              {$locale ? $_('rubrics.aiChat.clear', { default: 'Clear' }) : 'Clear'}
             </button>
           {/if}
         </div>
@@ -186,7 +197,7 @@
 
       <!-- Help text -->
       <div class="mt-2 text-xs text-gray-500">
-        Press Enter to send, Shift+Enter for new line
+        {$locale ? $_('rubrics.aiChat.helpText', { default: 'Press Enter to send, Shift+Enter for new line' }) : 'Press Enter to send, Shift+Enter for new line'}
       </div>
     </div>
   {/if}

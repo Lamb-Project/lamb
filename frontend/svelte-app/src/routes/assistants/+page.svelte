@@ -3,9 +3,10 @@
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
+    import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
-    import DeleteConfirmationModal from '$lib/components/modals/DeleteConfirmationModal.svelte'; // Import delete modal
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte'; // Generic confirmation modal
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores'; // Import page store to read URL params
     import { getAssistantById, createAssistant, deleteAssistant, setAssistantPublishStatus } from '$lib/services/assistantService'; // Import service
@@ -17,9 +18,35 @@
     import { getConfig, getLambApiUrl } from '$lib/config'; // <<< Import config helper
     import { browser } from '$app/environment'; // <<< Import browser
     import { formatDateForTable } from '$lib/utils/dateHelpers'; // Import date formatting utility
+    // Import template store functions
+    import {
+        currentTab,
+        currentTemplates,
+        currentLoading,
+        userTemplates,
+        sharedTemplates,
+        loadAllUserTemplates,
+        loadAllSharedTemplates,
+        switchTab,
+        createTemplate,
+        updateTemplate,
+        deleteTemplate,
+        duplicateTemplate,
+        toggleSharing,
+        selectedTemplateIds,
+        toggleTemplateSelection,
+        clearSelection,
+        exportSelected,
+        templateError
+    } from '$lib/stores/templateStore';
+    import Pagination from '$lib/components/common/Pagination.svelte';
+    import FilterBar from '$lib/components/common/FilterBar.svelte';
+    import { processListData } from '$lib/utils/listHelpers';
+    import { getAssistantMetadataObject, normalizeAssistantData } from '$lib/utils/assistantData';
+    import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
 
     // --- State Management --- 
-    /** @type {'list' | 'create' | 'detail' | 'shared'} */
+    /** @type {'list' | 'create' | 'detail' | 'shared' | 'templates'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
     let currentLocale = $state(null);
@@ -33,7 +60,7 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- API Configuration State ---
@@ -84,17 +111,69 @@
     let loadingShares = $state(false);
     let canShare = $state(true); // Permission check result
     
-    // --- Ownership Check ---
+    // --- Ownership & Access Level Check ---
     let isOwner = $derived.by(() => {
-        if (!selectedAssistantData || !$user.email) return false;
+        if (!selectedAssistantData) return false;
+        // Use backend-provided is_owner if available (check for both null and undefined)
+        // This must be checked first — LTI creator users may not have $user.email populated
+        if (selectedAssistantData.is_owner != null) return selectedAssistantData.is_owner;
+        // Fallback to email comparison (only if email is available)
+        if (!$user.email) return false;
         return selectedAssistantData.owner === $user.email;
     });
+    
+    /** @type {'full' | 'read_only' | 'shared' | null} */
+    let accessLevel = $derived.by(() => {
+        if (!selectedAssistantData) return null;
+        return selectedAssistantData.access_level || (isOwner ? 'full' : 'shared');
+    });
+    
+    // Can manage sharing: owner, system admin (read_only on any), or org admin (read_only in org)
+    let canManageSharing = $derived.by(() => {
+        return isOwner || accessLevel === 'read_only';
+    });
+    
+    // Can view analytics: owner (full), system admin (full), org admin (aggregate stats/timeline only)
+    let canViewAnalytics = $derived.by(() => {
+        return isOwner || accessLevel === 'read_only';
+    });
+    
+    // Can delete: owner or system admin
+    let canDelete = $derived.by(() => {
+        if (isOwner) return true;
+        // System admins have read_only access_level but can delete
+        // Check OWI admin role from login data
+        return $user.data?.role === 'admin';
+    });
+
+    // --- Templates View State ---
+    let templatesView = $state('list'); // 'list' | 'create' | 'edit' | 'view'
+    let editingTemplate = $state(null);
+    let showDeleteTemplateModal = $state(false);
+    let templateToDelete = $state(null);
+    let templateFormData = $state({
+        name: '',
+        description: '',
+        system_prompt: '',
+        prompt_template: '',
+        is_shared: false
+    });
+    // Client-side filtering/sorting/pagination state for templates
+    let displayTemplates = $state([]);
+    let templatesSearchTerm = $state('');
+    let templatesSortBy = $state('updated_at');
+    let templatesSortOrder = $state('desc');
+    let templatesCurrentPage = $state(1);
+    let templatesItemsPerPage = $state(10);
+    let templatesTotalPages = $state(1);
+    let templatesTotalItems = $state(0);
 
     // --- Functions --- 
     /** Sets the view to the assistant creation form */
     function showCreateForm() {
         console.log("Navigating to create form");
         selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
         currentView = 'create';
         startEditMode = false; // Ensure not starting in edit for create
         // Navigate to assistants path with query param
@@ -114,10 +193,24 @@
     function showSharedAssistants() {
         console.log("Navigating to shared assistants view");
         selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
         currentView = 'shared';
         startEditMode = false;
         // Navigate to assistants path with shared view query param
         goto(`${base}/assistants?view=shared`, { replaceState: true });
+    }
+
+    /** Sets the view to templates */
+    function showTemplates() {
+        console.log("Navigating to templates view");
+        selectedAssistantData = null; // Clear any selected data
+        lastAttemptedId = null; // Reset guard to allow re-fetching same assistant later
+        currentView = 'templates';
+        startEditMode = false;
+        // Navigate to assistants path with templates view query param
+        goto(`${base}/assistants?view=templates`, { replaceState: true });
+        // Load templates when switching to this view
+        loadAllUserTemplates();
     }
 
     /** Fetches assistant details */
@@ -138,18 +231,8 @@
             console.log(`Fetching assistant ID: ${id}.`); // Removed edit log here
             const assistantData = await getAssistantById(id);
             if (assistantData) {
-                // Parse metadata (fallback to api_callback for backward compatibility)
-                let parsedCallbackData = {};
-                const metadataStr = assistantData.metadata || assistantData.api_callback;
-                if (metadataStr) {
-                    try {
-                        parsedCallbackData = JSON.parse(metadataStr);
-                    } catch (e) { console.error("Error parsing metadata JSON:", e); }
-                }
-                // Merge assistant data with parsed callback data
-                const fullAssistantData = { 
-                    ...assistantData, 
-                    ...parsedCallbackData, 
+                const fullAssistantData = {
+                    ...normalizeAssistantData(assistantData),
                     id: assistantData.id.toString() // Ensure ID is string and overwrites any potential callback ID
                 };
                 selectedAssistantData = fullAssistantData;
@@ -231,6 +314,11 @@
                 if (currentView !== 'shared') {
                     console.log("URL indicates 'shared' view.");
                     showSharedAssistants();
+                }
+            } else if (viewParam === 'templates') {
+                if (currentView !== 'templates') {
+                    console.log("URL indicates 'templates' view.");
+                    showTemplates();
                 }
             } else if (viewParam === 'detail' && idParam) { 
                 const assistantId = parseInt(idParam, 10);
@@ -509,7 +597,10 @@
             const updatedAssistant = await setAssistantPublishStatus(assistantId, desiredStatus);
 
             // Update the local state with the full response from the API
-            selectedAssistantData = updatedAssistant;
+            selectedAssistantData = {
+                ...normalizeAssistantData(updatedAssistant),
+                id: updatedAssistant.id?.toString?.() || updatedAssistant.id
+            };
             console.log('Publish status updated successfully.');
 
             // Optional: Show success message (e.g., toast)
@@ -530,15 +621,8 @@
 
         // Check if the currently displayed assistant uses simple_rag
         let ragProcessor = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-            } catch(e) {
-                console.error("Error parsing metadata for KB fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
 
 		if (ragProcessor !== 'simple_rag') {
 			console.log('Skipping KB fetch for detail view (not simple_rag)');
@@ -574,16 +658,9 @@
         // Check if the currently displayed assistant uses rubric_rag
         let ragProcessor = '';
         let rubricId = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-                rubricId = callbackData.rubric_id;
-            } catch(e) {
-                console.error("Error parsing metadata for rubric fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
+        rubricId = callbackData.rubric_id || '';
 
         if (ragProcessor !== 'rubric_rag' || !rubricId) {
             console.log('Skipping rubric fetch for detail view (not rubric_rag or no rubric_id)');
@@ -616,7 +693,7 @@
     async function checkSharingPermission() {
         try {
             const response = await fetch(
-                getLambApiUrl('/lamb/v1/assistant-sharing/check-permission'),
+                getLambApiUrl('/creator/lamb/assistant-sharing/check-permission'),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`
@@ -643,7 +720,7 @@
         
         try {
             const response = await fetch(
-                getLambApiUrl(`/lamb/v1/assistant-sharing/shares/${selectedAssistantData.id}`),
+                getLambApiUrl(`/creator/lamb/assistant-sharing/shares/${selectedAssistantData.id}`),
                 {
                     headers: {
                         'Authorization': `Bearer ${userToken}`
@@ -733,7 +810,21 @@
 
 <!-- Tabs/View Navigation -->
 <div class="mb-6 border-b border-gray-200">
-    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+    <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+        <!-- Create View Button - Primary CTA, placed first -->
+        <button
+            class="whitespace-nowrap py-2.5 px-4 font-medium text-sm rounded-lg transition-all duration-150 inline-flex items-center gap-1.5 {currentView === 'create' ? 'bg-brand text-white shadow-md' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm hover:shadow-md'}"
+            style={currentView === 'create' ? 'background-color: #2271b3;' : ''}
+            onclick={showCreateForm}
+        >
+            <!-- Plus icon -->
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
+        </button>
+        <!-- Separator -->
+        <div class="h-6 w-px bg-gray-300 mx-1"></div>
         <!-- List View Button (Acts like a tab) -->
         <button
             class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 {currentView === 'list' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
@@ -750,14 +841,29 @@
         >
             {currentLocale ? $_('assistants.sharedWithMeTab') : 'Shared with Me'}
         </button>
-        <!-- Create View Button -->
+        <!-- Prompt Templates View Button -->
         <button
-            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md {currentView === 'create' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
-            style={currentView === 'create' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
-            onclick={showCreateForm}
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 {currentView === 'templates' ? 'bg-brand text-white border-brand' : 'border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400'}"
+            style={currentView === 'templates' ? 'background-color: #2271b3; color: white; border-color: #2271b3;' : ''}
+            onclick={showTemplates}
         >
-            {currentLocale ? $_('assistants.createAssistantTab') : 'Create Assistant'}
+            {currentLocale ? $_('promptTemplates.title', { default: 'Prompt Templates' }) : 'Prompt Templates'}
         </button>
+        <!-- OpenWebUI Tab (External Link) - Moved to the right -->
+        {#if $user.owiUrl}
+        <a
+            href={$user.owiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm rounded-t-md transition-colors duration-150 border-transparent text-gray-800 hover:text-gray-900 hover:border-gray-400 inline-flex items-center gap-1"
+        >
+            {currentLocale ? $_('nav.openWebUI', { default: 'OpenWebUI' }) : 'OpenWebUI'}
+            <!-- External link icon - larger size -->
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+        </a>
+        {/if}
         <!-- Detail View Tab (Only visible when active) -->
         {#if currentView === 'detail' && (selectedAssistantData || loadingDetail)}
              <div class="relative">
@@ -805,7 +911,7 @@
                 {currentLocale ? $_('assistants.detail.editTab', { default: 'Edit' }) : 'Edit'}
             </button>
         {/if}
-        {#if canShare && isOwner}
+        {#if canShare && (isOwner || canManageSharing)}
             <button
                 class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'share' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
                 onclick={() => detailSubView = 'share'}
@@ -822,6 +928,14 @@
                 {currentLocale ? $_('assistants.detail.chatWith', { default: 'with' }) : 'with'} {selectedAssistantData.name.replace(/^\d+_/, '')}
             {/if}
         </button>
+        {#if canViewAnalytics}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'analytics' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'analytics'}
+            >
+                {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
+            </button>
+        {/if}
     </div>
 
     <!-- Wrapper for Detail Content -->
@@ -840,6 +954,19 @@
             <!-- Header for Properties View -->
             <!-- Add key based on assistant ID to force re-render when data changes -->
             {#key selectedAssistantData?.id}
+            
+            <!-- Read-only banner for admin/org-admin viewing other user's assistant -->
+            {#if !isOwner && accessLevel === 'read_only'}
+                <div class="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span class="text-sm text-amber-700">
+                        {currentLocale ? $_('assistants.detail.readOnlyBanner', { default: 'Read-only view — This assistant belongs to {owner}', values: { owner: selectedAssistantData?.owner || '' } }) : `Read-only view — This assistant belongs to ${selectedAssistantData?.owner || ''}`}
+                    </span>
+                </div>
+            {/if}
+            
             <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200">
                 <h2 class="text-xl font-semibold text-gray-800">
                     {currentLocale ? $_('assistants.detail.propertiesTitle', { default: 'Assistant Properties' }) : 'Assistant Properties'}
@@ -872,33 +999,37 @@
                         {/if}
                     </button>
                     
-                    <!-- Publish/Unpublish Button -->
-                    <button 
-                        type="button" 
-                        class={`px-3 py-1 text-sm font-medium rounded text-white transition-colors ${selectedAssistantData?.published 
-                            ? 'bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed' 
-                            : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed'}`}
-                        onclick={handlePublishToggle}
-                        disabled={isPublishing} 
-                    >
-                        {#if isPublishing}
-                           <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                           {currentLocale ? $_('common.updating', { default: 'Updating...' }) : 'Updating...'}
-                        {:else if selectedAssistantData?.published}
-                            {currentLocale ? $_('common.unpublish', { default: 'Unpublish' }) : 'Unpublish'}
-                        {:else}
-                            {currentLocale ? $_('common.publish', { default: 'Publish' }) : 'Publish'} 
-                        {/if}
-                    </button>
+                    {#if isOwner}
+                        <!-- Publish/Unpublish Button (Owner Only) -->
+                        <button 
+                            type="button" 
+                            class={`px-3 py-1 text-sm font-medium rounded text-white transition-colors ${selectedAssistantData?.published 
+                                ? 'bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed' 
+                                : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed'}`}
+                            onclick={handlePublishToggle}
+                            disabled={isPublishing} 
+                        >
+                            {#if isPublishing}
+                               <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                               {currentLocale ? $_('common.updating', { default: 'Updating...' }) : 'Updating...'}
+                            {:else if selectedAssistantData?.published}
+                                {currentLocale ? $_('common.unpublish', { default: 'Unpublish' }) : 'Unpublish'}
+                            {:else}
+                                {currentLocale ? $_('common.publish', { default: 'Publish' }) : 'Publish'} 
+                            {/if}
+                        </button>
+                    {/if}
                     
-                    <!-- Delete Button -->
-                    <button 
-                        type="button" 
-                        class="px-3 py-1 text-sm font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
-                        onclick={() => handleDeleteRequest({ detail: { id: selectedAssistantData.id, name: selectedAssistantData.name, published: selectedAssistantData.published }})}
-                    >
-                        {currentLocale ? $_('common.delete') : 'Delete'}
-                    </button>
+                    {#if canDelete}
+                        <!-- Delete Button (Owner or System Admin) -->
+                        <button 
+                            type="button" 
+                            class="px-3 py-1 text-sm font-medium rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                            onclick={() => handleDeleteRequest({ detail: { id: selectedAssistantData.id, name: selectedAssistantData.name, published: selectedAssistantData.published }})}
+                        >
+                            {currentLocale ? $_('common.delete') : 'Delete'}
+                        </button>
+                    {/if}
                 </div>
             </div>
             
@@ -937,17 +1068,7 @@
 
                     <!-- Selected Rubric (if rubric_rag) - Moved here below prompt template -->
                     {#if selectedAssistantData}
-                        {@const apiCallback = (() => {
-                            try {
-                                const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                return typeof metadataStr === 'string' 
-                                    ? JSON.parse(metadataStr) 
-                                    : metadataStr || {};
-                            } catch (e) {
-                                console.error("Error parsing metadata:", e);
-                                return {};
-                            }
-                        })()}
+                        {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
                         {#if apiCallback.rag_processor === 'rubric_rag'}
                             <div class="mt-6 pt-6 border-t border-gray-200">
                                 <div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.selectedLabel', { default: 'Selected Rubric' })}</div>
@@ -1008,6 +1129,14 @@
                                 {console.log('Checking selectedAssistantData for LTI box:', selectedAssistantData)}
                                 <div class="space-y-1 text-sm text-blue-700 break-words">
                                     <div>
+                                        <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiAssistantName', { default: 'Assistant Name' }) : 'Assistant Name'}:</span> 
+                                        <code class="ml-1 bg-blue-100 px-1 rounded">{selectedAssistantData.name}</code>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiModelId', { default: 'Model ID' }) : 'Model ID'}:</span> 
+                                        <code class="ml-1 bg-blue-100 px-1 rounded">{selectedAssistantData.id}</code>
+                                    </div>
+                                    <div>
                                         <span class="font-medium">{currentLocale ? $_('assistants.detail.ltiToolUrl', { default: 'Tool URL' }) : 'Tool URL'}:</span> 
                                         <code class="ml-1 bg-blue-100 px-1 rounded">{lambServerUrl}/lamb/v1/lti_users/lti</code>
                                     </div>
@@ -1031,17 +1160,7 @@
 
                             <!-- Parse metadata -->
                             {#if selectedAssistantData}
-                                {@const apiCallback = (() => {
-                                    try {
-                                        const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                        return typeof metadataStr === 'string' 
-                                            ? JSON.parse(metadataStr) 
-                                            : metadataStr || {};
-                                    } catch (e) {
-                                        console.error("Error parsing metadata:", e);
-                                        return {};
-                                    }
-                                })()}
+                                {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
 
                                 <div class="space-y-3 text-sm">
                                     <!-- Prompt Processor -->
@@ -1090,6 +1209,27 @@
                                             {:else}
                                                 <span class="text-gray-500">
                                                     {currentLocale ? $_('assistants.form.vision.disabled', { default: 'Disabled' }) : 'Disabled'}
+                                                </span>
+                                            {/if}
+                                        </div>
+                                    </div>
+
+                                    <!-- Image Generation Capability -->
+                                    <div>
+                                        <div class="font-medium text-gray-700 mb-1">
+                                            Image Generation
+                                        </div>
+                                        <div class="bg-white border border-gray-200 p-2 rounded">
+                                            {#if apiCallback.capabilities?.image_generation}
+                                                <span class="inline-flex items-center text-green-800">
+                                                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                                    </svg>
+                                                    Enabled
+                                                </span>
+                                            {:else}
+                                                <span class="text-gray-500">
+                                                    Disabled
                                                 </span>
                                             {/if}
                                         </div>
@@ -1292,6 +1432,11 @@
                 <!-- Should not happen if configError is handled, but as fallback -->
                 <p>{currentLocale ? $_('assistants.chatLoadingConfig') : 'Loading chat configuration...'}</p>
             {/if}
+        {:else if detailSubView === 'analytics'}
+            <!-- Analytics Tab Content -->
+            <div class="px-6 py-4">
+                <ChatAnalytics assistant={selectedAssistantData} />
+            </div>
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->
@@ -1307,6 +1452,11 @@
             />
         </div>
     </div>
+{:else if currentView === 'templates'}
+    <!-- Prompt Templates View - Embedded content only -->
+    <div class="mt-6">
+        <PromptTemplatesContent />
+    </div>
 {:else}
     <!-- Fallback for when currentView is not list, create, detail, or shared (should not happen) -->
     <p>{currentLocale ? $_('assistants.noAssistantData') : 'Assistant data not available.'}</p>
@@ -1314,20 +1464,21 @@
 
 
 <!-- Delete Confirmation Modal -->
-{#if isDeleteModalOpen}
-   <DeleteConfirmationModal
-       bind:isOpen={isDeleteModalOpen}
-       assistantName={assistantToDeleteName || ''}
-       bind:isDeleting={isDeletingAssistant}
-       on:confirm={handleDeleteConfirm}
-       on:close={() => {
-           isDeleteModalOpen = false;
-           assistantToDeleteId = null;
-           assistantToDeleteName = null;
-           deleteError = ''; // Clear errors on close
-       }}
-   />
-{/if}
+<ConfirmationModal
+    bind:isOpen={isDeleteModalOpen}
+    bind:isLoading={isDeletingAssistant}
+    title={currentLocale ? $_('assistants.deleteModal.title', { default: 'Delete Assistant' }) : 'Delete Assistant'}
+    message={currentLocale ? $_('assistants.deleteModal.confirmation', { values: { name: assistantToDeleteName || '' }, default: `Are you sure you want to delete the assistant "${assistantToDeleteName}"? This action cannot be undone.` }) : `Are you sure you want to delete the assistant "${assistantToDeleteName}"? This action cannot be undone.`}
+    confirmText={currentLocale ? $_('assistants.deleteModal.confirmButton', { default: 'Delete' }) : 'Delete'}
+    variant="danger"
+    onconfirm={handleDeleteConfirm}
+    oncancel={() => {
+        isDeleteModalOpen = false;
+        assistantToDeleteId = null;
+        assistantToDeleteName = null;
+        deleteError = ''; // Clear errors on close
+    }}
+/>
 
 <!-- Loading state for detail view -->
 {#if loadingDetail}

@@ -1,4 +1,9 @@
 session_data.json
-node_modules/*
+node_modules
 package-lock.json
 *.png
+
+# Playwright Test
+playwright-report/
+test-results/
+.auth/

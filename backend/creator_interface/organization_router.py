@@ -8,26 +8,15 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import httpx
-import logging
 import json
 import time
 from datetime import datetime
-from .assistant_router import get_creator_user_from_token, is_admin_user
+from lamb.auth_context import AuthContext, get_auth_context, require_admin, _build_auth_context
 import config
 from lamb.database_manager import LambDatabaseManager
+from lamb.logging_config import get_logger
 from lamb.owi_bridge.owi_users import OwiUserManager
-from lamb.organization_router import (
-    create_organization as core_create_organization,
-    list_organizations as core_list_organizations,
-    get_organization as core_get_organization,
-    update_organization as core_update_organization,
-    delete_organization as core_delete_organization,
-    get_organization_config as core_get_organization_config,
-    update_organization_config as core_update_organization_config,
-    get_organization_usage as core_get_organization_usage,
-    export_organization as core_export_organization,
-    sync_system_organization as core_sync_organizations
-)
+from lamb.services import OrganizationService
 from schemas import BulkImportRequest, BulkUserActionRequest
 
 # Initialize router
@@ -37,8 +26,8 @@ security = HTTPBearer()
 # Initialize database manager
 db_manager = LambDatabaseManager()
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Set up logger for organization router
+logger = get_logger(__name__, component="API")
 
 # Get configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -48,27 +37,30 @@ LAMB_BEARER_TOKEN = config.LAMB_BEARER_TOKEN
 # Organization Admin Authorization Helpers
 def get_user_organization_admin_info(auth_header: str) -> Optional[Dict[str, Any]]:
     """
-    Get user information and check if they are an organization admin
-    Returns user info with organization admin details if authorized, None otherwise
+    Get user information and check if they are an organization admin.
+    Uses AuthContext internally for centralized auth resolution.
+    Returns user info with organization admin details if authorized, None otherwise.
     """
     try:
-        creator_user = get_creator_user_from_token(auth_header)
-        if not creator_user:
+        token = auth_header.replace("Bearer ", "") if auth_header and auth_header.startswith("Bearer ") else auth_header
+        if not token:
             return None
         
+        auth_ctx = _build_auth_context(token)
+        if not auth_ctx:
+            return None
+        
+        creator_user = auth_ctx.user
         user_id = creator_user.get('id')
         if not user_id:
             return None
         
-        # Get user's organization and role
-        user_details = db_manager.get_creator_user_by_id(user_id)
-        if not user_details or not user_details.get('organization_id'):
+        # Check org admin via AuthContext
+        if not auth_ctx.is_org_admin and not auth_ctx.is_system_admin:
             return None
         
-        org_id = user_details['organization_id']
-        org_role = db_manager.get_user_organization_role(user_id, org_id)
-        
-        if org_role != "admin":
+        org_id = auth_ctx.organization.get('id')
+        if not org_id:
             return None
         
         # Get organization details
@@ -103,22 +95,20 @@ def is_organization_admin(auth_header: str, organization_id: Optional[int] = Non
 
 async def verify_organization_admin_access(request: Request, organization_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    Verify that the user has organization admin access
-    Returns admin info if authorized, raises HTTPException otherwise
+    Verify that the user has organization admin access.
+    Uses _build_auth_context directly since this function is called manually (not via DI).
+    Returns admin info if authorized, raises HTTPException otherwise.
     """
     try:
-        # Get authorization header
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="Authorization header required")
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+        auth = _build_auth_context(token) if token else None
+        if not auth:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        creator_user = auth.user
         
-        # First, check if user is a system administrator
-        from .assistant_router import is_admin_user
-        if is_admin_user(auth_header):
-            # System admin can access any organization
-            creator_user = get_creator_user_from_token(auth_header)
-            if not creator_user:
-                raise HTTPException(status_code=403, detail="Invalid authentication token")
+        # First, check if user is a system administrator via AuthContext
+        if auth.is_system_admin:
             
             # If organization_id is specified, get that organization, otherwise use system org
             target_org_id = organization_id if organization_id else 1  # Default to system org
@@ -135,15 +125,22 @@ async def verify_organization_admin_access(request: Request, organization_id: Op
                 'role': 'system_admin'  # Indicate this is a system admin
             }
         
-        # If not system admin, check for regular organization admin
-        admin_info = get_user_organization_admin_info(auth_header)
-        if not admin_info:
+        # If not system admin, check for regular organization admin via AuthContext
+        if not auth.is_org_admin:
             raise HTTPException(status_code=403, detail="Organization admin privileges required")
         
-        if organization_id and admin_info['organization_id'] != organization_id:
+        user_org_id = auth.organization.get('id')
+        if organization_id and user_org_id != organization_id:
             raise HTTPException(status_code=403, detail="Access denied for this organization")
         
-        return admin_info
+        return {
+            'user_id': creator_user.get('id'),
+            'user_email': creator_user.get('email'),
+            'user_name': creator_user.get('name'),
+            'organization_id': user_org_id,
+            'organization': auth.organization,
+            'role': auth.organization_role
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -159,7 +156,7 @@ class OrganizationCreate(BaseModel):
 class OrganizationCreateEnhanced(BaseModel):
     slug: str = Field(..., description="URL-friendly unique identifier")
     name: str = Field(..., description="Organization display name")
-    admin_user_id: int = Field(..., description="ID of user from system org to become org admin")
+    admin_user_id: Optional[int] = Field(None, description="ID of user from system org to become org admin (optional — org can be created without an admin)")
     signup_enabled: bool = Field(False, description="Whether signup is enabled for this organization")
     signup_key: Optional[str] = Field(None, description="Unique signup key for organization-specific signup")
     use_system_baseline: bool = Field(True, description="Whether to copy system org config as baseline")
@@ -204,19 +201,119 @@ class ErrorResponse(BaseModel):
 
 # Helper function to verify admin privileges
 async def verify_admin_access(request: Request) -> str:
-    """Verify that the current user has admin access"""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    creator_user = get_creator_user_from_token(auth_header)
-    if not creator_user:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
-    
-    if not is_admin_user(creator_user):
-        raise HTTPException(status_code=403, detail="Administrator privileges required")
-    
+    """Verify that the current user has admin access.
+    Uses _build_auth_context directly since this function is called manually (not via DI).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else auth_header
+    auth = _build_auth_context(token) if token else None
+    if not auth:
+        raise HTTPException(status_code=401, detail="Invalid authentication")
+    auth.require_system_admin()
+    # Return auth header for backward compatibility with callers that pass it to other functions
     return auth_header
+
+
+def sanitize_org_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SECURITY: Remove sensitive API keys from organization config before sending to frontend.
+    
+    Transforms API key fields to boolean indicators:
+        "api_key": "sk-xxx" -> "api_key_configured": true
+        "apikey": "xxx" -> "apikey_configured": true
+    
+    Args:
+        config: Raw organization configuration dict
+        
+    Returns:
+        Sanitized config dict with API keys replaced by boolean indicators
+    """
+    import copy
+    
+    if not config or not isinstance(config, dict):
+        return config
+    
+    safe_config = copy.deepcopy(config)
+    
+    # Sanitize provider API keys in setups
+    if 'setups' in safe_config:
+        for setup_name, setup in safe_config['setups'].items():
+            if not isinstance(setup, dict):
+                continue
+            providers = setup.get('providers', {})
+            if not isinstance(providers, dict):
+                continue
+            for provider_name, provider_config in providers.items():
+                if not isinstance(provider_config, dict):
+                    continue
+                # Handle 'api_key' field
+                if 'api_key' in provider_config:
+                    provider_config['api_key_configured'] = bool(provider_config['api_key'])
+                    del provider_config['api_key']
+                # Handle 'apikey' field (alternate spelling)
+                if 'apikey' in provider_config:
+                    provider_config['apikey_configured'] = bool(provider_config['apikey'])
+                    del provider_config['apikey']
+    
+    # Sanitize KB server API key
+    if 'kb_server' in safe_config and isinstance(safe_config['kb_server'], dict):
+        kb_server = safe_config['kb_server']
+        if 'api_key' in kb_server:
+            kb_server['api_key_configured'] = bool(kb_server['api_key'])
+            del kb_server['api_key']
+        if 'apikey' in kb_server:
+            kb_server['apikey_configured'] = bool(kb_server['apikey'])
+            del kb_server['apikey']
+        # Also handle 'api_token' for KB server
+        if 'api_token' in kb_server:
+            kb_server['api_token_configured'] = bool(kb_server['api_token'])
+            del kb_server['api_token']
+    
+    # Sanitize features signup key (sensitive for organization access)
+    if 'features' in safe_config and isinstance(safe_config['features'], dict):
+        features = safe_config['features']
+        if 'signup_key' in features:
+            features['signup_key_configured'] = bool(features['signup_key'])
+            del features['signup_key']
+    
+    return safe_config
+
+
+def sanitize_organization(org: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SECURITY: Sanitize a full organization object before sending to frontend.
+    
+    Args:
+        org: Raw organization dict with config field
+        
+    Returns:
+        Organization dict with sanitized config
+    """
+    import copy
+    
+    if not org or not isinstance(org, dict):
+        return org
+    
+    safe_org = copy.deepcopy(org)
+    
+    if 'config' in safe_org:
+        safe_org['config'] = sanitize_org_config(safe_org['config'])
+    
+    return safe_org
+
+
+def sanitize_organizations_list(orgs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    SECURITY: Sanitize a list of organization objects.
+    
+    Args:
+        orgs: List of raw organization dicts
+        
+    Returns:
+        List of organization dicts with sanitized configs
+    """
+    return [sanitize_organization(org) for org in orgs]
+
 
 # Organization CRUD endpoints
 
@@ -379,7 +476,8 @@ async def list_organizations(
         # Call database manager directly (same as core function)
         logger.info(f"Listing organizations with status filter: {status}")
         organizations = db_manager.list_organizations(status=status)
-        return organizations
+        # SECURITY: Sanitize all organization configs before sending to frontend
+        return sanitize_organizations_list(organizations)
             
     except HTTPException:
         raise
@@ -468,7 +566,8 @@ async def create_organization(
 
         # Get created organization
         org = db_manager.get_organization_by_id(org_id)
-        return org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(org)
             
     except HTTPException:
         raise
@@ -538,7 +637,7 @@ async def create_organization_enhanced(
     request: Request,
     org_data: OrganizationCreateEnhanced
 ):
-    """Create a new organization with admin user assignment and signup configuration"""
+    """Create a new organization with optional admin user assignment and signup configuration"""
     try:
         await verify_admin_access(request)
         
@@ -556,19 +655,20 @@ async def create_organization_enhanced(
         if existing:
             raise HTTPException(status_code=400, detail=f"Organization with slug '{org_data.slug}' already exists")
         
-        # Check if the selected user is a system admin (not eligible)
-        admin_user = db_manager.get_creator_user_by_id(org_data.admin_user_id)
-        if admin_user:
-            system_org = db_manager.get_organization_by_slug("lamb")
-            if system_org:
-                current_role = db_manager.get_user_organization_role(org_data.admin_user_id, system_org['id'])
-                if current_role == "admin":
-                    raise HTTPException(
-                        status_code=400, 
-                        detail="System administrators cannot be assigned to new organizations. They must remain in the system organization to manage it."
-                    )
+        # If admin_user_id is provided, validate the user
+        if org_data.admin_user_id is not None:
+            admin_user = db_manager.get_creator_user_by_id(org_data.admin_user_id)
+            if admin_user:
+                system_org = db_manager.get_organization_by_slug("lamb")
+                if system_org:
+                    current_role = db_manager.get_user_organization_role(org_data.admin_user_id, system_org['id'])
+                    if current_role == "admin":
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="System administrators cannot be assigned to new organizations. They must remain in the system organization to manage it."
+                        )
         
-        # Create organization with admin assignment
+        # Create organization (with or without admin assignment)
         org_id = db_manager.create_organization_with_admin(
             slug=org_data.slug,
             name=org_data.name,
@@ -587,13 +687,14 @@ async def create_organization_enhanced(
         if not org:
             raise HTTPException(status_code=500, detail="Organization created but could not retrieve details")
         
+        # SECURITY: Sanitize config before sending to frontend
         return OrganizationResponse(
             id=org['id'],
             slug=org['slug'],
             name=org['name'],
             is_system=org['is_system'],
             status=org['status'],
-            config=org['config'],
+            config=sanitize_org_config(org['config']),
             created_at=org['created_at'],
             updated_at=org['updated_at']
         )
@@ -603,6 +704,108 @@ async def create_organization_enhanced(
     except Exception as e:
         logger.error(f"Error creating enhanced organization: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Organization Member Role Management (System Admin Only) ---
+
+class UpdateMemberRole(BaseModel):
+    role: str = Field(..., description="New role for the user: 'admin' or 'member'")
+
+@router.put(
+    "/organizations/{slug}/members/{user_id}/role",
+    tags=["Organization Management"],
+    summary="Update Organization Member Role (System Admin Only)",
+    description="""Promote or demote a user's role within an organization. Only system administrators can use this endpoint.
+
+Any user type (including LTI Creator users) can be promoted to organization admin.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/organizations/engineering/members/5/role' \\
+-H 'Authorization: Bearer <system_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"role": "admin"}'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Role updated successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid role or user not in organization"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "System admin privileges required"},
+        404: {"model": ErrorResponse, "description": "Organization or user not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def update_member_role(
+    request: Request,
+    slug: str,
+    user_id: int,
+    role_data: UpdateMemberRole
+):
+    """Update a user's role in an organization. System admin only."""
+    try:
+        await verify_admin_access(request)
+        
+        # Validate role value
+        valid_roles = ["admin", "member"]
+        if role_data.role not in valid_roles:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid role '{role_data.role}'. Must be one of: {', '.join(valid_roles)}"
+            )
+        
+        # Get organization
+        organization = db_manager.get_organization_by_slug(slug)
+        if not organization:
+            raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
+        
+        if organization.get('is_system'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot modify roles in the system organization through this endpoint"
+            )
+        
+        # Get user and verify they belong to this organization
+        user = db_manager.get_creator_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with id {user_id} not found")
+        
+        if user['organization_id'] != organization['id']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"User {user_id} does not belong to organization '{slug}'"
+            )
+        
+        # Assign the new role
+        success = db_manager.assign_organization_role(
+            organization_id=organization['id'],
+            user_id=user_id,
+            role=role_data.role
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update user role")
+        
+        logger.info(
+            f"System admin updated user {user_id} ({user['user_email']}) role to '{role_data.role}' "
+            f"in organization '{slug}'"
+        )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "organization_slug": slug,
+            "new_role": role_data.role,
+            "message": f"User role updated to '{role_data.role}' successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating member role: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get(
     "/organizations/{slug}",
@@ -659,7 +862,8 @@ async def get_organization(
         if not org:
             raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
 
-        return org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(org)
             
     except HTTPException:
         raise
@@ -744,7 +948,8 @@ async def update_organization(
 
         # Get updated organization
         updated_org = db_manager.get_organization_by_id(org['id'])
-        return updated_org
+        # SECURITY: Sanitize config before sending to frontend
+        return sanitize_organization(updated_org)
             
     except HTTPException:
         raise
@@ -1100,7 +1305,8 @@ async def get_organization_config(
         if not org:
             raise HTTPException(status_code=404, detail=f"Organization '{slug}' not found")
 
-        return org['config']
+        # SECURITY: Sanitize config to remove API keys before sending to frontend
+        return sanitize_org_config(org['config'])
             
     except HTTPException:
         raise
@@ -1177,7 +1383,9 @@ async def update_organization_config(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update configuration")
 
-        return {"message": "Configuration updated successfully", "config": config_data}
+        # SECURITY: Do not echo back the full config with API keys
+        # Return sanitized version instead
+        return {"message": "Configuration updated successfully", "config": sanitize_org_config(config_data)}
             
     except HTTPException:
         raise
@@ -1466,6 +1674,9 @@ class OrgUserResponse(BaseModel):
     enabled: bool
     created_at: int
     role: str = "member"
+    user_type: str = "creator"
+    auth_provider: str = "password"
+    lti_user_id: Optional[str] = None
 
 # Organization Admin Dashboard endpoint
 @router.get(
@@ -1553,6 +1764,23 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
                 api_status["providers"][provider_name]["enabled_models"] = enabled_models
                 api_status["providers"][provider_name]["default_model"] = provider_config.get('default_model', '')
         
+        # Check LTI creator key status
+        lti_creator_key = db_manager.get_lti_creator_key(org_id)
+        lti_creator_enabled = bool(lti_creator_key and lti_creator_key.get('enabled', False))
+
+        # Get assistant count
+        org_assistants = db_manager.get_assistants_by_organization(org_id)
+        total_assistants = len(org_assistants)
+        published_assistants = len([a for a in org_assistants if a.get('published')])
+
+        # Get default models from config
+        global_default_model = default_setup.get('global_default_model', {})
+        small_fast_model = default_setup.get('small_fast_model', {})
+
+        # Get LTI activities count
+        lti_activities = db_manager.get_lti_activities_by_org(org_id)
+        total_lti_activities = len(lti_activities)
+
         dashboard_info = {
             "organization": {
                 "id": organization['id'],
@@ -1563,12 +1791,26 @@ async def get_organization_dashboard(request: Request, org: Optional[str] = None
             "stats": {
                 "total_users": len(org_users),
                 "active_users": active_users,
-                "disabled_users": disabled_users
+                "disabled_users": disabled_users,
+                "total_assistants": total_assistants,
+                "published_assistants": published_assistants,
+                "total_lti_activities": total_lti_activities
             },
             "settings": {
                 "signup_enabled": features.get('signup_enabled', False),
                 "api_configured": api_status["overall_status"] in ["working", "partial"],
-                "signup_key_set": bool(features.get('signup_key'))
+                "signup_key_set": bool(features.get('signup_key')),
+                "lti_creator_enabled": lti_creator_enabled
+            },
+            "default_models": {
+                "global_default": {
+                    "provider": global_default_model.get('provider', ''),
+                    "model": global_default_model.get('model', '')
+                },
+                "small_fast": {
+                    "provider": small_fast_model.get('provider', ''),
+                    "model": small_fast_model.get('model', '')
+                }
             },
             "api_status": api_status
         }
@@ -1628,7 +1870,10 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 name=user['name'],
                 enabled=enabled_status,
                 created_at=user.get('joined_at', 0),
-                role=user.get('role', 'member')
+                role=user.get('role', 'member'),
+                user_type=user.get('user_type', 'creator'),
+                auth_provider=user.get('auth_provider', 'password'),
+                lti_user_id=user.get('lti_user_id')
             ))
         
         return user_responses
@@ -3166,6 +3411,478 @@ async def update_kb_settings(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get(
+    "/org-admin/settings/kb/embeddings-config",
+    tags=["Organization Admin - Settings"],
+    summary="Get KB Server Embeddings Configuration",
+    description="""Get the current embeddings configuration from the Knowledge Base server.
+    
+This endpoint proxies the request to the KB server's /config/embeddings endpoint.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/settings/kb/embeddings-config' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "vendor": "openai",
+  "model": "text-embedding-3-small",
+  "api_endpoint": "https://api.openai.com/v1/embeddings",
+  "apikey_configured": true,
+  "apikey_masked": "sk-proj-********************************OuIbNA",
+  "config_source": "env"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def get_kb_embeddings_config(request: Request, org: Optional[str] = None):
+    """Get KB server embeddings configuration (proxied to KB server)"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        # Get KB server config
+        config = organization.get('config', {})
+        kb_server = config.get('kb_server', {})
+        kb_url = kb_server.get('url', '')
+        
+        if not kb_url:
+            raise HTTPException(
+                status_code=400,
+                detail="KB server URL not configured"
+            )
+        
+        # Proxy request to KB server
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{kb_url}/config/embeddings",
+                headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"KB server returned error: {response.text}"
+                )
+            
+            return response.json()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting KB embeddings config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class KbEmbeddingsConfigUpdate(BaseModel):
+    """Schema for updating KB server embeddings configuration"""
+    vendor: Optional[str] = Field(None, description="Embeddings vendor")
+    model: Optional[str] = Field(None, description="Model name")
+    api_endpoint: Optional[str] = Field(None, description="API endpoint URL")
+    apikey: Optional[str] = Field(None, description="API key for the embeddings service")
+    apply_to_all_kb: Optional[bool] = Field(False, description="Apply this API key to all existing KB collections")
+
+
+@router.put(
+    "/org-admin/settings/kb/embeddings-config",
+    tags=["Organization Admin - Settings"],
+    summary="Update KB Server Embeddings Configuration",
+    description="""Update the embeddings configuration on the Knowledge Base server.
+    
+This endpoint proxies the request to the KB server's PUT /config/embeddings endpoint.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/kb/embeddings-config' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{"apikey": "sk-new-key-here"}'
+```
+
+Example Success Response:
+```json
+{
+  "message": "Embeddings configuration updated successfully"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def update_kb_embeddings_config(
+    request: Request,
+    config_update: KbEmbeddingsConfigUpdate,
+    org: Optional[str] = None
+):
+    """Update KB server embeddings configuration (proxied to KB server)"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        organization = admin_info['organization']
+        
+        # Get KB server config
+        config = organization.get('config', {})
+        kb_server = config.get('kb_server', {})
+        kb_url = kb_server.get('url', '')
+        
+        if not kb_url:
+            raise HTTPException(
+                status_code=400,
+                detail="KB server URL not configured"
+            )
+        
+        # Build payload with only provided fields
+        payload = {}
+        if config_update.vendor is not None:
+            payload['vendor'] = config_update.vendor
+        if config_update.model is not None:
+            payload['model'] = config_update.model
+        if config_update.api_endpoint is not None:
+            payload['api_endpoint'] = config_update.api_endpoint
+        if config_update.apikey is not None:
+            payload['apikey'] = config_update.apikey
+        if config_update.apply_to_all_kb is not None:
+            payload['apply_to_all_kb'] = config_update.apply_to_all_kb
+        
+        # Proxy request to KB server
+        async with httpx.AsyncClient() as client:
+            # First, update the config
+            response = await client.put(
+                f"{kb_url}/config/embeddings",
+                json=payload,
+                headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"KB server returned error: {response.text}"
+                )
+            
+            # If apply_to_all_kb is True, also update all existing KB collections
+            bulk_update_result = None
+            if config_update.apply_to_all_kb and config_update.apikey:
+                bulk_response = await client.put(
+                    f"{kb_url}/collections/owner/{organization['id']}/embeddings",
+                    json={
+                        "embeddings_model": {
+                            "apikey": config_update.apikey
+                        }
+                    },
+                    headers={"Authorization": f"Bearer {kb_server.get('api_key', '0p3n-w3bu!')}"}
+                )
+                
+                if bulk_response.status_code == 200:
+                    bulk_update_result = bulk_response.json()
+                    logger.info(f"Organization admin {admin_info['user_email']} applied new API key to {bulk_update_result.get('updated', 0)} KB collections")
+                else:
+                    logger.warning(f"Bulk update failed with status {bulk_response.status_code}: {bulk_response.text}")
+            
+            logger.info(f"Organization admin {admin_info['user_email']} updated KB server embeddings config")
+            return {
+                "message": "Embeddings configuration updated successfully",
+                "bulk_update": bulk_update_result
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating KB embeddings config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# LTI CREATOR KEY MANAGEMENT
+# These endpoints allow organization admins to manage LTI creator access keys
+# ============================================================================
+
+class LtiCreatorKeySettings(BaseModel):
+    """Settings for LTI creator key"""
+    oauth_consumer_key: Optional[str] = Field(None, description="OAuth consumer key (unique across orgs)")
+    oauth_consumer_secret: Optional[str] = Field(None, description="OAuth consumer secret")
+    enabled: Optional[bool] = Field(None, description="Whether LTI creator access is enabled")
+
+class LtiCreatorKeyResponse(BaseModel):
+    """Response for LTI creator key info"""
+    has_key: bool
+    oauth_consumer_key: Optional[str] = None
+    enabled: bool = False
+    launch_url: Optional[str] = None
+    created_at: Optional[int] = None
+
+
+@router.get(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Get LTI Creator Key Settings",
+    description="""Get the current LTI creator key configuration for the organization.
+    
+LTI creator keys allow users to log into the LAMB Creator Interface via LTI from their LMS.
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+
+Example Response:
+```json
+{
+  "has_key": true,
+  "oauth_consumer_key": "myorg_creator",
+  "enabled": true,
+  "launch_url": "https://lamb.example.edu/lamb/v1/lti_creator/launch",
+  "created_at": 1678886400
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def get_lti_creator_settings(request: Request, org: Optional[str] = None):
+    """Get LTI creator key settings for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        organization = admin_info['organization']
+        
+        # System org cannot have LTI creator keys
+        if organization.get('is_system'):
+            return LtiCreatorKeyResponse(
+                has_key=False,
+                enabled=False,
+                launch_url=None
+            )
+        
+        # Get LTI creator key
+        lti_key = db_manager.get_lti_creator_key(org_id)
+        
+        if not lti_key:
+            return LtiCreatorKeyResponse(
+                has_key=False,
+                enabled=False,
+                launch_url=None
+            )
+        
+        # Build launch URL
+        import os
+        public_base_url = os.getenv("LAMB_PUBLIC_BASE_URL", "")
+        launch_url = f"{public_base_url}/lamb/v1/lti_creator/launch" if public_base_url else None
+        
+        return LtiCreatorKeyResponse(
+            has_key=True,
+            oauth_consumer_key=lti_key['oauth_consumer_key'],
+            enabled=lti_key['enabled'],
+            launch_url=launch_url,
+            created_at=lti_key['created_at']
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LTI creator settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Update LTI Creator Key Settings",
+    description="""Create or update LTI creator key for the organization.
+
+The oauth_consumer_key must be unique across all organizations. A recommended format is:
+`{org_slug}_{custom_name}` (e.g., "engineering_creator").
+
+Note: System organization cannot have LTI creator keys.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>' \\
+-H 'Content-Type: application/json' \\
+-d '{
+  "oauth_consumer_key": "myorg_creator",
+  "oauth_consumer_secret": "my-secret-key-here",
+  "enabled": true
+}'
+```
+
+Example Response:
+```json
+{
+  "message": "LTI creator key updated successfully",
+  "oauth_consumer_key": "myorg_creator",
+  "launch_url": "https://lamb.example.edu/lamb/v1/lti_creator/launch"
+}
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def update_lti_creator_settings(
+    request: Request,
+    settings: LtiCreatorKeySettings,
+    org: Optional[str] = None
+):
+    """Create or update LTI creator key for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        organization = admin_info['organization']
+        
+        # System org cannot have LTI creator keys
+        if organization.get('is_system'):
+            raise HTTPException(
+                status_code=400, 
+                detail="System organization cannot have LTI creator keys"
+            )
+        
+        # Check if key already exists
+        existing_key = db_manager.get_lti_creator_key(org_id)
+        
+        if existing_key:
+            # Update existing key
+            success = db_manager.update_lti_creator_key(
+                organization_id=org_id,
+                oauth_consumer_key=settings.oauth_consumer_key,
+                oauth_consumer_secret=settings.oauth_consumer_secret,
+                enabled=settings.enabled
+            )
+            
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Failed to update LTI creator key. The consumer key may already be in use."
+                )
+            
+            message = "LTI creator key updated successfully"
+        else:
+            # Create new key
+            if not settings.oauth_consumer_key or not settings.oauth_consumer_secret:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Both oauth_consumer_key and oauth_consumer_secret are required to create a new LTI creator key"
+                )
+            
+            key_id = db_manager.create_lti_creator_key(
+                organization_id=org_id,
+                oauth_consumer_key=settings.oauth_consumer_key,
+                oauth_consumer_secret=settings.oauth_consumer_secret,
+                enabled=settings.enabled if settings.enabled is not None else True
+            )
+            
+            if not key_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Failed to create LTI creator key. The consumer key may already be in use."
+                )
+            
+            message = "LTI creator key created successfully"
+        
+        # Build launch URL
+        import os
+        public_base_url = os.getenv("LAMB_PUBLIC_BASE_URL", "")
+        launch_url = f"{public_base_url}/lamb/v1/lti_creator/launch" if public_base_url else None
+        
+        # Get final key for response
+        final_key = db_manager.get_lti_creator_key(org_id)
+        
+        logger.info(f"Organization admin {admin_info['user_email']} updated LTI creator key")
+        return {
+            "message": message,
+            "oauth_consumer_key": final_key['oauth_consumer_key'] if final_key else settings.oauth_consumer_key,
+            "launch_url": launch_url
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI creator settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete(
+    "/org-admin/settings/lti-creator",
+    tags=["Organization Admin - Settings"],
+    summary="Delete LTI Creator Key",
+    description="""Delete the LTI creator key for the organization.
+
+This will disable LTI creator access for the organization.
+Existing LTI creator users will no longer be able to log in via LTI.
+
+Example Request:
+```bash
+curl -X DELETE 'http://localhost:8000/creator/admin/org-admin/settings/lti-creator' \\
+-H 'Authorization: Bearer <org_admin_token>'
+```
+    """,
+    dependencies=[Depends(security)]
+)
+async def delete_lti_creator_settings(request: Request, org: Optional[str] = None):
+    """Delete LTI creator key for the organization"""
+    try:
+        # Get organization
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
+        org_id = admin_info['organization_id']
+        
+        # Delete the key
+        success = db_manager.delete_lti_creator_key(org_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail="No LTI creator key found for this organization"
+            )
+        
+        logger.info(f"Organization admin {admin_info['user_email']} deleted LTI creator key")
+        return {"message": "LTI creator key deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting LTI creator settings: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # ORGANIZATION ADMIN ASSISTANT MANAGEMENT ENDPOINTS
 # These endpoints allow organization admins to view and manage access to 
@@ -3513,7 +4230,7 @@ async def update_assistant_access(
 @router.get("/organizations/{slug}/assistant-defaults")
 async def get_organization_assistant_defaults(
     slug: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get assistant defaults for a specific organization
@@ -3523,7 +4240,6 @@ async def get_organization_assistant_defaults(
     
     Args:
         slug: Organization slug identifier
-        credentials: Bearer token for authentication
     
     Returns:
         Dict containing the assistant_defaults object
@@ -3532,27 +4248,17 @@ async def get_organization_assistant_defaults(
         HTTPException: 401 if unauthorized, 404 if organization not found, 500 on server error
     """
     try:
-        # Get authorization header
-        auth_header = f"Bearer {credentials.credentials}"
-        
-        # Check admin authorization
-        user_info = get_user_organization_admin_info(auth_header)
-        if not user_info:
+        if not auth.is_system_admin and not auth.is_org_admin:
             raise HTTPException(status_code=401, detail="Admin access required")
         
-        # Forward request to lamb API
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/assistant-defaults",
-                headers={"Authorization": f"Bearer {LAMB_BEARER_TOKEN}"}
-            )
-            
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Organization not found")
-            elif response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch assistant defaults")
-            
-            return response.json()
+        # Use OrganizationService instead of HTTP call
+        org_service = OrganizationService()
+        defaults = org_service.get_assistant_defaults(slug)
+        
+        if defaults is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        return defaults
             
     except HTTPException:
         raise
@@ -3565,7 +4271,7 @@ async def get_organization_assistant_defaults(
 async def update_organization_assistant_defaults(
     slug: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Update assistant defaults for a specific organization
@@ -3576,7 +4282,6 @@ async def update_organization_assistant_defaults(
     Args:
         slug: Organization slug identifier
         request: Request containing the assistant_defaults JSON in body
-        credentials: Bearer token for authentication
     
     Returns:
         Dict with success message
@@ -3585,37 +4290,586 @@ async def update_organization_assistant_defaults(
         HTTPException: 401 if unauthorized, 404 if organization not found, 500 on server error
     """
     try:
-        # Get authorization header
-        auth_header = f"Bearer {credentials.credentials}"
-        
-        # Check admin authorization
-        user_info = get_user_organization_admin_info(auth_header)
-        if not user_info:
+        if not auth.is_system_admin and not auth.is_org_admin:
             raise HTTPException(status_code=401, detail="Admin access required")
         
         # Get request body
         body = await request.json()
         
-        # Forward request to lamb API (pass the body as-is)
-        async with httpx.AsyncClient() as client:
-            response = await client.put(
-                f"{PIPELINES_HOST}/lamb/v1/organizations/{slug}/assistant-defaults",
-                headers={
-                    "Authorization": f"Bearer {LAMB_BEARER_TOKEN}",
-                    "Content-Type": "application/json"
-                },
-                json=body
-            )
-            
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Organization not found")
-            elif response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to update assistant defaults")
-            
-            return response.json()
+        # Use OrganizationService instead of HTTP call
+        org_service = OrganizationService()
+        updated_defaults = org_service.update_assistant_defaults(slug, body)
+        
+        if updated_defaults is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        return {"success": True, "assistant_defaults": updated_defaults}
             
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error updating assistant defaults for {slug}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# System Statistics Response Model
+class SystemStatsResponse(BaseModel):
+    users: Dict[str, int] = Field(..., description="User statistics")
+    organizations: Dict[str, int] = Field(..., description="Organization statistics")
+    assistants: Dict[str, int] = Field(..., description="Assistant statistics")
+    knowledge_bases: Dict[str, int] = Field(..., description="Knowledge base statistics")
+    rubrics: Dict[str, int] = Field(..., description="Rubric statistics")
+    templates: Dict[str, int] = Field(..., description="Prompt template statistics")
+
+
+@router.get(
+    "/system-stats",
+    tags=["System Administration"],
+    summary="Get System-Wide Statistics",
+    description="""Get comprehensive statistics for the entire LAMB system including counts
+of users, organizations, assistants, knowledge bases, rubrics, and prompt templates.
+
+**Requires:** System administrator privileges
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:8000/creator/admin/system-stats' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "users": {
+    "total": 150,
+    "enabled": 145,
+    "disabled": 5,
+    "creators": 50,
+    "end_users": 100
+  },
+  "organizations": {
+    "total": 10,
+    "active": 8,
+    "inactive": 2
+  },
+  "assistants": {
+    "total": 250,
+    "published": 120,
+    "unpublished": 130
+  },
+  "knowledge_bases": {
+    "total": 80,
+    "shared": 25
+  },
+  "rubrics": {
+    "total": 45,
+    "public": 15
+  },
+  "templates": {
+    "total": 60,
+    "shared": 20
+  }
+}
+```
+    """,
+    response_model=SystemStatsResponse,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"model": SystemStatsResponse, "description": "System statistics retrieved successfully"},
+        401: {"model": ErrorResponse, "description": "Authentication required"},
+        403: {"model": ErrorResponse, "description": "Admin privileges required"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    }
+)
+async def get_system_stats(request: Request):
+    """Get system-wide statistics for admin dashboard"""
+    try:
+        # Verify admin access
+        await verify_admin_access(request)
+        
+        connection = db_manager.get_connection()
+        if not connection:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+        
+        try:
+            cursor = connection.cursor()
+            table_prefix = db_manager.table_prefix
+            
+            # User statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE enabled = 1")
+            enabled_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE user_type = 'creator'")
+            creator_users = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}Creator_users WHERE user_type = 'end_user'")
+            end_users = cursor.fetchone()[0]
+            
+            # Organization statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}organizations")
+            total_orgs = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}organizations WHERE status = 'active'")
+            active_orgs = cursor.fetchone()[0]
+            
+            # Assistant statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}assistants")
+            total_assistants = cursor.fetchone()[0]
+            
+            # Published assistants are those with a valid entry in assistant_publish table
+            cursor.execute(f"""
+                SELECT COUNT(DISTINCT a.id) FROM {table_prefix}assistants a
+                INNER JOIN {table_prefix}assistant_publish p ON a.id = p.assistant_id
+                WHERE p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null'
+            """)
+            published_assistants = cursor.fetchone()[0]
+            
+            # Knowledge base statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}kb_registry")
+            total_kbs = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}kb_registry WHERE is_shared = 1")
+            shared_kbs = cursor.fetchone()[0]
+            
+            # Rubric statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}rubrics")
+            total_rubrics = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}rubrics WHERE is_public = 1")
+            public_rubrics = cursor.fetchone()[0]
+            
+            # Prompt template statistics
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}prompt_templates")
+            total_templates = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}prompt_templates WHERE is_shared = 1")
+            shared_templates = cursor.fetchone()[0]
+            
+            return {
+                "users": {
+                    "total": total_users,
+                    "enabled": enabled_users,
+                    "disabled": total_users - enabled_users,
+                    "creators": creator_users,
+                    "end_users": end_users
+                },
+                "organizations": {
+                    "total": total_orgs,
+                    "active": active_orgs,
+                    "inactive": total_orgs - active_orgs
+                },
+                "assistants": {
+                    "total": total_assistants,
+                    "published": published_assistants,
+                    "unpublished": total_assistants - published_assistants
+                },
+                "knowledge_bases": {
+                    "total": total_kbs,
+                    "shared": shared_kbs
+                },
+                "rubrics": {
+                    "total": total_rubrics,
+                    "public": public_rubrics
+                },
+                "templates": {
+                    "total": total_templates,
+                    "shared": shared_templates
+                }
+            }
+            
+        finally:
+            connection.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting system stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# User Profile — aggregated resource overview
+# =============================================================================
+
+@router.get(
+    "/users/{user_id}/profile",
+    tags=["System Administration", "User Management"],
+    summary="Get User Profile (Resource Overview)",
+    description="""Get a comprehensive profile for a specific user, including all owned resources
+(assistants, knowledge bases, rubrics, templates) and resources shared with them.
+
+**Access control:**
+- **System admin**: can view any user's profile
+- **Org admin**: can view profiles of users in their organization
+- **Regular user**: can view their own profile
+
+Example Request:
+```bash
+curl -X GET 'http://localhost:9099/creator/admin/users/42/profile' \\
+-H 'Authorization: Bearer <token>'
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "User profile retrieved successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Insufficient privileges"},
+        404: {"description": "User not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_user_profile(request: Request, user_id: int, auth: AuthContext = Depends(get_auth_context)):
+    """Get comprehensive user profile with all resources."""
+    try:
+        caller = auth.user
+        caller_id = caller.get('id')
+
+        # Access control: system admin, org admin for their org, or self
+        if auth.is_system_admin:
+            pass
+        elif caller_id == user_id:
+            pass
+        else:
+            if auth.is_org_admin:
+                target_user = db_manager.get_creator_user_by_id(user_id)
+                if not target_user or target_user.get('organization_id') != auth.organization.get('id'):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Can only view profiles of users in your organization"
+                    )
+            else:
+                raise HTTPException(status_code=403, detail="Insufficient privileges")
+
+        # Fetch the profile
+        profile = db_manager.get_user_profile(user_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return profile
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user profile for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# =============================================================================
+# Unified LTI Global Config & Activity Management
+# =============================================================================
+
+@router.get(
+    "/lti-global-config",
+    tags=["Admin - LTI"],
+    summary="Get global LTI configuration",
+    description="Get the global LTI consumer key/secret. System admin only.",
+    dependencies=[Depends(security)]
+)
+async def get_lti_global_config(request: Request, auth: AuthContext = Depends(get_auth_context)):
+    """Get global LTI credentials (secret is masked)."""
+    try:
+        auth.require_system_admin()
+
+        config = db_manager.get_lti_global_config()
+        if config:
+            return {
+                "source": "database",
+                "oauth_consumer_key": config["oauth_consumer_key"],
+                "oauth_consumer_secret_masked": config["oauth_consumer_secret"][:4] + "****",
+                "updated_at": config.get("updated_at"),
+                "updated_by": config.get("updated_by"),
+            }
+
+        import os
+        env_key = os.getenv("LTI_GLOBAL_CONSUMER_KEY", "lamb")
+        env_secret = os.getenv("LTI_GLOBAL_SECRET") or os.getenv("LTI_SECRET", "")
+        return {
+            "source": "environment",
+            "oauth_consumer_key": env_key,
+            "oauth_consumer_secret_masked": env_secret[:4] + "****" if env_secret else "(not set)",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting LTI global config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/lti-global-config",
+    tags=["Admin - LTI"],
+    summary="Update global LTI configuration",
+    description="Set or update the global LTI consumer key/secret. System admin only. DB values override .env.",
+    dependencies=[Depends(security)]
+)
+async def update_lti_global_config(request: Request, auth: AuthContext = Depends(get_auth_context)):
+    """Update global LTI credentials in the database."""
+    try:
+        auth.require_system_admin()
+
+        body = await request.json()
+        key = body.get("oauth_consumer_key", "").strip()
+        secret = body.get("oauth_consumer_secret", "").strip()
+        if not key or not secret:
+            raise HTTPException(status_code=400, detail="Both oauth_consumer_key and oauth_consumer_secret are required")
+
+        admin_email = auth.user.get("email", "")
+        success = db_manager.set_lti_global_config(key, secret, updated_by=admin_email)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update LTI config")
+
+        return {"success": True, "oauth_consumer_key": key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI global config: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/lti-activities",
+    tags=["Organization Admin - LTI"],
+    summary="List LTI activities for organization",
+    description="Get all unified LTI activities bound to the admin's organization.",
+    dependencies=[Depends(security)]
+)
+async def list_lti_activities(request: Request, org: Optional[str] = None, auth: AuthContext = Depends(get_auth_context)):
+    """List all LTI activities for the org admin's organization."""
+    try:
+        # Determine target org
+        if org:
+            target_org = db_manager.get_organization_by_slug(org)
+            if not target_org:
+                raise HTTPException(status_code=404, detail="Organization not found")
+            org_id = target_org['id']
+        else:
+            org_id = auth.organization.get('id')
+
+        # Check admin access via AuthContext
+        if not (auth.is_system_admin or auth.is_org_admin):
+            raise HTTPException(status_code=403, detail="Organization admin required")
+
+        activities = db_manager.get_lti_activities_by_org(org_id)
+
+        # Enrich with assistant counts
+        for act in activities:
+            assistants = db_manager.get_activity_assistants(act['id'])
+            act['assistant_count'] = len(assistants)
+            act['assistants'] = [{'id': a['id'], 'name': a['name']} for a in assistants]
+
+        return {"activities": activities, "count": len(activities)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing LTI activities: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put(
+    "/lti-activities/{activity_id}",
+    tags=["Organization Admin - LTI"],
+    summary="Update LTI activity",
+    description="Update an LTI activity's name or status. Org admin only.",
+    dependencies=[Depends(security)]
+)
+async def update_lti_activity(activity_id: int, request: Request, auth: AuthContext = Depends(get_auth_context)):
+    """Update an LTI activity (name, status)."""
+    try:
+        body = await request.json()
+
+        # Get activity and verify org admin access
+        from lamb.database_manager import LambDatabaseManager
+        _db = LambDatabaseManager()
+        connection = _db.get_connection()
+        if not connection:
+            raise HTTPException(status_code=500, detail="Database error")
+        try:
+            cursor = connection.cursor()
+            cursor.execute(f"SELECT * FROM {_db.table_prefix}lti_activities WHERE id = ?", (activity_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Activity not found")
+            columns = [col[0] for col in cursor.description]
+            activity = dict(zip(columns, row))
+        finally:
+            connection.close()
+
+        # Check admin access via AuthContext
+        if not (auth.is_system_admin or auth.is_org_admin):
+            raise HTTPException(status_code=403, detail="Organization admin required")
+
+        # Apply updates
+        updates = {}
+        if "activity_name" in body:
+            updates["activity_name"] = body["activity_name"]
+        if "status" in body and body["status"] in ("active", "disabled"):
+            updates["status"] = body["status"]
+
+        if updates:
+            _db.update_lti_activity(activity_id, **updates)
+
+        return {"success": True, "activity_id": activity_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating LTI activity: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Cost / token usage overview (system admin only)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/cost-overview",
+    tags=["Organization Management"],
+    summary="Get cost and token usage overview for all assistants (Admin Only)",
+    description="Returns all assistants with their aggregate token counts, estimated USD cost, and quota config. System admin only.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "System admin required"},
+    }
+)
+async def get_cost_overview(request: Request):
+    """Return cost and usage summary for every assistant. System admin only."""
+    try:
+        await verify_admin_access(request)
+
+        rows = db_manager.get_all_assistants_with_usage()
+
+        result = []
+        for row in rows:
+            # Parse quota fields from api_callback JSON
+            raw_meta = row.get("api_callback") or "{}"
+            try:
+                metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+            except Exception:
+                metadata = {}
+
+            quota_obj = metadata.get("quota", {})
+            if isinstance(quota_obj, bool):
+                quota_enabled = quota_obj
+                cost_limit_usd = None
+            else:
+                quota_enabled = bool(quota_obj.get("enabled", False))
+                # Safely parse the DB stored limit
+                raw_cl = quota_obj.get("cost_limit_usd")
+                if raw_cl is not None and str(raw_cl).strip() != "":
+                    try:
+                        cost_limit_usd = float(raw_cl)
+                    except ValueError:
+                        cost_limit_usd = None
+                else:
+                    cost_limit_usd = None
+
+            cost_usd = row["cost_usd"]
+            quota_exceeded = (
+                quota_enabled
+                and cost_limit_usd is not None
+                and cost_usd >= cost_limit_usd
+            )
+
+            # Determine model/provider from metadata connector config
+            model_name = metadata.get("llm") or ""
+            connector = metadata.get("connector") or ""
+
+            alert_thresholds = []
+            if row.get("thresholds_config"):
+                try:
+                    tc = json.loads(row["thresholds_config"])
+                    if isinstance(tc, list):
+                        alert_thresholds = tc
+                    elif isinstance(tc, dict):
+                        alert_thresholds = tc.get("alert_percentages", [])
+                except Exception:
+                    pass
+            
+            if not alert_thresholds and isinstance(quota_obj, dict):
+                alert_thresholds = quota_obj.get("alert_thresholds", [])
+
+            result.append({
+                "id": row["id"],
+                "name": row["name"],
+                "owner": row["owner"],
+                "organization_name": row["organization_name"],
+                "model_name": model_name,
+                "provider": connector,
+                "prompt_tokens": row["prompt_tokens"],
+                "completion_tokens": row["completion_tokens"],
+                "total_tokens": row["total_tokens"],
+                "cost_usd": round(cost_usd, 6),
+                "quota_enabled": quota_enabled,
+                "cost_limit_usd": cost_limit_usd,
+                "alert_thresholds": alert_thresholds,
+                "quota_exceeded": quota_exceeded,
+            })
+
+        return {"assistants": result, "count": len(result)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching cost overview: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class QuotaUpdate(BaseModel):
+    enabled: bool = Field(..., description="Whether quota enforcement is active")
+    cost_limit_usd: Optional[float] = Field(None, description="Spending cap in USD (omit or null for no limit)")
+    alert_thresholds: Optional[List[float]] = Field(None, description="List of alert percentages (e.g., [50, 80])")
+
+@router.put(
+    "/assistant/{assistant_id}/quota",
+    tags=["Organization Management"],
+    summary="Update quota config for an assistant (Admin Only)",
+    description="Enable or disable quota enforcement, set the USD cost cap, and configure alert thresholds. System admin only.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        403: {"description": "System admin required"},
+        404: {"description": "Assistant not found"},
+    }
+)
+async def update_assistant_quota(assistant_id: int, body: QuotaUpdate, request: Request):
+    """Set or update the quota configuration for a single assistant. System admin only."""
+    try:
+        await verify_admin_access(request)
+
+        # Verify assistant exists
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        success = db_manager.update_assistant_quota(
+            assistant_id=assistant_id,
+            enabled=body.enabled,
+            cost_limit_usd=body.cost_limit_usd,
+            alert_thresholds=body.alert_thresholds
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update quota")
+
+        # Return the updated usage+quota state
+        cost_usd = db_manager.get_assistant_cost_usd(assistant_id)
+        quota_exceeded = body.enabled and body.cost_limit_usd is not None and cost_usd >= body.cost_limit_usd
+        return {
+            "success": True,
+            "assistant_id": assistant_id,
+            "quota": {
+                "enabled": body.enabled,
+                "cost_limit_usd": body.cost_limit_usd,
+                "alert_thresholds": body.alert_thresholds or [],
+            },
+            "quota_exceeded": quota_exceeded,
+            "spend_usd": round(cost_usd, 6),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating quota for assistant {assistant_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

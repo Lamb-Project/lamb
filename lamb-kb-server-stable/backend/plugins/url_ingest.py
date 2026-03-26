@@ -92,12 +92,15 @@ class URLIngestPlugin(IngestPlugin):
 	This plugin leverages powerful web scraping capabilities to crawl
 	websites, extract clean markdown content, and chunk it for ingestion into the
 	knowledge base.
+	
+	Supports progress reporting for multi-URL ingestion.
 	"""
 
 	name = "url_ingest"
 	kind = "remote-ingest"
 	description = "Ingest web content from URLs with configurable chunking"
 	supported_file_types = {"txt"}  # Supports text files containing URLs
+	supports_progress = True  # This plugin supports progress callbacks
 
 	def get_parameters(self) -> Dict[str, Dict[str, Any]]:
 		"""Get the parameters accepted by this plugin."""
@@ -188,6 +191,7 @@ class URLIngestPlugin(IngestPlugin):
 		Args:
 			file_path: Path to optional text file containing URLs
 			**kwargs: Plugin parameters (url, limit, etc.)
+			         May include 'progress_callback' for progress reporting
 		Returns:
 			List of document chunks with metadata
 		"""
@@ -229,6 +233,9 @@ class URLIngestPlugin(IngestPlugin):
 			raise ValueError(
 				"No valid URL provided. Specify 'url' parameter or upload a text file with URLs."
 			)
+		
+		# Report initial progress
+		self.report_progress(kwargs, 0, len(urls), f"Starting crawl of {len(urls)} URL(s)...")
 
 		# Initialize text splitter
 		splitter_params = {
@@ -259,8 +266,9 @@ class URLIngestPlugin(IngestPlugin):
 
 		all_chunks: List[Dict[str, Any]] = []
 
-		for url in urls:
+		for url_idx, url in enumerate(urls):
 			print(f"INFO: [url_ingest] Processing URL: {url}")
+			self.report_progress(kwargs, url_idx, len(urls), f"Crawling {url}...")
 			try:
 				# Prepare crawl options for v2 API
 				crawl_options = {
@@ -405,10 +413,13 @@ class URLIngestPlugin(IngestPlugin):
 				print(f"ERROR: [url_ingest] Failed to process {url}: {str(e)}")
 				import traceback
 				traceback.print_exc()
+				self.report_progress(kwargs, url_idx + 1, len(urls), f"Failed to crawl {url}: {str(e)[:50]}")
 				continue
 
 		if not all_chunks:
 			raise ValueError("No content could be extracted from the provided URL(s).")
 
+		# Report completion
+		self.report_progress(kwargs, len(urls), len(urls), f"Completed: {len(all_chunks)} chunks from {len(urls)} URL(s)")
 		print(f"INFO: [url_ingest] Successfully created {len(all_chunks)} chunks from {len(urls)} URL(s)")
 		return all_chunks

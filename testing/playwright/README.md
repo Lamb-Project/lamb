@@ -4,66 +4,56 @@ Automated browser tests for the LAMB platform.
 
 ## Test Suites
 
-### End User Feature Tests
-Complete test suite for the end_user feature (users who are automatically redirected to Open WebUI).
+### Automated Test Suite (Playwright Test)
 
-**Location:** `end_user_tests/`
+| Test File                                        | Description                                                                             |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `tests/admin_and_sharing_flow.spec.js`           | Combined admin & sharing flow: user/org CRUD + assistant sharing                        |
+| `tests/admin_role_lifecycle.spec.js`              | Admin role lifecycle (issue #245): create admin, verify capabilities, disable, cleanup   |
+| `tests/creator_flow.spec.js`                      | Creator flow: Create KB → ingest file → query → create assistant                        |
+| `tests/moodle_lti.spec.js`                        | Moodle LTI integration: login via Moodle, click LTI activity and verify redirect to OWI |
+| `tests/org_no_admin_and_role_promotion.spec.js`  | Org without admin + role promotion (issue #249): create org without admin, promote/demote members |
+| `tests/access_control_and_user_dashboard.spec.js` | Access control & admin user dashboard: read-only view, owner full access, profile API validation |
 
-**Quick Start:**
+### Moodle LTI test
+
+The `tests/moodle_lti.spec.js` file checks the LTI activity flow by pre-authenticating a Moodle user (saved to `.auth/moodle-state.json`), visiting the course/activity and ensuring the LTI launch redirects to the expected OWI host and shows the assistant text.
+
+Required environment variables in `tests/.env`:
+
+- `MOODLE_URL` (e.g. `https://moodle.ikasten.io/`)
+- `MOODLE_LOGIN` and `MOODLE_PASSWORD`
+- `LTI_ACTIVITY_ID` (e.g. `15`)
+- `COURSE_ID` (optional, used to find the activity on the course page)
+
+Run the test directly:
+
 ```bash
-cd end_user_tests
-./run_end_user_tests.sh
+# from repository root
+cd testing/playwright
+npx playwright test tests/moodle_lti.spec.js -g "Clicking LTI activity redirects to OWI and shows assistant"
 ```
 
-See [end_user_tests/README_END_USER_TESTS.md](end_user_tests/README_END_USER_TESTS.md) for detailed documentation.
+The `admin_and_sharing_flow.spec.js` includes 14 tests covering:
 
-### Other Tests
+- **Part 1 (Admin)**: Create user, create org, disable user, delete org
+- **Part 2 (Sharing)**: Create users/org, create assistant, share, verify access, cleanup
 
-| Test File | Purpose |
-|-----------|---------|
-| `login.js` | Basic login test and session capture |
-| `create_assistant.js` | Test assistant creation flow |
-| `create_kb.js` | Test knowledge base creation |
-| `ingest_file.js` | Test file ingestion to knowledge base |
-| `query_kb.js` | Test knowledge base querying |
-| `remove_kb.js` | Test knowledge base deletion |
+See `tests/ASSISTANT_SHARING_FLOW.md` for detailed test documentation.
 
-## Installation
+Run with:
+
+```bash
+npm test          # Run all tests
+npm run test:ui   # Interactive mode
+npm run report    # View HTML report
+```
+
+Remember to install dependencies first:
 
 ```bash
 npm install
+npx playwright install
+# you might need to install some dependencies for Playwright browsers:
+npx playwright install-deps
 ```
-
-## Running Tests
-
-### Individual Tests
-```bash
-node login.js http://localhost:5173
-node create_assistant.js http://localhost:5173
-```
-
-### End User Test Suite
-```bash
-cd end_user_tests
-node test_end_user_full_suite.js http://localhost:5173
-```
-
-## Requirements
-
-- Node.js
-- Playwright
-- LAMB backend running (port 9099)
-- LAMB frontend running (port 5173)
-- Open WebUI running (port 8080)
-
-## Test Data
-
-Admin credentials:
-- **Email:** `admin@owi.com`
-- **Password:** `admin`
-
-## Documentation
-
-- [End User Tests](end_user_tests/README_END_USER_TESTS.md) - Complete end_user feature testing
-- [Main LAMB Docs](../../Documentation/) - Full platform documentation
-

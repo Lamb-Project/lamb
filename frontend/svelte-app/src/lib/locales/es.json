@@ -43,13 +43,14 @@
     "openWebUI": "OpenWebUI",
     "admin": "Administración",
     "orgAdmin": "Admin Org",
-    "tools": "Herramientas",
+    "sources": "Fuentes de Conocimiento",
     "rubrics": "Rúbricas"
   },
   "assistants": {
     "title": "Asistentes de Aprendizaje",
     "view": "Ver Asistentes de Aprendizaje",
     "myAssistantsTab": "Mis Asistentes",
+    "sharedWithMeTab": "Compartidos Conmigo",
     "createAssistantTab": "Crear Asistente",
     "detailViewTab": "Detalle del Asistente",
     "myAssistants": "Mis Asistentes",
@@ -224,6 +225,29 @@
       "ragTopKHint": "Número de chunks relevantes a recuperar (1-10).",
       "successMessage": "¡Asistente '{name}' creado con éxito! Redirigiendo...",
       "unknownError": "Fallo al crear asistente: Error desconocido"
+    },
+    "detail": {
+      "propertiesTab": "Propiedades",
+      "editTab": "Editar",
+      "shareTab": "Compartir",
+      "chatTab": "Chat",
+      "activityTab": "Actividad",
+      "chatWith": "con",
+      "readOnlyBanner": "Vista de solo lectura — Este asistente pertenece a {owner}",
+      "ltiTitle": "Detalles de Publicación LTI",
+      "ltiAssistantName": "Nombre del Asistente",
+      "ltiModelId": "ID del Modelo",
+      "ltiToolUrl": "URL de Herramienta",
+      "ltiConsumerKey": "Clave del Consumidor",
+      "ltiSecret": "Secreto",
+      "configuration": "Configuración"
+    },
+    "sharing": {
+      "title": "Usuarios Compartidos",
+      "description": "Gestiona quién tiene acceso a este asistente",
+      "noShares": "Este asistente aún no se ha compartido con nadie.",
+      "manageButton": "Gestionar Usuarios Compartidos",
+      "sharedWith": "Compartido con {count} {count, plural, =1 {usuario} other {usuarios}}"
     },
     "table": {
       "name": "Nombre",
@@ -430,7 +454,13 @@
     "page": "Página",
     "of": "de",
     "resultsSimple": "Resultados",
-    "to": "a"
+    "to": "a",
+    "firstPage": "Primera página",
+    "lastPage": "Última página",
+    "previousPage": "Página anterior",
+    "nextPage": "Página siguiente",
+    "noResults": "Sin resultados",
+    "pageN": "Página {page}"
   },
   "rubrics": {
     "title": "Evaluador",
@@ -513,6 +543,38 @@
       "errorTitle": "Generación Fallida",
       "tryAgain": "Intentar de Nuevo",
       "saveError": "Error al guardar rúbrica"
+    },
+    "metadataForm": {
+      "heading": "Información de la Rúbrica",
+      "titlePlaceholder": "Introduce el título de la rúbrica",
+      "descriptionPlaceholder": "Describe el propósito y contexto de esta rúbrica",
+      "scoringConfig": "Configuración de Puntuación",
+      "points": "Puntos",
+      "percentage": "Porcentaje",
+      "holistic": "Holística",
+      "singlePoint": "Punto Único",
+      "checklist": "Lista de Verificación",
+      "optionalInfo": "Información Opcional",
+      "optionalHint": "Estos campos son completamente opcionales. Déjalos en blanco si no aplican a tu rúbrica.",
+      "optional": "opcional",
+      "gradeLevelPlaceholder": "ej., 6-8, 9-12, K-2, Educación de Adultos"
+    },
+    "aiChat": {
+      "title": "Asistente IA",
+      "thinking": "Pensando...",
+      "clear": "Limpiar",
+      "clearChat": "Limpiar chat",
+      "welcomeMessage": "Pídeme que te ayude a crear o modificar esta rúbrica. Aquí tienes algunos ejemplos:",
+      "modifyPlaceholder": "Pídeme que modifique esta rúbrica...",
+      "createPlaceholder": "Describe la rúbrica que quieres crear...",
+      "helpText": "Pulsa Enter para enviar, Shift+Enter para nueva línea",
+      "minimize": "Minimizar chat IA",
+      "maximize": "Maximizar chat IA",
+      "example1": "Crear una rúbrica para evaluar ensayos de 5 párrafos en inglés de 8º grado",
+      "example2": "Adaptar esta rúbrica para 6º grado simplificando el lenguaje",
+      "example3": "Añadir un criterio de creatividad a esta rúbrica",
+      "example4": "Convertir a escala de 4 puntos en lugar de 5",
+      "example5": "Hacer las descripciones más específicas y observables"
     }
   },
   "promptTemplates": {
@@ -542,11 +604,20 @@
     "export": "Exportar",
     "search": "Buscar plantillas..."
   },
+  "analytics": {
+    "stats": {
+      "chats": "chats",
+      "users": "usuarios",
+      "messages": "mensajes",
+      "messagesPerChat": "mensajes por chat"
+    }
+  },
   "admin": {
     "tabs": {
       "dashboard": "Panel de Control",
       "users": "Gestión de Usuarios",
-      "organizations": "Organizaciones"
+      "organizations": "Organizaciones",
+      "costManagement": "Gestión de Costes"
     },
     "dashboard": {
       "title": "Panel de Administración",
@@ -582,6 +653,8 @@
         "system": "Sistema",
         "noOrganization": "Sin Organización"
       },
+      "viewProfile": "Ver perfil del usuario",
+      "backToList": "Volver a Usuarios",
       "actions": {
         "create": "Crear Usuario",
         "changePassword": "Cambiar Contraseña",
@@ -711,6 +784,88 @@
         "createFailed": "Error al crear organización.",
         "unknownError": "Ocurrió un error desconocido al crear la organización."
       }
+    },
+    "costManagement": {
+      "title": "Gestión de Costes",
+      "subtitle": "Uso de tokens y coste estimado por asistente en la plataforma.",
+      "loading": "Cargando datos de uso...",
+      "errorTitle": "Error:",
+      "retry": "Reintentar",
+      "noData": "No se encontraron asistentes.",
+      "table": {
+        "assistant": "Asistente",
+        "owner": "Propietario",
+        "organization": "Organización",
+        "model": "Modelo",
+        "promptTokens": "Tokens de entrada",
+        "completionTokens": "Tokens de salida",
+        "totalTokens": "Total de tokens",
+        "cost": "Coste estimado",
+        "quota": "Cuota",
+        "status": "Estado"
+      },
+      "quota": {
+        "noQuota": "Sin cuota",
+        "disabled": "Deshabilitado",
+        "active": "Activo",
+        "exceeded": "Excedido"
+      },
+      "totals": {
+        "label": "Totales de la plataforma:",
+        "cost": "Coste total estimado:",
+        "tokens": "Total de tokens:"
+      }
+    }
+  },
+  "home": {
+    "tabs": {
+      "dashboard": "Panel",
+      "help": "Ayuda y Noticias"
+    },
+    "dashboard": {
+      "title": "Mi Panel",
+      "subtitle": "Resumen de tus recursos y actividad",
+      "loading": "Cargando tu panel...",
+      "error": "No se pudo cargar los datos del panel.",
+      "retry": "Reintentar",
+      "welcome": "¡Bienvenido/a, {name}!",
+      "organization": "Organización",
+      "role": "Rol",
+      "memberSince": "Miembro desde",
+      "viewAll": "Ver todo",
+      "quickActions": "Acciones Rápidas",
+      "owned": "Mis Recursos",
+      "sharedWithMe": "Compartido Conmigo",
+      "assistants": "Asistentes",
+      "knowledgeBases": "Bases de Conocimiento",
+      "rubrics": "Rúbricas",
+      "templates": "Plantillas de Prompt",
+      "published": "publicados",
+      "shared": "compartidos",
+      "public": "públicas",
+      "private": "privadas",
+      "total": "total",
+      "noResources": "Aún no tienes recursos",
+      "noSharedResources": "Nada compartido contigo aún",
+      "sharedBy": "Compartido por",
+      "ownedBy": "por",
+      "createAssistant": "Crear Asistente",
+      "createKnowledgeBase": "Crear Base de Conocimiento",
+      "createRubric": "Crear Rúbrica",
+      "createTemplate": "Crear Plantilla",
+      "manageAssistants": "Gestionar Asistentes",
+      "orgRole": {
+        "owner": "Propietario",
+        "admin": "Administrador",
+        "member": "Miembro"
+      }
+    },
+    "help": {
+      "title": "Ayuda y Noticias",
+      "subtitle": "Últimas novedades e información",
+      "loadingNews": "Cargando noticias...",
+      "noNews": "No hay noticias que mostrar.",
+      "viewAssistants": "Ver Asistentes de Aprendizaje"
     }
   }
 }

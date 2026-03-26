@@ -29,13 +29,16 @@
   // Import filtering/pagination components
   import Pagination from '$lib/components/common/Pagination.svelte';
   import FilterBar from '$lib/components/common/FilterBar.svelte';
+  import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
   import { processListData } from '$lib/utils/listHelpers';
+  import { getAssistants } from '$lib/services/assistantService';
   
   // View state
   let view = $state('list'); // 'list' | 'create' | 'edit' | 'view'
   let editingTemplate = $state(null);
   let showDeleteModal = $state(false);
   let templateToDelete = $state(null);
+  let isDeleting = $state(false);
   let showImportModal = $state(false);
   let userAssistants = $state([]);
   
@@ -238,7 +241,6 @@
   // Import from assistant
   async function handleImportFromAssistant() {
     // Load user's assistants
-    const { getAssistants } = await import('$lib/services/assistantService');
     try {
       const response = await getAssistants(100, 0);
       userAssistants = response.assistants || [];
@@ -289,12 +291,15 @@
   // Handle delete confirm
   async function handleDeleteConfirm() {
     if (templateToDelete) {
+      isDeleting = true;
       try {
         await deleteTemplate(templateToDelete.id);
         showDeleteModal = false;
         templateToDelete = null;
       } catch (error) {
         // Error is handled by store
+      } finally {
+        isDeleting = false;
       }
     }
   }
@@ -708,32 +713,17 @@
     {/if}
 
     <!-- Delete Confirmation Modal -->
-    {#if showDeleteModal}
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 max-w-md w-full">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">
-            {$locale ? $_('promptTemplates.confirmDelete', { default: 'Delete Template?' }) : 'Delete Template?'}
-          </h3>
-          <p class="text-sm text-gray-500 mb-6">
-            {$locale ? $_('promptTemplates.deleteWarning', { default: 'This action cannot be undone. The template will be permanently deleted.' }) : 'This action cannot be undone. The template will be permanently deleted.'}
-          </p>
-          <div class="flex justify-end space-x-3">
-            <button
-              onclick={handleCancelDeleteModal}
-              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
-            >
-              {$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
-            </button>
-            <button
-              onclick={handleDeleteConfirm}
-              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
-            >
-              {$locale ? $_('common.delete', { default: 'Delete' }) : 'Delete'}
-            </button>
-          </div>
-        </div>
-      </div>
-    {/if}
+    <ConfirmationModal
+      bind:isOpen={showDeleteModal}
+      bind:isLoading={isDeleting}
+      title={$locale ? $_('promptTemplates.confirmDelete', { default: 'Delete Template?' }) : 'Delete Template?'}
+      message={$locale ? $_('promptTemplates.deleteWarning', { default: 'This action cannot be undone. The template will be permanently deleted.' }) : 'This action cannot be undone. The template will be permanently deleted.'}
+      confirmText={$locale ? $_('common.delete', { default: 'Delete' }) : 'Delete'}
+      cancelText={$locale ? $_('common.cancel', { default: 'Cancel' }) : 'Cancel'}
+      variant="danger"
+      onconfirm={handleDeleteConfirm}
+      oncancel={handleCancelDeleteModal}
+    />
 
     <!-- Import from Assistant Modal -->
     {#if showImportModal}
