@@ -560,6 +560,95 @@ class LambDatabaseManager:
             if connection:
                 connection.close()
                 logger.debug("Database connection closed")
+    
+    def get_user_prompt_templates_filtered(
+    self,
+    owner_email,
+    organization_id,
+    limit,
+    offset,
+    search=None,
+    is_shared=None,
+    sort_by="created_at",
+    sort_order="desc"
+):
+    
+        """Get filtered prompt templates with pagination"""
+
+        connection = self.get_connection()
+        if not connection:
+            return [], 0
+
+        try:
+            with connection:
+                cursor = connection.cursor()
+
+                # Table name (use prefix if exists)
+                templates_table = self._get_table_name('prompt_templates')
+
+                filters = ["owner_email = ?", "organization_id = ?"]
+                params = [owner_email, organization_id]
+
+                if search:
+                    filters.append("(LOWER(name) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?))")
+                    search_param = f"%{search}%"
+                    params.extend([search_param, search_param])
+
+                if is_shared is not None:
+                    filters.append("is_shared = ?")
+                    params.append(is_shared)
+
+                where_clause = " AND ".join(filters)
+
+                allowed_sort_fields = {
+                    "name": "name",
+                    "created_at": "created_at",
+                    "updated_at": "updated_at"
+                }
+
+                if sort_by not in allowed_sort_fields:
+                    sort_by = "created_at"
+
+                sort_order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+                count_query = f"""
+                    SELECT COUNT(*)
+                    FROM {templates_table}
+                    WHERE {where_clause}
+                """
+
+                cursor.execute(count_query, params)
+                total_count = cursor.fetchone()[0]
+
+                query = f"""
+                    SELECT *
+                    FROM {templates_table}
+                    WHERE {where_clause}
+                    ORDER BY {allowed_sort_fields[sort_by]} {sort_order}
+                    LIMIT ? OFFSET ?
+                """
+
+                params_with_pagination = params + [limit, offset]
+                cursor.execute(query, params_with_pagination)
+
+                rows = cursor.fetchall()
+
+                # Column names
+                columns = [desc[0] for desc in cursor.description]
+
+                templates = []
+                for row in rows:
+                    template_dict = dict(zip(columns, row))
+                    templates.append(template_dict)
+
+                return templates, total_count
+
+        except Exception as e:
+            logger.error(f"Error fetching filtered prompt templates: {e}")
+            return [], 0
+
+        finally:
+            connection.close()
 
     def create_admin_user(self):
         """Create the system admin user in both OWI and LAMB systems"""
@@ -4760,7 +4849,7 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def get_assistants_by_owner_paginated(self, owner: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
+    def get_assistants_by_owner_paginated(self, owner: str, limit: int, offset: int,search: Optional[str] = None,status: Optional[str] = None,sort_by: str = "id",sort_order: str = "desc") -> Tuple[List[Dict[str, Any]], int]:
         """Get a paginated list of assistants for an owner, including publication status."""
         connection = self.get_connection()
         if not connection:
@@ -4774,10 +4863,40 @@ class LambDatabaseManager:
         try:
             with connection:
                 cursor = connection.cursor()
+                # --- NEW FILTER LOGIC ---
+                filters = ["a.owner = ?"]
+                params = [owner]
+
+                if search:
+                    filters.append("(LOWER(a.name) LIKE LOWER(?) OR LOWER(a.description) LIKE LOWER(?))")
+                    search_param = f"%{search}%"
+                    params.extend([search_param, search_param])
+
+                if status == "published":
+                    filters.append("p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null'")
+                elif status == "unpublished":
+                    filters.append("(p.oauth_consumer_name IS NULL OR p.oauth_consumer_name = 'null')")
+
+                where_clause = " AND ".join(filters)
+                allowed_sort_fields = {
+                    "id": "a.id",
+                    "name": "a.name",
+                    "created_at": "a.created_at",
+                    "updated_at": "a.updated_at"
+                }
+                if sort_by not in allowed_sort_fields:
+                    sort_by = "id"
+
+                sort_order = "ASC" if sort_order.lower() == "asc" else "DESC"
 
                 # Get total count for the owner
-                count_query = f"SELECT COUNT(*) FROM {assistants_table} WHERE owner = ?"
-                cursor.execute(count_query, (owner,))
+                count_query = f"""
+                    SELECT COUNT(*)
+                    FROM {assistants_table} a
+                    LEFT JOIN {published_table} p ON a.id = p.assistant_id
+                    WHERE {where_clause}
+                """
+                cursor.execute(count_query, params)
                 total_count = cursor.fetchone()[0]
 
                 # Get paginated assistants with publication data using LEFT JOIN
@@ -4794,13 +4913,13 @@ class LambDatabaseManager:
                         END as published
                     FROM {assistants_table} a
                     LEFT JOIN {published_table} p ON a.id = p.assistant_id
-                    WHERE a.owner = ?
-                    ORDER BY a.id DESC -- Or another suitable order
+                    WHERE {where_clause}
+                    ORDER BY {allowed_sort_fields[sort_by]} {sort_order}
                     LIMIT ? OFFSET ?
                 """
-                cursor.execute(query, (owner, limit, offset))
+                params_with_pagination = params + [limit, offset]
+                cursor.execute(query, params_with_pagination)
                 rows = cursor.fetchall()
-
                 # Get column names from the cursor description after execution
                 columns = [desc[0] for desc in cursor.description]
 
@@ -8704,3 +8823,76 @@ class LambDatabaseManager:
             return None
         finally:
             connection.close()
+
+def get_creator_users_filtered(
+    self,
+    limit,
+    offset,
+    search=None,
+    role=None,
+    user_type=None,
+    enabled=None,
+    sort_by="created_at",
+    sort_order="desc"
+):
+    connection = self.get_connection()
+    if not connection:
+        return [], 0
+
+    try:
+        with connection:
+            cursor = connection.cursor()
+
+            filters = ["1=1"]
+            params = []
+
+            if search:
+                filters.append("(LOWER(user_name) LIKE LOWER(?) OR LOWER(user_email) LIKE LOWER(?))")
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            if role:
+                filters.append("role = ?")
+                params.append(role)
+
+            if user_type:
+                filters.append("user_type = ?")
+                params.append(user_type)
+
+            if enabled is not None:
+                filters.append("enabled = ?")
+                params.append(enabled)
+
+            where_clause = " AND ".join(filters)
+
+            # total count
+            count_query = f"""
+                SELECT COUNT(*) FROM {self.table_prefix}Creator_users
+                WHERE {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total_count = cursor.fetchone()[0]
+
+            # main query
+            query = f"""
+                SELECT * FROM {self.table_prefix}Creator_users
+                WHERE {where_clause}
+                ORDER BY {sort_by} {sort_order}
+                LIMIT ? OFFSET ?
+            """
+
+            params_with_pagination = params + [limit, offset]
+            cursor.execute(query, params_with_pagination)
+
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+            users = [dict(zip(columns, row)) for row in rows]
+
+            return users, total_count
+
+    except Exception as e:
+        logger.error(f"Error getting filtered users: {e}")
+        return [], 0
+
+    finally:
+        connection.close()

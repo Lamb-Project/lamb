@@ -19,6 +19,7 @@ from lamb.database_manager import LambDatabaseManager
 from lamb.lamb_classes import PromptTemplate
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.logging_config import get_logger
+from fastapi import Query
 
 # Configure logging
 logger = get_logger(__name__, component="API")
@@ -102,8 +103,12 @@ def get_user_organization(creator_user: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("/list", response_model=PromptTemplateListResponse)
 async def list_user_templates(
     request: Request,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None),
+    is_shared: Optional[bool] = Query(None),
+    sort_by: str = Query("created_at"),
+    sort_order: str = Query("desc"),
     auth: AuthContext = Depends(get_auth_context)
 ):
     """
@@ -126,11 +131,15 @@ async def list_user_templates(
         
         # Get templates from database
         db_manager = LambDatabaseManager()
-        templates, total = db_manager.get_user_prompt_templates(
+        templates, total = db_manager.get_user_prompt_templates_filtered(
             owner_email=creator_user['email'],
             organization_id=organization['id'],
             limit=limit,
-            offset=offset
+            offset=offset,
+            search=search,
+            is_shared=is_shared,
+            sort_by=sort_by,
+            sort_order=sort_order
         )
         
         page = (offset // limit) + 1 if limit > 0 else 1
