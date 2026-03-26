@@ -3,8 +3,8 @@
 
 export const VERSION_INFO = {
   "version": "0.5",
-  "commit": "8fc4a574",
-  "branch": "phase4-rama-experimental",
-  "commitDate": "2026-03-23",
-  "buildDate": "2026-03-24"
+  "commit": "b324371e",
+  "branch": "feature/issue#277/phase4_lamba_port",
+  "commitDate": "2026-03-24",
+  "buildDate": "2026-03-25"
 };

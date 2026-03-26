@@ -21,7 +21,9 @@
 			"aiGrade": "Nota Propuesta por IA",
 			"feedback": "Comentarios",
 			"deadline": "Fecha límite",
-			"deadlinePassed": "La fecha límite ha pasado"
+			"deadlinePassed": "La fecha límite ha pasado",
+			"activityInfo": "Información de la Actividad",
+			"course": "Curso"
 		},
 		"grading": {
 			"title": "Panel de Corrección",
@@ -38,7 +40,12 @@
 				"aiScore": "Nota IA",
 				"finalScore": "Nota Final",
 				"status": "Estado",
-				"actions": "Acciones"
+				"actions": "Acciones",
+				"studentNote": "Nota",
+				"uploadedAt": "Subido",
+				"download": "Descargar",
+				"member": "miembro",
+				"members": "miembros"
 			},
 			"evaluate": "Iniciar Evaluación IA",
 			"evaluateAll": "Evaluar Todas",
@@ -49,7 +56,14 @@
 			"syncSuccess": "Notas enviadas a Moodle correctamente",
 			"editGrade": "Editar Nota",
 			"saveGrade": "Guardar",
-			"noSubmissions": "Sin entregas todavía"
+			"noSubmissions": "Sin entregas todavía",
+			"evalProgress": "Progreso de Evaluación",
+			"sortBy": "Ordenar por",
+			"perPage": "Por página",
+			"page": "Página",
+			"showing": "Mostrando {from}–{to} de {total}",
+			"previous": "Anterior",
+			"next": "Siguiente"
 		},
 		"status": {
 			"pending": "Pendiente",

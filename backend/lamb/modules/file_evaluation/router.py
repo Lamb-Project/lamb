@@ -69,14 +69,74 @@ async def get_activity_view(activity_id: int, request: Request, token: str = "")
     is_instructor = payload.get("is_instructor") or payload.get("lti_type") in ("dashboard",)
 
     cfg = _service.get_setup_config(activity_id)
+    activity_info = _service.get_activity_info(activity_id)
 
     if is_instructor:
         subs = _service.get_submissions_by_activity(activity_id)
         stats = _service.get_dashboard_stats(activity_id)
-        return {"activity_id": activity_id, "setup_config": cfg, "submissions": subs, "stats": stats}
+        return {"activity_id": activity_id, "setup_config": cfg, "activity_info": activity_info, "submissions": subs, "stats": stats}
 
     sub = _service.get_student_submission(activity_id, student_id)
-    return {"activity_id": activity_id, "setup_config": cfg, "submission": sub, "can_submit": sub is None}
+    return {"activity_id": activity_id, "setup_config": cfg, "activity_info": activity_info, "submission": sub, "can_submit": sub is None}
+
+
+@router.put("/activities/{activity_id}/setup-config")
+async def update_setup_config(
+    activity_id: int,
+    request: Request,
+    body: dict,
+    token: str = "",
+):
+    """Update setup_config for an activity (evaluator_id, deadline, submission_type, etc.)."""
+    payload = _decode_jwt(request, token)
+    _require_instructor(payload)
+
+    tid = payload.get("lti_activity_id")
+    if tid is not None and int(tid) != int(activity_id):
+        raise HTTPException(status_code=403, detail="Activity does not match token")
+
+    # Allowed fields to update
+    allowed_fields = {"evaluator_id", "deadline", "submission_type", "max_group_size", "language"}
+    updates = {k: v for k, v in body.items() if k in allowed_fields}
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    conn = _service.db.get_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+        tbl = f"{_service.db.table_prefix}lti_activities"
+
+        # Get current setup_config
+        row = conn.execute(f"SELECT setup_config FROM {tbl} WHERE id = ?", (activity_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Activity not found")
+
+        current_cfg = row.get("setup_config")
+        if isinstance(current_cfg, (bytes, bytearray, memoryview)):
+            current_cfg = bytes(current_cfg).decode("utf-8", errors="replace")
+        if isinstance(current_cfg, str):
+            try:
+                current_cfg = json.loads(current_cfg) if current_cfg else {}
+            except (json.JSONDecodeError, TypeError):
+                current_cfg = {}
+        if not isinstance(current_cfg, dict):
+            current_cfg = {}
+
+        # Merge updates
+        current_cfg.update(updates)
+
+        conn.execute(
+            f"UPDATE {tbl} SET setup_config = ? WHERE id = ?",
+            (json.dumps(current_cfg), activity_id),
+        )
+        conn.commit()
+
+        return {"success": True, "setup_config": current_cfg}
+    finally:
+        conn.close()
 
 
 # ── Submissions ───────────────────────────────────────────────────────────
@@ -191,6 +251,41 @@ async def download_file(request: Request, token: str = "", activity_id: int = Qu
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
     )
+
+
+@router.get("/submissions/{file_submission_id}/download")
+async def download_submission_by_id(file_submission_id: str, request: Request, token: str = ""):
+    """Download a specific submission file by file_submission_id (for instructors)."""
+    payload = _decode_jwt(request, token)
+    _require_instructor(payload)
+
+    conn = _service.db.get_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    try:
+        conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+        tbl = f"{_service.db.table_prefix}mod_file_eval_submissions"
+        fs = conn.execute(f"SELECT * FROM {tbl} WHERE id = ?", (file_submission_id,)).fetchone()
+        if not fs:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        file_path = fs["file_path"]
+        if not os.path.isfile(file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        file_name = fs["file_name"]
+
+        def iterfile():
+            with open(file_path, "rb") as fh:
+                yield from iter(lambda: fh.read(65536), b"")
+
+        return StreamingResponse(
+            iterfile(),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        )
+    finally:
+        conn.close()
 
 
 # ── Evaluation ────────────────────────────────────────────────────────────

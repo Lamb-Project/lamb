@@ -7,7 +7,8 @@
 		getEvaluationStatus,
 		updateGrade,
 		acceptAiGrades,
-		syncGradesToMoodle
+		syncGradesToMoodle,
+		downloadSubmission
 	} from '$lib/services/gradingService.js';
 	import { getActivityId } from '$lib/services/api.js';
 
@@ -26,6 +27,97 @@
 	let editComment = $state('');
 
 	let pollInterval = $state(null);
+
+	// Sorting state
+	let sortField = $state('uploaded_at');
+	let sortDirection = $state('desc');
+
+	// Pagination state
+	let currentPage = $state(1);
+	let perPage = $state(10);
+	const perPageOptions = [2, 5, 10, 25, 50];
+
+	function formatDate(timestamp) {
+		if (!timestamp) return '';
+		const date = new Date(timestamp * 1000);
+		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+	}
+
+	function sortSubmissions(submissions) {
+		if (!submissions) return [];
+		return [...submissions].sort((a, b) => {
+			let aVal, bVal;
+			switch (sortField) {
+				case 'file_name':
+					aVal = a.file_submission?.file_name?.toLowerCase() || '';
+					bVal = b.file_submission?.file_name?.toLowerCase() || '';
+					break;
+				case 'student_name':
+					aVal = a.members?.[0]?.student_name?.toLowerCase() || '';
+					bVal = b.members?.[0]?.student_name?.toLowerCase() || '';
+					break;
+				case 'uploaded_at':
+					aVal = a.file_submission?.uploaded_at || 0;
+					bVal = b.file_submission?.uploaded_at || 0;
+					break;
+				case 'ai_score':
+					aVal = a.grade?.ai_score ?? -1;
+					bVal = b.grade?.ai_score ?? -1;
+					break;
+				case 'final_score':
+					aVal = a.grade?.score ?? -1;
+					bVal = b.grade?.score ?? -1;
+					break;
+				case 'evaluation_status':
+					aVal = a.file_submission?.evaluation_status || '';
+					bVal = b.file_submission?.evaluation_status || '';
+					break;
+				default:
+					aVal = a.file_submission?.uploaded_at || 0;
+					bVal = b.file_submission?.uploaded_at || 0;
+			}
+
+			if (typeof aVal === 'string' && typeof bVal === 'string') {
+				if (sortDirection === 'asc') return aVal.localeCompare(bVal);
+				return bVal.localeCompare(aVal);
+			}
+			if (sortDirection === 'asc') return aVal - bVal;
+			return bVal - aVal;
+		});
+	}
+
+	function handleSort(field) {
+		if (sortField === field) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortField = field;
+			sortDirection = 'asc';
+		}
+		currentPage = 1;
+	}
+
+	function getSortIcon(field) {
+		if (sortField !== field) return '↕';
+		return sortDirection === 'asc' ? '↑' : '↓';
+	}
+
+	function getPaginatedSubmissions() {
+		const sorted = sortSubmissions(data?.submissions);
+		const start = (currentPage - 1) * perPage;
+		return sorted.slice(start, start + perPage);
+	}
+
+	function getTotalPages() {
+		if (!data?.submissions) return 0;
+		return Math.ceil(data.submissions.length / perPage);
+	}
+
+	function goToPage(page) {
+		const maxPage = getTotalPages();
+		if (page < 1) page = 1;
+		if (page > maxPage) page = maxPage;
+		currentPage = page;
+	}
 
 	onMount(async () => {
 		activityId = getActivityId();
@@ -122,9 +214,17 @@
 		}
 		syncing = false;
 	}
+
+	async function handleDownload(fsId, fileName) {
+		try {
+			await downloadSubmission(fsId, fileName);
+		} catch (e) {
+			error = e.message;
+		}
+	}
 </script>
 
-<div class="mx-auto max-w-6xl px-4 py-8">
+<div class="mx-auto max-w-7xl px-4 py-8">
 	<h1 class="mb-6 text-2xl font-bold text-gray-800">{$_('fileEval.grading.title')}</h1>
 
 	{#if error}
@@ -185,41 +285,92 @@
 			</button>
 		</div>
 
-		<!-- Evaluation progress -->
+		<!-- Evaluation progress modal -->
 		{#if evaluating && evalStatus}
 			<div class="mb-6 rounded-lg border bg-yellow-50 p-4">
-				<p class="font-medium">
-					{$_('fileEval.status.' + evalStatus.overall_status)}
-				</p>
+				<div class="mb-2 flex items-center justify-between">
+					<p class="font-medium">{$_('fileEval.grading.evalProgress')}</p>
+					<p class="text-sm text-gray-600">{$_('fileEval.status.' + evalStatus.overall_status)}</p>
+				</div>
+				<div class="h-4 w-full overflow-hidden rounded-full bg-gray-200">
+					<div
+						class="h-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-500"
+						style="width: {evalStatus.counts?.completed ? ((evalStatus.counts.completed / (evalStatus.counts.pending + evalStatus.counts.processing + evalStatus.counts.completed + evalStatus.counts.error || 1)) * 100) : 0}%"
+					></div>
+				</div>
 				<div class="mt-2 flex gap-4 text-sm">
-					<span>Pending: {evalStatus.counts?.pending || 0}</span>
-					<span>Processing: {evalStatus.counts?.processing || 0}</span>
-					<span>Completed: {evalStatus.counts?.completed || 0}</span>
-					<span>Errors: {evalStatus.counts?.error || 0}</span>
+					<span class="text-gray-600">{$_('fileEval.status.pending')}: {evalStatus.counts?.pending || 0}</span>
+					<span class="text-blue-600">{$_('fileEval.status.processing')}: {evalStatus.counts?.processing || 0}</span>
+					<span class="text-green-600">{$_('fileEval.status.completed')}: {evalStatus.counts?.completed || 0}</span>
+					<span class="text-red-600">{$_('fileEval.status.error')}: {evalStatus.counts?.error || 0}</span>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Pagination controls top -->
+		{#if data.submissions?.length > 0}
+			<div class="mb-4 flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<label class="text-sm text-gray-600">{$_('fileEval.grading.perPage')}:</label>
+					<select
+						bind:value={perPage}
+						onchange={() => (currentPage = 1)}
+						class="rounded-lg border px-2 py-1 text-sm"
+					>
+						{#each perPageOptions as opt}
+							<option value={opt}>{opt}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="flex items-center gap-2 text-sm text-gray-600">
+					<span>{$_('fileEval.grading.page')} {currentPage} / {getTotalPages()}</span>
+					<button
+						onclick={() => goToPage(currentPage - 1)}
+						disabled={currentPage === 1}
+						class="rounded border px-2 py-1 disabled:opacity-50"
+					>
+						←
+					</button>
+					<button
+						onclick={() => goToPage(currentPage + 1)}
+						disabled={currentPage === getTotalPages()}
+						class="rounded border px-2 py-1 disabled:opacity-50"
+					>
+						→
+					</button>
 				</div>
 			</div>
 		{/if}
 
 		<!-- Submissions table -->
-		{#if data.submissions?.length}
+		{#if getPaginatedSubmissions().length > 0}
 			<div class="overflow-x-auto rounded-lg border bg-white shadow-sm">
 				<table class="min-w-full divide-y divide-gray-200">
 					<thead class="bg-gray-50">
 						<tr>
-							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-								{$_('fileEval.grading.table.file')}
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('file_name')}>
+								{$_('fileEval.grading.table.file')} {getSortIcon('file_name')}
+							</th>
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('student_name')}>
+								{$_('fileEval.grading.table.student')} {getSortIcon('student_name')}
 							</th>
 							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
 								{$_('fileEval.grading.table.group')}
 							</th>
-							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-								{$_('fileEval.grading.table.aiScore')}
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('uploaded_at')}>
+								{$_('fileEval.grading.table.uploadedAt')} {getSortIcon('uploaded_at')}
 							</th>
 							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-								{$_('fileEval.grading.table.finalScore')}
+								{$_('fileEval.grading.table.studentNote')}
 							</th>
-							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-								{$_('fileEval.grading.table.status')}
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('ai_score')}>
+								{$_('fileEval.grading.table.aiScore')} {getSortIcon('ai_score')}
+							</th>
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('final_score')}>
+								{$_('fileEval.grading.table.finalScore')} {getSortIcon('final_score')}
+							</th>
+							<th class="cursor-pointer px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 hover:bg-gray-100" onclick={() => handleSort('evaluation_status')}>
+								{$_('fileEval.grading.table.status')} {getSortIcon('evaluation_status')}
 							</th>
 							<th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
 								{$_('fileEval.grading.table.actions')}
@@ -227,16 +378,40 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200">
-						{#each data.submissions as sub}
+						{#each getPaginatedSubmissions() as sub}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-3 text-sm">
-									{sub.file_submission?.file_name || 'N/A'}
+									<div class="flex items-center gap-2">
+										<span class="font-medium">{sub.file_submission?.file_name || 'N/A'}</span>
+										<button
+											onclick={() => handleDownload(sub.file_submission.id, sub.file_submission?.file_name)}
+											class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-blue-600"
+											title={$_('fileEval.grading.table.download')}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+											</svg>
+										</button>
+									</div>
 									<span class="block text-xs text-gray-400">
-										{sub.member_count || 1} member(s)
+										{sub.member_count || 1} {sub.member_count === 1 ? $_('fileEval.grading.table.member') : $_('fileEval.grading.table.members')}
 									</span>
 								</td>
 								<td class="px-4 py-3 text-sm">
+									{sub.members?.[0]?.student_name || sub.members?.[0]?.student_id || '-'}
+								</td>
+								<td class="px-4 py-3 text-sm">
 									{sub.file_submission?.group_display_name || '-'}
+								</td>
+								<td class="px-4 py-3 text-sm text-gray-500">
+									{formatDate(sub.file_submission?.uploaded_at)}
+								</td>
+								<td class="px-4 py-3 text-sm">
+									{sub.file_submission?.student_note ? (
+										<span class="max-w-xs truncate text-gray-600" title={sub.file_submission.student_note}>
+											{sub.file_submission.student_note}
+										</span>
+									) : '-'}
 								</td>
 								<td class="px-4 py-3 text-sm">
 									{sub.grade?.ai_score != null ? `${sub.grade.ai_score}/10` : '-'}
@@ -271,12 +446,20 @@
 								</td>
 								<td class="px-4 py-3 text-sm">
 									{#if editingGrade === sub.file_submission?.id}
-										<button
-											onclick={() => saveGrade(sub.file_submission.id)}
-											class="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
-										>
-											{$_('fileEval.grading.saveGrade')}
-										</button>
+										<div class="flex gap-1">
+											<button
+												onclick={() => saveGrade(sub.file_submission.id)}
+												class="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
+											>
+												{$_('fileEval.grading.saveGrade')}
+											</button>
+											<button
+												onclick={() => editingGrade = null}
+												class="rounded bg-gray-200 px-3 py-1 text-xs hover:bg-gray-300"
+											>
+												Cancel
+											</button>
+										</div>
 									{:else}
 										<button
 											onclick={() => startEditGrade(sub)}
@@ -290,6 +473,47 @@
 						{/each}
 					</tbody>
 				</table>
+			</div>
+
+			<!-- Pagination controls bottom -->
+			<div class="mt-4 flex items-center justify-between">
+				<div class="text-sm text-gray-600">
+					{$_('fileEval.grading.showing', {
+						from: (currentPage - 1) * perPage + 1,
+						to: Math.min(currentPage * perPage, data.submissions.length),
+						total: data.submissions.length
+					})}
+				</div>
+				<div class="flex items-center gap-2">
+					<button
+						onclick={() => goToPage(currentPage - 1)}
+						disabled={currentPage === 1}
+						class="rounded border px-3 py-1 text-sm disabled:opacity-50"
+					>
+						← {$_('fileEval.grading.previous')}
+					</button>
+					{#each Array.from({length: getTotalPages()}, (_, i) => i + 1) as pageNum}
+						{#if pageNum === 1 || pageNum === getTotalPages() || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)}
+							<button
+								onclick={() => goToPage(pageNum)}
+								class="rounded border px-3 py-1 text-sm {pageNum === currentPage ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-100'}"
+							>
+								{pageNum}
+							</button>
+						{:else}
+							{#if pageNum === currentPage + 2 && getTotalPages() > currentPage + 2}
+								<span class="px-2">...</span>
+							{/if}
+						{/if}
+					{/each}
+					<button
+						onclick={() => goToPage(currentPage + 1)}
+						disabled={currentPage === getTotalPages()}
+						class="rounded border px-3 py-1 text-sm disabled:opacity-50"
+					>
+						{$_('fileEval.grading.next')} →
+					</button>
+				</div>
 			</div>
 		{:else}
 			<div class="rounded-lg border bg-white p-12 text-center text-gray-500">
