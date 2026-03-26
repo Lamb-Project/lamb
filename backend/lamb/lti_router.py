@@ -174,6 +174,11 @@ async def lti_launch(request: Request):
             logger.error(f"Consumer key mismatch: got '{consumer_key}', expected '{expected_key}'")
             raise HTTPException(status_code=401, detail="Invalid consumer key")
 
+        # Extract and log lis_outcome_service_url for grade passback
+        lis_outcome_service_url = post_data.get("lis_outcome_service_url", "")
+        if lis_outcome_service_url:
+            logger.info(f"LTI Outcome Service URL received: {lis_outcome_service_url[:50]}...")
+
         base_url = manager.build_base_url(request)
         if not manager.validate_oauth_signature(post_data, "POST", base_url):
             raise HTTPException(status_code=401, detail="Invalid OAuth signature")
@@ -195,6 +200,16 @@ async def lti_launch(request: Request):
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
 
         activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
+
+        # Persist lis_outcome_service_url if we have it and activity exists
+        if activity and lis_outcome_service_url:
+            current_url = activity.get('lis_outcome_service_url')
+            if current_url != lis_outcome_service_url:
+                db_manager.update_lti_activity(
+                    activity['id'],
+                    lis_outcome_service_url=lis_outcome_service_url
+                )
+                logger.info(f"Updated lis_outcome_service_url for activity {resource_link_id}")
 
         if activity and activity['status'] == 'active':
             public_base = manager.get_public_base_url(request)

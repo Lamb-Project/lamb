@@ -72,6 +72,41 @@ class FileEvalService:
         finally:
             conn.close()
 
+    def get_activity_info(self, activity_id: int) -> Dict[str, Any]:
+        """Return activity info including description, deadline, and course name."""
+        conn = self.db.get_connection()
+        if not conn:
+            return {}
+        try:
+            conn.row_factory = _dict_factory
+            tbl = f"{self.db.table_prefix}lti_activities"
+            row = conn.execute(
+                f"SELECT title, description, deadline, lti_context_id, created_at FROM {tbl} WHERE id = ?",
+                (activity_id,)
+            ).fetchone()
+            if not row:
+                return {}
+
+            # Get course name from lti_contexts table
+            course_name = ""
+            if row.get("lti_context_id"):
+                ctx_row = conn.execute(
+                    f"SELECT name FROM {self.db.table_prefix}lti_contexts WHERE id = ?",
+                    (row["lti_context_id"],)
+                ).fetchone()
+                if ctx_row:
+                    course_name = ctx_row.get("name", "")
+
+            return {
+                "description": row.get("description"),
+                "deadline": row.get("deadline"),
+                "course_name": course_name,
+                "title": row.get("title"),
+                "created_at": row.get("created_at"),
+            }
+        finally:
+            conn.close()
+
     # ── Create submission ─────────────────────────────────────────────────
 
     def create_submission(
