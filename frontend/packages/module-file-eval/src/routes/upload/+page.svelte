@@ -19,15 +19,28 @@
 	let error = $state('');
 	let success = $state('');
 
-	function formatDate(timestamp) {
-		if (!timestamp) return '';
-		const date = new Date(timestamp * 1000);
-		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+	/** Parses deadline from API: Unix seconds, ms, or ISO date string (setup_config). */
+	function parseDeadline(deadline) {
+		if (deadline == null || deadline === '') return null;
+		if (typeof deadline === 'number') {
+			const ms = deadline > 1e12 ? deadline : deadline * 1000;
+			const d = new Date(ms);
+			return Number.isNaN(d.getTime()) ? null : d;
+		}
+		const d = new Date(deadline);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	function formatDate(deadline) {
+		const d = parseDeadline(deadline);
+		if (!d) return '';
+		return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
 	}
 
 	function isDeadlinePast(deadline) {
-		if (!deadline) return false;
-		return Date.now() > deadline * 1000;
+		const d = parseDeadline(deadline);
+		if (!d) return false;
+		return Date.now() > d.getTime();
 	}
 
 	let selectedFile = $state(null);
@@ -238,10 +251,11 @@
 		</div>
 
 		<div class="mt-4">
-			<label class="mb-1 block text-sm font-medium text-gray-700">
+			<label for="file-eval-student-note" class="mb-1 block text-sm font-medium text-gray-700">
 				{$_('fileEval.upload.noteLabel')}
 			</label>
 			<textarea
+				id="file-eval-student-note"
 				class="w-full rounded-lg border p-3 text-sm"
 				rows="3"
 				placeholder={$_('fileEval.upload.notePlaceholder')}
