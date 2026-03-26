@@ -21,7 +21,9 @@
 			"aiGrade": "AI Proposed Grade",
 			"feedback": "Feedback",
 			"deadline": "Deadline",
-			"deadlinePassed": "Deadline has passed"
+			"deadlinePassed": "Deadline has passed",
+			"activityInfo": "Activity Information",
+			"course": "Course"
 		},
 		"grading": {
 			"title": "Grading Dashboard",
@@ -38,7 +40,12 @@
 				"aiScore": "AI Score",
 				"finalScore": "Final Score",
 				"status": "Status",
-				"actions": "Actions"
+				"actions": "Actions",
+				"studentNote": "Note",
+				"uploadedAt": "Uploaded",
+				"download": "Download",
+				"member": "member",
+				"members": "members"
 			},
 			"evaluate": "Start AI Evaluation",
 			"evaluateAll": "Evaluate All",
@@ -49,7 +56,14 @@
 			"syncSuccess": "Grades sent to Moodle successfully",
 			"editGrade": "Edit Grade",
 			"saveGrade": "Save",
-			"noSubmissions": "No submissions yet"
+			"noSubmissions": "No submissions yet",
+			"evalProgress": "Evaluation Progress",
+			"sortBy": "Sort by",
+			"perPage": "Per page",
+			"page": "Page",
+			"showing": "Showing {from}–{to} of {total}",
+			"previous": "Previous",
+			"next": "Next"
 		},
 		"status": {
 			"pending": "Pending",
