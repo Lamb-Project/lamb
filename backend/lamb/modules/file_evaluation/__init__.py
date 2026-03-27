@@ -58,6 +58,12 @@ class FileEvalModule(ActivityModule):
                 required=False,
             ),
             SetupField(
+                name="description",
+                label="Activity Description",
+                field_type="textarea",
+                required=True,
+            ),
+            SetupField(
                 name="submission_type",
                 label="Submission type",
                 field_type="select",
@@ -103,6 +109,7 @@ class FileEvalModule(ActivityModule):
             ev = str(aids[0])
         module_fields = {
             "evaluator_id": ev,
+            "description": setup_data.get("description"),
             "submission_type": setup_data.get("submission_type", "individual"),
             "max_group_size": setup_data.get("max_group_size"),
             "deadline": setup_data.get("deadline"),
