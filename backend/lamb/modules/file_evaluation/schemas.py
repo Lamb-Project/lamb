@@ -63,6 +63,7 @@ class StudentSubmissionResponse(BaseModel):
     joined_at: Optional[int] = None
     sent_to_moodle: bool = False
     sent_to_moodle_at: Optional[int] = None
+    student_name: Optional[str] = None
 
 
 # ── Combined views ─────────────────────────────────────────────────────────

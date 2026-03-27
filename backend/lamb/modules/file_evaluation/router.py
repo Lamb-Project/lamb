@@ -152,6 +152,7 @@ async def upload_submission(
     payload = _decode_jwt(request, token)
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
+    display_name = (payload.get("lti_display_name") or "").strip() or None
 
     # Path param must match the activity embedded in the JWT (numeric lti_activities.id).
     tid = payload.get("lti_activity_id")
@@ -168,6 +169,7 @@ async def upload_submission(
             file_type=file.content_type or "application/octet-stream",
             lis_result_sourcedid=lis_sourcedid,
             student_note=student_note,
+            student_name=display_name,
         )
     except ValueError as e:
         msg = str(e)
@@ -213,11 +215,13 @@ async def join_group(request: Request, body: GroupCodeSubmission, token: str = "
     payload = _decode_jwt(request, token)
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
+    display_name = (payload.get("lti_display_name") or "").strip() or None
     result = _service.join_group(
         activity_id=activity_id,
         group_code=body.group_code,
         student_id=student_id,
         lis_result_sourcedid=lis_sourcedid,
+        student_name=display_name,
     )
     return {"success": True, "submission": result}
 

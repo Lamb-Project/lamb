@@ -68,13 +68,17 @@ async def lifespan(app: FastAPI):
 
     # --- Fix file_evaluation FKs if mod tables were created with wrong lti_activities name ---
     try:
-        from lamb.modules.file_evaluation.migrations import repair_file_eval_schema_if_needed
+        from lamb.modules.file_evaluation.migrations import (
+            repair_file_eval_schema_if_needed,
+            ensure_mod_file_eval_student_name_column,
+        )
 
         _db_pre = LambDatabaseManager()
         _conn_pre = _db_pre.get_connection()
         if _conn_pre:
             try:
                 repair_file_eval_schema_if_needed(_conn_pre, _db_pre.table_prefix)
+                ensure_mod_file_eval_student_name_column(_conn_pre)
                 _conn_pre.commit()
             finally:
                 _conn_pre.close()

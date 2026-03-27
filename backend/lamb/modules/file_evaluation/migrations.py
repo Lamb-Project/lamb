@@ -42,6 +42,20 @@ def repair_file_eval_schema_if_needed(conn: sqlite3.Connection, table_prefix: st
     conn.execute("DROP TABLE IF EXISTS mod_file_eval_submissions")
 
 
+def ensure_mod_file_eval_student_name_column(conn: sqlite3.Connection) -> None:
+    """Add student_name for LMS display name (CREATE IF NOT EXISTS does not add columns)."""
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='mod_file_eval_student_submissions'"
+    ).fetchone()
+    if not row:
+        return
+    cur = conn.execute("PRAGMA table_info(mod_file_eval_student_submissions)")
+    cols = {r[1] for r in cur.fetchall()}
+    if "student_name" not in cols:
+        conn.execute("ALTER TABLE mod_file_eval_student_submissions ADD COLUMN student_name TEXT")
+        logger.info("Added mod_file_eval_student_submissions.student_name")
+
+
 MIGRATION_SQL = [
     # ── File Submissions (one per individual or group upload) ──────────────
     """
@@ -79,6 +93,7 @@ MIGRATION_SQL = [
         joined_at               INTEGER NOT NULL,
         sent_to_moodle          INTEGER DEFAULT 0,
         sent_to_moodle_at       INTEGER,
+        student_name            TEXT,
         UNIQUE(student_id, activity_id)
     )
     """,

@@ -33,6 +33,13 @@ def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+def _norm_student_name(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _parse_setup_config(activity: Dict[str, Any]) -> Dict[str, Any]:
     """Return setup_config as a dict; tolerate bytes, NULL, or already-parsed dict."""
     raw = activity.get("setup_config")
@@ -113,6 +120,7 @@ class FileEvalService:
         file_type: str,
         lis_result_sourcedid: Optional[str] = None,
         student_note: Optional[str] = None,
+        student_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         conn = self.db.get_connection()
         if not conn:
@@ -131,6 +139,7 @@ class FileEvalService:
             language = cfg.get("language", "en")
 
             file_size = len(file_bytes)
+            display_name = _norm_student_name(student_name)
 
             existing_ss = conn.execute(
                 "SELECT * FROM mod_file_eval_student_submissions WHERE student_id = ? AND activity_id = ?",
@@ -158,10 +167,19 @@ class FileEvalService:
                         (file_name, file_path, file_size, file_type, _now(),
                          (student_note or "").strip() or None, fs["id"]),
                     )
+                    set_parts: List[str] = []
+                    set_vals: List[Any] = []
                     if lis_result_sourcedid:
+                        set_parts.extend(["lis_result_sourcedid=?", "joined_at=?"])
+                        set_vals.extend([lis_result_sourcedid, _now()])
+                    if display_name:
+                        set_parts.append("student_name=?")
+                        set_vals.append(display_name)
+                    if set_parts:
+                        set_vals.append(existing_ss["id"])
                         conn.execute(
-                            "UPDATE mod_file_eval_student_submissions SET lis_result_sourcedid=?, joined_at=? WHERE id=?",
-                            (lis_result_sourcedid, _now(), existing_ss["id"]),
+                            f"UPDATE mod_file_eval_student_submissions SET {', '.join(set_parts)} WHERE id=?",
+                            set_vals,
                         )
                     conn.commit()
                     return self._build_submission_view(conn, fs["id"], existing_ss["id"])
@@ -198,9 +216,9 @@ class FileEvalService:
             conn.execute(
                 """INSERT INTO mod_file_eval_student_submissions
                    (id, file_submission_id, student_id, activity_id,
-                    lis_result_sourcedid, joined_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (ss_id, fs_id, student_id, activity_id, lis_result_sourcedid, _now()),
+                    lis_result_sourcedid, joined_at, student_name)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (ss_id, fs_id, student_id, activity_id, lis_result_sourcedid, _now(), display_name),
             )
 
             conn.commit()
@@ -216,12 +234,14 @@ class FileEvalService:
         group_code: str,
         student_id: str,
         lis_result_sourcedid: Optional[str] = None,
+        student_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         conn = self.db.get_connection()
         if not conn:
             raise RuntimeError("No DB")
         try:
             conn.row_factory = _dict_factory
+            display_name = _norm_student_name(student_name)
 
             fs = conn.execute(
                 "SELECT * FROM mod_file_eval_submissions WHERE group_code = ? AND activity_id = ?",
@@ -249,9 +269,9 @@ class FileEvalService:
             ss_id = str(uuid.uuid4())
             conn.execute(
                 """INSERT INTO mod_file_eval_student_submissions
-                   (id, file_submission_id, student_id, activity_id, lis_result_sourcedid, joined_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (ss_id, fs["id"], student_id, activity_id, lis_result_sourcedid, _now()),
+                   (id, file_submission_id, student_id, activity_id, lis_result_sourcedid, joined_at, student_name)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (ss_id, fs["id"], student_id, activity_id, lis_result_sourcedid, _now(), display_name),
             )
             conn.commit()
             return self._build_submission_view(conn, fs["id"], ss_id)
