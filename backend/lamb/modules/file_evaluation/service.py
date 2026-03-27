@@ -377,6 +377,9 @@ class FileEvalService:
         fs = conn.execute("SELECT * FROM mod_file_eval_submissions WHERE id = ?", (fs_id,)).fetchone()
         ss = conn.execute("SELECT * FROM mod_file_eval_student_submissions WHERE id = ?", (ss_id,)).fetchone()
         grade = self.grade_svc.get_grade_by_submission(fs_id)
+        # Student-facing payloads only: hide scores until instructor syncs to Moodle (per learner).
+        if not bool(ss.get("sent_to_moodle")):
+            grade = None
         member_count = conn.execute(
             "SELECT COUNT(*) AS c FROM mod_file_eval_student_submissions WHERE file_submission_id = ?",
             (fs_id,),
