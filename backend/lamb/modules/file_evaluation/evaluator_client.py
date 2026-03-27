@@ -4,11 +4,61 @@ Evaluator client – calls LAMB's internal completions API and parses scores.
 Replaces LAMBA's LAMBAPIService (HTTP) with a direct in-process call to
 ``run_lamb_assistant``.
 """
+import json
 import re
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from starlette.responses import Response, StreamingResponse
+
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="FILE_EVAL")
+
+
+def _response_body_to_bytes(body: Any) -> bytes:
+    if body is None:
+        return b""
+    if isinstance(body, memoryview):
+        return body.tobytes()
+    if isinstance(body, bytes):
+        return body
+    if isinstance(body, str):
+        return body.encode("utf-8")
+    return bytes(body)
+
+
+def _unwrap_run_lamb_assistant_result(result: Any) -> Dict[str, Any]:
+    """``run_lamb_assistant`` returns a JSON ``Response`` for non-streaming success/error.
+
+    File-eval needs the OpenAI-shaped dict for ``parse_evaluation_response``; unwrap here.
+    Returns ``{"ok": True, "payload": dict}`` or ``{"ok": False, "error": str}``.
+    """
+    if isinstance(result, StreamingResponse):
+        logger.error("run_lamb_assistant returned StreamingResponse with stream=False")
+        return {"ok": False, "error": "Unexpected streaming response from assistant"}
+
+    if isinstance(result, Response):
+        status = int(getattr(result, "status_code", 200) or 200)
+        raw = _response_body_to_bytes(getattr(result, "body", b"") or b"")
+        try:
+            payload = json.loads(raw.decode("utf-8") if raw else "{}")
+        except json.JSONDecodeError as exc:
+            logger.error(f"Assistant response body is not JSON: {exc}")
+            return {"ok": False, "error": f"Invalid JSON from assistant: {exc}"}
+        if not isinstance(payload, dict):
+            return {"ok": False, "error": f"Assistant JSON is not an object, got {type(payload).__name__}"}
+        if status >= 400:
+            err = payload.get("error")
+            msg = err.get("message") if isinstance(err, dict) else None
+            detail = msg or str(payload)
+            return {"ok": False, "error": detail or f"Assistant returned HTTP {status}"}
+        return {"ok": True, "payload": payload}
+
+    if isinstance(result, dict):
+        return {"ok": True, "payload": result}
+
+    logger.error(f"run_lamb_assistant returned unexpected type: {type(result).__name__}")
+    return {"ok": False, "error": f"Unexpected assistant result type: {type(result).__name__}"}
 
 
 class EvaluatorClient:
@@ -29,8 +79,15 @@ class EvaluatorClient:
         }
 
         try:
-            result = await run_lamb_assistant(request=request_body, assistant=int(evaluator_id))
-            return {"success": True, "response": result}
+            raw = await run_lamb_assistant(request=request_body, assistant=int(evaluator_id))
+            unwrapped = _unwrap_run_lamb_assistant_result(raw)
+            if not unwrapped.get("ok"):
+                return {
+                    "success": False,
+                    "response": None,
+                    "error": unwrapped.get("error", "Unknown assistant error"),
+                }
+            return {"success": True, "response": unwrapped["payload"]}
         except Exception as exc:
             logger.error(f"run_lamb_assistant failed: {exc}")
             return {"success": False, "response": None, "error": str(exc)}

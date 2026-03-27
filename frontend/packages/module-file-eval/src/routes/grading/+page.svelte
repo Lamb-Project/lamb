@@ -407,11 +407,16 @@
 									{formatDate(sub.file_submission?.uploaded_at)}
 								</td>
 								<td class="px-4 py-3 text-sm">
-									{sub.file_submission?.student_note ? (
-										<span class="max-w-xs truncate text-gray-600" title={sub.file_submission.student_note}>
+									{#if sub.file_submission?.student_note}
+										<span
+											class="max-w-xs truncate text-gray-600"
+											title={sub.file_submission.student_note}
+										>
 											{sub.file_submission.student_note}
 										</span>
-									) : '-'}
+									{:else}
+										-
+									{/if}
 								</td>
 								<td class="px-4 py-3 text-sm">
 									{sub.grade?.ai_score != null ? `${sub.grade.ai_score}/10` : '-'}

@@ -343,6 +343,17 @@ Recommended test coverage:
 4. **File size limits**: No explicit upload size limit is enforced in the module; relies on FastAPI/reverse proxy defaults.
 5. **`lis_outcome_service_url`**: Currently stored as a new column on `lti_activities`. This URL comes from the LTI launch params and must be persisted during activity setup — the Unified LTI Router needs to save it from the launch POST.
 6. **Activity description / parity with standalone LAMBA**: The instructor setup flow may not yet expose all fields (e.g. long description) that LAMBA had for file-eval activities; track as a follow-up if product requires it.
+7. **Group resubmit policy and 409 Conflict**: `create_submission` only treats a POST as a *resubmit* (update same `mod_file_eval_submissions` row) when the existing submission’s `uploaded_by` equals the current `student_id`. A group member who joined via code shares the same `file_submission_id` but is not `uploaded_by`; a second upload attempt falls through to a new insert and hits the UNIQUE constraint on `(student_id, activity_id)`, which surfaces as **HTTP 409**. Only the student who originally uploaded can replace the file today—this can look like an intermittent bug when comparing different accounts. **To improve / implement**: decide product rules (e.g. any group member may replace vs leader-only), return a clear API error message (not a generic conflict), update the student UI copy, and optionally allow updates to the shared `file_submission` for all members of the same group when policy allows. Success-path logging for uploads is also minimal (mostly warnings on errors); ops visibility can be improved with `INFO` lines or access logs.
+
+### 10.3 — Resolved: AI evaluation stored garbage in `ai_comment` (file_eval)
+
+| | |
+|--|--|
+| **Symptom** | After “Evaluate”, `mod_file_eval_grades.ai_comment` contained text like `{'success': True, 'response': <starlette.responses.Response object at 0x…>}` and `ai_score` stayed empty. |
+| **Cause** | In-process `run_lamb_assistant()` returns a **Starlette `Response`** (JSON body) for non-streaming completions (`lamb/completions/main.py`). `EvaluatorClient.parse_evaluation_response()` expected `eval_result["response"]` to be an **OpenAI-shaped dict** with `choices` / `message` / `content`, so it never extracted model text and fell back to `str(eval_result)`. |
+| **Fix** | `evaluate_text()` in [`backend/lamb/modules/file_evaluation/evaluator_client.py`](../../backend/lamb/modules/file_evaluation/evaluator_client.py) unwraps `Response`: read `body`, `json.loads`, treat HTTP status ≥ 400 as failure (surface `error.message` when present), then pass the parsed dict into `parse_evaluation_response`. Streaming responses are rejected as unexpected when `stream=False`. |
+
+**Status (verified)**: With the unwrap in place, evaluation persists the **full assistant message** in `ai_comment` (the model’s `content` string). That is the intended behaviour after the fix. **`ai_score` may still be `NULL`**: it is only filled when `_extract_score_and_feedback` finds a numeric grade using the built-in regex patterns (e.g. `NOTA FINAL: 7.5`, `Score: 8`, line ending in `8/10`). Chat-style replies without those patterns store useful text in `ai_comment` but leave **`ai_score` empty** — that is expected, not a regression. Use an evaluator-oriented assistant prompt (or extend the regex / rubric flow) if you need automatic numeric scores every time.
 
 ### 10.2 — Integration follow-ups (tracked for next iteration)
 

@@ -44,6 +44,12 @@ backend/pipelines/*
 backend/lamb_assistants/*
 backend/static/public
 backend/timelog.md
+# File evaluation module: student submission files (runtime; do not commit)
+# Ignores this directory and everything under it recursively.
+backend/uploads/file-eval/
+# Local DB dump and module dev snapshot (do not commit)
+lamb_v4_dump.sql
+backend/file_eval_snapshot.txt
 
 # Database
 *.db

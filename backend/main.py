@@ -965,6 +965,49 @@ if os.path.isdir(abs_frontend_build_dir):
     else:
         logger.warning(f"config.js not found: {config_js_path}")
 
+    # Module SPAs: static/config.js is emitted next to index.html (not under app/), so it is not
+    # covered by StaticFiles mounts at /m/chat/app and /m/file-eval/app. The catch-all would 404
+    # paths like m/file-eval/config.js. Serve explicitly (same pattern as /config.js for root SPA).
+    _minimal_lamb_config_js = b"window.LAMB_CONFIG = window.LAMB_CONFIG || {};\n"
+
+    module_chat_config_js = os.path.join(module_chat_dir, "config.js")
+
+    @app.get("/m/chat/config.js", include_in_schema=False)
+    async def get_module_chat_config_js():
+        if os.path.isfile(module_chat_config_js):
+            return FileResponse(module_chat_config_js, media_type="application/javascript")
+        logger.warning(
+            "module-chat build has no config.js at %s; serving minimal inline LAMB_CONFIG",
+            module_chat_config_js,
+        )
+        return Response(content=_minimal_lamb_config_js, media_type="application/javascript")
+
+    if os.path.isfile(module_chat_config_js):
+        logger.info(f"Serving module-chat config.js from: {module_chat_config_js}")
+    else:
+        logger.warning(
+            "Add frontend/packages/module-chat/static/config.js and rebuild m/chat to persist config on disk."
+        )
+
+    module_file_eval_config_js = os.path.join(module_file_eval_dir, "config.js")
+
+    @app.get("/m/file-eval/config.js", include_in_schema=False)
+    async def get_module_file_eval_config_js():
+        if os.path.isfile(module_file_eval_config_js):
+            return FileResponse(module_file_eval_config_js, media_type="application/javascript")
+        logger.warning(
+            "module-file-eval build has no config.js at %s; serving minimal inline LAMB_CONFIG",
+            module_file_eval_config_js,
+        )
+        return Response(content=_minimal_lamb_config_js, media_type="application/javascript")
+
+    if os.path.isfile(module_file_eval_config_js):
+        logger.info(f"Serving module-file-eval config.js from: {module_file_eval_config_js}")
+    else:
+        logger.warning(
+            "Add frontend/packages/module-file-eval/static/config.js and rebuild m/file-eval to persist config on disk."
+        )
+
     # 3. SPA Catch-all Route (Defined last to avoid overriding API routes)
     if os.path.isfile(frontend_index_html):
         logger.info(f"SPA index.html found: {frontend_index_html}. Enabling catch-all route.")

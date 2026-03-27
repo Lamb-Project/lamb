@@ -1,5 +1,11 @@
 <script>
 	import '../app.css';
+	import { initI18n } from '@lamb/ui';
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		initI18n();
+	});
 
 	let { children } = $props();
 </script>
