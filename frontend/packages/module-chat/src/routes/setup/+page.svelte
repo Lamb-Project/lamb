@@ -77,7 +77,21 @@
         if (changed) dynamicOptions = next;
     });
 
-    let canSubmit = $derived(selectedActivity && selectedOrg && selectedAssistants.length > 0 && !saving);
+    // Check if all required dynamic fields have values
+    function hasRequiredFields() {
+        if (!setupData?.modules_fields || !selectedActivity) return true;
+        const fields = setupData.modules_fields[selectedActivity] || [];
+        for (const f of fields) {
+            if (f.required) {
+                const val = dynamicOptions[f.name];
+                if (val === undefined || val === null || val === '') return false;
+                if (typeof val === 'string' && val.trim() === '') return false;
+            }
+        }
+        return true;
+    }
+
+    let canSubmit = $derived(selectedActivity && selectedOrg && selectedAssistants.length > 0 && hasRequiredFields() && !saving);
 
     function toggleAssistant(id) {
         if (selectedAssistants.includes(id)) {
@@ -304,6 +318,21 @@
                                             bind:value={dynamicOptions[f.name]}
                                             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         />
+                                    </div>
+                                {:else if f.type === 'textarea'}
+                                    <div class="p-3 border rounded-lg bg-white">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
+                                            {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
+                                        </label>
+                                        <textarea
+                                            id="dyn-{f.name}"
+                                            name={f.name}
+                                            bind:value={dynamicOptions[f.name]}
+                                            rows="4"
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder={f.label}
+                                            required={f.required}
+                                        ></textarea>
                                     </div>
                                 {/if}
                             {/each}

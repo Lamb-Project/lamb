@@ -64,3 +64,18 @@ export async function downloadSubmission(fileSubmissionId, fileName) {
 	a.click();
 	URL.revokeObjectURL(a.href);
 }
+
+/**
+ * Update activity configuration (description, deadline)
+ * @param {number|string} activityId
+ * @param {Object} config
+ * @param {string} [config.description]
+ * @param {number} [config.deadline] Unix timestamp in seconds
+ */
+export async function updateActivityConfig(activityId, config) {
+	return apiFetch(`/activities/${activityId}/setup-config`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(config)
+	});
+}
