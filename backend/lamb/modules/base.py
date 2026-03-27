@@ -15,6 +15,8 @@ class LTIContext(BaseModel):
     is_instructor: bool
     context_id: str
     context_title: str
+    # LTI 1.1: per-user grade line id for Outcomes passback (from launch POST)
+    lis_result_sourcedid: Optional[str] = None
 
 class SetupField(BaseModel):
     """Defines extra fields the module needs on the setup page"""
@@ -70,8 +72,15 @@ class ActivityModule(ABC):
         pass
 
     @abstractmethod
-    def launch_user(self, activity: Dict[str, Any], username: str, display_name: str,
-                     lms_user_id: str, is_instructor: bool = False) -> Optional[str]:
+    def launch_user(
+        self,
+        activity: Dict[str, Any],
+        username: str,
+        display_name: str,
+        lms_user_id: str,
+        is_instructor: bool = False,
+        lis_result_sourcedid: Optional[str] = None,
+    ) -> Optional[str]:
         """Launch a user into this activity. Returns redirect URL or None on failure.
         Used by the router for post-consent and enter-chat flows.
         """

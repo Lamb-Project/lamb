@@ -113,8 +113,15 @@ class ChatModule(ActivityModule):
             status_code=303
         )
 
-    def launch_user(self, activity, username, display_name, lms_user_id,
-                     is_instructor=False):
+    def launch_user(
+        self,
+        activity,
+        username,
+        display_name,
+        lms_user_id,
+        is_instructor=False,
+        lis_result_sourcedid=None,
+    ):
         """Launch a user into OWI. Returns redirect URL or None."""
         owi_token = self.service.handle_student_launch(
             activity=activity,

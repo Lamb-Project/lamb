@@ -147,8 +147,12 @@ class FileEvalModule(ActivityModule):
         student_email = manager.generate_student_email(ctx.username, ctx.resource_link_id)
 
         token = self._create_file_eval_jwt(
-            activity, student_email, ctx.display_name,
-            ctx.lms_user_id, is_instructor=False,
+            activity,
+            student_email,
+            ctx.display_name,
+            ctx.lms_user_id,
+            is_instructor=False,
+            lis_result_sourcedid=ctx.lis_result_sourcedid,
         )
 
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
@@ -186,13 +190,25 @@ class FileEvalModule(ActivityModule):
 
         return RedirectResponse(url=redirect_url, status_code=303)
 
-    def launch_user(self, activity, username, display_name, lms_user_id,
-                     is_instructor=False):
+    def launch_user(
+        self,
+        activity,
+        username,
+        display_name,
+        lms_user_id,
+        is_instructor=False,
+        lis_result_sourcedid=None,
+    ):
         """Launch a user into this activity. Returns redirect URL or None."""
         manager = LtiActivityManager()
         user_email = manager.generate_student_email(username, activity["resource_link_id"])
         token = self._create_file_eval_jwt(
-            activity, user_email, display_name, lms_user_id, is_instructor,
+            activity,
+            user_email,
+            display_name,
+            lms_user_id,
+            is_instructor,
+            lis_result_sourcedid=lis_result_sourcedid,
         )
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
         page = "grading" if is_instructor else "upload"

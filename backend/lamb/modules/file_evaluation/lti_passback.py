@@ -143,14 +143,25 @@ class LTIGradePassback:
                 if "imsx_codemajor>success" in resp.text.lower():
                     success = True
                 else:
-                    error_message = "Moodle returned failure in XML body"
+                    snippet = (resp.text or "")[:400].replace("\n", " ")
+                    error_message = f"Moodle outcome XML not success: {snippet}"
             else:
-                error_message = f"HTTP {resp.status_code}"
+                snippet = (resp.text or "")[:300].replace("\n", " ")
+                error_message = f"HTTP {resp.status_code}" + (f" — {snippet}" if snippet else "")
 
             return {"success": success, "status_code": resp.status_code, "error_message": error_message}
 
         except requests.exceptions.RequestException as exc:
-            return {"success": False, "status_code": None, "error_message": f"Connection error: {exc}"}
+            msg = f"Connection error: {exc}"
+            url_l = (lis_outcome_service_url or "").lower()
+            if "localhost" in url_l or "127.0.0.1" in lis_outcome_service_url:
+                msg += (
+                    " | Moodle envió lis_outcome_service_url con localhost: desde Docker (o otro host), "
+                    "'localhost' es la propia máquina del backend, no tu PC. "
+                    "Configura Moodle con una URL pública del LMS (p. ej. https://moodle.tudominio/...) "
+                    "o usa host.docker.internal / la IP del host en lugar de localhost en la URL base del sitio."
+                )
+            return {"success": False, "status_code": None, "error_message": msg}
         except Exception as exc:
             return {"success": False, "status_code": None, "error_message": f"Unexpected error: {exc}"}
 
@@ -195,6 +206,7 @@ class LTIGradePassback:
                   JOIN mod_file_eval_grades g ON fs.id = g.file_submission_id
                  WHERE ss.activity_id = ?
                    AND ss.lis_result_sourcedid IS NOT NULL
+                   AND TRIM(ss.lis_result_sourcedid) != ''
                    AND g.score IS NOT NULL
             """, (activity_id,)).fetchall()
 
@@ -212,7 +224,13 @@ class LTIGradePassback:
                     score=row["score"],
                     comment=row["comment"] or "Grade sent automatically",
                 )
-                results.append({"student_id": row["student_id"], "success": res["success"], "error": res.get("error_message")})
+                err_detail = res.get("error_message")
+                results.append({
+                    "student_id": row["student_id"],
+                    "success": res["success"],
+                    "error": err_detail,
+                    "status_code": res.get("status_code"),
+                })
                 if res["success"]:
                     conn.execute(
                         "UPDATE mod_file_eval_student_submissions SET sent_to_moodle = 1, sent_to_moodle_at = ? WHERE id = ?",
@@ -221,9 +239,31 @@ class LTIGradePassback:
                     sent += 1
                 else:
                     failed += 1
+                    logger.warning(
+                        "file_eval moodle passback failed student=%s status=%s err=%s",
+                        row["student_id"],
+                        res.get("status_code"),
+                        err_detail,
+                    )
 
             conn.commit()
-            return {"success": sent > 0 and failed == 0, "sent": sent, "failed": failed, "results": results}
+            all_ok = failed == 0
+            summary_error = None
+            if not all_ok:
+                bad = [r for r in results if not r.get("success")]
+                if bad:
+                    first = bad[0]
+                    summary_error = f"{first.get('student_id', '?')}: {first.get('error') or 'unknown'}"
+                    if len(bad) > 1:
+                        summary_error += f" (+{len(bad) - 1} more)"
+
+            return {
+                "success": all_ok and sent > 0,
+                "sent": sent,
+                "failed": failed,
+                "error": summary_error,
+                "results": results,
+            }
 
         finally:
             conn.close()

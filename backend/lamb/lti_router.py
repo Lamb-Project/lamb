@@ -196,6 +196,8 @@ async def lti_launch(request: Request):
                         or lms_user_id or "LTI User")
         context_id = post_data.get("context_id", "")
         context_title = post_data.get("context_title", "")
+        _raw_sourced = (post_data.get("lis_result_sourcedid") or "").strip()
+        lis_result_sourcedid = _raw_sourced or None
 
         logger.info(f"LTI launch: resource_link={resource_link_id}, user={username}, roles={roles}")
 
@@ -244,6 +246,7 @@ async def lti_launch(request: Request):
                     "display_name": display_name,
                     "lms_user_id": lms_user_id,
                     "student_email": student_email,
+                    "lis_result_sourcedid": lis_result_sourcedid,
                 })
                 return RedirectResponse(
                     url=f"{public_base}/m/chat/consent?token={consent_token}",
@@ -260,6 +263,7 @@ async def lti_launch(request: Request):
                 is_instructor=False,
                 context_id=context_id,
                 context_title=context_title,
+                lis_result_sourcedid=lis_result_sourcedid,
             )
             module = _get_activity_module(activity)
             logger.info(f"Student launch -> module {activity.get('activity_type', 'chat')}")
@@ -744,11 +748,14 @@ async def lti_consent_submit(request: Request):
 
         # Delegate launch to module (returns redirect URL)
         module = _get_activity_module(activity)
+        _consent_sourced = (data.get("lis_result_sourcedid") or "").strip()
+        consent_lis_sourcedid = _consent_sourced or None
         redirect_url = module.launch_user(
             activity=activity,
             username=username,
             display_name=display_name,
             lms_user_id=lms_user_id,
+            lis_result_sourcedid=consent_lis_sourcedid,
         )
 
         if not redirect_url:
