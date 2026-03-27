@@ -43,6 +43,17 @@
 		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 	}
 
+	/** Prefer LMS display name; synthetic id only as fallback (e.g. old rows). */
+	function memberLabel(m) {
+		if (!m) return '-';
+		return (m.student_name || m.student_id || '').trim() || '-';
+	}
+
+	function studentSortKey(sub) {
+		const m = sub.members?.[0];
+		return (m?.student_name || m?.student_id || '').toLowerCase();
+	}
+
 	function sortSubmissions(submissions) {
 		if (!submissions) return [];
 		return [...submissions].sort((a, b) => {
@@ -53,8 +64,8 @@
 					bVal = b.file_submission?.file_name?.toLowerCase() || '';
 					break;
 				case 'student_name':
-					aVal = a.members?.[0]?.student_name?.toLowerCase() || '';
-					bVal = b.members?.[0]?.student_name?.toLowerCase() || '';
+					aVal = studentSortKey(a);
+					bVal = studentSortKey(b);
 					break;
 				case 'uploaded_at':
 					aVal = a.file_submission?.uploaded_at || 0;
@@ -206,7 +217,14 @@
 			if (result.success) {
 				success = $_('fileEval.grading.syncSuccess');
 			} else {
-				error = result.error || 'Sync failed';
+				const detail =
+					result.error ||
+					(result.results
+						?.filter((r) => !r.success)
+						.map((r) => `${r.student_id}: ${r.error || '?'}`)
+						.join(' · ')) ||
+					'Sync failed';
+				error = detail;
 			}
 			await refresh();
 		} catch (e) {
@@ -398,7 +416,15 @@
 									</span>
 								</td>
 								<td class="px-4 py-3 text-sm">
-									{sub.members?.[0]?.student_name || sub.members?.[0]?.student_id || '-'}
+									{#if (sub.members?.length || 0) > 1}
+										<ul class="list-inside list-disc space-y-1">
+											{#each sub.members as m}
+												<li>{memberLabel(m)}</li>
+											{/each}
+										</ul>
+									{:else}
+										{memberLabel(sub.members?.[0])}
+									{/if}
 								</td>
 								<td class="px-4 py-3 text-sm">
 									{sub.file_submission?.group_display_name || '-'}

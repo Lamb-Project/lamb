@@ -19,6 +19,7 @@
 			"download": "Bidalitako fitxategia deskargatu",
 			"grade": "Nota",
 			"aiGrade": "IAk Proposatutako Nota",
+			"gradePendingMoodle": "Zure nota hemen agertuko da irakasleak Moodlen kalifikazio-liburuan argitaratzen duenean.",
 			"feedback": "Iruzkinak",
 			"deadline": "Muga data",
 			"deadlinePassed": "Muga data igaro da",

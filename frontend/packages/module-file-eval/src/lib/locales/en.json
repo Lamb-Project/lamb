@@ -19,6 +19,7 @@
 			"download": "Download submitted file",
 			"grade": "Grade",
 			"aiGrade": "AI Proposed Grade",
+			"gradePendingMoodle": "Your grade will appear here after your instructor publishes it to the course gradebook (Moodle).",
 			"feedback": "Feedback",
 			"deadline": "Deadline",
 			"deadlinePassed": "Deadline has passed",

@@ -213,6 +213,10 @@
 							</p>
 						{/if}
 					</div>
+				{:else if submission.student_submission && !submission.student_submission.sent_to_moodle}
+					<p class="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+						{$_('fileEval.upload.gradePendingMoodle')}
+					</p>
 				{/if}
 			</div>
 			<div class="mt-4 flex gap-2">

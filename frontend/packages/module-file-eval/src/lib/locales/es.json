@@ -19,6 +19,7 @@
 			"download": "Descargar archivo entregado",
 			"grade": "Nota",
 			"aiGrade": "Nota Propuesta por IA",
+			"gradePendingMoodle": "Tu nota aparecerá aquí cuando el profesor la publique en el libro de calificaciones de Moodle.",
 			"feedback": "Comentarios",
 			"deadline": "Fecha límite",
 			"deadlinePassed": "La fecha límite ha pasado",

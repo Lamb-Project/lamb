@@ -19,6 +19,7 @@
 			"download": "Descarregar arxiu lliurat",
 			"grade": "Nota",
 			"aiGrade": "Nota Proposada per IA",
+			"gradePendingMoodle": "La teva nota apareixerà aquí quan el professor la publiqui al llibre de qualificacions de Moodle.",
 			"feedback": "Comentaris",
 			"deadline": "Data límit",
 			"deadlinePassed": "La data límit ha passat",
