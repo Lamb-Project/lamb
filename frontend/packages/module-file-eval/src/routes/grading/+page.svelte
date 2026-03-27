@@ -8,7 +8,8 @@
 		updateGrade,
 		acceptAiGrades,
 		syncGradesToMoodle,
-		downloadSubmission
+		downloadSubmission,
+		updateActivityConfig
 	} from '$lib/services/gradingService.js';
 	import { getActivityId } from '$lib/services/api.js';
 
@@ -27,6 +28,70 @@
 	let editComment = $state('');
 
 	let pollInterval = $state(null);
+
+	// Activity config editing state
+	let editingConfig = $state(false);
+	let editDescription = $state('');
+	let editDeadline = $state('');
+	let editDeadlineDate = $state('');
+	let editDeadlineTime = $state('');
+
+	function parseDeadline(deadline) {
+		if (deadline == null || deadline === '') return null;
+		if (typeof deadline === 'number') {
+			const ms = deadline > 1e12 ? deadline : deadline * 1000;
+			const d = new Date(ms);
+			return Number.isNaN(d.getTime()) ? null : d;
+		}
+		const d = new Date(deadline);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	function formatDeadline(deadline) {
+		const d = parseDeadline(deadline);
+		if (!d) return { date: '', time: '' };
+		return {
+			date: d.toISOString().split('T')[0],
+			time: d.toTimeString().slice(0, 5)
+		};
+	}
+
+	function startEditConfig() {
+		editingConfig = true;
+		const desc = data?.activity_info?.description || '';
+		editDescription = desc || '';
+		const dl = parseDeadline(data?.activity_info?.deadline);
+		if (dl) {
+			editDeadlineDate = dl.toISOString().split('T')[0];
+			editDeadlineTime = dl.toTimeString().slice(0, 5);
+		} else {
+			editDeadlineDate = '';
+			editDeadlineTime = '';
+		}
+	}
+
+	function cancelEditConfig() {
+		editingConfig = false;
+	}
+
+	async function saveConfig() {
+		try {
+			let deadline = null;
+			if (editDeadlineDate && editDeadlineTime) {
+				const dlDate = new Date(`${editDeadlineDate}T${editDeadlineTime}`);
+				deadline = Math.floor(dlDate.getTime() / 1000);
+			}
+			await updateActivityConfig(activityId, {
+				description: editDescription,
+				deadline: deadline
+			});
+			await refresh();
+			editingConfig = false;
+			success = 'Activity configuration updated';
+		} catch (e) {
+			error = e.message;
+		}
+	}
 
 	// Sorting state
 	let sortField = $state('uploaded_at');
@@ -239,6 +304,79 @@
 			<div class="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
 		</div>
 	{:else if data}
+		<!-- Activity Info Card with Edit -->
+		{#if data.activity_info}
+			<div class="mb-6 rounded-lg border bg-white p-5 shadow-sm">
+				<div class="mb-3 flex items-center justify-between">
+					<h2 class="text-lg font-semibold text-gray-800">{$_('fileEval.grading.activityConfig')}</h2>
+					{#if editingConfig}
+						<div class="flex gap-2">
+							<button onclick={saveConfig} class="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700">
+								{$_('fileEval.grading.save')}
+							</button>
+							<button onclick={cancelEditConfig} class="rounded bg-gray-200 px-3 py-1 text-sm hover:bg-gray-300">
+								{$_('fileEval.grading.cancel')}
+							</button>
+						</div>
+					{:else}
+						<button onclick={startEditConfig} class="rounded bg-blue-100 px-3 py-1 text-sm text-blue-700 hover:bg-blue-200">
+							{$_('fileEval.grading.editConfig')}
+						</button>
+					{/if}
+				</div>
+				{#if editingConfig}
+					<div class="space-y-4">
+						<div>
+							<label class="mb-1 block text-sm font-medium text-gray-700">{$_('fileEval.grading.description')}</label>
+							<textarea
+								class="w-full rounded-lg border p-3 text-sm"
+								rows="4"
+								bind:value={editDescription}
+								placeholder={$_('fileEval.grading.descriptionPlaceholder')}
+							></textarea>
+						</div>
+						<div class="flex gap-4">
+							<div class="flex-1">
+								<label class="mb-1 block text-sm font-medium text-gray-700">{$_('fileEval.grading.deadlineDate')}</label>
+								<input type="date" class="w-full rounded-lg border p-2 text-sm" bind:value={editDeadlineDate} />
+							</div>
+							<div class="w-40">
+								<label class="mb-1 block text-sm font-medium text-gray-700">{$_('fileEval.grading.deadlineTime')}</label>
+								<input type="time" class="w-full rounded-lg border p-2 text-sm" bind:value={editDeadlineTime} />
+							</div>
+						</div>
+					</div>
+				{:else}
+					<div class="space-y-2 text-sm text-gray-600">
+						{#if data.activity_info.description}
+							<p class="whitespace-pre-wrap">{data.activity_info.description}</p>
+						{:else}
+							<p class="italic text-gray-400">{$_('fileEval.grading.noDescription')}</p>
+						{/if}
+						{#if data.activity_info.deadline}
+							<p class="flex items-center gap-2">
+								<span class="font-medium">{$_('fileEval.grading.deadline')}:</span>
+								<span class="{isDeadlinePast(data.activity_info.deadline) ? 'text-red-600' : 'text-green-600'}">
+									{formatDate(data.activity_info.deadline)}
+								</span>
+								{#if isDeadlinePast(data.activity_info.deadline)}
+									<span class="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+										{$_('fileEval.grading.deadlinePassed')}
+									</span>
+								{/if}
+							</p>
+						{/if}
+						{#if data.activity_info.course_name}
+							<p>
+								<span class="font-medium">{$_('fileEval.grading.course')}:</span>
+								{data.activity_info.course_name}
+							</p>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Stats cards -->
 		{#if data.stats}
 			<div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">

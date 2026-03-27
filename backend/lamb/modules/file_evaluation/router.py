@@ -96,7 +96,7 @@ async def update_setup_config(
         raise HTTPException(status_code=403, detail="Activity does not match token")
 
     # Allowed fields to update
-    allowed_fields = {"evaluator_id", "deadline", "submission_type", "max_group_size", "language"}
+    allowed_fields = {"evaluator_id", "description", "deadline", "submission_type", "max_group_size", "language"}
     updates = {k: v for k, v in body.items() if k in allowed_fields}
 
     if not updates:
