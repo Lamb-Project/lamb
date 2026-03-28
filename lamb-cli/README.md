@@ -105,6 +105,17 @@ lamb
     reset-password <uid> <pw>  Reset a user's password
     bulk-import <file>     Bulk import users from JSON
 
+  rubric
+    list                   List your rubrics
+    list-public            List public rubrics (templates)
+    get <id>               Get rubric details
+    delete <id>            Delete a rubric (with confirmation)
+    duplicate <id>         Duplicate a rubric
+    export <id>            Export rubric as JSON or markdown
+    import <file>          Import a rubric from JSON file
+    share <id>             Enable/disable public visibility
+    generate <prompt>      AI-generate a rubric from description
+
   template
     list                   List your prompt templates
     list-shared            List shared prompt templates
@@ -227,6 +238,7 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | 2     | Knowledge Bases + Ingestion Jobs       | Done    |
 | 3     | Organizations + Users (admin commands) | Done    |
 | 4     | Templates + Analytics + Chat           | Done    |
-| 5     | Shell completions, config profiles     | Planned |
+| 5     | Rubrics (EvaluAItor)                   | Done    |
+| 6     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.

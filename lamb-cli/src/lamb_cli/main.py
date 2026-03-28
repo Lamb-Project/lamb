@@ -9,7 +9,7 @@ import typer
 
 from lamb_cli import __version__
 from lamb_cli.client import LambClient, get_client
-from lamb_cli.commands import analytics, assistant, job, kb, model, org, template, user
+from lamb_cli.commands import analytics, assistant, job, kb, model, org, rubric, template, user
 from lamb_cli.commands.chat import chat as chat_cmd
 from lamb_cli.config import clear_credentials, get_output_format, get_server_url, get_user_info, save_config, save_credentials
 from lamb_cli.errors import LambCliError, exit_code_for
@@ -27,6 +27,7 @@ app.add_typer(kb.app, name="kb")
 app.add_typer(job.app, name="job")
 app.add_typer(org.app, name="org")
 app.add_typer(user.app, name="user")
+app.add_typer(rubric.app, name="rubric")
 app.add_typer(template.app, name="template")
 app.add_typer(analytics.app, name="analytics")
 app.command(name="chat")(chat_cmd)
