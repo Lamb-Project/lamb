@@ -39,14 +39,9 @@ class LambDatabaseManager:
             load_dotenv()
 
             # Get database configuration from environment variables
-            self.table_prefix = os.getenv('LAMB_DB_PREFIX', '')
+            self.table_prefix = config.LAMB_DB_PREFIX
 
-            lamb_db_path = os.getenv('LAMB_DB_PATH')
-            if not lamb_db_path:
-                logger.error("LAMB_DB_PATH not found in environment variables")
-                raise ValueError("LAMB_DB_PATH must be specified in environment variables")
-
-            self.db_path = os.path.join(lamb_db_path, 'lamb_v4.db')
+            self.db_path = os.path.join(config.LAMB_DB_PATH, 'lamb_v4.db')
             if not os.path.exists(self.db_path):
                 # Create the database file and directory if they don't exist
                 os.makedirs(os.path.dirname(self.db_path), exist_ok=True)

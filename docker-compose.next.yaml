@@ -1,0 +1,96 @@
+services:
+  lamb:
+    image: ghcr.io/Lamb-Project/lamb:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: ${LAMB_PORT:-9099}
+      OWI_BASE_URL: ${OWI_BASE_URL?Set OWI_BASE_URL}
+      OWI_PATH: ${OWI_PATH?Set OWI_PATH}
+      LAMB_KB_SERVER: ${LAMB_KB_SERVER:-http://kb:9090}
+      LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST?Set LAMB_BACKEND_HOST}
+      LAMB_WEB_HOST: ${LAMB_WEB_HOST?Set LAMB_WEB_HOST}
+      LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN?Set LAMB_BEARER_TOKEN}
+      LAMB_KB_SERVER_TOKEN: ${LAMB_KB_SERVER_TOKEN:-0p3n-w3bu!}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL?Set OPENAI_BASE_URL}
+      OPENAI_MODEL: ${OPENAI_MODEL?Set OPENAI_MODEL}
+      OPENAI_MODELS: ${OPENAI_MODELS:-gpt-4o-mini,gpt-4o}
+      SIGNUP_SECRET_KEY: ${SIGNUP_SECRET_KEY?Set SIGNUP_SECRET_KEY}
+      LTI_SECRET: ${LTI_SECRET:-lamb-lti-secret-key-2024}
+      OWI_ADMIN_NAME: ${OWI_ADMIN_NAME?Set OWI_ADMIN_NAME}
+      OWI_ADMIN_EMAIL: ${OWI_ADMIN_EMAIL?Set OWI_ADMIN_EMAIL}
+      OWI_ADMIN_PASSWORD: ${OWI_ADMIN_PASSWORD?Set OWI_ADMIN_PASSWORD}
+    ports:
+      - "9099:9099"
+    volumes:
+      - lamb-data:/data/lamb
+      - openwebui-data:/data/openwebui
+    depends_on:
+      kb:
+        condition: service_started
+      openwebui:
+        condition: service_healthy
+
+  kb:
+    image: ghcr.io/Lamb-Project/lamb-kb:latest
+    build:
+      context: ./lamb-kb-server-stable
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: ${KB_PORT:-9090}
+      HOME_URL: ${KB_HOME_URL:-http://localhost:9090}
+      LAMB_API_KEY: ${LAMB_API_KEY:-0p3n-w3bu!}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-nomic-embed-text}
+      EMBEDDINGS_VENDOR: ${EMBEDDINGS_VENDOR:-ollama}
+      EMBEDDINGS_ENDPOINT: ${EMBEDDINGS_ENDPOINT:-http://ollama:11434}
+      EMBEDDINGS_APIKEY: ${EMBEDDINGS_APIKEY:-}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+    ports:
+      - "9090:9090"
+    volumes:
+      - kb-data:/app/backend/data
+      - kb-static:/app/backend/static
+
+  openwebui:
+    image: ghcr.io/Lamb-Project/openwebui:latest
+    build:
+      context: ./open-webui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: ${OPENWEBUI_PORT:-8080}
+      WEBUI_AUTH_TRUSTED_EMAIL_HEADER: ${WEBUI_AUTH_TRUSTED_EMAIL_HEADER:-X-User-Email}
+      WEBUI_AUTH_TRUSTED_NAME_HEADER: ${WEBUI_AUTH_TRUSTED_NAME_HEADER:-X-User-Name}
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-user}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - openwebui-data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  lamb-data:
+  kb-data:
+  kb-static:
+  openwebui-data:
+  ollama-data:

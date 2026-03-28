@@ -1,0 +1,39 @@
+{
+    email {$CADDY_EMAIL}
+}
+
+{$LAMB_PUBLIC_HOST} {
+    encode gzip
+
+    handle /creator/* {
+        reverse_proxy lamb:9099
+    }
+
+    handle /api/* {
+        reverse_proxy lamb:9099
+    }
+
+    handle /lamb/* {
+        uri strip_prefix /lamb
+        reverse_proxy lamb:9099
+    }
+
+    handle /kb/* {
+        uri strip_prefix /kb
+        reverse_proxy kb:9090
+    }
+
+    @oldowi path /openwebui/*
+    handle @oldowi {
+        redir https://{$OWI_PUBLIC_HOST}{uri} 301
+    }
+
+    handle {
+        reverse_proxy lamb:9099
+    }
+}
+
+{$OWI_PUBLIC_HOST} {
+    encode gzip
+    reverse_proxy openwebui:8080
+}

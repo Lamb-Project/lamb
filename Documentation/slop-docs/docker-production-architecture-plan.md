@@ -1,0 +1,418 @@
+# Docker Production Architecture Plan (V2)
+
+## Objective
+
+Define and implement a production-first Docker architecture for LAMB that is fast to deploy, easy to upgrade, and clearly separated from development workflows.
+
+This plan is tracked as the implementation roadmap for issue #275.
+
+## Why We Are Changing It
+
+Current root `docker-compose.yaml` is development-oriented and introduces production friction:
+
+- Runtime installs/builds (`pip install`, `npm install`, frontend build)
+- Long first startup and inconsistent restarts
+- Dependence on source bind mounts and `LAMB_PROJECT_PATH`
+- Complicated upgrade path (git pull + rebuild) instead of image pull + restart
+
+## Target Architecture
+
+### Core Services (default)
+
+- `lamb` (FastAPI backend + bundled Svelte frontend)
+- `kb` (LAMB knowledge base service)
+- `openwebui` (LAMB-managed Open WebUI image)
+- Optional: `caddy` (TLS reverse proxy, production overlay)
+
+### Key Principles
+
+- Production uses prebuilt images
+- No source code bind mounts in production
+- Named Docker volumes for persistent data
+- Simple upgrade flow:
+  - `docker compose pull`
+  - `docker compose up -d`
+
+## File Strategy (Non-Disruptive Rollout)
+
+To avoid breaking existing users, we will not replace current compose immediately.
+
+### New/Updated Files
+
+- `backend/Dockerfile` (new): multi-stage build, bundles Svelte frontend into backend image
+- `lamb-kb-server-stable/Dockerfile` (new or hardened): production KB image
+- `docker-compose.next.yaml` (new): new production-first architecture
+- `docker-compose.next.prod.yaml` (new, optional): Caddy/TLS overlay
+- `.github/workflows/build-images.yml` (new): build/publish images to GHCR
+- `.env.next.example` (new): documented unified root env template for compose-only deployments
+- Documentation updates (new docs and migration notes)
+
+### Existing Files (kept for now)
+
+- Current `docker-compose.yaml` remains unchanged during rollout
+- Current deployment docs remain valid until cutover decision
+
+## Image and Service Model
+
+### Image Publishing
+
+- `ghcr.io/lamb-project/lamb` (backend + frontend bundled)
+- `ghcr.io/lamb-project/lamb-kb` (KB server)
+- `ghcr.io/lamb-project/openwebui` (LAMB-managed Open WebUI image)
+
+Optional local source-build path:
+
+- Use `docker compose -f docker-compose.next.yaml build` to build `lamb`, `kb`, and `openwebui` from local Dockerfiles.
+
+### Service Naming
+
+- Use `lamb` as primary app service name (instead of `backend`)
+- Optional temporary compatibility alias: `backend` (one release cycle)
+
+## Data Persistence Model
+
+Named volumes:
+
+- `lamb-data`: LAMB SQLite data (`lamb_v4.db`)
+- `kb-data`: KB database and vector index
+- `openwebui-data`: Open WebUI DB and vector/cache data
+
+Access rules:
+
+- `openwebui` mounts `openwebui-data` read-write
+- `lamb` mounts same volume read-write where needed for OWI user sync operations
+
+## Environment Model
+
+- Remove deployment dependency on `LAMB_PROJECT_PATH`
+- Use in-container paths and service DNS names
+- Keep env explicit and minimal for production
+- Preserve backward-compatible env behavior where possible during transition
+
+### Deployment Requirement: Optional `.env`
+
+For `docker-compose.next.yaml`, `.env` must be optional.
+
+- Users should be able to deploy with only the compose file(s) and no `.env` file.
+- Images must include safe runtime defaults so services start without extra configuration.
+- `.env` should be used only to override defaults (tokens, domains, provider keys, ports, feature toggles).
+- Compose defaults are acceptable during migration, but target state is image-backed defaults (app config and/or entrypoint) to reduce compose coupling.
+
+### Current Constraint (No backend/ code changes)
+
+Current iteration avoids modifying `backend/` runtime code.
+
+- Some variables are intentionally required in `docker-compose.next.yaml` (`${VAR?error}`) to match current backend expectations.
+- `.env.next.example` documents these required variables explicitly.
+- Future phase (`P8c`) should move these defaults into image/app runtime so `.env` becomes optional.
+
+### Frontend Runtime Config Strategy
+
+To preserve current deployment flexibility (`frontend/svelte-app/static/config.js` customization),
+the new production image will generate `config.js` at container startup from environment variables.
+
+- Implement a startup entrypoint script in the `lamb` container that writes runtime `config.js`.
+- Do not patch compiled JS bundles; only generate/overwrite `config.js`.
+- Keep defaults so local development still works when env vars are not set.
+- Keep current file-based customization available as a fallback during migration.
+
+Planned frontend runtime env vars:
+
+- `LAMB_FRONTEND_BASE_URL` (example: `/creator` or `https://lamb.example.com/creator`)
+- `LAMB_FRONTEND_LAMB_SERVER` (example: `https://lamb.example.com`)
+- `LAMB_FRONTEND_OPENWEBUI_SERVER` (example: `https://owi.example.com`)
+- `LAMB_ENABLE_OPENWEBUI` (default: `true`)
+- `LAMB_ENABLE_DEBUG` (default: `false` in production)
+
+## Implementation Phases and Task Status
+
+Status legend:
+
+- `TODO`
+- `IN_PROGRESS`
+- `BLOCKED`
+- `DONE`
+- `CANCELLED`
+
+| ID | Phase | Task | Status | Notes |
+|---|---|---|---|---|
+| P1 | Dockerfiles | Create `backend/Dockerfile` multi-stage (build frontend + run backend) | DONE | Added `backend/Dockerfile` + root `.dockerignore` |
+| P2 | Dockerfiles | Create/harden KB production Dockerfile | DONE | Hardened `lamb-kb-server-stable/Dockerfile` + KB `.dockerignore` |
+| P3 | Compose | Add `docker-compose.next.yaml` with `lamb`, `kb`, `openwebui` | DONE | Added image-only compose with single root `.env` model |
+| P4 | Compose | Add named volumes and healthchecks | DONE | Named volumes added; healthchecks pending per-image (partially covered in Dockerfiles) |
+| P5 | Compose | Add optional compatibility alias (`backend`) to `lamb` | CANCELLED | Not needed for new deployment path |
+| P6 | Compose | Add `docker-compose.next.prod.yaml` for Caddy/TLS (optional) | DONE | Added `docker-compose.next.prod.yaml` + `Caddyfile.next` |
+| P7 | Backend | Support stable frontend path inside container | TODO | Deferred to avoid backend code changes in this phase |
+| P8 | Backend | Validate env defaults/requirements for container mode | TODO | Keep key vars required via compose until backend defaults phase |
+| P8a | Backend/Frontend | Add entrypoint to generate frontend `config.js` from env vars | DONE | Added `backend/docker-entrypoint.py` and Dockerfile `ENTRYPOINT` |
+| P8b | Backend/Frontend | Define and document frontend runtime env vars | DONE | Documented `LAMB_FRONTEND_*` vars in compose and deployment guide |
+| P8c | Runtime Config | Move critical defaults from compose to image runtime defaults | TODO | `.env` optional, compose used for overrides only |
+| P9 | CI/CD | Add GHCR workflow for `lamb` and `lamb-kb` images | DONE | Added `.github/workflows/build-images.yml` (includes `openwebui`) |
+| P10 | CI/CD | Define release tagging policy (`dev`, semver, `latest`) | DONE | `dev` on `dev` branch, `latest` + semver on `v*` tags |
+| P11 | Docs | Create deployment guide for new compose stack | DONE | Added `Documentation/slop-docs/deployment-next-docker.md` |
+| P12 | Docs | Add migration notes from current compose | TODO | Volumes, env vars, service rename |
+| P13 | Validation | Cold-start benchmark and restart behavior validation | IN_PROGRESS | Localhost scenario validated (startup race documented, Ollama inference/RAG verified) |
+| P14 | Validation | Upgrade validation (`pull && up -d`) | TODO | Confirm no rebuild required |
+| P15 | Cutover | Decide if/when root `docker-compose.yaml` is replaced | OPTIONAL | Final phase only |
+| P16 | Compose/Runtime | Add optional Ollama service profile for local inference | DONE | Added `ollama` profile service in `docker-compose.next.yaml` |
+| P17 | Image Profiles | Define light image profile strategy using optional Ollama service | TODO | Use this to reduce default image size by removing heavy local-inference deps |
+
+## Unified `.env` Documentation Notes
+
+To keep deployment simple, `.env.next.example` now documents a unified root `.env` model for `docker-compose.next.yaml`.
+
+- Variable descriptions are aligned with existing `backend/.env.example` and `lamb-kb-server-stable/backend/.env.example` semantics.
+- `docker-compose.next.yaml` maps key backend and KB runtime variables explicitly via `${VAR:-default}` so users can deploy with a single `.env` file.
+- Goal: users only need the compose file(s) to deploy; `.env` is optional and used to override defaults.
+- Current state: mixed model; many values have defaults, but a subset is intentionally required to avoid backend code changes.
+- Target state: defaults move into image runtime config (entrypoint/app defaults), with compose primarily passing overrides and `.env` becoming optional.
+
+## P1 Validation Notes
+
+`backend/Dockerfile` builds successfully, but the first build surfaced warnings worth tracking:
+
+- The initial P1 build showed `git: not found` in frontend build; this is now fixed by installing `git` in the frontend build stage so version metadata can be captured.
+- Svelte/Vite build completes, but emits multiple Svelte warnings (`state_referenced_locally`) in several components.
+- Build also reports a config warning during frontend compile (`Cannot find base config file ./.svelte-kit/tsconfig.json` from `jsconfig.json`).
+
+Remaining warnings are non-blocking for P1 because the image is produced successfully, but they should be addressed in later hardening iterations to improve build quality and reproducibility.
+
+## Backend Image Size and Build Time Analysis (P1)
+
+Observed image size for `lamb-backend-p1-test` is approximately 7.27 GB.
+
+Main reason the image is large and slow to build:
+
+- The Python dependency install layer dominates the image: ~7.13 GB in a single layer (`pip install -r requirements.txt`).
+
+Main dependency groups driving size and build time:
+
+- ML/compute stack: `torch`, `xgboost`, `scikit-learn`, `scipy`, `numpy`, `pandas`.
+- NLP/LLM stack: `transformers`, `sentence-transformers`, `tokenizers`, `llama-index` and related plugin packages.
+- CV and browser tooling: `opencv-python`, `playwright`.
+- Observability and platform integrations: `ddtrace`, `chromadb` and OpenTelemetry-related dependencies.
+
+Build-time impact factors:
+
+- Large wheel downloads for scientific/ML packages.
+- Dependency resolver backtracking across several loosely constrained transitive dependencies.
+- Broad requirements set installed into one runtime image without separation by feature/profile.
+
+Optimization ideas for later phases:
+
+- Split requirements into core vs optional extras (ML/RAG/evaluator/testing).
+- Publish slimmer runtime profiles for common production use cases.
+- Pin or constrain high-backtracking dependency groups to reduce resolver time.
+- Revisit heavy packages that are not required in all production deployments.
+
+## P2 Validation Notes
+
+`lamb-kb-server-stable/Dockerfile` builds successfully after hardening and rename from `Dockerfile.server`.
+
+- Rename note: `Dockerfile.server` did not appear to be used in the main root deployment path (`docker-compose.yaml`), so we renamed it to the canonical `Dockerfile` to make the production image path explicit and reduce ambiguity.
+- Runtime now starts with `uvicorn` (no `reload=True`) and includes container healthcheck (`/health`).
+- Build is deterministic through wheel building/install flow, but still very heavy.
+- No blocking build errors were found during P2 validation.
+
+## KB Image Size and Build Time Analysis (P2)
+
+Observed image size for `lamb-kb-p2-test` is approximately 12.82 GB.
+
+Main reasons this image is large and slow to build:
+
+- Heavy ML stack from KB requirements, especially `sentence-transformers` and transitive `torch` dependencies.
+- CUDA-enabled Torch dependency chain pulls many large `nvidia-*` wheels (`nvidia-cudnn-cu12`, `nvidia-cublas-cu12`, `nvidia-cusparse-cu12`, `nvidia-nccl-cu12`, etc.).
+- Additional large packages (`onnxruntime`, `chromadb`, `transformers`, `scipy`, `scikit-learn`, `pandas`, `numpy`) increase wheel download/install time.
+
+Important layer-level observation from image history:
+
+- The runtime contains a large `COPY /wheels` layer (~4.38 GB) plus the installed Python packages layer (~8.3 GB), which makes total image size significantly larger.
+
+Optimization ideas for later phases:
+
+- Prefer CPU-only `torch` builds for default deployments unless GPU support is explicitly required.
+- Split KB requirements into minimal/core vs optional extras (GPU, advanced document parsing, cloud integrations).
+- Rework wheel install flow to avoid persisting a large intermediate wheels layer in runtime image.
+- Pin heavy dependency families and evaluate alternatives for large optional integrations.
+
+## P3/P4 Compose Design Notes
+
+`docker-compose.next.yaml` is now aligned to compose-only deployment with a single root `.env` file.
+
+- Removed per-service `env_file` references to avoid requiring repository-specific `.env` files.
+- Runtime configuration is centralized in `environment:` using `${VAR:-default}` interpolation.
+- Default deployment path uses prebuilt images for all services (`lamb`, `kb`, `openwebui`).
+- Added per-service `build` definitions in `docker-compose.next.yaml` so local source builds can be run without overlays.
+
+Resulting deployment modes:
+
+- Binary/compose-only: `docker compose -f docker-compose.next.yaml --env-file .env up -d`
+- Local source build (optional): `docker compose -f docker-compose.next.yaml --env-file .env build`
+
+## P6 Production Overlay Notes
+
+Optional production overlay has been added:
+
+- `docker-compose.next.prod.yaml` provides a Caddy TLS/reverse-proxy service.
+- `Caddyfile.next` routes to new service names (`lamb`, `kb`, `openwebui`) and supports env-based host/domain configuration.
+- Overlay uses these env vars from root `.env`: `CADDY_EMAIL`, `LAMB_PUBLIC_HOST`, `OWI_PUBLIC_HOST`.
+
+Production run command:
+
+- `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml --env-file .env up -d`
+
+## Scenario 1 Validation Note (Localhost Quick Deploy)
+
+Observed in manual validation:
+
+- On first startup, `lamb` may attempt OWI auth calls before `openwebui` is fully ready, causing temporary `connection refused` and early login failures.
+- A retry after a short wait succeeds once `openwebui` is ready.
+
+Current handling:
+
+- Treat this as an expected startup race in quick local deploys.
+- Document retry guidance for first-login flow.
+- Consider health-gated dependency startup as future hardening (optional).
+
+Additional finding:
+
+- Some provider env vars (for example `OLLAMA_BASE_URL`) are synced into organization config and persisted in the database during initialization/sync.
+- In Org Admin settings views, persisted org config values can take precedence over direct env fallbacks, so changing env values later may not immediately change what users see.
+- This should be documented as current behavior; future hardening may define clearer precedence and refresh semantics between env and persisted org config.
+
+Legacy migration finding:
+
+- Some legacy installations use prefixed LAMB tables (for example `LAMB_Creator_users`).
+- `LAMB_DB_PREFIX` now defaults to `LAMB_` for legacy-prefixed schemas; set it explicitly to empty (`""`) only when migrating unprefixed schemas (`Creator_*`).
+
+Startup race mitigation applied:
+
+- Added `openwebui` healthcheck in `docker-compose.next.yaml` (`/health`, 10s interval, 5s timeout, 12 retries, 30s start period).
+- Updated `lamb` depends_on for `openwebui` to `condition: service_healthy`.
+- This reduces first-boot connection-refused errors by waiting for OpenWebUI readiness before starting `lamb`.
+
+Scenario 1 Ollama note:
+
+- KB collection validation with Ollama requires `EMBEDDINGS_ENDPOINT` to point to Ollama base URL (`http://ollama:11434`) for current KB embedding integration.
+- Using `/api/embeddings` as endpoint can produce validation errors in this stack path.
+- Default compose/env values were updated accordingly.
+
+## Optional Ollama Service Note
+
+To support local inference without relying on `host.docker.internal`, an optional `ollama` service profile is now included in `docker-compose.next.yaml`.
+
+- Disabled by default; enable with `--profile ollama`.
+- Persists models in `ollama-data` volume.
+- When enabled, recommended overrides:
+  - `OLLAMA_BASE_URL=http://ollama:11434`
+  - `EMBEDDINGS_ENDPOINT=http://ollama:11434/api/embeddings`
+
+Recommendation:
+
+- Keep optional Ollama service as the path for local inference.
+- Use this to justify publishing smaller default `lamb`/`lamb-kb` images that exclude heavy local-inference dependencies by default.
+
+## Deferred Runtime Defaults Notes
+
+P7/P8/P8b remain deferred to avoid broader backend runtime code modifications in this phase.
+
+- Compose enforces a subset of required variables for current backend expectations.
+- Future work will implement runtime defaults and optional `.env` behavior under P8c and related tasks.
+
+## P8a Frontend Runtime Config Notes
+
+Frontend runtime configuration is now generated at container startup.
+
+- Added `backend/docker-entrypoint.py` and wired it in `backend/Dockerfile` as container `ENTRYPOINT`.
+- Entrypoint generates `${LAMB_FRONTEND_BUILD_PATH}/config.js` from env vars before starting `uvicorn`.
+- `docker-compose.next.yaml` no longer duplicates defaults for `LAMB_FRONTEND_*`; entrypoint owns defaults and compose stays simpler.
+- Supported vars:
+  - `LAMB_FRONTEND_BUILD_PATH`
+  - `LAMB_FRONTEND_BASE_URL`
+  - `LAMB_FRONTEND_LAMB_SERVER`
+  - `LAMB_FRONTEND_OPENWEBUI_SERVER`
+  - `LAMB_ENABLE_OPENWEBUI`
+  - `LAMB_ENABLE_DEBUG`
+- `LAMB_FRONTEND_LAMB_SERVER` falls back to `LAMB_WEB_HOST`.
+- `LAMB_FRONTEND_OPENWEBUI_SERVER` falls back to `OWI_PUBLIC_BASE_URL`.
+
+## P9 CI/CD Notes
+
+Added GitHub Actions workflow at `.github/workflows/build-images.yml` to build and publish Docker images to GHCR.
+
+- Triggered on push to `dev`, version tags (`v*`), and manual dispatch.
+- Publishes:
+  - `ghcr.io/lamb-project/lamb`
+  - `ghcr.io/lamb-project/lamb-kb`
+  - `ghcr.io/lamb-project/openwebui`
+- Tag strategy currently implemented:
+  - `dev` on `dev`
+  - `latest` on release tags (`v*`)
+  - git tag ref (for example `v0.5.0`) on release tags
+- Builds and publishes multi-platform images for `linux/amd64` and `linux/arm64`.
+- Uses Buildx + GHA cache (`cache-from/cache-to`) for faster rebuilds.
+
+## Migration Strategy for Existing Deployments
+
+Backward compatibility for old compose service names is no longer planned in the new stack.
+
+- No `backend` alias is required in `docker-compose.next.yaml`.
+- Migration focus is data continuity: map existing SQLite and service data into the new named volumes.
+- Key migration paths:
+  - LAMB DB (`lamb_v4.db`) -> `lamb-data`
+  - Open WebUI data directory (`webui.db` and vector/cache data) -> `openwebui-data`
+  - KB database/vector data -> `kb-data`
+- P12 documentation must include explicit copy/mount instructions for these paths.
+
+## Acceptance Criteria
+
+The new architecture is considered ready when:
+
+- New stack starts without runtime dependency installs/builds
+- Upgrade works via image pull + restart
+- Data persists through recreate/update
+- Service healthchecks reflect real readiness
+- Existing users are not broken (parallel rollout maintained)
+- Documentation is complete for install, upgrade, and migration
+- `docker-compose.next.yaml` works without `.env` file (optional overrides only)
+
+## Risks and Mitigations
+
+- Drift between old/new compose:
+  - Mitigation: keep explicit migration docs and compatibility window
+- Open WebUI integration path assumptions:
+  - Mitigation: validate shared volume mount and DB access paths early
+- Env complexity:
+  - Mitigation: provide minimal `.env.next.example` and clear defaults
+
+## Change Log
+
+| Date | Author | Change |
+|---|---|---|
+| 2026-03-01 | LAMB Team | Initial plan draft |
+| 2026-03-01 | LAMB Team | Completed P1 with multi-stage `backend/Dockerfile` |
+| 2026-03-01 | LAMB Team | Completed P2 with hardened KB production Dockerfile |
+| 2026-03-01 | LAMB Team | Completed P3 with new `docker-compose.next.yaml` and `.env.next.example` |
+| 2026-03-01 | LAMB Team | Completed P4 base volume model in `docker-compose.next.yaml` |
+| 2026-03-01 | LAMB Team | Switched `docker-compose.next.yaml` to single root `.env` pattern (no per-service `env_file`) |
+| 2026-03-26 | LAMB Team | Removed `docker-compose.next.build.yaml`; moved local source builds into per-service `build` in `docker-compose.next.yaml` |
+| 2026-03-01 | LAMB Team | Completed P6 with `docker-compose.next.prod.yaml` and `Caddyfile.next` |
+| 2026-03-01 | LAMB Team | Deferred P7/P8/P8a/P8b to avoid backend code changes in current iteration |
+| 2026-03-01 | LAMB Team | Completed P8a by adding backend entrypoint runtime generation of frontend `config.js` |
+| 2026-03-01 | LAMB Team | Switched entrypoint implementation to Python (`backend/docker-entrypoint.py`) for maintainability |
+| 2026-03-01 | LAMB Team | Completed P9 with GHCR image build/publish workflow for `lamb`, `lamb-kb`, and `openwebui` |
+| 2026-03-01 | LAMB Team | Expanded `.env.next.example` to a documented unified root env file aligned with backend/KB examples |
+| 2026-03-01 | LAMB Team | Added explicit requirement that `.env` must be optional and defaults should be image-backed |
+| 2026-03-01 | LAMB Team | Marked critical env vars as required in compose for current backend compatibility |
+| 2026-03-01 | LAMB Team | Cancelled P5 alias task and defined migration-by-volume strategy for legacy deployments |
+| 2026-03-01 | LAMB Team | Renamed KB `Dockerfile.server` to `Dockerfile` to remove deployment ambiguity |
+| 2026-03-01 | LAMB Team | Added P1 validation warnings and image size/build-time analysis |
+| 2026-03-01 | LAMB Team | Added P2 validation notes and KB image size/build-time analysis |
+| 2026-03-01 | LAMB Team | Added `git` to frontend build stage and cleared the missing-git warning |
+| 2026-03-01 | LAMB Team | Added runtime frontend `config.js` strategy via entrypoint and env vars |
+| 2026-03-01 | LAMB Team | Added Docker Next deployment guide with env variable reference tables |
+| 2026-03-01 | LAMB Team | Marked P8b and P11 as completed based on implemented env/runtime docs |
+| 2026-03-01 | LAMB Team | Added optional `ollama` profile service and documented light-image strategy alignment |
+| 2026-03-01 | LAMB Team | Updated default `EMBEDDINGS_ENDPOINT` to Ollama base URL for KB validation compatibility |
+| 2026-03-01 | LAMB Team | Started P13 with localhost scenario validation (startup race + Ollama inference/RAG) |
+| 2026-03-01 | LAMB Team | Added OpenWebUI healthcheck and `service_healthy` dependency to mitigate startup race |
