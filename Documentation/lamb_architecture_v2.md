@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.5
-**Last Updated:** February 16, 2026
+**Version:** 2.6
+**Last Updated:** March 31, 2026
 **Reading Time:** ~40 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -195,6 +195,8 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 | `analytics_router` | `/creator/analytics` | Chat analytics |
 | `evaluaitor_router` | `/creator/rubrics` | Rubric management |
 | `prompt_templates_router` | `/creator/prompt-templates` | Prompt templates |
+| `aac_router` | `/creator/aac` | Agent-Assisted Creator (sessions, agent chat) |
+| `test_router` | `/creator/assistant/{id}/tests` | Test scenarios, test runner, evaluations |
 
 **Direct Endpoints in Creator Interface:**
 - `POST /creator/login` — User login
@@ -1055,6 +1057,73 @@ The admin user management panel identifies users by type with color-coded badges
 - Can be enabled/disabled by admin
 - Can be promoted to organization admin by a system admin
 
+### 8.7 Agent-Assisted Creator (AAC)
+
+**Purpose:** Conversational agent that helps educators design, configure, test, and refine AI learning assistants. Internal codename: Pastor.
+
+**Architecture:** The AAC runs as a backend module (`backend/lamb/aac/`) inside the existing FastAPI process. It uses `OrganizationConfigResolver` for LLM configuration — API keys stay in-process, never exposed to clients.
+
+**Key Components:**
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Liteshell | `lamb/aac/liteshell/` | CLI-shaped tool interface. Parses command strings (e.g., `lamb assistant get 4`) and routes to service layer functions directly. No HTTP, no subprocess. |
+| Agent Loop | `lamb/aac/agent/loop.py` | Async LLM tool-calling loop with authorization. |
+| Authorization | `lamb/aac/authorization.py` | JSON policy (auto/ask/never) per action. Write commands require user confirmation via Python-level classifier, not LLM prompting. |
+| Session Manager | `lamb/aac/session_manager.py` | Session CRUD. Table: `aac_sessions` (Migration 14). |
+| Session Logger | `lamb/aac/session_logger.py` | JSONL file logging per session for research. Config: `AAC_SESSION_LOGGING`, `AAC_LOG_PATH`. |
+| Skills | `lamb/aac/skills/*.md` | Declarative skill files loaded into the agent's system prompt. |
+| Router | `lamb/aac/router.py` | FastAPI endpoints at `/creator/aac/`. |
+
+**Key Endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/creator/aac/sessions` | Start a design session |
+| GET | `/creator/aac/sessions` | List sessions |
+| GET | `/creator/aac/sessions/{id}` | Get session + conversation |
+| DELETE | `/creator/aac/sessions/{id}` | Archive session |
+| POST | `/creator/aac/sessions/{id}/message` | Send message, get agent response |
+
+**CLI:** `lamb aac start|sessions|get|delete|message|chat|history`
+
+> For full design details, see [lamb-agent-assisted-creator.md](./projects/lamb-agent-assisted-creator.md) and [aac-backlog.md](./projects/aac-backlog.md).
+
+### 8.8 Assistant Test Scenarios & Evaluation
+
+**Purpose:** Structured testing and evaluation framework for assistants. Educators define test prompts, run them through the real completion pipeline, and record evaluations. Foundation for the evaluation framework described in issue #172.
+
+**Data Model:**
+
+| Table | Purpose |
+|-------|---------|
+| `assistant_test_scenarios` | Test scenarios: title, messages, expected behavior, type (single_turn/multi_turn/adversarial) |
+| `assistant_test_runs` | Execution results: input, output, token usage, model, assistant config snapshot |
+| `assistant_test_evaluations` | Evaluations: verdict (good/bad/mixed), notes, evaluator (user/agent) |
+
+Tables created via Migration 15.
+
+**Test Runner:** Executes scenarios through the **real completion pipeline** — same code path as production (RAG retrieval, prompt processing, connector). Tracks token usage and elapsed time per run.
+
+**Debug Bypass:** Adding `debug_bypass: true` to a completion request (via the creator interface) overrides the connector to `bypass`, showing the fully constructed messages the LLM would receive — system prompt, RAG context, processed prompt — without calling the LLM. Zero tokens consumed. Available via:
+- `lamb chat <id> --bypass -m "question"` (CLI)
+- `lamb test run <id> --bypass` (test framework)
+- `lamb assistant debug <id> --message "question"` (AAC liteshell)
+
+**Key Endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/creator/assistant/{id}/tests/scenarios` | Create scenario |
+| GET | `/creator/assistant/{id}/tests/scenarios` | List scenarios |
+| POST | `/creator/assistant/{id}/tests/run` | Run scenarios (supports `debug_bypass`) |
+| GET | `/creator/assistant/{id}/tests/runs` | List runs with results |
+| GET | `/creator/assistant/{id}/tests/runs/{rid}` | Full run detail |
+| POST | `/creator/assistant/{id}/tests/runs/{rid}/evaluate` | Submit evaluation |
+| GET | `/creator/assistant/{id}/tests/evaluations` | List evaluations |
+
+**CLI:** `lamb test scenarios|add|run|runs|run-detail|evaluate|evaluations`
+
 ---
 
 ## 9. Frontend Architecture
@@ -1378,7 +1447,10 @@ DB_LOG_LEVEL=DEBUG
 | Add frontend page | `frontend/svelte-app/src/routes/` |
 | Configure logging | `lamb/logging_config.py` + env vars |
 | Understand completion flow | `lamb/completions/main.py` |
+| Debug what the LLM sees | `lamb chat <id> --bypass` or `debug_bypass` flag |
 | Debug OWI chat integration | `lamb/owi_bridge/` |
+| Work on AAC agent | `lamb/aac/` (liteshell, agent loop, skills, router) |
+| Add test scenarios | `lamb/services/test_service.py`, `test_router.py` |
 
 ### 12.2 Key Files by Task
 
@@ -1393,6 +1465,8 @@ DB_LOG_LEVEL=DEBUG
 | **LTI (Unified)** | `lamb/lti_router.py`, `lamb/lti_activity_manager.py` |
 | **LTI (Student legacy)** | `lamb/lti_users_router.py` |
 | **LTI (Creator)** | `lamb/lti_creator_router.py` |
+| **AAC (Agent-Assisted Creator)** | `lamb/aac/router.py`, `lamb/aac/agent/loop.py`, `lamb/aac/liteshell/` |
+| **Test Scenarios & Evaluation** | `lamb/services/test_service.py`, `lamb/services/test_router.py` |
 | **Frontend** | `frontend/svelte-app/src/routes/`, `src/lib/components/` |
 
 ### 12.3 Common Patterns
@@ -1593,6 +1667,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 16, 2026*
-*Version: 2.5*
+*Last Updated: March 31, 2026*
+*Version: 2.6*
 

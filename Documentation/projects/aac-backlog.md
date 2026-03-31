@@ -1,7 +1,7 @@
 # AAC Backlog
 
 **Status:** Active
-**Last updated:** 2026-03-31
+**Last updated:** 2026-03-31 (end of day)
 **Related:** [lamb-agent-assisted-creator.md](./lamb-agent-assisted-creator.md) | [aac-prototyping-log.md](./aac-prototyping-log.md) | Issue #172
 
 ---
@@ -12,10 +12,11 @@ This backlog covers the next implementation phases of the Agent-Assisted Creator
 
 ---
 
-## 1. Action Authorization System
+## 1. Action Authorization System ✅
 
 **Priority:** High — needed before any production use
 **Depends on:** Nothing (foundational)
+**Status:** DONE (2026-03-31) — implemented as approach B (chat-native, no special endpoints)
 
 ### Problem
 
@@ -210,11 +211,12 @@ Svelte 5, JavaScript + JSDoc (NOT TypeScript), TailwindCSS 4. Same stack as exis
 
 ---
 
-## 4. Assistant Test Prompts & Evaluation
+## 4. Assistant Test Prompts & Evaluation ✅
 
 **Priority:** High — independent LAMB feature, can parallel with item 2
 **Depends on:** Nothing (standalone feature). AAC skill depends on this.
-**Related:** Issue #172 (EVALS), AAC design doc §2.3
+**Related:** Issue #172 (EVALS), AAC design doc §2.3, Issue #327
+**Status:** DONE (2026-03-31) — scenarios CRUD, test runner (real pipeline), evaluation, debug bypass
 
 ### Problem
 
@@ -345,9 +347,10 @@ Every test run + evaluation produces structured data for the research lines in `
 
 ## Implementation Order
 
-| Phase | Items | Scope |
-|---|---|---|
-| **Next** | 1 | Authorization system, `/confirm`+`/reject` endpoints, CLI integration |
-| **Then** | 2 + 4 (parallel) | Skills + test scenarios (independent features) |
-| **Then** | 3 | Frontend scaffold |
-| **Later** | 2+4 combined | `test-and-evaluate` skill |
+| Phase | Items | Scope | Status |
+|---|---|---|---|
+| ~~Done~~ | 1 | Authorization system (approach B: chat-native) | ✅ 2026-03-31 |
+| ~~Done~~ | 4 | Test scenarios, runner, evaluation, debug bypass | ✅ 2026-03-31 |
+| **Next** | 2 | Skill-driven sessions (agent leads, context-aware launch) | |
+| **Then** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
+| **Later** | 2+4 combined | `test-and-evaluate` skill | |
