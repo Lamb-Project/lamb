@@ -89,10 +89,11 @@ Same response. The UI shows a confirmation card/modal with Approve/Reject button
 
 ---
 
-## 2. Skill-Driven Sessions
+## 2. Skill-Driven Sessions ✅
 
 **Priority:** High — core differentiator of AAC
 **Depends on:** Item 1 (skills need reliable auth)
+**Status:** DONE (2026-03-31) — skill loader, 3 skills, startup actions, language directive, includes with loop prevention
 
 ### Problem
 
@@ -351,6 +352,6 @@ Every test run + evaluation produces structured data for the research lines in `
 |---|---|---|---|
 | ~~Done~~ | 1 | Authorization system (approach B: chat-native) | ✅ 2026-03-31 |
 | ~~Done~~ | 4 | Test scenarios, runner, evaluation, debug bypass | ✅ 2026-03-31 |
-| **Next** | 2 | Skill-driven sessions (agent leads, context-aware launch) | |
-| **Then** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
-| **Later** | 2+4 combined | `test-and-evaluate` skill | |
+| ~~Done~~ | 2 | Skill-driven sessions (agent leads, context-aware launch) | ✅ 2026-03-31 |
+| **Next** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
+| **Then** | 2+4 combined | `test-and-evaluate` skill | |
