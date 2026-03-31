@@ -64,16 +64,41 @@ async def create_session(
     if assistant_id and "assistant_id" not in skill_context:
         skill_context["assistant_id"] = assistant_id
 
+    # Generate session title
+    title = ""
+    if skill_id:
+        try:
+            skill_meta = load_skill(skill_id, skill_context)["metadata"]
+            skill_name = skill_meta.get("name", skill_id)
+        except Exception:
+            skill_name = skill_id
+        # Try to get assistant name for the title
+        if assistant_id:
+            try:
+                from lamb.services.assistant_service import AssistantService
+                svc = AssistantService()
+                assistant = svc.get_assistant_by_id(assistant_id)
+                if assistant:
+                    title = f"{skill_name}: {assistant.name}"
+            except Exception:
+                pass
+        if not title:
+            title = skill_name
+    else:
+        title = f"Session"
+
     mgr = AACSessionManager()
     session = mgr.create_session(
         user_email=auth.user["email"],
         organization_id=auth.organization["id"],
         assistant_id=assistant_id,
+        title=title,
     )
 
     result = {
         "id": session["id"],
         "assistant_id": assistant_id,
+        "title": title,
         "status": "active",
         "skill": skill_id,
         "created_at": session["created_at"],

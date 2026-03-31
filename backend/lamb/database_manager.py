@@ -1355,6 +1355,15 @@ class LambDatabaseManager:
                     connection.commit()
                     logger.info("Migration 14: aac_sessions table created")
 
+                # Migration 14b: Add title column to aac_sessions if missing
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}aac_sessions)")
+                aac_cols = [row[1] for row in cursor.fetchall()]
+                if 'title' not in aac_cols:
+                    logger.info("Migration 14b: Adding title column to aac_sessions")
+                    cursor.execute(
+                        f"ALTER TABLE {self.table_prefix}aac_sessions ADD COLUMN title TEXT DEFAULT ''")
+                    connection.commit()
+
                 # Migration 15: Assistant test scenarios, runs, and evaluations (#327)
                 cursor.execute(
                     f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}assistant_test_scenarios'")

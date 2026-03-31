@@ -29,6 +29,7 @@ class AACSessionManager:
         user_email: str,
         organization_id: int,
         assistant_id: Optional[int] = None,
+        title: str = "",
     ) -> dict:
         """Create a new design session."""
         session_id = str(uuid.uuid4())
@@ -38,9 +39,9 @@ class AACSessionManager:
             cursor = conn.cursor()
             cursor.execute(
                 f"""INSERT INTO {self._table}
-                   (id, assistant_id, user_email, organization_id, status, conversation, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'active', '[]', ?, ?)""",
-                (session_id, assistant_id, user_email, organization_id, now, now),
+                   (id, assistant_id, user_email, organization_id, status, conversation, title, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 'active', '[]', ?, ?, ?)""",
+                (session_id, assistant_id, user_email, organization_id, title, now, now),
             )
             conn.commit()
         finally:
@@ -48,6 +49,7 @@ class AACSessionManager:
         return {
             "id": session_id,
             "assistant_id": assistant_id,
+            "title": title,
             "status": "active",
             "created_at": now,
         }
