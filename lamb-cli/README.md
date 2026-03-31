@@ -47,6 +47,15 @@ lamb
   status                   Check if the server is reachable
   whoami                   Show current user and role info
 
+  aac
+    start                  Start a new AAC design session
+    sessions               List your sessions
+    get <sid>              Get session details
+    delete <sid>           Archive a session
+    message <sid> "text"   Send a message to the agent
+    chat <sid>             Interactive chat with the agent
+    history <sid>          Show conversation history
+
   assistant
     list                   List all assistants
     get <id>               Get assistant details
@@ -239,6 +248,7 @@ Permissions are enforced by the backend. The CLI stores role info locally so fut
 | 3     | Organizations + Users (admin commands) | Done    |
 | 4     | Templates + Analytics + Chat           | Done    |
 | 5     | Rubrics (EvaluAItor)                   | Done    |
-| 6     | Shell completions, config profiles     | Planned |
+| 6     | AAC (Agent-Assisted Creator)           | Done    |
+| 7     | Shell completions, config profiles     | Planned |
 
 See [Documentation/prd.md](Documentation/prd.md) for the full specification.

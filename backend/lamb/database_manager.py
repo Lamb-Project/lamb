@@ -1332,6 +1332,29 @@ class LambDatabaseManager:
                 connection.commit()
                 logger.info("Migration 12 and 13 complete")
 
+                # Migration 14: AAC (Agent-Assisted Creator) sessions table
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}aac_sessions'")
+                if not cursor.fetchone():
+                    logger.info("Migration 14: Creating aac_sessions table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}aac_sessions (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER,
+                            user_email TEXT NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            status TEXT DEFAULT 'active',
+                            conversation TEXT DEFAULT '[]',
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}aac_sessions_user "
+                        f"ON {self.table_prefix}aac_sessions(user_email)")
+                    connection.commit()
+                    logger.info("Migration 14: aac_sessions table created")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:

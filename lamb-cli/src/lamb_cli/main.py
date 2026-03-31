@@ -9,7 +9,7 @@ import typer
 
 from lamb_cli import __version__
 from lamb_cli.client import LambClient, get_client
-from lamb_cli.commands import analytics, assistant, job, kb, model, org, rubric, template, user
+from lamb_cli.commands import aac, analytics, assistant, job, kb, model, org, rubric, template, user
 from lamb_cli.commands.chat import chat as chat_cmd
 from lamb_cli.config import clear_credentials, get_output_format, get_server_url, get_user_info, save_config, save_credentials
 from lamb_cli.errors import LambCliError, exit_code_for
@@ -21,6 +21,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+app.add_typer(aac.app, name="aac")
 app.add_typer(assistant.app, name="assistant")
 app.add_typer(model.app, name="model")
 app.add_typer(kb.app, name="kb")

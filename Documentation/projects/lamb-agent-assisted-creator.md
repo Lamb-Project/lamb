@@ -2,7 +2,7 @@
 
 **Status:** Research & Design
 **Date:** 2026-03-27
-**Version:** 0.2 (Draft)
+**Version:** 0.3 (Draft)
 
 > **Scope note:** This document covers the **MVP of the agentic assistant creator and evaluator**. Assistant versioning is a related but independent subproject documented separately in [lamb-assistant-versioning.md](./lamb-assistant-versioning.md). The AAC MVP works without versioning — it operates on the assistant's current state. Versioning can be integrated later as an enhancement.
 
@@ -520,5 +520,102 @@ This data — properly anonymized — is valuable for AI education research and 
 
 ---
 
-*Version 0.2 — Separated versioning into independent subproject*
-*Prepared: 2026-03-27*
+## 11. Prototyping Findings (2026-03-30)
+
+> This section captures architectural decisions validated during hands-on prototyping. See [aac-prototyping-log.md](./aac-prototyping-log.md) for the full session log.
+
+### 11.1 CLI-Shaped Tool Interface (Liteshell)
+
+Instead of building custom tool schemas, the agent uses a **single tool** that accepts CLI command strings:
+
+```
+Tool: execute_command
+Input: "lamb assistant get 4"
+Output: { structured JSON }
+```
+
+**Why:** LLMs already know CLI syntax from training data. This eliminates the need to teach the agent a custom API. The same commands can be run by a human with `lamb-cli` to verify agent behavior.
+
+**Implementation:** A Python module ("liteshell") parses the command string, routes it to the correct service function, and returns structured data. No real shell, no subprocess. The command vocabulary matches `lamb-cli` exactly: `assistant`, `rubric`, `kb`, `template`, `model`, `analytics`.
+
+### 11.2 Agent LLM Uses Organization Config
+
+The agent's LLM is configured from the **authenticated user's organization**, using `OrganizationConfigResolver` — the same mechanism the completion pipeline uses. This replaces the env-var approach proposed in §4.
+
+| Original proposal (§4) | Revised |
+|---|---|
+| System-level env vars: `AAC_LLM_PROVIDER`, `AAC_API_KEY` | User's org config: `OrganizationConfigResolver(user_email)` |
+| Separate API key for the agent | Reuses the org's existing provider keys |
+| Platform cost | Org cost (same pool as completions) |
+
+**Security:** API keys stay in-process on the backend. They are never sent to the frontend or CLI.
+
+### 11.3 Backend Module, Not Separate Service
+
+The AAC runs as `backend/lamb/aac/` — a Python module inside the existing backend process. It shares the database, auth (`AuthContext`), and service layer with the rest of LAMB.
+
+```
+backend/lamb/aac/
+├── liteshell/
+│   ├── shell.py          # Parse CLI strings → dispatch
+│   └── commands.py       # Handlers calling service layer directly
+├── agent/
+│   ├── loop.py           # LLM tool-calling loop
+│   └── skills/           # Skill .md files
+├── router.py             # FastAPI endpoints: /creator/aac/*
+└── session_manager.py    # Session CRUD
+```
+
+### 11.4 Testing via lamb-cli
+
+New `lamb aac` command group in lamb-cli, hitting the `/creator/aac/` endpoints:
+
+```
+lamb aac
+  start                  Start a design session
+  sessions               List sessions
+  message <sid> "text"   Send a message
+  chat <sid>             Interactive mode
+  history <sid>          Show conversation
+  stats <sid>            Session statistics
+```
+
+This enables rapid testing without the frontend and provides a scriptable interface for benchmarking different LLMs.
+
+### 11.5 Session Logging
+
+Every AAC session is logged to a JSONL file for post-hoc analysis. One file per session:
+
+```
+{AAC_LOG_PATH}/{user_id}/{session_id}_{datetime}_{email}.jsonl
+```
+
+Each line is a timestamped event:
+- `session_start` — model, assistant_id, user
+- `user_message` — what the educator said
+- `tool_call` — command, success, elapsed_ms, data (truncated if >5KB)
+- `agent_response` — what the agent replied
+- `turn_complete` — per-turn stats
+- `error` — any failures
+- `session_end` — final stats
+
+Configuration via `backend/.env`:
+| Variable | Default | Purpose |
+|---|---|---|
+| `AAC_SESSION_LOGGING` | `true` | Enable/disable file logging |
+| `AAC_LOG_PATH` | `$LAMB_DB_PATH/aac_logs` | Log directory |
+
+JSONL format is research-friendly — works with grep, jq, pandas. This feeds directly into the research value described in §10.
+
+### 11.6 Gaps Found
+
+| Gap | Issue | Impact |
+|---|---|---|
+| No CLI rubric access | #323 (fixed) | Agent couldn't inspect rubric-based assistants |
+| Rubric duplicate/share broken | #325 | Backend missing `LambDatabaseManager` methods |
+| Rubrics undocumented | #324 | Architecture docs incomplete |
+
+---
+
+*Version 0.3 — Added prototyping findings and architectural revisions*
+*Prepared: 2026-03-30*
