@@ -141,32 +141,53 @@ def _parse_skill_file(path: Path) -> tuple[dict, str]:
     frontmatter_text = match.group(1)
     body = text[match.end():]
 
-    # Parse YAML manually (simple key: value and key: [list] format)
-    # Avoids requiring PyYAML dependency
+    # Parse YAML manually (simple subset, avoids PyYAML dependency)
+    # Supports: key: value, key: [inline, list], key:\n  - list\n  - items
     meta: dict[str, Any] = {}
-    for line in frontmatter_text.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
+    lines = frontmatter_text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            i += 1
             continue
-        if ":" not in line:
+        if ":" not in stripped:
+            i += 1
             continue
-        key, value = line.split(":", 1)
+
+        key, value = stripped.split(":", 1)
         key = key.strip()
         value = value.strip()
 
-        # Parse list values: [item1, item2]
+        # Inline list: [item1, item2]
         if value.startswith("[") and value.endswith("]"):
             items = value[1:-1].split(",")
             meta[key] = [item.strip().strip("'\"") for item in items if item.strip()]
-        # Parse boolean
+        # Empty value — check for multi-line list on next lines
+        elif value == "":
+            list_items = []
+            while i + 1 < len(lines):
+                next_line = lines[i + 1]
+                # Multi-line list item: starts with whitespace + -
+                item_match = re.match(r"^\s+-\s+(.+)", next_line)
+                if item_match:
+                    list_items.append(item_match.group(1).strip().strip("'\""))
+                    i += 1
+                else:
+                    break
+            meta[key] = list_items if list_items else ""
+        # Boolean
         elif value.lower() in ("true", "false"):
             meta[key] = value.lower() == "true"
-        # Parse quoted string
+        # Quoted string
         elif (value.startswith('"') and value.endswith('"')) or \
              (value.startswith("'") and value.endswith("'")):
             meta[key] = value[1:-1]
         else:
             meta[key] = value
+
+        i += 1
 
     return meta, body
 
