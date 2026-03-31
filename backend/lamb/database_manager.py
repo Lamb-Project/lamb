@@ -1355,6 +1355,67 @@ class LambDatabaseManager:
                     connection.commit()
                     logger.info("Migration 14: aac_sessions table created")
 
+                # Migration 15: Assistant test scenarios, runs, and evaluations (#327)
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}assistant_test_scenarios'")
+                if not cursor.fetchone():
+                    logger.info("Migration 15: Creating test scenarios, runs, and evaluations tables")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_scenarios (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            description TEXT DEFAULT '',
+                            scenario_type TEXT DEFAULT 'single_turn',
+                            messages TEXT NOT NULL,
+                            expected_behavior TEXT DEFAULT '',
+                            tags TEXT DEFAULT '[]',
+                            created_by TEXT NOT NULL,
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_scenarios_assistant "
+                        f"ON {self.table_prefix}assistant_test_scenarios(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_runs (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            scenario_id TEXT,
+                            input_messages TEXT NOT NULL,
+                            output TEXT NOT NULL,
+                            token_usage TEXT,
+                            assistant_snapshot TEXT,
+                            model_used TEXT,
+                            elapsed_ms REAL,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_runs_assistant "
+                        f"ON {self.table_prefix}assistant_test_runs(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_evaluations (
+                            id TEXT PRIMARY KEY,
+                            test_run_id TEXT NOT NULL,
+                            evaluator TEXT NOT NULL,
+                            verdict TEXT,
+                            notes TEXT DEFAULT '',
+                            dimensions TEXT,
+                            confirmed_by_user BOOLEAN,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_evals_run "
+                        f"ON {self.table_prefix}assistant_test_evaluations(test_run_id)")
+
+                    connection.commit()
+                    logger.info("Migration 15: Test tables created")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
