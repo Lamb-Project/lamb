@@ -134,6 +134,7 @@ async def run_tests(
 
     svc = TestService()
     scenario_id = body.get("scenario_id")
+    debug_bypass = body.get("debug_bypass", False)
 
     if scenario_id:
         scenario = svc.get_scenario(scenario_id)
@@ -144,10 +145,11 @@ async def run_tests(
             scenario_id=scenario_id,
             messages=scenario["messages"],
             user_email=auth.user["email"],
+            debug_bypass=debug_bypass,
         )
         return result
     else:
-        results = await svc.run_all_scenarios(assistant_id, auth.user["email"])
+        results = await svc.run_all_scenarios(assistant_id, auth.user["email"], debug_bypass=debug_bypass)
         return {"runs": results, "count": len(results)}
 
 

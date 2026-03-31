@@ -469,9 +469,18 @@ async def run_lamb_assistant(
         assistant_details = get_assistant_details(assistant)
         logger.debug(f"Run assistant, details: {assistant_details}")
         plugin_config = parse_plugin_config(assistant_details)
+
+        # Debug bypass: override connector to show what the LLM would see.
+        # Only honored when called via the creator interface (user-authenticated).
+        # The raw /v1/chat/completions endpoint never passes this flag.
+        if request.get("debug_bypass"):
+            logger.info(f"Debug bypass enabled for assistant {assistant}")
+            plugin_config["connector"] = "bypass"
+            plugin_config["llm"] = "debug-bypass"
+
         connector = plugin_config["connector"]
         provider = _provider_for_connector(connector)
-        
+
         task_response = await maybe_route_non_streaming_task(
             request=request,
             assistant_owner=assistant_details.owner,

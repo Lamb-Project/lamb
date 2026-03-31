@@ -152,6 +152,7 @@ class TestService:
         scenario_id: str | None,
         messages: list[dict],
         user_email: str,
+        debug_bypass: bool = False,
     ) -> dict:
         """Run a test completion through the real pipeline.
 
@@ -183,6 +184,11 @@ class TestService:
         try:
             assistant_details = get_assistant_details(assistant_id)
             plugin_config = parse_plugin_config(assistant_details)
+
+            # Debug bypass: override connector to show what the LLM would see
+            if debug_bypass:
+                plugin_config["connector"] = "bypass"
+                plugin_config["llm"] = "debug-bypass"
 
             pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
             rag_context = await get_rag_context(
@@ -266,7 +272,7 @@ class TestService:
             "created_at": now,
         }
 
-    async def run_all_scenarios(self, assistant_id: int, user_email: str) -> list[dict]:
+    async def run_all_scenarios(self, assistant_id: int, user_email: str, debug_bypass: bool = False) -> list[dict]:
         """Run all scenarios for an assistant."""
         scenarios = self.list_scenarios(assistant_id)
         results = []
@@ -277,6 +283,7 @@ class TestService:
                     scenario_id=s["id"],
                     messages=s["messages"],
                     user_email=user_email,
+                    debug_bypass=debug_bypass,
                 )
                 results.append(result)
             except Exception as e:

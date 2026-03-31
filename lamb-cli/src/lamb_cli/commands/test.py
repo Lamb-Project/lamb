@@ -169,13 +169,20 @@ def delete_scenario(
 def run_tests(
     assistant_id: int = typer.Argument(..., help="Assistant ID."),
     scenario_id: Optional[str] = typer.Option(None, "--scenario", "-s", help="Run a specific scenario."),
+    bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees instead of calling it."),
     output: str = typer.Option(None, "-o", "--output", help="Output format."),
 ) -> None:
-    """Run test scenarios against an assistant."""
+    """Run test scenarios against an assistant.
+
+    Use --bypass to see the full context (system prompt + RAG + processed messages)
+    without calling the LLM. Zero tokens consumed.
+    """
     fmt = output or get_output_format()
     body: dict = {}
     if scenario_id:
         body["scenario_id"] = scenario_id
+    if bypass:
+        body["debug_bypass"] = True
 
     err_console.print("[dim]Running tests...[/dim]")
     with get_client() as client:
