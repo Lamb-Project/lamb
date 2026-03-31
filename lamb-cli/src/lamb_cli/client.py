@@ -171,11 +171,12 @@ class LambClient:
         raise ApiError(f"API error ({resp.status_code}): {detail}", status_code=resp.status_code)
 
 
-def get_client(require_auth: bool = True) -> LambClient:
+def get_client(require_auth: bool = True, timeout: float = 30.0) -> LambClient:
     """Build a LambClient from current config/credentials.
 
     Args:
         require_auth: If True, raise AuthenticationError when no token is available.
+        timeout: HTTP request timeout in seconds.
     """
     server_url = get_server_url()
     token = get_token()
@@ -183,4 +184,4 @@ def get_client(require_auth: bool = True) -> LambClient:
         raise AuthenticationError(
             "Not logged in. Run 'lamb login' first or set LAMB_TOKEN."
         )
-    return LambClient(server_url=server_url, token=token)
+    return LambClient(server_url=server_url, token=token, timeout=timeout)

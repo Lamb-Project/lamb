@@ -48,25 +48,87 @@ def _enrich_session(s: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Skills
+# ---------------------------------------------------------------------------
+
+
+@app.command("skills")
+def list_skills(
+    output: str = typer.Option(None, "-o", "--output", help="Output format."),
+) -> None:
+    """List available AAC skills."""
+    fmt = output or get_output_format()
+    with get_client() as client:
+        data = client.get("/creator/aac/skills")
+    skills = data if isinstance(data, list) else []
+    if fmt == "json":
+        print_json(skills)
+    else:
+        columns = [
+            ("id", "Skill ID"),
+            ("name", "Name"),
+            ("description", "Description"),
+            ("required_context", "Requires"),
+        ]
+        format_output(skills, columns, fmt)
+
+
+# ---------------------------------------------------------------------------
 # Session management
 # ---------------------------------------------------------------------------
 
 
 @app.command("start")
 def start_session(
-    assistant_id: Optional[int] = typer.Option(None, "--assistant", "-a", help="Existing assistant ID to refine."),
+    assistant_id: Optional[int] = typer.Option(None, "--assistant", "-a", help="Existing assistant ID to work on."),
+    skill: Optional[str] = typer.Option(None, "--skill", "-s", help="Skill to launch (e.g., improve-assistant, create-assistant)."),
+    language: Optional[str] = typer.Option(None, "--language", "--lang", help="Language for agent responses (e.g., English, Catalan, Spanish)."),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
-    """Start a new AAC design session."""
+    """Start a new AAC design session.
+
+    Without --skill: starts a free-form conversation.
+    With --skill: the agent leads — it runs startup analysis and speaks first.
+
+    Examples:
+        lamb aac start --skill improve-assistant --assistant 4 --lang Catalan
+        lamb aac start --skill create-assistant --lang Spanish
+        lamb aac start  # free-form, no skill
+    """
     fmt = output or get_output_format()
     body: dict = {}
     if assistant_id is not None:
         body["assistant_id"] = assistant_id
-    with get_client() as client:
+    if skill:
+        body["skill"] = skill
+        context: dict = {}
+        if assistant_id is not None:
+            context["assistant_id"] = assistant_id
+        if language:
+            context["language"] = language
+        body["context"] = context
+
+    err_console.print("[dim]Starting session...[/dim]")
+    with get_client(timeout=120.0) as client:
         data = client.post("/creator/aac/sessions", json=body)
+
     session_id = data.get("id", "")
     print_success(f"Session started: {session_id}")
-    if fmt == "json":
+
+    # If skill launched, show the agent's first message
+    first_message = data.get("first_message")
+    if first_message:
+        console.print()
+        console.print(Markdown(first_message))
+        stats = data.get("stats", {})
+        if stats:
+            err_console.print(
+                f"[dim]{stats.get('tool_calls', 0)} tool calls, "
+                f"{stats.get('total_tool_time_ms', 0):.0f}ms tool time[/dim]"
+            )
+    elif data.get("error"):
+        print_error(data["error"])
+    elif fmt == "json":
         print_json(data)
     else:
         format_output(data, SESSION_LIST_COLUMNS, fmt, detail_fields=SESSION_DETAIL_FIELDS)
