@@ -2,7 +2,7 @@
 
 **Status:** Research & Design
 **Date:** 2026-03-27
-**Version:** 0.3 (Draft)
+**Version:** 0.4 (Draft)
 
 > **Scope note:** This document covers the **MVP of the agentic assistant creator and evaluator**. Assistant versioning is a related but independent subproject documented separately in [lamb-assistant-versioning.md](./lamb-assistant-versioning.md). The AAC MVP works without versioning — it operates on the assistant's current state. Versioning can be integrated later as an enhancement.
 
@@ -607,7 +607,28 @@ Configuration via `backend/.env`:
 
 JSONL format is research-friendly — works with grep, jq, pandas. This feeds directly into the research value described in §10.
 
-### 11.6 Gaps Found
+### 11.6 Frontend: Terminal-in-Tabs
+
+The original design doc (§3.5) proposed a split-panel layout with a chat panel and preview panel. After prototyping, the revised frontend approach is a **terminal emulator embedded as tabs** in the existing UI.
+
+**Key decisions:**
+
+| Original (§3.5) | Revised |
+|---|---|
+| New route `/assistants/design` | No new routes — tabs overlay existing pages |
+| Split panel (chat + preview) | Single terminal panel per session tab |
+| Custom chat UI | Terminal emulator (monospaced, markdown) |
+| Separate page for design sessions | Skills launched from context buttons on assistant detail page |
+
+**Why terminal?** The agent interaction is conversational and text-heavy. A terminal-style interface is familiar, lightweight, and maps directly to the CLI experience (same markdown output). The monospaced font makes code, prompts, and structured output (rubrics, debug bypass) readable.
+
+**Tab model:** Multiple sessions open as tabs, each with its own terminal. Sessions persist in the database and can be resumed. When resuming, the agent is notified that resources may have changed since the last interaction.
+
+**Session titles:** Auto-generated from skill + assistant name (e.g., "Improve: pestlerubric1"). Stored in the session record.
+
+See [aac-backlog.md](./aac-backlog.md) item 3 for full component list and implementation plan.
+
+### 11.7 Gaps Found
 
 | Gap | Issue | Impact |
 |---|---|---|
@@ -617,5 +638,5 @@ JSONL format is research-friendly — works with grep, jq, pandas. This feeds di
 
 ---
 
-*Version 0.3 — Added prototyping findings and architectural revisions*
-*Prepared: 2026-03-30*
+*Version 0.4 — Added frontend design, skills, test framework, authorization*
+*Prepared: 2026-03-31*

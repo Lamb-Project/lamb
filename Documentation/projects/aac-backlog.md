@@ -179,36 +179,80 @@ POST /creator/aac/sessions {"skill": "improve-assistant", "context": {"assistant
 
 ### Design
 
-Start with the simplest thing that works — a chat panel talking to `/creator/aac/`.
+### Design: Terminal-in-Tabs
 
-**Phase 1 — Terminal-like chat:**
+The AAC frontend is a **terminal emulator component** embedded as tabs in existing pages. No new routes — sessions open as tabs alongside the current view.
+
+**Tab model:**
 
 ```
-routes/
-└── assistants/
-    └── design/
-        ├── +page.svelte                # Session list + create/launch
-        └── [session_id]/
-            └── +page.svelte            # Agent chat view
-                components/
-                ├── AgentChat.svelte          # Message list + input
-                ├── ConfirmationCard.svelte   # Approve/Reject inline card
-                └── SessionHeader.svelte      # Session info, skill badge
+┌──────────────┬───────────────────┬─────────────────────┬─────┐
+│ 📋 Assistant │ 🤖 Improve: pest…│ 🤖 Explain: pest…  │  +  │
+├──────────────┴───────────────────┴─────────────────────┴─────┤
+│                                                              │
+│  > El teu assistent "pestlerubric1" està configurat...       │
+│                                                              │
+│  $ la primera ▌                                              │
+│                                        [☀/🌙]  [End Session]│
+└──────────────────────────────────────────────────────────────┘
 ```
 
-- Messages render as markdown
-- Confirmation actions show as inline cards with Approve/Reject buttons
-- Skill launcher: buttons per skill with context picker (select assistant, language)
+- Each session is a tab with a terminal interface
+- Multiple sessions can be open (only one active/visible)
+- Tab title = session title (auto-generated: `"Improve: pestlerubric1"`)
+- Closing a tab ends the session (with confirmation)
+- `+` button opens a skill picker or free-form session
+- Tabs persist in browser sessionStorage across page navigation
 
-**Phase 2 — Skill-aware UI (future):**
+**Terminal component:**
 
-Skills can declare UI hooks — e.g., `improve-assistant` triggers a side panel showing the assistant's current config that auto-refreshes when the agent modifies it. Architecture should allow this but not implement it yet.
+- Monospaced font, markdown-capable (renders agent responses as formatted text)
+- Light/dark mode toggle (or follows system preference)
+- Input field at the bottom (terminal prompt style)
+- Tool call activity shown as subtle inline indicators
+- Auto-scroll with scroll-back
 
-**Key:** The frontend is a thin client. All logic is server-side. The frontend sends messages and renders responses + confirmation cards.
+**Session resumption:**
+
+When the user returns to an inactive session tab, the frontend prepends a context note to the next message: `"[System: User returned. Resources may have changed since last interaction.]"` — no new endpoint, just a prefix on the `/message` call.
+
+**Skill buttons:**
+
+Skills are launched from context buttons in existing UI pages:
+- Assistant detail/edit form: `[Explain]` `[Improve]` buttons
+- Each button creates a session via `POST /creator/aac/sessions` with the skill + context
+- The tab opens with the agent's first message already loaded
+
+**Session titles:**
+
+Auto-generated from skill + assistant name at creation time. Stored in `aac_sessions.title` column.
+
+### Components
+
+```
+src/lib/components/aac/
+├── AacTerminal.svelte        # Terminal emulator (monospaced, markdown, input)
+├── AacTabBar.svelte          # Tab bar managing open sessions
+├── AacSkillButton.svelte     # Button that launches a skill session
+└── AacSessionStore.js        # Svelte store: open tabs, active session, persistence
+```
+
+Integration points (modify existing pages):
+- Assistant detail page: add skill buttons
+- Layout: include tab bar component
 
 ### Technology
 
 Svelte 5, JavaScript + JSDoc (NOT TypeScript), TailwindCSS 4. Same stack as existing LAMB frontend. i18n via `svelte-i18n`.
+
+### Implementation order
+
+1. Backend: add `title` to sessions (migration)
+2. `AacTerminal.svelte` — the terminal component (80% of the work)
+3. `AacSessionStore.js` — session/tab state management
+4. `AacTabBar.svelte` — tab bar
+5. `AacSkillButton.svelte` — wire into assistant detail page
+6. Session resumption context injection
 
 ---
 
