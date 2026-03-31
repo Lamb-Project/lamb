@@ -89,6 +89,49 @@ def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict) -> di
     }
 
 
+@register("assistant.debug")
+def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Run a message through an assistant's full pipeline (RAG + prompt processing) without calling the LLM. Shows exactly what the LLM would see."""
+    if not args:
+        raise ValueError("Usage: lamb assistant debug <id> --message \"text\"")
+    assistant_id = int(args[0])
+    message = kwargs.get("message", kwargs.get("m", ""))
+    if not message:
+        raise ValueError("Provide --message or -m with the test input")
+
+    import asyncio
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    messages = [{"role": "user", "content": message}]
+
+    # Run with bypass — reuse the test runner
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            result = pool.submit(
+                asyncio.run,
+                svc.run_scenario(
+                    assistant_id=assistant_id,
+                    scenario_id=None,
+                    messages=messages,
+                    user_email=ctx.user_email,
+                    debug_bypass=True,
+                ),
+            ).result()
+    else:
+        result = asyncio.run(
+            svc.run_scenario(
+                assistant_id=assistant_id,
+                scenario_id=None,
+                messages=messages,
+                user_email=ctx.user_email,
+                debug_bypass=True,
+            )
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Assistant WRITE commands (execute directly, authorization is external)
 # ---------------------------------------------------------------------------

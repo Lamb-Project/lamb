@@ -42,6 +42,7 @@ READ (information retrieval):
 - lamb assistant list — list user's assistants
 - lamb assistant get <id> — get assistant details
 - lamb assistant config — show available models, connectors, processors
+- lamb assistant debug <id> --message "text" — run a message through the full pipeline WITHOUT calling the LLM. Shows exactly what the LLM would see: system prompt + RAG context + processed prompt. Zero tokens. Use this to diagnose RAG retrieval, prompt template issues, and context construction.
 - lamb rubric list / list-public — list rubrics
 - lamb rubric get <uuid> — get rubric details and criteria
 - lamb rubric export <uuid> [--format json|md] — export rubric
