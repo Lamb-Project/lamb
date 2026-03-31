@@ -24,7 +24,7 @@ if (typeof window !== 'undefined') {
 			const data = JSON.parse(saved);
 			openTabs = data.tabs || [];
 			activeTabId = data.activeId || null;
-			showTabs = openTabs.length > 0;
+			showTabs = (data.tabs || []).length > 0;
 		}
 	} catch (_) { /* ignore */ }
 }

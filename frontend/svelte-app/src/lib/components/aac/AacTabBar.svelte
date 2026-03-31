@@ -1,11 +1,8 @@
 <script>
-	import { getOpenTabs, getActiveTabId, setActiveTab, closeTab } from '$lib/stores/aacStore';
+	import { getOpenTabs, getActiveTabId, setActiveTab, closeTab } from '$lib/stores/aacStore.svelte';
 
-	/** @type {(id: string|null) => void} */
-	export let onTabChange = () => {};
-
-	/** @type {() => void} */
-	export let onBackToMain = () => {};
+	/** @type {{ onTabChange?: (id: string|null) => void, onBackToMain?: () => void }} */
+	let { onTabChange = () => {}, onBackToMain = () => {} } = $props();
 
 	let tabs = $derived(getOpenTabs());
 	let activeId = $derived(getActiveTabId());

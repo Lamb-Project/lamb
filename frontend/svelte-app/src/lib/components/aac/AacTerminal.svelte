@@ -2,14 +2,8 @@
 	import { onMount, tick } from 'svelte';
 	import { sendMessage, getSession } from '$lib/services/aacService';
 
-	/** @type {string} */
-	export let sessionId;
-
-	/** @type {string} */
-	export let firstMessage = '';
-
-	/** @type {boolean} */
-	export let resumed = false;
+	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean }} */
+	let { sessionId, firstMessage = '', resumed = false } = $props();
 
 	/** @type {Array<{role: string, content: string}>} */
 	let messages = $state([]);

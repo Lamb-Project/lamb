@@ -1,31 +1,16 @@
 <script>
 	import { createSession } from '$lib/services/aacService';
-	import { openTab } from '$lib/stores/aacStore';
+	import { openTab } from '$lib/stores/aacStore.svelte';
 	import { _ } from 'svelte-i18n';
 
-	/** @type {string} */
-	export let skill;
-
-	/** @type {string} */
-	export let label = '';
-
-	/** @type {string} */
-	export let icon = '🤖';
-
-	/** @type {number|null} */
-	export let assistantId = null;
-
-	/** @type {string} */
-	export let language = 'English';
+	/** @type {{ skill: string, label?: string, icon?: string, assistantId?: number|null, language?: string, onSessionCreated?: (session: {id: string, title: string, firstMessage: string}) => void }} */
+	let { skill, label = '', icon = '🤖', assistantId = null, language = 'English', onSessionCreated = () => {} } = $props();
 
 	/** @type {boolean} */
 	let launching = $state(false);
 
 	/** @type {string} */
 	let error = $state('');
-
-	/** @type {(session: {id: string, title: string, firstMessage: string}) => void} */
-	export let onSessionCreated = () => {};
 
 	async function launch() {
 		launching = true;
