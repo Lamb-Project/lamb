@@ -433,6 +433,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Then** | 5 | CLI partial update bug (fetch-and-merge) | |
 | **Then** | 6 | Skills: enforce bypass-first testing workflow | |
 | **Then** | 7 | Comparative testing: same cases via CLI and AAC agent | |
+| **Then** | 8 | Tests tab in UI + `test-and-evaluate` skill | |
 
 ---
 
@@ -535,3 +536,141 @@ Source: `aac_test_log.md` in repo root
 | Agent ran real completions before verifying RAG | Skill gap | High |
 | chunk_size=200 produces garbage retrieval | KB ingestion config | Medium |
 | CLI and AAC agent not tested on same cases | Testing gap | Medium |
+
+---
+
+## 8. Tests Tab in UI + `test-and-evaluate` Skill
+
+**Priority:** High — makes test scenarios visible and actionable for educators
+**Depends on:** Item 3 (frontend scaffold), Item 6 (bypass-first workflow)
+**Related:** Item 4 (test framework backend — already done), #172 (EVALS)
+
+### 8a. Tests Tab on Assistant Detail Page
+
+A new **Tests** tab alongside Properties, Edit, Share, Chat, Activity.
+
+**What the educator sees:**
+
+```
+┌────────────┬──────┬───────┬──────┬──────────┬───────┐
+│ Properties │ Edit │ Share │ Chat │ Activity │ Tests │
+├────────────┴──────┴───────┴──────┴──────────┴───────┤
+│                                                      │
+│  Test Scenarios (3)                        [+ Add]   │
+│  ┌────────────────────────────────────────────────┐  │
+│  │ ✓ Beatles influence      normal     good       │  │
+│  │ ✗ Blues roots             normal     bad        │  │
+│  │ ? Jazz edge case          edge       not eval   │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  [▶ Run All]  [🔍 Debug All (bypass)]               │
+│                                                      │
+│  Latest Runs                                         │
+│  ┌────────────────────────────────────────────────┐  │
+│  │ Run #1  2026-04-01  gpt-4o-mini  2290 tok  8s │  │
+│  │  → "The Beatles had a profound influence..."   │  │
+│  │  Eval: 👍 good                                │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  [🤖 Test & Evaluate with Agent]                    │
+└──────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- Scenarios list with add/edit/delete
+- Run controls: "Run All" (real LLM) and "Debug All" (bypass, zero tokens)
+- Run single scenario (real or bypass)
+- Results view with response preview, token count, time
+- Bypass results show the constructed context (what the LLM sees)
+- Inline evaluation: thumbs up/down/mixed + optional notes
+- "Test & Evaluate with Agent" button launches the AAC skill
+
+**No new backend needed** — all API endpoints exist at `/creator/assistant/{id}/tests/`.
+
+**Frontend components:**
+
+```
+src/lib/components/aac/
+├── AssistantTests.svelte         # Main tests tab
+├── TestScenarioList.svelte       # Scenarios CRUD
+├── TestRunResults.svelte         # Results with bypass/real distinction
+├── TestEvaluationBadge.svelte    # Inline verdict badge
+└── TestRunDetailModal.svelte     # Full run detail modal
+
+src/lib/services/
+└── testService.js                # API client for test endpoints
+```
+
+### 8b. `test-and-evaluate` Skill
+
+A dedicated AAC skill for test-driven assistant improvement.
+
+**Skill definition:** `backend/lamb/aac/skills/test_and_evaluate.md`
+
+```yaml
+---
+id: test-and-evaluate
+name: Test & Evaluate
+description: Generate tests, run them, evaluate results, suggest improvements
+required_context: [assistant_id]
+optional_context: [language]
+startup_actions:
+  - "lamb assistant get {assistant_id}"
+  - "lamb test scenarios {assistant_id}"
+---
+```
+
+**Workflow (agent-led):**
+
+The skill has three phases, each a subskill:
+
+**Phase 1 — Generate test scenarios:**
+- Analyze the assistant's purpose, system prompt, RAG config, and rubric (if any)
+- Propose a test set: 3-5 normal scenarios covering the core use case, 1-2 edge cases (related but off-center topics), 1 adversarial (prompt injection, off-topic)
+- For each scenario: title, message, expected behavior, type
+- Present to user for approval, then create via `lamb test add`
+- If scenarios already exist, offer to review/extend them instead of starting fresh
+
+**Phase 2 — Run and analyze:**
+- **Always bypass first**: run `lamb test run <id> --bypass` to verify the pipeline
+  - Check: is `{context}` populated? Is it actual text content?
+  - If RAG is broken → stop, diagnose, suggest fixes
+  - If RAG looks good → proceed
+- **Then real completions**: run `lamb test run <id>` with actual LLM
+- Present results in ASCII chat tables
+- For each result, give the agent's preliminary assessment
+
+**Phase 3 — Evaluate and improve:**
+- Ask the user to evaluate each result (good/bad/mixed)
+- Record evaluations via `lamb test evaluate`
+- Analyze patterns: which scenarios failed? Why?
+- Suggest concrete improvements:
+  - System prompt adjustments
+  - Model upgrade/downgrade
+  - RAG configuration changes
+  - Prompt template refinement
+- If user approves a change, apply it and offer to re-run the tests
+
+**The cycle:** Generate → Debug → Run → Evaluate → Improve → Re-run
+
+**Integration with Tests tab:** The skill operates on the same test scenarios visible in the Tests tab. Scenarios created by the agent appear in the tab. Evaluations recorded in the tab are visible to the agent. They're the same data.
+
+### Subskills within `test-and-evaluate`
+
+The skill file uses markdown sections for conditional logic:
+
+```markdown
+## If no test scenarios exist
+Generate a test set based on the assistant's purpose...
+
+## If test scenarios exist but have never been run
+Offer to run them (bypass first, then real)...
+
+## If test scenarios exist and have runs but no evaluations
+Present the results and ask for evaluations...
+
+## If test scenarios have evaluations
+Analyze patterns, suggest improvements, offer to re-run...
+```
+
+This means the skill adapts to whatever state the tests are in — whether the user is starting from scratch or picking up where they left off.
