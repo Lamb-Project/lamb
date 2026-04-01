@@ -430,3 +430,30 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 2 | Skill-driven sessions (agent leads, context-aware launch) | ✅ 2026-03-31 |
 | **Next** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
 | **Then** | 2+4 combined | `test-and-evaluate` skill | |
+| **Then** | 5 | End-to-end review: fix CLI update bugs, AAC skill RAG handling | |
+
+---
+
+## 5. End-to-End Review — Bugs and Improvements from Real Testing
+
+**Priority:** High — blocks production use
+**Depends on:** Items 1-4
+**Source:** Full end-to-end test on 2026-04-01 (see `aac_test_log.md` in repo root)
+
+### CLI bugs found
+
+1. **`assistant update` wipes unspecified fields** — updating with `--rag-processor` clears `system_prompt` and vice versa. The update command replaces all fields instead of merging. Must pass every field on every update.
+2. **`assistant create` has no `--rag-collections` flag** — RAG collection can only be set via a separate update call.
+3. **Double name prefix** — assistant name gets `1_` prefix applied twice on update (`1_1_60s_rock_tutor`).
+4. **No `--prompt-template` in `assistant create`** — creating with `simple_rag` but no template means RAG context has nowhere to go.
+
+### AAC skill improvements needed
+
+1. **`create-assistant` skill MUST set prompt template when RAG is enabled** — without `{context}` and `{user_input}` placeholders, RAG retrieval is silently ignored.
+2. **Skills should run pipeline debug BEFORE real completions** — verify RAG retrieval is working before spending tokens.
+3. **Skills should warn about poor retrieval quality** — if retrieved chunks are mostly formatting/links instead of text content, suggest re-ingesting with larger chunk size.
+4. **`create-assistant` should set RAG_collections in the create call** — not as a separate step.
+
+### Test log
+
+Full command-by-command log with goals, expected results, and actual outcomes saved in `aac_test_log.md`.
