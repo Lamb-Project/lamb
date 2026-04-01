@@ -325,9 +325,13 @@
 
 		<!-- Evaluation Modal -->
 		{#if evaluatingRunId}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-				role="dialog" onclick={() => evaluatingRunId = null}>
-				<div class="bg-white rounded-lg p-6 w-96 shadow-xl" onclick={(e) => e.stopPropagation()}>
+				role="dialog" tabindex="-1"
+				onclick={() => evaluatingRunId = null}
+				onkeydown={(e) => { if (e.key === 'Escape') evaluatingRunId = null; }}>
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="bg-white rounded-lg p-6 w-96 shadow-xl" role="document" onclick={(e) => e.stopPropagation()}>
 					<h3 class="text-lg font-semibold mb-4">Evaluate Test Run</h3>
 					<div class="space-y-3">
 						<div class="flex gap-2">
