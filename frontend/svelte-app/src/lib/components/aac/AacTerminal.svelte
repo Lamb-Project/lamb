@@ -14,6 +14,9 @@
 	/** @type {boolean} */
 	let loading = $state(false);
 
+	/** @type {string} */
+	let statusText = $state('');
+
 	/** @type {boolean} */
 	let darkMode = $state(false);
 
@@ -91,17 +94,31 @@
 				sessionId,
 				messageToSend,
 				(chunk) => {
-					// Update the streaming message in place
+					statusText = '';
 					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
-					messages = messages; // trigger reactivity
+					messages = messages;
 					scrollToBottom();
 				},
 				(stats) => {
 					lastStats = stats;
+					statusText = '';
 				},
 				(err) => {
+					statusText = '';
 					messages[streamIdx] = { role: 'system', content: `Error: ${err}` };
 					messages = messages;
+				},
+				(status) => {
+					if (status.status === 'thinking') {
+						statusText = '🧠 Thinking...';
+					} else if (status.status === 'tool') {
+						statusText = `⚡ ${status.command || 'Running command'}...`;
+					} else if (status.status === 'tool_done') {
+						statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
+					} else if (status.status === 'responding') {
+						statusText = '';
+					}
+					scrollToBottom();
 				},
 			);
 		} catch (e) {
@@ -212,9 +229,13 @@
 			{/if}
 		{/each}
 
-		{#if loading}
+		{#if loading && statusText}
+			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
+				{statusText}
+			</div>
+		{:else if loading}
 			<div class="pl-2 opacity-60 animate-pulse">
-				▌ thinking...
+				▌
 			</div>
 		{/if}
 	</div>

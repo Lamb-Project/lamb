@@ -115,8 +115,9 @@ export async function sendMessage(sessionId, message) {
  * @param {(chunk: string) => void} onChunk - called for each text chunk
  * @param {(stats: Object) => void} [onDone] - called when stream completes
  * @param {(error: string) => void} [onError] - called on error
+ * @param {(status: Object) => void} [onStatus] - called for tool/status events
  */
-export async function sendMessageStream(sessionId, message, onChunk, onDone, onError) {
+export async function sendMessageStream(sessionId, message, onChunk, onDone, onError, onStatus) {
 	const token = getToken();
 	if (!token) throw new Error('Not authenticated');
 
@@ -157,6 +158,7 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 			try {
 				const data = JSON.parse(payload);
 				if (data.content) onChunk(data.content);
+				else if (data.status && onStatus) onStatus(data);
 				if (data.done && onDone) onDone(data.stats || {});
 				if (data.error && onError) onError(data.error);
 			} catch (_) { /* ignore parse errors */ }

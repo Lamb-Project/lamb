@@ -253,8 +253,13 @@ async def send_message_stream(
 
     async def generate():
         try:
-            async for chunk in agent.chat_stream(user_message):
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
+            async for event in agent.chat_stream(user_message):
+                if isinstance(event, dict):
+                    # Status event (tool calls, thinking)
+                    yield f"data: {json.dumps(event)}\n\n"
+                else:
+                    # Text content chunk
+                    yield f"data: {json.dumps({'content': event})}\n\n"
         except Exception as e:
             logger.error(f"Stream error in session {session_id}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

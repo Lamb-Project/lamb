@@ -100,6 +100,48 @@ TOOL_DEFINITIONS = [
     }
 ]
 
+# Human-readable descriptions for tool calls shown during streaming
+_TOOL_LABELS = {
+    "assistant.list": "Loading assistants",
+    "assistant.get": "Reading assistant config",
+    "assistant.config": "Checking available options",
+    "assistant.debug": "Running pipeline debug",
+    "assistant.create": "Creating assistant",
+    "assistant.update": "Updating assistant",
+    "assistant.delete": "Deleting assistant",
+    "rubric.list": "Loading rubrics",
+    "rubric.get": "Reading rubric",
+    "kb.list": "Loading knowledge bases",
+    "kb.get": "Reading knowledge base",
+    "model.list": "Checking available models",
+    "template.list": "Loading templates",
+    "test.scenarios": "Loading test scenarios",
+    "test.add": "Creating test scenario",
+    "test.run": "Running tests",
+    "test.runs": "Loading test results",
+    "test.evaluate": "Recording evaluation",
+}
+
+
+def _describe_tool_call(tc: Any) -> str:
+    """Extract a human-readable description from a tool call."""
+    try:
+        args = json.loads(tc.function.arguments)
+        cmd = args.get("command", "")
+        # Extract the action key (e.g., "assistant.get")
+        tokens = cmd.strip().split()
+        if tokens and tokens[0] == "lamb":
+            tokens = tokens[1:]
+        if len(tokens) >= 2 and not tokens[1].startswith("-"):
+            key = f"{tokens[0]}.{tokens[1]}"
+        elif tokens:
+            key = tokens[0]
+        else:
+            key = ""
+        return _TOOL_LABELS.get(key, cmd[:50])
+    except Exception:
+        return "Executing command"
+
 
 @dataclass
 class AgentLoop:
@@ -234,35 +276,34 @@ class AgentLoop:
                 self.session_logger.log_agent_response(text)
             return text
 
-    async def chat_stream(self, user_message: str) -> AsyncIterator[str]:
-        """Like chat() but streams the final text response.
+    async def chat_stream(self, user_message: str) -> AsyncIterator[dict | str]:
+        """Like chat() but streams events.
 
-        Tool-calling rounds are non-streaming (need full response to parse).
-        Only the final text response is streamed chunk by chunk.
-        Yields text chunks as they arrive.
+        Yields:
+            dict: status events {"status": "...", "command": "..."}
+            str: text content chunks from the final LLM response
         """
-        # Handle pending action
         if self.pending_action:
             result_text = self._resolve_pending_action(user_message)
             if result_text is not None:
-                async for chunk in self._run_agent_loop_stream():
-                    yield chunk
+                async for event in self._run_agent_loop_stream():
+                    yield event
                 return
 
         if self.session_logger:
             self.session_logger.log_user_message(user_message)
         self.conversation.append({"role": "user", "content": user_message})
-        async for chunk in self._run_agent_loop_stream():
-            yield chunk
+        async for event in self._run_agent_loop_stream():
+            yield event
 
-    async def _run_agent_loop_stream(self) -> AsyncIterator[str]:
-        """Run tool-calling loop, then stream the final response."""
+    async def _run_agent_loop_stream(self) -> AsyncIterator[dict | str]:
+        """Run tool-calling loop with status events, then stream final response."""
         tool_rounds = 0
 
         while True:
-            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
+            yield {"status": "thinking"}
 
-            # Non-streaming call to handle potential tool calls
+            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
             response = await self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -284,10 +325,19 @@ class AgentLoop:
                         for tc in message.tool_calls
                     ],
                 })
+
                 should_stop = False
                 for tc in message.tool_calls:
+                    # Emit status before executing
+                    cmd = _describe_tool_call(tc)
+                    yield {"status": "tool", "command": cmd}
+
                     result = self._execute_tool(tc)
-                    logger.info(f"Tool: {tc.function.arguments} → {result.get('success', '?')}")
+                    ok = result.get("success", False)
+                    logger.info(f"Tool: {tc.function.arguments} → {ok}")
+
+                    yield {"status": "tool_done", "command": cmd, "success": ok}
+
                     self.conversation.append({
                         "role": "tool", "tool_call_id": tc.id,
                         "content": json.dumps(result, default=str, ensure_ascii=False),
@@ -302,7 +352,7 @@ class AgentLoop:
                     })
 
                 if should_stop:
-                    # Stream the final "explain pending action" response
+                    yield {"status": "responding"}
                     messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
                     full_text = ""
                     stream = await self.llm_client.chat.completions.create(
@@ -321,7 +371,7 @@ class AgentLoop:
                 continue
 
             # No tool calls — stream the final text response
-            # Re-do this call as streaming
+            yield {"status": "responding"}
             messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
             full_text = ""
             stream = await self.llm_client.chat.completions.create(
