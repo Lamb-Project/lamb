@@ -430,30 +430,108 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 2 | Skill-driven sessions (agent leads, context-aware launch) | ✅ 2026-03-31 |
 | **Next** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
 | **Then** | 2+4 combined | `test-and-evaluate` skill | |
-| **Then** | 5 | End-to-end review: fix CLI update bugs, AAC skill RAG handling | |
+| **Then** | 5 | CLI partial update bug (fetch-and-merge) | |
+| **Then** | 6 | Skills: enforce bypass-first testing workflow | |
+| **Then** | 7 | Comparative testing: same cases via CLI and AAC agent | |
 
 ---
 
-## 5. End-to-End Review — Bugs and Improvements from Real Testing
+## 5. CLI Partial Update Bug — Fetch-and-Merge
 
-**Priority:** High — blocks production use
-**Depends on:** Items 1-4
-**Source:** Full end-to-end test on 2026-04-01 (see `aac_test_log.md` in repo root)
+**Priority:** High — affects CLI and liteshell, blocks reliable assistant editing
+**Depends on:** Nothing (standalone fix)
 
-### CLI bugs found
+### Problem
 
-1. **`assistant update` wipes unspecified fields** — updating with `--rag-processor` clears `system_prompt` and vice versa. The update command replaces all fields instead of merging. Must pass every field on every update.
-2. **`assistant create` has no `--rag-collections` flag** — RAG collection can only be set via a separate update call.
-3. **Double name prefix** — assistant name gets `1_` prefix applied twice on update (`1_1_60s_rock_tutor`).
-4. **No `--prompt-template` in `assistant create`** — creating with `simple_rag` but no template means RAG context has nowhere to go.
+`lamb assistant update` (and the liteshell `assistant.update` command) wipe fields not included in the request. The backend's `prepare_assistant_body` defaults missing fields to empty strings — this is correct for `create` but destructive for `update`.
 
-### AAC skill improvements needed
+Example: `lamb assistant update 14 --rag-processor simple_rag` clears `system_prompt`, `prompt_template`, `RAG_collections`, and everything else not explicitly passed.
 
-1. **`create-assistant` skill MUST set prompt template when RAG is enabled** — without `{context}` and `{user_input}` placeholders, RAG retrieval is silently ignored.
-2. **Skills should run pipeline debug BEFORE real completions** — verify RAG retrieval is working before spending tokens.
-3. **Skills should warn about poor retrieval quality** — if retrieved chunks are mostly formatting/links instead of text content, suggest re-ingesting with larger chunk size.
-4. **`create-assistant` should set RAG_collections in the create call** — not as a separate step.
+**Not a frontend bug** — the web UI always sends all fields. But the CLI and liteshell send only changed fields, which triggers the wipe.
 
-### Test log
+### Fix
 
-Full command-by-command log with goals, expected results, and actual outcomes saved in `aac_test_log.md`.
+Two options (choose one):
+
+**A. Fix in the backend** (`prepare_assistant_body` or `update_assistant_proxy`): On update, fetch the current assistant and merge — only override fields present in the request body.
+
+**B. Fix in the CLI and liteshell**: Before sending an update, fetch the current assistant and fill in all unspecified fields from current values. (The CLI already does this for metadata but not for top-level fields like `system_prompt`, `prompt_template`, `RAG_collections`.)
+
+Option A is better — it fixes the problem for any client, not just ours.
+
+### Also fix
+
+- **`assistant create` missing flags**: Add `--rag-collections` and `--prompt-template` to the CLI create command.
+- **Double name prefix on update**: The update path re-applies the `{user_id}_` prefix to names that already have it.
+
+---
+
+## 6. Skills: Enforce Bypass-First Testing Workflow
+
+**Priority:** High — prevents wasted tokens on broken pipelines
+**Depends on:** Item 5 (skills need reliable updates to fix issues they find)
+
+### Problem
+
+During real testing (2026-04-01), the AAC agent ran real LLM completions on an assistant whose RAG pipeline was silently broken (no prompt template → empty context). The results looked good because gpt-4o-mini answered from training data, masking the RAG failure.
+
+### What the skills should enforce
+
+1. **Bypass first, always.** When testing an assistant, the skill MUST run `lamb assistant debug` or `lamb test run --bypass` BEFORE real completions. No exceptions.
+2. **Check the bypass output.** The skill must verify:
+   - Is `{context}` populated? If empty → RAG is broken, stop.
+   - Does the retrieved content look like actual text? If it's mostly markdown formatting, YouTube embeds, or metadata → warn about chunk quality.
+   - Is the prompt template correct? Are `{context}` and `{user_input}` present?
+3. **Only then run real completions.** And when presenting results, distinguish between RAG-grounded answers and training-data answers.
+
+### Skills to update
+
+- `improve_assistant.md` — testing workflow section (partially done, needs enforcement language)
+- `create_assistant.md` — must set prompt template with `{context}` and `{user_input}` when RAG is enabled, then verify with bypass
+
+---
+
+## 7. Comparative Testing: Same Cases via CLI and AAC Agent
+
+**Priority:** Medium — validates that the AAC agent produces the same results as direct CLI usage
+**Depends on:** Items 5 and 6
+
+### Problem
+
+During prototyping, we tested via the CLI (directly running `lamb test run`, `lamb chat --bypass`) and separately via the AAC agent. But we never ran the **exact same test cases** through both paths to compare:
+
+- Does the agent use the correct commands?
+- Does it run bypass first?
+- Does it correctly interpret bypass output (detect RAG failures)?
+- Does it present results accurately?
+- Do real completion results match between direct CLI and agent-mediated runs?
+
+### Test plan
+
+Design a fixed test script with 5 scenarios for a RAG-enabled assistant:
+
+1. Run all 5 via `lamb test run <id>` (direct CLI) — record results
+2. Run all 5 via AAC agent session — record agent's commands and presented results
+3. Compare: command accuracy, result fidelity, bypass interpretation, improvement suggestions
+
+This validates that the agent is a reliable proxy for direct CLI usage.
+
+### Deliverable
+
+A comparison report documenting any discrepancies between the two paths.
+
+---
+
+### Findings from real testing (2026-04-01)
+
+Source: `aac_test_log.md` in repo root
+
+| Finding | Category | Severity |
+|---|---|---|
+| `assistant update` wipes unspecified fields | CLI bug | High |
+| No `--rag-collections` in `assistant create` | CLI missing feature | Medium |
+| Double name prefix on update | CLI/backend bug | Medium |
+| RAG with no prompt template = silent failure | Skill gap | High |
+| Agent ran real completions before verifying RAG | Skill gap | High |
+| chunk_size=200 produces garbage retrieval | KB ingestion config | Medium |
+| CLI and AAC agent not tested on same cases | Testing gap | Medium |
