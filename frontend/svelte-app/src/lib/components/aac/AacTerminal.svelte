@@ -1,6 +1,6 @@
 <script>
 	import { onMount, tick } from 'svelte';
-	import { sendMessage, getSession } from '$lib/services/aacService';
+	import { sendMessageStream, getSession } from '$lib/services/aacService';
 
 	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean }} */
 	let { sessionId, firstMessage = '', resumed = false } = $props();
@@ -80,12 +80,33 @@
 		await tick();
 		scrollToBottom();
 
+		// Add empty assistant message that will be filled by streaming
+		let streamIdx = messages.length;
+		messages = [...messages, { role: 'assistant', content: '' }];
+		await tick();
+		scrollToBottom();
+
 		try {
-			const data = await sendMessage(sessionId, messageToSend);
-			messages = [...messages, { role: 'assistant', content: data.response }];
-			lastStats = data.stats || null;
+			await sendMessageStream(
+				sessionId,
+				messageToSend,
+				(chunk) => {
+					// Update the streaming message in place
+					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
+					messages = messages; // trigger reactivity
+					scrollToBottom();
+				},
+				(stats) => {
+					lastStats = stats;
+				},
+				(err) => {
+					messages[streamIdx] = { role: 'system', content: `Error: ${err}` };
+					messages = messages;
+				},
+			);
 		} catch (e) {
-			messages = [...messages, { role: 'system', content: `Error: ${e.message}` }];
+			messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
+			messages = messages;
 		}
 
 		loading = false;

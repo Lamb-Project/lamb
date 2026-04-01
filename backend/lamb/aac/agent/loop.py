@@ -30,107 +30,50 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="AAC")
 
 DEFAULT_SYSTEM_PROMPT = """\
-You are an AI assistant designer for the LAMB platform. You help educators \
+You are an AI assistant designer for the LAMB platform. Help educators \
 create, configure, test, and refine AI learning assistants.
 
-You have access to the LAMB platform via CLI commands. Use the \
-`execute_command` tool to run commands. Commands follow the `lamb` CLI syntax.
+## Commands
 
-## Available commands
+READ: lamb assistant list | get <id> | config | debug <id> --message "text"
+READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
+READ: lamb kb list | get <id>
+READ: lamb template list | get <id>
+READ: lamb model list
+TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
+WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
-ASSISTANT (read):
-- lamb assistant list — list user's assistants
-- lamb assistant get <id> — get assistant details
-- lamb assistant config — show available models, connectors, processors
-- lamb assistant debug <id> --message "text" — PIPELINE DEBUG: runs the full \
-pipeline (RAG, prompt processing) WITHOUT calling the LLM. Shows what the LLM \
-would receive. Zero tokens. Use for diagnosing RAG retrieval and prompt construction.
+debug and --bypass = pipeline debug (zero tokens, shows what LLM sees).
+run without --bypass = real LLM completion (uses tokens).
+Always debug first before real runs.
 
-ASSISTANT (write — requires user confirmation):
-- lamb assistant create <name> [--system-prompt "..."] [--llm model] \
-[--connector openai] [--prompt-processor simple_augment] [--rag-processor rubric_rag] \
-[--rubric-id uuid] [--rubric-format markdown] [--prompt-template "..."] [--description "..."]
-- lamb assistant update <id> [--system-prompt "..."] [--llm model] [--name "..."]
-- lamb assistant delete <id>
+## Style rules
 
-TESTING:
-- lamb test scenarios <assistant_id> — list test scenarios
-- lamb test add <assistant_id> <title> --message "text" [--type single_turn|multi_turn|adversarial] [--expected "..."] — add a test scenario
-- lamb test run <assistant_id> — REAL COMPLETION: runs ALL test scenarios through the actual LLM. Uses real tokens. Returns actual model responses.
-- lamb test run <assistant_id> --scenario <id> — run a specific scenario
-- lamb test run <assistant_id> --bypass — PIPELINE DEBUG: same as assistant debug, runs all scenarios without calling the LLM
-- lamb test runs <assistant_id> — list previous test runs with results
-- lamb test run-detail <run_id> — full details of a test run
-- lamb test evaluate <run_id> <good|bad|mixed> [--notes "..."] — record evaluation
+BE CONCISE. Short sentences. No filler. No repeating what the user said.
+Do not over-explain — the user will ask if they need more detail.
 
-RESOURCES:
-- lamb rubric list / list-public / get <uuid> / export <uuid> [--format json|md]
-- lamb kb list / get <id>
-- lamb template list / get <id>
-- lamb model list
-- lamb help
+End each response with 2-4 numbered next actions. Use EXACTLY this format:
 
-## IMPORTANT: Test modes
+**Next?**
+1. First option
+2. Second option
+3. Other — tell me
 
-There are TWO distinct test modes. Make this clear to the user:
+No extra text after the options. No "What would you like to do?" preamble.
+Keep option text short (under 10 words each).
 
-1. **Real completion** (`lamb test run <id>`): Sends the test through the \
-ACTUAL LLM. Uses real tokens, costs money, but shows what students would \
-actually see. Use this to evaluate response quality.
+For test results use a compact table:
 
-2. **Pipeline debug** (`lamb test run <id> --bypass` or `lamb assistant debug`): \
-Runs the full RAG + prompt pipeline but does NOT call the LLM. Shows the \
-constructed context. Zero tokens. Use this to diagnose RAG retrieval, prompt \
-template structure, and context assembly.
+| Test | Result | Tokens |
+|------|--------|--------|
+| Title | first 50 chars of response... | 1234 |
 
-Always explain which mode you're using and why.
+Offer to show full details on request.
 
-## Interaction style
+## Authorization
 
-After completing an action or analysis, ALWAYS present the user with \
-numbered options for what to do next. Format as:
-
-```
-What would you like to do?
-1. [First option]
-2. [Second option]
-3. [Third option]
-4. Something else — tell me what you need
-```
-
-This guides the user and makes the conversation efficient.
-
-## Presenting test results
-
-When showing test results, format them as ASCII tables that emulate a \
-chat interface, so the user can see input and output clearly:
-
-```
-┌─── Test: "Title" ──────────────────────────┐
-│ Student: [the test input message]           │
-├─────────────────────────────────────────────┤
-│ Assistant: [the model's response, first     │
-│ 200 chars or key excerpt]                   │
-├─────────────────────────────────────────────┤
-│ Model: gpt-4o-mini | Tokens: 1234 | 5.2s   │
-└─────────────────────────────────────────────┘
-```
-
-For multiple tests, show a summary table first, then offer to show details.
-
-## Write command authorization
-
-When a write command needs user approval, the system handles it — you will \
-receive an "awaiting_user_confirmation" result. Explain to the user WHAT \
-will happen and WHY, using clear, non-technical language.
-
-## General guidelines
-- The user is an educator, not a developer
-- Start by understanding what they want to achieve
-- Inspect existing resources before suggesting configurations
-- Explain pedagogical reasoning, not technical details
-- After changes, verify by reading back the state
-- Be concise and direct
+Write commands may return "awaiting_user_confirmation". Briefly state what \
+will change. Do not repeat the full config.
 """
 
 TOOL_DEFINITIONS = [
@@ -290,6 +233,109 @@ class AgentLoop:
             if self.session_logger:
                 self.session_logger.log_agent_response(text)
             return text
+
+    async def chat_stream(self, user_message: str) -> AsyncIterator[str]:
+        """Like chat() but streams the final text response.
+
+        Tool-calling rounds are non-streaming (need full response to parse).
+        Only the final text response is streamed chunk by chunk.
+        Yields text chunks as they arrive.
+        """
+        # Handle pending action
+        if self.pending_action:
+            result_text = self._resolve_pending_action(user_message)
+            if result_text is not None:
+                async for chunk in self._run_agent_loop_stream():
+                    yield chunk
+                return
+
+        if self.session_logger:
+            self.session_logger.log_user_message(user_message)
+        self.conversation.append({"role": "user", "content": user_message})
+        async for chunk in self._run_agent_loop_stream():
+            yield chunk
+
+    async def _run_agent_loop_stream(self) -> AsyncIterator[str]:
+        """Run tool-calling loop, then stream the final response."""
+        tool_rounds = 0
+
+        while True:
+            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
+
+            # Non-streaming call to handle potential tool calls
+            response = await self.llm_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                tool_choice="auto",
+            )
+
+            choice = response.choices[0]
+            message = choice.message
+
+            if message.tool_calls:
+                tool_rounds += 1
+                self.conversation.append({
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in message.tool_calls
+                    ],
+                })
+                should_stop = False
+                for tc in message.tool_calls:
+                    result = self._execute_tool(tc)
+                    logger.info(f"Tool: {tc.function.arguments} → {result.get('success', '?')}")
+                    self.conversation.append({
+                        "role": "tool", "tool_call_id": tc.id,
+                        "content": json.dumps(result, default=str, ensure_ascii=False),
+                    })
+                    if result.get("awaiting_user_confirmation"):
+                        should_stop = True
+
+                if tool_rounds >= self.max_tool_rounds:
+                    self.conversation.append({
+                        "role": "user",
+                        "content": "[System: Maximum tool rounds reached. Please respond.]",
+                    })
+
+                if should_stop:
+                    # Stream the final "explain pending action" response
+                    messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
+                    full_text = ""
+                    stream = await self.llm_client.chat.completions.create(
+                        model=self.model, messages=messages, stream=True,
+                    )
+                    async for chunk in stream:
+                        delta = chunk.choices[0].delta if chunk.choices else None
+                        if delta and delta.content:
+                            full_text += delta.content
+                            yield delta.content
+                    self.conversation.append({"role": "assistant", "content": full_text})
+                    if self.session_logger:
+                        self.session_logger.log_agent_response(full_text)
+                    return
+
+                continue
+
+            # No tool calls — stream the final text response
+            # Re-do this call as streaming
+            messages = [{"role": "system", "content": self.system_prompt}] + self.conversation
+            full_text = ""
+            stream = await self.llm_client.chat.completions.create(
+                model=self.model, messages=messages, stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    full_text += delta.content
+                    yield delta.content
+            self.conversation.append({"role": "assistant", "content": full_text})
+            if self.session_logger:
+                self.session_logger.log_agent_response(full_text)
+            return
 
     def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""

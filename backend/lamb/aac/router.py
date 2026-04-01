@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 
 from lamb.auth_context import AuthContext, get_auth_context
@@ -225,6 +226,53 @@ async def send_message(
         "response": response_text,
         "stats": stats,
     }
+
+
+@router.post("/sessions/{session_id}/message/stream")
+async def send_message_stream(
+    session_id: str,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Send a message and stream the response via SSE.
+
+    Request body: {"message": "text"}
+    Response: text/event-stream with chunks, ending with [DONE]
+    """
+    body = await request.json()
+    user_message = body.get("message", "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    mgr = AACSessionManager()
+    session = mgr.get_session(session_id, auth.user["email"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    agent = _build_agent(auth, session)
+
+    async def generate():
+        try:
+            async for chunk in agent.chat_stream(user_message):
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+        except Exception as e:
+            logger.error(f"Stream error in session {session_id}: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        # Persist after stream completes
+        mgr.update_conversation(
+            session_id=session_id,
+            user_email=auth.user["email"],
+            conversation=agent.conversation,
+            pending_action=agent.pending_action,
+        )
+        stats = agent.get_stats()
+        if agent.session_logger:
+            agent.session_logger.log("turn_complete", stats)
+        yield f"data: {json.dumps({'done': True, 'stats': stats})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------

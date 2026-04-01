@@ -96,7 +96,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 }
 
 /**
- * Send a message to the AAC agent.
+ * Send a message to the AAC agent (non-streaming).
  * @param {string} sessionId
  * @param {string} message
  * @returns {Promise<{response: string, stats: Object}>}
@@ -106,6 +106,62 @@ export async function sendMessage(sessionId, message) {
 		method: 'POST',
 		body: JSON.stringify({ message }),
 	});
+}
+
+/**
+ * Send a message and stream the response via SSE.
+ * @param {string} sessionId
+ * @param {string} message
+ * @param {(chunk: string) => void} onChunk - called for each text chunk
+ * @param {(stats: Object) => void} [onDone] - called when stream completes
+ * @param {(error: string) => void} [onError] - called on error
+ */
+export async function sendMessageStream(sessionId, message, onChunk, onDone, onError) {
+	const token = getToken();
+	if (!token) throw new Error('Not authenticated');
+
+	const url = getApiUrl(`/aac/sessions/${sessionId}/message/stream`);
+	const res = await fetch(url, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ message }),
+	});
+
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+		if (onError) onError(err.detail || `HTTP ${res.status}`);
+		return;
+	}
+
+	const reader = res.body?.getReader();
+	if (!reader) return;
+
+	const decoder = new TextDecoder();
+	let buffer = '';
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+
+		buffer += decoder.decode(value, { stream: true });
+		const lines = buffer.split('\n');
+		buffer = lines.pop() || '';
+
+		for (const line of lines) {
+			if (!line.startsWith('data: ')) continue;
+			const payload = line.slice(6);
+			if (payload === '[DONE]') return;
+			try {
+				const data = JSON.parse(payload);
+				if (data.content) onChunk(data.content);
+				if (data.done && onDone) onDone(data.stats || {});
+				if (data.error && onError) onError(data.error);
+			} catch (_) { /* ignore parse errors */ }
+		}
+	}
 }
 
 /**
