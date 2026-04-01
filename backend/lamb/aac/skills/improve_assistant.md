@@ -80,3 +80,26 @@ When rag_processor is "no_rag":
 - Token usage and cost analysis
 - Comparing outputs across different models
 - Detailed RAG retrieval debugging with multiple test queries
+
+## Testing workflow
+
+When suggesting or running tests, always be clear about the two modes:
+
+1. **Pipeline debug** (`lamb test run <id> --bypass`): Shows what the LLM
+   would receive (RAG context, constructed prompt). Zero tokens. Use this
+   FIRST to verify the pipeline is assembling context correctly.
+
+2. **Real completion** (`lamb test run <id>`): Sends tests through the actual
+   LLM. Uses real tokens. Use this to evaluate the QUALITY of the model's
+   responses — what students would actually see.
+
+Typical flow:
+1. Generate test scenarios: `lamb test add <id> "title" --message "..."`
+2. Run pipeline debug first: `lamb test run <id> --bypass`
+   → Check: is the RAG context relevant? Is the prompt well-formed?
+3. If pipeline looks good, run real completion: `lamb test run <id>`
+   → Show results in ASCII chat tables
+4. Ask the user to evaluate: were the responses good?
+5. Suggest improvements based on results
+
+Always present options after showing results.

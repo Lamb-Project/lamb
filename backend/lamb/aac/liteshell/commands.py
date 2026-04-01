@@ -406,6 +406,123 @@ def model_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> list[dic
 
 
 # ---------------------------------------------------------------------------
+# Test commands
+# ---------------------------------------------------------------------------
+
+@register("test.scenarios")
+def test_scenarios(ctx: "CommandContext", args: list[str], kwargs: dict) -> list[dict]:
+    """List test scenarios for an assistant."""
+    if not args:
+        raise ValueError("Usage: lamb test scenarios <assistant_id>")
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    return svc.list_scenarios(int(args[0]))
+
+
+@register("test.add")
+def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Add a test scenario to an assistant."""
+    if not args:
+        raise ValueError("Usage: lamb test add <assistant_id> <title> --message \"text\" [--type single_turn|multi_turn|adversarial] [--expected \"...\"]")
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    assistant_id = int(args[0])
+    title = args[1] if len(args) > 1 else kwargs.get("title", "Test scenario")
+    message = kwargs.get("message", kwargs.get("m", ""))
+    if not message:
+        raise ValueError("Provide --message with the test input")
+    return svc.create_scenario(
+        assistant_id=assistant_id,
+        title=title,
+        messages=[{"role": "user", "content": message}],
+        created_by=ctx.user_email,
+        description=kwargs.get("description", ""),
+        scenario_type=kwargs.get("type", kwargs.get("t", "single_turn")),
+        expected_behavior=kwargs.get("expected", kwargs.get("e", "")),
+    )
+
+
+@register("test.run")
+def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Run test scenarios for an assistant through the REAL completion pipeline. Uses actual LLM tokens."""
+    if not args:
+        raise ValueError("Usage: lamb test run <assistant_id> [--scenario <id>] [--bypass]")
+    import asyncio
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    assistant_id = int(args[0])
+    scenario_id = kwargs.get("scenario", kwargs.get("s"))
+    bypass = kwargs.get("bypass", kwargs.get("b", False))
+
+    async def _run():
+        if scenario_id:
+            scenario = svc.get_scenario(scenario_id)
+            if not scenario:
+                raise ValueError(f"Scenario {scenario_id} not found")
+            return await svc.run_scenario(
+                assistant_id=assistant_id,
+                scenario_id=scenario_id,
+                messages=scenario["messages"],
+                user_email=ctx.user_email,
+                debug_bypass=bypass is True or bypass == "true",
+            )
+        else:
+            return await svc.run_all_scenarios(
+                assistant_id, ctx.user_email,
+                debug_bypass=bypass is True or bypass == "true",
+            )
+
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, _run()).result()
+    else:
+        return asyncio.run(_run())
+
+
+@register("test.runs")
+def test_runs(ctx: "CommandContext", args: list[str], kwargs: dict) -> list[dict]:
+    """List test runs for an assistant."""
+    if not args:
+        raise ValueError("Usage: lamb test runs <assistant_id>")
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    return svc.list_runs(int(args[0]))
+
+
+@register("test.run-detail")
+def test_run_detail(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Get full details of a test run (input, output, snapshot)."""
+    if not args:
+        raise ValueError("Usage: lamb test run-detail <run_id>")
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    run = svc.get_run(args[0])
+    if not run:
+        raise ValueError(f"Test run {args[0]} not found")
+    return run
+
+
+@register("test.evaluate")
+def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Record an evaluation for a test run."""
+    if len(args) < 2:
+        raise ValueError("Usage: lamb test evaluate <run_id> <verdict: good|bad|mixed> [--notes \"...\"]")
+    from lamb.services.test_service import TestService
+    svc = TestService()
+    verdict = args[1]
+    if verdict not in ("good", "bad", "mixed"):
+        raise ValueError("Verdict must be 'good', 'bad', or 'mixed'")
+    return svc.create_evaluation(
+        test_run_id=args[0],
+        evaluator="user",
+        verdict=verdict,
+        notes=kwargs.get("notes", kwargs.get("n", "")),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Utility commands
 # ---------------------------------------------------------------------------
 

@@ -247,12 +247,43 @@ Svelte 5, JavaScript + JSDoc (NOT TypeScript), TailwindCSS 4. Same stack as exis
 
 ### Implementation order
 
-1. Backend: add `title` to sessions (migration)
-2. `AacTerminal.svelte` — the terminal component (80% of the work)
-3. `AacSessionStore.js` — session/tab state management
-4. `AacTabBar.svelte` — tab bar
-5. `AacSkillButton.svelte` — wire into assistant detail page
+1. Backend: add `title` to sessions (migration) ✅
+2. `AacTerminal.svelte` — the terminal component ✅
+3. `AacSessionStore.svelte.js` — session/tab state management ✅
+4. `AacTabBar.svelte` — tab bar ✅
+5. `AacSkillButton.svelte` — wire into assistant detail page ✅
 6. Session resumption context injection
+7. Side panel canvas (see §3b below)
+
+### 3b. Side Panel Canvas (Future Enhancement)
+
+**Priority:** Medium — enhances the experience but not essential for MVP
+**Depends on:** Item 3 base implementation
+
+The terminal is text-only. For richer visualizations (rubric tables, test result comparisons, pipeline diagrams), the AAC UI gets a **side panel** with a markdown/HTML renderer — a "canvas" the agent can write to.
+
+**How it works:**
+
+- The agent response can include a special directive: `[canvas: content]` or a dedicated tool `show_in_canvas("markdown content")`
+- The frontend detects this and renders the content in a resizable side panel next to the terminal
+- The canvas persists until the agent updates it or the user closes it
+- Use cases: rubric criteria tables, test result comparison grids, pipeline visualization, assistant config summary
+
+**Components:**
+
+```
+src/lib/components/aac/
+├── AacCanvas.svelte          # Side panel markdown/HTML renderer
+└── AacTerminalWithCanvas.svelte  # Layout wrapper: terminal + canvas side-by-side
+```
+
+**Liteshell tool (backend):**
+```
+lamb canvas show "markdown content"    # display content in side panel
+lamb canvas clear                      # clear the side panel
+```
+
+This is a future enhancement — the terminal works standalone for now.
 
 ---
 
