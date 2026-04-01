@@ -190,7 +190,7 @@ def send_message(
 ) -> None:
     """Send a message to the agent and get a response."""
     fmt = output or get_output_format()
-    with get_client() as client:
+    with get_client(timeout=300.0) as client:
         data = client.post(
             f"/creator/aac/sessions/{session_id}/message",
             json={"message": message},
@@ -250,7 +250,7 @@ def interactive_chat(
             # Send message
             err_console.print("[dim]Thinking...[/dim]")
             try:
-                with get_client() as client:
+                with get_client(timeout=300.0) as client:
                     data = client.post(
                         f"/creator/aac/sessions/{session_id}/message",
                         json={"message": user_input},

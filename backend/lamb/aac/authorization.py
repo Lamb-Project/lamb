@@ -34,6 +34,15 @@ DEFAULT_POLICY: dict[str, str] = {
     "template.get": "auto",
     "model.list": "auto",
     "help": "auto",
+    # Test commands — auto (low risk, user explicitly requests tests)
+    "test.scenarios": "auto",
+    "test.add": "auto",
+    "test.run": "auto",
+    "test.runs": "auto",
+    "test.run-detail": "auto",
+    "test.evaluate": "auto",
+    # Debug — auto (read-only, zero tokens for bypass)
+    "assistant.debug": "auto",
     # Writes — ask by default
     "assistant.create": "ask",
     "assistant.update": "ask",
