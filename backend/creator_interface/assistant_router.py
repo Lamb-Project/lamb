@@ -1190,6 +1190,29 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
+        # Fetch current assistant to merge with partial updates (#328)
+        assistant_service = AssistantService()
+        current = assistant_service.get_assistant_by_id(assistant_id)
+        if not current:
+            raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
+
+        # Merge: fill in missing fields from current assistant so partial
+        # updates don't wipe existing values
+        current_metadata_str = current.api_callback or "{}"
+        merge_defaults = {
+            "name": current.name,
+            "description": current.description or "",
+            "system_prompt": current.system_prompt or "",
+            "prompt_template": current.prompt_template or "",
+            "RAG_Top_k": current.RAG_Top_k or 3,
+            "RAG_collections": current.RAG_collections or "",
+            "metadata": current_metadata_str,
+            "api_callback": current_metadata_str,
+        }
+        for key, default_val in merge_defaults.items():
+            if key not in original_body:
+                original_body[key] = default_val
+
         normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
         if metadata_error:
             logger.error(
@@ -1200,8 +1223,12 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         original_body["metadata"] = normalized_metadata
         original_body["api_callback"] = normalized_metadata
 
-        # Prepare the assistant body
-        new_body, error = prepare_assistant_body(original_body, creator_user)
+        # Prepare the assistant body (now has all fields — merge complete)
+        # Pass the current name as sanitized_prefixed_name to avoid double-prefixing (#328)
+        new_body, error = prepare_assistant_body(
+            original_body, creator_user,
+            sanitized_prefixed_name=original_body.get("name", current.name),
+        )
         if error:
             logger.error(f"Error preparing update body for assistant {assistant_id}: {error}")
             raise HTTPException(status_code=400, detail=error)
