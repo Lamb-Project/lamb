@@ -45,6 +45,7 @@
     import { getAssistantMetadataObject, normalizeAssistantData } from '$lib/utils/assistantData';
     import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
     import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
+    import AssistantTests from '$lib/components/aac/AssistantTests.svelte';
     import { createSession } from '$lib/services/aacService';
     import { openTab, closeTab, setActiveTab, getOpenTabs, getActiveTabId } from '$lib/stores/aacStore.svelte';
 
@@ -63,7 +64,7 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'aac'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'tests' | 'aac'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- AAC Agent State ---
@@ -985,6 +986,14 @@
                 {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
             </button>
         {/if}
+        {#if isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'tests' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'tests'}
+            >
+                Tests
+            </button>
+        {/if}
 
         <!-- AAC session tabs (if any are open for this assistant) -->
         {#each aacTabs.filter(t => t.assistantId === selectedAssistantData?.id) as tab}
@@ -1525,6 +1534,12 @@
             <div class="px-6 py-4">
                 <ChatAnalytics assistant={selectedAssistantData} />
             </div>
+        {:else if detailSubView === 'tests'}
+            <!-- Tests Tab -->
+            <AssistantTests
+                assistantId={selectedAssistantData.id}
+                onLaunchSkill={(skill) => launchAacSkill(skill)}
+            />
         {:else if detailSubView === 'aac' && activeAacSessionId}
             <!-- AAC Agent Terminal -->
             <div class="h-[600px]">
