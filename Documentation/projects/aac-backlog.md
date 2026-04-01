@@ -430,10 +430,10 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 2 | Skill-driven sessions (agent leads, context-aware launch) | ✅ 2026-03-31 |
 | **Next** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
 | **Then** | 2+4 combined | `test-and-evaluate` skill | |
-| **Then** | 5 | CLI partial update bug (fetch-and-merge) | |
+| ~~Done~~ | 5 | CLI partial update bug (fetch-and-merge) | ✅ 2026-04-01 #328 |
 | **Then** | 6 | Skills: enforce bypass-first testing workflow | |
 | **Then** | 7 | Comparative testing: same cases via CLI and AAC agent | |
-| **Then** | 8 | Tests tab in UI + `test-and-evaluate` skill | |
+| ~~Done~~ | 8 | Tests tab in UI + `test-and-evaluate` skill | ✅ 2026-04-01 |
 
 ---
 
