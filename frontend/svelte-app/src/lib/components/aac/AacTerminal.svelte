@@ -1,6 +1,6 @@
 <script>
 	import { onMount, tick } from 'svelte';
-	import { sendMessageStream, getSession } from '$lib/services/aacService';
+	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 
 	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean }} */
 	let { sessionId, firstMessage = '', resumed = false } = $props();
@@ -36,25 +36,28 @@
 		}
 
 		if (firstMessage) {
-			// Skill session — agent spoke first
 			messages = [{ role: 'assistant', content: firstMessage }];
 		} else if (resumed) {
 			// Resumed session — load history
 			try {
 				const session = await getSession(sessionId);
-				messages = (session.conversation || []).filter(
+				const conv = (session.conversation || []).filter(
 					m => m.role === 'user' || (m.role === 'assistant' && m.content && !m.tool_calls)
-				).map(m => ({
-					role: m.role,
-					content: m.content || '',
-				}));
-				// Inject resume notice
-				if (messages.length > 0) {
+				).map(m => ({ role: m.role, content: m.content || '' }));
+
+				if (conv.length > 0) {
+					messages = conv;
 					resumeNotice = true;
+				} else if (session.skill_info && !session.skill_info.started) {
+					// Skill session with no conversation — trigger startup stream
+					await triggerSkillStartup();
 				}
 			} catch (e) {
 				messages = [{ role: 'system', content: `Error loading session: ${e.message}` }];
 			}
+		} else {
+			// New skill session — trigger startup stream immediately
+			await triggerSkillStartup();
 		}
 
 		await tick();
@@ -63,6 +66,43 @@
 	});
 
 	let resumeNotice = $state(false);
+
+	async function triggerSkillStartup() {
+		loading = true;
+		let streamIdx = messages.length;
+		messages = [...messages, { role: 'assistant', content: '' }];
+		await tick();
+
+		try {
+			await sendMessageStream(
+				sessionId,
+				'[System: Skill startup]',
+				(chunk) => {
+					statusText = '';
+					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
+					messages = messages;
+					scrollToBottom();
+				},
+				(stats) => { lastStats = stats; statusText = ''; },
+				(err) => { messages[streamIdx] = { role: 'system', content: `Error: ${err}` }; messages = messages; },
+				(status) => {
+					if (status.status === 'thinking') statusText = '🧠 Thinking...';
+					else if (status.status === 'tool') statusText = `⚡ ${status.command || 'Running'}...`;
+					else if (status.status === 'tool_done') statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
+					else if (status.status === 'responding') statusText = '';
+					scrollToBottom();
+				},
+			);
+		} catch (e) {
+			messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
+			messages = messages;
+		}
+
+		loading = false;
+		await tick();
+		scrollToBottom();
+		inputEl?.focus();
+	}
 
 	async function handleSend() {
 		const text = inputText.trim();

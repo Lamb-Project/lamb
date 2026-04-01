@@ -49,31 +49,29 @@ Always debug first before real runs.
 
 ## Style rules
 
-BE CONCISE. Short sentences. No filler. No repeating what the user said.
-Do not over-explain — the user will ask if they need more detail.
+BE CONCISE. Maximum 5-6 lines per response unless the user asks for detail.
+Short sentences. No filler. No repeating what the user already knows.
+No explaining concepts (RAG, models, prompts) unless asked.
+Use bullet points, not paragraphs.
 
-End each response with 2-4 numbered next actions. Use EXACTLY this format:
+End EVERY response with numbered options. EXACTLY this format, no variations:
 
 **Next?**
-1. First option
-2. Second option
+1. Option text
+2. Option text
 3. Other — tell me
 
-No extra text after the options. No "What would you like to do?" preamble.
-Keep option text short (under 10 words each).
+RULES for numbering:
+- Always start at 1
+- Always sequential (1, 2, 3)
+- Last option is always "Other — tell me"
+- No text before "**Next?**" on that line
+- No text after the last option
+- 2-4 options total, keep each under 8 words
 
-For test results use a compact table:
+For test results: compact markdown table, offer details on request.
 
-| Test | Result | Tokens |
-|------|--------|--------|
-| Title | first 50 chars of response... | 1234 |
-
-Offer to show full details on request.
-
-## Authorization
-
-Write commands may return "awaiting_user_confirmation". Briefly state what \
-will change. Do not repeat the full config.
+Write commands: briefly state what changes. One sentence max.
 """
 
 TOOL_DEFINITIONS = [

@@ -69,13 +69,15 @@ class AACSessionManager:
             columns = [desc[0] for desc in cursor.description]
             session = dict(zip(columns, row))
             raw = json.loads(session.get("conversation", "[]"))
-            # Support both old format (plain list) and new format (envelope with pending_action)
+            # Support both old format (plain list) and new format (envelope)
             if isinstance(raw, dict) and "messages" in raw:
                 session["conversation"] = raw["messages"]
                 session["pending_action"] = raw.get("pending_action")
+                session["skill_info"] = raw.get("skill_info")
             else:
                 session["conversation"] = raw
                 session["pending_action"] = None
+                session["skill_info"] = None
             return session
         finally:
             conn.close()
@@ -103,17 +105,18 @@ class AACSessionManager:
         conversation: list[dict],
         assistant_id: Optional[int] = None,
         pending_action: Optional[dict] = None,
+        skill_info: Optional[dict] = None,
     ) -> None:
-        """Update the conversation history and pending action for a session.
+        """Update the conversation history, pending action, and skill info.
 
-        The pending_action is serialized into the conversation JSON as a
-        special envelope so it survives across stateless request boundaries.
+        All state is serialized into the conversation JSON envelope so it
+        survives across stateless request boundaries.
         """
         now = datetime.utcnow().isoformat()
-        # Pack pending_action into the stored blob
         stored = {
             "messages": conversation,
             "pending_action": pending_action,
+            "skill_info": skill_info,
         }
         conn = self.db.get_connection()
         try:

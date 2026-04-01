@@ -93,7 +93,7 @@
             const title = session.title || skill;
             openTab(session.id, title, selectedAssistantData.id, skill);
             activeAacSessionId = session.id;
-            aacFirstMessage = session.first_message || '';
+            aacFirstMessage = '';  // No first message — terminal will trigger startup stream
             detailSubView = 'aac';
         } catch (e) {
             console.error('AAC launch error:', e);

@@ -105,27 +105,14 @@ async def create_session(
         "created_at": session["created_at"],
     }
 
-    # If a skill is set, run the startup sequence
+    # If skill, store skill_info so the first message triggers startup
     if skill_id:
-        try:
-            agent = _build_agent_with_skill(auth, session, skill_id, skill_context)
-            # Run agent's first turn with a synthetic startup message
-            first_message = await agent.chat(
-                "[System: Skill launched. Run your startup analysis and greet the user.]"
-            )
-            # Persist conversation
-            mgr.update_conversation(
-                session_id=session["id"],
-                user_email=auth.user["email"],
-                conversation=agent.conversation,
-                pending_action=agent.pending_action,
-            )
-            result["first_message"] = first_message
-            result["stats"] = agent.get_stats()
-        except Exception as e:
-            logger.error(f"Skill startup failed for '{skill_id}': {e}")
-            result["first_message"] = None
-            result["error"] = f"Skill startup failed: {str(e)}"
+        mgr.update_conversation(
+            session_id=session["id"],
+            user_email=auth.user["email"],
+            conversation=[],
+            skill_info={"skill_id": skill_id, "context": skill_context, "started": False},
+        )
 
     return result
 
@@ -198,10 +185,10 @@ async def send_message(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Build agent with restored state
-    agent = _build_agent(auth, session)
+    # Build agent — handle skill startup if needed
+    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message)
 
-    # Run agent loop (handles pending actions, authorization, tool calls)
+    # Run agent loop
     try:
         response_text = await agent.chat(user_message)
     except Exception as e:
@@ -210,12 +197,17 @@ async def send_message(
             agent.session_logger.log_error(str(e), context="agent_chat")
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
-    # Persist conversation + pending action
+    # Mark skill as started
+    if skill_info:
+        skill_info["started"] = True
+
+    # Persist conversation + pending action + skill_info
     mgr.update_conversation(
         session_id=session_id,
         user_email=auth.user["email"],
         conversation=agent.conversation,
         pending_action=agent.pending_action,
+        skill_info=skill_info,
     )
 
     stats = agent.get_stats()
@@ -249,27 +241,27 @@ async def send_message_stream(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    agent = _build_agent(auth, session)
+    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message)
 
     async def generate():
         try:
             async for event in agent.chat_stream(user_message):
                 if isinstance(event, dict):
-                    # Status event (tool calls, thinking)
                     yield f"data: {json.dumps(event)}\n\n"
                 else:
-                    # Text content chunk
                     yield f"data: {json.dumps({'content': event})}\n\n"
         except Exception as e:
             logger.error(f"Stream error in session {session_id}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        # Persist after stream completes
+        if skill_info:
+            skill_info["started"] = True
         mgr.update_conversation(
             session_id=session_id,
             user_email=auth.user["email"],
             conversation=agent.conversation,
             pending_action=agent.pending_action,
+            skill_info=skill_info,
         )
         stats = agent.get_stats()
         if agent.session_logger:
@@ -283,6 +275,33 @@ async def send_message_stream(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _prepare_agent_and_message(
+    auth: AuthContext, session: dict, user_message: str,
+) -> tuple:
+    """Build the right agent and adjust the message for skill startup.
+
+    Returns: (agent, message, skill_info)
+    """
+    skill_info = session.get("skill_info")
+
+    if skill_info and not skill_info.get("started"):
+        # First message in a skill session — build with skill and use startup trigger
+        agent = _build_agent_with_skill(
+            auth, session,
+            skill_info["skill_id"],
+            skill_info.get("context", {}),
+        )
+        # The user message becomes the startup trigger; prepend the actual message if any
+        if user_message and not user_message.startswith("[System:"):
+            startup_msg = f"[System: Skill launched. Greet the user and present your initial analysis.]\nUser's first message: {user_message}"
+        else:
+            startup_msg = "[System: Skill launched. Greet the user and present your initial analysis.]"
+        return agent, startup_msg, skill_info
+    else:
+        agent = _build_agent(auth, session)
+        return agent, user_message, skill_info
 
 
 def _build_agent(auth: AuthContext, session: dict) -> AgentLoop:
