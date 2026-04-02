@@ -316,13 +316,19 @@
 		font-weight: 600;
 		opacity: 0.8;
 	}
-	:global(.aac-md ul),
-	:global(.aac-md ol) {
+	:global(.aac-md ul) {
 		padding-left: 1.25rem;
 		margin: 0.25rem 0;
+		list-style: disc;
+	}
+	:global(.aac-md ol) {
+		padding-left: 1.5rem;
+		margin: 0.25rem 0;
+		list-style: decimal;
 	}
 	:global(.aac-md li) {
 		margin: 0.1rem 0;
+		display: list-item;
 	}
 	:global(.aac-md p) {
 		margin: 0.25rem 0;
