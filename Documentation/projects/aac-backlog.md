@@ -428,12 +428,18 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 1 | Authorization system (approach B: chat-native) | ✅ 2026-03-31 |
 | ~~Done~~ | 4 | Test scenarios, runner, evaluation, debug bypass | ✅ 2026-03-31 |
 | ~~Done~~ | 2 | Skill-driven sessions (agent leads, context-aware launch) | ✅ 2026-03-31 |
-| **Next** | 3 | Frontend UI scaffold (chat panel, confirmation cards) | |
-| **Then** | 2+4 combined | `test-and-evaluate` skill | |
+| ~~Done~~ | 3 | Frontend UI scaffold (terminal, streaming, tabs, tests tab) | ✅ 2026-04-02 |
+| ~~Done~~ | 2+4 | `test-and-evaluate` skill | ✅ 2026-04-01 |
 | ~~Done~~ | 5 | CLI partial update bug (fetch-and-merge) | ✅ 2026-04-01 #328 |
-| **Then** | 6 | Skills: enforce bypass-first testing workflow | |
-| **Then** | 7 | Comparative testing: same cases via CLI and AAC agent | |
+| ~~Done~~ | 6 | Skills: bypass-first workflow (agent follows naturally) | ✅ 2026-04-02 |
+| ~~Done~~ | 7 | Comparative testing: CLI vs AAC agent (same 5 scenarios) | ✅ 2026-04-02 |
 | ~~Done~~ | 8 | Tests tab in UI + `test-and-evaluate` skill | ✅ 2026-04-01 |
+| ~~Done~~ | #329 | simple_augment: clean text extraction instead of JSON dump | ✅ 2026-04-02 |
+| ~~Done~~ | #330 | RAG processors: read `results` key from KB server response | ✅ 2026-04-02 |
+| **Next** | 9 | Session audit log + Agent history UI | |
+| **Then** | 3b | Side Panel Canvas | |
+| **Pre-merge** | | Cherry-pick #329 + #330 to dev (production RAG broken) | |
+| **Pre-merge** | | Revert docker-compose log levels to WARNING | |
 
 ---
 
@@ -536,6 +542,112 @@ Source: `aac_test_log.md` in repo root
 | Agent ran real completions before verifying RAG | Skill gap | High |
 | chunk_size=200 produces garbage retrieval | KB ingestion config | Medium |
 | CLI and AAC agent not tested on same cases | Testing gap | Medium |
+
+---
+
+## 9. Session Audit Log + Agent History UI
+
+**Priority:** High — essential for research, transparency, and user trust
+**Depends on:** Items 1-4 (core AAC working)
+
+### Problem
+
+AAC sessions currently log to JSONL files (for research) and store conversation in the DB (for session continuity). But there's no structured, queryable record of **what the agent actually did** — which tools it called, what it changed, and what artifacts it affected. The user has no way to review past sessions or understand the agent's actions across time.
+
+### 9a. Structured Tool Use Audit (Backend)
+
+Every tool call during an AAC session gets recorded as a structured event in the session record, not just in the JSONL log file.
+
+**Data per tool use event:**
+```json
+{
+    "timestamp": "2026-04-02T13:04:12.345Z",
+    "command": "lamb assistant get 17",
+    "action_key": "assistant.get",
+    "intent": "Reading assistant configuration for analysis",
+    "success": true,
+    "elapsed_ms": 42,
+    "artifacts_affected": [
+        {"type": "assistant", "id": 17, "action": "read"}
+    ]
+}
+```
+
+**Intent:** A human-readable string explaining what the agent is trying to do. Generated from the tool call context — the LLM's preceding message or the skill's current step.
+
+**Artifacts affected:** Which LAMB resources were read, created, modified, or deleted. Extracted from the command:
+- `lamb assistant get 4` → `{type: "assistant", id: 4, action: "read"}`
+- `lamb assistant create "Bio Tutor"` → `{type: "assistant", id: 15, action: "create"}`
+- `lamb test run 17` → `{type: "assistant", id: 17, action: "test"}`
+- `lamb rubric get <uuid>` → `{type: "rubric", id: "<uuid>", action: "read"}`
+
+**Storage:** Array of events stored in the session record (alongside conversation and pending_action in the session envelope). Also written to the JSONL log file for research.
+
+### 9b. CLI: Query Session Tool Uses
+
+```
+lamb aac history <session-id>                    # conversation (existing)
+lamb aac tools <session-id>                      # tool use audit log
+lamb aac tools <session-id> --artifacts          # group by affected artifact
+lamb aac tools <session-id> --filter assistant   # filter by artifact type
+lamb aac sessions --with-stats                   # list sessions with tool counts
+```
+
+### 9c. Frontend: Agent History Page
+
+A new top-level page/tab **"Agent"** in the navigation, alongside Assistants, Knowledge Bases, etc.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Assistants  │  Knowledge Bases  │  Agent  │  Admin          │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Your Agent Sessions                                         │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ 🤖 Improve: rock_the_60s          2026-04-02  12 tools │  │
+│  │    Artifacts: assistant:17 (read, test), rubric (read)  │  │
+│  │    Status: active                            [Resume]   │  │
+│  ├────────────────────────────────────────────────────────┤  │
+│  │ 🤖 Test & Evaluate: pestlerubric1  2026-04-01  8 tools │  │
+│  │    Artifacts: assistant:4 (read, test), rubric (read)   │  │
+│  │    Status: completed                          [Review]  │  │
+│  ├────────────────────────────────────────────────────────┤  │
+│  │ 🤖 Create New Assistant            2026-04-01  5 tools │  │
+│  │    Artifacts: assistant:13 (create)                     │  │
+│  │    Status: completed                          [Review]  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  Click a session to see full conversation + tool audit log   │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Session detail view:**
+- Full conversation (same as the terminal but read-only for completed sessions)
+- Tool audit timeline: chronological list of tool calls with intent, outcome, and affected artifacts
+- Summary: total tools, artifacts touched, time spent, tokens used
+
+**Resume vs Review:**
+- Active sessions: "Resume" opens the terminal and continues the conversation
+- Completed sessions: "Review" shows read-only conversation + audit log
+
+### Implementation
+
+**Backend:**
+- Extend `AgentLoop._execute_tool()` to record structured events
+- Add `tool_audit` array to session envelope (same as pending_action/skill_info)
+- Extract artifact info from command strings (parser already exists in liteshell)
+- Record intent from the LLM's tool_call arguments or preceding message
+
+**CLI:**
+- New `lamb aac tools` command
+- Extend `lamb aac sessions` with `--with-stats`
+
+**Frontend:**
+- New route: `/agent` (or `/aac`)
+- Components: `AgentSessionList.svelte`, `AgentSessionDetail.svelte`, `ToolAuditTimeline.svelte`
+- Read-only terminal for reviewing completed sessions
 
 ---
 
