@@ -2,8 +2,11 @@
 
 **The Agent-Assisted Creator (AAC)** is an AI agent that helps you design, test, and improve learning assistants through conversation. You describe what you want; the agent configures, tests, and refines it.
 
-This manual covers the command-line interface. The same features are available in the web UI.
+This manual covers the command-line interface (cli). The same features are available in the web UI.
 
+AAC is a sub command on the lamb-cli tool. 
+
+The lamb-cli tool can be connected to any lamb installation on the net that you have a user an password. In this documentation we will refer to a localhost installation in the default developer settings running on docker containers. 
 ---
 
 ## Quick Start
@@ -40,9 +43,13 @@ lamb aac chat <session-id>
 | `explain-assistant` | Understand how an assistant works internally | assistant ID |
 | `test-and-evaluate` | Create tests, run them, evaluate results | assistant ID |
 
+**Tool** A tool is an action that the agent can take in the lamb system. It covers thinks like create an assistant, list the available knowledge bases, run chats on an assitant or analyzing the results of a set of tests. 
+
 **Tool audit** — Every action the agent takes (reading config, creating tests, running completions) is recorded with timestamps and outcomes.
 
-**Bypass / debug mode** — Run the full pipeline (RAG retrieval, prompt assembly) without calling the LLM. Shows exactly what the model would see. Zero tokens consumed.
+**Tests** From the 0.7 version we have anew feature on lamb creator: the tests. you can define a set of test prompts for your assitant. The AAc can run all the tests and evaluate the results automatically. Tests runs will not count as assitant activity in the activity logs and analytics.
+
+**Bypass / debug mode** —  Run the tests with the full pipeline (RAG retrieval, prompt assembly) without calling the LLM. Shows exactly what the model would see. Zero tokens consumed. 
 
 ---
 
