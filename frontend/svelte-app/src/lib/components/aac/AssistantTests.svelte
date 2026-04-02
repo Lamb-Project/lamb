@@ -330,7 +330,7 @@
 				role="dialog" tabindex="-1"
 				onclick={() => evaluatingRunId = null}
 				onkeydown={(e) => { if (e.key === 'Escape') evaluatingRunId = null; }}>
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 				<div class="bg-white rounded-lg p-6 w-96 shadow-xl" role="document" onclick={(e) => e.stopPropagation()}>
 					<h3 class="text-lg font-semibold mb-4">Evaluate Test Run</h3>
 					<div class="space-y-3">
