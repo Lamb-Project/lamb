@@ -101,3 +101,31 @@ Built the real AAC module in `backend/lamb/aac/`:
 **Router mounted** in `creator_interface/main.py`.
 
 **Next:** restart backend with Docker, test the full loop via `lamb aac`.
+
+## Session 3 — 2026-04-01 to 2026-04-02
+
+### End-to-end test with real RAG
+
+Full test log in `aac_test_log.md`. Created a 60s Rock Music Tutor with simple_rag on KB 5 (rock-60s.md, 45KB). Key findings:
+
+- RAG pipeline works but retrieval quality depends on chunk size (200 bytes = garbage)
+- Prompt template with `{context}` and `{user_input}` is mandatory for RAG to inject content
+- Backend `assistant update` wiped unspecified fields → fixed in #328 (fetch-and-merge)
+- Test runner with bypass mode confirmed RAG injection before spending LLM tokens
+
+### Frontend development
+
+Built and iterated on the terminal UI:
+- Terminal-in-tabs on assistant detail page with Explain/Improve/Test skill buttons
+- Tests tab with scenarios CRUD, run/debug, evaluations
+- Multiple Svelte 5 compatibility fixes (runes, a11y, nested elements)
+- Streaming SSE with tool status events (⚡ Reading config... → ✓ Done)
+- Instant skill launch (no beach ball — session creates fast, first message streams)
+- Hybrid markdown rendering: `marked` library for agent content, monospace for terminal chrome
+
+### Agent tuning
+
+- System prompt rewritten for conciseness (5-6 line cap, strict numbering)
+- Skills rewritten to be minimal — no unsolicited explanations
+- Authorization policy: test commands set to "auto" (low risk)
+- CLI timeout increased to 300s for multi-test runs
