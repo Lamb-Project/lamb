@@ -556,32 +556,30 @@ AAC sessions currently log to JSONL files (for research) and store conversation 
 
 ### 9a. Structured Tool Use Audit (Backend)
 
-Every tool call during an AAC session gets recorded as a structured event in the session record, not just in the JSONL log file.
+Every tool call during an AAC session gets recorded as a structured event in the session envelope (same blob as conversation, pending_action, skill_info). No new DB table.
 
-**Data per tool use event:**
+**Data per event:**
 ```json
 {
-    "timestamp": "2026-04-02T13:04:12.345Z",
+    "ts": "2026-04-02T13:04:12.345Z",
     "command": "lamb assistant get 17",
     "action_key": "assistant.get",
-    "intent": "Reading assistant configuration for analysis",
+    "intent": "Reading assistant config",
     "success": true,
     "elapsed_ms": 42,
-    "artifacts_affected": [
-        {"type": "assistant", "id": 17, "action": "read"}
-    ]
+    "artifacts": [{"type": "assistant", "id": "17", "action": "read"}]
 }
 ```
 
-**Intent:** A human-readable string explaining what the agent is trying to do. Generated from the tool call context — the LLM's preceding message or the skill's current step.
-
-**Artifacts affected:** Which LAMB resources were read, created, modified, or deleted. Extracted from the command:
-- `lamb assistant get 4` → `{type: "assistant", id: 4, action: "read"}`
-- `lamb assistant create "Bio Tutor"` → `{type: "assistant", id: 15, action: "create"}`
-- `lamb test run 17` → `{type: "assistant", id: 17, action: "test"}`
-- `lamb rubric get <uuid>` → `{type: "rubric", id: "<uuid>", action: "read"}`
-
-**Storage:** Array of events stored in the session record (alongside conversation and pending_action in the session envelope). Also written to the JSONL log file for research.
+**Implementation:**
+- `AgentLoop`: new `tool_audit: list[dict]` field, recorded in `_execute_tool()`
+- Intent from `_TOOL_LABELS` (deterministic, no LLM cooperation needed)
+- Artifacts extracted by parsing command string + result (resource type, ID, action)
+- `_extract_artifacts()`: maps subcommands to actions (get→read, create→create, run→test, etc.)
+- Persisted in session envelope via `update_conversation(..., tool_audit=agent.tool_audit)`
+- Restored on session rebuild, accumulates across turns
+- Also written to JSONL session log
+- No new endpoints — `GET /sessions/{id}` returns `tool_audit` for free
 
 ### 9b. CLI: Query Session Tool Uses
 

@@ -121,24 +121,78 @@ _TOOL_LABELS = {
 }
 
 
+def _parse_action_key(cmd: str) -> str:
+    """Extract action key (e.g., 'assistant.get') from a command string."""
+    tokens = cmd.strip().split()
+    if tokens and tokens[0] == "lamb":
+        tokens = tokens[1:]
+    if len(tokens) >= 2 and not tokens[1].startswith("-"):
+        return f"{tokens[0]}.{tokens[1]}"
+    elif tokens:
+        return tokens[0]
+    return ""
+
+
 def _describe_tool_call(tc: Any) -> str:
     """Extract a human-readable description from a tool call."""
     try:
         args = json.loads(tc.function.arguments)
         cmd = args.get("command", "")
-        # Extract the action key (e.g., "assistant.get")
-        tokens = cmd.strip().split()
-        if tokens and tokens[0] == "lamb":
-            tokens = tokens[1:]
-        if len(tokens) >= 2 and not tokens[1].startswith("-"):
-            key = f"{tokens[0]}.{tokens[1]}"
-        elif tokens:
-            key = tokens[0]
-        else:
-            key = ""
-        return _TOOL_LABELS.get(key, cmd[:50])
+        key = _parse_action_key(cmd)
+        label = _TOOL_LABELS.get(key, cmd[:50])
+        # Add bypass note if present
+        if "--bypass" in cmd:
+            label += " (pipeline debug)"
+        return label
     except Exception:
         return "Executing command"
+
+
+def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
+    """Extract affected LAMB resources from a command string + result."""
+    tokens = cmd.strip().split()
+    if tokens and tokens[0] == "lamb":
+        tokens = tokens[1:]
+    if len(tokens) < 2:
+        return []
+
+    resource_type = tokens[0]  # assistant, rubric, kb, test, template, model
+    subcommand = tokens[1] if not tokens[1].startswith("-") else ""
+
+    # Map subcommands to actions
+    action_map = {
+        "get": "read", "list": "read", "list-public": "read",
+        "config": "read", "debug": "debug", "export": "read",
+        "create": "create", "update": "update", "delete": "delete",
+        "run": "test", "runs": "read", "run-detail": "read",
+        "add": "create", "evaluate": "evaluate",
+        "scenarios": "read",
+    }
+    action = action_map.get(subcommand, "read")
+
+    # Find the resource ID (first positional arg after subcommand)
+    resource_id = None
+    for t in tokens[2:]:
+        if not t.startswith("-"):
+            resource_id = t
+            break
+
+    # For create actions, try to get the ID from the result
+    if action == "create" and result and hasattr(result, "data") and isinstance(result.data, dict):
+        created_id = result.data.get("assistant_id") or result.data.get("id")
+        if created_id:
+            resource_id = str(created_id)
+
+    # For test commands, the resource type is the assistant being tested
+    if resource_type == "test" and resource_id:
+        return [{"type": "assistant", "id": resource_id, "action": action}]
+
+    if resource_id:
+        return [{"type": resource_type, "id": resource_id, "action": action}]
+    elif resource_type != "help":
+        return [{"type": resource_type, "id": None, "action": action}]
+
+    return []
 
 
 @dataclass
@@ -165,6 +219,7 @@ class AgentLoop:
     conversation: list[dict] = field(default_factory=list)
     session_logger: SessionLogger | None = None
     pending_action: dict | None = None
+    tool_audit: list[dict] = field(default_factory=list)
 
     def load_skills(self, skills_dir: Path | str) -> None:
         """Append skill files (.md) to the system prompt."""
@@ -410,6 +465,7 @@ class AgentLoop:
                 "action_key": action_key,
                 "tool_call_id": tool_call.id,
             }
+            self._record_audit(command, action_key, True, 0, None, queued=True)
             if self.session_logger:
                 self.session_logger.log("action_queued", {
                     "command": command,
@@ -425,6 +481,7 @@ class AgentLoop:
 
         # policy == "auto" — execute directly
         result = self.shell.execute(command)
+        self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
         if self.session_logger:
             self.session_logger.log_tool_call(
                 command=command,
@@ -488,9 +545,34 @@ class AgentLoop:
             # pending action remains for the next turn
             return None
 
+    def _record_audit(
+        self, command: str, action_key: str | None,
+        success: bool, elapsed_ms: float, result: Any,
+        queued: bool = False,
+    ) -> None:
+        """Record a structured tool use event."""
+        from datetime import datetime
+        intent = _TOOL_LABELS.get(action_key or "", command[:50])
+        if "--bypass" in command:
+            intent += " (pipeline debug)"
+        if queued:
+            intent += " [awaiting confirmation]"
+
+        event = {
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "command": command,
+            "action_key": action_key or "",
+            "intent": intent,
+            "success": success,
+            "elapsed_ms": round(elapsed_ms, 1),
+            "artifacts": _extract_artifacts(command, result),
+        }
+        self.tool_audit.append(event)
+
     def reset(self) -> None:
         self.conversation.clear()
         self.pending_action = None
+        self.tool_audit.clear()
 
     def get_stats(self) -> dict:
         tool_calls = len(self.shell.history)

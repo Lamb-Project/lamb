@@ -74,10 +74,12 @@ class AACSessionManager:
                 session["conversation"] = raw["messages"]
                 session["pending_action"] = raw.get("pending_action")
                 session["skill_info"] = raw.get("skill_info")
+                session["tool_audit"] = raw.get("tool_audit", [])
             else:
                 session["conversation"] = raw
                 session["pending_action"] = None
                 session["skill_info"] = None
+                session["tool_audit"] = []
             return session
         finally:
             conn.close()
@@ -106,8 +108,9 @@ class AACSessionManager:
         assistant_id: Optional[int] = None,
         pending_action: Optional[dict] = None,
         skill_info: Optional[dict] = None,
+        tool_audit: Optional[list] = None,
     ) -> None:
-        """Update the conversation history, pending action, and skill info.
+        """Update the conversation history and all session state.
 
         All state is serialized into the conversation JSON envelope so it
         survives across stateless request boundaries.
@@ -117,6 +120,7 @@ class AACSessionManager:
             "messages": conversation,
             "pending_action": pending_action,
             "skill_info": skill_info,
+            "tool_audit": tool_audit or [],
         }
         conn = self.db.get_connection()
         try:

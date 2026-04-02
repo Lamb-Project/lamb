@@ -201,13 +201,14 @@ async def send_message(
     if skill_info:
         skill_info["started"] = True
 
-    # Persist conversation + pending action + skill_info
+    # Persist conversation + pending action + skill_info + tool_audit
     mgr.update_conversation(
         session_id=session_id,
         user_email=auth.user["email"],
         conversation=agent.conversation,
         pending_action=agent.pending_action,
         skill_info=skill_info,
+        tool_audit=agent.tool_audit,
     )
 
     stats = agent.get_stats()
@@ -262,6 +263,7 @@ async def send_message_stream(
             conversation=agent.conversation,
             pending_action=agent.pending_action,
             skill_info=skill_info,
+            tool_audit=agent.tool_audit,
         )
         stats = agent.get_stats()
         if agent.session_logger:
@@ -355,6 +357,7 @@ def _build_agent(auth: AuthContext, session: dict) -> AgentLoop:
     # Restore state from session
     agent.conversation = session.get("conversation", [])
     agent.pending_action = session.get("pending_action")
+    agent.tool_audit = session.get("tool_audit", [])
 
     return agent
 
@@ -423,8 +426,12 @@ def _build_agent_with_skill(
     )
 
     # Execute startup actions via liteshell
+    from lamb.aac.agent.loop import _parse_action_key, _extract_artifacts
     for action in skill["startup_actions"]:
         result = shell.execute(action)
+        # Record in tool audit
+        action_key = _parse_action_key(action)
+        agent._record_audit(action, action_key, result.success, result.elapsed_ms, result)
         if result.success:
             agent.conversation.append({
                 "role": "user",
