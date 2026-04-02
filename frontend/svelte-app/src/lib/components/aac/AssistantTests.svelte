@@ -325,19 +325,15 @@
 
 		<!-- Evaluation Modal -->
 		{#if evaluatingRunId}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-				role="dialog" tabindex="-1"
-				onclick={() => evaluatingRunId = null}
-				onkeydown={(e) => { if (e.key === 'Escape') evaluatingRunId = null; }}>
-				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-				<div class="bg-white rounded-lg p-6 w-96 shadow-xl" role="document" onclick={(e) => e.stopPropagation()}>
-					<h3 class="text-lg font-semibold mb-4">Evaluate Test Run</h3>
-					<div class="space-y-3">
+			<dialog open class="fixed inset-0 z-50 bg-transparent m-0 p-0 w-full h-full max-w-none max-h-none">
+				<div class="fixed inset-0 bg-black/30 flex items-center justify-center">
+					<form method="dialog" class="bg-white rounded-lg p-6 w-96 shadow-xl space-y-3"
+						onsubmit={(e) => { e.preventDefault(); handleEvaluate(); }}>
+						<h3 class="text-lg font-semibold">Evaluate Test Run</h3>
 						<div class="flex gap-2">
 							{#each ['good', 'bad', 'mixed'] as v}
 								{@const vb = VERDICT_BADGES[v]}
-								<button
+								<button type="button"
 									onclick={() => evalVerdict = v}
 									class="flex-1 px-3 py-2 rounded border text-sm {evalVerdict === v ? 'ring-2 ring-blue-400' : ''} {vb.color}">
 									{vb.label}
@@ -347,17 +343,16 @@
 						<textarea bind:value={evalNotes} placeholder="Notes (optional)"
 							rows="2" class="w-full px-3 py-2 border rounded text-sm"></textarea>
 						<div class="flex gap-2 justify-end">
-							<button onclick={() => { evaluatingRunId = null; evalVerdict = ''; evalNotes = ''; }}
+							<button type="button" onclick={() => { evaluatingRunId = null; evalVerdict = ''; evalNotes = ''; }}
 								class="px-3 py-1.5 text-sm rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
-							<button onclick={handleEvaluate}
-								disabled={!evalVerdict}
+							<button type="submit" disabled={!evalVerdict}
 								class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
 								Submit
 							</button>
 						</div>
-					</div>
+					</form>
 				</div>
-			</div>
+			</dialog>
 		{/if}
 	{/if}
 </div>
