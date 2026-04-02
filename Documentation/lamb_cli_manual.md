@@ -23,6 +23,27 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+### Running the CLI
+
+After installation, the `lamb` command is available inside the virtual environment. You have two options:
+
+**Option 1: Activate the venv first (recommended for interactive use)**
+
+```bash
+source .venv/bin/activate   # now 'lamb' is in your PATH
+lamb status
+lamb assistant list
+```
+
+**Option 2: Run directly without activation (good for scripting)**
+
+```bash
+.venv/bin/lamb status
+.venv/bin/lamb assistant list
+```
+
+All examples in this manual use `lamb` assuming the venv is activated.
+
 ---
 
 ## Connecting to a LAMB Server
