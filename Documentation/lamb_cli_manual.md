@@ -166,21 +166,94 @@ RAG Top-K
 RAG Collections
 ```
 
-### Create an Assistant
+### Show Available Configuration
 
-```bash
-lamb assistant create "My Tutor" \
-  --system-prompt "You are a helpful tutor..." \
-  --llm gpt-4o-mini \
-  --connector openai \
-  --prompt-processor simple_augment \
-  --rag-processor simple_rag \
-  --rag-collections "7" \
-  --prompt-template "Context:\n{context}\n\nQuestion: {user_input}" \
-  -d "A tutor for my students"
+Before creating an assistant, check what models, connectors, and processors are available in your organization:
+
+```
+$ lamb assistant config
+
+Connectors & Models
+  openai: gpt-5.4-mini, gpt-5.4, gpt-5.4-nano
+  ollama: nomic-embed-text
+  bypass: debug-bypass, simple-bypass, full-conversation-bypass
+
+Prompt Processors
+  simple_augment
+
+RAG Processors
+  context_aware_rag, simple_rag, rubric_rag, no_rag, ...
+
+Organization Defaults
+  connector: openai
+  llm: gpt-5.4-mini
 ```
 
-Use `--interactive` / `-i` for a guided wizard that shows available options.
+If your assistant will use a knowledge base, check what's available:
+
+```
+$ lamb kb list
+
+┃ ID ┃ Name               ┃ Description ┃ Owner ┃ Shared ┃
+│ 7  │ rock_the_60s       │             │ True  │ False  │
+│ 6  │ test_advanced_shit │             │ True  │ False  │
+```
+
+You can also check rubrics if you plan to build an evaluator assistant:
+
+```bash
+lamb rubric list
+```
+
+### Create an Assistant
+
+**Simple assistant (no RAG)** — the model answers from its training data:
+
+```bash
+lamb assistant create "History Tutor" \
+  --system-prompt "You are a history tutor for high school students. Explain concepts clearly and quiz students to check understanding." \
+  --llm gpt-5.4-mini \
+  --connector openai \
+  -d "General history tutor"
+```
+
+**Assistant with a knowledge base (RAG)** — the model uses your documents to answer:
+
+```bash
+# First, check which KB to use
+lamb kb list
+lamb kb get 7       # see files in KB 7
+
+# Create the assistant, connecting it to the KB
+lamb assistant create "60s Rock Tutor" \
+  --system-prompt "You are a music history tutor. Use the provided context to answer questions about 1960s British rock." \
+  --llm gpt-5.4-mini \
+  --connector openai \
+  --rag-processor simple_rag \
+  --rag-collections "7" \
+  --prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer clearly and cite your sources." \
+  -d "Music tutor grounded in KB documents"
+```
+
+When using RAG, the `--prompt-template` must include `{context}` (where KB content is inserted) and `{user_input}` (where the student's question goes). Without these placeholders, RAG content has nowhere to go.
+
+**Evaluator assistant with rubric** — for grading student work:
+
+```bash
+lamb assistant create "PESTLE Evaluator" \
+  --system-prompt "You evaluate student submissions using a rubric." \
+  --llm gpt-5.4-mini \
+  --connector openai \
+  --rag-processor rubric_rag \
+  --rubric-id "ed658548-11ab-494a-9d32-5b4b6e19b910" \
+  --prompt-template "Rubric:\n{context}\n\nStudent work: {user_input}\n\nEvaluate using the rubric criteria."
+```
+
+**Interactive wizard** — if you prefer a guided setup:
+
+```bash
+lamb assistant create "My Assistant" --interactive
+```
 
 ### Update an Assistant
 
@@ -208,29 +281,6 @@ lamb assistant unpublish 18
 
 ```bash
 lamb assistant export 18 -o json
-```
-
-### Show Available Configuration
-
-See what connectors, models, and processors are available:
-
-```
-$ lamb assistant config
-
-Connectors & Models
-  openai: gpt-5.4-mini, gpt-5.4, gpt-5.4-nano
-  ollama: nomic-embed-text
-  bypass: debug-bypass, simple-bypass, full-conversation-bypass
-
-Prompt Processors
-  simple_augment
-
-RAG Processors
-  context_aware_rag, simple_rag, rubric_rag, no_rag, ...
-
-Organization Defaults
-  connector: openai
-  llm: gpt-5.4-mini
 ```
 
 ---
