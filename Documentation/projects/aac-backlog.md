@@ -826,5 +826,21 @@ Full manual covering:
 ### Fix
 
 - Add `lamb assistant list-shared` — list assistants shared with you (not owned, but accessible)
-- Add `--name` flag to `lamb assistant get` — look up by name instead of ID
+- Add `lamb assistant get` by name — look up by name instead of ID
 - The backend endpoint `get_assistants_proxy` needs a mode that includes shared assistants, or a new endpoint
+
+### Get by name syntax
+
+Currently: `lamb assistant get 18` (numeric ID only)
+
+Proposed: detect if the argument is a number or a name:
+
+```bash
+lamb assistant get 18                        # by ID (current behavior)
+lamb assistant get rock_the_60s              # by name (new — search by exact name)
+lamb assistant get "1960s british rock"      # by name with spaces
+```
+
+Implementation: if the argument is not a pure integer, treat it as a name. Query the backend by name (needs a new endpoint or query param on `get_assistants`). If multiple matches (unlikely since names are unique per owner), return the first or error.
+
+This also benefits the AAC skills — `lamb assistant get rock_the_60s` is more readable in tool audit logs than `lamb assistant get 18`.
