@@ -1,6 +1,7 @@
 <script>
 	import { onMount, tick } from 'svelte';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
+	import { marked } from 'marked';
 
 	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean, skillStartup?: boolean }} */
 	let { sessionId, firstMessage = '', resumed = false, skillStartup = false } = $props();
@@ -185,27 +186,17 @@
 		darkMode = !darkMode;
 	}
 
+	// Configure marked for terminal-style rendering
+	marked.setOptions({ breaks: true, gfm: true });
+
 	/**
-	 * Simple markdown-like rendering for terminal output.
-	 * Handles bold, italic, code, headers, lists.
+	 * Render markdown to HTML using marked.
 	 * @param {string} text
 	 * @returns {string}
 	 */
 	function renderMarkdown(text) {
 		if (!text) return '';
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/^### (.+)$/gm, '<strong class="text-sm opacity-80">$1</strong>')
-			.replace(/^## (.+)$/gm, '<strong>$1</strong>')
-			.replace(/^# (.+)$/gm, '<strong class="text-lg">$1</strong>')
-			.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-			.replace(/\*(.+?)\*/g, '<em>$1</em>')
-			.replace(/`(.+?)`/g, '<code class="px-1 rounded bg-black/10 dark:bg-white/10">$1</code>')
-			.replace(/^- (.+)$/gm, '  • $1')
-			.replace(/^\d+\. (.+)$/gm, (_, p1, offset, str) => `  ${str.substring(0, offset).split('\n').filter(l => /^\d+\./.test(l)).length}. ${p1}`)
-			.replace(/\n/g, '<br>');
+		return marked.parse(text);
 	}
 </script>
 
@@ -255,7 +246,7 @@
 					<span>{msg.content}</span>
 				</div>
 			{:else if msg.role === 'assistant'}
-				<div class="pl-2 leading-relaxed" class:text-green-300={darkMode} class:text-gray-700={!darkMode}>
+				<div class="aac-md pl-2 leading-relaxed font-sans text-sm" class:text-green-300={darkMode} class:text-gray-700={!darkMode}>
 					{@html renderMarkdown(msg.content)}
 				</div>
 			{:else if msg.role === 'system'}
@@ -306,3 +297,67 @@
 		</button>
 	</div>
 </div>
+
+<style>
+	/* Markdown rendering inside the terminal */
+	:global(.aac-md table) {
+		border-collapse: collapse;
+		font-size: 0.8rem;
+		margin: 0.5rem 0;
+		width: 100%;
+	}
+	:global(.aac-md th),
+	:global(.aac-md td) {
+		border: 1px solid rgba(128, 128, 128, 0.3);
+		padding: 0.25rem 0.5rem;
+		text-align: left;
+	}
+	:global(.aac-md th) {
+		font-weight: 600;
+		opacity: 0.8;
+	}
+	:global(.aac-md ul),
+	:global(.aac-md ol) {
+		padding-left: 1.25rem;
+		margin: 0.25rem 0;
+	}
+	:global(.aac-md li) {
+		margin: 0.1rem 0;
+	}
+	:global(.aac-md p) {
+		margin: 0.25rem 0;
+	}
+	:global(.aac-md h1),
+	:global(.aac-md h2),
+	:global(.aac-md h3) {
+		font-weight: 600;
+		margin: 0.5rem 0 0.25rem;
+	}
+	:global(.aac-md h1) { font-size: 1.1rem; }
+	:global(.aac-md h2) { font-size: 1rem; }
+	:global(.aac-md h3) { font-size: 0.9rem; opacity: 0.85; }
+	:global(.aac-md code) {
+		font-family: ui-monospace, monospace;
+		font-size: 0.8rem;
+		padding: 0.1rem 0.3rem;
+		border-radius: 0.2rem;
+		background: rgba(128, 128, 128, 0.15);
+	}
+	:global(.aac-md pre) {
+		font-family: ui-monospace, monospace;
+		font-size: 0.8rem;
+		padding: 0.5rem;
+		border-radius: 0.3rem;
+		background: rgba(0, 0, 0, 0.1);
+		overflow-x: auto;
+		margin: 0.25rem 0;
+	}
+	:global(.aac-md strong) {
+		font-weight: 600;
+	}
+	:global(.aac-md hr) {
+		border: none;
+		border-top: 1px solid rgba(128, 128, 128, 0.2);
+		margin: 0.5rem 0;
+	}
+</style>
