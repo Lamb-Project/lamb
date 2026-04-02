@@ -1545,7 +1545,8 @@
                 onLaunchSkill={(skill) => launchAacSkill(skill)}
             />
         {:else if detailSubView === 'aac' && activeAacSessionId}
-            <!-- AAC Agent Terminal -->
+            <!-- AAC Agent Terminal — key forces remount on session/startup change -->
+            {#key `${activeAacSessionId}-${aacSkillStartup}`}
             <div class="h-[600px]">
                 <AacTerminal
                     sessionId={activeAacSessionId}
@@ -1554,6 +1555,7 @@
                     skillStartup={aacSkillStartup}
                 />
             </div>
+            {/key}
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->
