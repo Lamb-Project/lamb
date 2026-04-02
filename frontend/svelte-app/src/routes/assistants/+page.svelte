@@ -68,10 +68,12 @@
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
 
     // --- AAC Agent State ---
-    /** @type {string|null} Active AAC session ID (when an agent tab is selected) */
+    /** @type {string|null} */
     let activeAacSessionId = $state(null);
-    /** @type {string} First message from the agent (for skill sessions) */
+    /** @type {string} */
     let aacFirstMessage = $state('');
+    /** @type {boolean} Whether the terminal should auto-trigger skill startup */
+    let aacSkillStartup = $state(false);
     /** @type {boolean} */
     let aacLaunching = $state(false);
     let aacTabs = $derived(getOpenTabs());
@@ -93,7 +95,8 @@
             const title = session.title || skill;
             openTab(session.id, title, selectedAssistantData.id, skill);
             activeAacSessionId = session.id;
-            aacFirstMessage = '';  // No first message — terminal will trigger startup stream
+            aacFirstMessage = '';
+            aacSkillStartup = true;
             detailSubView = 'aac';
         } catch (e) {
             console.error('AAC launch error:', e);
@@ -109,7 +112,8 @@
     function switchToAacTab(sessionId) {
         setActiveTab(sessionId);
         activeAacSessionId = sessionId;
-        aacFirstMessage = ''; // Will be loaded from session history
+        aacFirstMessage = '';
+        aacSkillStartup = false; // Existing session, don't re-trigger startup
         detailSubView = 'aac';
     }
 
@@ -1546,7 +1550,8 @@
                 <AacTerminal
                     sessionId={activeAacSessionId}
                     firstMessage={aacFirstMessage}
-                    resumed={!aacFirstMessage}
+                    resumed={!aacFirstMessage && !aacSkillStartup}
+                    skillStartup={aacSkillStartup}
                 />
             </div>
         {/if}

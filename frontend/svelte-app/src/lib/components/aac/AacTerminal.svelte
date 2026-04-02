@@ -2,8 +2,8 @@
 	import { onMount, tick } from 'svelte';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 
-	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean }} */
-	let { sessionId, firstMessage = '', resumed = false } = $props();
+	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean, skillStartup?: boolean }} */
+	let { sessionId, firstMessage = '', resumed = false, skillStartup = false } = $props();
 
 	/** @type {Array<{role: string, content: string}>} */
 	let messages = $state([]);
@@ -35,7 +35,10 @@
 			darkMode = true;
 		}
 
-		if (firstMessage) {
+		if (skillStartup) {
+			// New skill session — trigger startup stream immediately
+			await triggerSkillStartup();
+		} else if (firstMessage) {
 			messages = [{ role: 'assistant', content: firstMessage }];
 		} else if (resumed) {
 			// Resumed session — load history
@@ -44,20 +47,13 @@
 				const conv = (session.conversation || []).filter(
 					m => m.role === 'user' || (m.role === 'assistant' && m.content && !m.tool_calls)
 				).map(m => ({ role: m.role, content: m.content || '' }));
-
 				if (conv.length > 0) {
 					messages = conv;
 					resumeNotice = true;
-				} else if (session.skill_info && !session.skill_info.started) {
-					// Skill session with no conversation — trigger startup stream
-					await triggerSkillStartup();
 				}
 			} catch (e) {
 				messages = [{ role: 'system', content: `Error loading session: ${e.message}` }];
 			}
-		} else {
-			// New skill session — trigger startup stream immediately
-			await triggerSkillStartup();
 		}
 
 		await tick();
