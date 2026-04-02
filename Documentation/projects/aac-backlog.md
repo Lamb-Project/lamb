@@ -438,6 +438,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | #330 | RAG processors: read `results` key from KB server response | ✅ 2026-04-02 |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
+| **Then** | 10 | `lamb_aac_cli_manual.md` — full CLI + architecture manual | |
 | **Pre-merge** | | Cherry-pick #329 + #330 to dev (production RAG broken) | |
 | **Pre-merge** | | Revert docker-compose log levels to WARNING | |
 
@@ -784,3 +785,26 @@ Analyze patterns, suggest improvements, offer to re-run...
 ```
 
 This means the skill adapts to whatever state the tests are in — whether the user is starting from scratch or picking up where they left off.
+
+---
+
+## 10. AAC CLI & Architecture Manual
+
+**Priority:** Medium — documentation debt, needed before onboarding others
+**Depends on:** Items 1-9 (documents what exists)
+
+Full manual covering:
+
+**CLI reference:** Every `lamb aac` and `lamb test` command with examples, flags, output formats.
+
+**Architecture:** How the pieces fit together — liteshell, agent loop, authorization, skills, streaming, session management, tool audit. Enough for a developer to understand and extend the system.
+
+**Skills reference:** How to write skills (frontmatter, startup actions, subskills, includes, language directive). How the agent uses them.
+
+**Testing workflows:** bypass-first pattern, test scenarios lifecycle, evaluation recording, the design-test-evaluate cycle.
+
+**Configuration:** Env vars (AAC_SESSION_LOGGING, AAC_LOG_PATH), authorization policy, org config resolution.
+
+**Troubleshooting:** Common issues (RAG empty context, skill not triggering, double confirmation, streaming not working).
+
+**File:** `Documentation/lamb_aac_cli_manual.md`

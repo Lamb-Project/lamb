@@ -289,6 +289,81 @@ def show_history(
         _print_conversation(conversation)
 
 
+@app.command("tools")
+def show_tools(
+    session_id: str = typer.Argument(..., help="Session ID."),
+    detail: bool = typer.Option(False, "--detail", "-d", help="Show command and result summary."),
+    artifacts: bool = typer.Option(False, "--artifacts", help="Group by artifact."),
+    filter_type: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter by resource type (assistant, rubric, kb, test)."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
+) -> None:
+    """Show the tool audit log for a session."""
+    fmt = output or get_output_format()
+    with get_client() as client:
+        data = client.get(f"/creator/aac/sessions/{session_id}")
+    audit = data.get("tool_audit", [])
+    title = data.get("title", "")
+    created = data.get("created_at", "")[:10]
+
+    if fmt == "json":
+        print_json(audit)
+        return
+
+    if not audit:
+        console.print("[dim]No tool calls recorded for this session.[/dim]")
+        return
+
+    # Filter by type
+    if filter_type:
+        audit = [e for e in audit if any(a.get("type") == filter_type for a in e.get("artifacts", []))]
+
+    console.print(f"\n[bold]Session:[/bold] {title or session_id[:12]} ({created})")
+    console.print()
+
+    if artifacts:
+        # Group by artifact
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for e in audit:
+            for a in e.get("artifacts", [{"type": "other", "id": None, "action": "?"}]):
+                key = f"{a['type']}:{a.get('id', '*')}"
+                groups[key].append((e, a["action"]))
+
+        for key, events in sorted(groups.items()):
+            console.print(f"  [bold]{key}[/bold]")
+            for e, action in events:
+                ts = e["ts"][11:19]
+                ok = "[green]✓[/green]" if e["success"] else "[red]✗[/red]"
+                ms = f"{e.get('elapsed_ms', 0):6.0f}ms"
+                console.print(f"    {ts}  {action:10} {ok} {ms}")
+                if detail and e.get("summary"):
+                    console.print(f"    [dim]→ {e['summary']}[/dim]")
+            console.print()
+    else:
+        # Chronological timeline
+        for e in audit:
+            ts = e["ts"][11:19]
+            intent = e.get("intent", "")[:40]
+            ok = "[green]✓[/green]" if e["success"] else "[red]✗[/red]"
+            ms = f"{e.get('elapsed_ms', 0):6.0f}ms"
+            arts = ", ".join(f"{a['type']}:{a.get('id','*')}" for a in e.get("artifacts", []))
+            console.print(f"  {ts}  {intent:40} {ok} {ms}  {arts}")
+            if detail:
+                console.print(f"           [dim]$ {e['command']}[/dim]")
+                if e.get("summary"):
+                    console.print(f"           [dim]→ {e['summary']}[/dim]")
+
+    # Summary
+    total = len(audit)
+    errors = sum(1 for e in audit if not e["success"])
+    total_ms = sum(e.get("elapsed_ms", 0) for e in audit)
+    all_arts = set()
+    for e in audit:
+        for a in e.get("artifacts", []):
+            all_arts.add(f"{a['type']}:{a.get('id','*')}")
+    console.print(f"\n  [dim]{total} tool calls | {errors} errors | {total_ms:.0f}ms total | artifacts: {', '.join(sorted(all_arts))}[/dim]")
+
+
 def _show_history(session_id: str) -> None:
     """Helper for interactive mode."""
     try:

@@ -148,6 +148,70 @@ def _describe_tool_call(tc: Any) -> str:
         return "Executing command"
 
 
+def _summarize_result(action_key: str, result: Any) -> str:
+    """Generate a one-line summary of a tool call result."""
+    if result is None:
+        return ""
+    if hasattr(result, "error") and result.error:
+        return f"error: {result.error[:80]}"
+    if not hasattr(result, "data") or result.data is None:
+        return ""
+
+    d = result.data
+    if not isinstance(d, dict):
+        if isinstance(d, list):
+            return f"{len(d)} items"
+        return str(d)[:80]
+
+    try:
+        if action_key == "assistant.get":
+            return f"name={d.get('name','?')}, llm={d.get('llm','?')}, rag={d.get('rag_processor','none')}"
+        elif action_key == "assistant.create":
+            return f"created id={d.get('assistant_id','?')}, name={d.get('name','?')}"
+        elif action_key == "assistant.update":
+            return f"updated {', '.join(d.get('updated_fields', []))}" if 'updated_fields' in d else "updated"
+        elif action_key == "assistant.delete":
+            return d.get("message", "deleted")
+        elif action_key == "assistant.config":
+            caps = d.get("capabilities", d)
+            connectors = caps.get("connectors", {})
+            models = sum(len(v) if isinstance(v, list) else 0 for v in connectors.values())
+            return f"{len(connectors)} connectors, {models} models"
+        elif action_key == "assistant.debug":
+            resp = d.get("response", "")
+            return f"context: {len(resp)} chars" if resp else "empty response"
+        elif action_key == "rubric.get":
+            rd = d.get("rubric_data", {})
+            criteria = rd.get("criteria", [])
+            return f"title={d.get('title','?')}, {len(criteria)} criteria"
+        elif action_key == "test.run":
+            if isinstance(d, list):
+                return f"{len(d)} runs"
+            tok = d.get("token_usage", {}).get("total_tokens", 0)
+            return f"tokens={tok}, {d.get('elapsed_ms',0):.0f}ms" if tok else f"{d.get('elapsed_ms',0):.0f}ms"
+        elif action_key == "test.scenarios":
+            return f"{len(d)} scenarios" if isinstance(d, list) else ""
+        elif action_key == "test.add":
+            return f"title={d.get('title', '?')}"
+        elif action_key == "test.evaluate":
+            return f"verdict={d.get('verdict', '?')}"
+        elif action_key == "model.list":
+            return f"{len(d)} models" if isinstance(d, list) else ""
+        elif action_key == "kb.list":
+            return f"{len(d)} knowledge bases" if isinstance(d, list) else ""
+        elif action_key == "kb.get":
+            files = d.get("files", [])
+            return f"name={d.get('name','?')}, {len(files)} files"
+    except Exception:
+        pass
+
+    # Fallback: show key count or first key
+    if isinstance(d, dict):
+        keys = list(d.keys())[:3]
+        return f"keys: {', '.join(keys)}"
+    return ""
+
+
 def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     """Extract affected LAMB resources from a command string + result."""
     tokens = cmd.strip().split()
@@ -566,6 +630,7 @@ class AgentLoop:
             "success": success,
             "elapsed_ms": round(elapsed_ms, 1),
             "artifacts": _extract_artifacts(command, result),
+            "summary": _summarize_result(action_key or "", result),
         }
         self.tool_audit.append(event)
 
