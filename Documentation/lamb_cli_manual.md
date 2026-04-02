@@ -131,7 +131,9 @@ Data always goes to stdout; messages and errors go to stderr.
 
 ## Assistants
 
-### List Assistants
+### List Your Assistants
+
+Shows assistants you own. Does not include assistants shared with you by other users (this is a known limitation — see backlog item 11).
 
 ```
 $ lamb assistant list
@@ -147,6 +149,8 @@ $ lamb assistant list
 ```
 
 ### Get Assistant Details
+
+Get a single assistant by its numeric ID. Works for assistants you own, assistants shared with you, or (if you're an org admin) any assistant in your organization. Returns 404 if you don't have access.
 
 ```
 $ lamb assistant get 18

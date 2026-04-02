@@ -439,6 +439,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
 | **Then** | 10 | `lamb_aac_cli_manual.md` — full CLI + architecture manual | |
+| **Then** | 11 | CLI: `lamb assistant list-shared`, get by name, shared visibility | |
 | **Pre-merge** | | Cherry-pick #329 + #330 to dev (production RAG broken) | |
 | **Pre-merge** | | Revert docker-compose log levels to WARNING | |
 
@@ -808,3 +809,22 @@ Full manual covering:
 **Troubleshooting:** Common issues (RAG empty context, skill not triggering, double confirmation, streaming not working).
 
 **File:** `Documentation/lamb_aac_cli_manual.md`
+
+---
+
+## 11. CLI: Shared Assistants Visibility + Get by Name
+
+**Priority:** Medium — usability gap discovered during manual writing
+**Depends on:** Nothing
+
+### Problem
+
+- `lamb assistant list` only shows assistants owned by the current user. No way to see assistants shared with you.
+- `lamb assistant get` requires the numeric ID. No way to get by name.
+- The backend supports shared access via `can_access_assistant()`, but the list endpoint only queries by owner.
+
+### Fix
+
+- Add `lamb assistant list-shared` — list assistants shared with you (not owned, but accessible)
+- Add `--name` flag to `lamb assistant get` — look up by name instead of ID
+- The backend endpoint `get_assistants_proxy` needs a mode that includes shared assistants, or a new endpoint
