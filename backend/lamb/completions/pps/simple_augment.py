@@ -112,7 +112,7 @@ def prompt_processor(
 
                 # Add RAG context if available
                 if rag_context:
-                    context = json.dumps(rag_context)
+                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
                     augmented_text = augmented_text.replace("{context}", "\n\n" + context + "\n\n")
                 else:
                     augmented_text = augmented_text.replace("{context}", "")
@@ -153,7 +153,7 @@ def prompt_processor(
 
                 # Add RAG context if available
                 if rag_context:
-                    context = json.dumps(rag_context)
+                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
                     prompt = prompt.replace("{context}", "\n\n" + context + "\n\n")
                 else:
                     prompt = prompt.replace("{context}", "")
