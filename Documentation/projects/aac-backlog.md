@@ -440,7 +440,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 14a+b | Agent-readable docs (`lamb/aac/docs/`) + `docs.index`/`docs.read` tools | ✅ 2026-04-03 |
 | ~~Done~~ | 16 | Liteshell HTTP refactoring — async ASGI transport via Creator Interface | ✅ 2026-04-03 |
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
-| **Next** | 15 | Dashboard "LAMB Agent" button — agentic entry point on home page | |
+| ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | **Next** | 12 | Liteshell comprehensive test suite (25 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
