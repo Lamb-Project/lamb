@@ -523,6 +523,133 @@ def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Documentation commands
+# ---------------------------------------------------------------------------
+
+_DOCS_DIR = None
+
+
+def _get_docs_dir():
+    """Resolve the aac_docs directory path (lazy, cached)."""
+    global _DOCS_DIR
+    if _DOCS_DIR is None:
+        from pathlib import Path
+        _DOCS_DIR = Path(__file__).parents[1] / "docs"
+    return _DOCS_DIR
+
+
+def _parse_front_matter(text: str) -> tuple[dict, str]:
+    """Parse YAML front matter from a markdown file. Returns (metadata, body)."""
+    if not text.startswith("---"):
+        return {}, text
+    end = text.find("---", 3)
+    if end == -1:
+        return {}, text
+    import yaml
+    try:
+        meta = yaml.safe_load(text[3:end]) or {}
+    except Exception:
+        meta = {}
+    body = text[end + 3:].lstrip("\n")
+    return meta, body
+
+
+@register("docs.index")
+def docs_index(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """List available LAMB documentation topics with summaries."""
+    docs_dir = _get_docs_dir()
+    index_file = docs_dir / "index.md"
+    if not index_file.exists():
+        raise ValueError("Documentation index not found")
+
+    meta, body = _parse_front_matter(index_file.read_text(encoding="utf-8"))
+
+    # Also scan individual files for their front matter
+    sections = []
+    for md_file in sorted(docs_dir.glob("*.md")):
+        if md_file.name == "index.md":
+            continue
+        file_meta, _ = _parse_front_matter(md_file.read_text(encoding="utf-8"))
+        if not file_meta.get("topic"):
+            continue
+        sections.append({
+            "topic": file_meta["topic"],
+            "file": md_file.name,
+            "covers": file_meta.get("covers", []),
+            "answers": file_meta.get("answers", []),
+        })
+
+    return {
+        "version": meta.get("version", "unknown"),
+        "topics": [s["topic"] for s in sections],
+        "sections": sections,
+    }
+
+
+@register("docs.read")
+def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Read a specific LAMB documentation topic. Use --section to read only a subsection."""
+    if not args:
+        raise ValueError(
+            "Usage: lamb docs read <topic> [--section \"heading\"]\n"
+            "Use 'lamb docs index' to see available topics."
+        )
+    topic = args[0]
+    section = kwargs.get("section")
+
+    docs_dir = _get_docs_dir()
+    # Try exact filename first, then with .md extension
+    candidates = [
+        docs_dir / topic,
+        docs_dir / f"{topic}.md",
+    ]
+    doc_file = None
+    for c in candidates:
+        if c.exists() and c.is_file():
+            doc_file = c
+            break
+
+    if not doc_file:
+        available = [f.stem for f in docs_dir.glob("*.md") if f.name != "index.md"]
+        raise ValueError(f"Topic '{topic}' not found. Available: {available}")
+
+    meta, body = _parse_front_matter(doc_file.read_text(encoding="utf-8"))
+
+    if section:
+        # Extract only the matching ## section
+        lines = body.split("\n")
+        section_lower = section.lower().strip()
+        in_section = False
+        section_lines = []
+        for line in lines:
+            if line.startswith("## "):
+                if in_section:
+                    break  # end of our section
+                heading = line[3:].strip().lower()
+                if section_lower in heading:
+                    in_section = True
+                    section_lines.append(line)
+            elif line.startswith("# ") and in_section:
+                break  # hit a higher-level heading
+            elif in_section:
+                section_lines.append(line)
+
+        if not section_lines:
+            headings = [l[3:].strip() for l in lines if l.startswith("## ")]
+            raise ValueError(
+                f"Section '{section}' not found in '{topic}'. "
+                f"Available sections: {headings}"
+            )
+        body = "\n".join(section_lines).strip()
+
+    return {
+        "topic": meta.get("topic", topic),
+        "file": doc_file.name,
+        "content": body,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Utility commands
 # ---------------------------------------------------------------------------
 

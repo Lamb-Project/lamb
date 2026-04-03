@@ -34,6 +34,9 @@ DEFAULT_POLICY: dict[str, str] = {
     "template.get": "auto",
     "model.list": "auto",
     "help": "auto",
+    # Documentation commands — auto (read-only)
+    "docs.index": "auto",
+    "docs.read": "auto",
     # Test commands — auto (low risk, user explicitly requests tests)
     "test.scenarios": "auto",
     "test.add": "auto",
