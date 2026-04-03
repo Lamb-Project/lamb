@@ -444,7 +444,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Next** | 12 | Liteshell comprehensive test suite (25 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
-| **Then** | 10 | `lamb_aac_cli_manual.md` — full CLI + architecture manual | |
+| ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
 | **Then** | 11 | CLI: `lamb assistant list-shared`, get by name, shared visibility | |
 | **On merge** | | #329 + #330 included in pastor — will land on dev when pastor merges | |
 
