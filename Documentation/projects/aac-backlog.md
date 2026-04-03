@@ -445,7 +445,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
 | ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
-| **Then** | 11 | CLI: `lamb assistant list-shared`, get by name, shared visibility | |
+| ~~Done~~ | 11 | `assistant.list-shared` + get by name (26 liteshell commands) | ✅ 2026-04-03 |
 | **On merge** | | #329 + #330 included in pastor — will land on dev when pastor merges | |
 
 ---
