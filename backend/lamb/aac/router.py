@@ -185,8 +185,12 @@ async def send_message(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # Extract bearer token from request for liteshell HTTP calls
+    auth_header = request.headers.get("authorization", "")
+    bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
+
     # Build agent — handle skill startup if needed
-    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message)
+    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
 
     # Run agent loop
     try:
@@ -242,7 +246,9 @@ async def send_message_stream(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message)
+    auth_header = request.headers.get("authorization", "")
+    bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
+    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
 
     async def generate():
         try:
@@ -280,7 +286,7 @@ async def send_message_stream(
 
 
 def _prepare_agent_and_message(
-    auth: AuthContext, session: dict, user_message: str,
+    auth: AuthContext, session: dict, user_message: str, token: str = "",
 ) -> tuple:
     """Build the right agent and adjust the message for skill startup.
 
@@ -294,6 +300,7 @@ def _prepare_agent_and_message(
             auth, session,
             skill_info["skill_id"],
             skill_info.get("context", {}),
+            token=token,
         )
         # The user message becomes the startup trigger; prepend the actual message if any
         if user_message and not user_message.startswith("[System:"):
@@ -302,11 +309,11 @@ def _prepare_agent_and_message(
             startup_msg = "[System: Skill launched. Greet the user and present your initial analysis.]"
         return agent, startup_msg, skill_info
     else:
-        agent = _build_agent(auth, session)
+        agent = _build_agent(auth, session, token=token)
         return agent, user_message, skill_info
 
 
-def _build_agent(auth: AuthContext, session: dict) -> AgentLoop:
+def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop:
     """Build an AgentLoop from auth context and session state."""
     user_email = auth.user["email"]
     org_id = auth.organization["id"]
@@ -331,8 +338,16 @@ def _build_agent(auth: AuthContext, session: dict) -> AgentLoop:
     global_default = resolver.get_global_default_model_config()
     model = global_default.get("model") or openai_config.get("default_model", "gpt-4o-mini")
 
-    # Build components
-    shell = LiteShell(user_email=user_email, organization_id=org_id, user_id=user_id)
+    # Build components — liteshell uses LambClient via HTTP (same path as CLI/frontend)
+    import os
+    server_url = os.environ.get("LAMB_LITESHELL_URL", "http://localhost:9099")
+    shell = LiteShell(
+        server_url=server_url,
+        token=token,
+        user_email=user_email,
+        organization_id=org_id,
+        user_id=user_id,
+    )
     authorizer = ActionAuthorizer()
 
     slog = SessionLogger(
@@ -367,6 +382,7 @@ def _build_agent_with_skill(
     session: dict,
     skill_id: str,
     context: dict,
+    token: str = "",
 ) -> AgentLoop:
     """Build an AgentLoop configured for a specific skill.
 
@@ -397,8 +413,16 @@ def _build_agent_with_skill(
     global_default = resolver.get_global_default_model_config()
     model = global_default.get("model") or openai_config.get("default_model", "gpt-4o-mini")
 
-    # Build components
-    shell = LiteShell(user_email=user_email, organization_id=org_id, user_id=user_id)
+    # Build components — liteshell uses LambClient via HTTP
+    import os
+    server_url = os.environ.get("LAMB_LITESHELL_URL", "http://localhost:9099")
+    shell = LiteShell(
+        server_url=server_url,
+        token=token,
+        user_email=user_email,
+        organization_id=org_id,
+        user_id=user_id,
+    )
     authorizer = ActionAuthorizer()
 
     slog = SessionLogger(

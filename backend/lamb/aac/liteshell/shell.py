@@ -2,7 +2,9 @@
 
 The LLM sends commands like "lamb assistant get 4" and gets back
 structured Python data. No real shell — just argument parsing and dispatch
-to LAMB service layer functions.
+to LAMB Creator Interface HTTP endpoints via LambClient (from lamb-cli).
+
+Local-only commands (docs.index, docs.read, help) read files directly.
 """
 
 from __future__ import annotations
@@ -40,20 +42,42 @@ class ShellResult:
 class LiteShell:
     """CLI-shaped command executor for the AAC agent.
 
-    Parses command strings and routes them to LAMB service functions.
-    All commands run in the context of the authenticated user.
+    Parses command strings and routes them to Creator Interface HTTP
+    endpoints via LambClient, or to local handlers for docs/help commands.
 
     Attributes:
-        user_email: Authenticated user's email (for scoping operations).
+        server_url: Base URL of the LAMB backend (e.g., "http://localhost:9099").
+        token: JWT auth token for the current user.
+        user_email: Authenticated user's email (for convenience/logging).
         organization_id: User's organization ID.
         allowlist: If set, only these top-level command groups are allowed.
         history: Record of executed commands (for session logging).
     """
+    server_url: str
+    token: str
     user_email: str
     organization_id: int
     user_id: int = 0
     allowlist: set[str] | None = None
     history: list[ShellResult] = field(default_factory=list)
+    _http_client: Any = field(default=None, repr=False)
+
+    def _get_http(self):
+        """Lazy-init the HTTP client."""
+        if self._http_client is None:
+            from lamb_cli.client import LambClient
+            self._http_client = LambClient(
+                server_url=self.server_url,
+                token=self.token,
+                timeout=60.0,
+            )
+        return self._http_client
+
+    def close(self):
+        """Close the HTTP client if open."""
+        if self._http_client is not None:
+            self._http_client.close()
+            self._http_client = None
 
     def execute(self, command_str: str) -> ShellResult:
         """Parse and execute a CLI-like command string.
@@ -129,6 +153,9 @@ class LiteShell:
 
         # Build context for the handler
         ctx = CommandContext(
+            http=self._get_http(),
+            server_url=self.server_url,
+            token=self.token,
             user_email=self.user_email,
             organization_id=self.organization_id,
             user_id=self.user_id,
@@ -149,6 +176,9 @@ class LiteShell:
 @dataclass
 class CommandContext:
     """Context passed to every command handler."""
+    http: Any  # LambClient instance for HTTP commands
+    server_url: str
+    token: str
     user_email: str
     organization_id: int
     user_id: int = 0
