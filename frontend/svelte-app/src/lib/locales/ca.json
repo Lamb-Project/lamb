@@ -44,7 +44,8 @@
     "admin": "Administració",
     "orgAdmin": "Admin Org",
     "sources": "Fonts de Coneixement",
-    "rubrics": "Rúbriques"
+    "rubrics": "Rúbriques",
+    "agent": "Agent"
   },
   "assistants": {
     "title": "Assistents d'Aprenentatge",
@@ -847,6 +848,12 @@
         "owner": "Propietari",
         "admin": "Administrador",
         "member": "Membre"
+      },
+      "agent": {
+        "title": "Agent LAMB",
+        "description": "Parla amb l'assistent d'IA per obtenir ajuda, crear assistents, coneixer LAMB o resoldre problemes.",
+        "cta": "Iniciar conversa",
+        "starting": "Iniciant..."
       }
     },
     "help": {

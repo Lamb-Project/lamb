@@ -44,7 +44,8 @@
     "admin": "Administración",
     "orgAdmin": "Admin Org",
     "sources": "Fuentes de Conocimiento",
-    "rubrics": "Rúbricas"
+    "rubrics": "Rúbricas",
+    "agent": "Agente"
   },
   "assistants": {
     "title": "Asistentes de Aprendizaje",
@@ -858,6 +859,12 @@
         "owner": "Propietario",
         "admin": "Administrador",
         "member": "Miembro"
+      },
+      "agent": {
+        "title": "Agente LAMB",
+        "description": "Habla con el asistente de IA para obtener ayuda, crear asistentes, conocer LAMB o resolver problemas.",
+        "cta": "Iniciar conversacion",
+        "starting": "Iniciando..."
       }
     },
     "help": {

@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { _ } from '$lib/i18n';
     import { base } from '$app/paths';
+    import AgentLaunchCard from '$lib/components/aac/AgentLaunchCard.svelte';
 
     /** @type {{ profile?: any, isLoading?: boolean, error?: string | null, onRetry?: () => void }} */
     let {
@@ -99,6 +100,11 @@
                     <span>{$_('home.dashboard.memberSince', { default: 'Member since' })} {formatDate(profile.user.created_at)}</span>
                 </p>
             {/if}
+        </div>
+
+        <!-- LAMB Agent card -->
+        <div class="mb-8">
+            <AgentLaunchCard />
         </div>
 
         <!-- Two-column layout: My Resources / Shared with Me -->

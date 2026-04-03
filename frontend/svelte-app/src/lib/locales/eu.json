@@ -40,7 +40,8 @@
     "admin": "Administrazioa",
     "orgAdmin": "Erakunde Admin",
     "sources": "Ezagutza Iturriak",
-    "rubrics": "Ebaluazio-eskalak"
+    "rubrics": "Ebaluazio-eskalak",
+    "agent": "Agentea"
   },
   "assistants": {
     "title": "Ikaskuntza Laguntzaileak",
@@ -854,6 +855,12 @@
         "owner": "Jabea",
         "admin": "Administratzailea",
         "member": "Kidea"
+      },
+      "agent": {
+        "title": "LAMB Agentea",
+        "description": "Hitz egin IA laguntzailearekin laguntza lortzeko, laguntzaileak sortzeko, LAMB ezagutzeko edo arazoak konpontzeko.",
+        "cta": "Elkarrizketa hasi",
+        "starting": "Abiatzen..."
       }
     },
     "help": {

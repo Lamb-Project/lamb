@@ -40,7 +40,8 @@
     "admin": "Admin",
     "orgAdmin": "Org Admin",
     "sources": "Sources of Knowledge",
-    "rubrics": "Rubrics"
+    "rubrics": "Rubrics",
+    "agent": "Agent"
   },
   "assistants": {
     "title": "Learning Assistants",
@@ -844,6 +845,12 @@
         "owner": "Owner",
         "admin": "Admin",
         "member": "Member"
+      },
+      "agent": {
+        "title": "LAMB Agent",
+        "description": "Talk to the AI assistant to get help, create assistants, learn about LAMB, or troubleshoot issues.",
+        "cta": "Start conversation",
+        "starting": "Starting..."
       }
     },
     "help": {

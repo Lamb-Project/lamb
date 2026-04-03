@@ -98,6 +98,14 @@
             {localeLoaded ? $_('assistants.title') : 'Learning Assistants'}
           </a>
           
+          <a
+            href="{base}/agent"
+            class="inline-flex items-center px-2 pt-1 border-b-2 text-sm font-medium whitespace-nowrap {$page.url.pathname === base + '/agent' ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+            aria-disabled={!$user.isLoggedIn}
+          >
+            🤖 {localeLoaded ? $_('nav.agent', { default: 'Agent' }) : 'Agent'}
+          </a>
+
           {#if $user.isLoggedIn && $user.data?.role === 'admin'} <!-- System Admin link -->
           <a
             href="{base}/admin"

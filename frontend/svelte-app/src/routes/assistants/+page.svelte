@@ -1026,7 +1026,7 @@
                 class="py-1.5 px-3 text-xs font-medium rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-50 disabled:cursor-wait"
                 title="Let the AI agent explain how this assistant works"
             >
-                {aacLaunching ? '⏳' : '🔍'} Explain
+                {aacLaunching ? '⏳' : '🔍'} Agent Explain
             </button>
             <button
                 onclick={() => launchAacSkill('improve-assistant')}
@@ -1034,7 +1034,7 @@
                 class="py-1.5 px-3 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 disabled:cursor-wait"
                 title="Let the AI agent suggest improvements"
             >
-                {aacLaunching ? '⏳' : '✨'} Improve
+                {aacLaunching ? '⏳' : '✨'} Agent Improve
             </button>
         {/if}
     </div>
@@ -1547,7 +1547,7 @@
         {:else if detailSubView === 'aac' && activeAacSessionId}
             <!-- AAC Agent Terminal — key forces remount on session/startup change -->
             {#key `${activeAacSessionId}-${aacSkillStartup}`}
-            <div class="h-[600px]">
+            <div class="h-[700px]">
                 <AacTerminal
                     sessionId={activeAacSessionId}
                     firstMessage={aacFirstMessage}
