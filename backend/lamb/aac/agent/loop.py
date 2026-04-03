@@ -40,6 +40,7 @@ READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id>
 READ: lamb template list | get <id>
 READ: lamb model list
+DOCS: lamb docs index | read <topic> [--section "heading"]
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
@@ -118,6 +119,8 @@ _TOOL_LABELS = {
     "test.run": "Running tests",
     "test.runs": "Loading test results",
     "test.evaluate": "Recording evaluation",
+    "docs.index": "Loading documentation index",
+    "docs.read": "Reading documentation",
 }
 
 
