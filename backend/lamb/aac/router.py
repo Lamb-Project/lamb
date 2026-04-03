@@ -190,7 +190,7 @@ async def send_message(
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
 
     # Build agent — handle skill startup if needed
-    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
+    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
 
     # Run agent loop
     try:
@@ -248,7 +248,7 @@ async def send_message_stream(
 
     auth_header = request.headers.get("authorization", "")
     bearer_token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer") else ""
-    agent, user_message, skill_info = _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
+    agent, user_message, skill_info = await _prepare_agent_and_message(auth, session, user_message, token=bearer_token)
 
     async def generate():
         try:
@@ -285,7 +285,7 @@ async def send_message_stream(
 # ---------------------------------------------------------------------------
 
 
-def _prepare_agent_and_message(
+async def _prepare_agent_and_message(
     auth: AuthContext, session: dict, user_message: str, token: str = "",
 ) -> tuple:
     """Build the right agent and adjust the message for skill startup.
@@ -296,7 +296,7 @@ def _prepare_agent_and_message(
 
     if skill_info and not skill_info.get("started"):
         # First message in a skill session — build with skill and use startup trigger
-        agent = _build_agent_with_skill(
+        agent = await _build_agent_with_skill(
             auth, session,
             skill_info["skill_id"],
             skill_info.get("context", {}),
@@ -377,7 +377,7 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
     return agent
 
 
-def _build_agent_with_skill(
+async def _build_agent_with_skill(
     auth: AuthContext,
     session: dict,
     skill_id: str,
@@ -452,7 +452,7 @@ def _build_agent_with_skill(
     # Execute startup actions via liteshell
     from lamb.aac.agent.loop import _parse_action_key, _extract_artifacts
     for action in skill["startup_actions"]:
-        result = shell.execute(action)
+        result = await shell.execute(action)
         # Record in tool audit
         action_key = _parse_action_key(action)
         agent._record_audit(action, action_key, result.success, result.elapsed_ms, result)
