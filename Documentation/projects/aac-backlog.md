@@ -436,6 +436,10 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 8 | Tests tab in UI + `test-and-evaluate` skill | ✅ 2026-04-01 |
 | ~~Done~~ | #329 | simple_augment: clean text extraction instead of JSON dump | ✅ 2026-04-02 |
 | ~~Done~~ | #330 | RAG processors: read `results` key from KB server response | ✅ 2026-04-02 |
+| ~~Done~~ | 13 | LAMB user manual on website (EN + ES) with 14 UI screenshots | ✅ 2026-04-03 |
+| **Next** | 14 | `about-lamb` AAC skill + agent-readable docs + liteshell tools | |
+| **Next** | 15 | Dashboard "LAMB Agent" button — agentic entry point on home page | |
+| **Next** | 12 | Liteshell comprehensive test suite (24 commands, ~80-100 tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
 | **Then** | 10 | `lamb_aac_cli_manual.md` — full CLI + architecture manual | |
@@ -844,3 +848,482 @@ lamb assistant get "1960s british rock"      # by name with spaces
 Implementation: if the argument is not a pure integer, treat it as a name. Query the backend by name (needs a new endpoint or query param on `get_assistants`). If multiple matches (unlikely since names are unique per owner), return the first or error.
 
 This also benefits the AAC skills — `lamb assistant get rock_the_60s` is more readable in tool audit logs than `lamb assistant get 18`.
+
+---
+
+## 12. Liteshell Comprehensive Test Suite
+
+**Priority:** High — the AAC agent is only as reliable as its toolset
+**Depends on:** Nothing (tests what already exists)
+**Related:** Item 7 (comparative testing), lamb-cli docs
+
+### Problem
+
+The liteshell is the AAC agent's only interface to the LAMB platform — 24 commands across 7 categories (assistant, rubric, kb, template, model, test, utility). These commands call the service layer directly (no HTTP), bypassing the creator interface validation that the real CLI goes through. We have no systematic test coverage verifying that:
+
+1. Every command parses arguments correctly (positional + kwargs)
+2. Every command calls the right service function with the right parameters
+3. Return values are structured consistently (the agent parses these)
+4. Error cases produce useful messages (the agent needs to recover)
+5. Commands behave equivalently to their lamb-cli counterparts where overlap exists
+
+If a liteshell command silently returns wrong data or crashes on an edge case, the agent gives bad advice to educators.
+
+### Scope — What to Test
+
+The liteshell currently has 24 registered commands:
+
+| Category | Commands | Notes |
+|----------|----------|-------|
+| **Assistant** (8) | `list`, `get`, `config`, `debug`, `create`, `update`, `delete` | Core CRUD + config discovery. `create` and `update` have complex metadata handling. `debug` calls TestService with bypass. |
+| **Rubric** (4) | `list`, `list-public`, `get`, `export` | Export has format flag (json/md). |
+| **KB** (2) | `list`, `get` | Read-only. Access check on `get`. |
+| **Template** (2) | `list`, `get` | Read-only. |
+| **Model** (1) | `list` | Reads org config. |
+| **Test** (6) | `scenarios`, `add`, `run`, `runs`, `run-detail`, `evaluate` | `run` is async and handles both single/all scenarios. `add` has many optional flags. |
+| **Utility** (1) | `help` | Returns command registry. |
+
+### Test Categories
+
+#### A. Argument Parsing Tests (unit, no services)
+Test the `shlex.split()` → handler dispatch for each command:
+- Positional arguments in correct order
+- `--flag value` and `--flag=value` both work
+- Short flags (`-m`, `-d`, `-t`, etc.)
+- Boolean flags (`--bypass`, `-b`) set to True
+- Missing required arguments → clear error
+- Extra/unknown arguments → handled gracefully
+- Quoted strings with spaces (`--system-prompt "long text with spaces"`)
+- Special characters in values (quotes, newlines, unicode)
+
+#### B. Command Execution Tests (integration, mocked services)
+For each command, mock the service layer and verify:
+- Correct service function called
+- Arguments passed correctly (types, defaults)
+- Return value structure matches what the agent expects
+- `CommandContext` (user_email, org_id, user_id) threaded correctly
+
+Key scenarios per command group:
+
+**Assistant commands:**
+- `assistant.create` — verify metadata dict construction (llm, connector, prompt_processor, rag_processor, rubric_id, rubric_format packed correctly)
+- `assistant.create` — name sanitization with user prefix
+- `assistant.create` — duplicate name detection via `check_exists` callback
+- `assistant.update` — fetch-then-merge: only changed fields overwritten
+- `assistant.update` — metadata merge (existing metadata preserved when not overriding)
+- `assistant.delete` — calls `soft_delete_assistant_by_id`
+- `assistant.config` — plugin loading, connector → LLM mapping, defaults
+- `assistant.debug` — creates bypass run via TestService
+
+**Test commands:**
+- `test.add` — all flag combinations (title positional vs --title, --type, --expected, --description)
+- `test.run` — single scenario vs all scenarios dispatch
+- `test.run --bypass` — debug_bypass flag forwarded
+- `test.run` — async handling (event loop detection)
+- `test.evaluate` — verdict validation (good/bad/mixed only)
+
+**Rubric commands:**
+- `rubric.export --format json` vs `--format md` — different service calls
+- `rubric.get` — access control (user_email passed)
+
+**KB commands:**
+- `kb.get` — access check (`user_can_access_kb`) before returning data
+
+#### C. CLI Parity Tests (comparison)
+For commands that exist in both liteshell and lamb-cli, verify equivalent behavior:
+- Same input → same logical output (structure may differ since liteshell returns dicts, CLI formats for terminal)
+- Same error conditions → same error semantics
+- Commands to compare: `assistant.list/get/create/update/delete`, `rubric.list/get/export`, `kb.list/get`, `template.list/get`, `model.list`, `test.*`
+
+#### D. Agent Integration Tests (end-to-end)
+Test the liteshell through the `LiteShell.execute()` interface (the entry point the agent loop uses):
+- Command string → parsed → dispatched → result returned
+- Unknown command → error dict with available commands
+- Service exception → error dict with message (not Python traceback)
+- Result format is JSON-serializable (agent receives it as tool output)
+
+### Coverage Gaps to Investigate
+
+While building the test suite, document any gaps found:
+
+1. **Commands the real CLI has but liteshell doesn't** — are any needed for skills?
+   - Known missing: `chat` (interactive), `analytics.*`, `org.*`, `user.*`, `kb.create/update/delete/upload/query`, `template.create/update/delete`
+   - Assess: does any skill need these? Should we add them?
+2. **Liteshell-specific behaviors** — things the liteshell does that the CLI doesn't:
+   - `assistant.create` name sanitization (adds user prefix)
+   - `assistant.update` fetch-and-merge (CLI fixed in #328, liteshell has its own impl)
+   - `assistant.config` loads plugins directly instead of hitting `/creator/assistant/config`
+3. **Return value contracts** — document what each command returns so skills/agent can rely on it
+
+### Implementation
+
+**Test file:** `backend/tests/aac/test_liteshell_commands.py`
+
+**Framework:** pytest with service mocking (unittest.mock or pytest-mock). No running server needed.
+
+**Fixtures:**
+- `mock_context` — `CommandContext(user_email="admin@owi.com", organization_id="org1", user_id="1")`
+- `shell` — `LiteShell()` instance
+- Service mocks for `AssistantService`, `TestService`, `rubric_service`, `LambDatabaseManager`, `OrganizationConfigResolver`
+
+**Estimated scope:** ~80-100 test cases across the 24 commands.
+
+### Deliverables
+
+1. `backend/tests/aac/test_liteshell_commands.py` — comprehensive test file
+2. Gap analysis document: commands missing from liteshell that skills might need
+3. Return value contract documentation (can go in the AAC manual, item 10)
+
+---
+
+## 13. LAMB User Manual on Project Website ✅
+
+**Priority:** Medium — user-facing documentation
+**Depends on:** Nothing
+**Status:** DONE (2026-04-03)
+
+### What was done
+
+Created a comprehensive LAMB User Manual targeting the teacher/creator persona. Published on the project Hugo website at [lamb-project.org](https://lamb-project.org).
+
+**Content:** 11 sections covering the full educator workflow — login, dashboard, assistants (create/edit/share/test/publish), knowledge bases (RAG), rubrics (EvaluAItor), prompt templates, testing (debug bypass + scenarios), activity analytics, LMS publishing (LTI), collaboration, tips & best practices, glossary.
+
+**Screenshots:** 14 UI screenshots captured from a live LAMB instance using Playwright MCP:
+01-login, 02-dashboard, 03-assistants-list, 04-create-assistant, 05-assistant-detail, 06-assistant-edit, 07-assistant-share, 08-assistant-tests, 09-assistant-activity, 10-knowledge-bases, 11-kb-detail, 12-rubrics, 13-assistant-published, 14-prompt-templates.
+
+**Languages:** English + Spanish (Spanish reuses English UI screenshots for now).
+
+**Hugo structure:** Page bundle at `content/{en,es}/manual/index.md` with colocated images.
+
+**Repository:** [Lamb-Project/Lamb-Project-Website](https://github.com/Lamb-Project/Lamb-Project-Website), commits `a08308c` (EN) and `aa89d27` (ES).
+
+---
+
+## 14. `about-lamb` AAC Skill + Agent-Readable Documentation + Liteshell Tools
+
+**Priority:** High — foundational for user onboarding and self-service help
+**Depends on:** Item 13 (documentation content exists), existing skill infrastructure
+**Related:** Item 10 (AAC manual), LAMB user manual on website
+
+### Problem
+
+The AAC agent currently knows how to manipulate assistants (create, improve, test, explain) but **cannot answer questions about the LAMB platform itself**. When an educator asks "how do I connect a knowledge base?" or "what is RAG?" or "how does publishing work?", the agent has no documentation to draw from — it either guesses from its training data or says it doesn't know.
+
+This is a critical gap for onboarding: the first thing a new educator asks is "what can I do here?" not "improve my assistant."
+
+### Design
+
+Three components working together:
+
+#### 14a. Agent-Readable Documentation (`backend/static/aac_docs/`)
+
+A copy of the LAMB user manual optimized for agent consumption, stored server-side where the liteshell can read it. NOT a raw copy of the website markdown — restructured for efficient agent retrieval.
+
+**Location:** `backend/static/aac_docs/`
+
+**Structure:**
+```
+backend/static/aac_docs/
+├── index.md                    # Table of contents with section summaries
+├── getting-started.md          # Login, dashboard, navigation
+├── assistants.md               # Creating, editing, configuring assistants
+├── knowledge-bases.md          # RAG concept, KB management, connecting to assistants
+├── rubrics.md                  # EvaluAItor, creating rubrics, rubric-based assistants
+├── prompt-templates.md         # Templates management and usage
+├── testing.md                  # Direct chat, bypass/debug, test scenarios
+├── publishing.md               # LTI publishing, Moodle integration, Unified LTI
+├── collaboration.md            # Sharing assistants, KBs, templates
+├── troubleshooting.md          # Common issues and solutions
+├── glossary.md                 # Term definitions
+└── images/                     # Key screenshots (subset, not all 14)
+    ├── dashboard.png
+    ├── create-assistant.png
+    ├── assistant-edit-rag.png
+    ├── kb-detail.png
+    └── tests-tab.png
+```
+
+**Agent optimization strategy:**
+
+The website manual is written for humans reading top-to-bottom. Agent docs need a different structure:
+
+1. **Index-first architecture.** `index.md` has a structured table of contents with one-line summaries per section and per subsection. The agent reads the index first, then fetches only the relevant section. This avoids loading 500+ lines when the user asks about one topic.
+
+2. **Chunked by topic, not by flow.** Each file covers one self-contained topic. A human manual says "after creating the assistant, go to Knowledge Bases"; agent docs have each as a standalone file with cross-references.
+
+3. **Front matter with semantic tags.** Each file has YAML front matter with:
+   ```yaml
+   ---
+   topic: knowledge-bases
+   covers: [rag, documents, upload, ingestion, query, sharing, chunking, embeddings]
+   answers: [
+     "how do I add documents",
+     "what is RAG",
+     "why is my assistant not using my documents",
+     "how to connect a KB to an assistant"
+   ]
+   ---
+   ```
+   The `answers` field lists common questions this doc answers. The agent (or the index tool) can use these to route queries.
+
+4. **Imperative, task-oriented paragraphs.** Instead of "The Share tab lets you grant other educators access", write "To share an assistant: click Share tab > Manage Shared Users > select users. Shared users can view and chat but cannot edit or publish."
+
+5. **No decorative content.** Remove motivational text, redundant screenshots descriptions, "here is an example" phrasing. Keep only: what it is, how to do it, what to watch out for.
+
+6. **Troubleshooting section.** A dedicated file with problem → cause → fix triples. This is what users actually ask the agent about:
+   - "My assistant ignores my documents" → RAG not configured / no prompt template / wrong KB selected
+   - "Context is empty in bypass" → KB not ingested / wrong collection ID / prompt template missing `{context}`
+   - "I can't see the Share tab" → Sharing disabled at org level
+   - "Students can't access my assistant" → Not published / LTI misconfigured
+
+7. **Images are optional context.** The agent doesn't "see" images, but the file paths are included so the agent can reference them when helping users: "You should see a screen like the one in `images/create-assistant.png`". If the AAC frontend later supports the canvas (item 3b), these images could be displayed.
+
+#### 14b. Liteshell Tools for Documentation Access
+
+Two new liteshell commands that let the agent read documentation on demand:
+
+**`docs.index`** — Returns the table of contents with section summaries
+```
+lamb docs index
+→ {
+    "sections": [
+      {"file": "getting-started.md", "topic": "getting-started", 
+       "summary": "Login, dashboard overview, navigation",
+       "covers": ["login", "dashboard", "navigation", "signup"]},
+      {"file": "assistants.md", "topic": "assistants",
+       "summary": "Creating, editing, configuring learning assistants",
+       "covers": ["create", "edit", "system-prompt", "llm", "rag", "vision"]},
+      ...
+    ]
+  }
+```
+
+**`docs.read`** — Returns the content of a specific documentation section
+```
+lamb docs read getting-started
+→ {"file": "getting-started.md", "content": "## Login\n\nOpen your LAMB..."}
+
+lamb docs read assistants --section "creating"
+→ {"file": "assistants.md", "section": "creating", "content": "## Creating an Assistant\n\n1. Click..."}
+```
+
+The `--section` flag is optional. Without it, the full file is returned. With it, only the matching `##` section is returned (parsed by heading). This keeps token usage minimal.
+
+**Authorization policy:** Both commands are `auto` (read-only, no confirmation needed).
+
+**Implementation:**
+
+```python
+# In backend/lamb/aac/liteshell/commands.py
+
+@register("docs.index")
+def docs_index(ctx, args, kwargs):
+    """Return the documentation index with section summaries."""
+    index_path = Path(__file__).parents[3] / "static" / "aac_docs" / "index.md"
+    # Parse YAML front matter from index.md or each file's front matter
+    # Return structured JSON with file, topic, summary, covers, answers
+    ...
+
+@register("docs.read") 
+def docs_read(ctx, args, kwargs):
+    """Read a specific documentation section."""
+    topic = args[0] if args else None
+    section = kwargs.get("section")
+    # Load file from aac_docs/{topic}.md
+    # If section specified, extract only that ## heading block
+    # Return content as string
+    ...
+```
+
+#### 14c. `about-lamb` Skill
+
+**Skill file:** `backend/lamb/aac/skills/about_lamb.md`
+
+```yaml
+---
+id: about-lamb
+name: LAMB Helper
+description: Answer questions about the LAMB platform, guide educators through features
+required_context: []
+optional_context: [language]
+startup_actions:
+  - "lamb docs index"
+---
+```
+
+**Behavior:**
+
+This skill is different from the existing ones — it's **reactive**, not workflow-driven. The agent doesn't lead with a plan; it answers whatever the educator asks about LAMB.
+
+**On startup:**
+1. Load the docs index via `lamb docs index`
+2. Greet the user briefly: "I can help you understand LAMB's features. What would you like to know about?"
+3. Do NOT dump the full index. Wait for the user's question.
+
+**On user question:**
+1. Match the question against the index's `covers` and `answers` fields
+2. Fetch the relevant section via `lamb docs read <topic>` (or `--section` for targeted retrieval)
+3. Answer in the user's language, using the documentation as ground truth
+4. If the question involves a hands-on task ("how do I create an assistant?"), offer to switch to the appropriate skill: "Would you like me to guide you through creating one? I can launch the Create Assistant workflow."
+
+**Key behaviors:**
+- **Ground answers in documentation**, not LLM training data. Always read the doc first.
+- **Adapt language** to the user's language setting (same as other skills)
+- **Cross-reference to actions**: when explaining a feature, offer to do it. "Knowledge bases let your assistant use your documents. Want me to help you set one up?"
+- **Handle troubleshooting**: if the user describes a problem, check `troubleshooting.md` first
+- **Stay concise**: 3-5 lines per answer unless the user asks for detail
+
+**How it's launched:**
+- From the frontend: a "Help" or "About LAMB" button (new, simple)
+- From the CLI: `lamb aac start --skill about-lamb`
+- Automatically: when the agent detects a "what is" / "how do I" / "why doesn't" question that's about the platform rather than a specific assistant
+
+### Implementation Order
+
+1. **Create `backend/static/aac_docs/`** — transform the website manual into agent-optimized chunked docs with front matter
+2. **Add `docs.index` and `docs.read` liteshell commands** — simple file-reading tools
+3. **Create the `about-lamb` skill** — reactive, doc-grounded question answering
+4. **Add `docs.*` to authorization policy** — both `auto`
+5. **Add "Help" button to frontend** — launches `about-lamb` skill session
+6. **Test with real educator questions** — verify grounding, cross-skill handoff, troubleshooting
+
+### Deliverables
+
+1. `backend/static/aac_docs/` — 10-12 agent-optimized markdown files + index + images subset
+2. `backend/lamb/aac/liteshell/commands.py` — `docs.index` and `docs.read` handlers
+3. `backend/lamb/aac/skills/about_lamb.md` — skill definition
+4. Frontend: "Help" / "About LAMB" button that launches the skill
+5. Authorization policy update for `docs.*` commands
+
+---
+
+## 15. Dashboard "LAMB Agent" Button — Agentic Entry Point
+
+**Priority:** High — transforms the first-use experience into a conversational one
+**Depends on:** Item 14 (`about-lamb` skill + docs tooling must exist first)
+**Related:** Item 3 (frontend UI scaffold), Item 14 (about-lamb skill)
+
+### Problem
+
+The dashboard is currently a static summary of resources (assistants, KBs, rubrics, templates). An educator who lands here for the first time sees numbers and categories but gets no guidance. They have to figure out the navigation themselves — click around, explore menus, read documentation externally.
+
+The AAC agent already exists and can guide educators through everything, but it's hidden behind the assistant detail page (Explain/Improve buttons) or requires knowing about `lamb aac start`. There is no prominent, zero-friction entry point.
+
+### Design
+
+A large, visually prominent **"LAMB Agent"** button on the Dashboard that launches the AAC terminal with the `about-lamb` skill. One click → the agent greets the user and offers to help with anything.
+
+#### Dashboard Layout Change
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Welcome back, Admin User!                                    │
+│  LAMB System Organization  |  Role: Admin  |  Member since... │
+│                                                                │
+│  ┌─────────────────────────────────────┐  ┌────────────────┐  │
+│  │                                     │  │ MY RESOURCES   │  │
+│  │     🤖  LAMB Agent                  │  │                │  │
+│  │                                     │  │ ASSISTANTS     │  │
+│  │     Talk to the AI assistant to     │  │ 10 · 3 pub     │  │
+│  │     get help, create assistants,    │  │                │  │
+│  │     learn about LAMB, or manage     │  │ KNOWLEDGE BASES│  │
+│  │     your resources.                 │  │ 6 · 0 shared   │  │
+│  │                                     │  │                │  │
+│  │          [ Start conversation ]     │  │ RUBRICS        │  │
+│  │                                     │  │ 9 · 0 public   │  │
+│  └─────────────────────────────────────┘  │                │  │
+│                                            │ TEMPLATES      │  │
+│  SHARED WITH ME                            │ 2 · 1 shared   │  │
+│  Nothing shared with you yet               └────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The button occupies the left/center area, visually dominant. The resources summary moves to the right column. The message is brief and action-oriented.
+
+#### What Happens on Click
+
+1. **Create an AAC session** via `POST /creator/aac/sessions` with `skill: "about-lamb"` (no `assistant_id` needed — this skill has no required context)
+2. **Navigate to the assistants page** with the AAC terminal open in a new tab (reuses the existing tab infrastructure from item 3)
+3. **The agent speaks first** — the `about-lamb` skill has `startup_actions` that load the docs index, then the agent sends a short greeting:
+
+```
+Hi! I'm the LAMB assistant. I can help you with:
+
+1. Creating and configuring learning assistants
+2. Setting up knowledge bases with your documents
+3. Building evaluation rubrics
+4. Publishing assistants to your LMS
+5. Troubleshooting any issues
+
+What would you like to do?
+```
+
+The greeting adapts to the user's language setting and to their resource state (e.g., if they have 0 assistants: "I see you haven't created any assistants yet. Want me to walk you through creating your first one?").
+
+#### Frontend Implementation
+
+**Component:** New `AgentLaunchCard.svelte` in `src/lib/components/aac/`
+
+```
+src/lib/components/aac/
+└── AgentLaunchCard.svelte    # Big button card for dashboard
+```
+
+**Integration point:** Dashboard page (`src/routes/+page.svelte` or equivalent)
+
+**Behavior:**
+- Renders as a card with icon, description, and CTA button
+- On click: calls the AAC session API, then navigates to `/assistants` with the session tab open
+- Shows a loading spinner during session creation
+- If the `about-lamb` skill doesn't exist yet (e.g., backend not updated), gracefully falls back to a free-form session
+
+**Styling:**
+- Uses the existing brand colors (blue primary)
+- Robot/agent icon (consistent with the AAC terminal styling)
+- Responsive: stacks vertically on mobile
+- i18n: title, description, and CTA text via `svelte-i18n`
+
+#### Session Creation Details
+
+The session is created with:
+```json
+{
+  "skill": "about-lamb",
+  "context": {},
+  "title": "LAMB Agent"
+}
+```
+
+No `assistant_id` — this is the first skill that operates without a target assistant. The session manager already supports optional `assistant_id` (it's nullable in the schema), so no backend change needed for session creation.
+
+#### Returning Users
+
+If the user already has an active `about-lamb` session (created today, not archived), the button should **resume** it instead of creating a new one. Check via `GET /creator/aac/sessions` filtered by skill.
+
+This avoids orphaned sessions from users who click the button multiple times.
+
+### What This Enables
+
+The agentic entry point changes the user journey from:
+
+**Before:** Dashboard → navigate menus → find feature → figure out how to use it → (stuck) → look for docs externally
+
+**After:** Dashboard → "LAMB Agent" → "I want to create a tutor for my biology class" → agent walks them through it end-to-end
+
+This is the **conversational-first onboarding** vision: the platform becomes usable through dialogue, not just through forms and menus.
+
+### Implementation Order
+
+1. Create `AgentLaunchCard.svelte` component
+2. Integrate into dashboard layout (left/center position)
+3. Wire up session creation → tab navigation
+4. Add session resumption logic (check for active `about-lamb` session)
+5. Add i18n strings (en, es, ca, eu)
+6. Test the full flow: dashboard → click → agent greets → user asks question → agent answers from docs
+
+### Deliverables
+
+1. `frontend/svelte-app/src/lib/components/aac/AgentLaunchCard.svelte`
+2. Dashboard layout modification (resource summary to right column)
+3. i18n strings for the card (4 languages)
+4. Session resumption logic in the card component
