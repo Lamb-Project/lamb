@@ -1,11 +1,11 @@
 """Command registry: maps CLI commands to Creator Interface HTTP endpoints.
 
 Each handler receives (ctx, args, kwargs) where ctx is a CommandContext
-with an http client (LambClient), user_email, organization_id, etc.
-Handlers return structured data from the API responses.
+with an async http client (AsyncLambClient), user_email, organization_id, etc.
+HTTP handlers are async. Local handlers (docs.*, help) are sync.
 
-HTTP commands call /creator/* endpoints — same code path as the frontend
-and lamb-cli. Local commands (docs.*, help) operate on files directly.
+HTTP commands call /creator/* endpoints via ASGI transport — same code path
+as the frontend and lamb-cli. No TCP, no deadlock with single-worker uvicorn.
 
 Authorization (auto/ask/never) is handled by the agent loop, not here.
 """
@@ -24,12 +24,20 @@ logger = get_logger(__name__, component="AAC")
 
 Handler = Callable[["CommandContext", list[str], dict[str, Any]], Any]
 COMMAND_REGISTRY: dict[str, Handler] = {}
+LOCAL_COMMANDS: set[str] = set()  # sync-only commands (file reads, no HTTP)
 
 
-def register(name: str):
-    """Decorator to register a command handler."""
+def register(name: str, local: bool = False):
+    """Decorator to register a command handler.
+
+    Args:
+        name: Command key (e.g., "assistant.list")
+        local: If True, handler is sync (file reads). Otherwise async (HTTP).
+    """
     def decorator(func: Handler) -> Handler:
         COMMAND_REGISTRY[name] = func
+        if local:
+            LOCAL_COMMANDS.add(name)
         return func
     return decorator
 
@@ -42,31 +50,31 @@ def _unwrap(response: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Assistant commands (HTTP → /creator/assistant/*)
+# Assistant commands (async HTTP → /creator/assistant/*)
 # ---------------------------------------------------------------------------
 
 @register("assistant.list")
-def assistant_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List all assistants for the current user."""
-    return _unwrap(ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
+    return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
 
 
 @register("assistant.get")
-def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Get assistant details by ID."""
     if not args:
         raise ValueError("Usage: lamb assistant get <id>")
-    return _unwrap(ctx.http.get(f"/creator/assistant/get_assistant/{args[0]}"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{args[0]}"))
 
 
 @register("assistant.config")
-def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_config(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Show available connectors, models, and processors."""
-    return _unwrap(ctx.http.get("/creator/assistant/defaults"))
+    return _unwrap(await ctx.http.get("/creator/assistant/defaults"))
 
 
 @register("assistant.debug")
-def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Run a message through an assistant's full pipeline without calling the LLM. Shows what the LLM would see."""
     if not args:
         raise ValueError("Usage: lamb assistant debug <id> --message \"text\"")
@@ -74,23 +82,19 @@ def assistant_debug(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any
     message = kwargs.get("message", kwargs.get("m", ""))
     if not message:
         raise ValueError("Provide --message or -m with the test input")
-    return _unwrap(ctx.http.post(
+    return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/run",
-        json={
-            "message": message,
-            "debug_bypass": True,
-        },
+        json={"message": message, "debug_bypass": True},
     ))
 
 
 @register("assistant.create")
-def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Create a new assistant."""
     if not args:
         raise ValueError("Usage: lamb assistant create <name> [--system-prompt ...] [--llm ...]")
     name = args[0]
 
-    # Build metadata from kwargs
     metadata: dict[str, Any] = {}
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
                 "rubric_id", "rubric_format"):
@@ -111,11 +115,11 @@ def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict) -> An
     if metadata:
         body["metadata"] = json.dumps(metadata)
 
-    return _unwrap(ctx.http.post("/creator/assistant/create_assistant", json=body))
+    return _unwrap(await ctx.http.post("/creator/assistant/create_assistant", json=body))
 
 
 @register("assistant.update")
-def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Update an assistant (fetch-and-merge handled by Creator Interface)."""
     if not args:
         raise ValueError("Usage: lamb assistant update <id> [--name ...] [--system-prompt ...]")
@@ -131,7 +135,6 @@ def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> An
     if "prompt_template" in kwargs:
         body["prompt_template"] = kwargs["prompt_template"]
 
-    # Metadata fields
     metadata: dict[str, Any] = {}
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
                 "rubric_id", "rubric_format"):
@@ -143,118 +146,118 @@ def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> An
     if not body:
         raise ValueError("No fields to update. Use --name, --system-prompt, --llm, etc.")
 
-    return _unwrap(ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
+    return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
 
 
 @register("assistant.delete")
-def assistant_delete(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def assistant_delete(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Delete (soft-delete) an assistant."""
     if not args:
         raise ValueError("Usage: lamb assistant delete <id>")
-    return _unwrap(ctx.http.delete(f"/creator/assistant/delete_assistant/{args[0]}"))
+    return _unwrap(await ctx.http.delete(f"/creator/assistant/delete_assistant/{args[0]}"))
 
 
 # ---------------------------------------------------------------------------
-# Rubric commands (HTTP → /creator/rubrics/*)
+# Rubric commands (async HTTP → /creator/rubrics/*)
 # ---------------------------------------------------------------------------
 
 @register("rubric.list")
-def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def rubric_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your rubrics."""
-    result = _unwrap(ctx.http.get("/creator/rubrics", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics", params={"limit": 100}))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
 
 
 @register("rubric.list-public")
-def rubric_list_public(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def rubric_list_public(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List public rubrics (templates)."""
-    result = _unwrap(ctx.http.get("/creator/rubrics/public", params={"limit": 100}))
+    result = _unwrap(await ctx.http.get("/creator/rubrics/public", params={"limit": 100}))
     if isinstance(result, dict) and "rubrics" in result:
         return result["rubrics"]
     return result
 
 
 @register("rubric.get")
-def rubric_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def rubric_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Get rubric details by UUID."""
     if not args:
         raise ValueError("Usage: lamb rubric get <rubric_id>")
-    return _unwrap(ctx.http.get(f"/creator/rubrics/{args[0]}"))
+    return _unwrap(await ctx.http.get(f"/creator/rubrics/{args[0]}"))
 
 
 @register("rubric.export")
-def rubric_export(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def rubric_export(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Export a rubric as JSON or markdown."""
     if not args:
         raise ValueError("Usage: lamb rubric export <rubric_id> [--format json|md]")
     fmt = kwargs.get("format", kwargs.get("f", "json"))
     if fmt in ("md", "markdown"):
-        return ctx.http.get(f"/creator/rubrics/{args[0]}/export/markdown")
-    return ctx.http.get(f"/creator/rubrics/{args[0]}/export/json")
+        return await ctx.http.get(f"/creator/rubrics/{args[0]}/export/markdown")
+    return await ctx.http.get(f"/creator/rubrics/{args[0]}/export/json")
 
 
 # ---------------------------------------------------------------------------
-# Knowledge Base commands (HTTP → /creator/knowledgebases/*)
+# Knowledge Base commands (async HTTP → /creator/knowledgebases/*)
 # ---------------------------------------------------------------------------
 
 @register("kb.list")
-def kb_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def kb_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your knowledge bases."""
-    return _unwrap(ctx.http.get("/creator/knowledgebases/user"))
+    return _unwrap(await ctx.http.get("/creator/knowledgebases/user"))
 
 
 @register("kb.get")
-def kb_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def kb_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Get KB details by ID."""
     if not args:
         raise ValueError("Usage: lamb kb get <id>")
-    return _unwrap(ctx.http.get(f"/creator/knowledgebases/kb/{args[0]}"))
+    return _unwrap(await ctx.http.get(f"/creator/knowledgebases/kb/{args[0]}"))
 
 
 # ---------------------------------------------------------------------------
-# Template commands (HTTP → /creator/prompt-templates/*)
+# Template commands (async HTTP → /creator/prompt-templates/*)
 # ---------------------------------------------------------------------------
 
 @register("template.list")
-def template_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def template_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List your prompt templates."""
-    return _unwrap(ctx.http.get("/creator/prompt-templates/list"))
+    return _unwrap(await ctx.http.get("/creator/prompt-templates/list"))
 
 
 @register("template.get")
-def template_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def template_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Get template details by ID."""
     if not args:
         raise ValueError("Usage: lamb template get <id>")
-    return _unwrap(ctx.http.get(f"/creator/prompt-templates/{args[0]}"))
+    return _unwrap(await ctx.http.get(f"/creator/prompt-templates/{args[0]}"))
 
 
 # ---------------------------------------------------------------------------
-# Model commands (HTTP → /creator/models)
+# Model commands (async HTTP → /creator/models)
 # ---------------------------------------------------------------------------
 
 @register("model.list")
-def model_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def model_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List available models for the user's organization."""
-    return _unwrap(ctx.http.get("/creator/models"))
+    return _unwrap(await ctx.http.get("/creator/models"))
 
 
 # ---------------------------------------------------------------------------
-# Test commands (HTTP → /creator/assistant/{id}/tests/*)
+# Test commands (async HTTP → /creator/assistant/{id}/tests/*)
 # ---------------------------------------------------------------------------
 
 @register("test.scenarios")
-def test_scenarios(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_scenarios(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List test scenarios for an assistant."""
     if not args:
         raise ValueError("Usage: lamb test scenarios <assistant_id>")
-    return _unwrap(ctx.http.get(f"/creator/assistant/{args[0]}/tests/scenarios"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/scenarios"))
 
 
 @register("test.add")
-def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Add a test scenario to an assistant."""
     if not args:
         raise ValueError("Usage: lamb test add <assistant_id> <title> --message \"text\"")
@@ -263,7 +266,7 @@ def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     message = kwargs.get("message", kwargs.get("m", ""))
     if not message:
         raise ValueError("Provide --message with the test input")
-    return _unwrap(ctx.http.post(
+    return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/scenarios",
         json={
             "title": title,
@@ -276,7 +279,7 @@ def test_add(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
 
 
 @register("test.run")
-def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Run test scenarios through the real completion pipeline."""
     if not args:
         raise ValueError("Usage: lamb test run <assistant_id> [--scenario <id>] [--bypass]")
@@ -288,43 +291,41 @@ def test_run(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     scenario_id = kwargs.get("scenario", kwargs.get("s"))
     if scenario_id:
         body["scenario_id"] = scenario_id
-    return _unwrap(ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body))
+    return _unwrap(await ctx.http.post(f"/creator/assistant/{assistant_id}/tests/run", json=body))
 
 
 @register("test.runs")
-def test_runs(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_runs(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List test runs for an assistant."""
     if not args:
         raise ValueError("Usage: lamb test runs <assistant_id>")
-    return _unwrap(ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/{args[0]}/tests/runs"))
 
 
 @register("test.run-detail")
-def test_run_detail(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_run_detail(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Get full details of a test run."""
     if not args:
-        raise ValueError("Usage: lamb test run-detail <run_id>")
-    # run-detail needs assistant_id too — get it from the second arg or search
+        raise ValueError("Usage: lamb test run-detail <run_id> <assistant_id>")
     assistant_id = args[1] if len(args) > 1 else kwargs.get("assistant", kwargs.get("a", ""))
     if not assistant_id:
         raise ValueError("Usage: lamb test run-detail <run_id> <assistant_id>")
-    return _unwrap(ctx.http.get(f"/creator/assistant/{assistant_id}/tests/runs/{args[0]}"))
+    return _unwrap(await ctx.http.get(f"/creator/assistant/{assistant_id}/tests/runs/{args[0]}"))
 
 
 @register("test.evaluate")
-def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """Record an evaluation for a test run."""
     if len(args) < 2:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict: good|bad|mixed> [--notes ...]")
+        raise ValueError("Usage: lamb test evaluate <run_id> <verdict: good|bad|mixed> [<assistant_id>]")
     run_id = args[0]
     verdict = args[1]
     if verdict not in ("good", "bad", "mixed"):
         raise ValueError("Verdict must be 'good', 'bad', or 'mixed'")
-    # Need assistant_id for the endpoint path
     assistant_id = args[2] if len(args) > 2 else kwargs.get("assistant", kwargs.get("a", ""))
     if not assistant_id:
-        raise ValueError("Usage: lamb test evaluate <run_id> <verdict> <assistant_id> [--notes ...]")
-    return _unwrap(ctx.http.post(
+        raise ValueError("Usage: lamb test evaluate <run_id> <verdict> <assistant_id>")
+    return _unwrap(await ctx.http.post(
         f"/creator/assistant/{assistant_id}/tests/runs/{run_id}/evaluate",
         json={
             "verdict": verdict,
@@ -334,7 +335,7 @@ def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Documentation commands (LOCAL — read files, no HTTP)
+# Documentation commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 
 _DOCS_DIR = None
@@ -365,7 +366,7 @@ def _parse_front_matter(text: str) -> tuple[dict, str]:
     return meta, body
 
 
-@register("docs.index")
+@register("docs.index", local=True)
 def docs_index(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     """List available LAMB documentation topics with summaries."""
     docs_dir = _get_docs_dir()
@@ -396,7 +397,7 @@ def docs_index(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     }
 
 
-@register("docs.read")
+@register("docs.read", local=True)
 def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     """Read a specific LAMB documentation topic. Use --section to read only a subsection."""
     if not args:
@@ -408,10 +409,7 @@ def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     section = kwargs.get("section")
 
     docs_dir = _get_docs_dir()
-    candidates = [
-        docs_dir / topic,
-        docs_dir / f"{topic}.md",
-    ]
+    candidates = [docs_dir / topic, docs_dir / f"{topic}.md"]
     doc_file = None
     for c in candidates:
         if c.exists() and c.is_file():
@@ -458,10 +456,10 @@ def docs_read(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Utility commands (LOCAL)
+# Utility commands (LOCAL — sync)
 # ---------------------------------------------------------------------------
 
-@register("help")
+@register("help", local=True)
 def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, str]:
     """Show available commands."""
     result = {}

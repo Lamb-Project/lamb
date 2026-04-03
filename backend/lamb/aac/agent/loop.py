@@ -306,7 +306,7 @@ class AgentLoop:
         """
         # Step 1: Handle pending action from previous turn
         if self.pending_action:
-            result_text = self._resolve_pending_action(user_message)
+            result_text = await self._resolve_pending_action(user_message)
             if result_text is not None:
                 # The pending action was resolved (approved or rejected).
                 # Now run the agent loop so the LLM can react to the result.
@@ -356,7 +356,7 @@ class AgentLoop:
                 # Process each tool call
                 should_stop = False
                 for tc in message.tool_calls:
-                    result = self._execute_tool(tc)
+                    result = await self._execute_tool(tc)
                     logger.info(f"Tool: {tc.function.arguments} → {result.get('success', '?')}")
                     self.conversation.append({
                         "role": "tool",
@@ -404,7 +404,7 @@ class AgentLoop:
             str: text content chunks from the final LLM response
         """
         if self.pending_action:
-            result_text = self._resolve_pending_action(user_message)
+            result_text = await self._resolve_pending_action(user_message)
             if result_text is not None:
                 async for event in self._run_agent_loop_stream():
                     yield event
@@ -452,7 +452,7 @@ class AgentLoop:
                     cmd = _describe_tool_call(tc)
                     yield {"status": "tool", "command": cmd}
 
-                    result = self._execute_tool(tc)
+                    result = await self._execute_tool(tc)
                     ok = result.get("success", False)
                     logger.info(f"Tool: {tc.function.arguments} → {ok}")
 
@@ -507,7 +507,7 @@ class AgentLoop:
                 self.session_logger.log_agent_response(full_text)
             return
 
-    def _execute_tool(self, tool_call: Any) -> dict:
+    async def _execute_tool(self, tool_call: Any) -> dict:
         """Execute a tool call, checking authorization policy."""
         try:
             fn_args = json.loads(tool_call.function.arguments)
@@ -547,7 +547,7 @@ class AgentLoop:
             }
 
         # policy == "auto" — execute directly
-        result = self.shell.execute(command)
+        result = await self.shell.execute(command)
         self._record_audit(command, action_key, result.success, result.elapsed_ms, result)
         if self.session_logger:
             self.session_logger.log_tool_call(
@@ -559,7 +559,7 @@ class AgentLoop:
             )
         return result.to_dict()
 
-    def _resolve_pending_action(self, user_message: str) -> str | None:
+    async def _resolve_pending_action(self, user_message: str) -> str | None:
         """Check if user approved/rejected the pending action.
 
         Returns a string (can be empty) if the action was resolved,
@@ -571,7 +571,7 @@ class AgentLoop:
         if classification == "approve":
             # Execute the queued command
             self.pending_action = None
-            result = self.shell.execute(action["command"])
+            result = await self.shell.execute(action["command"])
 
             if self.session_logger:
                 self.session_logger.log_user_message(user_message)

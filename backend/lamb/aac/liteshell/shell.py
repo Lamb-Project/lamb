@@ -1,10 +1,9 @@
-"""Liteshell: parse CLI command strings and route to service functions.
+"""Liteshell: parse CLI command strings and route to HTTP endpoints or local handlers.
 
 The LLM sends commands like "lamb assistant get 4" and gets back
-structured Python data. No real shell — just argument parsing and dispatch
-to LAMB Creator Interface HTTP endpoints via LambClient (from lamb-cli).
-
-Local-only commands (docs.index, docs.read, help) read files directly.
+structured Python data. HTTP commands call Creator Interface endpoints
+via in-process ASGI transport (no TCP, no deadlock). Local commands
+(docs, help) read files directly.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from lamb.aac.liteshell.commands import COMMAND_REGISTRY
+from lamb.aac.liteshell.commands import COMMAND_REGISTRY, LOCAL_COMMANDS
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
@@ -43,12 +42,12 @@ class LiteShell:
     """CLI-shaped command executor for the AAC agent.
 
     Parses command strings and routes them to Creator Interface HTTP
-    endpoints via LambClient, or to local handlers for docs/help commands.
+    endpoints via ASGI transport, or to local handlers for docs/help.
 
     Attributes:
-        server_url: Base URL of the LAMB backend (e.g., "http://localhost:9099").
+        server_url: Base URL (unused for ASGI transport, kept for logging).
         token: JWT auth token for the current user.
-        user_email: Authenticated user's email (for convenience/logging).
+        user_email: Authenticated user's email.
         organization_id: User's organization ID.
         allowlist: If set, only these top-level command groups are allowed.
         history: Record of executed commands (for session logging).
@@ -63,23 +62,19 @@ class LiteShell:
     _http_client: Any = field(default=None, repr=False)
 
     def _get_http(self):
-        """Lazy-init the HTTP client."""
+        """Lazy-init the async ASGI HTTP client."""
         if self._http_client is None:
-            from lamb_cli.client import LambClient
-            self._http_client = LambClient(
-                server_url=self.server_url,
-                token=self.token,
-                timeout=60.0,
-            )
+            from lamb.aac.liteshell.http_client import AsyncLambClient
+            self._http_client = AsyncLambClient(token=self.token)
         return self._http_client
 
-    def close(self):
+    async def close(self):
         """Close the HTTP client if open."""
         if self._http_client is not None:
-            self._http_client.close()
+            await self._http_client.close()
             self._http_client = None
 
-    def execute(self, command_str: str) -> ShellResult:
+    async def execute(self, command_str: str) -> ShellResult:
         """Parse and execute a CLI-like command string.
 
         Args:
@@ -90,7 +85,7 @@ class LiteShell:
         """
         start = time.monotonic()
         try:
-            result = self._dispatch(command_str)
+            result = await self._dispatch(command_str)
             result.command = command_str
             result.elapsed_ms = (time.monotonic() - start) * 1000
         except Exception as e:
@@ -104,7 +99,7 @@ class LiteShell:
         self.history.append(result)
         return result
 
-    def _dispatch(self, command_str: str) -> ShellResult:
+    async def _dispatch(self, command_str: str) -> ShellResult:
         tokens = shlex.split(command_str.strip())
         if not tokens:
             return ShellResult(success=False, error="Empty command")
@@ -161,7 +156,11 @@ class LiteShell:
             user_id=self.user_id,
         )
 
-        data = handler(ctx, args, kwargs)
+        # Local commands are sync, HTTP commands are async
+        if key in LOCAL_COMMANDS:
+            data = handler(ctx, args, kwargs)
+        else:
+            data = await handler(ctx, args, kwargs)
         return ShellResult(success=True, data=data)
 
     def get_available_commands(self) -> dict[str, str]:
@@ -176,7 +175,7 @@ class LiteShell:
 @dataclass
 class CommandContext:
     """Context passed to every command handler."""
-    http: Any  # LambClient instance for HTTP commands
+    http: Any  # AsyncLambClient for HTTP commands
     server_url: str
     token: str
     user_email: str
