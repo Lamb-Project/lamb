@@ -35,7 +35,7 @@ create, configure, test, and refine AI learning assistants.
 
 ## Commands
 
-READ: lamb assistant list | get <id> | config | debug <id> --message "text"
+READ: lamb assistant list | list-shared | get <id_or_name> | config | debug <id> --message "text"
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id>
 READ: lamb template list | get <id>
@@ -102,6 +102,7 @@ TOOL_DEFINITIONS = [
 # Human-readable descriptions for tool calls shown during streaming
 _TOOL_LABELS = {
     "assistant.list": "Loading assistants",
+    "assistant.list-shared": "Loading shared assistants",
     "assistant.get": "Reading assistant config",
     "assistant.config": "Checking available options",
     "assistant.debug": "Running pipeline debug",

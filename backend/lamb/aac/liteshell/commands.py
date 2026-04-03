@@ -59,12 +59,49 @@ async def assistant_list(ctx: "CommandContext", args: list[str], kwargs: dict) -
     return _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
 
 
+@register("assistant.list-shared")
+async def assistant_list_shared(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """List assistants shared with you by other users."""
+    return _unwrap(await ctx.http.get("/creator/lamb/assistant-sharing/shared-with-me"))
+
+
 @register("assistant.get")
 async def assistant_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Get assistant details by ID."""
+    """Get assistant details by ID or name."""
     if not args:
-        raise ValueError("Usage: lamb assistant get <id>")
-    return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{args[0]}"))
+        raise ValueError("Usage: lamb assistant get <id_or_name>")
+    identifier = args[0]
+
+    # If it's a number, get by ID
+    if identifier.isdigit():
+        return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{identifier}"))
+
+    # Otherwise, search by name in owned + shared assistants
+    owned = _unwrap(await ctx.http.get("/creator/assistant/get_assistants", params={"limit": 100}))
+    assistants = owned.get("assistants", owned) if isinstance(owned, dict) else owned
+    if isinstance(assistants, list):
+        for a in assistants:
+            name = a.get("name", "")
+            # Match exact or without user prefix (e.g., "1_rock_the_60s" matches "rock_the_60s")
+            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
+            if name == identifier or bare_name == identifier:
+                aid = a.get("id") or a.get("assistant_id")
+                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
+
+    # Try shared assistants too
+    try:
+        shared = _unwrap(await ctx.http.get("/creator/lamb/assistant-sharing/shared-with-me"))
+        shared_list = shared if isinstance(shared, list) else shared.get("assistants", [])
+        for a in shared_list:
+            name = a.get("name", "")
+            bare_name = name.split("_", 1)[1] if "_" in name and name.split("_")[0].isdigit() else name
+            if name == identifier or bare_name == identifier:
+                aid = a.get("id") or a.get("assistant_id")
+                return _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{aid}"))
+    except Exception:
+        pass
+
+    raise ValueError(f"Assistant '{identifier}' not found by name. Use numeric ID or exact name.")
 
 
 @register("assistant.config")

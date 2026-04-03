@@ -22,6 +22,7 @@ logger = get_logger(__name__, component="AAC")
 DEFAULT_POLICY: dict[str, str] = {
     # Reads — always auto
     "assistant.list": "auto",
+    "assistant.list-shared": "auto",
     "assistant.get": "auto",
     "assistant.config": "auto",
     "rubric.list": "auto",
