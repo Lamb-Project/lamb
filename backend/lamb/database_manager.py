@@ -4755,7 +4755,7 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
-    def get_assistants_by_owner_paginated(self, owner: str, limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
+    def get_assistants_by_owner_paginated(self, owner: str, limit: int, offset: int,search: Optional[str] = None,status: Optional[str] = None,sort_by: str = "id",sort_order: str = "desc") -> Tuple[List[Dict[str, Any]], int]:
         """Get a paginated list of assistants for an owner, including publication status."""
         connection = self.get_connection()
         if not connection:
@@ -4769,10 +4769,40 @@ class LambDatabaseManager:
         try:
             with connection:
                 cursor = connection.cursor()
+                # --- NEW FILTER LOGIC ---
+                filters = ["a.owner = ?"]
+                params = [owner]
+
+                if search:
+                    filters.append("(LOWER(a.name) LIKE LOWER(?) OR LOWER(a.description) LIKE LOWER(?))")
+                    search_param = f"%{search}%"
+                    params.extend([search_param, search_param])
+
+                if status == "published":
+                    filters.append("p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null'")
+                elif status == "unpublished":
+                    filters.append("(p.oauth_consumer_name IS NULL OR p.oauth_consumer_name = 'null')")
+
+                where_clause = " AND ".join(filters)
+                allowed_sort_fields = {
+                    "id": "a.id",
+                    "name": "a.name",
+                    "created_at": "a.created_at",
+                    "updated_at": "a.updated_at"
+                }
+                if sort_by not in allowed_sort_fields:
+                    sort_by = "id"
+
+                sort_order = "ASC" if sort_order.lower() == "asc" else "DESC"
 
                 # Get total count for the owner
-                count_query = f"SELECT COUNT(*) FROM {assistants_table} WHERE owner = ?"
-                cursor.execute(count_query, (owner,))
+                count_query = f"""
+                    SELECT COUNT(*)
+                    FROM {assistants_table} a
+                    LEFT JOIN {published_table} p ON a.id = p.assistant_id
+                    WHERE {where_clause}
+                """
+                cursor.execute(count_query, params)
                 total_count = cursor.fetchone()[0]
 
                 # Get paginated assistants with publication data using LEFT JOIN
@@ -4789,13 +4819,13 @@ class LambDatabaseManager:
                         END as published
                     FROM {assistants_table} a
                     LEFT JOIN {published_table} p ON a.id = p.assistant_id
-                    WHERE a.owner = ?
-                    ORDER BY a.id DESC -- Or another suitable order
+                    WHERE {where_clause}
+                    ORDER BY {allowed_sort_fields[sort_by]} {sort_order}
                     LIMIT ? OFFSET ?
                 """
-                cursor.execute(query, (owner, limit, offset))
+                params_with_pagination = params + [limit, offset]
+                cursor.execute(query, params_with_pagination)
                 rows = cursor.fetchall()
-
                 # Get column names from the cursor description after execution
                 columns = [desc[0] for desc in cursor.description]
 
