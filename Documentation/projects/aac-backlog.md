@@ -438,14 +438,14 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | #330 | RAG processors: read `results` key from KB server response | ✅ 2026-04-02 |
 | ~~Done~~ | 13 | LAMB user manual on website (EN + ES) with 14 UI screenshots | ✅ 2026-04-03 |
 | **Next** | 14 | `about-lamb` AAC skill + agent-readable docs + liteshell tools | |
+| **Next** | 16 | Liteshell HTTP refactoring — use Creator Interface via LambClient | |
 | **Next** | 15 | Dashboard "LAMB Agent" button — agentic entry point on home page | |
-| **Next** | 12 | Liteshell comprehensive test suite (24 commands, ~80-100 tests) | |
+| **Next** | 12 | Liteshell comprehensive test suite (25 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
 | **Then** | 10 | `lamb_aac_cli_manual.md` — full CLI + architecture manual | |
 | **Then** | 11 | CLI: `lamb assistant list-shared`, get by name, shared visibility | |
-| **Pre-merge** | | Cherry-pick #329 + #330 to dev (production RAG broken) | |
-| **Pre-merge** | | Revert docker-compose log levels to WARNING | |
+| **On merge** | | #329 + #330 included in pastor — will land on dev when pastor merges | |
 
 ---
 
@@ -1327,3 +1327,145 @@ This is the **conversational-first onboarding** vision: the platform becomes usa
 2. Dashboard layout modification (resource summary to right column)
 3. i18n strings for the card (4 languages)
 4. Session resumption logic in the card component
+
+---
+
+## 16. Liteshell HTTP Refactoring — Single Code Path via Creator Interface
+
+**Priority:** High — eliminates code duplication and validation bypass between CLI and agent
+**Depends on:** Nothing (refactoring of existing infrastructure)
+**Related:** Item 12 (liteshell tests — can now reuse CLI E2E tests)
+
+### Problem
+
+The liteshell currently bypasses the Creator Interface and calls LAMB service layer functions directly. This means:
+
+1. **Validation divergence** — the Creator Interface adds validation, sanitization, and permission checks that the liteshell skips
+2. **Duplicated logic** — `assistant.create` reimplements name sanitization, `assistant.update` reimplements fetch-and-merge, both diverge from the HTTP path
+3. **Maintenance burden** — new API features or bug fixes in Creator Interface endpoints don't automatically apply to the liteshell
+4. **System prompt coupling** — new liteshell commands must also be manually added to the agent's system prompt command list (discovered during docs.index/docs.read work)
+
+### Solution
+
+Refactor the liteshell to call the Creator Interface HTTP endpoints using `LambClient` from `lamb-cli`. The lamb-cli already has a clean HTTP client (`lamb_cli/client.py` — 188 lines, pure httpx) that handles auth headers, error mapping, and JSON parsing.
+
+**Architecture change:**
+
+```
+BEFORE:
+  lamb-cli ──HTTP──► Creator Interface ──► Services ──► DB
+  liteshell ─────────────────────────────► Services ──► DB
+
+AFTER:
+  lamb-cli  ──► LambClient ──HTTP──► Creator Interface ──► Services ──► DB
+  liteshell ──► LambClient ──HTTP──► Creator Interface ──► Services ──► DB
+```
+
+### How LambClient Becomes Available
+
+At container launch, install lamb-cli as an editable package:
+
+```bash
+pip install -e /opt/lamb/lamb-cli
+```
+
+This makes `from lamb_cli.client import LambClient` available inside the backend. Since lamb-cli is volume-mounted in docker-compose, changes to lamb-cli are reflected immediately. No file copying, no symlinks, no gitignore entries.
+
+lamb-cli dependencies are lightweight (`httpx`, `typer`, `rich`, `platformdirs`, `tomli-w`) — `httpx` is already a backend dependency, the rest are harmless.
+
+### Token Propagation
+
+The AAC router already receives the user's JWT. Pass it through to the liteshell:
+
+```python
+# CommandContext gets token + server_url
+@dataclass
+class CommandContext:
+    server_url: str       # "http://localhost:9099"
+    token: str            # user's JWT from AAC request
+    user_email: str
+    organization_id: int
+    user_id: int = 0
+    http: LambClient      # initialized from server_url + token
+```
+
+The liteshell calls localhost with the real user's token — same auth path as the frontend and CLI.
+
+### What Changes
+
+| Component | Change |
+|-----------|--------|
+| Container startup | Add `pip install -e /opt/lamb/lamb-cli` |
+| `LiteShell` class | Add `server_url`, `token` fields; create `LambClient` on init |
+| `CommandContext` | Add `token`, `server_url`, `http` (LambClient instance) |
+| 22 command handlers | Rewrite from direct service calls to `ctx.http.get/post/put/delete` |
+| `router.py` | Extract token from request, pass to LiteShell |
+| `agent/loop.py` | No changes |
+| `authorization.py` | No changes |
+| `lamb-cli` | **No changes** |
+| `docs.index`, `docs.read`, `help` | **No changes** (local file reads, no HTTP equivalent) |
+
+### Command Mapping
+
+Each liteshell command maps to a Creator Interface endpoint:
+
+| Command | HTTP Call |
+|---------|----------|
+| `assistant.list` | `GET /creator/assistant/get_assistants` |
+| `assistant.get <id>` | `GET /creator/assistant/get_assistant/{id}` |
+| `assistant.config` | `GET /creator/assistant/config` |
+| `assistant.debug <id> -m "text"` | `POST /creator/assistant/{id}/tests/scenarios/run` with debug_bypass |
+| `assistant.create <name> ...` | `POST /creator/assistant/create_assistant` |
+| `assistant.update <id> ...` | `PUT /creator/assistant/update_assistant/{id}` |
+| `assistant.delete <id>` | `DELETE /creator/assistant/delete_assistant/{id}` |
+| `rubric.list` | `GET /creator/rubrics/` |
+| `rubric.get <id>` | `GET /creator/rubrics/{id}` |
+| `rubric.export <id>` | `GET /creator/rubrics/{id}/export` |
+| `rubric.list-public` | `GET /creator/rubrics/public` |
+| `kb.list` | `GET /creator/knowledgebases/` |
+| `kb.get <id>` | `GET /creator/knowledgebases/{id}` |
+| `template.list` | `GET /creator/prompt-templates/` |
+| `template.get <id>` | `GET /creator/prompt-templates/{id}` |
+| `model.list` | `GET /creator/models` |
+| `test.scenarios <id>` | `GET /creator/assistant/{id}/tests/scenarios` |
+| `test.add <id> ...` | `POST /creator/assistant/{id}/tests/scenarios` |
+| `test.run <id>` | `POST /creator/assistant/{id}/tests/scenarios/run` |
+| `test.runs <id>` | `GET /creator/assistant/{id}/tests/runs` |
+| `test.run-detail <rid>` | `GET /creator/assistant/{id}/tests/runs/{rid}` |
+| `test.evaluate <rid> ...` | `POST /creator/assistant/{id}/tests/runs/{rid}/evaluate` |
+
+### Testing Strategy
+
+The existing CLI E2E test suite (`testing/cli/`) tests the same HTTP endpoints against a running backend. Since the liteshell now calls the same endpoints:
+
+1. **CLI tests validate the endpoints** — if CLI tests pass, the endpoints work
+2. **Liteshell tests validate the command parsing + HTTP mapping** — a lighter test layer
+3. **AAC agent tests validate the full chain** — agent → liteshell → HTTP → service
+
+The `testing/cli/helpers/cli_runner.py` pattern (CLIResult assertions) can be adapted for liteshell testing by replacing subprocess calls with direct `LiteShell.execute()` calls.
+
+### Performance Impact
+
+| Call type | Expected latency |
+|-----------|-----------------|
+| Current (direct service) | 4-30ms |
+| HTTP to localhost via LambClient | 10-50ms |
+| Typical AAC session (10-15 calls) | Extra 100-300ms total |
+
+Acceptable — LLM calls take 2-20 seconds each, so HTTP overhead is noise.
+
+### Implementation Order
+
+1. Add `pip install -e /opt/lamb/lamb-cli` to container startup
+2. Refactor `CommandContext` and `LiteShell` to carry `LambClient`
+3. Update `router.py` to pass token through
+4. Rewrite all 22 HTTP commands
+5. Test each command against running backend
+6. Run existing CLI E2E tests to confirm endpoint compatibility
+
+### Deliverables
+
+1. Updated `LiteShell` and `CommandContext` with HTTP client support
+2. Rewritten command handlers (22 of 25)
+3. Container startup update
+4. All existing CLI E2E tests still passing

@@ -1067,7 +1067,8 @@ The admin user management panel identifies users by type with color-coded badges
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Liteshell | `lamb/aac/liteshell/` | CLI-shaped tool interface. Parses command strings (e.g., `lamb assistant get 4`) and routes to service layer functions directly. No HTTP, no subprocess. |
+| Liteshell | `lamb/aac/liteshell/` | CLI-shaped tool interface. Parses command strings (e.g., `lamb assistant get 4`) and calls Creator Interface HTTP endpoints via `LambClient` (from `lamb-cli`). Same code path as the frontend and CLI — validation, sanitization, and auth all enforced. Local-only commands (`docs.index`, `docs.read`, `help`) read files directly. |
+| Agent Docs | `lamb/aac/docs/` | Agent-readable LAMB documentation. 10 topic files with YAML front matter (semantic tags for question routing). Accessed via `docs.index` and `docs.read` liteshell commands. |
 | Agent Loop | `lamb/aac/agent/loop.py` | Async LLM tool-calling loop with authorization. |
 | Authorization | `lamb/aac/authorization.py` | JSON policy (auto/ask/never) per action. Write commands require user confirmation via Python-level classifier, not LLM prompting. |
 | Session Manager | `lamb/aac/session_manager.py` | Session CRUD. Table: `aac_sessions` (Migration 14). |
