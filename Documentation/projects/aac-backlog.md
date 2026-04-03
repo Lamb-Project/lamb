@@ -437,8 +437,9 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | #329 | simple_augment: clean text extraction instead of JSON dump | ✅ 2026-04-02 |
 | ~~Done~~ | #330 | RAG processors: read `results` key from KB server response | ✅ 2026-04-02 |
 | ~~Done~~ | 13 | LAMB user manual on website (EN + ES) with 14 UI screenshots | ✅ 2026-04-03 |
-| **Next** | 14 | `about-lamb` AAC skill + agent-readable docs + liteshell tools | |
-| **Next** | 16 | Liteshell HTTP refactoring — use Creator Interface via LambClient | |
+| ~~Done~~ | 14a+b | Agent-readable docs (`lamb/aac/docs/`) + `docs.index`/`docs.read` tools | ✅ 2026-04-03 |
+| ~~Done~~ | 16 | Liteshell HTTP refactoring — async ASGI transport via Creator Interface | ✅ 2026-04-03 |
+| **Next** | 14c | `about-lamb` skill file | |
 | **Next** | 15 | Dashboard "LAMB Agent" button — agentic entry point on home page | |
 | **Next** | 12 | Liteshell comprehensive test suite (25 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
@@ -1330,9 +1331,10 @@ This is the **conversational-first onboarding** vision: the platform becomes usa
 
 ---
 
-## 16. Liteshell HTTP Refactoring — Single Code Path via Creator Interface
+## 16. Liteshell HTTP Refactoring — Single Code Path via Creator Interface ✅
 
 **Priority:** High — eliminates code duplication and validation bypass between CLI and agent
+**Status:** DONE (2026-04-03)
 **Depends on:** Nothing (refactoring of existing infrastructure)
 **Related:** Item 12 (liteshell tests — can now reuse CLI E2E tests)
 
@@ -1469,3 +1471,21 @@ Acceptable — LLM calls take 2-20 seconds each, so HTTP overhead is noise.
 2. Rewritten command handlers (22 of 25)
 3. Container startup update
 4. All existing CLI E2E tests still passing
+
+### Implementation Notes (2026-04-03)
+
+**Key discovery:** Calling localhost over TCP from a single-worker uvicorn process deadlocks — the worker is busy handling the AAC `/message` request and can't handle the liteshell's inner HTTP request. Solution: **httpx.ASGITransport** calls the FastAPI app directly in-process with zero TCP overhead.
+
+**Files changed:**
+- `backend/lamb/aac/liteshell/http_client.py` — new `AsyncLambClient` using `httpx.AsyncClient` + `ASGITransport`
+- `backend/lamb/aac/liteshell/shell.py` — `execute()` now async, lazy-inits `AsyncLambClient`, distinguishes local vs HTTP commands
+- `backend/lamb/aac/liteshell/commands.py` — 22 HTTP commands are `async def`, 3 local commands (`docs.index`, `docs.read`, `help`) marked with `local=True`
+- `backend/lamb/aac/agent/loop.py` — `_execute_tool()` and `_resolve_pending_action()` now async with `await`
+- `backend/lamb/aac/router.py` — extracts bearer token from request, `_prepare_agent_and_message()` and `_build_agent_with_skill()` now async, `await shell.execute()` in skill startup actions
+
+**Tested via UI (Playwright):**
+- Explain skill: agent read assistant config (13ms ASGI), ran debug bypass (1153ms ASGI), read docs (54ms local+ASGI) — all in one conversation
+- Mixed HTTP + local commands work seamlessly
+- No deadlocks, no errors
+
+**Requires:** `pip install -e /opt/lamb/lamb-cli` in backend container at startup
