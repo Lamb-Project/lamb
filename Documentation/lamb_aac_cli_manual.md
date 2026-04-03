@@ -42,6 +42,7 @@ lamb aac chat <session-id>
 | `improve-assistant` | Review and improve an existing assistant | assistant ID |
 | `explain-assistant` | Understand how an assistant works internally | assistant ID |
 | `test-and-evaluate` | Create tests, run them, evaluate results | assistant ID |
+| `about-lamb` | Answer questions about the LAMB platform, guide new users | — |
 
 **Tool** A tool is an action that the agent can take in the lamb system. It covers thinks like create an assistant, list the available knowledge bases, run chats on an assitant or analyzing the results of a set of tests. 
 
@@ -146,6 +147,16 @@ Next?
 ```
 
 Type `/quit` to exit, `/history` to see the conversation, `/stats` for session info.
+
+#### `lamb aac start --skill about-lamb`
+
+Start a help session. The agent answers questions about the LAMB platform — features, workflows, troubleshooting — grounded in built-in documentation. No assistant ID needed.
+
+```bash
+lamb aac start --skill about-lamb --lang Spanish
+lamb aac chat <session-id>
+# Ask anything: "how do I connect a knowledge base?", "what is RAG?", etc.
+```
 
 #### `lamb aac get <session-id>`
 
@@ -402,7 +413,57 @@ This is invaluable for debugging RAG retrieval and prompt construction.
 
 ---
 
+### Documentation (Agent Internal)
+
+The agent uses these commands internally to answer questions about LAMB. You can also use them directly.
+
+#### `lamb docs index`
+
+List available documentation topics.
+
+```
+$ lamb docs index
+
+Topics: getting-started, assistants, knowledge-bases, rubrics, prompt-templates,
+        testing, publishing, collaboration, troubleshooting, glossary
+```
+
+Each topic has semantic tags (`covers`) and common questions (`answers`) that help the agent route your question to the right documentation.
+
+#### `lamb docs read <topic> [--section "heading"]`
+
+Read a documentation topic, optionally filtered to a specific section.
+
+```bash
+# Full topic
+lamb docs read knowledge-bases
+
+# Just one section
+lamb docs read troubleshooting --section "empty"
+```
+
+Available topics: `getting-started`, `assistants`, `knowledge-bases`, `rubrics`, `prompt-templates`, `testing`, `publishing`, `collaboration`, `troubleshooting`, `glossary`.
+
+Documentation files live in `backend/lamb/aac/docs/` and use YAML front matter for agent-friendly metadata.
+
+---
+
 ## Typical Workflows
+
+### Getting help with LAMB
+
+```bash
+# Start a help session
+lamb aac start --skill about-lamb
+
+# Ask anything
+lamb aac chat <sid>
+# "How do I connect a knowledge base to my assistant?"
+# "What is bypass mode?"
+# "My assistant ignores my documents, help"
+```
+
+The agent reads the built-in documentation and answers grounded in it. If your question involves a hands-on task, it can offer to switch to the appropriate skill.
 
 ### Creating a new assistant
 
@@ -480,5 +541,5 @@ lamb test runs 18 -o json
 
 ---
 
-*LAMB AAC CLI Manual — Version 0.1*
-*Generated with real examples from a 1960s British Rock Music tutor assistant (id=18, KB=rock_the_60s)*
+*LAMB AAC CLI Manual — Version 0.2*
+*Updated: April 2026. Examples from a 1960s British Rock Music tutor assistant (id=18, KB=rock_the_60s)*

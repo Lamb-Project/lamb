@@ -546,10 +546,13 @@ The AI agent that helps you design, test, and improve assistants through convers
 ```bash
 lamb aac skills                                        # Available skills
 lamb aac start --skill improve-assistant --assistant 18 # Start session
+lamb aac start --skill about-lamb                      # Get help about LAMB
 lamb aac message <sid> "your message"                   # Send message
 lamb aac chat <sid>                                     # Interactive mode
 lamb aac tools <sid> --detail                           # Tool audit log
 lamb aac sessions                                       # List sessions
+lamb docs index                                         # List documentation topics
+lamb docs read troubleshooting                          # Read a doc topic
 ```
 
 ---
