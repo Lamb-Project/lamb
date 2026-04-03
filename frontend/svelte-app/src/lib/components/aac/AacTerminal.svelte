@@ -30,6 +30,9 @@
 	/** @type {Object|null} */
 	let lastStats = $state(null);
 
+	/** @type {boolean} */
+	let showStats = $state(false);
+
 	onMount(async () => {
 		// Check system preference
 		if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
@@ -218,11 +221,16 @@
 		class:bg-gray-100={!darkMode}
 	>
 		<span class="opacity-60">AAC Agent — Session {sessionId.slice(0, 8)}...</span>
-		<div class="flex gap-2">
+		<div class="flex gap-2 items-center">
 			{#if lastStats}
-				<span class="opacity-40">
+				<button
+					onclick={() => showStats = !showStats}
+					class="opacity-40 hover:opacity-80 transition-opacity cursor-pointer"
+					title="Toggle tool details"
+				>
 					{lastStats.tool_calls || 0} tools, {Math.round(lastStats.total_tool_time_ms || 0)}ms
-				</span>
+					{showStats ? '▴' : '▾'}
+				</button>
 			{/if}
 			<button
 				onclick={toggleDarkMode}
@@ -233,6 +241,25 @@
 			</button>
 		</div>
 	</div>
+
+	<!-- Stats Panel (collapsible) -->
+	{#if showStats && lastStats}
+		<div
+			class="px-4 py-2 text-xs border-b flex flex-wrap gap-x-6 gap-y-1"
+			class:border-gray-700={darkMode}
+			class:bg-gray-800={darkMode}
+			class:text-gray-400={darkMode}
+			class:border-gray-200={!darkMode}
+			class:bg-gray-50={!darkMode}
+			class:text-gray-500={!darkMode}
+		>
+			<span>Model: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.model || '?'}</strong></span>
+			<span>Tool calls: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.tool_calls || 0}</strong></span>
+			<span>Errors: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.tool_errors || 0}</strong></span>
+			<span>Tool time: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{Math.round(lastStats.total_tool_time_ms || 0)}ms</strong></span>
+			<span>Turns: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.turns || 0}</strong></span>
+		</div>
+	{/if}
 
 	<!-- Messages -->
 	<div
