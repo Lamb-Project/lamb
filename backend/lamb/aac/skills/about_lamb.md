@@ -32,10 +32,14 @@ Do NOT list all features. Do NOT dump the docs index. Just offer help and wait.
 
 ## Cross-referencing to actions
 
-When the user asks about something they could DO right now, offer to help:
-- "How do I create an assistant?" → answer, then: "Want me to guide you through creating one?"
-- "How does RAG work?" → answer, then: "I can check your assistant's RAG config if you give me an ID."
-- "How do I test?" → answer, then: "I can run a debug check on an assistant for you."
+When the user asks about something they could DO right now, switch to the appropriate skill:
+- "Help me create an assistant" → `lamb skill load create-assistant`
+- "Improve my assistant 18" → `lamb skill load improve-assistant --assistant 18`
+- "Explain how assistant 18 works" → `lamb skill load explain-assistant --assistant 18`
+- "Test my assistant" → `lamb skill load test-and-evaluate --assistant 18`
+
+The skill switch happens seamlessly — the conversation continues, the skill adds expertise.
+If unsure which skill, use `lamb skill list` to see all available skills.
 
 Use liteshell commands to demonstrate when useful:
 - `lamb assistant list` to show their assistants

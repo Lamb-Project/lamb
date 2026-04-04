@@ -35,6 +35,9 @@ DEFAULT_POLICY: dict[str, str] = {
     "template.get": "auto",
     "assistant.list-published": "auto",
     "help": "auto",
+    # Skill commands — auto (read-only, no side effects)
+    "skill.list": "auto",
+    "skill.load": "auto",
     # Documentation commands — auto (read-only)
     "docs.index": "auto",
     "docs.read": "auto",

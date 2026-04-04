@@ -43,6 +43,7 @@ READ: lamb template list | get <id>
 To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant config
 It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
 DOCS: lamb docs index | read <topic> [--section "heading"]
+SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
@@ -60,6 +61,10 @@ Use bullet points, not paragraphs.
 
 NEVER switch language mid-conversation. If the user speaks Spanish, respond in Spanish. Always.
 NEVER refuse a user's explicit request. If they want to run a real test, run it. You may suggest bypass first, but if the user insists, do what they ask.
+
+When the user asks to do something covered by a specific skill (create, improve, explain, test an assistant),
+use `lamb skill load <skill-id>` to switch. Available skills: about-lamb, create-assistant, improve-assistant,
+explain-assistant, test-and-evaluate. Use `lamb skill list` if unsure.
 
 End EVERY response with numbered options. EXACTLY this format, no variations:
 
@@ -126,6 +131,8 @@ _TOOL_LABELS = {
     "test.run": "Running tests",
     "test.runs": "Loading test results",
     "test.evaluate": "Recording evaluation",
+    "skill.list": "Loading available skills",
+    "skill.load": "Switching to skill",
     "docs.index": "Loading documentation index",
     "docs.read": "Reading documentation",
 }
@@ -573,6 +580,30 @@ class AgentLoop:
                 data=result.data,
                 error=result.error,
             )
+
+        # Special handling for skill.load — build a rich result with skill prompt + startup data
+        # The actual injection happens through the normal tool result flow (no direct conversation manipulation)
+        if action_key == "skill.load" and result.success and isinstance(result.data, dict):
+            skill_data = result.data
+            parts = []
+            parts.append(
+                f"Skill '{skill_data.get('name', '?')}' loaded MID-CONVERSATION. "
+                f"Follow these instructions from now on, but do NOT restart the conversation. "
+                f"Do NOT greet the user again. Do NOT repeat any startup analysis. "
+                f"Continue naturally from where you were — the user already told you what they need."
+            )
+            parts.append(f"\n--- SKILL INSTRUCTIONS ---\n{skill_data.get('prompt', '')}")
+
+            # Run startup actions and collect results
+            for action in skill_data.get("startup_actions", []):
+                startup_result = await self.shell.execute(action)
+                startup_key = _parse_action_key(action)
+                self._record_audit(action, startup_key, startup_result.success, startup_result.elapsed_ms, startup_result)
+                if startup_result.success:
+                    parts.append(f"\n[Startup: {action}]\n{json.dumps(startup_result.data, default=str, ensure_ascii=False)[:3000]}")
+
+            return {"success": True, "data": "\n".join(parts)}
+
         return result.to_dict()
 
     async def _resolve_pending_action(self, user_message: str) -> str | None:

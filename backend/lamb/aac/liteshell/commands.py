@@ -372,6 +372,40 @@ async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) ->
 
 
 # ---------------------------------------------------------------------------
+# Skill commands (LOCAL — sync, read files, no HTTP)
+# ---------------------------------------------------------------------------
+
+@register("skill.list", local=True)
+def skill_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """List available AAC skills with descriptions and requirements."""
+    from lamb.aac.skill_loader import list_skills
+    return list_skills()
+
+
+@register("skill.load", local=True)
+def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Load a skill into the current session. The skill prompt and startup data are returned for injection."""
+    if not args:
+        raise ValueError("Usage: lamb skill load <skill-id> [--assistant <id>] [--language <lang>]")
+    from lamb.aac.skill_loader import load_skill
+
+    skill_id = args[0]
+    context: dict[str, Any] = {}
+    if "assistant" in kwargs or "a" in kwargs:
+        context["assistant_id"] = kwargs.get("assistant", kwargs.get("a"))
+    if "language" in kwargs:
+        context["language"] = kwargs["language"]
+
+    skill = load_skill(skill_id, context)
+    return {
+        "skill_id": skill_id,
+        "name": skill["metadata"].get("name", skill_id),
+        "prompt": skill["prompt"],
+        "startup_actions": skill["startup_actions"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Documentation commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 
