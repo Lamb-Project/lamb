@@ -1,7 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
-    import { _ } from '$lib/i18n';
+    import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
     import { createSession, getSessions } from '$lib/services/aacService';
     import { openTab, setActiveTab, getActiveTabId } from '$lib/stores/aacStore.svelte';
@@ -10,6 +10,8 @@
     let sessionId = $state(/** @type {string|null} */ (null));
     let loading = $state(true);
     let error = $state('');
+
+    const localeToLanguage = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' };
 
     onMount(async () => {
         // Check URL for a session ID
@@ -41,7 +43,7 @@
             const session = await createSession({
                 assistantId: null,
                 skill: 'about-lamb',
-                context: { language: 'English' },
+                context: { language: localeToLanguage[$locale] || 'English' },
             });
             sessionId = session.id;
             openTab(sessionId, session.title || 'LAMB Helper', null, 'about-lamb');
