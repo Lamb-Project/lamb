@@ -373,6 +373,31 @@ def validate_update_plugin_metadata(
     return normalized_metadata, None
 
 
+def _ensure_metadata_defaults(metadata_raw) -> str:
+    """Ensure essential fields have defaults in assistant metadata.
+
+    The completion pipeline requires a valid prompt_processor. If not set,
+    the pipeline fails with 'Prompt processor default not found'.
+    """
+    if not metadata_raw:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if isinstance(metadata_raw, str):
+        try:
+            meta = json.loads(metadata_raw)
+        except (json.JSONDecodeError, TypeError):
+            return json.dumps({"prompt_processor": "simple_augment"})
+    elif isinstance(metadata_raw, dict):
+        meta = metadata_raw
+    else:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if not meta.get("prompt_processor"):
+        meta["prompt_processor"] = "simple_augment"
+
+    return json.dumps(meta) if isinstance(metadata_raw, str) else meta
+
+
 def prepare_assistant_body(
     original_body: Dict[str, Any], 
     creator_user: Dict[str, Any], 
@@ -409,8 +434,9 @@ def prepare_assistant_body(
             # Use email from creator user object
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
-            "metadata": original_body.get("metadata", original_body.get("api_callback", "")),
-            "api_callback": original_body.get("metadata", original_body.get("api_callback", "")),
+            # Ensure essential defaults (prompt_processor) are set
+            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
             "prompt_template": original_body.get("prompt_template", ""),
