@@ -268,9 +268,13 @@
 	>
 		{#each messages as msg}
 			{#if msg.role === 'user'}
-				<div class="flex gap-2">
-					<span class="shrink-0 opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-					<span>{msg.content}</span>
+				<div class="my-3">
+					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
+					<div class="flex gap-2 py-2.5 px-2 rounded" class:bg-gray-800={darkMode} class:bg-blue-50={!darkMode}>
+						<span class="shrink-0 font-bold" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
+						<span class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
+					</div>
+					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
 				</div>
 			{:else if msg.role === 'assistant'}
 				<div class="aac-md pl-2 leading-relaxed font-sans text-sm" class:text-green-300={darkMode} class:text-gray-700={!darkMode}>
