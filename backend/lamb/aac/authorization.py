@@ -33,7 +33,7 @@ DEFAULT_POLICY: dict[str, str] = {
     "kb.get": "auto",
     "template.list": "auto",
     "template.get": "auto",
-    "model.list": "auto",
+    "assistant.list-published": "auto",
     "help": "auto",
     # Documentation commands — auto (read-only)
     "docs.index": "auto",

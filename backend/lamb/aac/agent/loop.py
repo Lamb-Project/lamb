@@ -35,11 +35,13 @@ create, configure, test, and refine AI learning assistants.
 
 ## Commands
 
-READ: lamb assistant list | list-shared | get <id_or_name> | config | debug <id> --message "text"
+READ: lamb assistant list | list-shared | list-published | get <id_or_name> | config | debug <id> --message "text"
 READ: lamb rubric list | get <uuid> | export <uuid> [--format md]
 READ: lamb kb list | get <id>
 READ: lamb template list | get <id>
-READ: lamb model list
+
+To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant config
+It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
 DOCS: lamb docs index | read <topic> [--section "heading"]
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
@@ -113,7 +115,7 @@ _TOOL_LABELS = {
     "rubric.get": "Reading rubric",
     "kb.list": "Loading knowledge bases",
     "kb.get": "Reading knowledge base",
-    "model.list": "Checking available models",
+    "assistant.list-published": "Loading published assistants",
     "template.list": "Loading templates",
     "test.scenarios": "Loading test scenarios",
     "test.add": "Creating test scenario",

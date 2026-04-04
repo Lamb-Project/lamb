@@ -275,9 +275,9 @@ async def template_get(ctx: "CommandContext", args: list[str], kwargs: dict) -> 
 # Model commands (async HTTP → /creator/models)
 # ---------------------------------------------------------------------------
 
-@register("model.list")
-async def model_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """List available models for the user's organization."""
+@register("assistant.list-published")
+async def assistant_list_published(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """List published assistants (registered as LTI models)."""
     return _unwrap(await ctx.http.get("/creator/models"))
 
 
