@@ -372,6 +372,42 @@ async def test_evaluate(ctx: "CommandContext", args: list[str], kwargs: dict) ->
 
 
 # ---------------------------------------------------------------------------
+# Chat command (async HTTP — direct inference on an assistant)
+# ---------------------------------------------------------------------------
+
+@register("assistant.chat")
+async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Send a message to an assistant and get a real response. Usage: lamb assistant chat <id> --message "text"."""
+    if not args:
+        raise ValueError("Usage: lamb assistant chat <assistant_id> --message \"text\"")
+    assistant_id = args[0]
+    message = kwargs.get("message", kwargs.get("m", ""))
+    if not message:
+        raise ValueError("Provide --message or -m with the text to send")
+
+    body: dict[str, Any] = {
+        "messages": [{"role": "user", "content": message}],
+        "stream": False,
+        "persist_chat": False,
+    }
+    bypass = kwargs.get("bypass", kwargs.get("b", False))
+    if bypass is True or bypass == "true":
+        body["debug_bypass"] = True
+
+    result = await ctx.http.post(
+        f"/creator/assistant/{assistant_id}/chat/completions",
+        json=body,
+    )
+    # Extract the response text from the completions format
+    if isinstance(result, dict):
+        choices = result.get("choices", [])
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+            return {"response": content, "model": result.get("model", ""), "usage": result.get("usage", {})}
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Skill commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 

@@ -41,6 +41,8 @@ DEFAULT_POLICY: dict[str, str] = {
     # Documentation commands — auto (read-only)
     "docs.index": "auto",
     "docs.read": "auto",
+    # Chat — auto (user explicitly requests it, uses tokens but that's expected)
+    "assistant.chat": "auto",
     # Test commands — auto (low risk, user explicitly requests tests)
     "test.scenarios": "auto",
     "test.add": "auto",

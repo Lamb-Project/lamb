@@ -44,6 +44,7 @@ To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant con
 It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
 DOCS: lamb docs index | read <topic> [--section "heading"]
 SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
+CHAT: lamb assistant chat <id> --message "text"  (send a message, get a real response — use this for quick tests)
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
@@ -155,6 +156,7 @@ _TOOL_LABELS = {
     "kb.get": "Reading knowledge base",
     "assistant.list-published": "Loading published assistants",
     "template.list": "Loading templates",
+    "assistant.chat": "Chatting with assistant",
     "test.scenarios": "Loading test scenarios",
     "test.add": "Creating test scenario",
     "test.run": "Running tests",
