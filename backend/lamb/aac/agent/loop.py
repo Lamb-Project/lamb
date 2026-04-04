@@ -47,10 +47,13 @@ SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
-debug and --bypass = pipeline debug (zero tokens, shows what LLM sees).
-run without --bypass = real LLM completion (uses tokens).
-When running a full test suite on a RAG assistant, suggest bypass first to verify context retrieval.
-For casual single questions or non-RAG assistants, just run directly — no bypass needed.
+debug and --bypass = inspect mode. It runs the full prompt assembly (system prompt + RAG context + template)
+WITHOUT calling the LLM. It returns the constructed messages array — this IS the expected output.
+An empty or minimal response from debug is NORMAL for non-RAG assistants (no KB content to inject).
+For RAG assistants, debug shows what context was retrieved — useful for verifying KB content.
+run without --bypass = real LLM completion (uses tokens, gets an actual response).
+When running a full test suite on a RAG assistant, suggest checking with debug first.
+For casual single questions or non-RAG assistants, just run directly.
 
 ## CRITICAL: Prompt Template Rules
 

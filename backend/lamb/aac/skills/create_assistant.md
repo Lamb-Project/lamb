@@ -48,7 +48,10 @@ NEVER create an assistant with an empty prompt_template. NEVER.
 2. Propose config in a compact summary (name, model, RAG, prompt template)
 3. Create after approval — ALWAYS include --prompt-template
 4. Verify with `lamb assistant get`
-5. For non-RAG: run a quick real test. For RAG: suggest bypass first.
+5. Offer to run a quick test with a sample question
+
+Do NOT run debug/bypass after creation just to "verify" — for non-RAG assistants it returns
+the raw prompt assembly which is expected and not useful to show the user. Just offer a real test.
 
 Default model: use `lamb assistant config` to pick the org default.
 If RAG is enabled, ALWAYS set prompt_template with {context} and {user_input}.
