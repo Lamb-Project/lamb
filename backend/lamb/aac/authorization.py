@@ -58,9 +58,9 @@ _APPROVAL_WORDS = {
     "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed", "confirm",
     "confirmed", "approve", "approved", "absolutely", "affirmative", "right",
     "go", "do",
-    "sí", "si", "vale", "claro", "confirmo", "confirmado",
+    "sí", "si", "s", "vale", "claro", "confirmo", "confirmado",
     "endavant", "confirma", "confirmat",
-    "bai", "konfirmatu",
+    "bai", "b", "konfirmatu",
 }
 
 _APPROVAL_PHRASES = {
@@ -77,7 +77,7 @@ _REJECTION_WORDS = {
     "don't", "dont", "negative", "wait",
     "cancela", "para", "detente",
     "cancel·la", "atura",
-    "ez", "utzi", "gelditu",
+    "e", "ez", "utzi", "gelditu",
 }
 
 _REJECTION_PHRASES = {

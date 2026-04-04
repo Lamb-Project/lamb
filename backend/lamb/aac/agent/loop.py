@@ -546,8 +546,13 @@ class AgentLoop:
                 "command": command,
                 "message": (
                     "This action needs user approval. Briefly describe what will change (1-2 lines). "
-                    "Then ask for confirmation using EXACTLY this format — no numbered options:\n\n"
-                    "**Approve? (y)es / (n)o / tell me more**"
+                    "Then ask for confirmation IN THE USER'S LANGUAGE using a yes/no format. "
+                    "Do NOT use numbered options. Examples by language:\n"
+                    "  English: **Approve? (y)es / (n)o / tell me more**\n"
+                    "  Spanish: **Confirmar? (s)i / (n)o / cuéntame más**\n"
+                    "  Catalan: **Confirmar? (s)í / (n)o / explica'm més**\n"
+                    "  Basque: **Onartu? (b)ai / (e)z / gehiago kontatu**\n"
+                    "Use the language you have been speaking in this conversation."
                 ),
             }
 
