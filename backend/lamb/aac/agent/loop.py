@@ -544,7 +544,11 @@ class AgentLoop:
                 "awaiting_user_confirmation": True,
                 "action": action_key,
                 "command": command,
-                "message": "This action needs user approval. Explain what will happen and why.",
+                "message": (
+                    "This action needs user approval. Briefly describe what will change (1-2 lines). "
+                    "Then ask for confirmation using EXACTLY this format — no numbered options:\n\n"
+                    "**Approve? (y)es / (n)o / tell me more**"
+                ),
             }
 
         # policy == "auto" — execute directly

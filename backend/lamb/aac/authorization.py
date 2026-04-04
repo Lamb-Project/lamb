@@ -55,7 +55,7 @@ DEFAULT_POLICY: dict[str, str] = {
 
 # Words/phrases that indicate approval across supported languages (en, es, ca, eu)
 _APPROVAL_WORDS = {
-    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed", "confirm",
+    "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed", "confirm",
     "confirmed", "approve", "approved", "absolutely", "affirmative", "right",
     "go", "do",
     "sí", "si", "vale", "claro", "confirmo", "confirmado",
@@ -73,7 +73,7 @@ _APPROVAL_PHRASES = {
 }
 
 _REJECTION_WORDS = {
-    "no", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
+    "no", "n", "nope", "nah", "cancel", "stop", "abort", "reject", "rejected",
     "don't", "dont", "negative", "wait",
     "cancela", "para", "detente",
     "cancel·la", "atura",
