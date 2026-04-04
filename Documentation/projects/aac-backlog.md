@@ -441,7 +441,8 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 16 | Liteshell HTTP refactoring — async ASGI transport via Creator Interface | ✅ 2026-04-03 |
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
-| **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS | |
+| **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
+| **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
@@ -1552,4 +1553,33 @@ The LTI Unified Activity dashboard anonymizes student names ("Student 1", "Stude
 4. Delete or simplify consent template
 5. Update architecture docs and LTI landscape
 6. Update website manuals (EN + ES)
-7. Create GitHub issue #331
+7. Create GitHub issue #332
+
+---
+
+## 18. AAC Terminal File Upload Widget
+
+**Priority:** Medium — enables fully agentic Library/KB workflows
+**Depends on:** Library Manager (issue #331) being operational
+
+### Problem
+
+The AAC terminal is text-only. When the Library Manager is ready, users will want to upload files to libraries through the agent conversation ("upload this PDF to my biology library"). The agent can't handle binary files through a text command.
+
+### Solution
+
+Add a file upload widget (📎 button) next to the Send button in the AAC terminal. When the user selects/drops a file:
+
+1. Frontend uploads it to a staging endpoint (e.g., `POST /creator/aac/upload`)
+2. Backend stores it temporarily and returns a reference ID
+3. The reference is injected into the conversation context
+4. The agent can use liteshell commands to import the staged file into a library
+
+This works for both the `/agent` page and the assistant detail AAC terminals (same `AacTerminal.svelte` component).
+
+### Interim Approach
+
+Until this is built:
+- **CLI users:** `lamb library upload <id> file.pdf` (standard multipart, works immediately)
+- **Web users:** Upload via Library UI, then ask the agent to work with the imported content
+- **AAC agent:** Can list and reference already-imported library items via liteshell commands
