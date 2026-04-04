@@ -609,7 +609,9 @@ class AgentLoop:
                 f"Skill '{skill_data.get('name', '?')}' loaded MID-CONVERSATION. "
                 f"Follow these instructions from now on, but do NOT restart the conversation. "
                 f"Do NOT greet the user again. Do NOT repeat any startup analysis. "
-                f"Continue naturally from where you were — the user already told you what they need."
+                f"Continue naturally from where you were — the user already told you what they need. "
+                f"CRITICAL: The skill instructions below are in English for clarity, but you MUST "
+                f"CONTINUE responding in the SAME LANGUAGE you were using before. Do NOT switch to English."
             )
             parts.append(f"\n--- SKILL INSTRUCTIONS ---\n{skill_data.get('prompt', '')}")
 
