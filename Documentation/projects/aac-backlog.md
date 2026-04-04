@@ -441,7 +441,8 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 16 | Liteshell HTTP refactoring — async ASGI transport via Creator Interface | ✅ 2026-04-03 |
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
-| **Next** | 12 | Liteshell comprehensive test suite (25 commands, reuse CLI E2E tests) | |
+| **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS | |
+| **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
 | **Then** | 3b | Side Panel Canvas | |
 | ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
@@ -1489,3 +1490,66 @@ Acceptable — LLM calls take 2-20 seconds each, so HTTP overhead is noise.
 - No deadlocks, no errors
 
 **Requires:** `pip install -e /opt/lamb/lamb-cli` in backend container at startup
+
+---
+
+## 17. Remove Student Anonymization from LTI Dashboard
+
+**Priority:** High — current anonymization gives a false sense of privacy; the LMS handles this natively
+**Depends on:** Nothing
+**Related:** Issue #332
+
+### Problem
+
+The LTI Unified Activity dashboard anonymizes student names ("Student 1", "Student 2") in chat transcripts and the student list. This was implemented as a privacy feature, but it's the wrong layer for this concern:
+
+1. **The LMS already handles anonymization.** Moodle and other LMS platforms have their own privacy controls for external tools. Instructors can configure whether student identity is passed to LTI tools at the LMS level.
+2. **Our anonymization is cosmetic, not real.** The student's OWI user ID, access times, and chat content are all stored. An instructor with DB access could de-anonymize trivially. The "Student N" labels create a false sense of privacy.
+3. **Instructors need to identify students.** When reviewing chat transcripts for pedagogical purposes (e.g., spotting a struggling student, grading participation), anonymized names are useless. The instructor already knows the students — they're in their class.
+4. **The consent flow is unnecessary friction.** Students must accept a consent notice that says their chats "may be reviewed anonymously." This is confusing (the instructor can already see the chat content) and adds a click barrier.
+
+### What to Change
+
+**Remove all anonymization logic.** Show real student names (as provided by the LMS) in the dashboard. Remove the consent flow. Update all documentation.
+
+### Files to Modify
+
+**Backend:**
+
+| File | Change |
+|------|--------|
+| `backend/lamb/lti_activity_manager.py` | `get_dashboard_students()`: return real names instead of "Student N". `get_dashboard_chats()`: return real student names. `get_dashboard_chat_detail()`: return real name. Remove `_build_anonymization_map()`. Remove `check_student_consent()` and `record_student_consent()`. |
+| `backend/lamb/lti_router.py` | Remove consent page redirect. Remove `GET/POST /consent` endpoints. Simplify student launch flow (no consent check). |
+| `backend/lamb/templates/lti_dashboard.html` | Show real student names in the student list and chat transcript views. Remove "anonymized" labels. |
+| `backend/lamb/templates/lti_activity_setup.html` | Remove the "anonymized chat transcripts" checkbox text. Simplify to just "Allow instructors to review chat transcripts". Remove the "identities are never revealed" claim. |
+| `backend/lamb/templates/lti_consent.html` | Delete entirely (or keep as a simple "welcome" page without consent). |
+| `backend/lamb/database_manager.py` | `lti_activity_users.consent_given_at` column becomes unused. Keep for backward compat but stop writing to it. |
+
+**Documentation:**
+
+| File | Change |
+|------|--------|
+| `Documentation/lamb_architecture_v2.md` | Section 8.2.1: remove "all transcripts anonymized", "consent page", "Student 1, Student 2" references. Update flow diagram. |
+| `Documentation/lti_landscape.md` | Update Unified LTI section: remove anonymization mentions, consent flow, "identities are never revealed" claim. |
+| `/opt/Lamb-Project-Website/content/en/manual/index.md` | Section 8: update LTI publishing description, remove "anonymized transcripts" mention. |
+| `/opt/Lamb-Project-Website/content/es/manual/index.md` | Same changes in Spanish. |
+
+**Database schema (no migration needed):**
+- `lti_activities.chat_visibility_enabled` — keep as-is (still controls whether instructors can see chats at all)
+- `lti_activity_users.consent_given_at` — stop writing to it, ignore on read
+
+### What Stays
+
+- **`chat_visibility_enabled`** — the instructor still chooses at setup whether chat transcripts are visible to instructors. This is about feature access, not anonymization.
+- **Student identity isolation per activity** — students still get synthetic OWI emails per `resource_link_id`. This prevents cross-activity data leakage and is unrelated to anonymization.
+- **The instructor dashboard** — still shows stats, student list, chat transcripts. Just with real names now.
+
+### Implementation Order
+
+1. Remove anonymization from `lti_activity_manager.py` (show real names)
+2. Remove consent flow from `lti_router.py` (simplify student launch)
+3. Update templates (setup page text, dashboard labels)
+4. Delete or simplify consent template
+5. Update architecture docs and LTI landscape
+6. Update website manuals (EN + ES)
+7. Create GitHub issue #331
