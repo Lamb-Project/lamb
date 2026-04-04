@@ -1604,6 +1604,23 @@ The agent creates assistants with empty `prompt_template` or templates missing t
 - Warn when it detects a RAG assistant without `{context}` in the template
 - Know the placeholder syntax: `{context}` and `{user_input}` (curly braces, no dashes)
 
+### 19c. Agent cannot list or switch skills mid-conversation
+
+The agent has no way to:
+- Show the user what skills are available (no `skill.list` liteshell command)
+- Load a different skill mid-conversation (no `skill.load` liteshell command)
+
+When a user starts with `about-lamb` and says "help me create an assistant", the agent should be able to load the `create-assistant` skill and guide them — without requiring a new session.
+
+**Fix:** Add two liteshell commands:
+
+- `skill.list` — returns available skills with descriptions and required context. Authorization: `auto`.
+- `skill.load <skill-id> [--assistant <id>]` — loads a skill's prompt into the current session as a system message, runs its startup actions. Authorization: `auto` (it's just adding instructions, not a write). The conversation history is preserved.
+
+Update the system prompt so the agent knows it can switch skills. When the user asks something that matches a skill, the agent should offer: "I can switch to the Create Assistant workflow. Want me to?"
+
+Also consider adding a `/skills` shortcut in the terminal UI — but this is optional since the agent can handle it conversationally via `skill.list`.
+
 ### 19b. No session history on the Agent page
 
 The `/agent` page auto-creates or resumes today's `about-lamb` session, but there's no way to:
