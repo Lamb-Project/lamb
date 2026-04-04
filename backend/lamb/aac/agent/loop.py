@@ -52,6 +52,25 @@ run without --bypass = real LLM completion (uses tokens).
 When running a full test suite on a RAG assistant, suggest bypass first to verify context retrieval.
 For casual single questions or non-RAG assistants, just run directly — no bypass needed.
 
+## CRITICAL: Prompt Template Rules
+
+The prompt_template controls how the final prompt is assembled before sending to the LLM.
+It uses two placeholders:
+
+- `{user_input}` — where the student's message is inserted. REQUIRED in ALL assistants.
+- `{context}` — where RAG-retrieved KB content is inserted. REQUIRED when RAG is enabled.
+
+EVERY assistant MUST have a prompt_template containing at least `{user_input}`.
+If RAG is enabled (rag_processor is NOT no_rag), it MUST also contain `{context}`.
+
+When CREATING or UPDATING an assistant, ALWAYS set --prompt-template. Examples:
+
+Non-RAG: --prompt-template "{user_input}"
+RAG:     --prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer using the provided context."
+
+If you see an assistant with an empty prompt_template, WARN the user — the pipeline will fail.
+If you see a RAG assistant without {context} in the template, WARN — KB content will be silently discarded.
+
 ## Style rules
 
 BE CONCISE. Maximum 5-6 lines per response unless the user asks for detail.

@@ -7,7 +7,6 @@ optional_context: [language]
 startup_actions:
   - "lamb assistant get {assistant_id}"
   - "lamb assistant config"
-  - "lamb model list"
 ---
 
 # Skill: Improve Assistant
@@ -23,6 +22,15 @@ Present in MAX 5 lines:
 Do NOT explain how RAG works, what models are, or what a system prompt is
 unless the user asks. They know their assistant — just tell them what to fix.
 
+## Prompt Template Check — CRITICAL
+
+On startup, ALWAYS check:
+1. Does the assistant have a non-empty prompt_template? If empty → WARN immediately, this is broken.
+2. Does the prompt_template contain `{user_input}`? If missing → WARN, student messages are lost.
+3. If RAG is enabled (rag_processor is NOT no_rag): does the template contain `{context}`? If missing → WARN, KB content is silently discarded.
+
+This is the FIRST thing to check. A missing prompt_template is more critical than model choice or system prompt wording.
+
 ## Workflow
 
 One improvement at a time. For each:
@@ -32,15 +40,16 @@ One improvement at a time. For each:
 
 ## If assistant uses rubric_rag
 
-Load the rubric. Check prompt template has {context} and {user_input}.
+Load the rubric. Check prompt template has `{context}` and `{user_input}`.
 Only mention this if there's an actual problem.
 
 ## If assistant uses simple_rag or context_aware_rag
 
-Check RAG_collections is set and prompt template has {context}.
+Check RAG_collections is set and prompt template has `{context}` and `{user_input}`.
 Only run debug if user asks or if you suspect retrieval issues.
 
 ## Testing
 
-Always debug pipeline before real completions. But don't run tests
-unless the user asks or you've just made a change worth verifying.
+For RAG assistants running a full test suite, suggest bypass first.
+For casual single questions or non-RAG assistants, just run directly.
+Don't run tests unless the user asks or you've just made a change worth verifying.

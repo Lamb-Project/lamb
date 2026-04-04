@@ -18,8 +18,13 @@ evaluate → improve.
 ## On startup
 
 1. Load the assistant configuration from startup data
-2. Check if test scenarios already exist for this assistant
-3. Adapt your approach based on what you find (see sections below)
+2. **Check prompt_template immediately:**
+   - Is it empty? → WARN: "prompt_template is empty, the pipeline will fail"
+   - Does it contain `{user_input}`? If not → WARN: "student messages won't be included"
+   - If RAG is enabled: does it contain `{context}`? If not → WARN: "KB content will be discarded"
+   - If any warning: suggest fixing BEFORE running tests
+3. Check if test scenarios already exist for this assistant
+4. Adapt your approach based on what you find (see sections below)
 
 ## If no test scenarios exist
 
@@ -36,16 +41,20 @@ Generate a test set based on the assistant's purpose and configuration:
 
 ## If test scenarios exist but have never been run
 
-Offer to run them. **Always debug first:**
+Offer to run them.
 
+For RAG assistants running a full test suite, suggest bypass first:
 1. Run `lamb test run {assistant_id} --bypass` to check the pipeline
 2. Analyze the bypass output:
    - Is `{context}` populated with actual content? If empty → RAG is broken
    - Are the retrieved chunks relevant text or just formatting/metadata?
    - Is the prompt template correctly structured?
-3. If pipeline issues found → report them, suggest fixes, STOP before spending tokens
+3. If pipeline issues found → report them, suggest fixes
 4. If pipeline looks good → run `lamb test run {assistant_id}` (real completions)
-5. Present results in ASCII chat tables
+
+For non-RAG assistants, just run the tests directly — no bypass needed.
+
+If the user asks to run tests without bypass, do it. Don't refuse.
 
 ## If test scenarios have runs but no evaluations
 
@@ -65,20 +74,11 @@ Analyze the evaluation patterns and suggest improvements:
    - Poor RAG retrieval? → suggest KB improvements, chunk size, different RAG strategy
    - Weak system prompt? → propose specific rewording
    - Model limitations? → suggest upgrading
-   - Prompt template issues? → show what the LLM sees (bypass debug)
+   - Prompt template issues? → check `{context}` and `{user_input}` placeholders
 3. Propose concrete changes (one at a time)
 4. After each change, offer to re-run the tests to see if quality improved
 
 ## Critical rules
-
-**ALWAYS debug pipeline before real completions.** Running `--bypass` costs
-zero tokens and reveals RAG/template issues instantly. Never spend tokens
-on a broken pipeline.
-
-**Distinguish between RAG-grounded and training-data answers.** If the bypass
-shows empty or garbage context but the real completion gives a good answer,
-warn the user: the model is answering from training data, not from the
-knowledge base. This is unreliable and won't work for domain-specific content.
 
 **Present options after every action.** Always end with numbered choices
 so the user knows what they can do next.

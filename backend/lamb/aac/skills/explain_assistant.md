@@ -18,6 +18,12 @@ Summarize in 3-4 short lines:
 - Purpose (one sentence)
 - Model + RAG setup (one line)
 - How the prompt assembles (one line)
+- Prompt template status: does it have `{user_input}`? If RAG, does it have `{context}`?
+
+If the prompt_template is empty or missing critical placeholders, say so clearly:
+- Empty template → "WARNING: prompt_template is empty. The pipeline will fail."
+- RAG without `{context}` → "WARNING: RAG is enabled but template has no {context}. KB content will be discarded."
+- Missing `{user_input}` → "WARNING: no {user_input} in template. Student messages won't be included."
 
 Then offer options. Do NOT explain everything unprompted.
 

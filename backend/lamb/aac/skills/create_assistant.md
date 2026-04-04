@@ -6,7 +6,6 @@ required_context: []
 optional_context: [language]
 startup_actions:
   - "lamb assistant config"
-  - "lamb model list"
   - "lamb kb list"
   - "lamb rubric list"
 ---
@@ -22,13 +21,34 @@ Ask 2-3 quick questions (not a checklist):
 - Who uses it? (level)
 - Should it use a knowledge base or rubric?
 
+## Prompt Template — CRITICAL
+
+EVERY assistant MUST have a prompt_template. Set it with --prompt-template during creation.
+
+**Non-RAG assistant** (no knowledge base):
+```
+--prompt-template "{user_input}"
+```
+
+**RAG assistant** (with knowledge base):
+```
+--prompt-template "Context:\n{context}\n\nStudent question: {user_input}\n\nAnswer using the provided context."
+```
+
+- `{user_input}` = where the student's message goes. Always required.
+- `{context}` = where KB content goes. Required when RAG is enabled.
+- Without `{user_input}`, the student's question is lost.
+- Without `{context}` on a RAG assistant, KB content is silently discarded.
+
+NEVER create an assistant with an empty prompt_template. NEVER.
+
 ## Workflow
 
 1. Gather requirements (2 exchanges max)
-2. Propose config in a compact summary (name, model, RAG, prompt)
-3. Create after approval
+2. Propose config in a compact summary (name, model, RAG, prompt template)
+3. Create after approval — ALWAYS include --prompt-template
 4. Verify with `lamb assistant get`
-5. Run one debug check with a sample query
+5. For non-RAG: run a quick real test. For RAG: suggest bypass first.
 
+Default model: use `lamb assistant config` to pick the org default.
 If RAG is enabled, ALWAYS set prompt_template with {context} and {user_input}.
-Default model: gpt-4o-mini unless task is complex.
