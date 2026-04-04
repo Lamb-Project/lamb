@@ -442,7 +442,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
-| **Next** | 19 | AAC bugs: prompt template awareness + (see item detail) | |
+| **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, **19b** session history | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
@@ -1589,7 +1589,7 @@ Until this is built:
 
 ## 19. AAC Bugs
 
-### 19a. Agent is clueless about prompt templates
+### 19a. Agent is clueless about prompt templates ✅ (2026-04-04)
 
 The AAC agent doesn't understand how the LAMB prompt template system works. When creating or editing assistants, it doesn't know that:
 
@@ -1604,7 +1604,7 @@ The agent creates assistants with empty `prompt_template` or templates missing t
 - Warn when it detects a RAG assistant without `{context}` in the template
 - Know the placeholder syntax: `{context}` and `{user_input}` (curly braces, no dashes)
 
-### 19c. Agent cannot list or switch skills mid-conversation
+### 19c. Agent cannot list or switch skills mid-conversation ✅ (2026-04-04)
 
 The agent has no way to:
 - Show the user what skills are available (no `skill.list` liteshell command)
