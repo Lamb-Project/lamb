@@ -442,6 +442,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
+| **Next** | 19 | AAC bugs: prompt template awareness + (see item detail) | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
@@ -1583,3 +1584,36 @@ Until this is built:
 - **CLI users:** `lamb library upload <id> file.pdf` (standard multipart, works immediately)
 - **Web users:** Upload via Library UI, then ask the agent to work with the imported content
 - **AAC agent:** Can list and reference already-imported library items via liteshell commands
+
+---
+
+## 19. AAC Bugs
+
+### 19a. Agent is clueless about prompt templates
+
+The AAC agent doesn't understand how the LAMB prompt template system works. When creating or editing assistants, it doesn't know that:
+
+- **`{context}`** is the RAG insertion point — required in the prompt template for any RAG-enabled assistant. Without it, retrieved KB content has nowhere to go and is silently discarded.
+- **`{user_input}`** is the user message insertion point — required in ALL prompt templates. Without it, the student's question isn't included in the final prompt.
+
+The agent creates assistants with empty `prompt_template` or templates missing these placeholders, leading to broken pipelines.
+
+**Fix:** Add prompt template rules to the system prompt in `loop.py` and to the `create-assistant` and `improve-assistant` skills. The agent must:
+- Always set a prompt template containing `{user_input}` when creating an assistant
+- Add `{context}` when RAG is enabled
+- Warn when it detects a RAG assistant without `{context}` in the template
+- Know the placeholder syntax: `{context}` and `{user_input}` (curly braces, no dashes)
+
+### 19b. No session history on the Agent page
+
+The `/agent` page auto-creates or resumes today's `about-lamb` session, but there's no way to:
+- See a list of past agent sessions
+- Resume an older session from a previous day
+- Browse conversation history
+
+Currently the page shows a single terminal. If the user wants to review what they discussed yesterday, they have no way to get there.
+
+**Fix:** Add a session list/history panel to the `/agent` page. Options:
+- A sidebar or dropdown showing past sessions (title, date, tool count)
+- Click to resume any session
+- Matches the design from backlog item 9c (Agent History UI) but scoped to the `/agent` page
