@@ -443,6 +443,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
 | **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, **19b** session history | |
+| **Next** | 20 | Missing liteshell commands — publish, KB query, templates, analytics, chat context | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Next** | 9 | Session audit log + Agent history UI | |
@@ -1634,3 +1635,122 @@ Currently the page shows a single terminal. If the user wants to review what the
 - A sidebar or dropdown showing past sessions (title, date, tool count)
 - Click to resume any session
 - Matches the design from backlog item 9c (Agent History UI) but scoped to the `/agent` page
+
+---
+
+## 20. Missing Liteshell Commands
+
+**Priority:** Medium-High — limits what the agent can do for the user
+**Depends on:** Nothing (endpoints already exist)
+
+### Current state (29 commands)
+
+The liteshell covers: assistant CRUD + config + debug + chat + list-shared + list-published, rubric list/get/export, KB list/get, template list/get, test CRUD + run + evaluate, docs index/read, skill list/load, help.
+
+### What's missing (grouped by impact)
+
+#### 20a. Assistant publish/unpublish — HIGH
+
+The agent can create and configure assistants but can't publish them to the LMS. The user has to leave the conversation and do it from the UI. This breaks the end-to-end agentic workflow.
+
+```
+lamb assistant publish <id>
+lamb assistant unpublish <id>
+```
+
+Endpoints: `PUT /creator/assistant/publish/{id}` with `{"publish_status": true/false}`.
+Authorization: `ask` (write operation — publishes to students).
+
+#### 20b. Assistant chat with full context — HIGH
+
+The current `assistant.chat` command sends a single message. But a real conversation has context — previous messages, the system prompt override, etc. The agent should be able to:
+
+1. **Send multi-turn conversations** — feed a list of messages (system + user + assistant turns) to simulate a full conversation. This lets the agent test how the assistant handles follow-up questions, context retention, and conversation flow.
+
+2. **Override system prompt** — test a system prompt change without actually updating the assistant. "What if the system prompt said X instead?" → run the chat with the modified prompt → compare.
+
+3. **Pass chat history** — when debugging a reported problem ("my student said X and the assistant said Y, then when they said Z it broke"), the agent needs to replay the full conversation.
+
+```
+lamb assistant chat <id> --message "text"                    # current: single message
+lamb assistant chat <id> --messages '[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"follow up"}]'  # multi-turn
+lamb assistant chat <id> --message "text" --system-prompt "override for testing"  # system prompt override
+```
+
+The completions endpoint already supports `messages` as a list — the liteshell command just needs to expose it.
+
+Authorization: `auto` (read-like, uses tokens but user explicitly requests it).
+
+#### 20c. KB query — MEDIUM
+
+Test what a knowledge base retrieves for a query, without going through an assistant. Essential for debugging RAG issues: "is the KB finding the right content?"
+
+```
+lamb kb query <kb_id> --query "text" [--top-k 5]
+```
+
+Endpoint: `POST /creator/knowledgebases/kb/{id}/query`.
+Authorization: `auto`.
+
+#### 20d. Template create/update/share — MEDIUM
+
+The agent can read templates but can't create or share them. After helping an educator write a good system prompt, it should be able to save it as a reusable template.
+
+```
+lamb template create "Name" --system-prompt "..." --prompt-template "..."
+lamb template update <id> --name "..." 
+lamb template share <id>
+```
+
+Endpoints: `POST /creator/prompt-templates/create`, `PUT /creator/prompt-templates/{id}`, `PUT /creator/prompt-templates/{id}/share`.
+Authorization: `ask` for create/update (writes), `auto` for share.
+
+#### 20e. Analytics stats — LOW
+
+Check how a published assistant is being used (total chats, unique users, messages). Useful when the agent is helping improve an assistant — "how many students are using this?"
+
+```
+lamb analytics stats <assistant_id>
+lamb analytics chats <assistant_id>
+```
+
+Endpoints: `GET /creator/analytics/assistant/{id}/stats`, `GET /creator/analytics/assistant/{id}/chats`.
+Authorization: `auto`.
+
+#### 20f. Assistant export — LOW
+
+Export an assistant's configuration as JSON for backup or sharing across instances.
+
+```
+lamb assistant export <id>
+```
+
+Endpoint: `GET /creator/assistant/export/{id}`.
+Authorization: `auto`.
+
+#### 20g. Rubric generate/share — LOW
+
+AI-generate a rubric from a description, share with organization.
+
+```
+lamb rubric generate "description" --lang en
+lamb rubric share <id>
+```
+
+Endpoints: `POST /creator/rubrics/ai-generate`, `PUT /creator/rubrics/{id}/visibility`.
+Authorization: `auto` for generate (preview only), `ask` for share.
+
+### Not needed in liteshell
+
+- **org/user admin commands** — admin-only, low frequency, UI is fine
+- **job management** — KB-related, deferred to Library Manager (#331)
+- **aac commands** — the agent IS the AAC, doesn't need to manage itself
+- **interactive chat** — the agent runs single inferences, not interactive REPL sessions
+
+### Implementation order
+
+1. **20a** publish/unpublish — completes the assistant lifecycle
+2. **20b** chat with full context — essential for real testing
+3. **20c** KB query — debugging RAG
+4. **20d** templates — saving good work
+5. **20e-g** analytics, export, rubric — nice to have
