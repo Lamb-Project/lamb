@@ -45,11 +45,12 @@
 		} else if (firstMessage) {
 			messages = [{ role: 'assistant', content: firstMessage }];
 		} else if (resumed) {
-			// Resumed session — load history
+			// Resumed session — load history, hide internal [System:...] messages
 			try {
 				const session = await getSession(sessionId);
 				const conv = (session.conversation || []).filter(
-					m => m.role === 'user' || (m.role === 'assistant' && m.content && !m.tool_calls)
+					m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
+					  || (m.role === 'assistant' && m.content && !m.tool_calls)
 				).map(m => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {
 					messages = conv;
