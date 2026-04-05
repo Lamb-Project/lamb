@@ -87,6 +87,16 @@ export function hideTabs() {
 	persist();
 }
 
+/** Clear all tabs and remove from sessionStorage. Call on logout. */
+export function resetTabs() {
+	openTabs = [];
+	activeTabId = null;
+	showTabs = false;
+	if (typeof window !== 'undefined') {
+		sessionStorage.removeItem('aac_tabs');
+	}
+}
+
 /** @returns {TabInfo[]} */
 export function getOpenTabs() {
 	return openTabs;

@@ -6,6 +6,7 @@ import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 import { rubricStore } from '$lib/stores/rubricStore.svelte.js';
 import { resetTemplateStore } from '$lib/stores/templateStore';
 import { resetAssistantPublishState } from '$lib/stores/assistantPublish';
+import { resetTabs as resetAacTabs } from '$lib/stores/aacStore.svelte';
 
 /**
  * Reset frontend stores that can leak user-scoped state.
@@ -18,6 +19,7 @@ export function resetAllUserScopedStores() {
 	rubricStore.reset();
 	resetTemplateStore();
 	resetAssistantPublishState();
+	resetAacTabs();
 }
 
 /**
