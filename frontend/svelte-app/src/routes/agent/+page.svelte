@@ -8,6 +8,7 @@
     import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
 
     let sessionId = $state(/** @type {string|null} */ (null));
+    let isNewSession = $state(false);
     let loading = $state(true);
     let error = $state('');
 
@@ -18,6 +19,7 @@
         const urlSession = $page.url.searchParams.get('session');
         if (urlSession) {
             sessionId = urlSession;
+            isNewSession = false;  // resuming
             setActiveTab(sessionId);
             loading = false;
             return;
@@ -32,6 +34,7 @@
             );
             if (active) {
                 sessionId = active.id;
+                isNewSession = false;  // resuming existing session
                 openTab(sessionId, active.title || 'LAMB Helper', null, 'about-lamb');
                 loading = false;
                 return;
@@ -46,6 +49,7 @@
                 context: { language: localeToLanguage[$locale] || 'English' },
             });
             sessionId = session.id;
+            isNewSession = true;  // brand new session, needs skill startup
             openTab(sessionId, session.title || 'LAMB Helper', null, 'about-lamb');
         } catch (e) {
             error = e.message || 'Failed to start agent session';
@@ -75,8 +79,8 @@
                 <AacTerminal
                     {sessionId}
                     firstMessage=""
-                    resumed={true}
-                    skillStartup={true}
+                    resumed={!isNewSession}
+                    skillStartup={isNewSession}
                 />
             </div>
             {/key}
