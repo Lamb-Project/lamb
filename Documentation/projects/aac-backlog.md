@@ -442,12 +442,12 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | ~~Done~~ | 17 | Remove student anonymization from LTI dashboard #332 | ✅ 2026-04-05 |
-| **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, **19b** session history | |
-| **Next** | 21 | Unified AAC session management — tabs, titles, history, context refresh | |
+| **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, 19b merged into 21 | |
+| **In Progress** | 21 | Unified AAC session management (+ merged 9c, 19b): A→B→C→D phases | |
 | **Next** | 20 | Missing liteshell commands — publish, KB query, templates, analytics, chat context | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
-| **Next** | 9 | Session audit log + Agent history UI | |
+| **Merged→21** | 9c | Agent History UI — merged into item 21 unified design | |
 | **Then** | 3b | Side Panel Canvas | |
 | ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
 | ~~Done~~ | 11 | `assistant.list-shared` + get by name (26 liteshell commands) | ✅ 2026-04-03 |
@@ -1758,10 +1758,12 @@ Authorization: `auto` for generate (preview only), `ask` for share.
 
 ---
 
-## 21. Unified AAC Session Management
+## 21. Unified AAC Session Management (+ merged items 9c, 19b)
 
 **Priority:** High — current AAC session UX is broken
 **Depends on:** Nothing (frontend + small backend changes)
+
+**Note (2026-04-05):** Items **9c** (Agent history UI) and **19b** (session history on /agent page) are merged here. They're the same feature viewed from different angles — see the unified design below.
 
 ### Bugs discovered (2026-04-05)
 
@@ -1861,7 +1863,97 @@ Implementation: when Agent Explain is clicked, it calls `openTab()` with `assist
 
 ### Implementation order
 
-1. **21a** Fix conversation reload — critical bug fix (small)
-2. **21c + 21d** Better titles + rename command — agent can already help with titles
-3. **21b + 21f** Global tab bar unification — UI redesign (bigger)
-4. **21e** User-returned context refresh — needs activity tracking
+1. **21a** Fix conversation reload — critical bug fix (small) ✅ DONE 2026-04-05
+2. **Phase A: 21c + 21d** Better titles + rename command
+3. **Phase B: 9c + 19b** Agent History page + review detail view
+4. **Phase C: 21b + 21f** Global tab bar unification
+5. **Phase D: 21e** User-returned context refresh
+
+---
+
+## Unified Design (2026-04-05)
+
+### Core insight
+
+Items 9c, 19b, and 21b-f are the same feature viewed from different angles:
+- **21b** = global tab bar (active sessions workspace)
+- **9c** = history page (all sessions archive)
+- **19b** = session history on /agent (subset of 9c)
+- **21c/d/e** = supporting plumbing (titles, rename, context refresh)
+- **21f** = unify assistant-detail AAC tabs with global bar
+
+### Two UI concepts
+
+| Concept | What | Where |
+|---------|------|-------|
+| **Workspace** | Active sessions you're working on | Global tab bar (always visible) |
+| **Archive** | All sessions you can review or resume | Dedicated history page |
+
+A session moves between these based on user intent: Open → appears in tab bar. Close tab → archived, falls off bar (still in archive). Resume from archive → re-opens in tab bar.
+
+### Components
+
+#### 1. Global AAC Tab Bar
+
+Location: Between top nav and page content, always visible when at least one session is open.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  [LAMB]  Assistants  Agent  Agent History  Admin  ...   │
+├──────────────────────────────────────────────────────────┤
+│  🤖 LAMB Helper ✕  │ ✨ Improve: rock_60s ✕  │ + New    │
+├──────────────────────────────────────────────────────────┤
+│       (active session's terminal)                        │
+```
+
+Each tab: skill icon, title, close button. Click = switch. Close = archive.
+State in sessionStorage. Unifies `/agent` AND assistant-detail Agent Explain/Improve.
+
+#### 2. Agent History Page (`/agent/history`)
+
+Table of all sessions (active + archived). Filters: date, skill, assistant, status, errors. Per-row actions: Resume (opens in tab bar) / Review (read-only) / Delete.
+
+#### 3. Session Review View (`/agent/history/:id`)
+
+Read-only detail: full transcript, tool audit timeline, stats, Resume button (if still active).
+
+#### 4. Terminal header changes
+
+- Editable title (click to edit) → calls `session.rename`
+- Existing stats toggle stays
+
+#### 5. `session.rename` liteshell command
+
+```
+lamb session rename "Improve: rock_the_60s"
+```
+
+Endpoint: `PUT /creator/aac/sessions/{id}/title`. Authorization: `auto`.
+System prompt: *"When you learn the assistant name or user's intent, rename so the session is findable."*
+
+#### 6. Auto-generated titles at creation
+
+Router resolves assistant name when creating sessions:
+
+| Skill | Title format | Resolution |
+|-------|-------------|------------|
+| about-lamb | `LAMB Helper` | Fixed |
+| create-assistant | `Create: (new)` | Agent renames when name chosen |
+| improve-assistant | `Improve: {asst_name}` | From assistant_id |
+| explain-assistant | `Explain: {asst_name}` | From assistant_id |
+| test-and-evaluate | `Test: {asst_name}` | From assistant_id |
+
+#### 7. User-returned context refresh
+
+Frontend tracks `lastActivityAt` per tab. If idle >5min before next message, POST body includes `user_returned: true`. Backend injects a system note before the user's message:
+```
+[User returned after being away. Data may have changed. Re-check anything you
+showed earlier before claiming it's still accurate.]
+```
+
+### Phase A deliverables (next)
+
+1. `PUT /creator/aac/sessions/{id}/title` endpoint
+2. `session.rename` liteshell command
+3. Session creation resolves assistant name for title
+4. System prompt instructs agent to rename when appropriate
