@@ -65,28 +65,36 @@ async def create_session(
     if assistant_id and "assistant_id" not in skill_context:
         skill_context["assistant_id"] = assistant_id
 
-    # Generate session title
+    # Generate session title — friendly format: "<SkillVerb>: <assistant_name>"
     title = ""
+    _skill_titles = {
+        "about-lamb": "LAMB Helper",
+        "create-assistant": "Create: (new)",
+        "improve-assistant": "Improve",
+        "explain-assistant": "Explain",
+        "test-and-evaluate": "Test",
+        "test-lti-tools": "LTI Setup",
+    }
     if skill_id:
-        try:
-            skill_meta = load_skill(skill_id, skill_context)["metadata"]
-            skill_name = skill_meta.get("name", skill_id)
-        except Exception:
-            skill_name = skill_id
-        # Try to get assistant name for the title
-        if assistant_id:
+        base = _skill_titles.get(skill_id, skill_id)
+        # Resolve assistant name (strip user prefix like "1_")
+        if assistant_id and skill_id in ("improve-assistant", "explain-assistant", "test-and-evaluate"):
             try:
                 from lamb.services.assistant_service import AssistantService
                 svc = AssistantService()
                 assistant = svc.get_assistant_by_id(assistant_id)
                 if assistant:
-                    title = f"{skill_name}: {assistant.name}"
+                    name = assistant.name
+                    # Strip leading user_id prefix: "1_name" → "name"
+                    if "_" in name and name.split("_")[0].isdigit():
+                        name = name.split("_", 1)[1]
+                    title = f"{base}: {name}"
             except Exception:
                 pass
         if not title:
-            title = skill_name
+            title = base
     else:
-        title = f"Session"
+        title = "Free-form chat"
 
     mgr = AACSessionManager()
     session = mgr.create_session(
@@ -153,6 +161,21 @@ async def delete_session(
     if not mgr.delete_session(session_id, auth.user["email"]):
         raise HTTPException(status_code=404, detail="Session not found")
     return {"success": True}
+
+
+@router.put("/sessions/{session_id}/title")
+async def rename_session(
+    session_id: str,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Rename a session (update its title)."""
+    body = await request.json()
+    title = body.get("title", "")
+    mgr = AACSessionManager()
+    if not mgr.rename_session(session_id, auth.user["email"], title):
+        raise HTTPException(status_code=404, detail="Session not found or invalid title")
+    return {"success": True, "title": title.strip()[:200]}
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +386,7 @@ def _build_agent(auth: AuthContext, session: dict, token: str = "") -> AgentLoop
         model=model,
         authorizer=authorizer,
         session_logger=slog,
+        session_id=session["id"],
     )
 
     # Load generic skills (for non-skill sessions)
@@ -447,6 +471,7 @@ async def _build_agent_with_skill(
         authorizer=authorizer,
         system_prompt=system_prompt,
         session_logger=slog,
+        session_id=session["id"],
     )
 
     # Execute startup actions via liteshell

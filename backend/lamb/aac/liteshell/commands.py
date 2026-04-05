@@ -408,6 +408,30 @@ async def assistant_chat(ctx: "CommandContext", args: list[str], kwargs: dict) -
 
 
 # ---------------------------------------------------------------------------
+# Session commands (async HTTP)
+# ---------------------------------------------------------------------------
+
+@register("session.rename")
+async def session_rename(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Rename the current session. The agent should do this when it learns the user's intent or target assistant name."""
+    if not args:
+        raise ValueError("Usage: lamb session rename \"New title\"")
+    # Agent calls this INSIDE a session — it needs to know the current session id.
+    # We pass the session id via kwargs since the liteshell doesn't know about the AAC session.
+    session_id = kwargs.get("session", kwargs.get("s", ""))
+    if not session_id:
+        # Fallback: the AgentLoop will inject the current session_id before executing
+        raise ValueError("session.rename requires --session <id> (injected by agent loop)")
+    title = " ".join(args).strip()
+    if not title:
+        raise ValueError("Title cannot be empty")
+    return await ctx.http.put(
+        f"/creator/aac/sessions/{session_id}/title",
+        json={"title": title},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Skill commands (LOCAL — sync, read files, no HTTP)
 # ---------------------------------------------------------------------------
 

@@ -44,6 +44,7 @@ To see available LLM models (gpt-4o, gpt-4o-mini, etc.), use: lamb assistant con
 It returns connectors, their models, and organization defaults. ALWAYS use this for model selection.
 DOCS: lamb docs index | read <topic> [--section "heading"]
 SKILLS: lamb skill list | load <skill-id> [--assistant <id>]
+SESSION: lamb session rename "New title"  (update the current session's title — do this when you learn the user's intent or target assistant name, so the session is findable later)
 CHAT: lamb assistant chat <id> --message "text"  (send a message, get a real response — use this for quick tests)
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
@@ -164,6 +165,7 @@ _TOOL_LABELS = {
     "test.evaluate": "Recording evaluation",
     "skill.list": "Loading available skills",
     "skill.load": "Switching to skill",
+    "session.rename": "Renaming session",
     "docs.index": "Loading documentation index",
     "docs.read": "Reading documentation",
 }
@@ -332,6 +334,7 @@ class AgentLoop:
     session_logger: SessionLogger | None = None
     pending_action: dict | None = None
     tool_audit: list[dict] = field(default_factory=list)
+    session_id: str = ""  # current AAC session ID (for self-referencing commands like session.rename)
 
     def load_skills(self, skills_dir: Path | str) -> None:
         """Append skill files (.md) to the system prompt."""
@@ -566,6 +569,10 @@ class AgentLoop:
         # Check authorization
         action_key = self.authorizer.resolve_action_key(command)
         policy = self.authorizer.check(action_key) if action_key else "auto"
+
+        # Self-referencing commands: inject current session_id
+        if action_key == "session.rename" and self.session_id and "--session" not in command:
+            command = f"{command} --session {self.session_id}"
 
         if policy == "never":
             return {"success": False, "error": f"Action '{action_key}' is not allowed"}

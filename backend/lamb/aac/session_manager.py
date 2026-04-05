@@ -167,6 +167,23 @@ class AACSessionManager:
         finally:
             conn.close()
 
+    def rename_session(self, session_id: str, user_email: str, title: str) -> bool:
+        """Update the session title."""
+        title = (title or "").strip()[:200]
+        if not title:
+            return False
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE {self._table} SET title = ?, updated_at = ? WHERE id = ? AND user_email = ?",
+                (title, datetime.utcnow().isoformat(), session_id, user_email),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
     def delete_session(self, session_id: str, user_email: str) -> bool:
         """Delete (archive) a session."""
         conn = self.db.get_connection()

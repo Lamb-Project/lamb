@@ -38,6 +38,8 @@ DEFAULT_POLICY: dict[str, str] = {
     # Skill commands — auto (read-only, no side effects)
     "skill.list": "auto",
     "skill.load": "auto",
+    # Session self-rename — auto (cosmetic, scoped to current session)
+    "session.rename": "auto",
     # Documentation commands — auto (read-only)
     "docs.index": "auto",
     "docs.read": "auto",
