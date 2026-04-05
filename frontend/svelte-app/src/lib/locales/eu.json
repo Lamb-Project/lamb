@@ -860,7 +860,9 @@
         "title": "LAMB Agentea",
         "description": "Hitz egin IA laguntzailearekin laguntza lortzeko, laguntzaileak sortzeko, LAMB ezagutzeko edo arazoak konpontzeko.",
         "cta": "Elkarrizketa hasi",
-        "starting": "Abiatzen..."
+        "starting": "Abiatzen...",
+        "newConversation": "Elkarrizketa berria",
+        "confirmNew": "Elkarrizketa hau amaitu eta berri bat hasi?"
       }
     },
     "help": {

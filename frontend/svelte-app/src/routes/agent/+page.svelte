@@ -3,9 +3,10 @@
     import { page } from '$app/stores';
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
-    import { createSession, getSessions } from '$lib/services/aacService';
-    import { openTab, setActiveTab, getActiveTabId } from '$lib/stores/aacStore.svelte';
+    import { createSession, getSessions, deleteSession } from '$lib/services/aacService';
+    import { openTab, setActiveTab, getActiveTabId, closeTab } from '$lib/stores/aacStore.svelte';
     import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
+    import { goto } from '$app/navigation';
 
     let sessionId = $state(/** @type {string|null} */ (null));
     let isNewSession = $state(false);
@@ -56,12 +57,58 @@
         }
         loading = false;
     });
+
+    async function startNewConversation() {
+        if (!sessionId) return;
+        const confirmed = confirm($_('home.dashboard.agent.confirmNew', {
+            default: 'End this conversation and start a new one?'
+        }));
+        if (!confirmed) return;
+
+        loading = true;
+        const oldId = sessionId;
+        try {
+            await deleteSession(oldId);
+        } catch (_) { /* ignore */ }
+        closeTab(oldId);
+        sessionId = null;
+
+        try {
+            const session = await createSession({
+                assistantId: null,
+                skill: 'about-lamb',
+                context: { language: localeToLanguage[$locale] || 'English' },
+            });
+            sessionId = session.id;
+            isNewSession = true;
+            openTab(sessionId, session.title || 'LAMB Helper', null, 'about-lamb');
+        } catch (e) {
+            error = e.message || 'Failed to start new session';
+        }
+        loading = false;
+    }
 </script>
 
 <div class="max-w-5xl mx-auto px-4 py-6">
-    <h1 class="text-3xl font-bold text-brand mb-6">
-        🤖 {$_('home.dashboard.agent.title', { default: 'LAMB Agent' })}
-    </h1>
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-brand">
+            🤖 {$_('home.dashboard.agent.title', { default: 'LAMB Agent' })}
+        </h1>
+        {#if sessionId && !loading}
+            <button
+                onclick={startNewConversation}
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md
+                       bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300
+                       transition-colors"
+                title={$_('home.dashboard.agent.newConversation', { default: 'Start a new conversation' })}
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                {$_('home.dashboard.agent.newConversation', { default: 'New conversation' })}
+            </button>
+        {/if}
+    </div>
 
     {#if loading}
         <div class="bg-white shadow rounded-lg border border-gray-200 p-12 text-center">

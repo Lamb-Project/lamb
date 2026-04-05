@@ -850,7 +850,9 @@
         "title": "LAMB Agent",
         "description": "Talk to the AI assistant to get help, create assistants, learn about LAMB, or troubleshoot issues.",
         "cta": "Start conversation",
-        "starting": "Starting..."
+        "starting": "Starting...",
+        "newConversation": "New conversation",
+        "confirmNew": "End this conversation and start a new one?"
       }
     },
     "help": {

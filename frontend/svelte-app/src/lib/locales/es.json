@@ -864,7 +864,9 @@
         "title": "Agente LAMB",
         "description": "Habla con el asistente de IA para obtener ayuda, crear asistentes, conocer LAMB o resolver problemas.",
         "cta": "Iniciar conversacion",
-        "starting": "Iniciando..."
+        "starting": "Iniciando...",
+        "newConversation": "Nueva conversacion",
+        "confirmNew": "¿Cerrar esta conversación y empezar una nueva?"
       }
     },
     "help": {
