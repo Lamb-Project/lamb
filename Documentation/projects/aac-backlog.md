@@ -441,7 +441,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 16 | Liteshell HTTP refactoring — async ASGI transport via Creator Interface | ✅ 2026-04-03 |
 | ~~Done~~ | 14c | `about-lamb` skill — reactive platform helper grounded in docs | ✅ 2026-04-03 |
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
-| **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
+| ~~Done~~ | 17 | Remove student anonymization from LTI dashboard #332 | ✅ 2026-04-05 |
 | **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, **19b** session history | |
 | **Next** | 21 | Unified AAC session management — tabs, titles, history, context refresh | |
 | **Next** | 20 | Missing liteshell commands — publish, KB query, templates, analytics, chat context | |

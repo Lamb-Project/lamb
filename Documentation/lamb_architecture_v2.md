@@ -826,7 +826,7 @@ LAMB supports three types of LTI integration:
 
 #### 8.2.1 Unified LTI (Multi-Assistant Activities) — Recommended
 
-**Purpose:** One LTI tool for the entire LAMB instance. Instructors configure which published assistants are available per activity. Students see multiple assistants in one activity. Instructors get a **dashboard** with usage stats and optional anonymized chat transcript review.
+**Purpose:** One LTI tool for the entire LAMB instance. Instructors configure which published assistants are available per activity. Students see multiple assistants in one activity. Instructors get a **dashboard** with usage stats and optional chat transcript review.
 
 **Global credentials:** Set via `LTI_GLOBAL_CONSUMER_KEY`/`LTI_GLOBAL_SECRET` in `.env`, or overridden by admin via the database.
 
@@ -852,18 +852,15 @@ User clicks LTI link in LMS
               │     • [Manage Assistants] → reconfigure (owner only)
               │
               └── Student:
-                    ├── Chat visibility ON + no consent yet → Consent page
-                    │     → Student accepts → redirect to OWI
-                    └── Otherwise → direct OWI redirect
+                    └── Direct OWI redirect (identity from LMS via LTI)
 ```
 
 **Key Endpoints:**
-- `POST /lamb/v1/lti/launch` — Main LTI entry point (routes to setup, dashboard, consent, or OWI)
+- `POST /lamb/v1/lti/launch` — Main LTI entry point (routes to setup, dashboard, or OWI)
 - `GET /lamb/v1/lti/setup` — Instructor setup page (first-time or reconfigure)
 - `POST /lamb/v1/lti/configure` — Save activity configuration
 - `GET /lamb/v1/lti/dashboard` — Instructor dashboard (HTML) with AJAX data endpoints:
   - `GET /dashboard/stats`, `/dashboard/students`, `/dashboard/chats`, `/dashboard/chats/{id}`
-- `GET /lamb/v1/lti/consent` + `POST` — Student consent page for chat visibility
 - `GET /lamb/v1/lti/enter-chat` — Dashboard → OWI redirect for instructors
 - `GET /lamb/v1/lti/info` — LTI tool configuration info
 
@@ -871,7 +868,7 @@ User clicks LTI link in LMS
 - Activities are bound to one organization (no cross-org mixing)
 - **Activity ownership:** first instructor to configure = owner (can manage assistants for the activity; chat visibility is fixed at creation time)
 - **Instructor dashboard:** any instructor sees stats; only owner can reconfigure
-- **Chat visibility:** opt-in per activity at creation; students must consent on first access; all transcripts anonymized ("Student 1", "Student 2", ...)
+- **Chat visibility:** opt-in per activity at creation; when enabled, instructors see student conversations with real names from the LMS. LMS privacy settings control what identity data is passed to LAMB.
 - Student identity is per `resource_link_id` (each LTI placement = separate identity)
 - Org admins can manage activities: `GET/PUT /creator/admin/lti-activities`
 - Global credentials managed by system admin: `GET/PUT /creator/admin/lti-global-config`
@@ -880,7 +877,7 @@ User clicks LTI link in LMS
 - `lti_global_config` — Global consumer key/secret (singleton)
 - `lti_activities` — Activity records (resource_link_id → org, OWI group, **owner**, **chat_visibility_enabled**)
 - `lti_activity_assistants` — Junction: assistants per activity
-- `lti_activity_users` — Student access tracking (**owi_user_id**, **consent_given_at**, **last_access_at**, **access_count**)
+- `lti_activity_users` — Student access tracking (**owi_user_id**, **last_access_at**, **access_count**, `consent_given_at` kept for backward compat, no longer written)
 - `lti_identity_links` — Maps LMS identities to Creator users
 
 #### 8.2.2 Legacy Student LTI (Single Published Assistant)

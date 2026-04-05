@@ -427,26 +427,6 @@ class LtiActivityManager:
         return f"{proto}://{host}{prefix}"
 
     # =========================================================================
-    # Consent
-    # =========================================================================
-
-    def check_student_consent(self, activity: Dict[str, Any], user_email: str) -> bool:
-        """
-        Check if a student needs to give consent for chat visibility.
-        Returns True if consent is needed (chat_visibility enabled + no consent yet).
-        """
-        if not activity.get('chat_visibility_enabled'):
-            return False
-        user_record = self.db_manager.get_activity_user(activity['id'], user_email)
-        if not user_record:
-            return True  # New user, consent needed
-        return user_record.get('consent_given_at') is None
-
-    def record_consent(self, activity_id: int, user_email: str) -> bool:
-        """Record student consent for chat visibility."""
-        return self.db_manager.record_student_consent(activity_id, user_email)
-
-    # =========================================================================
     # Dashboard Data
     # =========================================================================
 
@@ -495,19 +475,18 @@ class LtiActivityManager:
 
     def get_dashboard_students(self, activity_id: int, page: int = 1,
                                 per_page: int = 20) -> Dict[str, Any]:
-        """Get anonymized student list for the dashboard."""
+        """Get student list for the dashboard with real names from the LMS."""
         data = self.db_manager.get_activity_students(activity_id, page, per_page)
-        offset = (page - 1) * per_page
-        anonymized = []
-        for i, student in enumerate(data['students']):
-            anonymized.append({
-                "anonymous_id": f"Student {offset + i + 1}",
+        students = []
+        for student in data['students']:
+            students.append({
+                "name": student.get('user_display_name') or student.get('user_name') or '(unknown)',
+                "username": student.get('user_name', ''),
                 "first_access": student['created_at'],
                 "last_access": student.get('last_access_at') or student['created_at'],
                 "access_count": student.get('access_count', 0),
-                "has_consented": student.get('consent_given_at') is not None,
             })
-        return {"students": anonymized, "total": data['total']}
+        return {"students": students, "total": data['total']}
 
     def get_dashboard_chats(self, activity: Dict[str, Any],
                              assistant_id: int = None,
@@ -526,7 +505,7 @@ class LtiActivityManager:
             return {"chats": [], "total": 0}
 
         # Build student anonymization map (by created_at order)
-        anon_map = self._build_anonymization_map(activity_id)
+        name_map = self._build_name_map(activity_id)
 
         # Build assistant name map
         asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
@@ -539,7 +518,7 @@ class LtiActivityManager:
 
         owi_db = OwiDatabaseManager()
         chats = self._query_activity_chats(owi_db, target_models, owi_user_ids,
-                                            page, per_page, anon_map, asst_map)
+                                            page, per_page, name_map, asst_map)
         total = self._count_activity_chats(owi_db, target_models, owi_user_ids)
 
         return {"chats": chats, "total": total}
@@ -552,26 +531,26 @@ class LtiActivityManager:
 
         activity_id = activity['id']
         owi_user_ids = self.db_manager.get_all_activity_user_owi_ids(activity_id)
-        anon_map = self._build_anonymization_map(activity_id)
+        name_map = self._build_name_map(activity_id)
         assistants = self.db_manager.get_activity_assistants(activity_id)
         asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
 
         owi_db = OwiDatabaseManager()
-        return self._query_chat_detail(owi_db, chat_id, owi_user_ids, anon_map, asst_map)
+        return self._query_chat_detail(owi_db, chat_id, owi_user_ids, name_map, asst_map)
 
     # =========================================================================
     # OWI Chat Query Helpers (private)
     # =========================================================================
 
-    def _build_anonymization_map(self, activity_id: int) -> Dict[str, str]:
-        """Build a map from owi_user_id to 'Student N' (ordered by created_at)."""
+    def _build_name_map(self, activity_id: int) -> Dict[str, str]:
+        """Build a map from owi_user_id to student's real name (from LMS)."""
         all_data = self.db_manager.get_activity_students(activity_id, page=1, per_page=100000)
-        anon = {}
-        for i, student in enumerate(all_data['students']):
+        name_map = {}
+        for student in all_data['students']:
             owi_uid = student.get('owi_user_id')
             if owi_uid:
-                anon[owi_uid] = f"Student {i + 1}"
-        return anon
+                name_map[owi_uid] = student.get('user_display_name') or student.get('user_name') or '(unknown)'
+        return name_map
 
     @staticmethod
     def _count_chats_for_model(owi_db, model_pattern: str,
@@ -634,7 +613,7 @@ class LtiActivityManager:
     def _query_activity_chats(owi_db, model_patterns: List[str],
                                owi_user_ids: List[str],
                                page: int, per_page: int,
-                               anon_map: Dict[str, str],
+                               name_map: Dict[str, str],
                                asst_map: Dict[str, str]) -> List[Dict[str, Any]]:
         """Query paginated chat list for dashboard."""
         if not owi_user_ids or not model_patterns:
@@ -662,7 +641,7 @@ class LtiActivityManager:
             chats = []
             for row in rows:
                 chat_id, user_id, title, created_at, updated_at, chat_json = row
-                anon_name = anon_map.get(user_id, "Unknown Student")
+                student_name = name_map.get(user_id, "(unknown)")
                 # Count messages
                 msg_count = 0
                 assistant_name = "Unknown"
@@ -680,7 +659,7 @@ class LtiActivityManager:
 
                 chats.append({
                     "chat_id": chat_id,
-                    "anonymous_student": anon_name,
+                    "student_name": student_name,
                     "assistant_name": assistant_name,
                     "title": title or "(untitled)",
                     "message_count": msg_count,
@@ -695,7 +674,7 @@ class LtiActivityManager:
     @staticmethod
     def _query_chat_detail(owi_db, chat_id: str,
                             owi_user_ids: List[str],
-                            anon_map: Dict[str, str],
+                            name_map: Dict[str, str],
                             asst_map: Dict[str, str]) -> Optional[Dict[str, Any]]:
         """Get full chat transcript, anonymized."""
         if not owi_user_ids:
@@ -713,7 +692,7 @@ class LtiActivityManager:
                 return None
 
             chat_id_val, user_id, title, created_at, updated_at, chat_json = row
-            anon_name = anon_map.get(user_id, "Unknown Student")
+            student_name = name_map.get(user_id, "(unknown)")
             chat_data = json_mod.loads(chat_json) if isinstance(chat_json, str) else chat_json
 
             # Extract messages in order
@@ -728,7 +707,7 @@ class LtiActivityManager:
                     content = msg.get('content', '')
                     messages.append({
                         "role": role,
-                        "speaker": anon_name if role == 'user' else _get_assistant_display(msg, asst_map),
+                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
                         "content": content,
                         "timestamp": msg.get('timestamp'),
                     })
@@ -738,7 +717,7 @@ class LtiActivityManager:
                     content = msg.get('content', '')
                     messages.append({
                         "role": role,
-                        "speaker": anon_name if role == 'user' else _get_assistant_display(msg, asst_map),
+                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
                         "content": content,
                         "timestamp": msg.get('timestamp'),
                     })
@@ -753,7 +732,7 @@ class LtiActivityManager:
 
             return {
                 "chat_id": chat_id_val,
-                "anonymous_student": anon_name,
+                "student_name": student_name,
                 "assistant_name": assistant_name,
                 "title": title or "(untitled)",
                 "message_count": len(messages),

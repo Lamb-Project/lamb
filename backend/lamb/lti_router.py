@@ -3,7 +3,7 @@ Unified LTI Router
 
 Single LTI endpoint that supports:
 - Instructor-configured activities with multiple assistants
-- Student launch into configured activities (with optional consent)
+- Student launch into configured activities
 - Instructor dashboard with usage stats, student log, and anonymized chat transcripts
 - Identity linking for instructor identification
 
@@ -34,12 +34,11 @@ templates = Jinja2Templates(directory=[
 
 
 # =============================================================================
-# Token helpers — short-lived signed tokens for setup, dashboard, and consent
+# Token helpers — short-lived signed tokens for setup and dashboard
 # flows. These are stateless so they remain valid across multiple workers.
 # =============================================================================
 SETUP_TOKEN_TTL = 600       # 10 minutes (setup / reconfigure)
 DASHBOARD_TOKEN_TTL = 1800  # 30 minutes (dashboard)
-CONSENT_TOKEN_TTL = 600     # 10 minutes (consent flow)
 LTI_TOKEN_SCOPE = "lti_unified"
 
 
@@ -164,24 +163,8 @@ async def lti_launch(request: Request):
                 )
 
             # ── CONFIGURED: Student flow ──
-            # Check if consent is needed
-            student_email = manager.generate_student_email(username, resource_link_id)
-            if manager.check_student_consent(activity, student_email):
-                logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
-                consent_token = _create_token({
-                    "type": "consent",
-                    "resource_link_id": resource_link_id,
-                    "username": username,
-                    "display_name": display_name,
-                    "lms_user_id": lms_user_id,
-                    "student_email": student_email,
-                }, ttl=CONSENT_TOKEN_TTL)
-                return RedirectResponse(
-                    url=f"{public_base}/lamb/v1/lti/consent?token={consent_token}",
-                    status_code=303
-                )
-
-            # No consent needed — launch into OWI
+            # Student identity comes from the LMS (name, email if provided).
+            # LMS instructors control what identity data is passed via LTI privacy settings.
             owi_token = manager.handle_student_launch(
                 activity=activity,
                 username=username,
@@ -551,82 +534,6 @@ async def lti_info():
             "Activities are bound to one organization"
         ]
     })
-
-
-# =============================================================================
-# Student Consent
-# =============================================================================
-
-@router.get("/consent")
-async def lti_consent_page(request: Request, token: str = ""):
-    """Show the student consent page for chat visibility."""
-    data = _validate_token(token)
-    if not data or data.get("type") != "consent":
-        return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link in your LMS again.</p>", status_code=403)
-
-    resource_link_id = data["resource_link_id"]
-    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-    if not activity:
-        return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
-
-    return templates.TemplateResponse("lti_consent.html", {
-        "request": request,
-        "token": token,
-        "activity_name": activity.get("activity_name", "LTI Activity"),
-        "context_title": activity.get("context_title", ""),
-    })
-
-
-@router.post("/consent")
-async def lti_consent_submit(request: Request):
-    """Process student consent acceptance."""
-    try:
-        form_data = await request.form()
-        token = form_data.get("token", "")
-        data = _validate_token(token)
-        if not data or data.get("type") != "consent":
-            return HTMLResponse("<h2>Session expired.</h2><p>Please click the LTI link again.</p>", status_code=403)
-
-        resource_link_id = data["resource_link_id"]
-        student_email = data["student_email"]
-        username = data["username"]
-        display_name = data["display_name"]
-        lms_user_id = data.get("lms_user_id")
-
-        activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-        if not activity:
-            return HTMLResponse("<h2>Error</h2><p>Activity not found.</p>", status_code=404)
-
-        # Record consent (need to ensure user record exists first)
-        db_manager.create_lti_activity_user(
-            activity_id=activity['id'],
-            user_email=student_email,
-            user_name=username,
-            user_display_name=display_name,
-            lms_user_id=lms_user_id
-        )
-        db_manager.record_student_consent(activity['id'], student_email)
-        logger.info(f"Student {student_email} gave consent for activity {resource_link_id}")
-
-        # Now launch into OWI
-        owi_token = manager.handle_student_launch(
-            activity=activity,
-            username=username,
-            display_name=display_name,
-            lms_user_id=lms_user_id
-        )
-
-        _consume_token(token)
-
-        if not owi_token:
-            return HTMLResponse("<h2>Error</h2><p>Failed to launch. Please try again.</p>", status_code=500)
-
-        redirect_url = manager.get_owi_redirect_url(owi_token)
-        return RedirectResponse(url=redirect_url, status_code=303)
-
-    except Exception as e:
-        logger.error(f"Error processing consent: {str(e)}", exc_info=True)
-        return HTMLResponse(f"<h2>Error</h2><p>{str(e)}</p>", status_code=500)
 
 
 # =============================================================================
