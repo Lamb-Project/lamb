@@ -443,6 +443,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 15 | LAMB Agent top-level page + dashboard card + nav link | ✅ 2026-04-03 |
 | **Next** | 17 | Remove student anonymization from LTI dashboard — defer to LMS #332 | |
 | **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, **19b** session history | |
+| **Next** | 21 | Unified AAC session management — tabs, titles, history, context refresh | |
 | **Next** | 20 | Missing liteshell commands — publish, KB query, templates, analytics, chat context | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
@@ -1754,3 +1755,113 @@ Authorization: `auto` for generate (preview only), `ask` for share.
 3. **20c** KB query — debugging RAG
 4. **20d** templates — saving good work
 5. **20e-g** analytics, export, rubric — nice to have
+
+---
+
+## 21. Unified AAC Session Management
+
+**Priority:** High — current AAC session UX is broken
+**Depends on:** Nothing (frontend + small backend changes)
+
+### Bugs discovered (2026-04-05)
+
+1. **`/agent` page doesn't reload previous messages.** When resuming a session, the terminal shows empty even though the session has history in the DB. The terminal resumed mode isn't fetching/displaying the stored conversation.
+
+2. **No way to close a session from the UI.** Once opened, sessions stay forever. User has to manually delete from CLI or leave them as clutter.
+
+3. **No visibility into multiple active sessions.** `/agent` shows one session at a time with no way to see or switch to other active sessions.
+
+4. **Fragmented tab system.** The assistants page has its own AAC tab system (Agent Explain/Improve open inline). The `/agent` page is separate. Sessions created in one view don't appear in the other.
+
+5. **Session titles are opaque.** Current titles: "Session", "LAMB Helper", "Improve Configuration: 1_history_of_vikings". Some are hashes or defaults. **Users don't parse hashes.**
+
+6. **No "user returned" context refresh.** When a user switches tabs or comes back after time, the agent doesn't know the user might have changed things elsewhere.
+
+7. **Agent can't rename sessions.** Sessions have fixed titles from creation.
+
+### Solution: Unified Session Tab System
+
+#### 21a. Fix conversation reload on `/agent` page
+
+When resuming a session (via URL param or store), the terminal MUST load and display the stored conversation history BEFORE showing the input field. Currently `AacTerminal.svelte` has a `resumed={true}` prop but doesn't properly display prior messages.
+
+#### 21b. Global session tab bar
+
+A persistent tab bar showing ALL active AAC sessions across the entire app. Lives in the layout (above the main content area, below the nav bar). Tabs show:
+- Skill icon + readable title ("Improve: history_of_vikings")
+- Close button (✕)
+- Active indicator
+
+Clicking a tab switches to that session's terminal. The terminal view is rendered in a consistent location.
+
+Unify `aacStore.svelte.js` to be the single source of truth for open tabs — both `/agent` and assistant detail pages read/write to it.
+
+#### 21c. Session titles that humans parse
+
+Auto-generated titles based on skill + target:
+
+| Skill | Title format |
+|-------|-------------|
+| about-lamb | "LAMB Helper" |
+| create-assistant | "Create: {proposed_name}" (agent updates when name is chosen) |
+| improve-assistant | "Improve: {assistant_name}" (agent fills in on startup) |
+| explain-assistant | "Explain: {assistant_name}" |
+| test-and-evaluate | "Test: {assistant_name}" |
+
+The agent should be able to update the title mid-session via a new liteshell command (see 21d).
+
+#### 21d. New liteshell command: `session.rename`
+
+Allow the agent to rename the current session when it learns more context.
+
+```
+lamb session rename "New title here"
+```
+
+Authorization: `auto` (cosmetic change).
+
+Endpoint: `PUT /creator/aac/sessions/{id}/title` with `{"title": "..."}`.
+
+Agent system prompt update: "When you learn the target assistant's real name or the user's intent, rename the session so it's findable later."
+
+#### 21e. User-returned context refresh
+
+When the user returns to an active session tab after being away, on their NEXT message, inject a system note:
+
+```
+[System: User returned. Data may have changed since the last message — 
+ re-check anything you showed earlier before claiming it's still accurate.]
+```
+
+Frontend tracks timestamp of last message and the current tab's last activity. If user switches tabs or closes the window and comes back, the flag is set. Next `POST /message` includes `user_returned: true` in the body. Backend injects the system note before the user's actual message.
+
+If the user doesn't send a message, no note is injected. The note is invisible to the user — it only affects the agent.
+
+#### 21f. Unify assistant-detail AAC tabs with global tab bar
+
+Currently Agent Explain/Improve on the assistants page open as inline tabs specific to that assistant. Unify these into the global tab bar — the session appears in the tab bar, clicking the Learning Assistants nav or switching tabs works the same way.
+
+Implementation: when Agent Explain is clicked, it calls `openTab()` with `assistantId` set. The global tab bar shows all open tabs regardless of where they were opened from.
+
+### Files affected
+
+**Frontend:**
+- `src/lib/stores/aacStore.svelte.js` — already has tab state, extend with last-activity tracking
+- `src/lib/components/aac/AacTabBar.svelte` — create (or enhance existing) global tab bar
+- `src/routes/+layout.svelte` — mount the tab bar
+- `src/lib/components/aac/AacTerminal.svelte` — fix conversation reload, add user-returned hook
+- `src/routes/agent/+page.svelte` — use global tab bar
+- `src/routes/assistants/+page.svelte` — use global tab bar for AAC tabs
+
+**Backend:**
+- `backend/lamb/aac/router.py` — add `PUT /sessions/{id}/title` endpoint, accept `user_returned` in message body
+- `backend/lamb/aac/liteshell/commands.py` — add `session.rename` command
+- `backend/lamb/aac/authorization.py` — `session.rename: auto`
+- `backend/lamb/aac/agent/loop.py` — inject "user returned" note when flag set
+
+### Implementation order
+
+1. **21a** Fix conversation reload — critical bug fix (small)
+2. **21c + 21d** Better titles + rename command — agent can already help with titles
+3. **21b + 21f** Global tab bar unification — UI redesign (bigger)
+4. **21e** User-returned context refresh — needs activity tracking
