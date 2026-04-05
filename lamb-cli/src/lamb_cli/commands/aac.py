@@ -22,9 +22,12 @@ err_console = Console(stderr=True)
 
 SESSION_LIST_COLUMNS = [
     ("id", "Session ID"),
-    ("assistant_id", "Assistant"),
-    ("status", "Status"),
-    ("created_at", "Created"),
+    ("title", "Title"),
+    ("skill_id", "Skill"),
+    ("assistant_id", "Asst"),
+    ("turn_count", "Turns"),
+    ("tool_calls", "Tools"),
+    ("tool_errors", "Errs"),
     ("updated_at", "Updated"),
 ]
 
@@ -136,13 +139,33 @@ def start_session(
 
 @app.command("sessions")
 def list_sessions(
+    skill: Optional[str] = typer.Option(None, "--skill", "-s", help="Filter by skill (e.g., about-lamb)."),
+    assistant_id: Optional[int] = typer.Option(None, "--assistant", "-a", help="Filter by assistant ID."),
+    with_errors: bool = typer.Option(False, "--errors", help="Only sessions with tool errors."),
+    today: bool = typer.Option(False, "--today", help="Only sessions from today."),
+    limit: int = typer.Option(50, "--limit", "-l", help="Max sessions to show."),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
-    """List your AAC sessions."""
+    """List your AAC sessions with filters. Includes sessions from UI and CLI."""
     fmt = output or get_output_format()
     with get_client() as client:
         data = client.get("/creator/aac/sessions")
     sessions = data if isinstance(data, list) else []
+
+    # Apply filters
+    if skill:
+        sessions = [s for s in sessions if s.get("skill_id") == skill]
+    if assistant_id is not None:
+        sessions = [s for s in sessions if s.get("assistant_id") == assistant_id]
+    if with_errors:
+        sessions = [s for s in sessions if (s.get("tool_errors") or 0) > 0]
+    if today:
+        from datetime import datetime
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        sessions = [s for s in sessions if (s.get("created_at") or "").startswith(today_str)]
+
+    sessions = sessions[:limit]
+
     if fmt == "json":
         print_json(sessions)
     else:

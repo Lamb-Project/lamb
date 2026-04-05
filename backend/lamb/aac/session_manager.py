@@ -85,18 +85,46 @@ class AACSessionManager:
             conn.close()
 
     def list_sessions(self, user_email: str) -> list[dict]:
-        """List all sessions for a user."""
+        """List all sessions for a user with tool stats."""
         conn = self.db.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                f"""SELECT id, assistant_id, status, created_at, updated_at
+                f"""SELECT id, assistant_id, status, title, created_at, updated_at, conversation
                    FROM {self._table} WHERE user_email = ?
                    ORDER BY updated_at DESC""",
                 (user_email,),
             )
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            sessions = []
+            for row in cursor.fetchall():
+                s = dict(zip(columns, row))
+                # Extract stats from conversation envelope
+                tool_calls = 0
+                tool_errors = 0
+                turn_count = 0
+                skill_id = None
+                try:
+                    raw = json.loads(s.get("conversation") or "[]")
+                    if isinstance(raw, dict):
+                        messages = raw.get("messages", [])
+                        audit = raw.get("tool_audit", [])
+                        skill_info = raw.get("skill_info") or {}
+                        skill_id = skill_info.get("skill_id")
+                        tool_calls = len(audit)
+                        tool_errors = sum(1 for e in audit if not e.get("success"))
+                    else:
+                        messages = raw
+                    turn_count = sum(1 for m in messages if m.get("role") == "user")
+                except Exception:
+                    pass
+                s.pop("conversation", None)  # don't send full conversation in list
+                s["tool_calls"] = tool_calls
+                s["tool_errors"] = tool_errors
+                s["turn_count"] = turn_count
+                s["skill_id"] = skill_id
+                sessions.append(s)
+            return sessions
         finally:
             conn.close()
 
