@@ -16,9 +16,11 @@
     const localeToLanguage = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' };
 
     onMount(async () => {
-        // Check URL for a session ID
+        const forceNew = $page.url.searchParams.get('new') === 'true';
+
+        // Check URL for a specific session ID (highest priority)
         const urlSession = $page.url.searchParams.get('session');
-        if (urlSession) {
+        if (urlSession && !forceNew) {
             sessionId = urlSession;
             isNewSession = false;  // resuming
             setActiveTab(sessionId);
@@ -26,21 +28,36 @@
             return;
         }
 
-        // Check for an existing active about-lamb session from today
-        try {
-            const sessions = await getSessions();
-            const today = new Date().toISOString().slice(0, 10);
-            const active = sessions.find(
-                (s) => s.status === 'active' && s.title === 'LAMB Helper' && s.created_at?.startsWith(today)
-            );
-            if (active) {
-                sessionId = active.id;
-                isNewSession = false;  // resuming existing session
-                openTab(sessionId, active.title || 'LAMB Helper', null, 'about-lamb');
-                loading = false;
-                return;
-            }
-        } catch (_) { /* no existing session */ }
+        // If forceNew, archive today's existing session first
+        if (forceNew) {
+            try {
+                const sessions = await getSessions();
+                const today = new Date().toISOString().slice(0, 10);
+                const existing = sessions.find(
+                    (s) => s.status === 'active' && s.title === 'LAMB Helper' && s.created_at?.startsWith(today)
+                );
+                if (existing) {
+                    await deleteSession(existing.id);
+                    closeTab(existing.id);
+                }
+            } catch (_) { /* continue anyway */ }
+        } else {
+            // Default behavior: resume today's active about-lamb session if exists
+            try {
+                const sessions = await getSessions();
+                const today = new Date().toISOString().slice(0, 10);
+                const active = sessions.find(
+                    (s) => s.status === 'active' && s.title === 'LAMB Helper' && s.created_at?.startsWith(today)
+                );
+                if (active) {
+                    sessionId = active.id;
+                    isNewSession = false;
+                    openTab(sessionId, active.title || 'LAMB Helper', null, 'about-lamb');
+                    loading = false;
+                    return;
+                }
+            } catch (_) { /* no existing session */ }
+        }
 
         // Create a new session
         try {
@@ -50,7 +67,7 @@
                 context: { language: localeToLanguage[$locale] || 'English' },
             });
             sessionId = session.id;
-            isNewSession = true;  // brand new session, needs skill startup
+            isNewSession = true;
             openTab(sessionId, session.title || 'LAMB Helper', null, 'about-lamb');
         } catch (e) {
             error = e.message || 'Failed to start agent session';

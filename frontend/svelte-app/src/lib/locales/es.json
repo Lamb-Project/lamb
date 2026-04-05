@@ -866,7 +866,9 @@
         "cta": "Iniciar conversacion",
         "starting": "Iniciando...",
         "newConversation": "Nueva conversacion",
-        "confirmNew": "¿Cerrar esta conversación y empezar una nueva?"
+        "confirmNew": "¿Cerrar esta conversación y empezar una nueva?",
+        "startNew": "Iniciar nueva conversación",
+        "continue": "Continuar conversación de hoy"
       }
     },
     "help": {

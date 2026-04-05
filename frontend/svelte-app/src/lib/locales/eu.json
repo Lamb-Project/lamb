@@ -862,7 +862,9 @@
         "cta": "Elkarrizketa hasi",
         "starting": "Abiatzen...",
         "newConversation": "Elkarrizketa berria",
-        "confirmNew": "Elkarrizketa hau amaitu eta berri bat hasi?"
+        "confirmNew": "Elkarrizketa hau amaitu eta berri bat hasi?",
+        "startNew": "Elkarrizketa berria hasi",
+        "continue": "Gaurko elkarrizketarekin jarraitu"
       }
     },
     "help": {

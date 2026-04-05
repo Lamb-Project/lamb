@@ -855,7 +855,9 @@
         "cta": "Iniciar conversa",
         "starting": "Iniciant...",
         "newConversation": "Nova conversa",
-        "confirmNew": "Tancar aquesta conversa i començar-ne una nova?"
+        "confirmNew": "Tancar aquesta conversa i començar-ne una nova?",
+        "startNew": "Iniciar nova conversa",
+        "continue": "Continuar conversa d'avui"
       }
     },
     "help": {

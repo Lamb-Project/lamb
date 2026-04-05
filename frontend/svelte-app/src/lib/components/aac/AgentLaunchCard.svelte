@@ -1,10 +1,29 @@
 <script>
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
+	import { getSessions } from '$lib/services/aacService';
 
 	let launching = $state(false);
+	let hasActiveSession = $state(false);
 
-	async function launch() {
+	onMount(async () => {
+		try {
+			const sessions = await getSessions();
+			const today = new Date().toISOString().slice(0, 10);
+			hasActiveSession = sessions.some(
+				(s) => s.status === 'active' && s.title === 'LAMB Helper' && s.created_at?.startsWith(today)
+			);
+		} catch (_) { /* ignore */ }
+	});
+
+	async function launchNew() {
+		launching = true;
+		await goto('/agent?new=true');
+		launching = false;
+	}
+
+	async function launchContinue() {
 		launching = true;
 		await goto('/agent');
 		launching = false;
@@ -23,22 +42,36 @@
 					default: 'Talk to the AI assistant to get help, create assistants, learn about LAMB, or troubleshoot issues.'
 				})}
 			</p>
-			<button
-				onclick={launch}
-				disabled={launching}
-				class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-700 font-semibold rounded-lg
-					   hover:bg-blue-50 disabled:opacity-60 disabled:cursor-wait transition-colors shadow-sm"
-			>
-				{#if launching}
-					<span class="animate-spin">⏳</span>
-					<span>{$_('home.dashboard.agent.starting', { default: 'Starting...' })}</span>
-				{:else}
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-					</svg>
-					<span>{$_('home.dashboard.agent.cta', { default: 'Start conversation' })}</span>
+			<div class="flex flex-wrap gap-2">
+				<button
+					onclick={launchNew}
+					disabled={launching}
+					class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-700 font-semibold rounded-lg
+						   hover:bg-blue-50 disabled:opacity-60 disabled:cursor-wait transition-colors shadow-sm"
+				>
+					{#if launching}
+						<span class="animate-spin">⏳</span>
+						<span>{$_('home.dashboard.agent.starting', { default: 'Starting...' })}</span>
+					{:else}
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+						</svg>
+						<span>{$_('home.dashboard.agent.startNew', { default: 'Start new conversation' })}</span>
+					{/if}
+				</button>
+				{#if hasActiveSession && !launching}
+					<button
+						onclick={launchContinue}
+						class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-500/30 text-white font-semibold rounded-lg
+							   hover:bg-indigo-500/50 border border-white/30 transition-colors"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+						</svg>
+						<span>{$_('home.dashboard.agent.continue', { default: 'Continue today\'s conversation' })}</span>
+					</button>
 				{/if}
-			</button>
+			</div>
 		</div>
 	</div>
 </div>

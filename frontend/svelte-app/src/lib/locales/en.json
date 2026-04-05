@@ -852,7 +852,9 @@
         "cta": "Start conversation",
         "starting": "Starting...",
         "newConversation": "New conversation",
-        "confirmNew": "End this conversation and start a new one?"
+        "confirmNew": "End this conversation and start a new one?",
+        "startNew": "Start new conversation",
+        "continue": "Continue today's conversation"
       }
     },
     "help": {
