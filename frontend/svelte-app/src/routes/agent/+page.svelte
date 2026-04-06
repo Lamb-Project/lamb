@@ -111,20 +111,33 @@
         <h1 class="text-3xl font-bold text-brand">
             🤖 {$_('home.dashboard.agent.title', { default: 'LAMB Agent' })}
         </h1>
-        {#if sessionId && !loading}
-            <button
-                onclick={startNewConversation}
+        <div class="flex gap-2">
+            <a
+                href="/agent/history"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md
                        bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300
                        transition-colors"
-                title={$_('home.dashboard.agent.newConversation', { default: 'Start a new conversation' })}
             >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                {$_('home.dashboard.agent.newConversation', { default: 'New conversation' })}
-            </button>
-        {/if}
+                {$_('agent.history.title', { default: 'History' })}
+            </a>
+            {#if sessionId && !loading}
+                <button
+                    onclick={startNewConversation}
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md
+                           bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300
+                           transition-colors"
+                    title={$_('home.dashboard.agent.newConversation', { default: 'Start a new conversation' })}
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    {$_('home.dashboard.agent.newConversation', { default: 'New conversation' })}
+                </button>
+            {/if}
+        </div>
     </div>
 
     {#if loading}
