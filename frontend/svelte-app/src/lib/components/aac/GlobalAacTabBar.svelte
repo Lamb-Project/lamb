@@ -70,7 +70,7 @@
                     onclick={() => switchToTab(tab.id)}
                     class="group flex items-center gap-1.5 px-3 py-1.5 rounded-t-md text-sm whitespace-nowrap
                            transition-colors border border-b-0
-                           {activeId === tab.id
+                           {activeId === tab.id && !$page.url.pathname.includes('/history')
                              ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                 >
