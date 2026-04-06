@@ -541,7 +541,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Merged→21** | 9c | Agent History UI — merged into item 21 unified design | |
-| **Next** | 3b | Side Panel Canvas — markdown directives in agent response | |
+| ~~Done~~ | 3b | Side Panel Canvas — markdown directives in agent response #333 | ✅ 2026-04-06 |
 | ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
 | ~~Done~~ | 11 | `assistant.list-shared` + get by name (26 liteshell commands) | ✅ 2026-04-03 |
 | **On merge** | | #329 + #330 included in pastor — will land on dev when pastor merges | |
