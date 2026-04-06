@@ -114,6 +114,21 @@ RULES for numbering:
 
 For test results: compact markdown table, offer details on request.
 
+## Canvas (side panel)
+
+When presenting tables, comparisons, rubrics, or structured data that benefits from a wider view,
+wrap it in canvas markers in your response:
+
+<<<CANVAS title="Your Title">>>
+(markdown content — tables, lists, code blocks)
+<<<END_CANVAS>>>
+
+The content appears in a side panel next to the terminal. The user sees both simultaneously.
+Keep your terminal text brief — just reference what's in the canvas.
+Use <<<CANVAS_CLEAR>>> to dismiss the panel.
+Only use canvas for content that genuinely needs space (tables with 3+ columns, comparisons).
+Do NOT use canvas for simple bullet points or short text.
+
 Write commands: briefly state what changes. One sentence max.
 """
 

@@ -33,6 +33,43 @@
 	/** @type {boolean} */
 	let showStats = $state(false);
 
+	/** @type {{ title: string, content: string } | null} */
+	let canvasData = $state(null);
+
+	/**
+	 * Split canvas directives from agent response.
+	 * @param {string} text
+	 * @returns {{ text: string, canvas: { title: string, content: string } | null }}
+	 */
+	function splitCanvasContent(text) {
+		if (!text) return { text: '', canvas: null };
+		const match = text.match(/<<<CANVAS(?:\s+title="([^"]*)")?>>>([\s\S]*?)<<<END_CANVAS>>>/);
+		if (!match) {
+			// Check for clear directive
+			if (text.includes('<<<CANVAS_CLEAR>>>')) {
+				return { text: text.replace(/<<<CANVAS_CLEAR>>>/g, '').trim(), canvas: null };
+			}
+			return { text, canvas: null };
+		}
+		const title = match[1] || '';
+		const canvasContent = match[2].trim();
+		const cleanText = text.replace(/<<<CANVAS[\s\S]*?<<<END_CANVAS>>>/, '').trim();
+		return { text: cleanText, canvas: { title, content: canvasContent } };
+	}
+
+	/**
+	 * Render an assistant message, extracting any canvas content.
+	 * @param {string} content
+	 * @returns {string}
+	 */
+	function renderAssistantMessage(content) {
+		const { text, canvas } = splitCanvasContent(content);
+		if (canvas) {
+			canvasData = canvas;
+		}
+		return renderMarkdown(text);
+	}
+
 	onMount(async () => {
 		// Check system preference
 		if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
@@ -204,8 +241,11 @@
 	}
 </script>
 
+<div class="flex h-full gap-0 {canvasData ? '' : ''}">
+<!-- Terminal panel -->
 <div
-	class="flex flex-col h-full font-mono text-sm rounded-lg border overflow-hidden transition-colors duration-200"
+	class="flex flex-col h-full font-mono text-sm rounded-lg border overflow-hidden transition-all duration-200
+	       {canvasData ? 'w-[60%]' : 'w-full'}"
 	class:bg-gray-900={darkMode}
 	class:text-green-400={darkMode}
 	class:border-gray-700={darkMode}
@@ -279,7 +319,7 @@
 				</div>
 			{:else if msg.role === 'assistant'}
 				<div class="aac-md pl-2 leading-relaxed font-sans text-sm" class:text-green-300={darkMode} class:text-gray-700={!darkMode}>
-					{@html renderMarkdown(msg.content)}
+					{@html renderAssistantMessage(msg.content)}
 				</div>
 			{:else if msg.role === 'system'}
 				<div class="pl-2 opacity-50 italic text-xs">
@@ -328,6 +368,25 @@
 			Send
 		</button>
 	</div>
+</div>
+<!-- Canvas panel (side panel for structured content) -->
+{#if canvasData}
+	<div class="w-[40%] h-full flex flex-col border rounded-lg overflow-hidden ml-2
+	            {darkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-white border-gray-300 text-gray-800'}">
+		<div class="flex items-center justify-between px-4 py-2 border-b
+		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}">
+			<h3 class="text-sm font-semibold truncate">{canvasData.title || 'Canvas'}</h3>
+			<button
+				onclick={() => canvasData = null}
+				class="text-xs opacity-50 hover:opacity-100 transition-opacity"
+				title="Close canvas"
+			>✕</button>
+		</div>
+		<div class="flex-1 overflow-y-auto px-4 py-3 aac-md font-sans text-sm leading-relaxed">
+			{@html renderMarkdown(canvasData.content)}
+		</div>
+	</div>
+{/if}
 </div>
 
 <style>
