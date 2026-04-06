@@ -255,35 +255,128 @@ Svelte 5, JavaScript + JSDoc (NOT TypeScript), TailwindCSS 4. Same stack as exis
 6. Session resumption context injection
 7. Side panel canvas (see §3b below)
 
-### 3b. Side Panel Canvas (Future Enhancement)
+### 3b. Side Panel Canvas
 
-**Priority:** Medium — enhances the experience but not essential for MVP
-**Depends on:** Item 3 base implementation
+**Priority:** High — makes structured content (tables, rubrics, comparisons) usable
+**Depends on:** Item 3 base implementation (done)
+**Related:** Issue #333
 
-The terminal is text-only. For richer visualizations (rubric tables, test result comparisons, pipeline diagrams), the AAC UI gets a **side panel** with a markdown/HTML renderer — a "canvas" the agent can write to.
+### Problem
 
-**How it works:**
+The AAC terminal renders everything inline as scrolling text. Tables, rubrics, test comparisons, and structured data get squeezed into the terminal's narrow column and scroll away. The user can't see a rubric table AND the agent's commentary at the same time.
 
-- The agent response can include a special directive: `[canvas: content]` or a dedicated tool `show_in_canvas("markdown content")`
-- The frontend detects this and renders the content in a resizable side panel next to the terminal
-- The canvas persists until the agent updates it or the user closes it
-- Use cases: rubric criteria tables, test result comparison grids, pipeline visualization, assistant config summary
+### Design Decision: Option C — Markdown Directives
+
+**Evaluated options:**
+
+| Option | Approach | Verdict |
+|--------|----------|---------|
+| A. Liteshell command | `lamb canvas show --content "..."` | Rejected: long markdown as command arg is awkward |
+| B. Second tool definition | `show_canvas(title, content)` tool | Rejected: changes tool interface, multi-tool model support varies |
+| **C. Markdown directives** | `<<<CANVAS>>>...<<<END_CANVAS>>>` in response | **Chosen**: most natural for any LLM |
+| D. Hybrid | Commands for control, directives for content | Over-engineered |
+
+**Why Option C wins:**
+- LLMs are great at writing markdown — wrapping a table in markers is trivial
+- No tool interface changes — agent just writes its response
+- Content can be arbitrarily long — no shlex/argument limits
+- Any LLM works — no multi-tool support needed
+- Streaming-friendly — frontend detects opening marker and starts rendering
+
+### How it works
+
+The agent includes canvas directives in its normal response:
+
+```
+Here's the rubric analysis.
+
+<<<CANVAS title="Rubric: PESTLE Analysis">>>
+| Criteria | Weight | Excel. (1.5) | Notable (1.25) | Aprovat (0.75) | Suspès (0.25) |
+|----------|--------|-------------|----------------|----------------|---------------|
+| Political | 13% | Identifies clearly | Identifies generally | Generic | Doesn't identify |
+| Economic | 13% | Analyzes costs | Analyzes basic costs | Mentions costs | Doesn't analyze |
+<<<END_CANVAS>>>
+
+The political and economic criteria look solid. Want to adjust the weights?
+
+**Next?**
+1. Adjust weights
+2. Add a criterion
+3. Other — tell me
+```
+
+The frontend splits the response:
+- Text before/after canvas markers → terminal
+- Content between markers → side panel (rendered as markdown/HTML)
+
+### Frontend implementation
+
+```
+┌──────────────────────────┬──────────────────────────┐
+│  AAC Terminal            │  Canvas Panel            │
+│                          │                          │
+│  Agent text response     │  # Rubric: PESTLE        │
+│  goes here...            │  | Criteria | Weight |   │
+│                          │  |----------|--------|   │
+│  **Next?**               │  | Polit.   | 13%    |   │
+│  1. Adjust weights       │  | Econ.    | 13%    |   │
+│  2. Add criterion        │                          │
+│                          │              [✕ Close]   │
+│  $ ▌                     │                          │
+└──────────────────────────┴──────────────────────────┘
+```
 
 **Components:**
 
 ```
 src/lib/components/aac/
-├── AacCanvas.svelte          # Side panel markdown/HTML renderer
-└── AacTerminalWithCanvas.svelte  # Layout wrapper: terminal + canvas side-by-side
+├── AacCanvas.svelte              # Side panel markdown renderer
+└── AacTerminal.svelte            # Modified: detects canvas markers, splits content
 ```
 
-**Liteshell tool (backend):**
+**Terminal layout change:** When canvas content is present, the terminal shrinks to ~60% width and the canvas takes ~40%. When canvas is closed, terminal goes back to full width.
+
+**Canvas behavior:**
+- Persists until the agent sends new canvas content (replaces) or `<<<CANVAS_CLEAR>>>` marker
+- User can close it manually (✕ button) — terminal goes full width
+- Canvas title shown as a header
+- Content rendered as markdown → HTML (using `marked`)
+
+### System prompt addition
+
 ```
-lamb canvas show "markdown content"    # display content in side panel
-lamb canvas clear                      # clear the side panel
+When presenting tables, comparisons, rubrics, or structured data that benefits
+from a wider view, wrap it in canvas markers:
+
+<<<CANVAS title="Your Title">>>
+(markdown content — tables, lists, code blocks, etc.)
+<<<END_CANVAS>>>
+
+The content appears in a side panel next to the terminal. Keep your terminal
+response brief — just reference what's in the canvas. The user sees both
+simultaneously. Use <<<CANVAS_CLEAR>>> to dismiss the panel.
 ```
 
-This is a future enhancement — the terminal works standalone for now.
+### Parsing logic (frontend)
+
+```javascript
+function splitCanvasContent(text) {
+    const match = text.match(/<<<CANVAS(?:\s+title="([^"]*)")?>>>([\s\S]*?)<<<END_CANVAS>>>/);
+    if (!match) return { text, canvas: null };
+    const title = match[1] || '';
+    const canvasContent = match[2].trim();
+    const cleanText = text.replace(/<<<CANVAS[\s\S]*?<<<END_CANVAS>>>/, '').trim();
+    return { text: cleanText, canvas: { title, content: canvasContent } };
+}
+```
+
+### Implementation order
+
+1. Add `splitCanvasContent()` parser to `AacTerminal.svelte`
+2. Create `AacCanvas.svelte` (markdown renderer with title + close button)
+3. Modify terminal layout: flex container that shows canvas when content exists
+4. Add canvas instructions to system prompt
+5. Test with rubric tables, test result comparisons
 
 ---
 
@@ -448,7 +541,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |
 | **Merged→21** | 9c | Agent History UI — merged into item 21 unified design | |
-| **Then** | 3b | Side Panel Canvas | |
+| **Next** | 3b | Side Panel Canvas — markdown directives in agent response | |
 | ~~Done~~ | 10 | `lamb_aac_cli_manual.md` v0.3 — CLI + web UI + architecture manual | ✅ 2026-04-03 |
 | ~~Done~~ | 11 | `assistant.list-shared` + get by name (26 liteshell commands) | ✅ 2026-04-03 |
 | **On merge** | | #329 + #330 included in pastor — will land on dev when pastor merges | |
