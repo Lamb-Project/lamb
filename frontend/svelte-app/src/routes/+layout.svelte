@@ -6,6 +6,7 @@
 	import { base } from '$app/paths';
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 
 	let { children } = $props();
@@ -64,7 +65,8 @@
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 	<Nav />
-	
+	<GlobalAacTabBar />
+
 	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
 		{#if sessionError}
 			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">

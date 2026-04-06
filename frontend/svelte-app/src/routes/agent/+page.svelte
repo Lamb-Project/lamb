@@ -13,6 +13,15 @@
     let loading = $state(true);
     let error = $state('');
 
+    // React to global tab bar switches
+    let storeActiveId = $derived(getActiveTabId());
+    $effect(() => {
+        if (storeActiveId && storeActiveId !== sessionId && !loading) {
+            sessionId = storeActiveId;
+            isNewSession = false;
+        }
+    });
+
     const localeToLanguage = { en: 'English', es: 'Spanish', ca: 'Catalan', eu: 'Basque' };
 
     onMount(async () => {
