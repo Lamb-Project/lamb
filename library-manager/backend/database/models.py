@@ -1,8 +1,4 @@
-"""SQLAlchemy ORM models for the Library Manager database.
-
-Tables mirror the plan in Documentation/projects/lamb-knowledge-architecture-redesign.md
-section 2.4.2 (Library Manager Storage).
-"""
+"""SQLAlchemy ORM models for the Library Manager database."""
 
 from datetime import UTC, datetime
 

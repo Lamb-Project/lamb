@@ -125,9 +125,9 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 - Internal service: no CORS, no published ports, non-root Docker container, single-instance file lock.
 - 52 tests, 80% coverage. Full README at `library-manager/README.md`.
 
-**Design docs:** `Documentation/projects/lamb-knowledge-architecture-redesign.md` (Phase 1), `Documentation/projects/lamb-kb-server-redesign.md` (Phase 2 — not yet implemented).
+**Design docs:** `Documentation/projects/lamb-library-integration.md` (Phase 1), `Documentation/projects/lamb-kb-server-redesign.md` (Phase 2 — not yet implemented).
 
-**LAMB integration (not yet implemented):** LAMB needs Creator Interface endpoints (`/creator/libraries/...`) that validate ACL and proxy to the Library Manager. Design is documented in `lamb-knowledge-architecture-redesign.md` section "Phase 1B". The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py` and call these future LAMB endpoints.
+**LAMB integration (not yet implemented):** LAMB needs Creator Interface endpoints (`/creator/libraries/...`) that validate ACL and proxy to the Library Manager. Design is documented in `lamb-library-integration.md` section "Phase 1B". The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py` and call these future LAMB endpoints.
 
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
