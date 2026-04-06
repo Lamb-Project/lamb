@@ -537,6 +537,7 @@ Every test run + evaluation produces structured data for the research lines in `
 | ~~Done~~ | 17 | Remove student anonymization from LTI dashboard #332 | ✅ 2026-04-05 |
 | **Partial** | 19 | AAC bugs: 19a ✅ prompt templates, 19c ✅ skill switching, 19b merged into 21 | |
 | **In Progress** | 21 | Unified AAC session management (+ merged 9c, 19b): A→B→C→D phases | |
+| **Next** | 22 | Liteshell update sends partial metadata → Creator Interface rejects + skill doesn't include RAG at creation | |
 | **Next** | 20 | Missing liteshell commands — publish, KB query, templates, analytics, chat context | |
 | **Then** | 18 | AAC terminal file upload widget — attach files to agent conversations | |
 | **Next** | 12 | Liteshell comprehensive test suite (26 commands, reuse CLI E2E tests) | |

@@ -48,7 +48,11 @@ NEVER create an assistant with an empty prompt_template. NEVER.
 2. Propose config in a compact summary (name, model, RAG, prompt template)
 3. Once the name is chosen, rename the session so it's findable later:
    `lamb session rename "Create: <name>"`
-4. Create after approval — ALWAYS include --prompt-template
+4. Create after approval — include ALL config in a SINGLE create command:
+   - `--system-prompt`, `--llm`, `--prompt-template` (always)
+   - `--rag-processor`, `--rag-collections` (if using a KB)
+   - `--connector openai` (or whatever the org default is)
+   Do NOT create first and then update to add RAG. Put everything in one command.
 5. Verify with `lamb assistant get`
 6. Offer to run a quick test with a sample question
 
@@ -56,4 +60,5 @@ Do NOT run debug/bypass after creation just to "verify" — for non-RAG assistan
 the raw prompt assembly which is expected and not useful to show the user. Just offer a real test.
 
 Default model: use `lamb assistant config` to pick the org default.
-If RAG is enabled, ALWAYS set prompt_template with {context} and {user_input}.
+If RAG is enabled, ALWAYS include --rag-processor and --rag-collections in the create command.
+ALWAYS include --connector (usually openai) and --prompt-processor simple_augment.

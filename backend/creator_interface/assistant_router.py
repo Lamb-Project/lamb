@@ -394,6 +394,8 @@ def _ensure_metadata_defaults(metadata_raw) -> str:
 
     if not meta.get("prompt_processor"):
         meta["prompt_processor"] = "simple_augment"
+    if not meta.get("connector"):
+        meta["connector"] = "openai"
 
     return json.dumps(meta) if isinstance(metadata_raw, str) else meta
 
@@ -1238,6 +1240,10 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         for key, default_val in merge_defaults.items():
             if key not in original_body:
                 original_body[key] = default_val
+
+        # Ensure defaults before validation (fills missing prompt_processor, connector)
+        original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        original_body["api_callback"] = original_body["metadata"]
 
         normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
         if metadata_error:

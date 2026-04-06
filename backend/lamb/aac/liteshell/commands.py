@@ -157,12 +157,27 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
 
 @register("assistant.update")
 async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
-    """Update an assistant (fetch-and-merge handled by Creator Interface)."""
+    """Update an assistant. Fetches current state and merges your changes."""
     if not args:
         raise ValueError("Usage: lamb assistant update <id> [--name ...] [--system-prompt ...]")
     assistant_id = args[0]
 
-    body: dict[str, Any] = {}
+    # Fetch current assistant to merge with
+    current = _unwrap(await ctx.http.get(f"/creator/assistant/get_assistant/{assistant_id}"))
+    if not current or not isinstance(current, dict):
+        raise ValueError(f"Assistant {assistant_id} not found")
+
+    # Build body from current + overrides
+    body: dict[str, Any] = {
+        "name": current.get("name", ""),
+        "description": current.get("description", ""),
+        "system_prompt": current.get("system_prompt", ""),
+        "prompt_template": current.get("prompt_template", ""),
+        "RAG_Top_k": current.get("RAG_Top_k", 3),
+        "RAG_collections": current.get("RAG_collections", ""),
+    }
+
+    # Apply overrides from kwargs
     if "name" in kwargs or "n" in kwargs:
         body["name"] = kwargs.get("name", kwargs.get("n"))
     if "system_prompt" in kwargs:
@@ -171,17 +186,27 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
         body["description"] = kwargs.get("description", kwargs.get("d"))
     if "prompt_template" in kwargs:
         body["prompt_template"] = kwargs["prompt_template"]
+    if "rag_top_k" in kwargs:
+        body["RAG_Top_k"] = int(kwargs["rag_top_k"])
+    if "rag_collections" in kwargs:
+        body["RAG_collections"] = kwargs["rag_collections"]
 
-    metadata: dict[str, Any] = {}
+    # Merge metadata: start from current, overlay changes
+    existing_meta = {}
+    raw_meta = current.get("metadata") or current.get("api_callback") or "{}"
+    if isinstance(raw_meta, str):
+        try:
+            existing_meta = json.loads(raw_meta)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    elif isinstance(raw_meta, dict):
+        existing_meta = raw_meta
+
     for key in ("llm", "connector", "prompt_processor", "rag_processor",
                 "rubric_id", "rubric_format"):
         if key in kwargs:
-            metadata[key] = kwargs[key]
-    if metadata:
-        body["metadata"] = json.dumps(metadata)
-
-    if not body:
-        raise ValueError("No fields to update. Use --name, --system-prompt, --llm, etc.")
+            existing_meta[key] = kwargs[key]
+    body["metadata"] = json.dumps(existing_meta)
 
     return _unwrap(await ctx.http.put(f"/creator/assistant/update_assistant/{assistant_id}", json=body))
 
