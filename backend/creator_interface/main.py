@@ -1,4 +1,5 @@
 from .chats_router import router as chats_router
+from .library_router import router as library_router
 from .analytics_router import router as analytics_router
 from .prompt_templates_router import router as prompt_templates_router
 from .evaluaitor_router import router as evaluaitor_router
@@ -129,6 +130,8 @@ router.include_router(analytics_router, prefix="/analytics")
 
 # Include the chats router for internal chat persistence
 router.include_router(chats_router, prefix="/chats")
+
+router.include_router(library_router, prefix="/libraries")
 
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 

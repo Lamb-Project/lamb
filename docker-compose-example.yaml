@@ -70,6 +70,34 @@ services:
       (test -f .env || cp .env.example .env) && \
       LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
       uvicorn main:app --host 0.0.0.0 --port 9090 --reload --log-level $$LOG_LEVEL --no-access-log"
+  library-manager:
+    image: python:3.11-slim
+    working_dir: ${LAMB_PROJECT_PATH}/library-manager/backend
+    environment:
+      - PIP_DISABLE_PIP_VERSION_CHECK=1
+      - PIP_CACHE_DIR=/root/.cache/pip
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - LAMB_API_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
+      - DATA_DIR=${LAMB_PROJECT_PATH}/library-manager/data
+      - GLOBAL_LOG_LEVEL=WARNING
+      - LM_LOG_LEVEL=WARNING
+    volumes:
+      - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
+      - pip-cache:/root/.cache/pip
+    ports:
+      - "127.0.0.1:9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9091/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    command: >
+      sh -lc "apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1 && \
+      python -m pip install --upgrade pip && \
+      pip install -e '${LAMB_PROJECT_PATH}/library-manager[all]' && \
+      LOG_LEVEL=$$(echo \"$${LM_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
+      uvicorn main:app --host 0.0.0.0 --port 9091 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
     image: python:3.11-slim
     working_dir: ${LAMB_PROJECT_PATH}/backend
@@ -80,6 +108,8 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=WARNING
+      - LAMB_LIBRARY_SERVER=http://library-manager:9091
+      - LAMB_LIBRARY_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
     env_file:
       - ${LAMB_PROJECT_PATH}/backend/.env
     volumes:
@@ -91,6 +121,8 @@ services:
       openwebui:
         condition: service_started
       kb:
+        condition: service_started
+      library-manager:
         condition: service_started
       frontend-build:
         condition: service_completed_successfully

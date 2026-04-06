@@ -207,6 +207,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/lamb", lamb_app)
 app.include_router(creator_router, prefix="/creator", tags=["Creator"])
 
+# Permalink proxy for Library Manager content (ACL-enforced)
+from creator_interface.library_router import permalink_proxy_router  # noqa: E402
+app.include_router(permalink_proxy_router, tags=["Library Permalinks"])
+
 
 # --- Serve the new SvelteKit Frontend ---
 # NOTE: This block is moved to the end of the file to ensure it runs AFTER all API routes.
