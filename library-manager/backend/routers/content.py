@@ -22,6 +22,7 @@ from schemas.content import (
 )
 from services import content_service, export_service
 from services.library_service import get_library
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -468,6 +469,11 @@ async def import_library(
         result = export_service.import_library_zip(db, zip_data, organization_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A library with this name already exists in the organization.",
+        )
     finally:
         Path(tmp.name).unlink(missing_ok=True)
 
