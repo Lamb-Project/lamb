@@ -5,9 +5,10 @@ config, uses async httpx, and maps Library Manager responses to LAMB's
 enriched format.
 """
 
+import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import httpx
 from fastapi import HTTPException, UploadFile
@@ -34,7 +35,8 @@ class LibraryManagerClient:
             creator_user: LAMB creator user dict with at least ``email``.
 
         Returns:
-            Dict with ``url`` and ``token`` keys.
+            Dict with ``url``, ``token``, ``allowed_plugins``,
+            and ``external_keys`` keys.
 
         Raises:
             ValueError: If no Library Manager is configured.
@@ -64,6 +66,7 @@ class LibraryManagerClient:
         }
 
     def _headers(self, token: str) -> Dict[str, str]:
+        """Return authorization headers for Library Manager requests."""
         return {"Authorization": f"Bearer {token}"}
 
     async def _request(self, method: str, path: str, config: Dict[str, str],
@@ -104,29 +107,45 @@ class LibraryManagerClient:
             logger.error(f"Library Manager connection error: {exc}")
             raise HTTPException(
                 status_code=503,
-                detail=f"Unable to connect to Library Manager: {exc}",
+                detail="Unable to connect to Library Manager",
             )
 
-    async def _stream_request(self, method: str, path: str,
-                              config: Dict[str, str], **kwargs) -> httpx.Response:
-        """Make a streaming request (for export ZIP download).
+    async def _fetch_bytes(self, method: str, path: str,
+                           config: Dict[str, str], **kwargs) -> httpx.Response:
+        """Make a request and return the full response with body read.
 
-        Returns the raw httpx.Response — caller must read the body.
+        Used for export/proxy where we need the raw bytes. The httpx client
+        is properly closed via context manager after reading.
+
+        Args:
+            method: HTTP method.
+            path: URL path.
+            config: Resolved config dict.
+            **kwargs: Passed to httpx request.
+
+        Returns:
+            httpx.Response with body already read.
+
+        Raises:
+            HTTPException: On non-2xx or connection error.
         """
         url = f"{config['url'].rstrip('/')}{path}"
         headers = self._headers(config["token"])
         try:
-            client = httpx.AsyncClient(timeout=300.0)
-            response = await client.request(method, url, headers=headers, **kwargs)
-            if not response.is_success:
-                await client.aclose()
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail="Library Manager export failed",
-                )
-            return response
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                response = await client.request(method, url, headers=headers, **kwargs)
+                if not response.is_success:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail="Library Manager request failed",
+                    )
+                return response
         except httpx.RequestError as exc:
-            raise HTTPException(status_code=503, detail=f"Library Manager unreachable: {exc}")
+            logger.error(f"Library Manager connection error: {exc}")
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to Library Manager",
+            )
 
     # ------------------------------------------------------------------
     # Library CRUD
@@ -135,6 +154,7 @@ class LibraryManagerClient:
     async def create_library(self, library_id: str, organization_id: int,
                              name: str, import_config: Dict = None,
                              creator_user: Dict[str, Any] = None) -> Dict:
+        """Create a library on the Library Manager."""
         config = self._get_library_config(creator_user)
         return await self._request("POST", "/libraries", config, json={
             "id": library_id,
@@ -145,11 +165,13 @@ class LibraryManagerClient:
 
     async def get_library(self, library_id: str,
                           creator_user: Dict[str, Any] = None) -> Dict:
+        """Get library details from the Library Manager."""
         config = self._get_library_config(creator_user)
         return await self._request("GET", f"/libraries/{library_id}", config)
 
     async def delete_library(self, library_id: str,
                              creator_user: Dict[str, Any] = None) -> Dict:
+        """Delete a library from the Library Manager."""
         config = self._get_library_config(creator_user)
         return await self._request("DELETE", f"/libraries/{library_id}", config)
 
@@ -162,8 +184,8 @@ class LibraryManagerClient:
                           plugin_params: Dict = None,
                           api_keys: Dict[str, str] = None,
                           creator_user: Dict[str, Any] = None) -> Dict:
+        """Upload a file for import into a library."""
         config = self._get_library_config(creator_user)
-        import json
         file_content = await file.read()
         await file.seek(0)
         files = {"file": (file.filename, file_content, file.content_type)}
@@ -180,6 +202,7 @@ class LibraryManagerClient:
                          title: str, plugin_params: Dict = None,
                          api_keys: Dict[str, str] = None,
                          creator_user: Dict[str, Any] = None) -> Dict:
+        """Import content from a URL into a library."""
         config = self._get_library_config(creator_user)
         return await self._request("POST", f"/libraries/{library_id}/import/url", config, json={
             "url": url,
@@ -195,6 +218,7 @@ class LibraryManagerClient:
                              plugin_params: Dict = None,
                              api_keys: Dict[str, str] = None,
                              creator_user: Dict[str, Any] = None) -> Dict:
+        """Import a YouTube video transcript into a library."""
         config = self._get_library_config(creator_user)
         params = plugin_params or {}
         params["language"] = language
@@ -213,22 +237,26 @@ class LibraryManagerClient:
 
     async def get_items(self, library_id: str, creator_user: Dict[str, Any] = None,
                         **params) -> Dict:
+        """List items in a library with optional filters."""
         config = self._get_library_config(creator_user)
         return await self._request("GET", f"/libraries/{library_id}/items",
                                    config, params=params)
 
     async def get_item(self, library_id: str, item_id: str,
                        creator_user: Dict[str, Any] = None) -> Dict:
+        """Get details of a single library item."""
         config = self._get_library_config(creator_user)
         return await self._request("GET", f"/libraries/{library_id}/items/{item_id}", config)
 
     async def get_item_status(self, library_id: str, item_id: str,
                               creator_user: Dict[str, Any] = None) -> Dict:
+        """Get the import status for an item."""
         config = self._get_library_config(creator_user)
         return await self._request("GET", f"/libraries/{library_id}/items/{item_id}/status", config)
 
     async def delete_item(self, library_id: str, item_id: str,
                           creator_user: Dict[str, Any] = None) -> Dict:
+        """Delete an item from a library."""
         config = self._get_library_config(creator_user)
         return await self._request("DELETE", f"/libraries/{library_id}/items/{item_id}", config)
 
@@ -237,6 +265,7 @@ class LibraryManagerClient:
     # ------------------------------------------------------------------
 
     async def get_plugins(self, creator_user: Dict[str, Any] = None) -> Dict:
+        """List available import plugins, filtered by org config."""
         config = self._get_library_config(creator_user)
         result = await self._request("GET", "/plugins", config)
         allowed = config.get("allowed_plugins", [])
@@ -247,11 +276,13 @@ class LibraryManagerClient:
 
     async def get_import_config(self, library_id: str,
                                 creator_user: Dict[str, Any] = None) -> Dict:
+        """Get a library's import configuration."""
         config = self._get_library_config(creator_user)
         return await self._request("GET", f"/libraries/{library_id}/import-config", config)
 
     async def update_import_config(self, library_id: str, import_config: Dict,
                                    creator_user: Dict[str, Any] = None) -> Dict:
+        """Update a library's import configuration."""
         config = self._get_library_config(creator_user)
         return await self._request("PUT", f"/libraries/{library_id}/import-config",
                                    config, json=import_config)
@@ -262,15 +293,17 @@ class LibraryManagerClient:
 
     async def export_library(self, library_id: str,
                              creator_user: Dict[str, Any] = None) -> httpx.Response:
+        """Export a library as a ZIP archive."""
         config = self._get_library_config(creator_user)
-        return await self._stream_request("GET", f"/libraries/{library_id}/export", config)
+        return await self._fetch_bytes("GET", f"/libraries/{library_id}/export", config)
 
     async def import_library_zip(self, organization_id: int, zip_data: bytes,
                                  creator_user: Dict[str, Any] = None) -> Dict:
+        """Import a library from a ZIP archive."""
         config = self._get_library_config(creator_user)
         files = {"file": ("library.zip", zip_data, "application/zip")}
         return await self._request(
-            "POST", f"/libraries/import",
+            "POST", "/libraries/import",
             config, files=files,
             params={"organization_id": str(organization_id)},
         )
@@ -290,8 +323,13 @@ class LibraryManagerClient:
             creator_user: LAMB user dict.
 
         Returns:
-            Raw httpx.Response for streaming back to the caller.
+            httpx.Response with body already read.
+
+        Raises:
+            HTTPException: If subpath contains path traversal sequences.
         """
+        if ".." in subpath or subpath.startswith("/"):
+            raise HTTPException(status_code=400, detail="Invalid content path")
         config = self._get_library_config(creator_user)
         path = f"/libraries/{library_id}/items/{item_id}/{subpath}"
-        return await self._stream_request("GET", path, config)
+        return await self._fetch_bytes("GET", path, config)

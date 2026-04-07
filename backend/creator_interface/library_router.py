@@ -1,20 +1,50 @@
 """Creator Interface routes for library management.
 
-Each endpoint: authenticate → check ACL → resolve org config → call Library
-Manager → update LAMB DB → audit log → return response.
+Each endpoint: authenticate -> check ACL -> resolve org config -> call Library
+Manager -> update LAMB DB -> audit log -> return response.
 """
 
 import logging
 import uuid
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 from lamb.auth_context import AuthContext, get_auth_context
+from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.database_manager import LambDatabaseManager
 
 from .library_manager_client import LibraryManagerClient
+
+
+# ------------------------------------------------------------------
+# Request models (JSON body)
+# ------------------------------------------------------------------
+
+class LibraryCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class LibraryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+class LibraryShareToggle(BaseModel):
+    is_shared: bool
+
+class URLImportRequest(BaseModel):
+    url: str
+    plugin_name: str = "url_import"
+    title: Optional[str] = None
+    plugin_params: Optional[Dict[str, Any]] = None
+
+class YouTubeImportRequest(BaseModel):
+    video_url: str
+    language: str = "en"
+    title: Optional[str] = None
+    plugin_name: str = "youtube_transcript_import"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +66,55 @@ def _audit(auth: AuthContext, action: str, target_type: str, target_id: str,
     )
 
 
+def _resolve_api_keys(auth: AuthContext) -> dict:
+    """Resolve org-level API keys for import plugins."""
+    try:
+        resolver = OrganizationConfigResolver(auth.user.get("email"))
+        lib_config = resolver.get_library_config()
+        return lib_config.get("external_service_keys", {})
+    except Exception as e:
+        logger.warning(f"Could not resolve API keys for {auth.user.get('email')}: {e}")
+        return {}
+
+
+# ------------------------------------------------------------------
+# Static routes MUST be registered before parameterized /{library_id}
+# to prevent FastAPI from matching "plugins" or "import" as a library_id.
+# ------------------------------------------------------------------
+
+
+@router.get("/plugins")
+async def list_plugins(
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List available import plugins (filtered by org config)."""
+    return await _client.get_plugins(creator_user=auth.user)
+
+
+@router.post("/import")
+async def import_library(
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Import a library from a ZIP file."""
+    org_id = auth.organization.get("id")
+    zip_data = await file.read()
+
+    result = await _client.import_library_zip(org_id, zip_data, creator_user=auth.user)
+
+    new_lib_id = result.get("library_id")
+    if new_lib_id:
+        _db.create_library(
+            library_id=new_lib_id,
+            name=result.get("library_name", "Imported Library"),
+            owner_user_id=auth.user.get("id"),
+            organization_id=org_id,
+        )
+        _audit(auth, "library.create", "library", new_lib_id, {"source": "zip_import"})
+
+    return result
+
+
 # ------------------------------------------------------------------
 # Library CRUD
 # ------------------------------------------------------------------
@@ -43,8 +122,7 @@ def _audit(auth: AuthContext, action: str, target_type: str, target_id: str,
 
 @router.post("")
 async def create_library(
-    name: str = Form(...),
-    description: str = Form(""),
+    body: LibraryCreate,
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Create a new library in the current organization."""
@@ -53,10 +131,10 @@ async def create_library(
 
     result = _db.create_library(
         library_id=library_id,
-        name=name,
+        name=body.name,
         owner_user_id=auth.user.get("id"),
         organization_id=org_id,
-        description=description,
+        description=body.description,
     )
     if not result:
         raise HTTPException(status_code=409, detail="Library name already taken in this organization.")
@@ -65,14 +143,14 @@ async def create_library(
         await _client.create_library(
             library_id=library_id,
             organization_id=org_id,
-            name=name,
+            name=body.name,
             creator_user=auth.user,
         )
     except Exception as e:
         _db.delete_library(library_id)
         raise HTTPException(status_code=502, detail=f"Library Manager error: {e}")
 
-    _audit(auth, "library.create", "library", library_id, {"name": name})
+    _audit(auth, "library.create", "library", library_id, {"name": body.name})
     return _db.get_library(library_id)
 
 
@@ -103,7 +181,8 @@ async def get_library(
     try:
         lm_data = await _client.get_library(library_id, creator_user=auth.user)
         entry["item_count"] = lm_data.get("item_count", 0)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not fetch item_count from Library Manager for {library_id}: {e}")
         entry["item_count"] = 0
 
     entry["is_owner"] = entry.get("owner_user_id") == auth.user.get("id")
@@ -113,15 +192,14 @@ async def get_library(
 @router.put("/{library_id}")
 async def update_library(
     library_id: str,
-    name: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
+    body: LibraryUpdate,
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Update library name and/or description."""
     auth.require_library_access(library_id, level="owner")
-    if name is None and description is None:
+    if body.name is None and body.description is None:
         raise HTTPException(status_code=400, detail="Nothing to update.")
-    success = _db.update_library(library_id, name=name, description=description)
+    success = _db.update_library(library_id, name=body.name, description=body.description)
     if not success:
         raise HTTPException(status_code=404, detail="Library not found")
     _audit(auth, "library.update", "library", library_id)
@@ -136,13 +214,14 @@ async def delete_library(
     """Delete a library and all its content."""
     auth.require_library_access(library_id, level="owner")
 
+    _db.delete_library(library_id)
+
     try:
         await _client.delete_library(library_id, creator_user=auth.user)
     except HTTPException as e:
         if e.status_code != 404:
-            raise
+            logger.warning(f"Library Manager delete failed for {library_id}: {e.detail}")
 
-    _db.delete_library(library_id)
     _audit(auth, "library.delete", "library", library_id)
     return {"message": f"Library {library_id} deleted."}
 
@@ -150,34 +229,21 @@ async def delete_library(
 @router.put("/{library_id}/share")
 async def toggle_sharing(
     library_id: str,
-    is_shared: bool = Form(...),
+    body: LibraryShareToggle,
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Enable or disable organization-wide sharing."""
     auth.require_library_access(library_id, level="owner")
-    _db.toggle_library_sharing(library_id, is_shared)
-    action = "library.share" if is_shared else "library.unshare"
+    _db.toggle_library_sharing(library_id, body.is_shared)
+    action = "library.share" if body.is_shared else "library.unshare"
     _audit(auth, action, "library", library_id)
-    state = "shared with organization" if is_shared else "private"
-    return {"library_id": library_id, "is_shared": is_shared, "message": f"Library is now {state}."}
+    state = "shared with organization" if body.is_shared else "private"
+    return {"library_id": library_id, "is_shared": body.is_shared, "message": f"Library is now {state}."}
 
 
 # ------------------------------------------------------------------
 # Content importing
 # ------------------------------------------------------------------
-
-
-def _resolve_api_keys(auth: AuthContext) -> dict:
-    """Resolve org API keys for import plugins."""
-    try:
-        resolver = OrganizationConfigResolver(auth.user.get("email"))
-        lib_config = resolver.get_library_config()
-        return lib_config.get("external_service_keys", {})
-    except Exception:
-        return {}
-
-
-from lamb.completions.org_config_resolver import OrganizationConfigResolver  # noqa: E402
 
 
 @router.post("/{library_id}/upload")
@@ -219,7 +285,10 @@ async def upload_file(
             original_filename=file.filename,
             content_type=file.content_type,
         )
-        _audit(auth, "library.upload", "library_item", item_id, {"filename": file.filename})
+        _audit(auth, "library.upload", "library_item", item_id, {
+            "filename": file.filename,
+            "plugin": plugin_name or "simple_import",
+        })
 
     return result
 
@@ -227,9 +296,7 @@ async def upload_file(
 @router.post("/{library_id}/import-url")
 async def import_url(
     library_id: str,
-    url: str = Form(...),
-    plugin_name: str = Form("url_import"),
-    title: str = Form(None),
+    body: URLImportRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Import content from a URL."""
@@ -241,9 +308,10 @@ async def import_url(
     api_keys = _resolve_api_keys(auth)
     result = await _client.import_url(
         library_id=library_id,
-        url=url,
-        plugin_name=plugin_name,
-        title=title or url,
+        url=body.url,
+        plugin_name=body.plugin_name,
+        title=body.title or body.url,
+        plugin_params=body.plugin_params,
         api_keys=api_keys,
         creator_user=auth.user,
     )
@@ -254,13 +322,16 @@ async def import_url(
             item_id=item_id,
             library_id=library_id,
             organization_id=entry["organization_id"],
-            title=title or url,
+            title=body.title or body.url,
             source_type="url",
-            import_plugin=plugin_name,
+            import_plugin=body.plugin_name,
             uploader_user_id=auth.user.get("id"),
-            source_url=url,
+            source_url=body.url,
         )
-        _audit(auth, "library.upload", "library_item", item_id, {"url": url})
+        _audit(auth, "library.upload", "library_item", item_id, {
+            "url": body.url,
+            "plugin": body.plugin_name,
+        })
 
     return result
 
@@ -268,9 +339,7 @@ async def import_url(
 @router.post("/{library_id}/import-youtube")
 async def import_youtube(
     library_id: str,
-    video_url: str = Form(...),
-    language: str = Form("en"),
-    title: str = Form(None),
+    body: YouTubeImportRequest,
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Import a YouTube video transcript."""
@@ -282,10 +351,10 @@ async def import_youtube(
     api_keys = _resolve_api_keys(auth)
     result = await _client.import_youtube(
         library_id=library_id,
-        video_url=video_url,
-        plugin_name="youtube_transcript_import",
-        title=title or video_url,
-        language=language,
+        video_url=body.video_url,
+        plugin_name=body.plugin_name,
+        title=body.title or body.video_url,
+        language=body.language,
         api_keys=api_keys,
         creator_user=auth.user,
     )
@@ -296,13 +365,16 @@ async def import_youtube(
             item_id=item_id,
             library_id=library_id,
             organization_id=entry["organization_id"],
-            title=title or video_url,
+            title=body.title or body.video_url,
             source_type="youtube",
-            import_plugin="youtube_transcript_import",
+            import_plugin=body.plugin_name,
             uploader_user_id=auth.user.get("id"),
-            source_url=video_url,
+            source_url=body.video_url,
         )
-        _audit(auth, "library.upload", "library_item", item_id, {"video_url": video_url})
+        _audit(auth, "library.upload", "library_item", item_id, {
+            "video_url": body.video_url,
+            "language": body.language,
+        })
 
     return result
 
@@ -379,16 +451,8 @@ async def delete_item(
 
 
 # ------------------------------------------------------------------
-# Plugins & import config
+# Import config
 # ------------------------------------------------------------------
-
-
-@router.get("/plugins")
-async def list_plugins(
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """List available import plugins (filtered by org config)."""
-    return await _client.get_plugins(creator_user=auth.user)
 
 
 @router.get("/{library_id}/import-config")
@@ -413,7 +477,7 @@ async def update_import_config(
 
 
 # ------------------------------------------------------------------
-# Export / Import
+# Export
 # ------------------------------------------------------------------
 
 
@@ -428,37 +492,13 @@ async def export_library(
 
     entry = _db.get_library(library_id)
     name = entry.get("name", "library") if entry else "library"
-    safe_name = name.replace('"', "_").replace("\n", "_").replace("\r", "_")
+    safe_name = "".join(c if c.isalnum() or c in " -_." else "_" for c in name)
 
-    return StreamingResponse(
-        response.aiter_bytes(),
+    return Response(
+        content=response.content,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'},
     )
-
-
-@router.post("/import")
-async def import_library(
-    file: UploadFile = File(...),
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """Import a library from a ZIP file."""
-    org_id = auth.organization.get("id")
-    zip_data = await file.read()
-
-    result = await _client.import_library_zip(org_id, zip_data, creator_user=auth.user)
-
-    new_lib_id = result.get("library_id")
-    if new_lib_id:
-        _db.create_library(
-            library_id=new_lib_id,
-            name=result.get("library_name", "Imported Library"),
-            owner_user_id=auth.user.get("id"),
-            organization_id=org_id,
-        )
-        _audit(auth, "library.create", "library", new_lib_id, {"source": "zip_import"})
-
-    return result
 
 
 # ======================================================================
@@ -476,13 +516,19 @@ async def permalink_proxy(
     subpath: str,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Proxy permalink requests to the Library Manager with ACL enforcement.
+    """Proxy permalink requests to the Library Manager with ACL enforcement."""
+    user_org_id = auth.organization.get("id")
+    try:
+        if int(org_id) != user_org_id:
+            raise HTTPException(status_code=404, detail="Not found")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail="Not found")
 
-    Stable URLs like ``/docs/{org}/{lib}/{item}/content/full`` are resolved
-    here. LAMB validates library access before forwarding to the Library
-    Manager.
-    """
     auth.require_library_access(library_id, level="any")
+
+    entry = _db.get_library(library_id)
+    if not entry or entry["organization_id"] != int(org_id):
+        raise HTTPException(status_code=404, detail="Not found")
 
     response = await _client.proxy_content(
         library_id=library_id,
@@ -495,8 +541,4 @@ async def permalink_proxy(
     return Response(
         content=response.content,
         media_type=content_type,
-        headers={
-            k: v for k, v in response.headers.items()
-            if k.lower() in ("content-type", "content-disposition", "content-length")
-        },
     )
