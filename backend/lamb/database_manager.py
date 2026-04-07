@@ -1346,7 +1346,7 @@ class LambDatabaseManager:
                         status TEXT DEFAULT 'active',
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
-                        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
                         FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id),
                         UNIQUE(organization_id, name)
                     )
@@ -1373,7 +1373,7 @@ class LambDatabaseManager:
                         created_at INTEGER NOT NULL,
                         updated_at INTEGER NOT NULL,
                         FOREIGN KEY (library_id) REFERENCES {self.table_prefix}libraries(id) ON DELETE CASCADE,
-                        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
                         FOREIGN KEY (uploader_user_id) REFERENCES {self.table_prefix}Creator_users(id)
                     )
                 """)
@@ -1391,7 +1391,7 @@ class LambDatabaseManager:
                         target_id TEXT NOT NULL,
                         details TEXT,
                         created_at INTEGER NOT NULL,
-                        FOREIGN KEY (organization_id) REFERENCES organizations(id),
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id),
                         FOREIGN KEY (actor_user_id) REFERENCES {self.table_prefix}Creator_users(id)
                     )
                 """)
