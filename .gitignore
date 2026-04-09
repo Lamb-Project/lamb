@@ -91,10 +91,22 @@ frontend/packages/**/pnpm-lock.yaml
 
 # SvelteKit generated files (all packages)
 frontend/packages/**/.svelte-kit/
+# svelte-app lives under frontend/svelte-app (not covered by /frontend/.svelte-kit)
+frontend/svelte-app/.svelte-kit/
 
 # package-lock.json files (using pnpm instead)
 frontend/package-lock.json
 frontend/packages/**/package-lock.json
+frontend/svelte-app/package-lock.json
+
+# Local tooling / scratch (not product source)
+aac_logs/
+
+# Generated dev version stamps — regenerate with each package's scripts/generate-version.js
+# (Do not commit local timestamps; build/dev runs the generator.)
+frontend/packages/creator-app/src/lib/version.js
+frontend/packages/module-chat/src/lib/version.js
+frontend/svelte-app/src/lib/version.js
 
 # Allow committing Svelte/Vite config for the frontend app
 !frontend/svelte-app/svelte.config.js

@@ -1,7 +1,7 @@
 # Phase 4: File Evaluation Module — Port from LAMBA to LAMB
 
 > **Status**: Implementation complete; **integration hardening in progress** (remaining issues tracked separately)
-> **Date**: 2026-03-24 (updated 2026-03-25 — integration notes)
+> **Date**: 2026-03-24 (updated 2026-04-09 — LTI file-eval setup UX + grading fixes)
 > **Issue**: #277 — Architecture: Activity Module System
 
 ---
@@ -59,7 +59,7 @@ This phase **eliminates that duplication** by re-implementing the same business 
 
 | File | Responsibility | Lines | Ported from (LAMBA) |
 |------|----------------|-------|---------------------|
-| `__init__.py` | Exports `module = FileEvalModule()`; full `ActivityModule` implementation (migrations, routers, setup fields, LTI launch, JWT, dashboard hooks) | ~210 | New (wraps LAMB contract) |
+| `__init__.py` | Exports `module = FileEvalModule()`; full `ActivityModule` implementation (migrations, routers, setup fields, LTI launch, JWT, dashboard hooks) | ~250 | New (wraps LAMB contract) |
 | `migrations.py` | DDL: 3 tables + 7 indexes; `{table_prefix}` in FKs; **`repair_file_eval_schema_if_needed`** for prefix mismatch | ~115 | `db_models.py` |
 | `router.py` | Single `APIRouter` (submissions, grades, evaluation, sync, etc.) | ~260 | `activities_router.py`, `submissions_router.py`, `grades_router.py` |
 | `evaluator_client.py` | Score regex extraction + direct call to `run_lamb_assistant` | ~150 | `lamb_api_service.py` |
@@ -69,7 +69,7 @@ This phase **eliminates that duplication** by re-implementing the same business 
 | `evaluation_service.py` | Background batch evaluation with status tracking, timeout handling | ~200 | `evaluation_service.py` |
 | `service.py` | Submission CRUD, group join flow, dashboard stats queries; robust **`_parse_setup_config`** | ~355 | `activities_service.py` |
 | `lti_passback.py` | OAuth 1.0a signed XML grade passback to Moodle | ~160 | `lti_service.py` (verbatim algorithm) |
-| `schemas.py` | Pydantic v2 request/response models | ~120 | `models.py` |
+| `schemas.py` | Pydantic v2 request/response models; `FileEvalSetupConfig` includes `title` + validators for group `max_group_size` | ~150 | `models.py` |
 
 ### 3.2 — Database Tables
 
@@ -136,7 +136,7 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `src/routes/+layout.js` | `load`: `setupI18n` + `waitLocale` before pages render (avoids “Cannot format a message without first setting the initial locale”) |
 | `src/routes/+layout.svelte` | Root layout with `@lamb/ui` shell |
 | `src/routes/upload/+page.svelte` | **Student view**: drag-and-drop upload, group code join, submission status, grade display |
-| `src/routes/grading/+page.svelte` | **Instructor view**: stats cards, submissions table, AI evaluation with polling, inline grade editing, accept-all, Moodle sync |
+| `src/routes/grading/+page.svelte` | **Instructor view**: stats cards, submissions table, AI evaluation with polling, inline grade editing, accept-all, Moodle sync; deadline display must parse Unix **or** ISO/`datetime-local` strings from `setup_config` |
 | `src/lib/services/api.js` | API helper with JWT from URL query param + Bearer header |
 | `src/lib/services/submissionService.js` | Upload, download, join group, get submission |
 | `src/lib/services/gradingService.js` | Activity view, evaluation, grading, Moodle sync |
@@ -198,7 +198,7 @@ The root application mounts this app at **`/lamb`**, so the public paths are **`
 
 Added two new columns to `lti_activities` (both in `CREATE TABLE` for fresh installs and as `ALTER TABLE` migrations for existing databases):
 
-- `setup_config TEXT DEFAULT '{}'` — Stores module-specific configuration as JSON (evaluator ID, activity type, max group size, deadline, language).
+- `setup_config TEXT DEFAULT '{}'` — Stores module-specific configuration as JSON (evaluator ID, **`title`** (redundant copy; display name uses `activity_name`), submission type, max group size, deadline, language).
 - `lis_outcome_service_url TEXT` — LTI Outcome Service URL for grade passback, stored per activity.
 
 ### 4.10 — Backend Python requirements
@@ -212,6 +212,28 @@ python-docx==1.1.2
 
 Heavy ML/RAG deps are in `requirements-ml.txt`. Install with  
 `pip install -r requirements-base.txt && pip install -r requirements-ml.txt` (see `backend/requirements.txt`).
+
+### 4.11 — LTI instructor setup & configure (file_evaluation, 2026-04)
+
+The **unified LTI setup UI** lives in **`frontend/packages/module-chat`** (`/m/chat/setup`), not in `module-file-eval`. The backend drives dynamic fields via `GET /lamb/v1/lti/setup/info` → `modules_fields.file_evaluation` from `FileEvalModule.get_setup_fields()`.
+
+| Area | Change |
+|------|--------|
+| **`backend/lamb/modules/file_evaluation/__init__.py`** | Setup field order and types: **`title`** (required text, first), **`evaluator_id`**, **`description`**, **`submission_type`** as **`radio`** (Individual / Group), **`max_group_size`** (conditional in UI), **`deadline`** (required `datetime-local`), **`language`**. `on_activity_configured()` persists **`title`** into `setup_config` JSON alongside existing keys. |
+| **`backend/lamb/lti_router.py`** | `_field_to_json()` exposes **`options`** for **`radio`** as well as `select`. **`POST /lamb/v1/lti/configure`**: for `activity_type == file_evaluation`, validates non-empty **title** and **deadline**; if **group**, **`max_group_size`** must be integer **2–20**. **`activity_name`** on `lti_activities` uses instructor **title** (trimmed) with fallback to LMS context title / `resource_link_id`. |
+| **`backend/lamb/modules/file_evaluation/schemas.py`** | `FileEvalSetupConfig` adds optional **`title`**; **`@model_validator`** enforces **2–20** for `max_group_size` when `submission_type == group` and clears it for individual. |
+| **`frontend/packages/module-chat/src/routes/setup/+page.svelte`** | Renders **`radio`** fields; disables **`evaluator_id`** when at least one assistant checkbox is selected (clears value; backend defaults evaluator to first assistant); shows **`max_group_size`** only for **Group**; client-side validation for deadline and group size; hint **Min 2, Max 20** under group size. |
+
+**Rebuild** `module-chat` (and optionally `module-file-eval` after grading fixes) so static assets under `/m/chat/app` and `/m/file-eval/app` match source.
+
+### 4.12 — Instructor grading SPA (`grading/+page.svelte`)
+
+Fixes for the instructor dashboard after setup changes:
+
+| Issue | Fix |
+|-------|-----|
+| **Infinite spinner** | Template called **`isDeadlinePast()`** without defining it → runtime error once `deadline` exists. Added **`isDeadlinePast`** using existing **`parseDeadline()`**. |
+| **`Invalid Date`** | **`formatDate()`** assumed Unix seconds; **`setup_config.deadline`** is often a **`datetime-local` string** (e.g. `2026-04-09T20:36`). Added **`formatDeadlineDisplay()`** that uses **`parseDeadline()`** for the activity info card. |
 
 ---
 
@@ -310,6 +332,7 @@ Recommended test coverage:
 ### Manual (LTI end-to-end)
 
 - [ ] Instructor LTI launch → redirects to `/m/file-eval/grading` (query includes **`activity_id`**)
+- [ ] First-time **file_evaluation** setup: **title**, **deadline**, **submission type** (individual/group); group requires **max 2–20**; **evaluator** field disabled when assistants are checked; save → **`activity_name`** in DB matches title; grading page loads (no spinner / **Invalid Date** on deadline)
 - [ ] Student LTI launch → redirects to `/m/file-eval/upload` (query includes **`activity_id`**)
 - [ ] `GET /lamb/v1/modules/file_evaluation/activities/{id}/view` returns JSON (not 404) when backend is mounted at `/lamb`
 - [ ] UI shows translated `fileEval.*` strings (not raw keys) after i18n init
@@ -342,7 +365,7 @@ Recommended test coverage:
 3. **No real-time updates**: Evaluation progress uses polling (3s interval). WebSocket or SSE could improve UX.
 4. **File size limits**: No explicit upload size limit is enforced in the module; relies on FastAPI/reverse proxy defaults.
 5. **`lis_outcome_service_url`**: Currently stored as a new column on `lti_activities`. This URL comes from the LTI launch params and must be persisted during activity setup — the Unified LTI Router needs to save it from the launch POST.
-6. **Activity description / parity with standalone LAMBA**: The instructor setup flow may not yet expose all fields (e.g. long description) that LAMBA had for file-eval activities; track as a follow-up if product requires it.
+6. **Activity description / parity with standalone LAMBA**: The setup form now includes **title**, **description**, **submission type** (radio), **conditional max group size**, **deadline**, and **language**. Remaining gaps vs. old LAMBA (if any) are cosmetic/i18n rather than missing core fields.
 7. **Group resubmit policy and 409 Conflict**: `create_submission` only treats a POST as a *resubmit* (update same `mod_file_eval_submissions` row) when the existing submission’s `uploaded_by` equals the current `student_id`. A group member who joined via code shares the same `file_submission_id` but is not `uploaded_by`; a second upload attempt falls through to a new insert and hits the UNIQUE constraint on `(student_id, activity_id)`, which surfaces as **HTTP 409**. Only the student who originally uploaded can replace the file today—this can look like an intermittent bug when comparing different accounts. **To improve / implement**: decide product rules (e.g. any group member may replace vs leader-only), return a clear API error message (not a generic conflict), update the student UI copy, and optionally allow updates to the shared `file_submission` for all members of the same group when policy allows. Success-path logging for uploads is also minimal (mostly warnings on errors); ops visibility can be improved with `INFO` lines or access logs.
 
 ### 10.3 — Resolved: AI evaluation stored garbage in `ai_comment` (file_eval)

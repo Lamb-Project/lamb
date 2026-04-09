@@ -59,14 +59,14 @@
             : []
     );
 
-    // Default first option for required <select> fields (options come from /lti/setup/info)
+    // Default first option for select/radio fields (options come from /lti/setup/info)
     $effect(() => {
         if (!setupData?.modules_fields || !selectedActivity) return;
         const fields = setupData.modules_fields[selectedActivity] || [];
         const next = { ...dynamicOptions };
         let changed = false;
         for (const f of fields) {
-            if (f.type === 'select' && f.options?.length) {
+            if ((f.type === 'select' || f.type === 'radio') && f.options?.length) {
                 const v = next[f.name];
                 if (v === undefined || v === '') {
                     next[f.name] = f.options[0].value;
@@ -77,11 +77,26 @@
         if (changed) dynamicOptions = next;
     });
 
-    // Check if all required dynamic fields have values
+    // Clear evaluator_id when assistants are selected (backend auto-picks the first one)
+    $effect(() => {
+        if (selectedAssistants.length > 0 && dynamicOptions.evaluator_id) {
+            dynamicOptions = { ...dynamicOptions, evaluator_id: '' };
+        }
+    });
+
+    // Check if all required dynamic fields have values + conditional group validation
     function hasRequiredFields() {
         if (!setupData?.modules_fields || !selectedActivity) return true;
         const fields = setupData.modules_fields[selectedActivity] || [];
         for (const f of fields) {
+            // max_group_size: skip when submission_type is not "group"
+            if (f.name === 'max_group_size') {
+                if (dynamicOptions.submission_type === 'group') {
+                    const gs = parseInt(dynamicOptions[f.name], 10);
+                    if (isNaN(gs) || gs < 2 || gs > 20) return false;
+                }
+                continue;
+            }
             if (f.required) {
                 const val = dynamicOptions[f.name];
                 if (val === undefined || val === null || val === '') return false;
@@ -284,38 +299,71 @@
                                             {/each}
                                         </select>
                                     </div>
-                                {:else if f.type === 'text'}
+                                {:else if f.type === 'radio'}
                                     <div class="p-3 border rounded-lg bg-white">
-                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <span class="block font-medium text-gray-900 mb-2">
+                                            {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
+                                        </span>
+                                        <div class="flex flex-col gap-2">
+                                            {#each (f.options || []) as opt}
+                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                    <input type="radio"
+                                                        name={f.name}
+                                                        value={opt.value}
+                                                        bind:group={dynamicOptions[f.name]}
+                                                        class="text-blue-600 focus:ring-blue-500" />
+                                                    <span class="text-gray-900">{opt.label}</span>
+                                                </label>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                {:else if f.type === 'text'}
+                                    <div class="p-3 border rounded-lg bg-white {f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'opacity-60' : ''}">
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
+                                            {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
+                                        </label>
                                         <input
                                             id="dyn-{f.name}"
                                             type="text"
                                             name={f.name}
                                             bind:value={dynamicOptions[f.name]}
-                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholder={f.label}
+                                            disabled={f.name === 'evaluator_id' && selectedAssistants.length > 0}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            placeholder={f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'Auto-assigned from selected assistant' : f.label}
                                         />
                                     </div>
                                 {:else if f.type === 'number'}
+                                    {#if f.name !== 'max_group_size' || dynamicOptions.submission_type === 'group'}
                                     <div class="p-3 border rounded-lg bg-white">
-                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
+                                            {f.label}{#if f.name === 'max_group_size' || f.required}<span class="text-red-500 ml-1">*</span>{/if}
+                                        </label>
+                                        {#if f.name === 'max_group_size'}
+                                            <p class="text-xs text-gray-400 mb-1">Min 2, Max 20</p>
+                                        {/if}
                                         <input
                                             id="dyn-{f.name}"
                                             type="number"
-                                            min="1"
+                                            min={f.name === 'max_group_size' ? '2' : '1'}
+                                            max={f.name === 'max_group_size' ? '20' : undefined}
                                             name={f.name}
                                             bind:value={dynamicOptions[f.name]}
                                             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required={f.name === 'max_group_size' || f.required}
                                         />
                                     </div>
+                                    {/if}
                                 {:else if f.type === 'datetime'}
                                     <div class="p-3 border rounded-lg bg-white">
-                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">{f.label}</label>
+                                        <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
+                                            {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
+                                        </label>
                                         <input
                                             id="dyn-{f.name}"
                                             type="datetime-local"
                                             name={f.name}
                                             bind:value={dynamicOptions[f.name]}
+                                            required={f.required}
                                             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         />
                                     </div>

@@ -91,6 +91,7 @@ class GroupCodeResponse(BaseModel):
 # ── Activity setup config (stored in lti_activities.setup_config JSON) ─────
 
 class FileEvalSetupConfig(BaseModel):
+    title: Optional[str] = None
     evaluator_id: Optional[str] = None
     submission_type: Literal["individual", "group"] = "individual"
     max_group_size: Optional[int] = None
@@ -103,6 +104,17 @@ class FileEvalSetupConfig(BaseModel):
         if isinstance(data, dict) and data.get('submission_type') is None and 'activity_type' in data:
             return {**data, 'submission_type': data.get('activity_type') or 'individual'}
         return data
+
+    @model_validator(mode='after')
+    def validate_group_size(self):
+        if self.submission_type == 'group':
+            if self.max_group_size is None:
+                raise ValueError('max_group_size is required for group submissions')
+            if not (2 <= self.max_group_size <= 20):
+                raise ValueError('max_group_size must be between 2 and 20')
+        else:
+            self.max_group_size = None
+        return self
 
     @field_validator('language', mode='before')
     @classmethod

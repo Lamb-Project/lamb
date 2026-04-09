@@ -52,6 +52,12 @@ class FileEvalModule(ActivityModule):
     def get_setup_fields(self):
         return [
             SetupField(
+                name="title",
+                label="Activity title",
+                field_type="text",
+                required=True,
+            ),
+            SetupField(
                 name="evaluator_id",
                 label="Evaluator assistant ID",
                 field_type="text",
@@ -66,7 +72,7 @@ class FileEvalModule(ActivityModule):
             SetupField(
                 name="submission_type",
                 label="Submission type",
-                field_type="select",
+                field_type="radio",
                 required=True,
                 options=[
                     {"value": "individual", "label": "Individual"},
@@ -75,7 +81,7 @@ class FileEvalModule(ActivityModule):
             ),
             SetupField(
                 name="max_group_size",
-                label="Max group size",
+                label="Max students per group",
                 field_type="number",
                 required=False,
             ),
@@ -83,7 +89,7 @@ class FileEvalModule(ActivityModule):
                 name="deadline",
                 label="Deadline",
                 field_type="datetime",
-                required=False,
+                required=True,
             ),
             SetupField(
                 name="language",
@@ -107,7 +113,12 @@ class FileEvalModule(ActivityModule):
         aids = setup_data.get("assistant_ids") or []
         if not ev and aids:
             ev = str(aids[0])
+        title_val = setup_data.get("title")
+        if title_val is not None:
+            title_val = str(title_val).strip()
+
         module_fields = {
+            "title": title_val,
             "evaluator_id": ev,
             "description": setup_data.get("description"),
             "submission_type": setup_data.get("submission_type", "individual"),

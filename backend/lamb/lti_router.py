@@ -373,7 +373,7 @@ async def lti_setup_info(request: Request, token: str = ""):
 
     def _field_to_json(f):
         row = {"name": f.name, "label": f.label, "type": f.field_type, "required": f.required}
-        if f.field_type == "select" and getattr(f, "options", None):
+        if f.field_type in ("select", "radio") and getattr(f, "options", None):
             row["options"] = [{"value": o["value"], "label": o["label"]} for o in f.options]
         return row
 
@@ -421,6 +421,26 @@ async def lti_configure_activity(request: Request):
         if not assistant_ids:
             return JSONResponse({"detail": "Please select at least one assistant"}, status_code=400)
 
+        # File-evaluation specific validation
+        if activity_type == "file_evaluation":
+            fe_title = (payload.get("title") or "").strip()
+            if not fe_title:
+                return JSONResponse({"detail": "Activity title is required"}, status_code=400)
+            fe_deadline = (payload.get("deadline") or "").strip()
+            if not fe_deadline:
+                return JSONResponse({"detail": "Deadline is required"}, status_code=400)
+            fe_sub_type = payload.get("submission_type", "individual")
+            if fe_sub_type == "group":
+                try:
+                    fe_group_size = int(payload.get("max_group_size", 0))
+                except (TypeError, ValueError):
+                    fe_group_size = 0
+                if not (2 <= fe_group_size <= 20):
+                    return JSONResponse(
+                        {"detail": "Max group size must be between 2 and 20"},
+                        status_code=400,
+                    )
+
         # Re-fetch creator user from JWT (never trust form data for identity)
         creator_user_ids = data.get("lti_creator_user_ids", [])
         creator_user = None
@@ -442,6 +462,11 @@ async def lti_configure_activity(request: Request):
         context_id = data.get("lti_context_id", "")
         context_title = data.get("lti_context_title", "")
 
+        # Use instructor-provided title when available (file_evaluation),
+        # falling back to LMS course title or resource_link_id.
+        instructor_title = (payload.get("title") or "").strip()
+        resolved_activity_name = instructor_title or context_title or resource_link_id
+
         # Phase 1: create DB record (owi fields empty at this point)
         activity = manager.configure_activity(
             resource_link_id=resource_link_id,
@@ -451,7 +476,7 @@ async def lti_configure_activity(request: Request):
             configured_by_name=creator_user.get("user_name"),
             context_id=context_id,
             context_title=context_title,
-            activity_name=context_title or resource_link_id,
+            activity_name=resolved_activity_name,
             chat_visibility_enabled=chat_visibility_enabled,
             activity_type=activity_type,
         )
@@ -468,7 +493,7 @@ async def lti_configure_activity(request: Request):
             "resource_link_id": resource_link_id,
             "assistant_ids": assistant_ids,
             "configured_by_email": creator_user["user_email"],
-            "activity_name": context_title or resource_link_id,
+            "activity_name": resolved_activity_name,
             "chat_visibility_enabled": chat_visibility_enabled,
             **extras,
         }

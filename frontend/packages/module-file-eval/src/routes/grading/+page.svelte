@@ -108,6 +108,19 @@
 		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 	}
 
+	/** Format a deadline that may be a Unix timestamp (s or ms) or an ISO/datetime string. */
+	function formatDeadlineDisplay(deadline) {
+		const d = parseDeadline(deadline);
+		if (!d) return '';
+		return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+	}
+
+	function isDeadlinePast(deadline) {
+		const d = parseDeadline(deadline);
+		if (!d) return false;
+		return d.getTime() < Date.now();
+	}
+
 	/** Prefer LMS display name; synthetic id only as fallback (e.g. old rows). */
 	function memberLabel(m) {
 		if (!m) return '-';
@@ -374,9 +387,9 @@
 						{#if data.activity_info.deadline}
 							<p class="flex items-center gap-2">
 								<span class="font-medium">{$_('fileEval.grading.deadline')}:</span>
-								<span class="{isDeadlinePast(data.activity_info.deadline) ? 'text-red-600' : 'text-green-600'}">
-									{formatDate(data.activity_info.deadline)}
-								</span>
+							<span class="{isDeadlinePast(data.activity_info.deadline) ? 'text-red-600' : 'text-green-600'}">
+								{formatDeadlineDisplay(data.activity_info.deadline)}
+							</span>
 								{#if isDeadlinePast(data.activity_info.deadline)}
 									<span class="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
 										{$_('fileEval.grading.deadlinePassed')}
