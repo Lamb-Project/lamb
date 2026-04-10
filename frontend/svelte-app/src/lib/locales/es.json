@@ -867,5 +867,89 @@
       "noNews": "No hay noticias que mostrar.",
       "viewAssistants": "Ver Asistentes de Aprendizaje"
     }
+  },
+  "libraries": {
+    "title": "Bibliotecas",
+    "pageTitle": "Bibliotecas",
+    "pageDescription": "Gestiona tus bibliotecas de documentos.",
+    "myLibraries": "Mis Bibliotecas",
+    "sharedLibraries": "Compartidas",
+    "createNew": "Nueva Biblioteca",
+    "loading": "Cargando bibliotecas...",
+    "loginRequired": "Debes iniciar sesión para ver las bibliotecas.",
+    "noOwned": "No tienes bibliotecas. ¡Crea una para empezar!",
+    "noShared": "No hay bibliotecas compartidas disponibles.",
+    "noResults": "Ninguna biblioteca coincide con tu búsqueda.",
+    "name": "Nombre",
+    "description": "Descripción",
+    "namePlaceholder": "Nombre de la biblioteca",
+    "descriptionPlaceholder": "Descripción opcional",
+    "createdAt": "Creada",
+    "owner": "Propietario",
+    "view": "Ver",
+    "delete": "Eliminar",
+    "actions": "Acciones",
+    "creating": "Creando...",
+    "createButton": "Crear Biblioteca",
+    "createSuccess": "Biblioteca creada correctamente.",
+    "deleteSuccess": "Biblioteca eliminada.",
+    "shareSuccess": "Biblioteca compartida con la organización.",
+    "unshareSuccess": "La biblioteca es ahora privada.",
+    "uploadFile": "Subir archivo",
+    "titleOptional": "Título",
+    "upload": "Subir",
+    "uploading": "Subiendo...",
+    "uploadSuccess": "Archivo subido. Procesando...",
+    "importContent": "Importar URL / YouTube",
+    "importSuccess": "Importación iniciada.",
+    "addContent": "Añadir Contenido",
+    "export": "Exportar",
+    "itemDeleteSuccess": "Elemento eliminado.",
+    "detailTitle": "Detalles de la Biblioteca",
+    "backButton": "Volver a bibliotecas",
+    "items": {
+      "title": "Elementos",
+      "titleCol": "Título",
+      "source": "Origen",
+      "size": "Tamaño",
+      "status": "Estado",
+      "created": "Creado",
+      "empty": "Sin elementos. Sube un archivo o importa contenido para empezar."
+    },
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartida",
+      "private": "Privada"
+    },
+    "createModal": {
+      "title": "Crear Biblioteca",
+      "description": "Crea una nueva biblioteca para almacenar contenido importado.",
+      "nameRequired": "El nombre es obligatorio",
+      "nameTooLong": "El nombre debe tener menos de 100 caracteres"
+    },
+    "deleteModal": {
+      "title": "Eliminar Biblioteca",
+      "message": "¿Estás seguro? Todo el contenido se eliminará permanentemente.",
+      "confirm": "Eliminar"
+    },
+    "deleteItemModal": {
+      "title": "Eliminar Elemento",
+      "message": "¿Estás seguro de que quieres eliminar este elemento?",
+      "confirm": "Eliminar"
+    },
+    "importModal": {
+      "title": "Importar Contenido",
+      "typeLabel": "Tipo de importación",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "Archivo ZIP",
+      "titleLabel": "Título (opcional)",
+      "youtubeUrl": "URL de YouTube",
+      "language": "Idioma de la transcripción",
+      "zipFile": "Archivo ZIP",
+      "zipHint": "Importa una biblioteca exportada previamente.",
+      "importing": "Importando...",
+      "importButton": "Importar"
+    }
   }
 }

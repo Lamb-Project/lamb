@@ -863,5 +863,89 @@
       "noNews": "Ez dago berririk erakusteko.",
       "viewAssistants": "Ikaskuntza Laguntzaileak Ikusi"
     }
+  },
+  "libraries": {
+    "title": "Liburutegiak",
+    "pageTitle": "Liburutegiak",
+    "pageDescription": "Kudeatu zure dokumentu liburutegiak.",
+    "myLibraries": "Nire Liburutegiak",
+    "sharedLibraries": "Partekatuak",
+    "createNew": "Liburutegi Berria",
+    "loading": "Liburutegiak kargatzen...",
+    "loginRequired": "Saioa hasi behar duzu liburutegiak ikusteko.",
+    "noOwned": "Ez duzu liburutegirik. Sortu bat hasteko!",
+    "noShared": "Ez dago partekatutako liburutegirik eskuragarri.",
+    "noResults": "Ez da liburutegirik aurkitu zure bilaketarekin.",
+    "name": "Izena",
+    "description": "Deskribapena",
+    "namePlaceholder": "Liburutegiaren izena",
+    "descriptionPlaceholder": "Deskribapen aukerakoa",
+    "createdAt": "Sortua",
+    "owner": "Jabea",
+    "view": "Ikusi",
+    "delete": "Ezabatu",
+    "actions": "Ekintzak",
+    "creating": "Sortzen...",
+    "createButton": "Liburutegia Sortu",
+    "createSuccess": "Liburutegia ondo sortu da.",
+    "deleteSuccess": "Liburutegia ezabatua.",
+    "shareSuccess": "Liburutegia erakundearekin partekatu da.",
+    "unshareSuccess": "Liburutegia pribatua da orain.",
+    "uploadFile": "Fitxategia igo",
+    "titleOptional": "Izenburua",
+    "upload": "Igo",
+    "uploading": "Igotzen...",
+    "uploadSuccess": "Fitxategia igota. Prozesatzen...",
+    "importContent": "Inportatu URL / YouTube",
+    "importSuccess": "Inportazioa hasita.",
+    "addContent": "Edukia Gehitu",
+    "export": "Esportatu",
+    "itemDeleteSuccess": "Elementua ezabatua.",
+    "detailTitle": "Liburutegiaren Xehetasunak",
+    "backButton": "Liburutegietara itzuli",
+    "items": {
+      "title": "Elementuak",
+      "titleCol": "Izenburua",
+      "source": "Jatorria",
+      "size": "Tamaina",
+      "status": "Egoera",
+      "created": "Sortua",
+      "empty": "Elementurik ez. Igo fitxategi bat edo inportatu edukia hasteko."
+    },
+    "sharing": {
+      "label": "Partekatzea",
+      "shared": "Partekatua",
+      "private": "Pribatua"
+    },
+    "createModal": {
+      "title": "Liburutegia Sortu",
+      "description": "Sortu liburutegi berri bat inportatutako edukia gordetzeko.",
+      "nameRequired": "Izena beharrezkoa da",
+      "nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu"
+    },
+    "deleteModal": {
+      "title": "Liburutegia Ezabatu",
+      "message": "Ziur zaude? Eduki guztia betirako ezabatuko da.",
+      "confirm": "Ezabatu"
+    },
+    "deleteItemModal": {
+      "title": "Elementua Ezabatu",
+      "message": "Ziur zaude elementu hau ezabatu nahi duzula?",
+      "confirm": "Ezabatu"
+    },
+    "importModal": {
+      "title": "Edukia Inportatu",
+      "typeLabel": "Inportazio mota",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "ZIP Artxiboa",
+      "titleLabel": "Izenburua (aukerakoa)",
+      "youtubeUrl": "YouTube URLa",
+      "language": "Transkripzioaren hizkuntza",
+      "zipFile": "ZIP fitxategia",
+      "zipHint": "Inportatu aurretik esportatutako liburutegi bat.",
+      "importing": "Inportatzen...",
+      "importButton": "Inportatu"
+    }
   }
 }

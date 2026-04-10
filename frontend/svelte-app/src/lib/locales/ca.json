@@ -856,5 +856,89 @@
       "noNews": "No hi ha notícies per mostrar.",
       "viewAssistants": "Veure Assistents d'Aprenentatge"
     }
+  },
+  "libraries": {
+    "title": "Biblioteques",
+    "pageTitle": "Biblioteques",
+    "pageDescription": "Gestiona les teves biblioteques de documents.",
+    "myLibraries": "Les meves Biblioteques",
+    "sharedLibraries": "Compartides",
+    "createNew": "Nova Biblioteca",
+    "loading": "Carregant biblioteques...",
+    "loginRequired": "Has d'iniciar sessió per veure les biblioteques.",
+    "noOwned": "No tens biblioteques. Crea'n una per començar!",
+    "noShared": "No hi ha biblioteques compartides disponibles.",
+    "noResults": "Cap biblioteca coincideix amb la teva cerca.",
+    "name": "Nom",
+    "description": "Descripció",
+    "namePlaceholder": "Nom de la biblioteca",
+    "descriptionPlaceholder": "Descripció opcional",
+    "createdAt": "Creada",
+    "owner": "Propietari",
+    "view": "Veure",
+    "delete": "Eliminar",
+    "actions": "Accions",
+    "creating": "Creant...",
+    "createButton": "Crear Biblioteca",
+    "createSuccess": "Biblioteca creada correctament.",
+    "deleteSuccess": "Biblioteca eliminada.",
+    "shareSuccess": "Biblioteca compartida amb l'organització.",
+    "unshareSuccess": "La biblioteca és ara privada.",
+    "uploadFile": "Pujar fitxer",
+    "titleOptional": "Títol",
+    "upload": "Pujar",
+    "uploading": "Pujant...",
+    "uploadSuccess": "Fitxer pujat. Processant...",
+    "importContent": "Importar URL / YouTube",
+    "importSuccess": "Importació iniciada.",
+    "addContent": "Afegir Contingut",
+    "export": "Exportar",
+    "itemDeleteSuccess": "Element eliminat.",
+    "detailTitle": "Detalls de la Biblioteca",
+    "backButton": "Tornar a biblioteques",
+    "items": {
+      "title": "Elements",
+      "titleCol": "Títol",
+      "source": "Origen",
+      "size": "Mida",
+      "status": "Estat",
+      "created": "Creat",
+      "empty": "Sense elements. Puja un fitxer o importa contingut per començar."
+    },
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartida",
+      "private": "Privada"
+    },
+    "createModal": {
+      "title": "Crear Biblioteca",
+      "description": "Crea una nova biblioteca per emmagatzemar contingut importat.",
+      "nameRequired": "El nom és obligatori",
+      "nameTooLong": "El nom ha de tenir menys de 100 caràcters"
+    },
+    "deleteModal": {
+      "title": "Eliminar Biblioteca",
+      "message": "N'estàs segur? Tot el contingut s'eliminarà permanentment.",
+      "confirm": "Eliminar"
+    },
+    "deleteItemModal": {
+      "title": "Eliminar Element",
+      "message": "Estàs segur que vols eliminar aquest element?",
+      "confirm": "Eliminar"
+    },
+    "importModal": {
+      "title": "Importar Contingut",
+      "typeLabel": "Tipus d'importació",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "Arxiu ZIP",
+      "titleLabel": "Títol (opcional)",
+      "youtubeUrl": "URL de YouTube",
+      "language": "Idioma de la transcripció",
+      "zipFile": "Arxiu ZIP",
+      "zipHint": "Importa una biblioteca exportada prèviament.",
+      "importing": "Important...",
+      "importButton": "Importar"
+    }
   }
 }
