@@ -800,7 +800,20 @@
       "deadline": "Muga data",
       "deadlinePassed": "Muga data igaro da",
       "activityInfo": "Jardueraren Informazioa",
-      "course": "Ikastaroa"
+      "course": "Ikastaroa",
+      "noDescription": "Deskribapenik ez.",
+      "groupMaxStudents": "Taldeko jarduera: taldeko gehienez {count} ikasle.",
+      "sectionGroupSubmission": "Taldeko bidalketa",
+      "sectionIndividualSubmission": "Zure bidalketa",
+      "deadlineLabel": "Muga data",
+      "optionUploadLeader": "1. aukera: Taldea sortu",
+      "optionUploadLeaderHint": "Igo dokumentu bat eta taldeko lider bihurtu. Zure taldekideekin partekatzeko kode bat jasoko duzu.",
+      "submitCreateGroup": "Dokumentua igo eta taldea sortu",
+      "optionJoinCode": "2. aukera: Kodearekin batu",
+      "optionJoinHint": "Taldekide batek dagoeneko dokumentua igo badu, sartu taldearen kodea batzeko.",
+      "groupCodeLabel": "Taldearen kodea",
+      "groupCodeFormatHint": "Kodeak 8 karaktere ditu (letrak eta zenbakiak).",
+      "gradePendingMoodle": "Zure nota hemen agertuko da irakasleak Moodlen kalifikazio-liburuan argitaratzen duenean."
     },
     "grading": {
       "title": "Fitxategien ebaluazioa — irakaslea",

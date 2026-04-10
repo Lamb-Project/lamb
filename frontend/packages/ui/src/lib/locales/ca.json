@@ -800,7 +800,20 @@
       "deadline": "Data límit",
       "deadlinePassed": "La data límit ha passat",
       "activityInfo": "Informació de l'Activitat",
-      "course": "Curs"
+      "course": "Curs",
+      "noDescription": "Sense descripció.",
+      "groupMaxStudents": "Activitat en grup: màxim {count} estudiants per grup.",
+      "sectionGroupSubmission": "Lliurament en Grup",
+      "sectionIndividualSubmission": "El teu lliurament",
+      "deadlineLabel": "Data límit",
+      "optionUploadLeader": "Opció 1: Crear grup",
+      "optionUploadLeaderHint": "Puja un document i converteix-te en el líder del grup. Rebràs un codi per compartir amb el teu equip.",
+      "submitCreateGroup": "Pujar document i crear grup",
+      "optionJoinCode": "Opció 2: Unir-se amb codi",
+      "optionJoinHint": "Si el teu company ja ha pujat un document, introdueix el codi del grup per unir-te.",
+      "groupCodeLabel": "Codi del grup",
+      "groupCodeFormatHint": "El codi ha de tenir 8 caràcters (lletres i números).",
+      "gradePendingMoodle": "La teva nota apareixerà aquí quan el professor la publiqui al llibre de qualificacions de Moodle."
     },
     "grading": {
       "title": "Avaluació de fitxers — professorat",

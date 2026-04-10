@@ -800,7 +800,20 @@
       "deadline": "Deadline",
       "deadlinePassed": "Deadline has passed",
       "activityInfo": "Activity Information",
-      "course": "Course"
+      "course": "Course",
+      "noDescription": "No description provided.",
+      "groupMaxStudents": "Group activity: up to {count} students per group.",
+      "sectionGroupSubmission": "Group submission",
+      "sectionIndividualSubmission": "Your submission",
+      "deadlineLabel": "Deadline",
+      "optionUploadLeader": "Option 1: Upload and create a group",
+      "optionUploadLeaderHint": "Upload a file to become the group leader. You will receive a code to share with your teammates.",
+      "submitCreateGroup": "Upload file and create group",
+      "optionJoinCode": "Option 2: Join with a code",
+      "optionJoinHint": "If a teammate already uploaded, enter the group code to join.",
+      "groupCodeLabel": "Group code",
+      "groupCodeFormatHint": "The code is 8 characters (letters and numbers).",
+      "gradePendingMoodle": "Your grade will appear here after your instructor publishes it to the course gradebook."
     },
     "grading": {
       "title": "File evaluation — instructor",

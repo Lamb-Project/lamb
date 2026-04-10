@@ -24,7 +24,20 @@
 			"deadline": "Fecha límite",
 			"deadlinePassed": "La fecha límite ha pasado",
 			"activityInfo": "Información de la Actividad",
-			"course": "Curso"
+			"course": "Curso",
+			"noDescription": "Sin descripción.",
+			"groupMaxStudents": "Actividad en grupo: máximo {count} estudiantes por grupo.",
+			"sectionGroupSubmission": "Entrega en Grupo",
+			"sectionIndividualSubmission": "Tu entrega",
+			"deadlineLabel": "Fecha límite",
+			"optionUploadLeader": "Opción 1: Crear grupo",
+			"optionUploadLeaderHint": "Sube un documento y conviértete en el líder del grupo. Recibirás un código para compartir con tu equipo.",
+			"submitCreateGroup": "Subir documento y crear grupo",
+			"optionJoinCode": "Opción 2: Unirse con código",
+			"optionJoinHint": "Si tu compañero ya subió un documento, introduce el código del grupo para unirte.",
+			"groupCodeLabel": "Código del grupo",
+			"groupCodeFormatHint": "El código debe tener 8 caracteres (letras y números).",
+			"gradePendingMoodle": "Tu nota aparecerá aquí cuando el profesor la publique en el libro de calificaciones de Moodle."
 		},
 		"grading": {
 			"title": "Panel de Corrección",
