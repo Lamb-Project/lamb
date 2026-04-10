@@ -51,6 +51,30 @@ function baseUrl() {
 const MODULE_PREFIX = '/lamb/v1/modules/file_evaluation';
 
 /**
+ * Build an Error from a non-ok Response, parsing FastAPI's JSON `detail` when available.
+ * The thrown error exposes `.code` (string) when the backend sends `{ code, message }`.
+ * @param {Response} res
+ */
+async function buildApiError(res) {
+	const text = await res.text();
+	let message = text || `HTTP ${res.status}`;
+	let code = '';
+	try {
+		const parsed = JSON.parse(text);
+		const detail = parsed?.detail;
+		if (typeof detail === 'string') {
+			message = detail;
+		} else if (detail && typeof detail === 'object') {
+			message = detail.message || text;
+			code = detail.code || '';
+		}
+	} catch {
+		/* not JSON */
+	}
+	return Object.assign(new Error(message), { code });
+}
+
+/**
  * @param {string} path
  * @param {RequestInit} [opts]
  */
@@ -62,10 +86,7 @@ export async function apiFetch(path, opts = {}) {
 		Authorization: `Bearer ${token}`
 	};
 	const res = await fetch(url, { ...opts, headers });
-	if (!res.ok) {
-		const text = await res.text();
-		throw new Error(text || `HTTP ${res.status}`);
-	}
+	if (!res.ok) throw await buildApiError(res);
 	return res.json();
 }
 
@@ -82,10 +103,7 @@ export async function apiUpload(path, formData) {
 		headers: { Authorization: `Bearer ${token}` },
 		body: formData
 	});
-	if (!res.ok) {
-		const text = await res.text();
-		throw new Error(text || `HTTP ${res.status}`);
-	}
+	if (!res.ok) throw await buildApiError(res);
 	return res.json();
 }
 

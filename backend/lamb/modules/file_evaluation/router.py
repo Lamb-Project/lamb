@@ -216,13 +216,24 @@ async def join_group(request: Request, body: GroupCodeSubmission, token: str = "
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
     display_name = (payload.get("lti_display_name") or "").strip() or None
-    result = _service.join_group(
-        activity_id=activity_id,
-        group_code=body.group_code,
-        student_id=student_id,
-        lis_result_sourcedid=lis_sourcedid,
-        student_name=display_name,
-    )
+    try:
+        result = _service.join_group(
+            activity_id=activity_id,
+            group_code=body.group_code,
+            student_id=student_id,
+            lis_result_sourcedid=lis_sourcedid,
+            student_name=display_name,
+        )
+    except ValueError as e:
+        msg = str(e)
+        _join_error_map = {
+            "Invalid group code": (404, "invalid_group_code"),
+            "Group is full": (409, "group_full"),
+            "Already a member of this group": (409, "already_in_group"),
+            "Already submitted to this activity": (409, "already_submitted_activity"),
+        }
+        status, code = _join_error_map.get(msg, (409, "join_error"))
+        raise HTTPException(status_code=status, detail={"code": code, "message": msg}) from e
     return {"success": True, "submission": result}
 
 

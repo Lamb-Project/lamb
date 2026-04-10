@@ -37,7 +37,20 @@
 			"optionJoinHint": "If a teammate already uploaded, enter the group code to join.",
 			"groupCodeLabel": "Group code",
 			"groupCodeFormatHint": "The code is 8 characters (letters and numbers).",
-			"gradePendingMoodle": "Your grade will appear here after your instructor publishes it to the course gradebook."
+			"gradePendingMoodle": "Your grade will appear here after your instructor publishes it to the course gradebook.",
+			"statusJoinedGroup": "Joined the group",
+			"statusDocumentSentLeader": "Document submitted (group leader)",
+			"submissionFileLabel": "File",
+			"submissionSizeLabel": "Size",
+			"submissionSentLabel": "Submitted",
+			"copyGroupCode": "Copy code",
+			"codeCopied": "Code copied to clipboard",
+			"groupMembersTitle": "Group members",
+			"groupLabel": "Group",
+			"groupJoinFull": "This group is already full. Ask the group leader for a different code or create your own group.",
+			"groupJoinInvalidCode": "The group code is invalid. Please check the code and try again.",
+			"groupJoinAlreadyMember": "You are already a member of this group.",
+			"groupJoinAlreadySubmitted": "You have already submitted to this activity."
 		},
 		"grading": {
 			"title": "Grading Dashboard",

@@ -813,7 +813,20 @@
       "optionJoinHint": "Taldekide batek dagoeneko dokumentua igo badu, sartu taldearen kodea batzeko.",
       "groupCodeLabel": "Taldearen kodea",
       "groupCodeFormatHint": "Kodeak 8 karaktere ditu (letrak eta zenbakiak).",
-      "gradePendingMoodle": "Zure nota hemen agertuko da irakasleak Moodlen kalifikazio-liburuan argitaratzen duenean."
+      "gradePendingMoodle": "Zure nota hemen agertuko da irakasleak Moodlen kalifikazio-liburuan argitaratzen duenean.",
+      "statusJoinedGroup": "Taldean sartuta",
+      "statusDocumentSentLeader": "Dokumentua bidalita (taldeko liderra)",
+      "submissionFileLabel": "Fitxategia",
+      "submissionSizeLabel": "Tamaina",
+      "submissionSentLabel": "Bidalita",
+      "copyGroupCode": "Kodea kopiatu",
+      "codeCopied": "Kodea arbelera kopiatu da",
+      "groupMembersTitle": "Taldekideak",
+      "groupLabel": "Taldea",
+      "groupJoinFull": "Talde hau beteta dago. Eskatu taldeko liderrari beste kode bat edo sortu zure taldea.",
+      "groupJoinInvalidCode": "Talde kodea ez da baliozkoa. Egiaztatu kodea eta saiatu berriro.",
+      "groupJoinAlreadyMember": "Dagoeneko talde honetako kidea zara.",
+      "groupJoinAlreadySubmitted": "Dagoeneko bidalketa bat egin duzu jarduera honetan."
     },
     "grading": {
       "title": "Fitxategien ebaluazioa — irakaslea",

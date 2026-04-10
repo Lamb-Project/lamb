@@ -37,7 +37,20 @@
 			"optionJoinHint": "Si tu compañero ya subió un documento, introduce el código del grupo para unirte.",
 			"groupCodeLabel": "Código del grupo",
 			"groupCodeFormatHint": "El código debe tener 8 caracteres (letras y números).",
-			"gradePendingMoodle": "Tu nota aparecerá aquí cuando el profesor la publique en el libro de calificaciones de Moodle."
+			"gradePendingMoodle": "Tu nota aparecerá aquí cuando el profesor la publique en el libro de calificaciones de Moodle.",
+			"statusJoinedGroup": "Unido al grupo",
+			"statusDocumentSentLeader": "Documento enviado (líder del grupo)",
+			"submissionFileLabel": "Archivo",
+			"submissionSizeLabel": "Tamaño",
+			"submissionSentLabel": "Enviado",
+			"copyGroupCode": "Copiar código",
+			"codeCopied": "Código copiado al portapapeles",
+			"groupMembersTitle": "Miembros del grupo",
+			"groupLabel": "Grupo",
+			"groupJoinFull": "Este grupo ya está completo. Pide al líder del grupo otro código o crea tu propio grupo.",
+			"groupJoinInvalidCode": "El código de grupo no es válido. Revísalo e inténtalo de nuevo.",
+			"groupJoinAlreadyMember": "Ya eres miembro de este grupo.",
+			"groupJoinAlreadySubmitted": "Ya has realizado una entrega en esta actividad."
 		},
 		"grading": {
 			"title": "Panel de Corrección",

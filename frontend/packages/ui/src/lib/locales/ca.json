@@ -813,7 +813,20 @@
       "optionJoinHint": "Si el teu company ja ha pujat un document, introdueix el codi del grup per unir-te.",
       "groupCodeLabel": "Codi del grup",
       "groupCodeFormatHint": "El codi ha de tenir 8 caràcters (lletres i números).",
-      "gradePendingMoodle": "La teva nota apareixerà aquí quan el professor la publiqui al llibre de qualificacions de Moodle."
+      "gradePendingMoodle": "La teva nota apareixerà aquí quan el professor la publiqui al llibre de qualificacions de Moodle.",
+      "statusJoinedGroup": "Unit al grup",
+      "statusDocumentSentLeader": "Document lliurat (líder del grup)",
+      "submissionFileLabel": "Arxiu",
+      "submissionSizeLabel": "Mida",
+      "submissionSentLabel": "Enviat",
+      "copyGroupCode": "Copiar codi",
+      "codeCopied": "Codi copiat al portapapers",
+      "groupMembersTitle": "Membres del grup",
+      "groupLabel": "Grup",
+      "groupJoinFull": "Aquest grup ja està complet. Demana al líder del grup un altre codi o crea el teu propi grup.",
+      "groupJoinInvalidCode": "El codi de grup no és vàlid. Revisa'l i torna-ho a provar.",
+      "groupJoinAlreadyMember": "Ja ets membre d'aquest grup.",
+      "groupJoinAlreadySubmitted": "Ja has fet un lliurament en aquesta activitat."
     },
     "grading": {
       "title": "Avaluació de fitxers — professorat",

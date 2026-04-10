@@ -1,7 +1,7 @@
 # Phase 4: File Evaluation Module — Port from LAMBA to LAMB
 
 > **Status**: Implementation complete; **integration hardening in progress** (remaining issues tracked separately)
-> **Date**: 2026-03-24 (updated 2026-04-10 — instructor grading dashboard UX, AI feedback UI, download fix)
+> **Date**: 2026-03-24 (updated 2026-04-10 — instructor grading UX / AI feedback / download; student upload: **group leader vs member** views; **join group error handling**)
 > **Issue**: #277 — Architecture: Activity Module System
 
 ---
@@ -115,7 +115,7 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `POST` | `/activities/{id}/submissions` | Student | Upload file (multipart) |
 | `GET` | `/activities/{id}/submissions` | Instructor | List all submissions |
 | `GET` | `/submissions/me` | Student | Get own submission |
-| `POST` | `/submissions/join` | Student | Join group by code |
+| `POST` | `/submissions/join` | Student | Join group by code (404 invalid code; 409 group full / already member / already submitted) |
 | `GET` | `/submissions/{id}/members` | Any | List group members |
 | `GET` | `/submissions/my-file/download` | Student | Download submitted file |
 | `POST` | `/activities/{id}/evaluate` | Instructor | Start AI evaluation batch |
@@ -135,10 +135,10 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `src/app.css` | Tailwind import; `@plugin '@tailwindcss/typography'` for Markdown prose in AI feedback |
 | `src/routes/+layout.js` | `load`: `setupI18n` + `waitLocale` before pages render (avoids “Cannot format a message without first setting the initial locale”) |
 | `src/routes/+layout.svelte` | Root layout with `@lamb/ui` shell |
-| `src/routes/upload/+page.svelte` | **Student view** (LAMBA-aligned layout): header card with activity title + description + course; group-size banner when applicable; submission section with deadline (long format via `Intl.DateTimeFormat`); **group mode** renders two columns — Option 1 (upload + create group) and Option 2 (join with code); individual mode renders a single upload column; "already submitted" summary card above with group code, grade, and replace option |
+| `src/routes/upload/+page.svelte` | **Student view** (LAMBA-aligned layout): activity header + group-size banner; four branches: **(1) group, no submission** - two columns (upload to create group / join with code); **(2) group member** (`is_group_leader` false) - "Joined the group" status card, file meta, group code, download, member list with leader badge (`fileEval.grading.leaderBadge`), **no** replace upload; **(3) group leader** - "Document submitted (group leader)" card, highlighted group code with copy button, optional `group_display_name`, members list, then replace-submission block; **(4) individual** - summary + upload/replace. Members loaded via `getGroupMembers(file_submission_id)` (GET `/submissions/{id}/members`) after view load and refreshed on upload/join. Backend flag `is_group_leader` comes from `service.py` `_build_submission_view`. i18n keys under `fileEval.upload` (e.g. `statusJoinedGroup`, `copyGroupCode`, `groupMembersTitle`). |
 | `src/routes/grading/+page.svelte` | **Instructor view**: header card (activity title, course/context, owner, created date), editable activity settings (description, deadline), stats cards, **card-based** submission list (not a wide table), per-submission checkboxes + **select all**, bulk actions (**AI Evaluation**, accept AI, Moodle sync) only when there are submissions, evaluator warning if no `evaluator_id`, inline grading (AI score, collapsible **AI feedback** rendered as **Markdown** via `marked` + `@tailwindcss/typography`), final score/comment, filename as download link; polling for batch evaluation; deadline display parses Unix **or** ISO/`datetime-local` from `setup_config` |
 | `src/lib/services/api.js` | API helper with JWT from URL query param + Bearer header |
-| `src/lib/services/submissionService.js` | Upload, download, join group, get submission |
+| `src/lib/services/submissionService.js` | Upload, download, join group, get submission, **`getGroupMembers`** (student upload page) |
 | `src/lib/services/gradingService.js` | Activity view, evaluation, grading, Moodle sync |
 | `src/lib/locales/{en,es,ca,eu}.json` | Optional package-local strings (if used); primary `fileEval.*` keys are in **`@lamb/ui`** (see §2.3) |
 
@@ -251,6 +251,32 @@ Follow-up work to align the post-setup **instructor grading** experience with th
 
 **Security note:** `{@html}` after `marked.parse()` follows the same pattern as other apps in the monorepo (e.g. creator news). For untrusted content, consider sanitization (e.g. DOMPurify) in a future hardening pass.
 
+### 4.14 — Student upload (`upload/+page.svelte`): group leader vs member (2026-04)
+
+When the activity is **group** submission type and the student already has a row in `submission`, the SPA branches on **`submission.is_group_leader`** (computed in `backend/lamb/modules/file_evaluation/service.py`, `_build_submission_view`: leader = same `student_id` as `file_submission.uploaded_by` and a non-null `group_code`).
+
+| Role | UI |
+|------|-----|
+| **Member** (joined with code) | Status card “Joined the group”, file name/size/submitted-at, group code, download; list of members with **Leader** badge on the uploader; **no** replace-submission dropzone. |
+| **Leader** (first uploader) | Status card “Document submitted (group leader)”, download, **copy group code** (`navigator.clipboard`), optional group display name, member list, then **replace submission** (deadline + dropzone + note). |
+
+**Data:** Member rows are not embedded in `GET .../activities/{id}/view`; the page calls **`getGroupMembers(file_submission_id)`** → existing **`GET /submissions/{id}/members`**. Leader detection in the list matches **`m.student_id === file_submission.uploaded_by`** (same idea as the instructor grading cards).
+
+**i18n:** New keys under **`fileEval.upload`** in **`frontend/packages/ui`** and **`module-file-eval`** locales (`en`, `es`, `ca`, `eu`): e.g. `statusJoinedGroup`, `statusDocumentSentLeader`, `submissionFileLabel`, `submissionSizeLabel`, `submissionSentLabel`, `copyGroupCode`, `codeCopied`, `groupMembersTitle`, `groupLabel`. Reuses **`fileEval.grading.leaderBadge`** for the badge text.
+
+### 4.15 — Group join error handling (`router.py`, `api.js`, i18n) (2026-04)
+
+`POST /submissions/join` previously returned **500** when `FileEvalService.join_group()` raised `ValueError` (group full, invalid code, already member, already submitted). The router now wraps the call in `try/except ValueError` and maps each known message to a proper HTTP status and structured `detail`:
+
+| Service `ValueError` message | HTTP | `detail.code` |
+|------------------------------|------|----------------|
+| `Invalid group code` | 404 | `invalid_group_code` |
+| `Group is full` | 409 | `group_full` |
+| `Already a member of this group` | 409 | `already_in_group` |
+| `Already submitted to this activity` | 409 | `already_submitted_activity` |
+
+**Frontend:** `apiFetch` (and `apiUpload`) in [`api.js`](frontend/packages/module-file-eval/src/lib/services/api.js) now parse JSON error bodies and expose `error.code` on the thrown Error. `handleJoinGroup` in [`upload/+page.svelte`](frontend/packages/module-file-eval/src/routes/upload/+page.svelte) maps `error.code` to i18n keys (`groupJoinFull`, `groupJoinInvalidCode`, `groupJoinAlreadyMember`, `groupJoinAlreadySubmitted`) under `fileEval.upload`, falling back to the raw message for unknown codes. Keys added in all 8 locale files (en, es, ca, eu).
+
 ---
 
 ## 5. LTI Launch Flow
@@ -354,13 +380,14 @@ Recommended test coverage:
 - [ ] UI shows translated `fileEval.*` strings (not raw keys) after i18n init
 - [ ] Student uploads PDF → submission created, file stored
 - [ ] With `LAMB_DB_PREFIX` set, no SQLite error `no such table: main.lti_activities` on insert (schema repair + migrations)
-- [ ] Group activity: leader gets code → member joins with code
+- [ ] Group activity: leader uploads first → sees leader view (copy code, members, replace submission); second student joins with code → sees member view (no replace, leader badge on uploader)
 - [ ] AI evaluation: select one or more submissions → **AI Evaluation** → poll → completed with `ai_score` / `ai_comment` as applicable
 - [ ] Instructor grading UI: header shows owner/org/created; settings edit works; **AI feedback** expands and renders Markdown (not raw `**` lines)
 - [ ] Instructor download: `GET .../submissions/{uuid}/download` returns file (no 500 from wrong table name)
 - [ ] Instructor edits grade → final score saved
 - [ ] Accept all AI grades → bulk update
 - [ ] Sync to Moodle → grades sent via LTI 1.1 Outcome Service
+- [ ] Join full group → student sees translated "group full" message (not 500 Internal Server Error)
 
 ---
 
