@@ -152,6 +152,7 @@ async def upload_submission(
     payload = _decode_jwt(request, token)
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
+    display_name = (payload.get("lti_display_name") or "").strip() or None
 
     # Path param must match the activity embedded in the JWT (numeric lti_activities.id).
     tid = payload.get("lti_activity_id")
@@ -168,6 +169,7 @@ async def upload_submission(
             file_type=file.content_type or "application/octet-stream",
             lis_result_sourcedid=lis_sourcedid,
             student_note=student_note,
+            student_name=display_name,
         )
     except ValueError as e:
         msg = str(e)
@@ -213,12 +215,25 @@ async def join_group(request: Request, body: GroupCodeSubmission, token: str = "
     payload = _decode_jwt(request, token)
     student_id = payload.get("lti_user_email", "")
     lis_sourcedid = payload.get("lis_result_sourcedid")
-    result = _service.join_group(
-        activity_id=activity_id,
-        group_code=body.group_code,
-        student_id=student_id,
-        lis_result_sourcedid=lis_sourcedid,
-    )
+    display_name = (payload.get("lti_display_name") or "").strip() or None
+    try:
+        result = _service.join_group(
+            activity_id=activity_id,
+            group_code=body.group_code,
+            student_id=student_id,
+            lis_result_sourcedid=lis_sourcedid,
+            student_name=display_name,
+        )
+    except ValueError as e:
+        msg = str(e)
+        _join_error_map = {
+            "Invalid group code": (404, "invalid_group_code"),
+            "Group is full": (409, "group_full"),
+            "Already a member of this group": (409, "already_in_group"),
+            "Already submitted to this activity": (409, "already_submitted_activity"),
+        }
+        status, code = _join_error_map.get(msg, (409, "join_error"))
+        raise HTTPException(status_code=status, detail={"code": code, "message": msg}) from e
     return {"success": True, "submission": result}
 
 
@@ -264,16 +279,19 @@ async def download_submission_by_id(file_submission_id: str, request: Request, t
         raise HTTPException(status_code=500, detail="Database connection failed")
     try:
         conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
-        tbl = f"{_service.db.table_prefix}mod_file_eval_submissions"
-        fs = conn.execute(f"SELECT * FROM {tbl} WHERE id = ?", (file_submission_id,)).fetchone()
+        fs = conn.execute(
+            "SELECT * FROM mod_file_eval_submissions WHERE id = ?",
+            (file_submission_id,),
+        ).fetchone()
         if not fs:
             raise HTTPException(status_code=404, detail="Submission not found")
 
-        file_path = fs["file_path"]
-        if not os.path.isfile(file_path):
+        file_path = fs.get("file_path", "")
+        if not file_path or not os.path.isfile(file_path):
+            logger.warning("File not found on disk for submission %s: %s", file_submission_id, file_path)
             raise HTTPException(status_code=404, detail="File not found on disk")
 
-        file_name = fs["file_name"]
+        file_name = fs.get("file_name", "download")
 
         def iterfile():
             with open(file_path, "rb") as fh:
@@ -284,6 +302,11 @@ async def download_submission_by_id(file_submission_id: str, request: Request, t
             media_type="application/octet-stream",
             headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
         )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error downloading submission %s: %s", file_submission_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Download failed") from exc
     finally:
         conn.close()
 

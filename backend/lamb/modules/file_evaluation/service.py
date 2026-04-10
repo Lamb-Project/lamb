@@ -33,6 +33,13 @@ def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+def _norm_student_name(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _parse_setup_config(activity: Dict[str, Any]) -> Dict[str, Any]:
     """Return setup_config as a dict; tolerate bytes, NULL, or already-parsed dict."""
     raw = activity.get("setup_config")
@@ -73,10 +80,23 @@ class FileEvalService:
             conn.close()
 
     def get_activity_info(self, activity_id: int) -> Dict[str, Any]:
-        """Return activity info including description, deadline, and course name.
+        """Return activity info including description, deadline, course, owner, and org.
 
-        Uses ``lti_activities`` columns (``activity_name``, ``context_title``) and
-        module fields from ``setup_config`` JSON (``deadline``, optional ``description``).
+        Uses ``lti_activities`` columns and ``setup_config`` JSON.  The returned
+        dict is consumed directly by the frontend grading view header.
+
+        Shape::
+
+            {
+                "title":          str,
+                "description":    str | None,
+                "deadline":       int | None,   # Unix seconds
+                "course_name":    str,
+                "context_title":  str,
+                "created_at":     int | None,    # Unix seconds
+                "owner_display":  str,           # owner_name or owner_email fallback
+                "org_name":       str,
+            }
         """
         conn = self.db.get_connection()
         if not conn:
@@ -85,19 +105,33 @@ class FileEvalService:
             conn.row_factory = _dict_factory
             tbl = f"{self.db.table_prefix}lti_activities"
             row = conn.execute(
-                f"SELECT activity_name, context_title, setup_config, created_at FROM {tbl} WHERE id = ?",
+                f"SELECT activity_name, context_title, setup_config, created_at, "
+                f"owner_name, owner_email, organization_id FROM {tbl} WHERE id = ?",
                 (activity_id,),
             ).fetchone()
             if not row:
                 return {}
 
             cfg = _parse_setup_config(row)
+
+            org_name = ""
+            org_id = row.get("organization_id")
+            if org_id:
+                org = self.db.get_organization_by_id(org_id)
+                if org:
+                    org_name = org.get("name", "")
+
+            owner_display = row.get("owner_name") or row.get("owner_email") or ""
+
             return {
                 "description": cfg.get("description"),
                 "deadline": cfg.get("deadline"),
                 "course_name": row.get("context_title") or "",
+                "context_title": row.get("context_title") or "",
                 "title": row.get("activity_name"),
                 "created_at": row.get("created_at"),
+                "owner_display": owner_display,
+                "org_name": org_name,
             }
         finally:
             conn.close()
@@ -113,6 +147,7 @@ class FileEvalService:
         file_type: str,
         lis_result_sourcedid: Optional[str] = None,
         student_note: Optional[str] = None,
+        student_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         conn = self.db.get_connection()
         if not conn:
@@ -131,6 +166,7 @@ class FileEvalService:
             language = cfg.get("language", "en")
 
             file_size = len(file_bytes)
+            display_name = _norm_student_name(student_name)
 
             existing_ss = conn.execute(
                 "SELECT * FROM mod_file_eval_student_submissions WHERE student_id = ? AND activity_id = ?",
@@ -158,10 +194,19 @@ class FileEvalService:
                         (file_name, file_path, file_size, file_type, _now(),
                          (student_note or "").strip() or None, fs["id"]),
                     )
+                    set_parts: List[str] = []
+                    set_vals: List[Any] = []
                     if lis_result_sourcedid:
+                        set_parts.extend(["lis_result_sourcedid=?", "joined_at=?"])
+                        set_vals.extend([lis_result_sourcedid, _now()])
+                    if display_name:
+                        set_parts.append("student_name=?")
+                        set_vals.append(display_name)
+                    if set_parts:
+                        set_vals.append(existing_ss["id"])
                         conn.execute(
-                            "UPDATE mod_file_eval_student_submissions SET lis_result_sourcedid=?, joined_at=? WHERE id=?",
-                            (lis_result_sourcedid, _now(), existing_ss["id"]),
+                            f"UPDATE mod_file_eval_student_submissions SET {', '.join(set_parts)} WHERE id=?",
+                            set_vals,
                         )
                     conn.commit()
                     return self._build_submission_view(conn, fs["id"], existing_ss["id"])
@@ -198,9 +243,9 @@ class FileEvalService:
             conn.execute(
                 """INSERT INTO mod_file_eval_student_submissions
                    (id, file_submission_id, student_id, activity_id,
-                    lis_result_sourcedid, joined_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (ss_id, fs_id, student_id, activity_id, lis_result_sourcedid, _now()),
+                    lis_result_sourcedid, joined_at, student_name)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (ss_id, fs_id, student_id, activity_id, lis_result_sourcedid, _now(), display_name),
             )
 
             conn.commit()
@@ -216,12 +261,14 @@ class FileEvalService:
         group_code: str,
         student_id: str,
         lis_result_sourcedid: Optional[str] = None,
+        student_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         conn = self.db.get_connection()
         if not conn:
             raise RuntimeError("No DB")
         try:
             conn.row_factory = _dict_factory
+            display_name = _norm_student_name(student_name)
 
             fs = conn.execute(
                 "SELECT * FROM mod_file_eval_submissions WHERE group_code = ? AND activity_id = ?",
@@ -249,9 +296,9 @@ class FileEvalService:
             ss_id = str(uuid.uuid4())
             conn.execute(
                 """INSERT INTO mod_file_eval_student_submissions
-                   (id, file_submission_id, student_id, activity_id, lis_result_sourcedid, joined_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (ss_id, fs["id"], student_id, activity_id, lis_result_sourcedid, _now()),
+                   (id, file_submission_id, student_id, activity_id, lis_result_sourcedid, joined_at, student_name)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (ss_id, fs["id"], student_id, activity_id, lis_result_sourcedid, _now(), display_name),
             )
             conn.commit()
             return self._build_submission_view(conn, fs["id"], ss_id)
@@ -357,6 +404,9 @@ class FileEvalService:
         fs = conn.execute("SELECT * FROM mod_file_eval_submissions WHERE id = ?", (fs_id,)).fetchone()
         ss = conn.execute("SELECT * FROM mod_file_eval_student_submissions WHERE id = ?", (ss_id,)).fetchone()
         grade = self.grade_svc.get_grade_by_submission(fs_id)
+        # Student-facing payloads only: hide scores until instructor syncs to Moodle (per learner).
+        if not bool(ss.get("sent_to_moodle")):
+            grade = None
         member_count = conn.execute(
             "SELECT COUNT(*) AS c FROM mod_file_eval_student_submissions WHERE file_submission_id = ?",
             (fs_id,),

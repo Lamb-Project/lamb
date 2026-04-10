@@ -55,6 +55,7 @@ Successful uploads do not always emit `INFO` lines in module code; you may see l
 | A2 | Complete setup (if applicable) | `lti_activities` row has `activity_type` / `setup_config` populated; no SQLite errors in logs. |
 | A3 | Open grading URL | Browser lands on `/m/file-eval/grading` with **`activity_id=<numeric>`** in query (and `token` if used). |
 | A4 | `GET .../activities/{id}/view` with instructor JWT | **200**, JSON with instructor-oriented view (submissions list access as designed). |
+| A5 | Grading SPA (post-setup) | Header shows **activity title**, **course/context**, **owner**, **created** when `activity_info` is populated; **Activity settings** allow editing description/deadline; **no** empty bulk-action bar when there are zero submissions. |
 
 **Failure hints**: 404 on module routes → router not mounted under `/lamb`. Wrong table errors → migrations / `LAMB_DB_PREFIX` / schema repair (companion **§4.1**, **§4.8**).
 
@@ -91,13 +92,14 @@ Successful uploads do not always emit `INFO` lines in module code; you may see l
 
 | Step | Action | Pass criteria |
 |------|--------|----------------|
-| D1 | `POST /activities/{id}/evaluate` | Batch starts; submissions move through pending/processing/completed (or error) states. |
+| D1 | Select submissions (checkboxes + optional **select all**) and run **AI Evaluation** | UI sends only selected `file_submission_id`s to `POST /activities/{id}/evaluate`. Batch starts; submissions move through pending/processing/completed (or error) states. |
 | D2 | `GET /activities/{id}/evaluation-status` | Poll until batch finished (UI may poll ~3s). |
-| D3 | Grades | AI scores visible; instructor can override via `POST /grades/{submission_id}`. |
+| D3 | Grades in UI | **AI Score** and **Final Score** visible per submission card; when **`ai_score`** is set, **AI feedback** row appears with **Show** / **Hide**; expanded text is **rendered Markdown** (headings, lists, bold) — not raw syntax. |
+| D3b | Download | Instructor can open submission file via **Download** button or **clickable filename**; `GET /submissions/{id}/download` returns **200** with attachment (not **500**). |
 | D4 | Accept AI | `POST /grades/activity/{id}/accept-ai-grades` updates final scores as designed. |
 | D5 | Sync to Moodle | `POST /activities/{id}/grades/sync` — requires valid LTI outcome URL/credentials; verify Moodle side if available. |
 
-**DB check (D3)**: In `mod_file_eval_grades`, `ai_comment` should contain the **full model message text** after the Response-unwrap fix (see **§10.3** in [PHASE4_FILE_EVALUATION_MODULE.md](./PHASE4_FILE_EVALUATION_MODULE.md)). **`ai_score` can be empty** if the reply does not match the score regexes — normal for chat-oriented assistants; configure the evaluator prompt or patterns if you need a number every time.
+**DB check (D3)**: In `mod_file_eval_grades`, `ai_comment` should contain the **full model message text** after the Response-unwrap fix (see **§10.3** in [PHASE4_FILE_EVALUATION_MODULE.md](./PHASE4_FILE_EVALUATION_MODULE.md)). **`ai_score` can be empty** if the reply does not match the score regexes — normal for chat-oriented assistants; configure the evaluator prompt or patterns if you need a number every time. The SPA only shows the **AI feedback** block when **`ai_score`** is non-null (per product rule); comment-only rows without a parsed score may not show that block.
 
 ---
 
@@ -118,6 +120,7 @@ Compare response shapes with **OpenAPI** when the server is running.
 - [ ] Prefix mismatch repair: understand it **drops** module tables — dev-only implication.
 - [ ] Frontend: no raw `fileEval.*` keys after locale load.
 - [ ] Group: leader/member join works; **document 409** for non-uploader resubmit until fixed.
+- [ ] Instructor: grading dashboard layout (cards, header, settings); AI feedback Markdown + download link.
 
 ---
 

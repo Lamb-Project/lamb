@@ -1,7 +1,7 @@
 # Phase 4: File Evaluation Module — Port from LAMBA to LAMB
 
 > **Status**: Implementation complete; **integration hardening in progress** (remaining issues tracked separately)
-> **Date**: 2026-03-24 (updated 2026-03-25 — integration notes)
+> **Date**: 2026-03-24 (updated 2026-04-10 — instructor grading UX / AI feedback / download; student upload: **group leader vs member** views; **join group error handling**)
 > **Issue**: #277 — Architecture: Activity Module System
 
 ---
@@ -59,7 +59,7 @@ This phase **eliminates that duplication** by re-implementing the same business 
 
 | File | Responsibility | Lines | Ported from (LAMBA) |
 |------|----------------|-------|---------------------|
-| `__init__.py` | Exports `module = FileEvalModule()`; full `ActivityModule` implementation (migrations, routers, setup fields, LTI launch, JWT, dashboard hooks) | ~210 | New (wraps LAMB contract) |
+| `__init__.py` | Exports `module = FileEvalModule()`; full `ActivityModule` implementation (migrations, routers, setup fields, LTI launch, JWT, dashboard hooks) | ~250 | New (wraps LAMB contract) |
 | `migrations.py` | DDL: 3 tables + 7 indexes; `{table_prefix}` in FKs; **`repair_file_eval_schema_if_needed`** for prefix mismatch | ~115 | `db_models.py` |
 | `router.py` | Single `APIRouter` (submissions, grades, evaluation, sync, etc.) | ~260 | `activities_router.py`, `submissions_router.py`, `grades_router.py` |
 | `evaluator_client.py` | Score regex extraction + direct call to `run_lamb_assistant` | ~150 | `lamb_api_service.py` |
@@ -69,7 +69,7 @@ This phase **eliminates that duplication** by re-implementing the same business 
 | `evaluation_service.py` | Background batch evaluation with status tracking, timeout handling | ~200 | `evaluation_service.py` |
 | `service.py` | Submission CRUD, group join flow, dashboard stats queries; robust **`_parse_setup_config`** | ~355 | `activities_service.py` |
 | `lti_passback.py` | OAuth 1.0a signed XML grade passback to Moodle | ~160 | `lti_service.py` (verbatim algorithm) |
-| `schemas.py` | Pydantic v2 request/response models | ~120 | `models.py` |
+| `schemas.py` | Pydantic v2 request/response models; `FileEvalSetupConfig` includes `title` + validators for group `max_group_size` | ~150 | `models.py` |
 
 ### 3.2 — Database Tables
 
@@ -115,7 +115,7 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `POST` | `/activities/{id}/submissions` | Student | Upload file (multipart) |
 | `GET` | `/activities/{id}/submissions` | Instructor | List all submissions |
 | `GET` | `/submissions/me` | Student | Get own submission |
-| `POST` | `/submissions/join` | Student | Join group by code |
+| `POST` | `/submissions/join` | Student | Join group by code (404 invalid code; 409 group full / already member / already submitted) |
 | `GET` | `/submissions/{id}/members` | Any | List group members |
 | `GET` | `/submissions/my-file/download` | Student | Download submitted file |
 | `POST` | `/activities/{id}/evaluate` | Instructor | Start AI evaluation batch |
@@ -132,13 +132,13 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `svelte.config.js` | `adapter-static`, base path `/m/file-eval`, output `../../build/m/file-eval` |
 | `vite.config.js` | TailwindCSS plugin, dev proxy to backend, port 5174 |
 | `src/app.html` | HTML shell with CSP, config.js script tag |
-| `src/app.css` | Tailwind import |
+| `src/app.css` | Tailwind import; `@plugin '@tailwindcss/typography'` for Markdown prose in AI feedback |
 | `src/routes/+layout.js` | `load`: `setupI18n` + `waitLocale` before pages render (avoids “Cannot format a message without first setting the initial locale”) |
 | `src/routes/+layout.svelte` | Root layout with `@lamb/ui` shell |
-| `src/routes/upload/+page.svelte` | **Student view**: drag-and-drop upload, group code join, submission status, grade display |
-| `src/routes/grading/+page.svelte` | **Instructor view**: stats cards, submissions table, AI evaluation with polling, inline grade editing, accept-all, Moodle sync |
+| `src/routes/upload/+page.svelte` | **Student view** (LAMBA-aligned layout): activity header + group-size banner; four branches: **(1) group, no submission** - two columns (upload to create group / join with code); **(2) group member** (`is_group_leader` false) - "Joined the group" status card, file meta, group code, download, member list with leader badge (`fileEval.grading.leaderBadge`), **no** replace upload; **(3) group leader** - "Document submitted (group leader)" card, highlighted group code with copy button, optional `group_display_name`, members list, then replace-submission block; **(4) individual** - summary + upload/replace. Members loaded via `getGroupMembers(file_submission_id)` (GET `/submissions/{id}/members`) after view load and refreshed on upload/join. Backend flag `is_group_leader` comes from `service.py` `_build_submission_view`. i18n keys under `fileEval.upload` (e.g. `statusJoinedGroup`, `copyGroupCode`, `groupMembersTitle`). |
+| `src/routes/grading/+page.svelte` | **Instructor view**: header card (activity title, course/context, owner, created date), editable activity settings (description, deadline), stats cards, **card-based** submission list (not a wide table), per-submission checkboxes + **select all**, bulk actions (**AI Evaluation**, accept AI, Moodle sync) only when there are submissions, evaluator warning if no `evaluator_id`, inline grading (AI score, collapsible **AI feedback** rendered as **Markdown** via `marked` + `@tailwindcss/typography`), final score/comment, filename as download link; polling for batch evaluation; deadline display parses Unix **or** ISO/`datetime-local` from `setup_config` |
 | `src/lib/services/api.js` | API helper with JWT from URL query param + Bearer header |
-| `src/lib/services/submissionService.js` | Upload, download, join group, get submission |
+| `src/lib/services/submissionService.js` | Upload, download, join group, get submission, **`getGroupMembers`** (student upload page) |
 | `src/lib/services/gradingService.js` | Activity view, evaluation, grading, Moodle sync |
 | `src/lib/locales/{en,es,ca,eu}.json` | Optional package-local strings (if used); primary `fileEval.*` keys are in **`@lamb/ui`** (see §2.3) |
 
@@ -198,7 +198,7 @@ The root application mounts this app at **`/lamb`**, so the public paths are **`
 
 Added two new columns to `lti_activities` (both in `CREATE TABLE` for fresh installs and as `ALTER TABLE` migrations for existing databases):
 
-- `setup_config TEXT DEFAULT '{}'` — Stores module-specific configuration as JSON (evaluator ID, activity type, max group size, deadline, language).
+- `setup_config TEXT DEFAULT '{}'` — Stores module-specific configuration as JSON (evaluator ID, **`title`** (redundant copy; display name uses `activity_name`), submission type, max group size, deadline, language).
 - `lis_outcome_service_url TEXT` — LTI Outcome Service URL for grade passback, stored per activity.
 
 ### 4.10 — Backend Python requirements
@@ -212,6 +212,70 @@ python-docx==1.1.2
 
 Heavy ML/RAG deps are in `requirements-ml.txt`. Install with  
 `pip install -r requirements-base.txt && pip install -r requirements-ml.txt` (see `backend/requirements.txt`).
+
+### 4.11 — LTI instructor setup & configure (file_evaluation, 2026-04)
+
+The **unified LTI setup UI** lives in **`frontend/packages/module-chat`** (`/m/chat/setup`), not in `module-file-eval`. The backend drives dynamic fields via `GET /lamb/v1/lti/setup/info` → `modules_fields.file_evaluation` from `FileEvalModule.get_setup_fields()`.
+
+| Area | Change |
+|------|--------|
+| **`backend/lamb/modules/file_evaluation/__init__.py`** | Setup field order and types: **`title`** (required text, first), **`evaluator_id`**, **`description`**, **`submission_type`** as **`radio`** (Individual / Group), **`max_group_size`** (conditional in UI), **`deadline`** (required `datetime-local`), **`language`**. `on_activity_configured()` persists **`title`** into `setup_config` JSON alongside existing keys. |
+| **`backend/lamb/lti_router.py`** | `_field_to_json()` exposes **`options`** for **`radio`** as well as `select`. **`POST /lamb/v1/lti/configure`**: for `activity_type == file_evaluation`, validates non-empty **title** and **deadline**; if **group**, **`max_group_size`** must be integer **2–20**. **`activity_name`** on `lti_activities` uses instructor **title** (trimmed) with fallback to LMS context title / `resource_link_id`. |
+| **`backend/lamb/modules/file_evaluation/schemas.py`** | `FileEvalSetupConfig` adds optional **`title`**; **`@model_validator`** enforces **2–20** for `max_group_size` when `submission_type == group` and clears it for individual. |
+| **`frontend/packages/module-chat/src/routes/setup/+page.svelte`** | Renders **`radio`** fields; disables **`evaluator_id`** when at least one assistant checkbox is selected (clears value; backend defaults evaluator to first assistant); shows **`max_group_size`** only for **Group**; client-side validation for deadline and group size; hint **Min 2, Max 20** under group size. |
+
+**Rebuild** `module-chat` (and optionally `module-file-eval` after grading fixes) so static assets under `/m/chat/app` and `/m/file-eval/app` match source.
+
+### 4.12 — Instructor grading SPA (`grading/+page.svelte`)
+
+Fixes for the instructor dashboard after setup changes:
+
+| Issue | Fix |
+|-------|-----|
+| **Infinite spinner** | Template called **`isDeadlinePast()`** without defining it → runtime error once `deadline` exists. Added **`isDeadlinePast`** using existing **`parseDeadline()`**. |
+| **`Invalid Date`** | **`formatDate()`** assumed Unix seconds; **`setup_config.deadline`** is often a **`datetime-local` string** (e.g. `2026-04-09T20:36`). Added **`formatDeadlineDisplay()`** that uses **`parseDeadline()`** for the activity info card. |
+
+### 4.13 — Instructor grading dashboard UX, data, and download (2026-04)
+
+Follow-up work to align the post-setup **instructor grading** experience with the chat module’s dashboard style and LAMBA-era expectations, plus polish for AI output display.
+
+| Area | Change |
+|------|--------|
+| **`backend/.../service.py` — `get_activity_info()`** | Enriches `activity_info` for the grading header: `owner_display` (from `owner_name` / `owner_email`), `org_name` (via `get_organization_by_id`), `context_title`, plus existing description/deadline/title/`created_at`. |
+| **`backend/.../router.py` — `GET .../submissions/{id}/download`** | Queries table **`mod_file_eval_submissions`** by name (migration creates this table **without** duplicating `table_prefix` in the identifier used historically in SQL). Avoids `no such table` / 500 when prefix is empty or mismatched. Logs and maps missing files to **404**; unexpected errors return a clear **500** message. |
+| **Grading SPA layout** | Header card (icon + title + course/org line + owner + created). Activity settings card with edit/save for description and deadline. Stats metrics. Submissions section title switches **Group** vs **Individual**. Bulk toolbar (**AI Evaluation**, accept AI, sync to LMS) only renders when `submissions.length > 0`. |
+| **Submissions list** | Card per submission: checkbox (with **select all** above the list), status badge, download button, clickable filename, file meta, always-visible student-note block (placeholder if empty), members + leader badge for groups, grading row with AI score / final score. |
+| **Batch evaluation** | `POST /activities/{id}/evaluate` receives **only selected** submission IDs from the UI (not necessarily all rows). Primary action label uses i18n key **`fileEval.grading.aiEvaluation`** (not a literal “Evaluate All”). |
+| **AI feedback in UI** | When **`ai_score`** is present, show label **AI feedback** (`aiComment`) with **Show** / **Hide** toggles; expanded body renders **`ai_comment`** as HTML from **`marked`** (GFM + line breaks) inside a `prose` container — not raw Markdown/plain text. Requires **`marked`** dependency and **`@tailwindcss/typography`** in `module-file-eval` `app.css`. |
+| **i18n** | New and updated keys under **`fileEval.grading`** in **`frontend/packages/ui/src/lib/locales/{en,es,ca,eu}.json`** and mirrored in **`module-file-eval/src/lib/locales/`** (e.g. `aiEvaluation`, `selectAll`, `submissionsFound`, `aiComment`, `showAiComment`, `hideAiComment`, header/settings copy). |
+
+**Security note:** `{@html}` after `marked.parse()` follows the same pattern as other apps in the monorepo (e.g. creator news). For untrusted content, consider sanitization (e.g. DOMPurify) in a future hardening pass.
+
+### 4.14 — Student upload (`upload/+page.svelte`): group leader vs member (2026-04)
+
+When the activity is **group** submission type and the student already has a row in `submission`, the SPA branches on **`submission.is_group_leader`** (computed in `backend/lamb/modules/file_evaluation/service.py`, `_build_submission_view`: leader = same `student_id` as `file_submission.uploaded_by` and a non-null `group_code`).
+
+| Role | UI |
+|------|-----|
+| **Member** (joined with code) | Status card “Joined the group”, file name/size/submitted-at, group code, download; list of members with **Leader** badge on the uploader; **no** replace-submission dropzone. |
+| **Leader** (first uploader) | Status card “Document submitted (group leader)”, download, **copy group code** (`navigator.clipboard`), optional group display name, member list, then **replace submission** (deadline + dropzone + note). |
+
+**Data:** Member rows are not embedded in `GET .../activities/{id}/view`; the page calls **`getGroupMembers(file_submission_id)`** → existing **`GET /submissions/{id}/members`**. Leader detection in the list matches **`m.student_id === file_submission.uploaded_by`** (same idea as the instructor grading cards).
+
+**i18n:** New keys under **`fileEval.upload`** in **`frontend/packages/ui`** and **`module-file-eval`** locales (`en`, `es`, `ca`, `eu`): e.g. `statusJoinedGroup`, `statusDocumentSentLeader`, `submissionFileLabel`, `submissionSizeLabel`, `submissionSentLabel`, `copyGroupCode`, `codeCopied`, `groupMembersTitle`, `groupLabel`. Reuses **`fileEval.grading.leaderBadge`** for the badge text.
+
+### 4.15 — Group join error handling (`router.py`, `api.js`, i18n) (2026-04)
+
+`POST /submissions/join` previously returned **500** when `FileEvalService.join_group()` raised `ValueError` (group full, invalid code, already member, already submitted). The router now wraps the call in `try/except ValueError` and maps each known message to a proper HTTP status and structured `detail`:
+
+| Service `ValueError` message | HTTP | `detail.code` |
+|------------------------------|------|----------------|
+| `Invalid group code` | 404 | `invalid_group_code` |
+| `Group is full` | 409 | `group_full` |
+| `Already a member of this group` | 409 | `already_in_group` |
+| `Already submitted to this activity` | 409 | `already_submitted_activity` |
+
+**Frontend:** `apiFetch` (and `apiUpload`) in [`api.js`](frontend/packages/module-file-eval/src/lib/services/api.js) now parse JSON error bodies and expose `error.code` on the thrown Error. `handleJoinGroup` in [`upload/+page.svelte`](frontend/packages/module-file-eval/src/routes/upload/+page.svelte) maps `error.code` to i18n keys (`groupJoinFull`, `groupJoinInvalidCode`, `groupJoinAlreadyMember`, `groupJoinAlreadySubmitted`) under `fileEval.upload`, falling back to the raw message for unknown codes. Keys added in all 8 locale files (en, es, ca, eu).
 
 ---
 
@@ -250,9 +314,9 @@ The **`activity_id`** query parameter is the **integer** `lti_activities.id` (re
 ## 6. Evaluation Pipeline
 
 ```
-Instructor clicks "Evaluate All"
+Instructor selects submissions and clicks "AI Evaluation" (i18n)
   │
-  ├── POST /activities/{id}/evaluate  (file_submission_ids)
+  ├── POST /activities/{id}/evaluate  (file_submission_ids; may be subset)
   │   ├── Mark submissions as 'pending' in DB
   │   └── Enqueue BackgroundTask → process_evaluation_batch()
   │
@@ -310,16 +374,20 @@ Recommended test coverage:
 ### Manual (LTI end-to-end)
 
 - [ ] Instructor LTI launch → redirects to `/m/file-eval/grading` (query includes **`activity_id`**)
+- [ ] First-time **file_evaluation** setup: **title**, **deadline**, **submission type** (individual/group); group requires **max 2–20**; **evaluator** field disabled when assistants are checked; save → **`activity_name`** in DB matches title; grading page loads (no spinner / **Invalid Date** on deadline)
 - [ ] Student LTI launch → redirects to `/m/file-eval/upload` (query includes **`activity_id`**)
 - [ ] `GET /lamb/v1/modules/file_evaluation/activities/{id}/view` returns JSON (not 404) when backend is mounted at `/lamb`
 - [ ] UI shows translated `fileEval.*` strings (not raw keys) after i18n init
 - [ ] Student uploads PDF → submission created, file stored
 - [ ] With `LAMB_DB_PREFIX` set, no SQLite error `no such table: main.lti_activities` on insert (schema repair + migrations)
-- [ ] Group activity: leader gets code → member joins with code
-- [ ] AI evaluation: start → poll → completed with ai_score
+- [ ] Group activity: leader uploads first → sees leader view (copy code, members, replace submission); second student joins with code → sees member view (no replace, leader badge on uploader)
+- [ ] AI evaluation: select one or more submissions → **AI Evaluation** → poll → completed with `ai_score` / `ai_comment` as applicable
+- [ ] Instructor grading UI: header shows owner/org/created; settings edit works; **AI feedback** expands and renders Markdown (not raw `**` lines)
+- [ ] Instructor download: `GET .../submissions/{uuid}/download` returns file (no 500 from wrong table name)
 - [ ] Instructor edits grade → final score saved
 - [ ] Accept all AI grades → bulk update
 - [ ] Sync to Moodle → grades sent via LTI 1.1 Outcome Service
+- [ ] Join full group → student sees translated "group full" message (not 500 Internal Server Error)
 
 ---
 
@@ -342,7 +410,7 @@ Recommended test coverage:
 3. **No real-time updates**: Evaluation progress uses polling (3s interval). WebSocket or SSE could improve UX.
 4. **File size limits**: No explicit upload size limit is enforced in the module; relies on FastAPI/reverse proxy defaults.
 5. **`lis_outcome_service_url`**: Currently stored as a new column on `lti_activities`. This URL comes from the LTI launch params and must be persisted during activity setup — the Unified LTI Router needs to save it from the launch POST.
-6. **Activity description / parity with standalone LAMBA**: The instructor setup flow may not yet expose all fields (e.g. long description) that LAMBA had for file-eval activities; track as a follow-up if product requires it.
+6. **Activity description / parity with standalone LAMBA**: The setup form now includes **title**, **description**, **submission type** (radio), **conditional max group size**, **deadline**, and **language**. Remaining gaps vs. old LAMBA (if any) are cosmetic/i18n rather than missing core fields.
 7. **Group resubmit policy and 409 Conflict**: `create_submission` only treats a POST as a *resubmit* (update same `mod_file_eval_submissions` row) when the existing submission’s `uploaded_by` equals the current `student_id`. A group member who joined via code shares the same `file_submission_id` but is not `uploaded_by`; a second upload attempt falls through to a new insert and hits the UNIQUE constraint on `(student_id, activity_id)`, which surfaces as **HTTP 409**. Only the student who originally uploaded can replace the file today—this can look like an intermittent bug when comparing different accounts. **To improve / implement**: decide product rules (e.g. any group member may replace vs leader-only), return a clear API error message (not a generic conflict), update the student UI copy, and optionally allow updates to the shared `file_submission` for all members of the same group when policy allows. Success-path logging for uploads is also minimal (mostly warnings on errors); ops visibility can be improved with `INFO` lines or access logs.
 
 ### 10.3 — Resolved: AI evaluation stored garbage in `ai_comment` (file_eval)
