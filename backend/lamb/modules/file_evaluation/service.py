@@ -80,10 +80,23 @@ class FileEvalService:
             conn.close()
 
     def get_activity_info(self, activity_id: int) -> Dict[str, Any]:
-        """Return activity info including description, deadline, and course name.
+        """Return activity info including description, deadline, course, owner, and org.
 
-        Uses ``lti_activities`` columns (``activity_name``, ``context_title``) and
-        module fields from ``setup_config`` JSON (``deadline``, optional ``description``).
+        Uses ``lti_activities`` columns and ``setup_config`` JSON.  The returned
+        dict is consumed directly by the frontend grading view header.
+
+        Shape::
+
+            {
+                "title":          str,
+                "description":    str | None,
+                "deadline":       int | None,   # Unix seconds
+                "course_name":    str,
+                "context_title":  str,
+                "created_at":     int | None,    # Unix seconds
+                "owner_display":  str,           # owner_name or owner_email fallback
+                "org_name":       str,
+            }
         """
         conn = self.db.get_connection()
         if not conn:
@@ -92,19 +105,33 @@ class FileEvalService:
             conn.row_factory = _dict_factory
             tbl = f"{self.db.table_prefix}lti_activities"
             row = conn.execute(
-                f"SELECT activity_name, context_title, setup_config, created_at FROM {tbl} WHERE id = ?",
+                f"SELECT activity_name, context_title, setup_config, created_at, "
+                f"owner_name, owner_email, organization_id FROM {tbl} WHERE id = ?",
                 (activity_id,),
             ).fetchone()
             if not row:
                 return {}
 
             cfg = _parse_setup_config(row)
+
+            org_name = ""
+            org_id = row.get("organization_id")
+            if org_id:
+                org = self.db.get_organization_by_id(org_id)
+                if org:
+                    org_name = org.get("name", "")
+
+            owner_display = row.get("owner_name") or row.get("owner_email") or ""
+
             return {
                 "description": cfg.get("description"),
                 "deadline": cfg.get("deadline"),
                 "course_name": row.get("context_title") or "",
+                "context_title": row.get("context_title") or "",
                 "title": row.get("activity_name"),
                 "created_at": row.get("created_at"),
+                "owner_display": owner_display,
+                "org_name": org_name,
             }
         finally:
             conn.close()

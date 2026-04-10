@@ -76,7 +76,10 @@
 			"page": "Orria",
 			"showing": "{from}–{to} erakusten, guztira {total}",
 			"previous": "Aurrekoa",
-			"next": "Hurrengoa"
+			"next": "Hurrengoa",
+			"aiComment": "IAren iruzkina",
+			"showAiComment": "Ikusi",
+			"hideAiComment": "Ezkutatu"
 		},
 		"status": {
 			"pending": "Zain",

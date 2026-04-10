@@ -1,7 +1,7 @@
 # Phase 4: File Evaluation Module — Port from LAMBA to LAMB
 
 > **Status**: Implementation complete; **integration hardening in progress** (remaining issues tracked separately)
-> **Date**: 2026-03-24 (updated 2026-04-09 — LTI file-eval setup UX + grading fixes)
+> **Date**: 2026-03-24 (updated 2026-04-10 — instructor grading dashboard UX, AI feedback UI, download fix)
 > **Issue**: #277 — Architecture: Activity Module System
 
 ---
@@ -132,11 +132,11 @@ All mounted under `/lamb/v1/modules/file_evaluation/`:
 | `svelte.config.js` | `adapter-static`, base path `/m/file-eval`, output `../../build/m/file-eval` |
 | `vite.config.js` | TailwindCSS plugin, dev proxy to backend, port 5174 |
 | `src/app.html` | HTML shell with CSP, config.js script tag |
-| `src/app.css` | Tailwind import |
+| `src/app.css` | Tailwind import; `@plugin '@tailwindcss/typography'` for Markdown prose in AI feedback |
 | `src/routes/+layout.js` | `load`: `setupI18n` + `waitLocale` before pages render (avoids “Cannot format a message without first setting the initial locale”) |
 | `src/routes/+layout.svelte` | Root layout with `@lamb/ui` shell |
 | `src/routes/upload/+page.svelte` | **Student view**: drag-and-drop upload, group code join, submission status, grade display |
-| `src/routes/grading/+page.svelte` | **Instructor view**: stats cards, submissions table, AI evaluation with polling, inline grade editing, accept-all, Moodle sync; deadline display must parse Unix **or** ISO/`datetime-local` strings from `setup_config` |
+| `src/routes/grading/+page.svelte` | **Instructor view**: header card (activity title, course/context, owner, created date), editable activity settings (description, deadline), stats cards, **card-based** submission list (not a wide table), per-submission checkboxes + **select all**, bulk actions (**AI Evaluation**, accept AI, Moodle sync) only when there are submissions, evaluator warning if no `evaluator_id`, inline grading (AI score, collapsible **AI feedback** rendered as **Markdown** via `marked` + `@tailwindcss/typography`), final score/comment, filename as download link; polling for batch evaluation; deadline display parses Unix **or** ISO/`datetime-local` from `setup_config` |
 | `src/lib/services/api.js` | API helper with JWT from URL query param + Bearer header |
 | `src/lib/services/submissionService.js` | Upload, download, join group, get submission |
 | `src/lib/services/gradingService.js` | Activity view, evaluation, grading, Moodle sync |
@@ -235,6 +235,22 @@ Fixes for the instructor dashboard after setup changes:
 | **Infinite spinner** | Template called **`isDeadlinePast()`** without defining it → runtime error once `deadline` exists. Added **`isDeadlinePast`** using existing **`parseDeadline()`**. |
 | **`Invalid Date`** | **`formatDate()`** assumed Unix seconds; **`setup_config.deadline`** is often a **`datetime-local` string** (e.g. `2026-04-09T20:36`). Added **`formatDeadlineDisplay()`** that uses **`parseDeadline()`** for the activity info card. |
 
+### 4.13 — Instructor grading dashboard UX, data, and download (2026-04)
+
+Follow-up work to align the post-setup **instructor grading** experience with the chat module’s dashboard style and LAMBA-era expectations, plus polish for AI output display.
+
+| Area | Change |
+|------|--------|
+| **`backend/.../service.py` — `get_activity_info()`** | Enriches `activity_info` for the grading header: `owner_display` (from `owner_name` / `owner_email`), `org_name` (via `get_organization_by_id`), `context_title`, plus existing description/deadline/title/`created_at`. |
+| **`backend/.../router.py` — `GET .../submissions/{id}/download`** | Queries table **`mod_file_eval_submissions`** by name (migration creates this table **without** duplicating `table_prefix` in the identifier used historically in SQL). Avoids `no such table` / 500 when prefix is empty or mismatched. Logs and maps missing files to **404**; unexpected errors return a clear **500** message. |
+| **Grading SPA layout** | Header card (icon + title + course/org line + owner + created). Activity settings card with edit/save for description and deadline. Stats metrics. Submissions section title switches **Group** vs **Individual**. Bulk toolbar (**AI Evaluation**, accept AI, sync to LMS) only renders when `submissions.length > 0`. |
+| **Submissions list** | Card per submission: checkbox (with **select all** above the list), status badge, download button, clickable filename, file meta, always-visible student-note block (placeholder if empty), members + leader badge for groups, grading row with AI score / final score. |
+| **Batch evaluation** | `POST /activities/{id}/evaluate` receives **only selected** submission IDs from the UI (not necessarily all rows). Primary action label uses i18n key **`fileEval.grading.aiEvaluation`** (not a literal “Evaluate All”). |
+| **AI feedback in UI** | When **`ai_score`** is present, show label **AI feedback** (`aiComment`) with **Show** / **Hide** toggles; expanded body renders **`ai_comment`** as HTML from **`marked`** (GFM + line breaks) inside a `prose` container — not raw Markdown/plain text. Requires **`marked`** dependency and **`@tailwindcss/typography`** in `module-file-eval` `app.css`. |
+| **i18n** | New and updated keys under **`fileEval.grading`** in **`frontend/packages/ui/src/lib/locales/{en,es,ca,eu}.json`** and mirrored in **`module-file-eval/src/lib/locales/`** (e.g. `aiEvaluation`, `selectAll`, `submissionsFound`, `aiComment`, `showAiComment`, `hideAiComment`, header/settings copy). |
+
+**Security note:** `{@html}` after `marked.parse()` follows the same pattern as other apps in the monorepo (e.g. creator news). For untrusted content, consider sanitization (e.g. DOMPurify) in a future hardening pass.
+
 ---
 
 ## 5. LTI Launch Flow
@@ -272,9 +288,9 @@ The **`activity_id`** query parameter is the **integer** `lti_activities.id` (re
 ## 6. Evaluation Pipeline
 
 ```
-Instructor clicks "Evaluate All"
+Instructor selects submissions and clicks "AI Evaluation" (i18n)
   │
-  ├── POST /activities/{id}/evaluate  (file_submission_ids)
+  ├── POST /activities/{id}/evaluate  (file_submission_ids; may be subset)
   │   ├── Mark submissions as 'pending' in DB
   │   └── Enqueue BackgroundTask → process_evaluation_batch()
   │
@@ -339,7 +355,9 @@ Recommended test coverage:
 - [ ] Student uploads PDF → submission created, file stored
 - [ ] With `LAMB_DB_PREFIX` set, no SQLite error `no such table: main.lti_activities` on insert (schema repair + migrations)
 - [ ] Group activity: leader gets code → member joins with code
-- [ ] AI evaluation: start → poll → completed with ai_score
+- [ ] AI evaluation: select one or more submissions → **AI Evaluation** → poll → completed with `ai_score` / `ai_comment` as applicable
+- [ ] Instructor grading UI: header shows owner/org/created; settings edit works; **AI feedback** expands and renders Markdown (not raw `**` lines)
+- [ ] Instructor download: `GET .../submissions/{uuid}/download` returns file (no 500 from wrong table name)
 - [ ] Instructor edits grade → final score saved
 - [ ] Accept all AI grades → bulk update
 - [ ] Sync to Moodle → grades sent via LTI 1.1 Outcome Service

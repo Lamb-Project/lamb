@@ -76,7 +76,10 @@
 			"page": "Pàgina",
 			"showing": "Mostrant {from}–{to} de {total}",
 			"previous": "Anterior",
-			"next": "Següent"
+			"next": "Següent",
+			"aiComment": "Comentari de la IA",
+			"showAiComment": "Veure",
+			"hideAiComment": "Amagar"
 		},
 		"status": {
 			"pending": "Pendent",

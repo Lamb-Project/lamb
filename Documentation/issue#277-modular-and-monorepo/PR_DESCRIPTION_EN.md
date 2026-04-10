@@ -6,6 +6,13 @@ Follow-up work on porting the file-evaluation flow from LAMBA into LAMB as an `A
 
 ## Changes (recent commits on this branch)
 
+### Instructor grading (`module-file-eval`) — dashboard UX, AI feedback, download (2026-04)
+
+- **Instructor SPA (`grading/+page.svelte`):** Chat-style **header** (title, course/context, owner, created); **activity settings** card for description/deadline; **stats**; **card-based** submissions with checkboxes, **select all**, bulk actions (**AI Evaluation**, accept AI, sync) only when submissions exist; evaluator warning; clickable filename + download; **AI feedback** collapsible (Show/Hide) when `ai_score` is set, body rendered as **Markdown** (`marked` + Tailwind **typography** / `prose`).
+- **Backend:** `get_activity_info()` enrichment (`owner_display`, `org_name`, `context_title`); **download** endpoint uses table `mod_file_eval_submissions` and clearer errors (fixes 500 on instructor download when SQL table name was wrong).
+- **i18n:** `fileEval.grading.*` keys in `@lamb/ui` and module locales (en/es/ca/eu), including `aiEvaluation`, `aiComment`, `showAiComment`, `hideAiComment`, and related strings.
+- **Docs:** [PHASE4_FILE_EVALUATION_MODULE.md](./PHASE4_FILE_EVALUATION_MODULE.md) §4.13, §6, §8; [PHASE4_FILE_EVAL_REVIEW_GUIDE.md](./PHASE4_FILE_EVAL_REVIEW_GUIDE.md) flows A5, D, §9.
+
 ### `5cd27f7f` — File evaluation: AI grade unwrap, LTI outcome URL, SPA config, activity API
 
 - **EvaluatorClient:** unwrap Starlette `JSONResponse` so model text is stored correctly in `ai_comment`.
