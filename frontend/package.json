@@ -1,6 +1,6 @@
 {
-    "name": "lamb-frontend",
-    "private": true,
-    "version": "1.0.0",
-    "description": "LAMB Frontend Monorepo"
+  "name": "frontend",
+  "private": true,
+  "description": "LAMB frontend monorepo root",
+  "packageManager": "pnpm@10.0.0"
 }
