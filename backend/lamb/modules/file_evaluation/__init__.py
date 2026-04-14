@@ -14,6 +14,26 @@ import json
 
 logger = get_logger(__name__, component="FILE_EVAL_MODULE")
 
+_SUPPORTED_LANGS = {"en", "es", "ca", "eu"}
+
+
+def _activity_language(activity: Dict[str, Any]) -> str:
+    """Extract normalised language code from an activity row's setup_config."""
+    raw = activity.get("setup_config")
+    if raw is None:
+        return "en"
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        raw = bytes(raw).decode("utf-8", errors="replace")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return "en"
+    if isinstance(raw, dict):
+        lang = str(raw.get("language", "en")).lower()
+        return lang if lang in _SUPPORTED_LANGS else "en"
+    return "en"
+
 
 class FileEvalModule(ActivityModule):
     name = "file_evaluation"
@@ -174,11 +194,11 @@ class FileEvalModule(ActivityModule):
         )
 
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
-        # Numeric activity_id is required by /lamb/v1/modules/file_evaluation/... path params;
-        # resource_link_id alone is a UUID and cannot be used as activity_id.
+        lang = _activity_language(activity)
         url = (
             f"{public_base}/m/file-eval/upload"
-            f"?activity_id={activity['id']}&resource_link_id={ctx.resource_link_id}&token={token}"
+            f"?activity_id={activity['id']}&resource_link_id={ctx.resource_link_id}"
+            f"&lang={lang}&token={token}"
         )
         return RedirectResponse(url=url, status_code=303)
 
@@ -200,9 +220,11 @@ class FileEvalModule(ActivityModule):
         )
 
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
+        lang = _activity_language(activity)
         redirect_url = (
             f"{public_base}/m/file-eval/grading"
-            f"?activity_id={activity['id']}&resource_link_id={ctx.resource_link_id}&token={token}"
+            f"?activity_id={activity['id']}&resource_link_id={ctx.resource_link_id}"
+            f"&lang={lang}&token={token}"
         )
         logger.info(f"Redirecting to grading: {redirect_url}")
 
@@ -230,9 +252,11 @@ class FileEvalModule(ActivityModule):
         )
         public_base = os.getenv("LAMB_PUBLIC_BASE_URL", "http://localhost:9099")
         page = "grading" if is_instructor else "upload"
+        lang = _activity_language(activity)
         return (
             f"{public_base}/m/file-eval/{page}"
-            f"?activity_id={activity['id']}&resource_link_id={activity['resource_link_id']}&token={token}"
+            f"?activity_id={activity['id']}&resource_link_id={activity['resource_link_id']}"
+            f"&lang={lang}&token={token}"
         )
 
     def get_dashboard_stats(self, activity):

@@ -520,8 +520,12 @@ async def lti_configure_activity(request: Request):
         public_base = manager.get_public_base_url(request)
         at = activity.get("activity_type") or "chat"
         if at == "file_evaluation":
+            fe_lang = str(payload.get("language", "en")).lower()
+            if fe_lang not in ("en", "es", "ca", "eu"):
+                fe_lang = "en"
             redirect_url = (
-                f"{public_base}/m/file-eval/grading?activity_id={activity['id']}&token={dashboard_token}"
+                f"{public_base}/m/file-eval/grading?activity_id={activity['id']}"
+                f"&lang={fe_lang}&token={dashboard_token}"
             )
         else:
             redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}"
