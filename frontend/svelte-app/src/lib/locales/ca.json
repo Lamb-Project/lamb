@@ -889,6 +889,7 @@
     "upload": "Pujar",
     "uploading": "Pujant...",
     "uploadSuccess": "Fitxer pujat. Processant...",
+    "fileTooLarge": "El fitxer supera el límit de 500 MB.",
     "importContent": "Importar URL / YouTube",
     "importSuccess": "Importació iniciada.",
     "addContent": "Afegir Contingut",

@@ -896,6 +896,7 @@
     "upload": "Igo",
     "uploading": "Igotzen...",
     "uploadSuccess": "Fitxategia igota. Prozesatzen...",
+    "fileTooLarge": "Fitxategiak 500 MB-ko muga gainditzen du.",
     "importContent": "Inportatu URL / YouTube",
     "importSuccess": "Inportazioa hasita.",
     "addContent": "Edukia Gehitu",

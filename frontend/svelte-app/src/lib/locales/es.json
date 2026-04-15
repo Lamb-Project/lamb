@@ -900,6 +900,7 @@
     "upload": "Subir",
     "uploading": "Subiendo...",
     "uploadSuccess": "Archivo subido. Procesando...",
+    "fileTooLarge": "El archivo supera el límite de 500 MB.",
     "importContent": "Importar URL / YouTube",
     "importSuccess": "Importación iniciada.",
     "addContent": "Añadir Contenido",

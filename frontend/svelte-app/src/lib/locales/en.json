@@ -886,6 +886,7 @@
     "upload": "Upload",
     "uploading": "Uploading...",
     "uploadSuccess": "File uploaded. Processing...",
+    "fileTooLarge": "File exceeds 500 MB limit.",
     "importContent": "Import URL / YouTube",
     "importSuccess": "Import started.",
     "addContent": "Add Content",
