@@ -945,7 +945,12 @@
       "zipFile": "ZIP fitxategia",
       "zipHint": "Inportatu aurretik esportatutako liburutegi bat.",
       "importing": "Inportatzen...",
-      "importButton": "Inportatu"
+      "importButton": "Inportatu",
+      "invalidUrl": "HTTP(S) URL baliogarri bat behar da.",
+      "invalidYoutubeUrl": "YouTube URL baliogarri bat behar da.",
+      "zipRequired": "ZIP fitxategi bat behar da.",
+      "zipTooLarge": "ZIP fitxategiak 500 MB-ko muga gainditzen du.",
+      "importFailed": "Inportazioak huts egin du. Saiatu berriro."
     }
   }
 }

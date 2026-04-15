@@ -7071,7 +7071,8 @@ class LambDatabaseManager:
 
     def create_library(self, library_id: str, name: str, owner_user_id: int,
                        organization_id: int, description: str = "",
-                       import_config: Dict[str, Any] = None) -> Optional[str]:
+                       import_config: Dict[str, Any] = None,
+                       status: str = "active") -> Optional[str]:
         """Register a new library in LAMB's database.
 
         Args:
@@ -7081,6 +7082,7 @@ class LambDatabaseManager:
             organization_id: Organization ID.
             description: Optional description.
             import_config: Optional default import params.
+            status: Initial status ('active' or 'provisional').
 
         Returns:
             The library_id if successful, None on failure.
@@ -7096,9 +7098,9 @@ class LambDatabaseManager:
                     INSERT INTO {self.table_prefix}libraries
                     (id, organization_id, name, description, owner_user_id, is_shared,
                      import_config, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 0, ?, 'active', ?, ?)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
                 """, (library_id, organization_id, name, description, owner_user_id,
-                      json.dumps(import_config or {}), now, now))
+                      json.dumps(import_config or {}), status, now, now))
                 logger.info(f"Created library '{name}' (ID: {library_id}) for user {owner_user_id}")
                 return library_id
         except sqlite3.IntegrityError as e:
@@ -7107,6 +7109,35 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Database error creating library: {e}")
             return None
+        finally:
+            connection.close()
+
+    def update_library_status(self, library_id: str, status: str) -> bool:
+        """Update the status of a library (e.g. 'provisional' -> 'active').
+
+        Args:
+            library_id: Library UUID.
+            status: New status value.
+
+        Returns:
+            True if the row was updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status, now, library_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library status: {e}")
+            return False
         finally:
             connection.close()
 
@@ -7171,6 +7202,7 @@ class LambDatabaseManager:
                     FROM {self.table_prefix}libraries l
                     LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
                     WHERE l.organization_id = ?
+                    AND l.status = 'active'
                     AND (l.owner_user_id = ? OR l.is_shared = 1)
                     ORDER BY l.owner_user_id = ? DESC, l.updated_at DESC
                 """, (organization_id, user_id, user_id))

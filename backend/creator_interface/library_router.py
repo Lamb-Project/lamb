@@ -18,10 +18,10 @@ from lamb.database_manager import LambDatabaseManager
 
 from .library_manager_client import LibraryManagerClient
 
+logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------------
-# Request models (JSON body)
-# ------------------------------------------------------------------
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
+
 
 class LibraryCreate(BaseModel):
     name: str
@@ -46,7 +46,6 @@ class YouTubeImportRequest(BaseModel):
     title: Optional[str] = None
     plugin_name: str = "youtube_transcript_import"
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _client = LibraryManagerClient()
@@ -125,7 +124,13 @@ async def create_library(
     body: LibraryCreate,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Create a new library in the current organization."""
+    """Create a new library in the current organization.
+
+    The LAMB row is created with ``status='provisional'`` so that if the
+    process crashes before the Library Manager call completes, the row
+    won't appear in user listings.  On success the status is promoted to
+    ``'active'``; on failure the provisional row is removed.
+    """
     library_id = str(uuid.uuid4())
     org_id = auth.organization.get("id")
 
@@ -135,6 +140,7 @@ async def create_library(
         owner_user_id=auth.user.get("id"),
         organization_id=org_id,
         description=body.description,
+        status="provisional",
     )
     if not result:
         raise HTTPException(status_code=409, detail="Library name already taken in this organization.")
@@ -150,6 +156,7 @@ async def create_library(
         _db.delete_library(library_id)
         raise HTTPException(status_code=502, detail=f"Library Manager error: {e}")
 
+    _db.update_library_status(library_id, "active")
     _audit(auth, "library.create", "library", library_id, {"name": body.name})
     return _db.get_library(library_id)
 
@@ -183,7 +190,7 @@ async def get_library(
         entry["item_count"] = lm_data.get("item_count", 0)
     except Exception as e:
         logger.warning(f"Could not fetch item_count from Library Manager for {library_id}: {e}")
-        entry["item_count"] = 0
+        entry["item_count"] = None
 
     entry["is_owner"] = entry.get("owner_user_id") == auth.user.get("id")
     return entry
@@ -211,17 +218,28 @@ async def delete_library(
     library_id: str,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Delete a library and all its content."""
-    auth.require_library_access(library_id, level="owner")
+    """Delete a library and all its content.
 
-    _db.delete_library(library_id)
+    Deletes from Library Manager first, then from LAMB DB. If LM returns
+    a server error (5xx), the LAMB row is preserved so the user can retry.
+    A 404 from LM is tolerated (already gone on disk).
+    """
+    auth.require_library_access(library_id, level="owner")
 
     try:
         await _client.delete_library(library_id, creator_user=auth.user)
     except HTTPException as e:
-        if e.status_code != 404:
-            logger.warning(f"Library Manager delete failed for {library_id}: {e.detail}")
+        if e.status_code == 404:
+            pass
+        elif e.status_code >= 500:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Library Manager error during delete: {e.detail}",
+            )
+        else:
+            raise
 
+    _db.delete_library(library_id)
     _audit(auth, "library.delete", "library", library_id)
     return {"message": f"Library {library_id} deleted."}
 
@@ -255,6 +273,12 @@ async def upload_file(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Upload a file for import into the library."""
+    if file.size is not None and file.size > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum upload size of {MAX_UPLOAD_SIZE // (1024 * 1024)} MB.",
+        )
+
     auth.require_library_access(library_id, level="any")
     entry = _db.get_library(library_id)
     if not entry:

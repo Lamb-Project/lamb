@@ -938,7 +938,12 @@
       "zipFile": "Arxiu ZIP",
       "zipHint": "Importa una biblioteca exportada prèviament.",
       "importing": "Important...",
-      "importButton": "Importar"
+      "importButton": "Importar",
+      "invalidUrl": "Cal una URL HTTP(S) vàlida.",
+      "invalidYoutubeUrl": "Cal una URL de YouTube vàlida.",
+      "zipRequired": "Cal un fitxer ZIP.",
+      "zipTooLarge": "El fitxer ZIP supera el límit de 500 MB.",
+      "importFailed": "La importació ha fallat. Torna-ho a provar."
     }
   }
 }

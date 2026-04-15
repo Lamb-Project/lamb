@@ -935,7 +935,12 @@
       "zipFile": "ZIP file",
       "zipHint": "Import a previously exported library.",
       "importing": "Importing...",
-      "importButton": "Import"
+      "importButton": "Import",
+      "invalidUrl": "A valid HTTP(S) URL is required.",
+      "invalidYoutubeUrl": "A valid YouTube URL is required.",
+      "zipRequired": "A ZIP file is required.",
+      "zipTooLarge": "ZIP file exceeds 500 MB limit.",
+      "importFailed": "Import failed. Please try again."
     }
   }
 }

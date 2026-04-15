@@ -14,6 +14,7 @@ import config
 from database.connection import init_db
 from fastapi import FastAPI
 from routers import content, importing, libraries, system
+from routers.importing import purge_stale_uploads
 from tasks.worker import recover_stale_jobs, start_worker, stop_worker
 
 # --- Logging ---
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     config.ensure_directories()
     init_db()
     _discover_plugins()
+    purge_stale_uploads()
     recover_stale_jobs()
     await start_worker()
     logger.info("Library Manager started on port %d", config.PORT)
@@ -94,12 +96,31 @@ app.include_router(content.router)
 
 # --- Plugin discovery ---
 def _discover_plugins() -> None:
-    """Import all plugin modules so they self-register via @PluginRegistry.register."""
-    import plugins.markitdown_import  # noqa: F401
-    import plugins.markitdown_plus_import  # noqa: F401
-    import plugins.simple_import  # noqa: F401
-    import plugins.url_import  # noqa: F401
-    import plugins.youtube_transcript_import  # noqa: F401
+    """Import all plugin modules so they self-register via @PluginRegistry.register.
+
+    Each plugin is imported individually in a try/except so that a missing
+    optional dependency (e.g. markitdown) only disables its plugin instead
+    of preventing the entire service from starting.
+    """
+    _plugin_modules = [
+        "plugins.simple_import",
+        "plugins.markitdown_import",
+        "plugins.markitdown_plus_import",
+        "plugins.url_import",
+        "plugins.youtube_transcript_import",
+    ]
+    import importlib
+
+    for module_name in _plugin_modules:
+        try:
+            importlib.import_module(module_name)
+        except Exception:
+            logger.warning(
+                "Failed to load plugin module '%s' — skipping.",
+                module_name,
+                exc_info=True,
+            )
+
     from plugins.base import PluginRegistry
     registered = PluginRegistry.list_plugins()
     logger.info("Discovered %d import plugins: %s",

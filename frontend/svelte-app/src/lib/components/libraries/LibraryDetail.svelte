@@ -44,11 +44,17 @@
 
     let isOwner = $derived(library?.is_owner ?? false);
 
-    onMount(async () => {
-        await loadData();
+    onMount(() => {
         return () => {
             if (pollInterval) clearInterval(pollInterval);
         };
+    });
+
+    $effect(() => {
+        // Re-load data whenever libraryId changes (including the initial value)
+        if (libraryId) {
+            loadData();
+        }
     });
 
     async function loadData() {
@@ -230,17 +236,17 @@
         <div class="animate-pulse text-gray-500">{$_('libraries.loading', { default: 'Loading...' })}</div>
     </div>
 {:else if error && !library}
-    <div class="p-6 text-center">
+    <div class="p-6 text-center" role="alert">
         <p class="text-red-500">{error}</p>
     </div>
 {:else if library}
     <div class="space-y-6">
         <!-- Success banner -->
         {#if successMessage}
-            <div class="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-700">{successMessage}</div>
+            <div class="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-700" role="status">{successMessage}</div>
         {/if}
         {#if error}
-            <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{error}</div>
+            <div class="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700" role="alert">{error}</div>
         {/if}
 
         <!-- Metadata card -->

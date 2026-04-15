@@ -4,7 +4,7 @@
   Follows the same pattern as CreateKnowledgeBaseModal.svelte.
 -->
 <script>
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, tick } from 'svelte';
     import { createLibrary } from '$lib/services/libraryService';
     import { _ } from '$lib/i18n';
 
@@ -18,9 +18,11 @@
     let description = $state('');
 
     /** Open the modal and reset the form. */
-    export function open() {
+    export async function open() {
         isOpen = true;
         resetForm();
+        await tick();
+        document.getElementById('lib-name')?.focus();
     }
 
     function close() {
@@ -112,7 +114,7 @@
 
             <form onsubmit={handleSubmit} class="px-6 py-4 space-y-4">
                 {#if error}
-                    <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md">{error}</div>
+                    <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md" role="alert">{error}</div>
                 {/if}
 
                 <div>
@@ -128,7 +130,7 @@
                         disabled={isSubmitting}
                     />
                     {#if nameError}
-                        <p class="mt-1 text-sm text-red-600">{nameError}</p>
+                        <p class="mt-1 text-sm text-red-600" role="alert">{nameError}</p>
                     {/if}
                 </div>
 

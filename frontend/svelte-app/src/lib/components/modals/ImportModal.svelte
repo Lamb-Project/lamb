@@ -5,7 +5,7 @@
 -->
 <script>
     import axios from 'axios';
-    import { createEventDispatcher } from 'svelte';
+    import { createEventDispatcher, tick } from 'svelte';
     import { importUrl, importYouTube, importLibrary } from '$lib/services/libraryService';
     import { _ } from '$lib/i18n';
 
@@ -31,10 +31,22 @@
      * Open the modal for a specific library.
      * @param {string} id - Library ID.
      */
-    export function open(id) {
+    export async function open(id) {
         libraryId = id;
         isOpen = true;
         resetForm();
+        await tick();
+        focusFirstInput();
+    }
+
+    function focusFirstInput() {
+        if (importType === 'url') {
+            document.getElementById('import-url')?.focus();
+        } else if (importType === 'youtube') {
+            document.getElementById('import-yt-url')?.focus();
+        } else if (importType === 'zip') {
+            document.getElementById('import-zip')?.focus();
+        }
     }
 
     function close() {
@@ -145,7 +157,7 @@
 
             <form onsubmit={handleSubmit} class="px-6 py-4 space-y-4">
                 {#if error}
-                    <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md">{error}</div>
+                    <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md" role="alert">{error}</div>
                 {/if}
 
                 <div>

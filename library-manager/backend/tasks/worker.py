@@ -13,6 +13,7 @@ Design:
 
 import asyncio
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
@@ -195,8 +196,12 @@ async def _poll_loop() -> None:
 
         for job_id in job_ids:
             _dispatched.add(job_id)
-            await _semaphore.acquire()
-            asyncio.create_task(_run_with_semaphore(job_id))
+            try:
+                await _semaphore.acquire()
+                asyncio.create_task(_run_with_semaphore(job_id))
+            except (asyncio.CancelledError, Exception):
+                _dispatched.discard(job_id)
+                raise
 
         await asyncio.sleep(_POLL_INTERVAL)
 
@@ -244,10 +249,11 @@ async def stop_worker() -> None:
     if _executor:
         _executor.shutdown(wait=False)
 
+    _dispatched.clear()
     logger.info("Import worker stopped")
 
 
-_MAX_ATTEMPTS = 3
+_MAX_ATTEMPTS = int(os.getenv("LM_MAX_JOB_ATTEMPTS", "3"))
 
 
 def recover_stale_jobs() -> None:

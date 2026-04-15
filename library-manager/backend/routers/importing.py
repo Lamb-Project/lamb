@@ -2,11 +2,11 @@
 
 import json
 import logging
-import tempfile
+import time
 import uuid
 from pathlib import Path
 
-from config import MAX_UPLOAD_SIZE_BYTES
+from config import DATA_DIR, MAX_UPLOAD_SIZE_BYTES
 from database.connection import get_session
 from dependencies import verify_token
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -25,7 +25,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/libraries", tags=["Importing"], dependencies=[Depends(verify_token)])
 
 # Temporary upload directory — files are moved to permanent storage by the worker.
-_UPLOAD_DIR = Path(tempfile.gettempdir()) / "library-manager-uploads"
+_UPLOAD_DIR = DATA_DIR / "tmp-uploads"
+
+# Maximum age (seconds) for files in the temp upload directory before purging.
+_UPLOAD_MAX_AGE_SECONDS = 2 * 60 * 60  # 2 hours
+
+
+def purge_stale_uploads() -> None:
+    """Remove temp upload files older than ``_UPLOAD_MAX_AGE_SECONDS``.
+
+    Called once at startup (via lifespan) and can be called periodically.
+    Errors on individual files are logged and skipped so the purge is
+    best-effort.
+    """
+    if not _UPLOAD_DIR.exists():
+        return
+    cutoff = time.time() - _UPLOAD_MAX_AGE_SECONDS
+    removed = 0
+    for entry in _UPLOAD_DIR.iterdir():
+        try:
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                entry.unlink()
+                removed += 1
+        except OSError:
+            logger.warning("Failed to remove stale upload %s", entry, exc_info=True)
+    if removed:
+        logger.info("Purged %d stale upload(s) from %s", removed, _UPLOAD_DIR)
 
 
 @router.post(

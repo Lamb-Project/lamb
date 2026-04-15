@@ -203,7 +203,7 @@
     </div>
 
     {#if successMessage}
-        <div class="px-4 py-3 bg-green-50 border-b border-green-100 text-sm text-green-700">{successMessage}</div>
+        <div class="px-4 py-3 bg-green-50 border-b border-green-100 text-sm text-green-700" role="status">{successMessage}</div>
     {/if}
 
     {#if currentTabLibraries.length > 0}
@@ -227,7 +227,7 @@
             <div class="animate-pulse text-gray-500">{$_('libraries.loading', { default: 'Loading libraries...' })}</div>
         </div>
     {:else if error}
-        <div class="p-6 text-center">
+        <div class="p-6 text-center" role="alert">
             <p class="text-red-500">{error}</p>
             <button
                 onclick={() => loadLibraries()}
