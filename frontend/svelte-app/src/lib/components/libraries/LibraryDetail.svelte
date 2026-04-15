@@ -58,6 +58,7 @@
     });
 
     async function loadData() {
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         loading = true;
         error = '';
         try {

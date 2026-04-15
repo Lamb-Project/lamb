@@ -8,7 +8,7 @@ import logging
 import uuid
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -492,12 +492,14 @@ async def get_import_config(
 @router.put("/{library_id}/import-config")
 async def update_import_config(
     library_id: str,
-    config: dict,
+    config: Dict[str, Any] = Body(...),
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Update a library's import configuration."""
     auth.require_library_access(library_id, level="owner")
-    return await _client.update_import_config(library_id, config, creator_user=auth.user)
+    result = await _client.update_import_config(library_id, config, creator_user=auth.user)
+    _audit(auth, "library.update_config", "library", library_id)
+    return result
 
 
 # ------------------------------------------------------------------
