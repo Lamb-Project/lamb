@@ -33,4 +33,11 @@ export const resetPublishingStatus = () => {
     });
 };
 
+/** Reset all publish modal state when switching users. */
+export const resetAssistantPublishState = () => {
+    publishModalOpen.set(false);
+    selectedAssistant.set(null);
+    resetPublishingStatus();
+};
+
 // Note: API call functions (publishAssistant, unpublishAssistant) are kept in assistantService.js 

@@ -1,0 +1,23 @@
+services:
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@yourdomain.com}
+      LAMB_PUBLIC_HOST: ${LAMB_PUBLIC_HOST:-lamb.yourdomain.com}
+      OWI_PUBLIC_HOST: ${OWI_PUBLIC_HOST:-owi.lamb.yourdomain.com}
+    volumes:
+      - ./Caddyfile.next:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - lamb
+      - kb
+      - openwebui
+
+volumes:
+  caddy-data:
+  caddy-config:

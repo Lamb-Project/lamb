@@ -329,6 +329,63 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
+REQUIRED_PLUGIN_METADATA_KEYS = (
+    "prompt_processor",
+    "connector",
+    "llm",
+    "rag_processor",
+)
+
+
+def validate_update_plugin_metadata(
+    original_body: Dict[str, Any]
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validate assistant plugin metadata for updates.
+
+    Updates must provide complete plugin metadata so the backend never replaces a
+    valid stored configuration with partial or blank data.
+
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (normalized_metadata_json, error_message)
+    """
+    raw_metadata = original_body.get("metadata", original_body.get("api_callback"))
+
+    if raw_metadata is None:
+        return None, (
+            "Assistant updates must include metadata with prompt_processor, "
+            "connector, llm, and rag_processor."
+        )
+
+    if isinstance(raw_metadata, dict):
+        metadata_dict = raw_metadata
+    elif isinstance(raw_metadata, str):
+        if not raw_metadata.strip():
+            return None, "Assistant metadata cannot be empty on update."
+        try:
+            parsed = json.loads(raw_metadata)
+        except json.JSONDecodeError as e:
+            return None, f"Assistant metadata must be valid JSON: {str(e)}"
+        if not isinstance(parsed, dict):
+            return None, "Assistant metadata must be a JSON object."
+        metadata_dict = parsed
+    else:
+        return None, "Assistant metadata must be a JSON string or object."
+
+    missing_keys = [
+        key for key in REQUIRED_PLUGIN_METADATA_KEYS
+        if not isinstance(metadata_dict.get(key), str) or not metadata_dict.get(key).strip()
+    ]
+    if missing_keys:
+        return None, (
+            "Assistant metadata is incomplete. Missing required plugin fields: "
+            + ", ".join(missing_keys)
+        )
+
+    normalized_metadata = json.dumps(metadata_dict)
+    return normalized_metadata, None
+
+
 def prepare_assistant_body(
     original_body: Dict[str, Any], 
     creator_user: Dict[str, Any], 
@@ -860,6 +917,60 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
         )
 
 @router.get(
+    "/{assistant_id}/usage",
+    tags=["Assistant Management"],
+    summary="Get Assistant Usage & Quota",
+    description="Returns current token usage, estimated cost, and quota configuration for an assistant.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        404: {"description": "Assistant not found or access denied"},
+    }
+)
+async def get_assistant_usage(assistant_id: int, auth: AuthContext = Depends(get_auth_context)):
+    """Return usage summary and quota config for a single assistant."""
+    try:
+        # Verify access (owner or org admin can view usage)
+        access = auth.can_access_assistant(assistant_id)
+        if access == "none":
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Parse quota config from metadata/api_callback
+        raw_meta = assistant_data.get("api_callback") or assistant_data.get("metadata") or "{}"
+        try:
+            metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+        except Exception:
+            metadata = {}
+        quota = metadata.get("quota", {})
+        quota_enabled = bool(quota.get("enabled", False))
+        cost_limit_usd = quota.get("cost_limit_usd")
+
+        tokens = db_manager.get_assistant_token_usage(assistant_id)
+        cost_usd = db_manager.get_assistant_cost_usd(assistant_id)
+        quota_exceeded = quota_enabled and cost_limit_usd is not None and cost_usd >= float(cost_limit_usd)
+
+        return {
+            "assistant_id": assistant_id,
+            "name": assistant_data.get("name", ""),
+            "spend_usd": round(cost_usd, 6),
+            "tokens": tokens,
+            "quota": {
+                "enabled": quota_enabled,
+                "cost_limit_usd": float(cost_limit_usd) if cost_limit_usd is not None else None,
+            },
+            "quota_exceeded": quota_exceeded,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching usage for assistant {assistant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get(
     "/get_assistants",
     tags=["Assistant Management"],
     summary="Get Assistants Proxy",
@@ -1091,6 +1202,16 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
 
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
+
+        normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
+        if metadata_error:
+            logger.error(
+                f"Rejected update for assistant {assistant_id} due to invalid metadata: {metadata_error}"
+            )
+            raise HTTPException(status_code=400, detail=metadata_error)
+
+        original_body["metadata"] = normalized_metadata
+        original_body["api_callback"] = normalized_metadata
 
         # Prepare the assistant body
         new_body, error = prepare_assistant_body(original_body, creator_user)

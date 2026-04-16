@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { userStore as user, authService, _ , locale } from '@lamb/ui';
+  import { login } from '$lib/services/authService';
+  import { replaceSessionWithLoginData } from '$lib/session/sessionManager';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
@@ -56,7 +57,7 @@
       console.log('Creator user detected, continuing to creator interface');
       
       // For creator users, continue with normal login
-      user.login(result.data); 
+      replaceSessionWithLoginData(result.data); 
       
       success = true;
       message = 'Login successful!'; // Use a generic message or i18n key
