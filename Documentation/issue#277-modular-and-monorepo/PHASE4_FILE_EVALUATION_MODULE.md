@@ -443,3 +443,36 @@ Recommended test coverage:
 - **Standalone `uvicorn lamb.main:app`**: The file-eval schema **repair** and **module migrations** run only from the **root** `backend/main.py` lifespan. Running only `lamb.main` without the full app may skip those steps (document or align startup).
 - **Schema repair data loss**: `repair_file_eval_schema_if_needed` **drops** `mod_file_eval_*` tables when fixing FK mismatch; production deployments need a migration strategy if data must be preserved.
 - **Docker / frontend build**: Ensure the production image runs the same build pipeline that includes `module-file-eval` and `packages/ui` locale updates so `fileEval` strings ship with the bundle.
+
+---
+
+## 11. Update (2026-04-16): LTI setup assistant filters and unified empty states
+
+Changes made in [`frontend/packages/module-chat/src/routes/setup/+page.svelte`](../../frontend/packages/module-chat/src/routes/setup/+page.svelte).
+
+### 11.1 — Client-side filter checkboxes
+
+Two `$state` booleans control filtering of the assistant list returned by the backend (`get_published_assistants_for_org_user`). No new endpoints were added; all filtering and sorting happens in the browser.
+
+| Control | Visibility | Default | Behaviour |
+|---------|-----------|---------|-----------|
+| **Include shared assistants** | Chat + File Evaluation | `true` (checked) | When unchecked, hides assistants with `access_type === 'shared'`. |
+| **Include assistants with a rubric** | Chat only | `false` (unchecked) | When unchecked, hides assistants with `rubric_eval_ready === true`. Not shown for File Evaluation because that list is already restricted to `rubric_eval_ready` assistants. |
+
+**Sorting (Chat only):** Assistants without a rubric appear first; ties broken alphabetically by name (`localeCompare`, case-insensitive). File Evaluation sorts alphabetically only.
+
+The shared-assistants filter state persists when switching between Chat and File Evaluation (single shared control as per product requirements).
+
+### 11.2 — Empty state messages
+
+When the filtered assistant list is empty, the UI displays one of two messages depending on the cause:
+
+| Condition | Style | Message |
+|-----------|-------|---------|
+| Assistants exist in the org but current filters hide all of them (`availableAssistants.length > 0 && filtered.length === 0`) | Gray border, gray background, italic | "No assistants match the current filters. Adjust the filters above." |
+| **File Evaluation** — no assistants with a rubric exist at all | Amber border (`border-amber-300`), amber background (`bg-amber-50`) | "No assistants with a rubric found." + Creator path |
+| **Chat** — no published assistants exist at all | Same amber style | "No published assistants found." + Creator path |
+
+Both amber boxes include the hardcoded Creator LTI path in a `<code>` block: `/lamb/v1/lti_creator/launch`. This is a reference for administrators — no clickable link is rendered.
+
+See also: section 4.16 for the initial `rubric_eval_ready` flag and empty-state implementation.
