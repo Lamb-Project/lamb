@@ -25,7 +25,7 @@
     import OrgForm from '$lib/components/admin/OrgForm.svelte';
 
     // --- State Management ---
-    /** @type {'dashboard' | 'users' | 'organizations' | 'lti-settings' | 'user-detail'} */
+    /** @type {'dashboard' | 'users' | 'organizations' | 'lti-settings' | 'user-detail' | 'cost-management'} */
     let currentView = $state('dashboard'); // Default view is dashboard
     let localeLoaded = $state(true); // Assume loaded for now
     
@@ -198,6 +198,123 @@
         return `${server.replace(/\/$/, '')}/lamb/v1/lti/launch`;
     });
 
+    // --- Cost Management State ---
+    /** @type {Array<any>} */
+    let costData = $state([]);
+    let isLoadingCostData = $state(false);
+    /** @type {string | null} */
+    let costDataError = $state(null);
+    let costSearch = $state('');
+
+    let filteredCostData = $derived(costData.filter(a => {
+        if (!costSearch) return true;
+        const q = costSearch.toLowerCase();
+        return (
+            (a.name || '').toLowerCase().includes(q) ||
+            (a.owner || '').toLowerCase().includes(q) ||
+            (a.organization_name || '').toLowerCase().includes(q) ||
+            (a.model_name || '').toLowerCase().includes(q)
+        );
+    }));
+
+    let costTotals = $derived({
+        total_cost: costData.reduce((s, a) => s + (a.cost_usd || 0), 0),
+        total_tokens: costData.reduce((s, a) => s + (a.total_tokens || 0), 0),
+        prompt_tokens: costData.reduce((s, a) => s + (a.prompt_tokens || 0), 0),
+        completion_tokens: costData.reduce((s, a) => s + (a.completion_tokens || 0), 0),
+    });
+
+    // --- Quota Edit Modal State ---
+    /** @type {any | null} */
+    let quotaEditAssistant = $state(null); // the assistant row being edited
+    let quotaEditEnabled = $state(false);
+    let quotaEditLimitStr = $state(''); // string representation of cost_limit_usd (empty = unlimited)
+    let quotaEditAlertThresholdsStr = $state(''); // comma-separated percentage thresholds
+    let isSavingQuota = $state(false);
+    /** @type {string | null} */
+    let quotaSaveError = $state(null);
+    /** @type {string | null} */
+    let quotaSaveSuccess = $state(null);
+
+    /** @param {any} assistant */
+    function openQuotaEditModal(assistant) {
+        quotaEditAssistant = assistant;
+        quotaEditEnabled = !!assistant.quota_enabled;
+        quotaEditLimitStr = assistant.cost_limit_usd != null ? String(assistant.cost_limit_usd) : '';
+        const thresholds = assistant.alert_thresholds || [];
+        quotaEditAlertThresholdsStr = thresholds.length > 0 ? thresholds.join(', ') : '';
+        quotaSaveError = null;
+        quotaSaveSuccess = null;
+    }
+
+    function closeQuotaEditModal() {
+        quotaEditAssistant = null;
+        quotaSaveError = null;
+        quotaSaveSuccess = null;
+    }
+
+    async function saveQuota() {
+        if (!quotaEditAssistant) return;
+        isSavingQuota = true;
+        quotaSaveError = null;
+        quotaSaveSuccess = null;
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication token not found.');
+            const limitVal = String(quotaEditLimitStr ?? '').trim();
+            /** @type {number | null} */
+            const cost_limit_usd = limitVal === '' ? null : parseFloat(limitVal);
+            if (limitVal !== '' && (cost_limit_usd === null || isNaN(cost_limit_usd) || cost_limit_usd < 0)) {
+                quotaSaveError = 'Cost limit must be a positive number (or leave blank for unlimited).';
+                return;
+            }
+
+            // Parse alert thresholds
+            let alert_thresholds = [];
+            const thresholdsVal = String(quotaEditAlertThresholdsStr ?? '').trim();
+            if (thresholdsVal !== '') {
+                const parts = thresholdsVal.split(',').map(s => parseFloat(s.trim()));
+                if (parts.some(isNaN) || parts.some(p => p <= 0)) {
+                    quotaSaveError = 'Alert thresholds must be a comma-separated list of positive numbers (e.g. 50, 80).';
+                    return;
+                }
+                alert_thresholds = parts;
+            }
+
+            const response = await axios.put(
+                getApiUrl(`/admin/assistant/${quotaEditAssistant.id}/quota`),
+                { enabled: quotaEditEnabled, cost_limit_usd, alert_thresholds },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            );
+            // Patch the row in costData
+            const updated = response.data;
+            costData = costData.map(a => a.id === quotaEditAssistant.id
+                ? {
+                    ...a,
+                    quota_enabled: updated.quota.enabled,
+                    cost_limit_usd: updated.quota.cost_limit_usd,
+                    alert_thresholds: updated.quota.alert_thresholds || [],
+                    quota_exceeded: updated.quota_exceeded,
+                }
+                : a
+            );
+            quotaSaveSuccess = 'Quota saved successfully.';
+            setTimeout(() => { closeQuotaEditModal(); }, 1200);
+        } catch (err) {
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                quotaSaveError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                quotaSaveError = err.message;
+            } else {
+                quotaSaveError = 'Failed to save quota.';
+            }
+        } finally {
+            isSavingQuota = false;
+        }
+    }
+
+
+
     /** @param {string} text @param {string} label */
     async function copyToClipboard(text, label) {
         try {
@@ -294,6 +411,38 @@
         goto(`${base}/admin?view=lti-settings`, { replaceState: true });
         fetchLtiGlobalConfig();
     }
+
+    function showCostManagement() {
+        currentView = 'cost-management';
+        goto(`${base}/admin?view=cost-management`, { replaceState: true });
+        fetchCostData();
+    }
+
+    async function fetchCostData() {
+        if (isLoadingCostData) return;
+        isLoadingCostData = true;
+        costDataError = null;
+        try {
+            const token = getAuthToken();
+            if (!token) throw new Error('Authentication token not found.');
+            const response = await axios.get(getApiUrl('/admin/cost-overview'), {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            costData = response.data?.assistants || [];
+        } catch (err) {
+            if (axios.isAxiosError(err) && err.response?.data?.detail) {
+                costDataError = err.response.data.detail;
+            } else if (err instanceof Error) {
+                costDataError = err.message;
+            } else {
+                costDataError = 'Failed to load cost data.';
+            }
+            costData = [];
+        } finally {
+            isLoadingCostData = false;
+        }
+    }
+
 
     function showOrganizations() {
         currentView = 'organizations';
@@ -879,7 +1028,9 @@
     function handleKeydown(event) {
         // Handle ESC key to close modals
         if (event.key === 'Escape') {
-            if (isCreateOrgModalOpen) {
+            if (quotaEditAssistant) {
+                closeQuotaEditModal();
+            } else if (isCreateOrgModalOpen) {
                 closeCreateOrgModal();
             } else if (isViewConfigModalOpen) {
                 closeViewConfigModal();
@@ -935,6 +1086,10 @@
                 console.log("URL indicates 'lti-settings' view.");
                 currentView = 'lti-settings';
                 fetchLtiGlobalConfig();
+            } else if (viewParam === 'cost-management') {
+                console.log("URL indicates 'cost-management' view.");
+                currentView = 'cost-management';
+                fetchCostData();
             } else if (viewParam === 'user-detail') {
                 const idParam = currentPage.url.searchParams.get('id');
                 if (idParam) {
@@ -1637,6 +1792,15 @@
                     aria-label="LTI Settings"
                 >
                     LTI Settings
+                </button>
+            </li>
+            <li class="mr-2">
+                <button
+                    class={`inline-block py-2 px-4 text-sm font-medium ${currentView === 'cost-management' ? 'text-white bg-brand border-brand' : 'text-gray-500 hover:text-brand border-transparent'} rounded-t-lg border-b-2`}
+                    onclick={showCostManagement}
+                    aria-label={localeLoaded ? $_('admin.tabs.costManagement', { default: 'Cost Management' }) : 'Cost Management'}
+                >
+                    {localeLoaded ? $_('admin.tabs.costManagement', { default: 'Cost Management' }) : 'Cost Management'}
                 </button>
             </li>
         </ul>
@@ -2880,6 +3044,169 @@
             </div>
         {/if}
 
+    {:else if currentView === 'cost-management'}
+        <!-- Cost Management View -->
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-semibold text-gray-800">{localeLoaded ? $_('admin.costManagement.title', { default: 'Cost Management' }) : 'Cost Management'}</h1>
+                <p class="text-sm text-gray-500 mt-1">{localeLoaded ? $_('admin.costManagement.subtitle', { default: 'Token usage and estimated cost per assistant across the platform.' }) : 'Token usage and estimated cost per assistant across the platform.'}</p>
+            </div>
+            <button
+                onclick={fetchCostData}
+                class="inline-flex items-center gap-2 bg-brand text-white py-2 px-4 rounded hover:bg-brand/90 transition-colors text-sm"
+                disabled={isLoadingCostData}
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {localeLoaded ? $_('admin.costManagement.retry', { default: 'Retry' }) : 'Refresh'}
+            </button>
+        </div>
+
+        {#if isLoadingCostData}
+            <div class="bg-white overflow-hidden shadow rounded-lg p-8">
+                <div class="flex items-center justify-center">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-brand mr-3"></div>
+                    <span class="text-gray-500">{localeLoaded ? $_('admin.costManagement.loading', { default: 'Loading usage data...' }) : 'Loading usage data...'}</span>
+                </div>
+            </div>
+        {:else if costDataError}
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong class="font-bold">{localeLoaded ? $_('admin.costManagement.errorTitle', { default: 'Error:' }) : 'Error:'} </strong>
+                <span>{costDataError}</span>
+                <button onclick={fetchCostData} class="ml-4 underline text-sm">{localeLoaded ? $_('admin.costManagement.retry', { default: 'Retry' }) : 'Retry'}</button>
+            </div>
+        {:else}
+            <!-- Summary cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white rounded-lg shadow p-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Estimated Cost</p>
+                    <p class="text-2xl font-bold text-gray-800">${costTotals.total_cost.toFixed(4)}</p>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Tokens</p>
+                    <p class="text-2xl font-bold text-gray-800">{costTotals.total_tokens.toLocaleString()}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">Prompt: {costTotals.prompt_tokens.toLocaleString()} · Completion: {costTotals.completion_tokens.toLocaleString()}</p>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Assistants</p>
+                    <p class="text-2xl font-bold text-gray-800">{costData.length}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">{costData.filter(a => a.quota_exceeded).length} quota exceeded</p>
+                </div>
+            </div>
+
+            <!-- Search filter -->
+            <div class="mb-4">
+                <input
+                    type="text"
+                    bind:value={costSearch}
+                    placeholder="Search by assistant name, owner, organization or model..."
+                    class="w-full sm:w-80 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                />
+            </div>
+
+            {#if filteredCostData.length === 0}
+                <div class="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                    {costData.length === 0
+                        ? (localeLoaded ? $_('admin.costManagement.noData', { default: 'No assistants found.' }) : 'No assistants found.')
+                        : 'No assistants match your search.'}
+                </div>
+            {:else}
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.assistant', { default: 'Assistant' }) : 'Assistant'}
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.organization', { default: 'Organization' }) : 'Organization'}
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.model', { default: 'Model' }) : 'Model'}
+                                    </th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.promptTokens', { default: 'Prompt Tokens' }) : 'Prompt Tokens'}
+                                    </th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.completionTokens', { default: 'Completion Tokens' }) : 'Completion Tokens'}
+                                    </th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.cost', { default: 'Estimated Cost' }) : 'Estimated Cost'}
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.quota', { default: 'Quota' }) : 'Quota'}
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        {localeLoaded ? $_('admin.costManagement.table.status', { default: 'Status' }) : 'Status'}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {#each filteredCostData as assistant (assistant.id)}
+                                    <tr
+                                        class="cursor-pointer hover:bg-blue-50 {assistant.quota_exceeded ? 'bg-red-50 hover:bg-red-100' : ''}"
+                                        onclick={() => openQuotaEditModal(assistant)}
+                                        title="Click to edit quota"
+                                    >
+                                        <td class="px-4 py-3">
+                                            <div class="font-medium text-gray-900">{assistant.name}</div>
+                                            <div class="text-xs text-gray-400">{assistant.owner}</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-gray-600">{assistant.organization_name || '—'}</td>
+                                        <td class="px-4 py-3">
+                                            {#if assistant.model_name}
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{assistant.model_name}</span>
+                                            {:else}
+                                                <span class="text-gray-400">—</span>
+                                            {/if}
+                                        </td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-gray-600">{assistant.prompt_tokens.toLocaleString()}</td>
+                                        <td class="px-4 py-3 text-right tabular-nums text-gray-600">{assistant.completion_tokens.toLocaleString()}</td>
+                                        <td class="px-4 py-3 text-right tabular-nums font-medium {assistant.cost_usd > 0 ? 'text-gray-800' : 'text-gray-400'}">
+                                            ${assistant.cost_usd.toFixed(4)}
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            {#if !assistant.quota_enabled}
+                                                <span class="text-xs text-gray-400">{localeLoaded ? $_('admin.costManagement.quota.noQuota', { default: 'No quota' }) : 'No quota'}</span>
+                                            {:else if assistant.cost_limit_usd != null}
+                                                {@const tablePct = (assistant.cost_usd / assistant.cost_limit_usd) * 100}
+                                                {@const hasAlert = assistant.alert_thresholds && assistant.alert_thresholds.some(t => t <= tablePct)}
+                                                <span class="text-xs text-gray-600">${assistant.cost_limit_usd.toFixed(2)}</span>
+                                                <div class="mt-1 w-full bg-gray-200 rounded-full h-1.5">
+                                                    <div
+                                                        class="h-1.5 rounded-full {assistant.quota_exceeded ? 'bg-red-500' : hasAlert ? 'bg-yellow-400' : 'bg-green-500'}"
+                                                        style="width: {Math.min(100, tablePct).toFixed(1)}%"
+                                                    ></div>
+                                                </div>
+                                                <div class="text-xs text-gray-400 mt-0.5">{((assistant.cost_usd / assistant.cost_limit_usd) * 100).toFixed(1)}% used</div>
+                                            {/if}
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            {#if assistant.quota_exceeded}
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                                                    {localeLoaded ? $_('admin.costManagement.quota.exceeded', { default: 'Exceeded' }) : 'Exceeded'}
+                                                </span>
+                                            {:else if assistant.quota_enabled}
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                    {localeLoaded ? $_('admin.costManagement.quota.active', { default: 'Active' }) : 'Active'}
+                                                </span>
+                                            {:else}
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                                                    {localeLoaded ? $_('admin.costManagement.quota.disabled', { default: 'Disabled' }) : 'No quota'}
+                                                </span>
+                                            {/if}
+                                        </td>
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {/if}
+        {/if}
+
     {:else if currentView === 'user-detail'}
         <!-- User Detail / Profile View -->
         <div class="mb-4">
@@ -3040,6 +3367,187 @@
     onconfirm={confirmDeleteOrganization}
     oncancel={cancelDeleteOrganization}
 />
+
+<!-- Quota Edit Modal -->
+{#if quotaEditAssistant}
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+        <div class="relative mx-auto p-6 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <!-- Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-medium text-gray-900">Quota Settings</h3>
+                    <p class="text-sm text-gray-500 mt-0.5 break-all">{quotaEditAssistant.name}</p>
+                </div>
+                <button
+                    onclick={closeQuotaEditModal}
+                    class="text-gray-400 hover:text-gray-600 transition-colors ml-4 flex-shrink-0"
+                    aria-label="Close"
+                >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Current spend info -->
+            <div class="bg-gray-50 rounded-md px-4 py-3 mb-5 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Current spend</div>
+                    <div class="font-semibold text-gray-800">${quotaEditAssistant.cost_usd.toFixed(4)}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Total tokens</div>
+                    <div class="font-semibold text-gray-800">{quotaEditAssistant.total_tokens.toLocaleString()}</div>
+                </div>
+                {#if quotaEditAssistant.model_name}
+                <div class="col-span-2">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Model</div>
+                    <div class="text-gray-700">{quotaEditAssistant.model_name}</div>
+                </div>
+                {/if}
+            </div>
+
+            <!-- Form -->
+            <form onsubmit={(e) => { e.preventDefault(); saveQuota(); }}>
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between mb-5">
+                    <div>
+                        <label for="quota-enabled" class="text-sm font-medium text-gray-700">Enable quota enforcement</label>
+                        <p class="text-xs text-gray-400 mt-0.5">When enabled, completions are blocked once the limit is reached.</p>
+                    </div>
+                    <button
+                        type="button"
+                        id="quota-enabled"
+                        role="switch"
+                        aria-checked={quotaEditEnabled}
+                        onclick={() => { quotaEditEnabled = !quotaEditEnabled; }}
+                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 {quotaEditEnabled ? 'bg-brand' : 'bg-gray-200'}"
+                    >
+                        <span class="sr-only">Enable quota</span>
+                        <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {quotaEditEnabled ? 'translate-x-5' : 'translate-x-0'}"></span>
+                    </button>
+                </div>
+
+                <!-- Cost limit input -->
+                <div class="mb-5">
+                    <label for="quota-limit" class="block text-sm font-medium text-gray-700 mb-1">
+                        Cost limit (USD)
+                        <span class="font-normal text-gray-400">— leave blank for unlimited</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 text-sm pointer-events-none">$</span>
+                        <input
+                            type="number"
+                            id="quota-limit"
+                            min="0"
+                            step="0.01"
+                            placeholder="e.g. 5.00"
+                            bind:value={quotaEditLimitStr}
+                            disabled={!quotaEditEnabled}
+                            class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-50 disabled:text-gray-400"
+                        />
+                    </div>
+                    {#if quotaEditEnabled && quotaEditLimitStr && quotaEditAssistant.cost_usd > 0}
+                        {@const limit = parseFloat(quotaEditLimitStr)}
+                        {#if !isNaN(limit) && limit > 0}
+                            {@const currentPct = (quotaEditAssistant.cost_usd / limit) * 100}
+                            {@const breakpoints = quotaEditAlertThresholdsStr.split(',').map(s=>parseFloat(s.trim())).filter(p=>!isNaN(p))}
+                            {@const breached = breakpoints.filter(p => p <= currentPct).sort((a,b)=>b-a)[0]}
+                            <div class="mt-2">
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 flex mb-1">
+                                    <div
+                                        class="h-1.5 rounded-full {quotaEditAssistant.cost_usd >= limit ? 'bg-red-500' : breached ? 'bg-yellow-400' : 'bg-green-500'}"
+                                        style="width: {Math.min(100, currentPct).toFixed(1)}%"
+                                    ></div>
+                                </div>
+                                <div class="flex justify-between items-center text-xs mt-1">
+                                    <span class="text-gray-400">{currentPct.toFixed(1)}% of limit used</span>
+                                    {#if quotaEditAssistant.cost_usd >= limit}
+                                        <span class="text-red-600 font-medium flex items-center">
+                                            <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            Limit exceeded
+                                        </span>
+                                    {:else if breached}
+                                        <span class="text-yellow-600 font-medium flex items-center bg-yellow-50 px-1.5 py-0.5 rounded">
+                                            <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            Threshold {breached}% reached
+                                        </span>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
+                    {/if}
+                </div>
+
+                <!-- Alert Thresholds input -->
+                <div class="mb-5">
+                    <label for="quota-alerts" class="block text-sm font-medium text-gray-700 mb-1">
+                        Alert thresholds (%)
+                        <span class="font-normal text-gray-400">— comma separated percentages</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 text-sm pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                            </svg>
+                        </span>
+                        <input
+                            type="text"
+                            id="quota-alerts"
+                            placeholder="e.g. 50, 80"
+                            bind:value={quotaEditAlertThresholdsStr}
+                            class="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                        />
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Receive notifications when usage reaches these percentages of the cost limit.</p>
+                </div>
+
+                <!-- Feedback messages -->
+                {#if quotaSaveError}
+                    <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">
+                        {quotaSaveError}
+                    </div>
+                {/if}
+                {#if quotaSaveSuccess}
+                    <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded text-sm">
+                        {quotaSaveSuccess}
+                    </div>
+                {/if}
+
+                <!-- Actions -->
+                <div class="flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onclick={closeQuotaEditModal}
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                        disabled={isSavingQuota}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-brand border border-transparent rounded-md hover:bg-brand/90 transition-colors disabled:opacity-60 inline-flex items-center gap-2"
+                        disabled={isSavingQuota}
+                    >
+                        {#if isSavingQuota}
+                            <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            Saving...
+                        {:else}
+                            Save quota
+                        {/if}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
 
 <style>
     /* Add specific styles if needed, though Tailwind should cover most */

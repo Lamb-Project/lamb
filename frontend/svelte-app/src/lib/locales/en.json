@@ -602,7 +602,8 @@
     "tabs": {
       "dashboard": "Dashboard",
       "users": "Users",
-      "organizations": "Organizations"
+      "organizations": "Organizations",
+      "costManagement": "Cost Management"
     },
     "dashboard": {
       "title": "Admin Dashboard",
@@ -768,6 +769,37 @@
         "authTokenNotFound": "Authentication token not found. Please log in again.",
         "createFailed": "Failed to create organization.",
         "unknownError": "An unknown error occurred while creating the organization."
+      }
+    },
+    "costManagement": {
+      "title": "Cost Management",
+      "subtitle": "Token usage and estimated cost per assistant across the platform.",
+      "loading": "Loading usage data...",
+      "errorTitle": "Error:",
+      "retry": "Retry",
+      "noData": "No assistants found.",
+      "table": {
+        "assistant": "Assistant",
+        "owner": "Owner",
+        "organization": "Organization",
+        "model": "Model",
+        "promptTokens": "Prompt Tokens",
+        "completionTokens": "Completion Tokens",
+        "totalTokens": "Total Tokens",
+        "cost": "Estimated Cost",
+        "quota": "Quota",
+        "status": "Status"
+      },
+      "quota": {
+        "noQuota": "No quota",
+        "disabled": "Disabled",
+        "active": "Active",
+        "exceeded": "Exceeded"
+      },
+      "totals": {
+        "label": "Platform totals:",
+        "cost": "Total estimated cost:",
+        "tokens": "Total tokens:"
       }
     }
   },

@@ -612,7 +612,8 @@
     "tabs": {
       "dashboard": "Kontrol Panela",
       "users": "Erabiltzaile Kudeaketa",
-      "organizations": "Erakundeak"
+      "organizations": "Erakundeak",
+      "costManagement": "Kostuen Kudeaketa"
     },
     "dashboard": {
       "title": "Administrazio Panela",
@@ -778,6 +779,37 @@
         "authTokenNotFound": "Autentifikazio tokena ez da aurkitu. Mesedez hasi saioa berriro.",
         "createFailed": "Errorea erakundea sortzean.",
         "unknownError": "Errore ezezaguna gertatu da erakundea sortzean."
+      }
+    },
+    "costManagement": {
+      "title": "Kostuen Kudeaketa",
+      "subtitle": "Plataformako token-erabilera eta laguntzaile bakoitzaren kostu estimatua.",
+      "loading": "Erabilera-datuak kargatzen...",
+      "errorTitle": "Errorea:",
+      "retry": "Berritu",
+      "noData": "Ez da laguntzailerik aurkitu.",
+      "table": {
+        "assistant": "Laguntzailea",
+        "owner": "Jabea",
+        "organization": "Erakundea",
+        "model": "Eredua",
+        "promptTokens": "Sarrerako tokenak",
+        "completionTokens": "Irteerako tokenak",
+        "totalTokens": "Token guztira",
+        "cost": "Kostu estimatua",
+        "quota": "Kuota",
+        "status": "Egoera"
+      },
+      "quota": {
+        "noQuota": "Kuotarik gabe",
+        "disabled": "Desgaituta",
+        "active": "Aktibo",
+        "exceeded": "Gaindituta"
+      },
+      "totals": {
+        "label": "Plataformaren totalak:",
+        "cost": "Kostu total estimatua:",
+        "tokens": "Token guztira:"
       }
     }
   },

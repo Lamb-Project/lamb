@@ -1141,4 +1141,4 @@ creator_interface/
 - **Anonymization integrity:** The "Student N" mapping is derived from `created_at` ordering — deterministic and consistent, but **no reverse lookup is exposed** via any API endpoint. Even the owner cannot de-anonymize.
 - **Chat visibility consent:** Consent is recorded per-student per-activity with a timestamp. The student cannot use the tool without consenting (when enabled). This satisfies informed consent principles.
 - **Chat data access:** Dashboard chat endpoints check both (a) the requesting token belongs to an instructor for this activity, and (b) `chat_visibility_enabled` is true. No chat data is ever returned if the flag is false — not even to the owner.
-- **Owner privilege scope:** The owner can manage assistants and toggle chat visibility, but **cannot** see real student identities. Ownership transfer is only possible via the org-admin panel.
+- **Owner privilege scope:** The owner can manage assistants, but **cannot** change chat visibility after setup and **cannot** see real student identities. Ownership transfer is only possible via the org-admin panel.

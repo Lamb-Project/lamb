@@ -273,23 +273,6 @@
             // Optionally disable chat tab if config fails
         }
 
-        // Handle LTI token from URL (for LTI creator login)
-        if (browser) {
-            const urlToken = $page.url.searchParams.get('token');
-            if (urlToken) {
-                console.log("Token found in URL - storing for LTI creator login");
-                localStorage.setItem('userToken', urlToken);
-                // Update user store with the token
-                user.setToken(urlToken);
-                // Fetch full user profile (name, email, etc.) from the backend
-                user.fetchAndPopulateProfile();
-                // Clean the URL by removing the token parameter
-                const cleanUrl = new URL(window.location.href);
-                cleanUrl.searchParams.delete('token');
-                window.history.replaceState({}, '', cleanUrl.toString());
-            }
-        }
-
         // Initialize user token from localStorage
         if (browser) {
             userToken = localStorage.getItem('userToken') || '';

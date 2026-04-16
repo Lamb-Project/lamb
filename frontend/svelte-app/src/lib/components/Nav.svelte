@@ -1,5 +1,6 @@
 <script>
   import { user } from '$lib/stores/userStore';
+  import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
@@ -18,23 +19,26 @@
 
   // Logout function
   function logout() { // Restore logout function
-    user.logout();
+    clearCurrentSession();
     // Redirect to the base path after logout
     window.location.href = base + '/';
   }
 
   // Close dropdown when clicking outside (optimized)
+  /** @param {MouseEvent} event */
   function handleClickOutside(event) {
     // Only check if menu is actually open to avoid unnecessary work
     if (!toolsMenuOpen) return;
     
-    const toolsMenu = event.target.closest('.tools-menu');
+    const target = /** @type {HTMLElement | null} */ (event.target instanceof HTMLElement ? event.target : null);
+    const toolsMenu = target?.closest('.tools-menu');
     if (!toolsMenu) {
       toolsMenuOpen = false;
     }
   }
 
   // Handle keyboard navigation
+  /** @param {KeyboardEvent} event */
   function handleKeydown(event) {
     if (toolsMenuOpen && event.key === 'Escape') {
       toolsMenuOpen = false;
@@ -56,11 +60,7 @@
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeydown);
 
-    // If the user is logged in (has token) but name is missing, fetch the profile
-    // This handles page refreshes after LTI login where profile wasn't fully populated
-    if ($user.isLoggedIn && !$user.name) {
-      user.fetchAndPopulateProfile();
-    }
+    ensureProfileLoaded();
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
