@@ -441,6 +441,21 @@ async def lti_configure_activity(request: Request):
                         status_code=400,
                     )
 
+        # File-evaluation: every selected assistant must have a rubric configured
+        if activity_type == "file_evaluation":
+            for aid in assistant_ids:
+                assistant = db_manager.get_assistant_by_id(aid)
+                if not assistant:
+                    return JSONResponse(
+                        {"detail": f"Assistant {aid} not found"},
+                        status_code=400,
+                    )
+                if not db_manager.assistant_has_rubric_for_eval(assistant.api_callback):
+                    return JSONResponse(
+                        {"detail": f"Assistant '{assistant.name}' does not have a rubric configured for evaluation"},
+                        status_code=400,
+                    )
+
         # Re-fetch creator user from JWT (never trust form data for identity)
         creator_user_ids = data.get("lti_creator_user_ids", [])
         creator_user = None

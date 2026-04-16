@@ -7957,6 +7957,24 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    @staticmethod
+    def assistant_has_rubric_for_eval(api_callback: Optional[str]) -> bool:
+        """Check if an assistant's metadata indicates it is ready for rubric-based evaluation.
+
+        Requires both ``rubric_id`` (non-empty) **and** ``rag_processor == "rubric_rag"``
+        so the completions pipeline will actually inject the rubric as context.
+        """
+        if not api_callback:
+            return False
+        try:
+            meta = json.loads(api_callback)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        rubric_id = meta.get("rubric_id")
+        if not rubric_id or not str(rubric_id).strip():
+            return False
+        return meta.get("rag_processor") == "rubric_rag"
+
     def get_published_assistants_for_org_user(self, organization_id: int,
                                                creator_user_id: int,
                                                creator_user_email: str) -> List[Dict[str, Any]]:
@@ -7974,7 +7992,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'owned' as access_type
+                           'owned' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistants a
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
                     WHERE a.owner = ? AND a.organization_id = ?
@@ -7989,7 +8008,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'shared' as access_type
+                           'shared' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
@@ -8001,11 +8021,14 @@ class LambDatabaseManager:
                 columns = [col[0] for col in cursor.description]
                 shared = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                # Deduplicate (in case somehow both owned and shared)
+                # Deduplicate and add rubric_eval_ready flag (strip raw api_callback)
                 seen = set()
                 result = []
                 for a in owned + shared:
                     if a['id'] not in seen:
+                        a['rubric_eval_ready'] = self.assistant_has_rubric_for_eval(
+                            a.pop('api_callback', None)
+                        )
                         result.append(a)
                         seen.add(a['id'])
                 return result

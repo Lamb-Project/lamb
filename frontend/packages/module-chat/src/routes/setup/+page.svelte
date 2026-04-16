@@ -59,6 +59,18 @@
             : []
     );
 
+    let assistantsForCurrentActivity = $derived(
+        selectedActivity === 'file_evaluation'
+            ? availableAssistants.filter(a => a.rubric_eval_ready)
+            : availableAssistants
+    );
+
+    // Clear assistant selection when activity type changes
+    $effect(() => {
+        selectedActivity;
+        selectedAssistants = [];
+    });
+
     // Default first option for select/radio fields (options come from /lti/setup/info)
     $effect(() => {
         if (!setupData?.modules_fields || !selectedActivity) return;
@@ -75,13 +87,6 @@
             }
         }
         if (changed) dynamicOptions = next;
-    });
-
-    // Clear evaluator_id when assistants are selected (backend auto-picks the first one)
-    $effect(() => {
-        if (selectedAssistants.length > 0 && dynamicOptions.evaluator_id) {
-            dynamicOptions = { ...dynamicOptions, evaluator_id: '' };
-        }
     });
 
     // Check if all required dynamic fields have values + conditional group validation
@@ -106,7 +111,11 @@
         return true;
     }
 
-    let canSubmit = $derived(selectedActivity && selectedOrg && selectedAssistants.length > 0 && hasRequiredFields() && !saving);
+    let canSubmit = $derived(
+        selectedActivity && selectedOrg && selectedAssistants.length > 0
+        && selectedAssistants.every(id => assistantsForCurrentActivity.some(a => a.id === id))
+        && hasRequiredFields() && !saving
+    );
 
     function toggleAssistant(id) {
         if (selectedAssistants.includes(id)) {
@@ -238,7 +247,7 @@
                         <p class="text-sm text-gray-600 mb-4">Choose which AI assistants will be available in this activity.</p>
                         
                         <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
-                            {#each availableAssistants as a}
+                            {#each assistantsForCurrentActivity as a}
                                 <label class="flex items-start gap-3 p-3 flex-wrap border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors {selectedAssistants.includes(a.id) ? 'border-blue-300 bg-blue-50' : ''}">
                                     <input type="checkbox" 
                                         name="assistant_ids" 
@@ -255,7 +264,15 @@
                                     </div>
                                 </label>
                             {/each}
-                            {#if availableAssistants.length === 0}
+                            {#if assistantsForCurrentActivity.length === 0 && selectedActivity === 'file_evaluation'}
+                                <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
+                                    <p class="text-sm text-amber-800 font-medium mb-2">No assistants with a rubric found.</p>
+                                    <p class="text-sm text-amber-700">
+                                        File Evaluation requires an assistant configured with a rubric. Create one via the Creator LTI launch:
+                                    </p>
+                                    <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
+                                </div>
+                            {:else if assistantsForCurrentActivity.length === 0}
                                 <p class="text-sm text-gray-500 p-4 border rounded-lg bg-gray-50 italic">No published assistants found.</p>
                             {/if}
                         </div>
@@ -318,7 +335,7 @@
                                         </div>
                                     </div>
                                 {:else if f.type === 'text'}
-                                    <div class="p-3 border rounded-lg bg-white {f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'opacity-60' : ''}">
+                                    <div class="p-3 border rounded-lg bg-white">
                                         <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
                                             {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
                                         </label>
@@ -327,9 +344,8 @@
                                             type="text"
                                             name={f.name}
                                             bind:value={dynamicOptions[f.name]}
-                                            disabled={f.name === 'evaluator_id' && selectedAssistants.length > 0}
-                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                            placeholder={f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'Auto-assigned from selected assistant' : f.label}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder={f.label}
                                         />
                                     </div>
                                 {:else if f.type === 'number'}

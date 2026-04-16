@@ -78,12 +78,6 @@ class FileEvalModule(ActivityModule):
                 required=True,
             ),
             SetupField(
-                name="evaluator_id",
-                label="Evaluator assistant ID",
-                field_type="text",
-                required=False,
-            ),
-            SetupField(
                 name="description",
                 label="Activity Description",
                 field_type="textarea",

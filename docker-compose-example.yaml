@@ -84,7 +84,7 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
-      - GLOBAL_LOG_LEVEL=WARNING
+      - GLOBAL_LOG_LEVEL=INFO
     env_file:
       - ${LAMB_PROJECT_PATH}/backend/.env
     volumes:
