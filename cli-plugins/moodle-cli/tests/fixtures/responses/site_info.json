@@ -1,0 +1,15 @@
+{
+  "sitename": "Test Moodle",
+  "siteurl": "https://moodle.example.com",
+  "username": "admin",
+  "fullname": "Admin User",
+  "userid": 2,
+  "lang": "en",
+  "release": "4.3 (Build: 20231009)",
+  "version": "2023100900",
+  "functions": [
+    {"name": "core_webservice_get_site_info", "version": "2023100900"},
+    {"name": "core_course_get_courses", "version": "2023100900"},
+    {"name": "core_user_get_users", "version": "2023100900"}
+  ]
+}
