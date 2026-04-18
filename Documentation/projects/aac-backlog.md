@@ -2157,3 +2157,38 @@ Setup happens conversationally through a new `setup-moodle` AAC skill — no ded
 - Frontend setup wizard for credentials.
 - Moodle → LAMB webhooks or push notifications.
 - Extending this to published-assistant runtime tools.
+
+### Concurrency & per-user credential isolation
+
+This is the critical correctness property: many users use AAC simultaneously, each with their own Moodle URL and token. Credentials **must not** leak between them. The mechanism:
+
+1. **Lookup per invocation.** When the agent runs `moodle <args>` in session S, liteshell reads the session's `user_id`, then looks up the row in `user_integrations WHERE user_id = ? AND integration_id = 'moodle'`. Decrypts `config_json` in memory to a Python dict.
+
+2. **Build a fresh env dict for that subprocess only.**
+   ```python
+   env = {
+       **os.environ,                    # LAMB's own env (PATH, locale, etc.)
+       "MOODLE_URL":   cfg["url"],      # from that user's row
+       "MOODLE_TOKEN": cfg["token"],
+   }
+   subprocess.run(["moodle", *args], env=env, capture_output=True, ...)
+   ```
+
+3. **Launch & exit.** The child process reads those vars (via the upstream env-var short-circuit), makes its HTTP call, exits. The env dict goes out of scope. The decrypted token is garbage-collected.
+
+**Why this is safe under concurrency:** each `subprocess.run(env=...)` call creates a brand-new environment block for *only that child process*. It does **not** modify LAMB's environment, does **not** leak to sibling subprocesses, does **not** persist after the child exits. OS-level process isolation enforces this — the same mechanism that prevents unrelated programs on the same machine from reading each other's memory.
+
+So if Alice (at `moodle.upc.edu` with token `alice_xyz`) and Bob (at `moodle.ucalgary.ca` with token `bob_xyz`) both send a message within milliseconds:
+- LAMB spawns two separate OS processes, each with its own env dict.
+- PID 101 sees only Alice's vars; PID 102 sees only Bob's.
+- Different URLs, different tokens — both read from that user's row, no mixing possible.
+
+**What LAMB must never do:**
+- Set `MOODLE_TOKEN` in LAMB's own environment (would leak across users).
+- Write the token to a temp file (readable by other processes on the host).
+- Log tokens or URLs.
+- Return tokens through any API (only `{configured, healthy, last_verified_at}` is exposed).
+
+**Token lifecycle:** DB (encrypted) → decrypt into a local Python string → put in a subprocess env dict → launch → subprocess exits → string GC'd. Never touches disk in plaintext, never leaves the Python process that decrypted it.
+
+This mechanism generalises to every future integration with no additional concurrency design — the pattern is integration-agnostic.
