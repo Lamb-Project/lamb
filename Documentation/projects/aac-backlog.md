@@ -2056,38 +2056,32 @@ showed earlier before claiming it's still accurate.]
 
 ---
 
-## 25. CLI Plugins Reorg — move `lamb-cli` to `cli-plugins/`
+## 25. `cli-plugins/` folder for third-party CLI integrations
 
-**Priority:** Low — prerequisite for item 26
+**Priority:** Low — structural convention, not a blocker
 **Depends on:** Nothing
+**Status:** Decided — keep `lamb-cli/` at repo root; create `cli-plugins/` for everything else.
 
-### Problem
+### Decision
 
-Repo root is getting cluttered. `lamb-cli/` sits at top level. Once moodle-cli (and future CLIs) land in-repo, the root becomes noisy.
+`lamb-cli/` stays at the top level — it is LAMB's first-class control CLI, on par with `backend/`, `frontend/`, `open-webui/`. Moving it would churn docs and install paths for no real gain.
 
-### Design
+New CLI add-ons (moodle-cli, future canvas-cli, …) go into `/opt/lamb/cli-plugins/<name>/`. This is additive: nothing existing breaks, pastor branch stays clean.
 
-Create `/opt/lamb/cli-plugins/` and move `lamb-cli/` there. Future CLI tools (moodle-cli, canvas-cli, …) land in the same folder.
+### Convention
 
-### Scope
+- `cli-plugins/` = third-party or integration CLIs vendored into LAMB for the AAC liteshell to dispatch against.
+- Each subfolder is self-contained (its own `pyproject.toml`, its own install).
+- LAMB's own CLIs (`lamb-cli/`) stay at root.
 
-- `git mv lamb-cli cli-plugins/lamb-cli`
-- Sed-update ~15 doc references (`Documentation/lamb_architecture_v2.md`, `lamb_cli_manual.md`, `aac-backlog.md`, `lamb-agent-assisted-creator.md`, etc.)
-- Update two doc comments in `backend/lamb/aac/liteshell/{http_client,commands}.py`
-- Update `testing/cli/` README + helper path
-- Update `.claude/settings.local.json` path string
-- Re-run `pip install -e ./cli-plugins/lamb-cli` in dev envs
-
-**Runtime impact:** zero. No Python imports, no docker-compose refs, no Caddyfile refs. All references are documentation or file-system paths.
-
-**Deliverable:** single reorg commit on its own branch (`refactor/cli-plugins`).
+**Deliverable:** create `cli-plugins/` as part of item 26's first commit (no standalone reorg PR needed).
 
 ---
 
 ## 26. Moodle-CLI Integration + `user_integrations` + Conversational Setup
 
 **Priority:** Medium
-**Depends on:** Item 25 (reorg)
+**Depends on:** Nothing — additive on pastor
 **Related:** Issue #341
 
 ### Problem
