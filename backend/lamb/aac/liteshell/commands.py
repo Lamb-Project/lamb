@@ -25,19 +25,25 @@ logger = get_logger(__name__, component="AAC")
 Handler = Callable[["CommandContext", list[str], dict[str, Any]], Any]
 COMMAND_REGISTRY: dict[str, Handler] = {}
 LOCAL_COMMANDS: set[str] = set()  # sync-only commands (file reads, no HTTP)
+PASSTHROUGH_COMMANDS: set[str] = set()  # raw tokens passed to handler; no flag parsing
 
 
-def register(name: str, local: bool = False):
+def register(name: str, local: bool = False, passthrough: bool = False):
     """Decorator to register a command handler.
 
     Args:
         name: Command key (e.g., "assistant.list")
         local: If True, handler is sync (file reads). Otherwise async (HTTP).
+        passthrough: If True, all tokens after the group are passed to the
+            handler verbatim as args (no --flag parsing). Used for vendored
+            CLIs like `moodle` where the binary does its own arg parsing.
     """
     def decorator(func: Handler) -> Handler:
         COMMAND_REGISTRY[name] = func
         if local:
             LOCAL_COMMANDS.add(name)
+        if passthrough:
+            PASSTHROUGH_COMMANDS.add(name)
         return func
     return decorator
 
@@ -623,3 +629,42 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
         doc = func.__doc__ or ""
         result[f"lamb {key.replace('.', ' ')}"] = doc.split("\n")[0].strip()
     return result
+
+
+# ---------------------------------------------------------------------------
+# Vendored CLI passthroughs (subprocess)
+# ---------------------------------------------------------------------------
+
+@register("moodle", local=True, passthrough=True)
+def moodle_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
+    """Run the vendored moodle-cli binary. All args pass through verbatim.
+
+    Dev mode (Phase 1): subprocess inherits the parent environment, so
+    moodle-cli uses the operator's ambient ~/.config/moodle-cli/config.toml
+    + OS keyring for auth. Per-user credential injection comes in Phase 2.
+    """
+    import shutil
+    import subprocess
+
+    binary = shutil.which("moodle")
+    if not binary:
+        raise RuntimeError(
+            "moodle-cli is not installed. Run: pip install -e ./cli-plugins/moodle-cli"
+        )
+
+    try:
+        proc = subprocess.run(
+            [binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"moodle {' '.join(args)} timed out after 60s")
+
+    return {
+        "exit_code": proc.returncode,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+        "command": f"moodle {' '.join(args)}",
+    }

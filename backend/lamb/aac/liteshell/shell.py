@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from lamb.aac.liteshell.commands import COMMAND_REGISTRY, LOCAL_COMMANDS
+from lamb.aac.liteshell.commands import COMMAND_REGISTRY, LOCAL_COMMANDS, PASSTHROUGH_COMMANDS
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="AAC")
@@ -104,7 +104,8 @@ class LiteShell:
         if not tokens:
             return ShellResult(success=False, error="Empty command")
 
-        # Strip leading "lamb" if present
+        # Strip leading "lamb" if present (passthrough commands like `moodle`
+        # are also accepted as a bare top-level token).
         if tokens[0] == "lamb":
             tokens = tokens[1:]
         if not tokens:
@@ -119,32 +120,39 @@ class LiteShell:
                 error=f"Command '{group}' not allowed. Available: {sorted(self.allowlist)}",
             )
 
-        # Resolve command key: "assistant list" → "assistant.list"
-        if len(tokens) > 1 and not tokens[1].startswith("-"):
-            key = f"{group}.{tokens[1]}"
-            arg_tokens = tokens[2:]
-        else:
+        # Passthrough groups (e.g. `moodle`) forward all trailing tokens verbatim.
+        if group in PASSTHROUGH_COMMANDS:
             key = group
             arg_tokens = tokens[1:]
-
-        handler = COMMAND_REGISTRY.get(key)
-        if not handler:
-            handler = COMMAND_REGISTRY.get(group)
-            if handler:
-                arg_tokens = tokens[1:]
+            handler = COMMAND_REGISTRY[group]
+            args, kwargs = arg_tokens, {}
+        else:
+            # Resolve command key: "assistant list" → "assistant.list"
+            if len(tokens) > 1 and not tokens[1].startswith("-"):
+                key = f"{group}.{tokens[1]}"
+                arg_tokens = tokens[2:]
             else:
-                available = [k for k in COMMAND_REGISTRY if k.startswith(f"{group}.")]
-                if available:
+                key = group
+                arg_tokens = tokens[1:]
+
+            handler = COMMAND_REGISTRY.get(key)
+            if not handler:
+                handler = COMMAND_REGISTRY.get(group)
+                if handler:
+                    arg_tokens = tokens[1:]
+                else:
+                    available = [k for k in COMMAND_REGISTRY if k.startswith(f"{group}.")]
+                    if available:
+                        return ShellResult(
+                            success=False,
+                            error=f"Unknown subcommand '{key}'. Available: {available}",
+                        )
                     return ShellResult(
                         success=False,
-                        error=f"Unknown subcommand '{key}'. Available: {available}",
+                        error=f"Unknown command '{group}'. Available groups: {sorted(set(k.split('.')[0] for k in COMMAND_REGISTRY))}",
                     )
-                return ShellResult(
-                    success=False,
-                    error=f"Unknown command '{group}'. Available groups: {sorted(set(k.split('.')[0] for k in COMMAND_REGISTRY))}",
-                )
 
-        args, kwargs = _parse_args(arg_tokens)
+            args, kwargs = _parse_args(arg_tokens)
 
         # Build context for the handler
         ctx = CommandContext(

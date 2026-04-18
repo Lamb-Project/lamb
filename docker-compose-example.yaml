@@ -97,6 +97,7 @@ services:
     command: >
       sh -lc "python -m pip install --upgrade pip && \
       pip install -r requirements.txt && \
+      pip install -e ${LAMB_PROJECT_PATH}/cli-plugins/moodle-cli && \
       LOG_LEVEL=$$(echo \"$${GLOBAL_LOG_LEVEL:-WARNING}\" | tr '[:upper:]' '[:lower:]') && \
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload --log-level $$LOG_LEVEL --no-access-log"
   frontend:
