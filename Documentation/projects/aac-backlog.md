@@ -2053,3 +2053,107 @@ showed earlier before claiming it's still accurate.]
 2. `session.rename` liteshell command
 3. Session creation resolves assistant name for title
 4. System prompt instructs agent to rename when appropriate
+
+---
+
+## 25. CLI Plugins Reorg — move `lamb-cli` to `cli-plugins/`
+
+**Priority:** Low — prerequisite for item 26
+**Depends on:** Nothing
+
+### Problem
+
+Repo root is getting cluttered. `lamb-cli/` sits at top level. Once moodle-cli (and future CLIs) land in-repo, the root becomes noisy.
+
+### Design
+
+Create `/opt/lamb/cli-plugins/` and move `lamb-cli/` there. Future CLI tools (moodle-cli, canvas-cli, …) land in the same folder.
+
+### Scope
+
+- `git mv lamb-cli cli-plugins/lamb-cli`
+- Sed-update ~15 doc references (`Documentation/lamb_architecture_v2.md`, `lamb_cli_manual.md`, `aac-backlog.md`, `lamb-agent-assisted-creator.md`, etc.)
+- Update two doc comments in `backend/lamb/aac/liteshell/{http_client,commands}.py`
+- Update `testing/cli/` README + helper path
+- Update `.claude/settings.local.json` path string
+- Re-run `pip install -e ./cli-plugins/lamb-cli` in dev envs
+
+**Runtime impact:** zero. No Python imports, no docker-compose refs, no Caddyfile refs. All references are documentation or file-system paths.
+
+**Deliverable:** single reorg commit on its own branch (`refactor/cli-plugins`).
+
+---
+
+## 26. Moodle-CLI Integration + `user_integrations` + Conversational Setup
+
+**Priority:** Medium
+**Depends on:** Item 25 (reorg)
+**Related:** Issue #341
+
+### Problem
+
+The AAC agent has no way to interact with the user's LMS. Students and instructors manage courses, enrollments, resources, assignments in Moodle — the agent should be able to read/write that state on the user's behalf, under their credentials.
+
+Separately, we need a general pattern for third-party service integrations that doesn't bloat LAMB core: the liteshell philosophy is *thin CLI dispatcher*, not plugin framework.
+
+### Solution — summary
+
+Vendor `moodle-cli` in `cli-plugins/moodle-cli/` and expose it as a liteshell command literally called `moodle-cli` (same name a human or Claude Code would type in bash). Credentials handled in two modes:
+
+- **Dev mode:** moodle-cli authenticates itself via its own config / env. LAMB does nothing.
+- **Deployed mode** (`LAMB_DEPLOYED=true`): per-user credentials stored encrypted in a new `user_integrations` table. Liteshell injects them as env vars when dispatching to the subprocess. User never sees the token.
+
+Setup happens conversationally through a new `setup-moodle` AAC skill — no dedicated frontend form in v1. An optional read-only settings page is deferred.
+
+### Phases
+
+1. **Vendor + dev-mode passthrough** (~1 day) — works immediately with Claude Code driving liteshell.
+2. **`user_integrations` table + `integration.*` commands + Fernet encryption** (~2-3 days) — backend only, no skill yet.
+3. **`setup-moodle` skill + deployed-mode credential injection + skill `requires_integration` filter** (~2 days) — end-to-end demoable.
+4. **Optional:** read-only Settings > Integrations page.
+5. **Future:** LTI composition — derive Moodle creds from LTI launch context, auto-populate the integration (separate design doc once Phases 1-3 ship).
+
+### Architecture
+
+- `user_integrations (user_id, integration_id, config_json ENCRYPTED, status, last_verified_at, …)` — generic table for Moodle, Canvas, GitHub, etc.
+- Fernet encryption with `LAMB_ENCRYPTION_KEY` env var.
+- `integration.list|test|save|remove` liteshell commands (generic, not moodle-specific).
+- Skills declare `requires_integration: moodle` in frontmatter; `skill_loader.py` filters.
+- `moodle-cli` in deployed mode resolves user creds → env-var injection → subprocess.
+
+### Key principles
+
+- **Same command, two modes.** `moodle-cli course list` works identically whether driven by an operator in bash, the AAC agent, or an external agent like Claude Code driving liteshell.
+- **Not a plugin framework.** Moodle is vendored and first-party. No third-party plugin runtime, no sandboxing, no signed manifests.
+- **Not for assistants.** This is AAC-agent tooling only. Runtime assistants (students chatting with a published assistant) do not get Moodle access through this mechanism.
+- **AAC is the setup UI.** The agent walks the user through auth via chat. Shows off AAC and costs less than building a wizard form.
+
+### Open questions to resolve during Phase 1
+
+1. Vendoring mechanism — git subtree (upstream syncs) vs. one-time copy (snapshot pin)?
+2. Does moodle-cli already accept `MOODLE_URL` / `MOODLE_TOKEN` env vars, or does it require a config file? If the latter, contribute env support upstream first.
+3. `LAMB_ENCRYPTION_KEY` lifecycle — generated at install, stored in `.env`. Rotation is out of scope for v1 but documented as known debt.
+4. Subprocess cost acceptable? ~30-50ms per call. If the agent gets chatty, consider a warm `moodle-cli serve` mode per user.
+5. Org-level allowlist of Moodle URLs (prevent users pasting arbitrary instances)?
+
+### Files affected (Phase 1-3)
+
+**New:**
+- `/opt/lamb/cli-plugins/moodle-cli/` (vendored)
+- `backend/lamb/integrations/{__init__.py, crypto.py, moodle.py}`
+- `backend/lamb/aac/skills/setup_moodle.md`
+
+**Modified:**
+- `backend/lamb/database_manager.py` — migration + accessors
+- `backend/lamb/aac/liteshell/commands.py` — `moodle-cli`, `integration.*` dispatchers
+- `backend/lamb/aac/liteshell/shell.py` — subprocess env injection
+- `backend/lamb/aac/authorization.py` — policy entries
+- `backend/lamb/aac/skill_loader.py` — `requires_integration` filter
+- `backend/.env.example` — `LAMB_ENCRYPTION_KEY`, `LAMB_DEPLOYED`
+
+### Non-goals
+
+- Plugin framework with runtime loading of third-party code.
+- Frontend setup wizard for credentials.
+- Moodle → LAMB webhooks or push notifications.
+- Extending this to published-assistant runtime tools.
