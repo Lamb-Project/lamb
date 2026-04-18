@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1,
+    "shortname": "SITE",
+    "fullname": "Site Course",
+    "categoryid": 0,
+    "summary": "",
+    "visible": 1,
+    "format": "site",
+    "startdate": 0,
+    "enddate": 0
+  },
+  {
+    "id": 2,
+    "shortname": "MATH101",
+    "fullname": "Introduction to Mathematics",
+    "categoryid": 1,
+    "summary": "A basic math course",
+    "visible": 1,
+    "format": "topics",
+    "startdate": 1696118400,
+    "enddate": 1701302400
+  }
+]
