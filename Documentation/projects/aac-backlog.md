@@ -2101,19 +2101,19 @@ Setup happens conversationally through a new `setup-moodle` AAC skill — no ded
 
 ### Phases
 
-1. **Vendor + dev-mode passthrough** (~1 day) — works immediately with Claude Code driving liteshell.
-2. **`user_integrations` table + `integration.*` commands + Fernet encryption** (~2-3 days) — backend only, no skill yet.
-3. **`setup-moodle` skill + deployed-mode credential injection + skill `requires_integration` filter** (~2 days) — end-to-end demoable.
+1. **Vendor + dev-mode passthrough** — ✅ DONE (commit cd47e9d8). `moodle` registered as liteshell passthrough; moodle-cli vendored as git subtree at `cli-plugins/moodle-cli/`; installed editable in backend container on startup.
+2. **`user_integrations` table + `integration.*` commands + Fernet encryption + env-var injection** — ✅ DONE (commit 2213a850). Migration 16; `backend/lamb/aac/integrations/{crypto,store}.py`; `integration.list|save|remove|test`; moodle passthrough auto-injects per-user env when configured; upstream env-var short-circuit added to vendored moodle-cli (needs `git subtree push` to share with external moodle-cli users).
+3. **`setup-moodle` skill + skill `requires_integration` filter** — next. End-to-end conversational setup through AAC.
 4. **Optional:** read-only Settings > Integrations page.
 5. **Future:** LTI composition — derive Moodle creds from LTI launch context, auto-populate the integration (separate design doc once Phases 1-3 ship).
 
 ### Architecture
 
-- `user_integrations (user_id, integration_id, config_json ENCRYPTED, status, last_verified_at, …)` — generic table for Moodle, Canvas, GitHub, etc.
-- Fernet encryption with `LAMB_ENCRYPTION_KEY` env var.
-- `integration.list|test|save|remove` liteshell commands (generic, not moodle-specific).
-- Skills declare `requires_integration: moodle` in frontmatter; `skill_loader.py` filters.
-- `moodle-cli` in deployed mode resolves user creds → env-var injection → subprocess.
+- `LAMB_user_integrations (user_id, integration_id, config_json ENCRYPTED, healthy, last_verified_at, …)` — generic table for Moodle, Canvas, GitHub, etc. (Migration 16.)
+- Fernet encryption keyed by env var **`LAMB_INTEGRATIONS_KEY`** (final name). Key generated with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+- `integration.list|save|remove|test` liteshell commands (generic, not moodle-specific). `integration.test` for `moodle` calls `core_webservice_get_site_info` and stamps the `healthy` + `last_verified_at` fields.
+- Skills (Phase 3) will declare `requires_integration: moodle` in frontmatter; `skill_loader.py` filters.
+- `moodle-cli` in deployed mode resolves user creds → env-var injection → subprocess. Short-circuit lives in `MoodleContext.get_client()`: if `MOODLE_URL` + `MOODLE_TOKEN` are set, TOML + keyring are bypassed entirely.
 
 ### Key principles
 
@@ -2122,28 +2122,34 @@ Setup happens conversationally through a new `setup-moodle` AAC skill — no ded
 - **Not for assistants.** This is AAC-agent tooling only. Runtime assistants (students chatting with a published assistant) do not get Moodle access through this mechanism.
 - **AAC is the setup UI.** The agent walks the user through auth via chat. Shows off AAC and costs less than building a wizard form.
 
-### Open questions to resolve during Phase 1
+### Open questions
 
-1. Vendoring mechanism — git subtree (upstream syncs) vs. one-time copy (snapshot pin)?
-2. Does moodle-cli already accept `MOODLE_URL` / `MOODLE_TOKEN` env vars, or does it require a config file? If the latter, contribute env support upstream first.
-3. `LAMB_ENCRYPTION_KEY` lifecycle — generated at install, stored in `.env`. Rotation is out of scope for v1 but documented as known debt.
+1. Vendoring mechanism — **resolved:** git subtree (`git subtree add --prefix=cli-plugins/moodle-cli … --squash`). Upstream changes made in our copy should be round-tripped back with `git subtree push`.
+2. Does moodle-cli accept `MOODLE_URL` / `MOODLE_TOKEN` env vars? **Resolved:** no, it didn't — added env-var short-circuit in `MoodleContext.get_client()` as part of Phase 2 (commit 2213a850). Needs to be pushed upstream.
+3. `LAMB_INTEGRATIONS_KEY` lifecycle — generated at install, stored in `.env`. Rotation is out of scope for v1 but documented as known debt.
 4. Subprocess cost acceptable? ~30-50ms per call. If the agent gets chatty, consider a warm `moodle-cli serve` mode per user.
 5. Org-level allowlist of Moodle URLs (prevent users pasting arbitrary instances)?
+6. Phase 3: authorization policy for `integration.save` — should default to `ask` (credentials are sensitive).
 
-### Files affected (Phase 1-3)
+### Files affected
 
-**New:**
-- `/opt/lamb/cli-plugins/moodle-cli/` (vendored)
-- `backend/lamb/integrations/{__init__.py, crypto.py, moodle.py}`
-- `backend/lamb/aac/skills/setup_moodle.md`
+**Phase 1 (done):**
+- `cli-plugins/moodle-cli/` — vendored via git subtree
+- `backend/lamb/aac/liteshell/commands.py` — `moodle` passthrough, `PASSTHROUGH_COMMANDS`
+- `backend/lamb/aac/liteshell/shell.py` — dispatch honors passthrough groups (raw tokens, no flag parsing)
+- `docker-compose-example.yaml` — `pip install -e cli-plugins/moodle-cli` at backend start
 
-**Modified:**
-- `backend/lamb/database_manager.py` — migration + accessors
-- `backend/lamb/aac/liteshell/commands.py` — `moodle-cli`, `integration.*` dispatchers
-- `backend/lamb/aac/liteshell/shell.py` — subprocess env injection
-- `backend/lamb/aac/authorization.py` — policy entries
+**Phase 2 (done):**
+- **New:** `backend/lamb/aac/integrations/{__init__.py, crypto.py, store.py}`
+- `backend/lamb/database_manager.py` — Migration 16 (`LAMB_user_integrations`)
+- `backend/lamb/aac/liteshell/commands.py` — `integration.list|save|remove|test`, env injection in `moodle_cmd`
+- `cli-plugins/moodle-cli/src/moodle_cli/cli/main.py` — env-var short-circuit in `MoodleContext.get_client()`
+- `backend/.env.example` — `LAMB_INTEGRATIONS_KEY` documented
+
+**Phase 3 (open):**
+- `backend/lamb/aac/skills/setup_moodle.md` — conversational setup
 - `backend/lamb/aac/skill_loader.py` — `requires_integration` filter
-- `backend/.env.example` — `LAMB_ENCRYPTION_KEY`, `LAMB_DEPLOYED`
+- `backend/lamb/aac/authorization.py` — policy entries (especially `integration.save` = ask)
 
 ### Non-goals
 
