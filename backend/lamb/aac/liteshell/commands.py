@@ -632,6 +632,109 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
 
 
 # ---------------------------------------------------------------------------
+# Integrations (per-user credentials for external systems)
+# ---------------------------------------------------------------------------
+
+def _integrations_store():
+    """Lazy import to avoid pulling cryptography at module load time."""
+    from lamb.aac.integrations.store import IntegrationsStore
+    return IntegrationsStore()
+
+
+@register("integration.list", local=True)
+def integration_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """List the current user's configured integrations (no credentials returned)."""
+    return _integrations_store().list(ctx.user_id)
+
+
+@register("integration.save", local=True)
+def integration_save(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Save credentials for an integration. Usage: integration save moodle --url ... --token ... [--service ...]"""
+    if not args:
+        raise ValueError(
+            "Usage: lamb integration save <integration_id> --url <url> --token <token> [--service <service>]"
+        )
+    integration_id = args[0]
+    if integration_id == "moodle":
+        url = kwargs.get("url")
+        token = kwargs.get("token")
+        if not url or not token:
+            raise ValueError("moodle integration requires --url and --token")
+        config = {
+            "url": url.rstrip("/"),
+            "token": token,
+            "service": kwargs.get("service", "moodle_mobile_app"),
+        }
+    else:
+        raise ValueError(
+            f"Unknown integration '{integration_id}'. Supported: moodle"
+        )
+    return _integrations_store().save(ctx.user_id, integration_id, config)
+
+
+@register("integration.remove", local=True)
+def integration_remove(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Remove an integration for the current user."""
+    if not args:
+        raise ValueError("Usage: lamb integration remove <integration_id>")
+    deleted = _integrations_store().remove(ctx.user_id, args[0])
+    return {"integration_id": args[0], "removed": deleted}
+
+
+@register("integration.test", local=True)
+def integration_test(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
+    """Verify an integration actually works. Runs a minimal API call and records health."""
+    if not args:
+        raise ValueError("Usage: lamb integration test <integration_id>")
+    integration_id = args[0]
+    store = _integrations_store()
+    config = store.get_config(ctx.user_id, integration_id)
+    if config is None:
+        raise ValueError(
+            f"No '{integration_id}' integration configured. "
+            f"Run: lamb integration save {integration_id} ..."
+        )
+
+    if integration_id == "moodle":
+        import httpx
+        url = f"{config['url']}/webservice/rest/server.php"
+        try:
+            resp = httpx.post(
+                url,
+                data={
+                    "wstoken": config["token"],
+                    "wsfunction": "core_webservice_get_site_info",
+                    "moodlewsrestformat": "json",
+                },
+                timeout=15.0,
+            )
+            data = resp.json()
+            if isinstance(data, dict) and "exception" in data:
+                store.set_health(ctx.user_id, integration_id, False)
+                return {
+                    "integration_id": integration_id,
+                    "healthy": False,
+                    "error": data.get("message", "Moodle API exception"),
+                }
+            store.set_health(ctx.user_id, integration_id, True)
+            return {
+                "integration_id": integration_id,
+                "healthy": True,
+                "site": data.get("sitename"),
+                "username": data.get("username"),
+                "release": data.get("release"),
+            }
+        except Exception as exc:
+            store.set_health(ctx.user_id, integration_id, False)
+            return {
+                "integration_id": integration_id,
+                "healthy": False,
+                "error": str(exc),
+            }
+    raise ValueError(f"Unknown integration '{integration_id}'. Supported: moodle")
+
+
+# ---------------------------------------------------------------------------
 # Vendored CLI passthroughs (subprocess)
 # ---------------------------------------------------------------------------
 
@@ -639,10 +742,14 @@ def help_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict[str, 
 def moodle_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     """Run the vendored moodle-cli binary. All args pass through verbatim.
 
-    Dev mode (Phase 1): subprocess inherits the parent environment, so
-    moodle-cli uses the operator's ambient ~/.config/moodle-cli/config.toml
-    + OS keyring for auth. Per-user credential injection comes in Phase 2.
+    Credential resolution:
+    - If the user has a `moodle` integration saved, inject MOODLE_URL +
+      MOODLE_TOKEN into a fresh subprocess env dict. No other OS env vars
+      touch it — OS-level process isolation prevents leaks between users.
+    - Otherwise fall back to the parent environment (dev mode: keyring
+      + ~/.config/moodle-cli/config.toml).
     """
+    import os
     import shutil
     import subprocess
 
@@ -652,12 +759,28 @@ def moodle_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
             "moodle-cli is not installed. Run: pip install -e ./cli-plugins/moodle-cli"
         )
 
+    env: dict[str, str] | None = None
+    if ctx.user_id:
+        try:
+            config = _integrations_store().get_config(ctx.user_id, "moodle")
+        except Exception as exc:
+            logger.warning(f"Failed to load moodle integration for user {ctx.user_id}: {exc}")
+            config = None
+        if config:
+            env = {
+                **os.environ,
+                "MOODLE_URL": config["url"],
+                "MOODLE_TOKEN": config["token"],
+                "MOODLE_SERVICE": config.get("service", "moodle_mobile_app"),
+            }
+
     try:
         proc = subprocess.run(
             [binary, *args],
             capture_output=True,
             text=True,
             timeout=60,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"moodle {' '.join(args)} timed out after 60s")
@@ -667,4 +790,5 @@ def moodle_cmd(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "command": f"moodle {' '.join(args)}",
+        "credential_source": "user_integration" if env else "ambient",
     }

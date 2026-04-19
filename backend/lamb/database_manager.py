@@ -1425,6 +1425,30 @@ class LambDatabaseManager:
                     connection.commit()
                     logger.info("Migration 15: Test tables created")
 
+                # Migration 16: Per-user integrations (AAC — moodle, future) (#341)
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}user_integrations'")
+                if not cursor.fetchone():
+                    logger.info("Migration 16: Creating user_integrations table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}user_integrations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            integration_id TEXT NOT NULL,
+                            config_json TEXT NOT NULL,
+                            healthy INTEGER NOT NULL DEFAULT 0,
+                            last_verified_at TEXT,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            UNIQUE(user_id, integration_id)
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}user_integrations_user "
+                        f"ON {self.table_prefix}user_integrations(user_id)")
+                    connection.commit()
+                    logger.info("Migration 16: user_integrations table created")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:

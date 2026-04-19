@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import sys
 from typing import Any
 
@@ -41,9 +42,29 @@ class MoodleContext:
         return self._token_store
 
     def get_client(self) -> MoodleHTTPClient:
-        """Build an authenticated MoodleHTTPClient from the active profile."""
+        """Build an authenticated MoodleHTTPClient.
+
+        Credential resolution order:
+        1. Env vars MOODLE_URL + MOODLE_TOKEN (optionally MOODLE_SERVICE).
+           This is the short-circuit used when a host process (e.g. LAMB's
+           AAC liteshell) injects per-user credentials into a subprocess.
+           It bypasses the TOML config and OS keyring entirely so the
+           command works in headless containers with no ambient state.
+        2. TOML profile + OS keyring (the interactive operator path).
+        """
         if self._client is not None:
             return self._client
+
+        env_url = os.environ.get("MOODLE_URL")
+        env_token = os.environ.get("MOODLE_TOKEN")
+        if env_url and env_token:
+            self._client = MoodleHTTPClient(
+                base_url=env_url,
+                token=env_token,
+                service=os.environ.get("MOODLE_SERVICE", "moodle_mobile_app"),
+            )
+            return self._client
+
         name, profile = self._config_mgr.get_profile(self.profile_name)
         token = self._token_store.get(name)
         if not token:
