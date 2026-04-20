@@ -128,7 +128,8 @@ async def create_session(
 @router.get("/skills")
 async def get_available_skills(auth: AuthContext = Depends(get_auth_context)):
     """List available AAC skills."""
-    return list_skills()
+    user_id = auth.user.get("id", 0)
+    return list_skills(user_id=user_id or None)
 
 
 @router.get("/sessions")

@@ -39,20 +39,48 @@ command syntax, parameter names).
 """
 
 
-def list_skills() -> list[dict]:
-    """List available skills with their metadata."""
+def list_skills(user_id: int | None = None) -> list[dict]:
+    """List available skills with their metadata.
+
+    If `user_id` is provided, each skill gets a `ready` boolean indicating
+    whether the user has any required integrations configured. Skills with
+    no integration requirement are always `ready`.
+    """
+    user_integrations = _user_integration_ids(user_id) if user_id else None
+
     skills = []
     for md_file in sorted(SKILLS_DIR.glob("*.md")):
         meta, _ = _parse_skill_file(md_file)
-        if meta.get("id"):
-            skills.append({
-                "id": meta["id"],
-                "name": meta.get("name", meta["id"]),
-                "description": meta.get("description", ""),
-                "required_context": meta.get("required_context", []),
-                "optional_context": meta.get("optional_context", []),
-            })
+        if not meta.get("id"):
+            continue
+        required_integration = meta.get("requires_integration", "") or ""
+        entry = {
+            "id": meta["id"],
+            "name": meta.get("name", meta["id"]),
+            "description": meta.get("description", ""),
+            "required_context": meta.get("required_context", []),
+            "optional_context": meta.get("optional_context", []),
+        }
+        if required_integration:
+            entry["requires_integration"] = required_integration
+            if user_integrations is not None:
+                entry["ready"] = required_integration in user_integrations
+            else:
+                entry["ready"] = None  # unknown without user_id
+        else:
+            entry["ready"] = True
+        skills.append(entry)
     return skills
+
+
+def _user_integration_ids(user_id: int) -> set[str]:
+    """Return the set of integration_ids saved for a user. Empty on error."""
+    try:
+        from lamb.aac.integrations.store import IntegrationsStore
+        return {row["integration_id"] for row in IntegrationsStore().list(user_id)}
+    except Exception as exc:
+        logger.warning(f"Could not load integrations for user {user_id}: {exc}")
+        return set()
 
 
 def load_skill(
@@ -86,6 +114,18 @@ def load_skill(
     missing = [k for k in required if k not in context]
     if missing:
         raise ValueError(f"Skill '{skill_id}' requires context: {missing}")
+
+    # Validate required integration (if any and user_id known)
+    required_integration = (meta.get("requires_integration") or "").strip()
+    if required_integration:
+        user_id = context.get("user_id")
+        if user_id:
+            if required_integration not in _user_integration_ids(int(user_id)):
+                raise ValueError(
+                    f"Skill '{skill_id}' requires the '{required_integration}' "
+                    f"integration, which is not set up for this user. "
+                    f"Run the setup skill first: `lamb skill load setup-{required_integration}`."
+                )
 
     # Default language
     if "language" not in context:

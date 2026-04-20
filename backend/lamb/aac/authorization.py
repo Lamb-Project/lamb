@@ -58,6 +58,13 @@ DEFAULT_POLICY: dict[str, str] = {
     "assistant.create": "ask",
     "assistant.update": "ask",
     "assistant.delete": "ask",
+    # Integrations — reads auto, writes ask (credentials are sensitive)
+    "integration.list": "auto",
+    "integration.test": "auto",
+    "integration.save": "ask",
+    "integration.remove": "ask",
+    # Vendored passthroughs — auto for now; revisit if writes become noisy
+    "moodle": "auto",
 }
 
 # Words/phrases that indicate approval across supported languages (en, es, ca, eu)

@@ -470,7 +470,7 @@ async def session_rename(ctx: "CommandContext", args: list[str], kwargs: dict) -
 def skill_list(ctx: "CommandContext", args: list[str], kwargs: dict) -> Any:
     """List available AAC skills with descriptions and requirements."""
     from lamb.aac.skill_loader import list_skills
-    return list_skills()
+    return list_skills(user_id=ctx.user_id or None)
 
 
 @register("skill.load", local=True)
@@ -481,7 +481,7 @@ def skill_load(ctx: "CommandContext", args: list[str], kwargs: dict) -> dict:
     from lamb.aac.skill_loader import load_skill
 
     skill_id = args[0]
-    context: dict[str, Any] = {}
+    context: dict[str, Any] = {"user_id": ctx.user_id}
     if "assistant" in kwargs or "a" in kwargs:
         context["assistant_id"] = kwargs.get("assistant", kwargs.get("a"))
     if "language" in kwargs:
