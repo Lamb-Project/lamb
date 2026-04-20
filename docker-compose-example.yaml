@@ -78,6 +78,9 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      # SECURITY: Rotate LIBRARY_MANAGER_TOKEN before deploying. The default
+      # "change-me" value is for local dev only — in production set a strong,
+      # unique secret in your .env. Must match LAMB_LIBRARY_TOKEN on backend.
       - LAMB_API_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
       - DATA_DIR=${LAMB_PROJECT_PATH}/library-manager/data
       - GLOBAL_LOG_LEVEL=WARNING
@@ -109,6 +112,8 @@ services:
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=WARNING
       - LAMB_LIBRARY_SERVER=http://library-manager:9091
+      # SECURITY: Must match LAMB_API_TOKEN on the library-manager service.
+      # Rotate LIBRARY_MANAGER_TOKEN from the "change-me" default in production.
       - LAMB_LIBRARY_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
     env_file:
       - ${LAMB_PROJECT_PATH}/backend/.env
