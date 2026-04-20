@@ -67,6 +67,11 @@ class LibraryManagerClient:
 
     def _headers(self, token: str) -> Dict[str, str]:
         """Return authorization headers for Library Manager requests."""
+        if not token:
+            raise ValueError(
+                "Library Manager token is not configured. "
+                "Set LAMB_LIBRARY_TOKEN in backend/.env"
+            )
         return {"Authorization": f"Bearer {token}"}
 
     async def _request(self, method: str, path: str, config: Dict[str, str],
