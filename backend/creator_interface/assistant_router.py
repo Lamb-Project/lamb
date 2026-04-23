@@ -329,6 +329,90 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
+REQUIRED_PLUGIN_METADATA_KEYS = (
+    "prompt_processor",
+    "connector",
+    "llm",
+    "rag_processor",
+)
+
+
+def validate_update_plugin_metadata(
+    original_body: Dict[str, Any]
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validate assistant plugin metadata for updates.
+
+    Updates must provide complete plugin metadata so the backend never replaces a
+    valid stored configuration with partial or blank data.
+
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (normalized_metadata_json, error_message)
+    """
+    raw_metadata = original_body.get("metadata", original_body.get("api_callback"))
+
+    if raw_metadata is None:
+        return None, (
+            "Assistant updates must include metadata with prompt_processor, "
+            "connector, llm, and rag_processor."
+        )
+
+    if isinstance(raw_metadata, dict):
+        metadata_dict = raw_metadata
+    elif isinstance(raw_metadata, str):
+        if not raw_metadata.strip():
+            return None, "Assistant metadata cannot be empty on update."
+        try:
+            parsed = json.loads(raw_metadata)
+        except json.JSONDecodeError as e:
+            return None, f"Assistant metadata must be valid JSON: {str(e)}"
+        if not isinstance(parsed, dict):
+            return None, "Assistant metadata must be a JSON object."
+        metadata_dict = parsed
+    else:
+        return None, "Assistant metadata must be a JSON string or object."
+
+    missing_keys = [
+        key for key in REQUIRED_PLUGIN_METADATA_KEYS
+        if not isinstance(metadata_dict.get(key), str) or not metadata_dict.get(key).strip()
+    ]
+    if missing_keys:
+        return None, (
+            "Assistant metadata is incomplete. Missing required plugin fields: "
+            + ", ".join(missing_keys)
+        )
+
+    normalized_metadata = json.dumps(metadata_dict)
+    return normalized_metadata, None
+
+
+def _ensure_metadata_defaults(metadata_raw) -> str:
+    """Ensure essential fields have defaults in assistant metadata.
+
+    The completion pipeline requires a valid prompt_processor. If not set,
+    the pipeline fails with 'Prompt processor default not found'.
+    """
+    if not metadata_raw:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if isinstance(metadata_raw, str):
+        try:
+            meta = json.loads(metadata_raw)
+        except (json.JSONDecodeError, TypeError):
+            return json.dumps({"prompt_processor": "simple_augment"})
+    elif isinstance(metadata_raw, dict):
+        meta = metadata_raw
+    else:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if not meta.get("prompt_processor"):
+        meta["prompt_processor"] = "simple_augment"
+    if not meta.get("connector"):
+        meta["connector"] = "openai"
+
+    return json.dumps(meta) if isinstance(metadata_raw, str) else meta
+
+
 def prepare_assistant_body(
     original_body: Dict[str, Any], 
     creator_user: Dict[str, Any], 
@@ -365,8 +449,9 @@ def prepare_assistant_body(
             # Use email from creator user object
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
-            "metadata": original_body.get("metadata", original_body.get("api_callback", "")),
-            "api_callback": original_body.get("metadata", original_body.get("api_callback", "")),
+            # Ensure essential defaults (prompt_processor) are set
+            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
             "prompt_template": original_body.get("prompt_template", ""),
@@ -860,6 +945,60 @@ async def get_assistant_proxy(assistant_id: int, request: Request, response: Res
         )
 
 @router.get(
+    "/{assistant_id}/usage",
+    tags=["Assistant Management"],
+    summary="Get Assistant Usage & Quota",
+    description="Returns current token usage, estimated cost, and quota configuration for an assistant.",
+    dependencies=[Depends(security)],
+    responses={
+        401: {"description": "Invalid authentication"},
+        404: {"description": "Assistant not found or access denied"},
+    }
+)
+async def get_assistant_usage(assistant_id: int, auth: AuthContext = Depends(get_auth_context)):
+    """Return usage summary and quota config for a single assistant."""
+    try:
+        # Verify access (owner or org admin can view usage)
+        access = auth.can_access_assistant(assistant_id)
+        if access == "none":
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        assistant_data = db_manager.get_assistant_by_id_with_publication(assistant_id)
+        if not assistant_data:
+            raise HTTPException(status_code=404, detail="Assistant not found")
+
+        # Parse quota config from metadata/api_callback
+        raw_meta = assistant_data.get("api_callback") or assistant_data.get("metadata") or "{}"
+        try:
+            metadata = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+        except Exception:
+            metadata = {}
+        quota = metadata.get("quota", {})
+        quota_enabled = bool(quota.get("enabled", False))
+        cost_limit_usd = quota.get("cost_limit_usd")
+
+        tokens = db_manager.get_assistant_token_usage(assistant_id)
+        cost_usd = db_manager.get_assistant_cost_usd(assistant_id)
+        quota_exceeded = quota_enabled and cost_limit_usd is not None and cost_usd >= float(cost_limit_usd)
+
+        return {
+            "assistant_id": assistant_id,
+            "name": assistant_data.get("name", ""),
+            "spend_usd": round(cost_usd, 6),
+            "tokens": tokens,
+            "quota": {
+                "enabled": quota_enabled,
+                "cost_limit_usd": float(cost_limit_usd) if cost_limit_usd is not None else None,
+            },
+            "quota_exceeded": quota_exceeded,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching usage for assistant {assistant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@router.get(
     "/get_assistants",
     tags=["Assistant Management"],
     summary="Get Assistants Proxy",
@@ -1092,8 +1231,49 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
-        # Prepare the assistant body
-        new_body, error = prepare_assistant_body(original_body, creator_user)
+        # Fetch current assistant to merge with partial updates (#328)
+        assistant_service = AssistantService()
+        current = assistant_service.get_assistant_by_id(assistant_id)
+        if not current:
+            raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
+
+        # Merge: fill in missing fields from current assistant so partial
+        # updates don't wipe existing values
+        current_metadata_str = current.api_callback or "{}"
+        merge_defaults = {
+            "name": current.name,
+            "description": current.description or "",
+            "system_prompt": current.system_prompt or "",
+            "prompt_template": current.prompt_template or "",
+            "RAG_Top_k": current.RAG_Top_k or 3,
+            "RAG_collections": current.RAG_collections or "",
+            "metadata": current_metadata_str,
+            "api_callback": current_metadata_str,
+        }
+        for key, default_val in merge_defaults.items():
+            if key not in original_body:
+                original_body[key] = default_val
+
+        # Ensure defaults before validation (fills missing prompt_processor, connector)
+        original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        original_body["api_callback"] = original_body["metadata"]
+
+        normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
+        if metadata_error:
+            logger.error(
+                f"Rejected update for assistant {assistant_id} due to invalid metadata: {metadata_error}"
+            )
+            raise HTTPException(status_code=400, detail=metadata_error)
+
+        original_body["metadata"] = normalized_metadata
+        original_body["api_callback"] = normalized_metadata
+
+        # Prepare the assistant body (now has all fields — merge complete)
+        # Pass the current name as sanitized_prefixed_name to avoid double-prefixing (#328)
+        new_body, error = prepare_assistant_body(
+            original_body, creator_user,
+            sanitized_prefixed_name=original_body.get("name", current.name),
+        )
         if error:
             logger.error(f"Error preparing update body for assistant {assistant_id}: {error}")
             raise HTTPException(status_code=400, detail=error)

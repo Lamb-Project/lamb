@@ -181,7 +181,7 @@ def rag_processor(
                     raw_response = response.json()
                     # Log the response summary
                     logger.debug(
-                        f"Response Summary: {len(raw_response.get('documents', []))} documents returned")
+                        f"Response Summary: {len(raw_response.get('results', raw_response.get('documents', [])))} documents returned")
                     logger.debug(
                         f"Raw Response: {json.dumps(raw_response, indent=2)}")
 
@@ -216,7 +216,7 @@ def rag_processor(
         for cid, result in all_responses.items():
             status = result["status"]
             if status == "success":
-                documents = result["data"].get("documents", [])
+                documents = result["data"].get("results", result["data"].get("documents", []))
                 doc_count = len(documents)
                 logger.info(
                     f"Collection {cid}: {status} - {doc_count} documents")

@@ -114,6 +114,37 @@ class OrganizationConfigResolver:
 
         return {}
     
+    def get_library_config(self) -> Dict[str, Any]:
+        """Get Library Manager configuration for this organization.
+
+        Resolves from ``setups[setup_name].library`` in org config.
+        Falls back to environment variables for the system org.
+
+        Returns:
+            Dict with ``server_url``, ``api_token``, ``allowed_import_plugins``,
+            and ``external_service_keys``.
+        """
+        org_config = self.organization.get('config', {})
+        setups = org_config.get('setups', {})
+        setup = setups.get(self.setup_name, {})
+        lib_config = setup.get("library", {})
+
+        if not lib_config and self.organization.get('is_system', False):
+            lib_config = {
+                "server_url": os.getenv('LAMB_LIBRARY_SERVER', 'http://library-manager:9091'),
+                "api_token": os.getenv('LAMB_LIBRARY_TOKEN', ''),
+            }
+
+        if lib_config:
+            return {
+                "server_url": lib_config.get("server_url") or lib_config.get("url"),
+                "api_token": lib_config.get("api_token") or lib_config.get("token"),
+                "allowed_import_plugins": lib_config.get("allowed_import_plugins", []),
+                "external_service_keys": lib_config.get("external_service_keys", {}),
+            }
+
+        return {}
+
     def get_feature_flag(self, feature: str) -> bool:
         """Get feature flag value"""
         org_config = self.organization.get('config', {})

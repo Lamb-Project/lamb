@@ -56,7 +56,7 @@
       console.log('Creator user detected, continuing to creator interface');
       
       // For creator users, continue with normal login
-      user.login(result.data); 
+      replaceSessionWithLoginData(result.data); 
       
       success = true;
       message = 'Login successful!'; // Use a generic message or i18n key

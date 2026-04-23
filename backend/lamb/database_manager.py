@@ -39,14 +39,9 @@ class LambDatabaseManager:
             load_dotenv()
 
             # Get database configuration from environment variables
-            self.table_prefix = os.getenv('LAMB_DB_PREFIX', '')
+            self.table_prefix = config.LAMB_DB_PREFIX
 
-            lamb_db_path = os.getenv('LAMB_DB_PATH')
-            if not lamb_db_path:
-                logger.error("LAMB_DB_PATH not found in environment variables")
-                raise ValueError("LAMB_DB_PATH must be specified in environment variables")
-
-            self.db_path = os.path.join(lamb_db_path, 'lamb_v4.db')
+            self.db_path = os.path.join(config.LAMB_DB_PATH, 'lamb_v4.db')
             if not os.path.exists(self.db_path):
                 # Create the database file and directory if they don't exist
                 os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -449,12 +444,46 @@ class LambDatabaseManager:
                         UNIQUE(assistant_id, shared_with_user_id)
                     )
                 """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_shares' created successfully")
+
+                # Create the assistant_usage_totals table
+                logger.debug("Creating assistant_usage_totals table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_usage_totals (
+                        assistant_id INTEGER PRIMARY KEY,
+                        prompt_tokens_total INTEGER DEFAULT 0,
+                        completion_tokens_total INTEGER DEFAULT 0,
+                        total_tokens_total INTEGER DEFAULT 0,
+                        cost_usd_total REAL DEFAULT 0.0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_usage_totals' created successfully")
+
+                # Create the assistant_quota_alerts table
+                logger.debug("Creating assistant_quota_alerts table")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_quota_alerts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assistant_id INTEGER UNIQUE NOT NULL,
+                        quota_limit_usd REAL,
+                        thresholds_config JSON,
+                        current_alert_level INTEGER DEFAULT 0,
+                        is_blocked BOOLEAN DEFAULT 0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+                logger.info(
+                    f"Table '{self.table_prefix}assistant_quota_alerts' created successfully")
+
                 cursor.execute(
                     f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_assistant ON {self.table_prefix}assistant_shares(assistant_id)")
                 cursor.execute(
                     f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}assistant_shares_shared_with ON {self.table_prefix}assistant_shares(shared_with_user_id)")
-                logger.info(
-                    f"Table '{self.table_prefix}assistant_shares' created successfully")
 
                 # Create the Creator_users table
                 logger.debug("Creating Creator_users table")
@@ -1204,6 +1233,285 @@ class LambDatabaseManager:
                         logger.info("Migration 11b: No users need hash migration")
                 except Exception as mig_err:
                     logger.warning(f"Migration 11b error (non-fatal): {mig_err}")
+
+                # ---- Migration 12: Token quota tracking ----
+                # Add model_name + provider columns to usage_logs, plus assistant index
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}usage_logs)")
+                usage_log_cols = {row[1] for row in cursor.fetchall()}
+
+                if 'model_name' not in usage_log_cols:
+                    logger.info("Migration 12: Adding model_name column to usage_logs")
+                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN model_name TEXT")
+
+                if 'provider' not in usage_log_cols:
+                    logger.info("Migration 12: Adding provider column to usage_logs")
+                    cursor.execute(f"ALTER TABLE {self.table_prefix}usage_logs ADD COLUMN provider TEXT")
+
+                # Index on assistant_id for fast per-assistant cost aggregation
+                cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}usage_logs_assistant
+                    ON {self.table_prefix}usage_logs(assistant_id)
+                """)
+
+                # model_pricing table — seed data kept up to date by operators
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}model_pricing'")
+                if not cursor.fetchone():
+                    logger.info("Migration 12: Creating model_pricing table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}model_pricing (
+                            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                            provider      TEXT NOT NULL,
+                            model_name    TEXT NOT NULL,
+                            input_per_1m  REAL NOT NULL DEFAULT 0,
+                            output_per_1m REAL NOT NULL DEFAULT 0,
+                            notes         TEXT,
+                            updated_at    INTEGER NOT NULL,
+                            UNIQUE(provider, model_name)
+                        )
+                    """)
+                    # Seed with known pricing (USD per 1M tokens, input / output)
+                    now = int(time.time())
+                    seed_rows = [
+                        ("openai", "gpt-4.1",                      2.00,  8.00),
+                        ("openai", "gpt-4.1-mini",                 0.40,  1.60),
+                        ("openai", "gpt-4.1-nano",                 0.10,  0.40),
+                        ("openai", "gpt-4o",                       2.50, 10.00),
+                        ("openai", "gpt-4o-mini",                  0.15,  0.60),
+                        ("openai", "gpt-4-turbo",                 10.00, 30.00),
+                        ("openai", "gpt-4",                       30.00, 60.00),
+                        ("openai", "o3-mini",                      1.10,  4.40),
+                        ("anthropic", "claude-3-5-sonnet-20241022", 3.00, 15.00),
+                        ("anthropic", "claude-3-5-haiku-20241022",  0.80,  4.00),
+                    ]
+                    cursor.executemany(
+                        f"""INSERT OR IGNORE INTO {self.table_prefix}model_pricing
+                            (provider, model_name, input_per_1m, output_per_1m, updated_at)
+                            VALUES (?, ?, ?, ?, ?)""",
+                        [(p, m, i, o, now) for p, m, i, o in seed_rows]
+                    )
+                    logger.info("Migration 12: model_pricing table created and seeded")
+
+                # Migration 13: Add token quota tracking tables
+                logger.info("Migration 13: Creating assistant_usage_totals table if not exists")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_usage_totals (
+                        assistant_id INTEGER PRIMARY KEY,
+                        prompt_tokens_total INTEGER DEFAULT 0,
+                        completion_tokens_total INTEGER DEFAULT 0,
+                        total_tokens_total INTEGER DEFAULT 0,
+                        cost_usd_total REAL DEFAULT 0.0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+
+                logger.info("Migration 13: Creating assistant_quota_alerts table if not exists")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}assistant_quota_alerts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        assistant_id INTEGER UNIQUE NOT NULL,
+                        quota_limit_usd REAL,
+                        thresholds_config JSON,
+                        current_alert_level INTEGER DEFAULT 0,
+                        is_blocked BOOLEAN DEFAULT 0,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (assistant_id) REFERENCES {self.table_prefix}assistants(id) ON DELETE CASCADE
+                    )
+                """)
+
+                # Backfill assistant_usage_totals from existing usage_logs if new
+                logger.info("Migration 13: Backfilling assistant_usage_totals from usage_logs")
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}assistant_usage_totals (
+                        assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at
+                    )
+                    SELECT
+                        a.id AS assistant_id,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')), 0) AS prompt_tokens_total,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens_total,
+                        COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')), 0) AS total_tokens_total,
+                        COALESCE(SUM(
+                            COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0) * COALESCE(mp.input_per_1m, 0) / 1000000.0
+                            + 
+                            COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0) * COALESCE(mp.output_per_1m, 0) / 1000000.0
+                        ), 0.0) AS cost_usd_total,
+                        strftime('%s', 'now') AS updated_at
+                    FROM {self.table_prefix}assistants a
+                    JOIN {self.table_prefix}usage_logs ul ON ul.assistant_id = a.id
+                    LEFT JOIN {self.table_prefix}model_pricing mp ON ul.model_name = mp.model_name AND ul.provider = mp.provider
+                    GROUP BY a.id
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        prompt_tokens_total = excluded.prompt_tokens_total,
+                        completion_tokens_total = excluded.completion_tokens_total,
+                        total_tokens_total = excluded.total_tokens_total,
+                        cost_usd_total = excluded.cost_usd_total,
+                        updated_at = excluded.updated_at
+                """)
+
+                connection.commit()
+                logger.info("Migration 12 and 13 complete")
+
+                # Migration 14: AAC (Agent-Assisted Creator) sessions table
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}aac_sessions'")
+                if not cursor.fetchone():
+                    logger.info("Migration 14: Creating aac_sessions table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}aac_sessions (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER,
+                            user_email TEXT NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            status TEXT DEFAULT 'active',
+                            conversation TEXT DEFAULT '[]',
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}aac_sessions_user "
+                        f"ON {self.table_prefix}aac_sessions(user_email)")
+                    connection.commit()
+                    logger.info("Migration 14: aac_sessions table created")
+
+                # Migration 14b: Add title column to aac_sessions if missing
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}aac_sessions)")
+                aac_cols = [row[1] for row in cursor.fetchall()]
+                if 'title' not in aac_cols:
+                    logger.info("Migration 14b: Adding title column to aac_sessions")
+                    cursor.execute(
+                        f"ALTER TABLE {self.table_prefix}aac_sessions ADD COLUMN title TEXT DEFAULT ''")
+                    connection.commit()
+
+                # Migration 15: Assistant test scenarios, runs, and evaluations (#327)
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}assistant_test_scenarios'")
+                if not cursor.fetchone():
+                    logger.info("Migration 15: Creating test scenarios, runs, and evaluations tables")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_scenarios (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            description TEXT DEFAULT '',
+                            scenario_type TEXT DEFAULT 'single_turn',
+                            messages TEXT NOT NULL,
+                            expected_behavior TEXT DEFAULT '',
+                            tags TEXT DEFAULT '[]',
+                            created_by TEXT NOT NULL,
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_scenarios_assistant "
+                        f"ON {self.table_prefix}assistant_test_scenarios(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_runs (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            scenario_id TEXT,
+                            input_messages TEXT NOT NULL,
+                            output TEXT NOT NULL,
+                            token_usage TEXT,
+                            assistant_snapshot TEXT,
+                            model_used TEXT,
+                            elapsed_ms REAL,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_runs_assistant "
+                        f"ON {self.table_prefix}assistant_test_runs(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_evaluations (
+                            id TEXT PRIMARY KEY,
+                            test_run_id TEXT NOT NULL,
+                            evaluator TEXT NOT NULL,
+                            verdict TEXT,
+                            notes TEXT DEFAULT '',
+                            dimensions TEXT,
+                            confirmed_by_user BOOLEAN,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_evals_run "
+                        f"ON {self.table_prefix}assistant_test_evaluations(test_run_id)")
+
+                    connection.commit()
+                    logger.info("Migration 15: Test tables created")
+
+                # Migration 16: Create library tables
+                logger.info("Migration 16: Creating library tables if not exist")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}libraries (
+                        id TEXT PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        owner_user_id INTEGER NOT NULL,
+                        is_shared INTEGER DEFAULT 0,
+                        import_config TEXT,
+                        status TEXT DEFAULT 'active',
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id),
+                        UNIQUE(organization_id, name)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_owner ON {self.table_prefix}libraries(owner_user_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_org_shared ON {self.table_prefix}libraries(organization_id, is_shared)")
+
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}library_items (
+                        id TEXT PRIMARY KEY,
+                        library_id TEXT NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        source_type TEXT NOT NULL,
+                        original_filename TEXT,
+                        content_type TEXT,
+                        file_size INTEGER,
+                        source_url TEXT,
+                        import_plugin TEXT NOT NULL,
+                        import_params TEXT,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        uploader_user_id INTEGER NOT NULL,
+                        metadata TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (library_id) REFERENCES {self.table_prefix}libraries(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (uploader_user_id) REFERENCES {self.table_prefix}Creator_users(id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_library ON {self.table_prefix}library_items(library_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_org ON {self.table_prefix}library_items(organization_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_status ON {self.table_prefix}library_items(status)")
+
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organization_id INTEGER NOT NULL,
+                        actor_user_id INTEGER NOT NULL,
+                        action TEXT NOT NULL,
+                        target_type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        details TEXT,
+                        created_at INTEGER NOT NULL,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id),
+                        FOREIGN KEY (actor_user_id) REFERENCES {self.table_prefix}Creator_users(id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}audit_log_org_date ON {self.table_prefix}audit_log(organization_id, created_at)")
+
+                connection.commit()
+                logger.info("Migration 16 complete")
 
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
@@ -4060,6 +4368,230 @@ class LambDatabaseManager:
 #                logger.debug("Database connection closed")
         return None
 
+    def log_token_usage(self, assistant_id: int, org_id: int, model_name: str, provider: str, usage_data: dict):
+        """Write one row to usage_logs for a completed request.
+
+        usage_data should contain: prompt_tokens, completion_tokens, total_tokens.
+        Errors are caught and logged — never propagated to callers.
+        """
+        try:
+            prompt_tokens = usage_data.get('prompt_tokens', 0)
+            completion_tokens = usage_data.get('completion_tokens', 0)
+            total_tokens = usage_data.get('total_tokens', 0)
+            now = int(time.time())
+
+            conn = self.get_connection()
+            if not conn:
+                return
+            try:
+                with conn:
+                    conn.execute(
+                        f"""INSERT INTO {self.table_prefix}usage_logs
+                        (organization_id, assistant_id, usage_data, model_name, provider, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)""",
+                    (org_id, assistant_id, json.dumps(usage_data), model_name, provider, now)
+                )
+
+                conn.execute(
+                    f"""
+                    INSERT INTO {self.table_prefix}assistant_usage_totals 
+                    (assistant_id, prompt_tokens_total, completion_tokens_total, total_tokens_total, cost_usd_total, updated_at)
+                    VALUES (
+                        ?, 
+                        ?, 
+                        ?, 
+                        ?, 
+                        COALESCE((SELECT COALESCE(input_per_1m, 0) * ? / 1000000.0 + COALESCE(output_per_1m, 0) * ? / 1000000.0 
+                         FROM {self.table_prefix}model_pricing 
+                         WHERE provider = ? AND model_name = ?), 0.0),
+                        ?
+                    )
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        prompt_tokens_total = prompt_tokens_total + excluded.prompt_tokens_total,
+                        completion_tokens_total = completion_tokens_total + excluded.completion_tokens_total,
+                        total_tokens_total = total_tokens_total + excluded.total_tokens_total,
+                        cost_usd_total = cost_usd_total + COALESCE(excluded.cost_usd_total, 0),
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        assistant_id, 
+                        prompt_tokens, 
+                        completion_tokens, 
+                        total_tokens, 
+                        prompt_tokens, completion_tokens, provider, model_name,
+                        now
+                    )
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Failed to log token usage for assistant {assistant_id}: {e}")
+
+    def check_assistant_quota(self, assistant_id: int) -> bool:
+        """
+        Check if the assistant is within its quota limit and isn't blocked.
+        Returns True if they can continue, False if blocked or over hard limit.
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return True
+            try:
+                with conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f"""
+                        SELECT a.is_blocked, a.quota_limit_usd, u.cost_usd_total
+                    FROM {self.table_prefix}assistant_quota_alerts a
+                    LEFT JOIN {self.table_prefix}assistant_usage_totals u ON a.assistant_id = u.assistant_id
+                    WHERE a.assistant_id = ?
+                """, (assistant_id,))
+
+                row = cursor.fetchone()
+                if not row:
+                    return True # No limits configured
+
+                is_blocked, quota_limit_usd, cost_usd_total = row
+
+                if is_blocked:
+                    return False
+
+                if quota_limit_usd is not None and cost_usd_total is not None:
+                    if float(cost_usd_total) >= float(quota_limit_usd):
+                        return False
+
+                return True
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error checking assistant quota for {assistant_id}: {e}")
+            return True # Fail open to avoid blocking
+
+    def get_assistant_cost_usd(self, assistant_id: int) -> float:
+        """Return the total estimated cost in USD for all logged requests for this assistant.
+
+        Returns 0.0 when there is no pricing data or no usage logged.
+        Uses SQLite json_extract to pull token counts from the JSON blob.
+        """
+        query = f"""
+            SELECT
+              COALESCE(SUM(
+                COALESCE(json_extract(ul.usage_data, '$.prompt_tokens'), 0)
+                  * COALESCE(mp.input_per_1m, 0) / 1000000.0
+                +
+                COALESCE(json_extract(ul.usage_data, '$.completion_tokens'), 0)
+                  * COALESCE(mp.output_per_1m, 0) / 1000000.0
+              ), 0.0)
+            FROM {self.table_prefix}usage_logs ul
+            LEFT JOIN {self.table_prefix}model_pricing mp
+                   ON ul.model_name = mp.model_name
+                  AND ul.provider   = mp.provider
+            WHERE ul.assistant_id = ?
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return 0.0
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query, (assistant_id,))
+                row = cursor.fetchone()
+                return float(row[0]) if row and row[0] is not None else 0.0
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error computing cost for assistant {assistant_id}: {e}")
+            return 0.0
+
+    def get_assistant_token_usage(self, assistant_id: int) -> dict:
+        """Return aggregate token counts for a single assistant.
+
+        Returns a dict with prompt_tokens, completion_tokens, total_tokens (all int).
+        Falls back to zeros on error or no data.
+        """
+        query = f"""
+            SELECT
+                COALESCE(SUM(json_extract(ul.usage_data, '$.prompt_tokens')), 0)     AS prompt_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.completion_tokens')), 0) AS completion_tokens,
+                COALESCE(SUM(json_extract(ul.usage_data, '$.total_tokens')), 0)      AS total_tokens
+            FROM {self.table_prefix}usage_logs ul
+            WHERE ul.assistant_id = ?
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query, (assistant_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        "prompt_tokens": int(row[0] or 0),
+                        "completion_tokens": int(row[1] or 0),
+                        "total_tokens": int(row[2] or 0),
+                    }
+                return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error fetching token usage for assistant {assistant_id}: {e}")
+            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def get_all_assistants_with_usage(self) -> list:
+        """Return all assistants with aggregate token usage and estimated cost (admin view).
+
+        Each row contains: id, name, owner, organization_name, api_callback,
+        prompt_tokens, completion_tokens, total_tokens, cost_usd.
+        Quota fields are derived from api_callback in the calling layer.
+        """
+        query = f"""
+            SELECT
+                a.id,
+                a.name,
+                a.owner,
+                o.name  AS organization_name,
+                a.api_callback,
+                COALESCE(ut.prompt_tokens_total, 0) AS prompt_tokens,
+                COALESCE(ut.completion_tokens_total, 0) AS completion_tokens,
+                COALESCE(ut.total_tokens_total, 0) AS total_tokens,
+                COALESCE(ut.cost_usd_total, 0.0) AS cost_usd,
+                qa.thresholds_config
+            FROM {self.table_prefix}assistants a
+            LEFT JOIN {self.table_prefix}organizations o   ON a.organization_id = o.id
+            LEFT JOIN {self.table_prefix}assistant_usage_totals ut ON ut.assistant_id = a.id
+            LEFT JOIN {self.table_prefix}assistant_quota_alerts qa ON qa.assistant_id = a.id
+            ORDER BY cost_usd DESC, a.id ASC
+        """
+        try:
+            connection = self.get_connection()
+            if not connection:
+                return []
+            try:
+                cursor = connection.cursor()
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                results = []
+                for row in rows:
+                    results.append({
+                        "id": row[0],
+                        "name": row[1],
+                        "owner": row[2],
+                        "organization_name": row[3] or "",
+                        "api_callback": row[4],
+                        "prompt_tokens": int(row[5] or 0),
+                        "completion_tokens": int(row[6] or 0),
+                        "total_tokens": int(row[7] or 0),
+                        "cost_usd": float(row[8] or 0.0),
+                        "thresholds_config": row[9]
+                    })
+                return results
+            finally:
+                connection.close()
+        except Exception as e:
+            logger.error(f"Error fetching all assistants with usage: {e}")
+            return []
+
     def get_assistant_by_id(self, assistant_id: int) -> Optional[Assistant]:
         connection = self.get_connection()
         if not connection:
@@ -4083,6 +4615,7 @@ class LambDatabaseManager:
             # Create Assistant object from dictionary
             assistant = Assistant(
                 id=assistant_dict['id'],
+                organization_id=assistant_dict.get('organization_id'),
                 name=assistant_dict['name'],
                 description=assistant_dict['description'],
                 owner=assistant_dict['owner'],
@@ -5173,6 +5706,82 @@ class LambDatabaseManager:
         return None
 
     # ==================== End LTI Creator Methods ====================
+
+    def update_assistant_quota(self, assistant_id: int, enabled: bool, cost_limit_usd, alert_thresholds=None) -> bool:
+        """Patch only the quota key inside the assistant's api_callback JSON, and update the alerts table.
+
+        Cost_limit_usd can be a float or None (unlimited).
+        Leaves all other metadata fields untouched.
+        Returns True on success.
+        """
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return False
+            try:
+                with conn:
+                    cursor = conn.cursor()
+
+                    # Update the assistant table JSON config
+                cursor.execute(
+                    f"SELECT api_callback FROM {self.table_prefix}assistants WHERE id = ?",
+                    (assistant_id,)
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return False
+                    
+                import json
+                try:
+                    cb = json.loads(row[0]) if row[0] else {}
+                except Exception:
+                    cb = {}
+                
+                # Update quota dict inside metadata
+                quota_dict = {"enabled": bool(enabled)}
+                if enabled and cost_limit_usd is not None and str(cost_limit_usd).strip() != "":
+                    try:
+                        cost_limit_val = float(cost_limit_usd)
+                        if cost_limit_val > 0:
+                            quota_dict["cost_limit_usd"] = cost_limit_val
+                    except ValueError:
+                        pass
+                cb['quota'] = quota_dict
+                
+                new_cb_json = json.dumps(cb)
+                
+                cursor.execute(
+                    f"UPDATE {self.table_prefix}assistants SET api_callback = ?, updated_at = ? WHERE id = ?",
+                    (new_cb_json, int(time.time()), assistant_id)
+                )
+
+                # Now update the assistant_quota_alerts table
+                if enabled:
+                    cost_limit_val = float(cost_limit_usd) if cost_limit_usd is not None and str(cost_limit_usd).strip() != "" else None
+                    if cost_limit_val is not None and cost_limit_val <= 0:
+                        cost_limit_val = None
+                else:
+                    cost_limit_val = None
+
+                thresholds_json = json.dumps(alert_thresholds) if alert_thresholds else None
+
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}assistant_quota_alerts 
+                    (assistant_id, quota_limit_usd, thresholds_config, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(assistant_id) DO UPDATE SET
+                        quota_limit_usd = excluded.quota_limit_usd,
+                        thresholds_config = excluded.thresholds_config,
+                        updated_at = excluded.updated_at
+                """, (assistant_id, cost_limit_val, thresholds_json, int(time.time())))
+                
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Error updating quota for assistant {assistant_id}: {e}")
+            return False
 
     def update_assistant(self, assistant_id: int, assistant: Assistant) -> bool:
         """
@@ -6325,11 +6934,13 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Database error checking KB usage: {e}")
             return []
+        finally:
+            if connection:
+                connection.close()
 
     def toggle_kb_sharing(self, kb_id: str, is_shared: bool) -> bool:
         """
-        Toggle KB sharing status.
-        Only owner can call this.
+        Toggle the sharing state of a KB.
 
         Args:
             kb_id: KB UUID
@@ -6571,6 +7182,465 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Database error deleting KB registry entry: {e}")
             return False
+        finally:
+            connection.close()
+
+    # =====================================================================
+    # Library Methods
+    # =====================================================================
+
+    def create_library(self, library_id: str, name: str, owner_user_id: int,
+                       organization_id: int, description: str = "",
+                       import_config: Dict[str, Any] = None,
+                       status: str = "active") -> Optional[str]:
+        """Register a new library in LAMB's database.
+
+        Args:
+            library_id: UUID generated by LAMB.
+            name: Library display name.
+            owner_user_id: Creator user ID.
+            organization_id: Organization ID.
+            description: Optional description.
+            import_config: Optional default import params.
+            status: Initial status ('active' or 'provisional').
+
+        Returns:
+            The library_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}libraries
+                    (id, organization_id, name, description, owner_user_id, is_shared,
+                     import_config, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+                """, (library_id, organization_id, name, description, owner_user_id,
+                      json.dumps(import_config or {}), status, now, now))
+                logger.info(f"Created library '{name}' (ID: {library_id}) for user {owner_user_id}")
+                return library_id
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error creating library: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error creating library: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_library_status(self, library_id: str, status: str) -> bool:
+        """Update the status of a library (e.g. 'provisional' -> 'active').
+
+        Args:
+            library_id: Library UUID.
+            status: New status value.
+
+        Returns:
+            True if the row was updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status, now, library_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_library(self, library_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a library by ID with owner info.
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            Dict with library fields and owner info, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}libraries l
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
+                    WHERE l.id = ?
+                """, (library_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if isinstance(result.get('is_shared'), int):
+                    result['is_shared'] = bool(result['is_shared'])
+                if result.get('import_config') and isinstance(result['import_config'], str):
+                    try:
+                        result['import_config'] = json.loads(result['import_config'])
+                    except Exception:
+                        result['import_config'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting library: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_accessible_libraries(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """Get libraries accessible to user (owned OR shared in org).
+
+        Args:
+            user_id: User ID.
+            organization_id: Organization ID.
+
+        Returns:
+            List of library dicts, owned first.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}libraries l
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
+                    WHERE l.organization_id = ?
+                    AND l.status = 'active'
+                    AND (l.owner_user_id = ? OR l.is_shared = 1)
+                    ORDER BY l.owner_user_id = ? DESC, l.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    d = dict(zip(columns, row))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    if d.get('import_config') and isinstance(d['import_config'], str):
+                        try:
+                            d['import_config'] = json.loads(d['import_config'])
+                        except Exception:
+                            d['import_config'] = {}
+                    results.append(d)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting accessible libraries: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_library(self, library_id: str, user_id: int) -> Tuple[bool, str]:
+        """Check if user can access a library and return access level.
+
+        Args:
+            library_id: Library UUID.
+            user_id: User ID.
+
+        Returns:
+            Tuple of (can_access, access_type) where access_type is 'owner', 'shared', or 'none'.
+        """
+        entry = self.get_library(library_id)
+        if not entry:
+            return (False, 'none')
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        return (False, 'none')
+
+    def toggle_library_sharing(self, library_id: str, is_shared: bool) -> bool:
+        """Toggle the sharing state of a library.
+
+        Args:
+            library_id: Library UUID.
+            is_shared: New sharing state.
+
+        Returns:
+            True if updated, False if not found.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET is_shared = ?, updated_at = ?
+                    WHERE id = ?
+                """, (is_shared, now, library_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error toggling library sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_library(self, library_id: str, name: str = None,
+                       description: str = None) -> bool:
+        """Update library name and/or description.
+
+        Args:
+            library_id: Library UUID.
+            name: New name (or None to keep).
+            description: New description (or None to keep).
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if name is not None:
+                    sets.append("name = ?")
+                    params.append(name)
+                if description is not None:
+                    sets.append("description = ?")
+                    params.append(description)
+                params.append(library_id)
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET {', '.join(sets)}
+                    WHERE id = ?
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_library(self, library_id: str) -> bool:
+        """Delete a library and its items from LAMB DB (cascade).
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}libraries WHERE id = ?", (library_id,))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting library: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def register_library_item(self, item_id: str, library_id: str,
+                              organization_id: int, title: str, source_type: str,
+                              import_plugin: str, uploader_user_id: int,
+                              original_filename: str = None, content_type: str = None,
+                              file_size: int = None, source_url: str = None,
+                              import_params: Dict[str, Any] = None) -> Optional[str]:
+        """Create a library_items record when an import is initiated.
+
+        Args:
+            item_id: UUID from Library Manager.
+            library_id: Parent library UUID.
+            organization_id: Organization ID.
+            title: Document title.
+            source_type: 'file', 'url', or 'youtube'.
+            import_plugin: Plugin name.
+            uploader_user_id: User who initiated the import.
+            original_filename: Original filename (for files).
+            content_type: MIME type.
+            file_size: Size in bytes.
+            source_url: URL (for url/youtube).
+            import_params: Plugin-specific params.
+
+        Returns:
+            The item_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}library_items
+                    (id, library_id, organization_id, title, source_type,
+                     original_filename, content_type, file_size, source_url,
+                     import_plugin, import_params, status, uploader_user_id,
+                     created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """, (item_id, library_id, organization_id, title, source_type,
+                      original_filename, content_type, file_size, source_url,
+                      import_plugin, json.dumps(import_params or {}),
+                      uploader_user_id, now, now))
+                return item_id
+        except sqlite3.Error as e:
+            logger.error(f"Database error registering library item: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_library_item_status(self, item_id: str, status: str,
+                                   metadata: Dict[str, Any] = None) -> bool:
+        """Update the status and metadata of a library item.
+
+        Args:
+            item_id: Item UUID.
+            status: New status.
+            metadata: Optional metadata to store.
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                if metadata is not None:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}library_items
+                        SET status = ?, metadata = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (status, json.dumps(metadata), now, item_id))
+                else:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}library_items
+                        SET status = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (status, now, item_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library item status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_library_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a library item by ID.
+
+        Args:
+            item_id: Item UUID.
+
+        Returns:
+            Dict with item fields, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}library_items WHERE id = ?
+                """, (item_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if result.get('import_params') and isinstance(result['import_params'], str):
+                    try:
+                        result['import_params'] = json.loads(result['import_params'])
+                    except Exception:
+                        result['import_params'] = {}
+                if result.get('metadata') and isinstance(result['metadata'], str):
+                    try:
+                        result['metadata'] = json.loads(result['metadata'])
+                    except Exception:
+                        result['metadata'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting library item: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def delete_library_item(self, item_id: str) -> bool:
+        """Delete a library item from LAMB DB.
+
+        Args:
+            item_id: Item UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}library_items WHERE id = ?", (item_id,))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting library item: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def write_audit_log(self, organization_id: int, actor_user_id: int,
+                        action: str, target_type: str, target_id: str,
+                        details: Dict[str, Any] = None) -> Optional[int]:
+        """Write an entry to the audit log.
+
+        Args:
+            organization_id: Organization ID.
+            actor_user_id: User who performed the action.
+            action: Action string (e.g. 'library.create').
+            target_type: Target type ('library' or 'library_item').
+            target_id: Target UUID.
+            details: Optional details dict.
+
+        Returns:
+            Audit log entry ID, or None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}audit_log
+                    (organization_id, actor_user_id, action, target_type, target_id, details, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (organization_id, actor_user_id, action, target_type, target_id,
+                      json.dumps(details or {}), now))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Database error writing audit log: {e}")
+            return None
         finally:
             connection.close()
 

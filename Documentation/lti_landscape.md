@@ -77,7 +77,7 @@ Think of it this way:
 
 ### The Story
 
-A university wants to give students access to AI assistants directly within their LMS course. Previously, each assistant required its own LTI activity. With the new Unified LTI, an instructor configures **one LTI link** in their course, selects which assistants to include, and students get access to all of them. The instructor also gets a **dashboard** showing usage analytics, student access logs, and optionally anonymized chat transcripts.
+A university wants to give students access to AI assistants directly within their LMS course. Previously, each assistant required its own LTI activity. With the new Unified LTI, an instructor configures **one LTI link** in their course, selects which assistants to include, and students get access to all of them. The instructor also gets a **dashboard** showing usage analytics, student access logs, and optionally chat transcripts.
 
 ### The Flow (Human-Readable)
 
@@ -107,18 +107,14 @@ A university wants to give students access to AI assistants directly within thei
 **Student Launch:**
 
 1. **Student clicks** the same LTI link
-2. **If chat visibility is enabled** and this is their first visit, they see a **consent notice** explaining that transcripts may be reviewed anonymously by the instructor. They must accept to continue.
-3. **LAMB creates/retrieves** an OWI account with a synthetic email based on `resource_link_id`
-4. **Student lands in Open WebUI** seeing all selected assistants (e.g., Physics Tutor, Lab Helper)
+2. **LAMB creates/retrieves** an OWI account with a synthetic email based on `resource_link_id` and the username from the LMS
+3. **Student lands in Open WebUI** seeing all selected assistants (e.g., Physics Tutor, Lab Helper)
 
 ### Key Design Choices
 
 **Activity Ownership:** The first instructor to configure the activity becomes its owner. Only the owner can manage the assistant selection. Any instructor can view the dashboard. Organization admins can transfer ownership if needed.
 
-**Chat Visibility (Opt-in):** At setup time, the owner decides whether instructors can view anonymized chat transcripts. If enabled:
-- Students are informed on first access and must consent
-- All chat transcripts on the dashboard show "Student 1", "Student 2", etc. — never real names
-- The anonymization is consistent (same student always maps to the same pseudonym)
+**Chat Visibility (Opt-in):** At setup time, the owner decides whether instructors can view chat transcripts. If enabled, the instructor dashboard shows student conversations with the assistants, including the student name as passed by the LMS via LTI. Institutions control student privacy at the LMS level — configure LTI privacy settings in the LMS to decide what identity data is shared with LAMB.
 
 **Multi-Assistant Activities:** Unlike legacy Student LTI (one assistant per LTI link), a single Unified LTI activity can expose multiple assistants. All students in the activity share one OWI group that grants access to all selected assistant models.
 

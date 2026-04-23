@@ -290,6 +290,29 @@ export function selectTemplateFromModal(template) {
 }
 
 /**
+ * Reset all template-related state when the authenticated user changes.
+ */
+export function resetTemplateStore() {
+    userTemplates.set([]);
+    userTemplatesTotal.set(0);
+    userTemplatesPage.set(1);
+    userTemplatesLimit.set(20);
+    userTemplatesLoading.set(false);
+
+    sharedTemplates.set([]);
+    sharedTemplatesTotal.set(0);
+    sharedTemplatesPage.set(1);
+    sharedTemplatesLimit.set(20);
+    sharedTemplatesLoading.set(false);
+
+    currentTab.set('my');
+    selectedTemplateIds.set([]);
+    templateSelectModalOpen.set(false);
+    templateSelectCallback.set(null);
+    templateError.set(null);
+}
+
+/**
  * Set current tab and reload
  */
 export async function switchTab(tab) {
