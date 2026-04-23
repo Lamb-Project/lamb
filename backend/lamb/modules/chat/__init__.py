@@ -37,7 +37,7 @@ class ChatModule(ActivityModule):
         return [
             SetupField(
                 name="chat_visibility_enabled",
-                label="Allow instructors to review anonymized chat transcripts",
+                label="Allow instructors to review chat transcripts",
                 field_type="checkbox",
                 required=False
             )

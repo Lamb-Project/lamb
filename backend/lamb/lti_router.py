@@ -4,12 +4,12 @@ Unified LTI Router
 Single LTI endpoint that supports:
 - Instructor-configured activities with multiple assistants
 - Student launch into configured activities
-- Instructor dashboard with usage stats, student log, and anonymized chat transcripts
+- Instructor dashboard with usage stats, student log, and chat transcripts
 - Identity linking for instructor identification
 
 Session management:
 - Instructor flows use LAMB JWTs (via lamb.auth) with lti_type claims
-- Student consent uses short-lived in-memory tokens (one-shot flow)
+- Students launch directly into the activity module (no consent gate)
 
 Endpoint: POST /lamb/v1/lti/launch
 """
@@ -20,12 +20,10 @@ from fastapi.templating import Jinja2Templates
 from lamb import auth as lamb_auth
 from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
-from lamb import auth as lamb_auth
 from lamb.logging_config import get_logger
 from lamb.modules import get_all_modules, get_module
 import os
-import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from lamb.modules.base import LTIContext
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
@@ -43,49 +41,6 @@ SESSION_EXPIRED_HTML = "<h2>Session expired.</h2><p>Please click the LTI link in
 # LAMB JWT expiry for LTI instructor sessions
 LTI_DASHBOARD_JWT_EXPIRY = timedelta(days=7)
 LTI_SETUP_JWT_EXPIRY = timedelta(hours=2)
-
-
-# =============================================================================
-# Token helpers — short-lived signed tokens for setup and dashboard
-# flows. These are stateless so they remain valid across multiple workers.
-# =============================================================================
-SETUP_TOKEN_TTL = 600       # 10 minutes (setup / reconfigure)
-DASHBOARD_TOKEN_TTL = 1800  # 30 minutes (dashboard)
-
-
-
-def _create_token(data: dict, ttl: int = SETUP_TOKEN_TTL) -> str:
-    """Create a short-lived signed token that works across workers."""
-    payload = {
-        **data,
-        "scope": LTI_TOKEN_SCOPE,
-    }
-    return lamb_auth.create_token(payload, expires_delta=timedelta(seconds=ttl))
-
-
-
-def _validate_token(token: str) -> dict | None:
-    """Validate a signed token (does NOT consume it). Returns data or None."""
-    data = lamb_auth.decode_token(token)
-    if not data or data.get("scope") != LTI_TOKEN_SCOPE:
-        return None
-    return data
-
-
-def _consume_token(token: str):
-    """Compatibility no-op for stateless signed tokens."""
-    return None
-
-
-# Backward compatibility aliases
-def _create_setup_token(data: dict) -> str:
-    return _create_token({**data, "type": "setup"}, SETUP_TOKEN_TTL)
-
-def _validate_setup_token(token: str) -> dict | None:
-    data = _validate_token(token)
-    if not data or data.get("type") != "setup":
-        return None
-    return data
 
 
 # =============================================================================
@@ -133,15 +88,6 @@ def _validate_lti_jwt(token: str, expected_type: str) -> dict | None:
     return payload
 
 # =============================================================================
-def _format_timestamp(ts):
-    """Format a unix timestamp for display."""
-    if not ts:
-        return "—"
-    try:
-        return datetime.fromtimestamp(ts).strftime("%b %d, %Y %H:%M")
-    except (ValueError, OSError):
-        return "—"
-
 
 def _get_activity_module(activity):
     """Resolve the ActivityModule for an activity. Raises 500 if not installed."""
@@ -164,8 +110,8 @@ async def lti_launch(request: Request):
     Decision tree:
     1. Validate OAuth signature
     2. Is there a configured activity for this resource_link_id?
-       YES + instructor -> issue LAMB JWT -> dashboard (no OWI call yet)
-       YES + student    -> consent check -> consent page OR module.on_student_launch()
+       YES + instructor -> module.on_instructor_launch() (dashboard)
+       YES + student    -> module.on_student_launch() (direct launch)
        NO  + instructor -> identify as Creator user -> setup (LAMB JWT)
        NO  + student    -> "not configured yet" page
     """
@@ -225,7 +171,6 @@ async def lti_launch(request: Request):
             public_base = manager.get_public_base_url(request)
 
             # -- CONFIGURED: Instructor -> module dispatch --
-            from lamb.modules.base import LTIContext
             if manager.is_instructor(roles):
                 logger.info(f"Instructor at configured activity {resource_link_id} -> module.on_instructor_launch")
                 ctx = LTIContext(
@@ -242,15 +187,7 @@ async def lti_launch(request: Request):
                 module = _get_activity_module(activity)
                 return module.on_instructor_launch(ctx)
 
-            # ── CONFIGURED: Student flow ──
-            # Check if consent is needed
-            # Student identity comes from the LMS (name, email if provided).
-            # LMS instructors control what identity data is passed via LTI privacy settings.
-            from lamb.modules.base import LTIContext
-
-           
-
-            # No consent needed — launch into OWI
+            # ── CONFIGURED: Student -> module dispatch ──
             ctx = LTIContext(
                 resource_link_id=resource_link_id,
                 lms_user_id=lms_user_id,
@@ -629,7 +566,7 @@ async def lti_link_account_submit(request: Request):
 
         public_base = manager.get_public_base_url(request)
         return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/setup?token={new_token}",
+            url=f"{public_base}/m/chat/setup?token={new_token}",
             status_code=303
         )
 
@@ -798,7 +735,7 @@ async def lti_dashboard_stats(resource_link_id: str = "", token: str = ""):
 @router.get("/dashboard/students")
 async def lti_dashboard_students(resource_link_id: str = "", token: str = "",
                                   page: int = 1, per_page: int = 20):
-    """Return anonymized student list as JSON."""
+    """Return student list as JSON."""
     data = _validate_lti_jwt(token, "dashboard")
     if not data:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -814,7 +751,7 @@ async def lti_dashboard_students(resource_link_id: str = "", token: str = "",
 async def lti_dashboard_chats(resource_link_id: str = "", token: str = "",
                                assistant_id: int = None,
                                page: int = 1, per_page: int = 20):
-    """Return anonymized chat list as JSON. Requires chat_visibility enabled."""
+    """Return chat list as JSON. Requires chat_visibility enabled."""
     data = _validate_lti_jwt(token, "dashboard")
     if not data:
         raise HTTPException(status_code=403, detail="Invalid token")

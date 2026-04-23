@@ -105,25 +105,25 @@ git push origin v0.X
 Update the version number displayed in the LAMB UI banner.
 
 **Important Version Bumping Rules:**
-- Version is defined in `frontend/svelte-app/scripts/generate-version.js`
+- Version is defined in `frontend/packages/creator-app/scripts/generate-version.js`
 - Run the generator script to create `src/lib/version.js`
 - **Only commit the generator script**, NOT the generated `version.js` file
 - The generated file is built during deployment
 
 **Update version number:**
 
-1. Edit `frontend/svelte-app/scripts/generate-version.js`
+1. Edit `frontend/packages/creator-app/scripts/generate-version.js`
 2. Change the version line: `version: '0.4'` → `version: '0.5'`
 3. Regenerate the version file:
 
 ```bash
-node frontend/svelte-app/scripts/generate-version.js
+node frontend/packages/creator-app/scripts/generate-version.js
 ```
 
 4. Stage and commit only the generator script:
 
 ```bash
-git add frontend/svelte-app/scripts/generate-version.js
+git add frontend/packages/creator-app/scripts/generate-version.js
 git commit -m "chore: bump version to 0.X"
 git push origin main
 ```
@@ -200,9 +200,9 @@ git checkout main && git pull origin main && \
 git tag -a v0.X -m "Release v0.X" && git push origin v0.X
 
 # Step 5: Bump version
-# Edit: frontend/svelte-app/scripts/generate-version.js (version: '0.X')
-node frontend/svelte-app/scripts/generate-version.js
-git add frontend/svelte-app/scripts/generate-version.js
+# Edit: frontend/packages/creator-app/scripts/generate-version.js (version: '0.X')
+node frontend/packages/creator-app/scripts/generate-version.js
+git add frontend/packages/creator-app/scripts/generate-version.js
 git commit -m "chore: bump version to 0.X" && git push origin main
 
 # Step 6: Move tag
@@ -232,9 +232,9 @@ git tag --sort=-v:refname | head -5
 
 ## Related Files
 
-- **Version generator:** `frontend/svelte-app/scripts/generate-version.js`
+- **Version generator:** `frontend/packages/creator-app/scripts/generate-version.js`
 - **Version documentation:** `CLAUDE.md` (Version Bumping section)
-- **Generated version file:** `frontend/svelte-app/src/lib/version.js` (auto-generated, do not commit)
+- **Generated version file:** `frontend/packages/creator-app/src/lib/version.js` (auto-generated, do not commit)
 
 ## Resources
 

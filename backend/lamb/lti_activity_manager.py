@@ -320,15 +320,6 @@ class LtiActivityManager:
         return f"{proto}://{host}{prefix}{request.url.path}"
 
     @staticmethod
-    def get_owi_redirect_url(token: str) -> str:
-        """Build the OWI redirect URL with token."""
-        import config
-        owi_public = (os.getenv("OWI_PUBLIC_BASE_URL")
-                      or os.getenv("OWI_BASE_URL")
-                      or config.OWI_PUBLIC_BASE_URL)
-        return f"{owi_public}/api/v1/auths/complete?token={token}"
-
-    @staticmethod
     def get_public_base_url(request) -> str:
         """Get the public-facing base URL for LAMB."""
         public = os.getenv("LAMB_PUBLIC_BASE_URL")

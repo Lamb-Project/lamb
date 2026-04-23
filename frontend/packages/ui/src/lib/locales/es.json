@@ -766,6 +766,16 @@
         "owner": "Owner",
         "admin": "Admin",
         "member": "Member"
+      },
+      "agent": {
+        "title": "Agente LAMB",
+        "description": "Habla con el asistente de IA para obtener ayuda, crear asistentes, aprender sobre LAMB o solucionar problemas.",
+        "cta": "Iniciar conversación",
+        "starting": "Iniciando...",
+        "newConversation": "Nueva conversación",
+        "confirmNew": "¿Finalizar esta conversación e iniciar una nueva?",
+        "startNew": "Iniciar nueva conversación",
+        "continue": "Continuar la conversación de hoy"
       }
     },
     "help": {
@@ -774,6 +784,96 @@
       "loadingNews": "Loading news...",
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
+    }
+  },
+  "libraries": {
+    "title": "Bibliotecas",
+    "pageTitle": "Bibliotecas",
+    "pageDescription": "Gestiona tus bibliotecas de documentos.",
+    "myLibraries": "Mis bibliotecas",
+    "sharedLibraries": "Compartidas",
+    "createNew": "Nueva biblioteca",
+    "loading": "Cargando bibliotecas...",
+    "loginRequired": "Debes iniciar sesión para ver las bibliotecas.",
+    "noOwned": "Aún no tienes bibliotecas. ¡Crea una para empezar!",
+    "noShared": "No hay bibliotecas compartidas disponibles.",
+    "noResults": "Ninguna biblioteca coincide con tu búsqueda.",
+    "name": "Nombre",
+    "description": "Descripción",
+    "namePlaceholder": "Nombre de la biblioteca",
+    "descriptionPlaceholder": "Descripción opcional",
+    "createdAt": "Creada",
+    "owner": "Propietario",
+    "view": "Ver",
+    "delete": "Eliminar",
+    "actions": "Acciones",
+    "creating": "Creando...",
+    "createButton": "Crear biblioteca",
+    "createSuccess": "Biblioteca creada correctamente.",
+    "deleteSuccess": "Biblioteca eliminada.",
+    "shareSuccess": "Biblioteca compartida con la organización.",
+    "unshareSuccess": "La biblioteca ahora es privada.",
+    "uploadFile": "Subir archivo",
+    "titleOptional": "Título",
+    "upload": "Subir",
+    "uploading": "Subiendo...",
+    "uploadSuccess": "Archivo subido. Procesando...",
+    "fileTooLarge": "El archivo supera el límite de 500 MB.",
+    "importContent": "Importar URL / YouTube",
+    "importSuccess": "Importación iniciada.",
+    "addContent": "Añadir contenido",
+    "export": "Exportar",
+    "itemDeleteSuccess": "Elemento eliminado.",
+    "detailTitle": "Detalles de la biblioteca",
+    "backButton": "Volver a bibliotecas",
+    "items": {
+      "title": "Elementos",
+      "titleCol": "Título",
+      "source": "Fuente",
+      "size": "Tamaño",
+      "status": "Estado",
+      "created": "Creado",
+      "empty": "Sin elementos. Sube un archivo o importa contenido para empezar."
+    },
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartida",
+      "private": "Privada"
+    },
+    "createModal": {
+      "title": "Crear biblioteca",
+      "description": "Crea una nueva biblioteca de documentos para almacenar contenido importado.",
+      "nameRequired": "El nombre es obligatorio",
+      "nameTooLong": "El nombre debe tener menos de 100 caracteres"
+    },
+    "deleteModal": {
+      "title": "Eliminar biblioteca",
+      "message": "¿Estás seguro? Todo el contenido se eliminará permanentemente.",
+      "confirm": "Eliminar"
+    },
+    "deleteItemModal": {
+      "title": "Eliminar elemento",
+      "message": "¿Estás seguro de que quieres eliminar este elemento?",
+      "confirm": "Eliminar"
+    },
+    "importModal": {
+      "title": "Importar contenido",
+      "typeLabel": "Tipo de importación",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "Archivo ZIP",
+      "titleLabel": "Título (opcional)",
+      "youtubeUrl": "URL de YouTube",
+      "language": "Idioma de la transcripción",
+      "zipFile": "Archivo ZIP",
+      "zipHint": "Importa una biblioteca exportada previamente.",
+      "importing": "Importando...",
+      "importButton": "Importar",
+      "invalidUrl": "Se requiere una URL HTTP(S) válida.",
+      "invalidYoutubeUrl": "Se requiere una URL de YouTube válida.",
+      "zipRequired": "Se requiere un archivo ZIP.",
+      "zipTooLarge": "El archivo ZIP supera el límite de 500 MB.",
+      "importFailed": "La importación falló. Inténtalo de nuevo."
     }
   },
   "fileEval": {

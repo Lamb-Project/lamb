@@ -25,7 +25,7 @@ cd backend && pip install -r requirements-base.txt && pip install -r requirement
 cd backend && PORT=9099 uvicorn main:app --port 9099 --host 0.0.0.0 --forwarded-allow-ips '*' --reload
 
 # Frontend dev server (Svelte on port 5173)
-cd frontend/svelte-app && npm run dev -- --host 0.0.0.0
+cd frontend && pnpm --filter creator-app dev -- --host 0.0.0.0
 
 # KB Server (port 9090)
 cd lamb-kb-server-stable/backend && uvicorn main:app --host 0.0.0.0 --port 9090 --reload
@@ -35,13 +35,13 @@ cd library-manager && source .venv/bin/activate
 cd backend && LAMB_API_TOKEN=your-token uvicorn main:app --host 0.0.0.0 --port 9091 --reload
 ```
 
-### Frontend (from `frontend/svelte-app/`)
+### Frontend (from `frontend/`)
 ```bash
-npm run build        # production build
-npm run check        # svelte-kit sync + svelte-check (type checking)
-npm run lint         # prettier --check + eslint
-npm run format       # prettier --write
-npm run test:unit    # vitest
+pnpm --filter creator-app build        # production build
+pnpm --filter creator-app check        # svelte-kit sync + svelte-check (type checking)
+pnpm --filter creator-app lint         # prettier --check + eslint
+pnpm --filter creator-app format       # prettier --write
+pnpm --filter creator-app test:unit    # vitest
 ```
 
 ### Playwright E2E tests (from `testing/playwright/`)
@@ -128,7 +128,7 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 - Internal service: no CORS, no published ports, non-root Docker container, single-instance file lock.
 - 52 tests, 80% coverage. Full README at `library-manager/README.md`.
 
-**LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
+**LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/packages/creator-app/src/lib/components/libraries/`.
 
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
@@ -137,7 +137,7 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 - **Library Manager DB** — SQLite with WAL mode (`library-manager/data/library-manager.db`). Schema in `library-manager/backend/database/models.py`. Managed by SQLAlchemy `create_all` (no Alembic migrations yet).
 
 ### Frontend
-Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScript). I18n via `svelte-i18n` with locales in `frontend/svelte-app/src/lib/locales/` (en, es, ca, eu). API services in `frontend/svelte-app/src/lib/services/`. Reactive state in `frontend/svelte-app/src/lib/stores/`.
+Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScript). Monorepo with pnpm workspaces: `@lamb/ui` (shared components, stores, i18n), `creator-app` (main SPA), `module-chat` (LTI chat module), `module-file-eval` (LTI file evaluation module). I18n via `svelte-i18n` with locales in `frontend/packages/ui/src/lib/locales/` (en, es, ca, eu). API services in `frontend/packages/creator-app/src/lib/services/`. Reactive state in `frontend/packages/creator-app/src/lib/stores/`.
 
 ## Code Style
 
@@ -150,7 +150,7 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 - KB Server env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
 - Library Manager env: `library-manager/backend/.env` (copy from `.env.example`) — requires `LAMB_API_TOKEN`
 - Playwright env: `testing/playwright/.env` (copy from `.env.sample`)
-- Frontend runtime config: `frontend/svelte-app/static/config.js` (copy from `config.js.sample`)
+- Frontend runtime config: injected by `backend/docker-entrypoint.py` at container start
 - Docker orchestration: `docker-compose.yaml` (requires `LAMB_PROJECT_PATH` env var)
 - Reverse proxy: `Caddyfile`
 
@@ -162,7 +162,7 @@ Note: `library-manager/` is NOT vendored — it is developed in-tree as part of 
 
 ## Version Bumping
 
-Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `node frontend/svelte-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
+Dev version lives in `frontend/packages/creator-app/scripts/generate-version.js`. Run `node frontend/packages/creator-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
 
 ## Git commits 
 

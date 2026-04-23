@@ -7,19 +7,61 @@
 	import { page } from '$app/stores';
 	import { onDestroy, onMount } from 'svelte';
 	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
-	// Import apiClient to register global axios interceptors on app startup
+	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
+	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 	import '$lib/utils/apiClient';
+
+	let { children } = $props();
+	let sessionReady = $state(!browser || !new URL(window.location.href).searchParams.get('token'));
+	let processingToken = $state(false);
+	let processedToken = $state(/** @type {string | null} */ (null));
+	let sessionError = $state(/** @type {string | null} */ (null));
+
+	/** @param {URL} url */
+	async function handleTokenLogin(url) {
+		if (!browser) return;
+
+		const token = url.searchParams.get('token');
+		if (!token) {
+			sessionError = null;
+			if (!processingToken) sessionReady = true;
+			return;
+		}
+
+		if (processingToken || processedToken === token) return;
+
+		processingToken = true;
+		sessionReady = false;
+		sessionError = null;
+
+		try {
+			await replaceSessionWithToken(token);
+			processedToken = token;
+		} catch (error) {
+			console.error('Error bootstrapping session from URL token:', error);
+			sessionError = error instanceof Error ? error.message : 'Failed to start session';
+		} finally {
+			const cleanUrl = new URL(window.location.href);
+			cleanUrl.searchParams.delete('token');
+			window.history.replaceState({}, '', cleanUrl.toString());
+			processingToken = false;
+			sessionReady = true;
+		}
+	}
 
 	onMount(() => {
 		initI18n();
+
+		if (browser) {
+			const unsubscribe = page.subscribe(($page) => {
+				void handleTokenLogin($page.url);
+			});
+			return unsubscribe;
+		}
 	});
 
-	let { children } = $props();
-
-	// Layout-level auth guard: redirect unauthenticated users to root (login page)
-	// The root path '/' is the only public route — it shows Login/Signup when not logged in.
 	$effect(() => {
-		if (browser && !$user.isLoggedIn) {
+		if (browser && sessionReady && !$user.isLoggedIn) {
 			const currentPath = $page.url.pathname.replace(base, '') || '/';
 			if (currentPath !== '/') {
 				goto(`${base}/`, { replaceState: true });
@@ -27,8 +69,6 @@
 		}
 	});
 
-	// Session guard: periodically check if the account has been disabled mid-session.
-	// When logged in, polls the backend every 60 seconds; forces logout on 403 "Account disabled".
 	$effect(() => {
 		if (browser && $user.isLoggedIn) {
 			startSessionPolling(60000);
@@ -44,9 +84,20 @@
 
 <div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 	<Nav />
-	
+	<GlobalAacTabBar />
+
 	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
-		{@render children()}
+		{#if sessionError}
+			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>
+				<p class="text-sm text-red-600 mt-2">{sessionError}</p>
+				<a href="{base}/" class="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline">
+					Return to login
+				</a>
+			</div>
+		{:else if sessionReady}
+			{@render children()}
+		{/if}
 	</main>
 
 	<Footer />
