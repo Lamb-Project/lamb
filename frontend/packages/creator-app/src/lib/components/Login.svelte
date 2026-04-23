@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
+  import { replaceSessionWithLoginData } from '$lib/session/sessionManager';
   
   // Event dispatcher for component events
   const dispatch = createEventDispatcher();

@@ -61,7 +61,7 @@
 	});
 
 	$effect(() => {
-		if (browser && sessionReady && !$user.isLoggedIn) {
+		if (browser && sessionReady && !sessionError && !$user.isLoggedIn) {
 			const currentPath = $page.url.pathname.replace(base, '') || '/';
 			if (currentPath !== '/') {
 				goto(`${base}/`, { replaceState: true });
