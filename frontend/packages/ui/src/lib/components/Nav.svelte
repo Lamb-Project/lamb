@@ -1,6 +1,6 @@
 <script>
   import { user } from '../stores/userStore.js';
-  import { clearCurrentSession, ensureProfileLoaded } from '$lib/session/sessionManager';
+  import { clearCurrentSession, ensureProfileLoaded } from '../session/sessionManager.js';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';

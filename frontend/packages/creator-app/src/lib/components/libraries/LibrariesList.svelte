@@ -9,7 +9,7 @@
     import { _, user } from '@lamb/ui';
     import { processListData } from '$lib/utils/listHelpers';
     import CreateLibraryModal from '$lib/components/modals/CreateLibraryModal.svelte';
-    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+    import { ConfirmationModal } from '@lamb/ui';
     import FilterBar from '$lib/components/common/FilterBar.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
 

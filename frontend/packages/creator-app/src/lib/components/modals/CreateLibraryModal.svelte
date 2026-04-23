@@ -6,7 +6,7 @@
 <script>
     import { createEventDispatcher, tick } from 'svelte';
     import { createLibrary } from '$lib/services/libraryService';
-    import { _ } from '$lib/i18n';
+    import { _ } from '@lamb/ui';
 
     const dispatch = createEventDispatcher();
 

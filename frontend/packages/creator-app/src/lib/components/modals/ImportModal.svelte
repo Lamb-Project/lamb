@@ -7,7 +7,7 @@
     import axios from 'axios';
     import { createEventDispatcher, tick } from 'svelte';
     import { importUrl, importYouTube, importLibrary } from '$lib/services/libraryService';
-    import { _ } from '$lib/i18n';
+    import { _ } from '@lamb/ui';
 
     const MAX_ZIP_SIZE = 500 * 1024 * 1024;
 

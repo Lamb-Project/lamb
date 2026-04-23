@@ -10,7 +10,7 @@
         getItemStatus, exportLibrary, toggleSharing,
     } from '$lib/services/libraryService';
     import { _, user } from '@lamb/ui';
-    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+    import { ConfirmationModal } from '@lamb/ui';
     import ImportModal from '$lib/components/modals/ImportModal.svelte';
 
     let { libraryId = '' } = $props();
