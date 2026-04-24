@@ -1,0 +1,93 @@
+[project]
+name = "lamb-kb-server"
+version = "1.0.0"
+description = "LAMB Knowledge Base Server — chunking, embedding, and vector storage microservice"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+
+    # Database
+    "sqlalchemy>=2.0.30",
+
+    # File upload handling (multipart bodies)
+    "python-multipart>=0.0.9",
+
+    # HTTP client (shared helper usage)
+    "requests>=2.31.0",
+
+    # Default vector backend (ChromaDB) — always included.
+    "chromadb>=0.6.3",
+
+    # Chunking — aligned with lamb-kb-server-stable defaults.
+    "langchain-text-splitters>=0.3.0,<0.4.0",
+]
+
+[project.optional-dependencies]
+# Optional vector backend.
+qdrant = [
+    "qdrant-client>=1.9.0",
+]
+
+# Optional local embeddings (sentence-transformers-backed).
+local = [
+    "sentence-transformers>=2.2.2",
+]
+
+# OpenAI SDK is pulled in as a transitive dep of chromadb for the built-in
+# OpenAIEmbeddingFunction, but we pin it explicitly in the ``openai`` extra
+# for clarity.
+openai = [
+    "openai>=1.0.0",
+]
+
+all = [
+    "lamb-kb-server[qdrant,local,openai]",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# B008: function call in default argument — standard FastAPI idiom (Depends()).
+# B904: raise from — optional-dep guards deliberately re-raise without chaining.
+# B905: zip strict — prefer concise zip() over strict=False noise everywhere.
+ignore = ["B008", "B904", "B905"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/__init__.py", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
