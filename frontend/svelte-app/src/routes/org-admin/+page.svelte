@@ -3,7 +3,12 @@
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
     import { base } from '$app/paths';
-    import axios from 'axios';
+    // Shared axios instance: bearer-token auto-attach + global 401 redirect.
+    // Replaces the raw axios import so a mid-session token expiry no longer
+    // leaves the admin panel showing "Failed to fetch" banners. (#353, M4)
+    import { apiAxios as axios } from '$lib/services/apiClient';
+    import { isAxiosError } from 'axios';
+    axios.isAxiosError = isAxiosError;
     import { user } from '$lib/stores/userStore';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
@@ -19,9 +24,13 @@
     import ChangePasswordModal from '$lib/components/admin/shared/ChangePasswordModal.svelte';
     import UserActionModal from '$lib/components/admin/shared/UserActionModal.svelte';
 
-    // Get user data  
+    // Get user data
     /** @type {any} */
     let userData = $state(null);
+
+    // Track mount status so async fetches that resolve after the user
+    // navigates away don't write state to a destroyed component. (#353, M4)
+    let isMounted = true;
 
     // API base URL
     const API_BASE = '/creator/admin';
@@ -542,9 +551,12 @@
                 }
             });
 
+            if (!isMounted) return;
             console.log('Dashboard API Response:', response.data);
             dashboardData = response.data;
         } catch (err) {
+            if (!isMounted) return;
+            if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error fetching dashboard:', err);
             if (axios.isAxiosError(err) && err.response?.status === 403) {
                 error = 'Access denied. Organization admin privileges required.';
@@ -557,7 +569,7 @@
             }
             dashboardData = null;
         } finally {
-            isLoadingDashboard = false;
+            if (isMounted) isLoadingDashboard = false;
         }
     }
 
@@ -621,12 +633,15 @@
                 }
             });
 
+            if (!isMounted) return;
             console.log('Users API Response:', response.data);
             orgUsers = response.data || [];
             console.log(`Fetched ${orgUsers.length} users`);
             usersLoaded = true; // Mark as loaded even if empty
             applyUsersFilters(); // Apply filters and pagination
         } catch (err) {
+            if (!isMounted) return;
+            if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error fetching users:', err);
             if (axios.isAxiosError(err) && err.response?.status === 403) {
                 usersError = 'Access denied. Organization admin privileges required.';
@@ -640,7 +655,7 @@
             orgUsers = [];
             usersLoaded = true; // Mark as loaded even on error to prevent infinite loops
         } finally {
-            isLoadingUsers = false;
+            if (isMounted) isLoadingUsers = false;
         }
     }
     
@@ -1258,17 +1273,20 @@
             };
             
             const response = await axios.get(`${API_BASE}/org-admin/assistants`, { headers });
+            if (!isMounted) return;
             orgAssistants = response.data.assistants || [];
             assistantsLoaded = true; // Mark as loaded even if empty
-            
+
             // Load share counts for all assistants
             await loadAssistantShareCounts();
         } catch (err) {
+            if (!isMounted) return;
+            if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error fetching assistants:', err);
             assistantsError = err.response?.data?.detail || 'Failed to fetch assistants';
             assistantsLoaded = true; // Mark as loaded even on error to prevent infinite loops
         } finally {
-            isLoadingAssistants = false;
+            if (isMounted) isLoadingAssistants = false;
         }
     }
 
@@ -1381,6 +1399,7 @@
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
+            if (!isMounted) return;
             signupSettings = signupResponse.data;
 
             // Initialize signup edit form
@@ -1393,6 +1412,8 @@
             // It will be loaded when needed (contains slow API tests)
 
         } catch (err) {
+            if (!isMounted) return;
+            if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error fetching settings:', err);
             if (axios.isAxiosError(err) && err.response?.status === 403) {
                 settingsError = 'Access denied. Organization admin privileges required.';
@@ -1404,7 +1425,7 @@
                 settingsError = 'An unknown error occurred while fetching settings.';
             }
         } finally {
-            isLoadingSettings = false;
+            if (isMounted) isLoadingSettings = false;
         }
     }
 
@@ -2193,6 +2214,7 @@
 
     onDestroy(() => {
         console.log("Organization admin page unmounting");
+        isMounted = false;
     });
 
     // Reactive statements to handle view changes

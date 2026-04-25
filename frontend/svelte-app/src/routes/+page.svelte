@@ -6,10 +6,10 @@
 	import UserDashboard from '$lib/components/UserDashboard.svelte';
 	import { user } from '$lib/stores/userStore';
 	import { onMount, onDestroy } from 'svelte';
-	import { marked } from 'marked';
 	import { _, locale } from '$lib/i18n';
 	import { apiFetch } from '$lib/services/apiClient';
 	import { getMyProfile } from '$lib/services/adminService';
+	import { renderMarkdownSafe } from '$lib/utils/sanitize';
 
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. Also tag
@@ -90,7 +90,7 @@
 				const data = await response.json();
 				if (!isMounted || myLoadId !== newsLoadId) return;
 				if (data.success && data.content && data.content.trim()) {
-					newsContent = String(marked.parse(data.content));
+					newsContent = renderMarkdownSafe(data.content);
 				} else {
 					newsContent = '';
 				}
@@ -106,7 +106,7 @@
 					const fallbackData = await fallbackResponse.json();
 					if (!isMounted || myLoadId !== newsLoadId) return;
 					if (fallbackData.success && fallbackData.content && fallbackData.content.trim()) {
-						newsContent = String(marked.parse(fallbackData.content));
+						newsContent = renderMarkdownSafe(fallbackData.content);
 					} else {
 						newsContent = '';
 					}
@@ -118,7 +118,7 @@
 					const cacheData = await response.json();
 					if (!isMounted || myLoadId !== newsLoadId) return;
 					if (cacheData.success && cacheData.content) {
-						newsContent = String(marked.parse(cacheData.content));
+						newsContent = renderMarkdownSafe(cacheData.content);
 					} else {
 						newsContent = '';
 					}
