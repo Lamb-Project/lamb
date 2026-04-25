@@ -7,9 +7,13 @@
   import { locale, _ } from '$lib/i18n';
   import LanguageSelector from '$lib/components/LanguageSelector.svelte';
   import { VERSION_INFO } from '$lib/version.js';
+  import { getConfig } from '$lib/config.js';
   
   // Format version display
   let versionDisplay = `v${VERSION_INFO.version}`;
+  
+  // Feature flags
+  let librariesEnabled = $derived(getConfig().features.enableLibraries ?? true);
   
   // Default text for when i18n isn't loaded yet
   let localeLoaded = $state(false);
@@ -129,7 +133,7 @@
             <button
               type="button"
               onclick={() => toolsMenuOpen = !toolsMenuOpen}
-              class="inline-flex items-center h-full px-2 py-4 border-b-2 text-sm font-medium cursor-pointer select-none whitespace-nowrap {($page.url.pathname.startsWith(base + '/knowledgebases') || $page.url.pathname.startsWith(base + '/libraries') || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
+              class="inline-flex items-center h-full px-2 py-4 border-b-2 text-sm font-medium cursor-pointer select-none whitespace-nowrap {($page.url.pathname.startsWith(base + '/knowledgebases') || (librariesEnabled && $page.url.pathname.startsWith(base + '/libraries')) || $page.url.pathname.startsWith(base + '/evaluaitor')) ? 'border-[#2271b3] text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} {!$user.isLoggedIn ? 'opacity-50 pointer-events-none' : ''}"
               aria-disabled={!$user.isLoggedIn}
               aria-expanded={toolsMenuOpen}
               aria-haspopup="true"
@@ -150,13 +154,15 @@
                   >
                     {localeLoaded ? $_('knowledgeBases.title') : 'Knowledge Bases'}
                   </a>
-                  <a
-                    href="{base}/libraries"
-                    onclick={() => toolsMenuOpen = false}
-                    class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/libraries') ? 'bg-blue-50 text-[#2271b3]' : ''}"
-                  >
-                    {localeLoaded ? $_('libraries.title', { default: 'Libraries' }) : 'Libraries'}
-                  </a>
+                  {#if librariesEnabled}
+                    <a
+                      href="{base}/libraries"
+                      onclick={() => toolsMenuOpen = false}
+                      class="block px-4 py-3 text-sm font-medium text-gray-700 hover:text-[#2271b3] hover:bg-gray-50 transition-colors duration-150 {$page.url.pathname.startsWith(base + '/libraries') ? 'bg-blue-50 text-[#2271b3]' : ''}"
+                    >
+                      {localeLoaded ? $_('libraries.title', { default: 'Libraries' }) : 'Libraries'}
+                    </a>
+                  {/if}
                   <a
                     href="{base}/evaluaitor"
                     onclick={() => toolsMenuOpen = false}
@@ -196,4 +202,4 @@
       
     </div>
   </div>
-</nav> 
+</nav>

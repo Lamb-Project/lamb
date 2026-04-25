@@ -21,7 +21,8 @@ def replace_bool(text: str, key: str, value: bool) -> tuple[str, int]:
 
 
 def patch_frontend_config() -> None:
-    frontend_build_path = os.getenv("LAMB_FRONTEND_BUILD_PATH", "/app/frontend/build")
+    frontend_build_path = os.getenv(
+        "LAMB_FRONTEND_BUILD_PATH", "/app/frontend/build")
     config_js_path = Path(frontend_build_path) / "config.js"
     config_js_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -30,6 +31,7 @@ def patch_frontend_config() -> None:
     openwebui_server = config.LAMB_FRONTEND_OPENWEBUI_SERVER
     enable_openwebui = config.LAMB_ENABLE_OPENWEBUI
     enable_debug = config.LAMB_ENABLE_DEBUG
+    enable_libraries = config.LAMB_ENABLE_LIBRARIES
 
     if not config_js_path.exists():
         config_payload = {
@@ -42,9 +44,11 @@ def patch_frontend_config() -> None:
             "features": {
                 "enableOpenWebUi": enable_openwebui,
                 "enableDebugMode": enable_debug,
+                "enableLibraries": enable_libraries,
             },
         }
-        config_js_path.write_text("window.LAMB_CONFIG = " + json.dumps(config_payload, indent=2) + ";\n", encoding="utf-8")
+        config_js_path.write_text(
+            "window.LAMB_CONFIG = " + json.dumps(config_payload, indent=2) + ";\n", encoding="utf-8")
         return
 
     text = config_js_path.read_text(encoding="utf-8")
@@ -54,6 +58,7 @@ def patch_frontend_config() -> None:
         ("openWebUiServer", openwebui_server, replace_string),
         ("enableOpenWebUi", enable_openwebui, replace_bool),
         ("enableDebugMode", enable_debug, replace_bool),
+        ("enableLibraries", enable_libraries, replace_bool),
     ]
 
     for key, value, replacer in updates:
