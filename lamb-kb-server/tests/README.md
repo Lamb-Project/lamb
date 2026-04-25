@@ -67,8 +67,13 @@ The new test tier surfaced several latent issues in the source as it was written
 
 `scripts/run_tests.sh` runs each tier separately (passing tests required), then a final combined run with `--cov-fail-under=95`. Subprocess-side coverage instrumentation for the e2e tier is not enabled — measure-by-tier on e2e isn't reliable with the current `pytest-cov` plumbing. The combined coverage gate is the meaningful number; per-tier passing is the meaningful per-tier signal.
 
+## Mutation testing
+
+`mutmut>=3`'s coverage-based test selection couldn't link mutants to our class-based test layout (it reported "no test case for any mutant"). Instead, `scripts/manual_mutation_test*.sh` apply 32 hand-curated, high-impact mutations to `services/ingestion_service.py` and `tasks/worker.py`, run the test subset for each, and revert via `git checkout`.
+
+Result: **32 / 32 mutations killed** (100% on the curated set). Mutations covered: negated guards, swapped success/failure status assignments, inverted batch-size comparisons (5→4, 5→6, 5→1), counter-direction reversals (`+=` → `-=`), `>` vs `>=` boundary off-by-ones, `max` → `min` clamp inversions, `_dispatched.add` → `discard` (worker dedup), poll-interval inflation, and stale-recovery max-attempts inflation. No source bugs surfaced; the test suite catches every behavioral change in the curated set.
+
 ## Following up
 
 - Add a regression-guard test for the silent `chunking_params` key-typo issue (`{"overlap": 10}` is silently ignored; the correct key is `chunk_overlap`).
-- Mutation testing: `mutmut` is wired up in `pyproject.toml` but its auto test-discovery in `mutmut>=3` doesn't match the tiered class-based test layout; running it productively requires a different approach.
 - Pin `ollama/ollama:latest` in `docker-compose.test.yml` to a specific tag for reproducibility.

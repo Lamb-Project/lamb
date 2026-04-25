@@ -104,6 +104,9 @@ exclude_lines = [
 ]
 
 [tool.mutmut]
+# mutmut>=3 auto-discovery couldn't link mutants to our class-based tests.
+# scripts/manual_mutation_test*.sh do the actual mutation testing.
+# Config retained for future tooling that may handle our layout.
 paths_to_mutate = [
     "backend/services/ingestion_service.py",
     "backend/tasks/worker.py",
@@ -113,4 +116,4 @@ tests_dir = [
     "tests/integration/test_worker.py",
     "tests/integration/test_content_pipeline.py",
 ]
-pytest_add_cli_args = ["-q", "--no-header", "-m", "not slow"]
+pytest_add_cli_args = ["-q", "--no-header", "-x", "-m", "not slow"]
