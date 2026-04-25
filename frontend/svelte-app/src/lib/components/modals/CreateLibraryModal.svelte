@@ -94,13 +94,18 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-library-title"
+        tabindex="-1"
         onclick={handleBackdropClick}
         onkeydown={handleKeydown}
     >
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <!-- Inner panel: presentational only — clicks are stopped to keep the
+             backdrop from closing the modal, but it has no semantic interaction
+             of its own (the backdrop and form inputs handle keyboard / aria). -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
             class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4"
+            role="presentation"
             onclick={stopPropagation}
         >
             <div class="px-6 py-4 border-b border-gray-200">

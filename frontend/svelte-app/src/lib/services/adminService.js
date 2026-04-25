@@ -1,226 +1,115 @@
-import { getApiUrl } from '$lib/config';
+import { apiFetch } from '$lib/services/apiClient';
+
+// All admin endpoints route through apiFetch so an expired token triggers a
+// global session reset + redirect, instead of a generic "Failed to fetch"
+// banner that would otherwise force the admin to manually reload. (#352, M16)
+
+/**
+ * @param {string} path
+ * @param {string} token
+ * @param {RequestInit} [init]
+ * @returns {Promise<any>}
+ */
+async function jsonRequest(path, token, init = {}) {
+	const response = await apiFetch(path, {
+		token,
+		headers: { 'Content-Type': 'application/json' },
+		...init,
+	});
+	if (!response.ok) {
+		// Tolerate non-JSON 5xx responses (Caddy/proxy HTML) instead of throwing
+		// the misleading "Failed to fetch" that the bare .json() path produced.
+		let detail;
+		try {
+			const err = await response.json();
+			detail = err?.error || err?.detail;
+		} catch (_) { /* not JSON */ }
+		throw new Error(detail || `Request failed (${response.status})`);
+	}
+	return response.json();
+}
 
 /**
  * Fetch the current user's profile (resource overview)
- * @param {string} token - Authorization token
- * @returns {Promise<any>} - Promise resolving to user profile data
+ * @param {string} token
+ * @returns {Promise<any>}
  */
 export async function getMyProfile(token) {
-	try {
-		const response = await fetch(getApiUrl('/user/profile'), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to fetch profile');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error fetching user profile:', error);
-		throw error;
-	}
+	return jsonRequest('/user/profile', token, { method: 'GET' });
 }
 
 /**
  * Fetch a specific user's profile (admin/org-admin)
- * @param {string} token - Authorization token
- * @param {number} userId - User ID to fetch profile for
- * @returns {Promise<any>} - Promise resolving to user profile data
+ * @param {string} token
+ * @param {number} userId
+ * @returns {Promise<any>}
  */
 export async function getUserProfile(token, userId) {
-	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/profile`), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to fetch user profile');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error fetching user profile:', error);
-		throw error;
-	}
+	return jsonRequest(`/admin/users/${userId}/profile`, token, { method: 'GET' });
 }
 
 /**
  * Disable a user account
- * @param {string} token - Authorization token
- * @param {number} userId - User ID to disable
- * @returns {Promise<any>} - Promise resolving to operation result
+ * @param {string} token
+ * @param {number} userId
+ * @returns {Promise<any>}
  */
 export async function disableUser(token, userId) {
-	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/disable`), {
-			method: 'PUT',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to disable user');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error disabling user:', error);
-		throw error;
-	}
+	return jsonRequest(`/admin/users/${userId}/disable`, token, { method: 'PUT' });
 }
 
 /**
  * Enable a user account
- * @param {string} token - Authorization token
- * @param {number} userId - User ID to enable
- * @returns {Promise<any>} - Promise resolving to operation result
+ * @param {string} token
+ * @param {number} userId
+ * @returns {Promise<any>}
  */
 export async function enableUser(token, userId) {
-	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/enable`), {
-			method: 'PUT',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to enable user');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error enabling user:', error);
-		throw error;
-	}
+	return jsonRequest(`/admin/users/${userId}/enable`, token, { method: 'PUT' });
 }
 
 /**
  * Disable multiple user accounts
- * @param {string} token - Authorization token
- * @param {number[]} userIds - Array of user IDs to disable
- * @returns {Promise<any>} - Promise resolving to bulk operation result
+ * @param {string} token
+ * @param {number[]} userIds
+ * @returns {Promise<any>}
  */
 export async function disableUsersBulk(token, userIds) {
-	try {
-		const response = await fetch(getApiUrl('/admin/users/disable-bulk'), {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ user_ids: userIds })
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to disable users');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error disabling users:', error);
-		throw error;
-	}
+	return jsonRequest('/admin/users/disable-bulk', token, {
+		method: 'POST',
+		body: JSON.stringify({ user_ids: userIds }),
+	});
 }
 
 /**
  * Enable multiple user accounts
- * @param {string} token - Authorization token
- * @param {number[]} userIds - Array of user IDs to enable
- * @returns {Promise<any>} - Promise resolving to bulk operation result
+ * @param {string} token
+ * @param {number[]} userIds
+ * @returns {Promise<any>}
  */
 export async function enableUsersBulk(token, userIds) {
-	try {
-		const response = await fetch(getApiUrl('/admin/users/enable-bulk'), {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ user_ids: userIds })
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to enable users');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error enabling users:', error);
-		throw error;
-	}
+	return jsonRequest('/admin/users/enable-bulk', token, {
+		method: 'POST',
+		body: JSON.stringify({ user_ids: userIds }),
+	});
 }
 
 /**
  * Check user dependencies (assistants and knowledge bases)
- * @param {string} token - Authorization token
- * @param {number} userId - User ID to check
- * @returns {Promise<any>} - Promise resolving to dependencies info
+ * @param {string} token
+ * @param {number} userId
+ * @returns {Promise<any>}
  */
 export async function checkUserDependencies(token, userId) {
-	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}/dependencies`), {
-			method: 'GET',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to check user dependencies');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error checking user dependencies:', error);
-		throw error;
-	}
+	return jsonRequest(`/admin/users/${userId}/dependencies`, token, { method: 'GET' });
 }
 
 /**
  * Delete a disabled user (must have no dependencies)
- * @param {string} token - Authorization token
- * @param {number} userId - User ID to delete
- * @returns {Promise<any>} - Promise resolving to operation result
+ * @param {string} token
+ * @param {number} userId
+ * @returns {Promise<any>}
  */
 export async function deleteUser(token, userId) {
-	try {
-		const response = await fetch(getApiUrl(`/admin/users/${userId}`), {
-			method: 'DELETE',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			}
-		});
-
-		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || error.detail || 'Failed to delete user');
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error('Error deleting user:', error);
-		throw error;
-	}
+	return jsonRequest(`/admin/users/${userId}`, token, { method: 'DELETE' });
 }

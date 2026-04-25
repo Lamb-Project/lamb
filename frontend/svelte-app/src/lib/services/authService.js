@@ -1,6 +1,10 @@
 import { getApiUrl } from '$lib/config'; // Use the new config helper
+import { apiFetch } from '$lib/services/apiClient';
 
 // This will be proxied to your FastAPI backend
+// NOTE: login() and signup() use raw fetch on purpose — at that point we have
+// no stored token yet, so the apiFetch 401 redirect would be incorrect (a 401
+// from the login endpoint is "wrong credentials", not "session expired").
 
 /**
  * Handles user login
@@ -99,16 +103,20 @@ export async function signup(name, email, password, secretKey) {
 /**
  * Fetches the current user's profile using their auth token.
  * Used after LTI login to populate user store with name, email, etc.
- * @param {string} token - Authentication token
+ *
+ * Routed through apiFetch so an expired token triggers global session
+ * recovery (clear + redirect to login) instead of leaving the app in a
+ * partial-login state where every subsequent call silently fails. (#352, M2)
+ *
+ * @param {string} token - Authentication token (LTI bootstrap path passes
+ *                         a token that may not be in localStorage yet).
  * @returns {Promise<any>} - Promise resolving to user profile data
  */
 export async function fetchUserProfile(token) {
   try {
-    const response = await fetch(getApiUrl('/me'), {
+    const response = await apiFetch('/me', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      token,
     });
 
     let data;
@@ -146,12 +154,10 @@ export async function fetchUserProfile(token) {
  */
 export async function getHelp(question, token) {
   try {
-    const response = await fetch(getApiUrl('/lamb_helper_assistant'), {
+    const response = await apiFetch('/lamb_helper_assistant', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      token,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question })
     });
     

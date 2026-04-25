@@ -5,7 +5,10 @@
  * All methods require authentication via JWT token.
  */
 
-import axios from 'axios';
+// Shared axios instance with global 401 handling (#352, M1/M2/M3).
+import { apiAxios as axios } from '$lib/services/apiClient';
+import { isAxiosError } from 'axios';
+axios.isAxiosError = isAxiosError;
 import { getConfig } from '../config';
 
 const config = getConfig();
