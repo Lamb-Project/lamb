@@ -260,12 +260,13 @@ class QdrantBackend(VectorDBBackend):
         query_vectors = embedding_function([query_text])
         query_vector = query_vectors[0]
 
-        hits = client.search(
+        response = client.query_points(
             collection_name=collection_id,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             with_payload=True,
         )
+        hits = response.points
 
         results: list[QueryResult] = []
         for hit in hits:

@@ -53,6 +53,8 @@ dev = [
     "pytest-cov>=5.0",
     "httpx>=0.27.0",
     "ruff>=0.4.0",
+    "vcrpy>=6.0",
+    "mutmut>=2.4",
 ]
 
 [build-system]
@@ -76,6 +78,13 @@ ignore = ["B008", "B904", "B905"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "unit: tier 1 — direct module tests, no HTTP",
+    "integration: tier 2 — ASGI in-process, real DB + worker",
+    "e2e: tier 3 — real HTTP, docker stack, optional cassettes",
+    "slow: takes more than ~5s",
+    "needs_docker: requires Docker socket",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
@@ -83,6 +92,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["backend"]
+branch = true
 omit = ["backend/__init__.py", "*/tests/*"]
 
 [tool.coverage.report]
@@ -90,4 +100,17 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+    "if __name__ == .__main__.:",
 ]
+
+[tool.mutmut]
+paths_to_mutate = [
+    "backend/services/ingestion_service.py",
+    "backend/tasks/worker.py",
+]
+tests_dir = [
+    "tests/unit/test_services.py",
+    "tests/integration/test_worker.py",
+    "tests/integration/test_content_pipeline.py",
+]
+pytest_add_cli_args = ["-q", "--no-header", "-m", "not slow"]

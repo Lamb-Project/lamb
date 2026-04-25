@@ -89,13 +89,25 @@ PORT=9092 uvicorn main:app --host 0.0.0.0 --port 9092 --reload
 
 ### Running tests
 
+The suite is split into three tiers — see `tests/README.md` for fixture details.
+
 ```bash
-pytest tests/ -v
-pytest tests/ --cov=backend --cov-report=term-missing
+# Run all three tiers + combined coverage gate (>=95%).
+./scripts/run_tests.sh
+
+# Single tier in isolation.
+pytest tests/unit/         -q                    # ~330 tests, ~16s, no external deps
+pytest tests/integration/  -q                    # ~178 tests, ~110s, ASGI in-process
+pytest tests/e2e/          -q                    # ~61 tests, ~150s, real HTTP + Docker
+
+# Combined with coverage report.
+pytest tests/ --cov=backend --cov-branch --cov-report=term-missing
 ruff check backend/ tests/
 ```
 
-Tests use an in-process ASGI client (`httpx.AsyncClient(transport=ASGITransport(app))`) so no external server is required. ChromaDB runs in-process with a temporary storage directory per test session.
+The e2e tier requires Docker (Qdrant + Ollama containers brought up automatically by the session fixture). If `QDRANT_TEST_PORT` and `OLLAMA_TEST_PORT` env vars are set, the fixture uses those pre-started containers instead of spinning up its own. If Docker is unavailable, the entire e2e tier is skipped with a clear message.
+
+Combined coverage hits **99%** line + branch on `backend/` (572 tests). The remaining 1% is structurally unreachable: a `sys.exit(1)` startup guard, an `ImportError` re-raise inside an `except ImportError` block, and a defensive branch the splitter algorithm never enters.
 
 ### Docker
 
