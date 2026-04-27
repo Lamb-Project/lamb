@@ -801,7 +801,7 @@
 			// Route through apiFetch so an expired token triggers global session
 			// recovery, and so the response goes through one well-tested code path.
 			// (#352, H11 + M3)
-			const response = await apiFetch('/creator/files/upload', {
+			const response = await apiFetch('/files/upload', {
 				method: 'POST',
 				body: formData,
 			});

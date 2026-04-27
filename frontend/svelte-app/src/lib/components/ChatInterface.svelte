@@ -159,7 +159,7 @@
         logWithTime(`Fetching chat list for assistant ${assistantId}`);
 
         try {
-            const response = await apiFetch(`/creator/chats?assistant_id=${assistantId}&per_page=50`);
+            const response = await apiFetch(`/chats?assistant_id=${assistantId}&per_page=50`);
 
             if (!isMounted) return;
             if (!response.ok) {
@@ -190,7 +190,7 @@
         isLoading = true;
 
         try {
-            const response = await apiFetch(`/creator/chats/${chatId}`);
+            const response = await apiFetch(`/chats/${chatId}`);
 
             if (!isMounted) return;
             if (!response.ok) {
@@ -245,7 +245,7 @@
         logWithTime(`Updating chat title to: ${newTitle}`);
         
         try {
-            const response = await apiFetch(`/creator/chats/${currentChatId}`, {
+            const response = await apiFetch(`/chats/${currentChatId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle })
@@ -289,7 +289,7 @@
         logWithTime(`Deleting chat ${deletingChatId}`);
         
         try {
-            const response = await apiFetch(`/creator/chats/${deletingChatId}`, {
+            const response = await apiFetch(`/chats/${deletingChatId}`, {
                 method: 'DELETE'
             });
 
@@ -326,9 +326,9 @@
     async function fetchModels() {
         isLoadingModels = true;
         modelsError = null;
-        logWithTime('Fetching models from /creator/models');
+        logWithTime('Fetching models from /creator/models');  // apiFetch prepends /creator
         try {
-            const response = await apiFetch('/creator/models', { method: 'GET' });
+            const response = await apiFetch('/models', { method: 'GET' });
             if (!isMounted) return;
             if (!response.ok) throw new Error(`Failed to fetch models: ${response.status}`);
             const data = await response.json();
@@ -411,7 +411,7 @@
                 throw new Error('Assistant ID is required for chat');
             }
 
-            const endpoint = `/creator/assistant/${assistantId}/chat/completions`;
+            const endpoint = `/assistant/${assistantId}/chat/completions`;
             logWithTime(`Sending request to ${endpoint}`);
             const response = await apiFetch(endpoint, {
                 method: 'POST',
