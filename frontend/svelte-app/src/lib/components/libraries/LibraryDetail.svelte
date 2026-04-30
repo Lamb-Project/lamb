@@ -4,7 +4,7 @@
   Receives libraryId as a prop from the page.
 -->
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import {
         getLibrary, getItems, uploadFile, deleteItem,
         getItemStatus, exportLibrary, toggleSharing,
@@ -33,6 +33,7 @@
     // Polling
     let pendingItemIds = $state(new Set());
     let pollInterval = $state(null);
+    let pollFailures = 0;
 
     // Delete item modal
     let showDeleteItemModal = $state(false);
@@ -44,10 +45,27 @@
 
     let isOwner = $derived(library?.is_owner ?? false);
 
+    // --- Resilience plumbing (#352, M4-M7) ---
+    // - isMounted prevents setState writes after the user navigates away
+    // - currentLoadId tags every loadData() invocation so a stale fetch that
+    //   resolves AFTER a newer one cannot overwrite current state
+    // - successTimer is tracked so we can clear it on unmount
+    let isMounted = true;
+    let currentLoadId = 0;
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let successTimer = null;
+
     onMount(() => {
         return () => {
+            // Legacy return-from-onMount cleanup; full cleanup is in onDestroy.
             if (pollInterval) clearInterval(pollInterval);
         };
+    });
+
+    onDestroy(() => {
+        isMounted = false;
+        if (pollInterval) clearInterval(pollInterval);
+        if (successTimer) clearTimeout(successTimer);
     });
 
     $effect(() => {
@@ -58,6 +76,11 @@
     });
 
     async function loadData() {
+        // Tag this run; if a newer call starts before we finish, our writes
+        // are dropped on resolution to prevent stale data from clobbering
+        // the current view (#352, M4).
+        const myLoadId = ++currentLoadId;
+
         if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
         loading = true;
         error = '';
@@ -66,20 +89,25 @@
                 getLibrary(libraryId),
                 getItems(libraryId, { limit: 100 }),
             ]);
+            if (!isMounted || myLoadId !== currentLoadId) return;
             library = lib;
             items = itemsData.items || [];
             totalItems = itemsData.total || items.length;
             startPollingIfNeeded();
         } catch (/** @type {unknown} */ err) {
+            if (!isMounted || myLoadId !== currentLoadId) return;
+            // Session-expired errors are already redirecting elsewhere.
+            if (err instanceof Error && err.message.startsWith('Session expired')) return;
             console.error('Error loading library:', err);
             error = err instanceof Error ? err.message : 'Failed to load library';
         } finally {
-            loading = false;
+            if (isMounted && myLoadId === currentLoadId) loading = false;
         }
     }
 
     function startPollingIfNeeded() {
         if (pollInterval) clearInterval(pollInterval);
+        pollFailures = 0;
         const pending = items.filter(i => i.status === 'processing' || i.status === 'pending');
         if (pending.length === 0) return;
         pendingItemIds = new Set(pending.map(i => i.id));
@@ -87,14 +115,17 @@
     }
 
     async function pollPendingItems() {
+        if (!isMounted) return;
         if (pendingItemIds.size === 0) {
             clearInterval(pollInterval);
             pollInterval = null;
             return;
         }
+        let sawError = false;
         for (const itemId of [...pendingItemIds]) {
             try {
                 const status = await getItemStatus(libraryId, itemId);
+                if (!isMounted) return;
                 if (status.status === 'ready' || status.status === 'failed') {
                     pendingItemIds.delete(itemId);
                     pendingItemIds = new Set(pendingItemIds);
@@ -104,9 +135,30 @@
                         items = [...items];
                     }
                 }
-            } catch {
-                // Ignore individual poll errors
+            } catch (e) {
+                // Session-expired aborts the whole poll loop — stop polling so
+                // we don't keep hammering after the redirect kicks in.
+                if (e instanceof Error && e.message.startsWith('Session expired')) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    return;
+                }
+                sawError = true;
             }
+        }
+        if (sawError) {
+            // After 5 consecutive cycles where every probe errored, stop and
+            // surface a banner. Previously errors were silently swallowed and
+            // items appeared "processing" forever (#352, M5).
+            pollFailures += 1;
+            if (pollFailures >= 5) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+                error = 'Lost connection while checking item status. Reload to retry.';
+                return;
+            }
+        } else {
+            pollFailures = 0;
         }
         if (pendingItemIds.size === 0 && pollInterval) {
             clearInterval(pollInterval);
@@ -116,7 +168,13 @@
 
     function showSuccess(msg) {
         successMessage = msg;
-        setTimeout(() => { successMessage = ''; }, 4000);
+        // Clear any previous pending timer so rapid successes don't accumulate
+        // and so unmount doesn't fire setState on a destroyed component (#352, M6).
+        if (successTimer) clearTimeout(successTimer);
+        successTimer = setTimeout(() => {
+            if (isMounted) successMessage = '';
+            successTimer = null;
+        }, 4000);
     }
 
     const SIMPLE_IMPORT_EXTENSIONS = new Set(['txt', 'md', 'html', 'htm']);

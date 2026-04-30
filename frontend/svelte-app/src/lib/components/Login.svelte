@@ -28,51 +28,58 @@
     loading = true;
     message = '';
     success = false;
-    
-    const result = await login(email, password);
-    
-    console.log('Login result:', result);
-    console.log('User type:', result.data?.user_type);
-    
-    // Check the success flag and nested data object
-    if (result.success && result.data) { 
-      // Check if user is an end_user and redirect to OWI
-      if (result.data.user_type === 'end_user') {
-        console.log('End user detected! Redirecting to OWI...');
-        success = true;
-        message = 'Redirecting to Open WebUI...';
-        
-        // Redirect to OWI with the launch URL
-        if (result.data.launch_url) {
-          console.log('Redirecting to:', result.data.launch_url);
-          window.location.href = result.data.launch_url;
-        } else {
-          // Fallback: show error if launch_url is missing
-          console.error('No launch_url in response!');
-          success = false;
-          message = 'Unable to redirect to Open WebUI. Please contact your administrator.';
+
+    // Wrap in try/finally so any unexpected throw still resets the loading
+    // flag — otherwise the submit button stays disabled forever. (#352)
+    try {
+      const result = await login(email, password);
+
+      console.log('Login result:', result);
+      console.log('User type:', result.data?.user_type);
+
+      // Check the success flag and nested data object
+      if (result.success && result.data) {
+        // Check if user is an end_user and redirect to OWI
+        if (result.data.user_type === 'end_user') {
+          console.log('End user detected! Redirecting to OWI...');
+          success = true;
+          message = 'Redirecting to Open WebUI...';
+
+          // Redirect to OWI with the launch URL
+          if (result.data.launch_url) {
+            console.log('Redirecting to:', result.data.launch_url);
+            window.location.href = result.data.launch_url;
+          } else {
+            // Fallback: show error if launch_url is missing
+            console.error('No launch_url in response!');
+            success = false;
+            message = 'Unable to redirect to Open WebUI. Please contact your administrator.';
+          }
+          return;
         }
-        loading = false;
-        return;
+        console.log('Creator user detected, continuing to creator interface');
+
+        // For creator users, continue with normal login
+        replaceSessionWithLoginData(result.data);
+
+        success = true;
+        message = 'Login successful!'; // Use a generic message or i18n key
+
+        setTimeout(() => {
+          goto(base + '/', { replaceState: true });
+        }, 1000);
+      } else {
+        // Handle login failure
+        success = false;
+        message = result.error || 'Login failed. Please check credentials.';
       }
-      console.log('Creator user detected, continuing to creator interface');
-      
-      // For creator users, continue with normal login
-      replaceSessionWithLoginData(result.data); 
-      
-      success = true;
-      message = 'Login successful!'; // Use a generic message or i18n key
-      
-      setTimeout(() => {
-        goto(base + '/', { replaceState: true });
-      }, 1000);
-    } else {
-      // Handle login failure
+    } catch (err) {
       success = false;
-      message = result.error || 'Login failed. Please check credentials.'; // Provide a clearer default error
+      message = err instanceof Error ? err.message : 'Login failed unexpectedly.';
+      console.error('Unexpected login error:', err);
+    } finally {
+      loading = false;
     }
-    
-    loading = false;
   }
   
   // Show signup form

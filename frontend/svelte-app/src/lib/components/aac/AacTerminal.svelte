@@ -1,8 +1,14 @@
 <script>
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
 	import { marked } from 'marked';
+
+	// Abort any in-flight stream when the component unmounts so the fetch
+	// and getReader() loop stop running in the background (#352, H3).
+	/** @type {AbortController|null} */
+	let streamAbort = null;
+	let isMounted = true;
 
 	/** @type {{ sessionId: string, firstMessage?: string, resumed?: boolean, skillStartup?: boolean }} */
 	let { sessionId, firstMessage = '', resumed = false, skillStartup = false } = $props();
@@ -83,9 +89,12 @@
 		} else if (firstMessage) {
 			messages = [{ role: 'assistant', content: firstMessage }];
 		} else if (resumed) {
-			// Resumed session — load history, hide internal [System:...] messages
+			// Resumed session — load history, hide internal [System:...] messages.
+			// Skip writes if the user navigated away while getSession was in flight
+			// (rapid tab switching destroys this component before resolution). (#352, H5)
 			try {
 				const session = await getSession(sessionId);
+				if (!isMounted) return;
 				const conv = (session.conversation || []).filter(
 					m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
 					  || (m.role === 'assistant' && m.content && !m.tool_calls)
@@ -95,10 +104,13 @@
 					resumeNotice = true;
 				}
 			} catch (e) {
+				if (!isMounted) return;
+				if (e instanceof Error && e.message.startsWith('Session expired')) return;
 				messages = [{ role: 'system', content: `Error loading session: ${e.message}` }];
 			}
 		}
 
+		if (!isMounted) return;
 		await tick();
 		scrollToBottom();
 		inputEl?.focus();
@@ -112,6 +124,8 @@
 		messages = [...messages, { role: 'assistant', content: '' }];
 		await tick();
 
+		streamAbort?.abort();
+		streamAbort = new AbortController();
 		try {
 			await sendMessageStream(
 				sessionId,
@@ -131,13 +145,19 @@
 					else if (status.status === 'responding') statusText = '';
 					scrollToBottom();
 				},
+				streamAbort.signal,
 			);
 		} catch (e) {
-			messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
-			messages = messages;
+			if (isMounted && e?.name !== 'AbortError') {
+				messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
+				messages = messages;
+			}
+		} finally {
+			// Defensive: guarantee loading flag is cleared even if anything
+			// above throws unexpectedly. (#352, Pattern A)
+			if (isMounted) loading = false;
 		}
-
-		loading = false;
+		if (!isMounted) return;
 		await tick();
 		scrollToBottom();
 		inputEl?.focus();
@@ -169,6 +189,8 @@
 		await tick();
 		scrollToBottom();
 
+		streamAbort?.abort();
+		streamAbort = new AbortController();
 		try {
 			await sendMessageStream(
 				sessionId,
@@ -200,17 +222,30 @@
 					}
 					scrollToBottom();
 				},
+				streamAbort.signal,
 			);
 		} catch (e) {
-			messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
-			messages = messages;
+			if (isMounted && e?.name !== 'AbortError') {
+				messages[streamIdx] = { role: 'system', content: `Error: ${e.message}` };
+				messages = messages;
+			}
+		} finally {
+			// Defensive: guarantee loading flag is cleared on every exit
+			// path so the send button never gets stuck disabled. (#352, Pattern A)
+			if (isMounted) loading = false;
 		}
 
-		loading = false;
+		if (!isMounted) return;
 		await tick();
 		scrollToBottom();
 		inputEl?.focus();
 	}
+
+	onDestroy(() => {
+		isMounted = false;
+		streamAbort?.abort();
+		streamAbort = null;
+	});
 
 	function handleKeydown(e) {
 		if (e.key === 'Enter' && !e.shiftKey) {

@@ -2,13 +2,19 @@
     import { publishModalOpen, selectedAssistant, publishingStatus, resetPublishingStatus } from '$lib/stores/assistantPublish';
     import { publishAssistant } from '$lib/services/assistantService'; // Import service function
     import { _, locale } from '$lib/i18n'; // Import i18n
-    import { createEventDispatcher, onMount } from 'svelte'; // For dispatching event and onMount
+    import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 
     let localeLoaded = $state(false);
     let form = $state(); // Use $state for form ref
     let groupName = $state('');
     let oauthConsumerName = $state('');
-    
+
+    // Track the post-success close timer so we can clear it if the user
+    // closes the modal manually within the 1.5s window — otherwise the
+    // timeout fires handleClose() on a destroyed component. (#353, H3)
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let closeTimer = null;
+
     const dispatch = createEventDispatcher();
 
     // Check locale loaded state
@@ -17,6 +23,10 @@
             if (value) localeLoaded = true;
         });
         return unsubscribe;
+    });
+
+    onDestroy(() => {
+        if (closeTimer) clearTimeout(closeTimer);
     });
 
     // Derive from selectedAssistant store
@@ -31,6 +41,7 @@
     });
 
     function handleClose() {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         $publishModalOpen = false;
         resetPublishingStatus(); // Reset status on close
     }
@@ -50,8 +61,10 @@
             
             // Dispatch event with ID
             dispatch('assistantPublished', { assistantId: $selectedAssistant.id });
-            
-            setTimeout(() => {
+
+            if (closeTimer) clearTimeout(closeTimer);
+            closeTimer = setTimeout(() => {
+                closeTimer = null;
                 handleClose();
             }, 1500);
         } catch (error) {

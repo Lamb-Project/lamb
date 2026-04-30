@@ -11,8 +11,9 @@
 	import { goto } from '$app/navigation'; // Import for redirect
 	import { base } from '$app/paths'; // Import base path
 	import { createEventDispatcher } from 'svelte'; // Import event dispatcher
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { getSystemCapabilities } from '$lib/services/assistantService'; // Import service
+	import { apiFetch } from '$lib/services/apiClient';
 	import { locale } from '$lib/i18n';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
@@ -20,6 +21,11 @@
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
+
+	// Track mount status so async fetches that resolve after the user
+	// navigates away don't write state to a destroyed component. (#352, M13)
+	let isMounted = true;
+	onDestroy(() => { isMounted = false; });
 
 	// --- Props --- 
 	// Use $props for Svelte 5 runes mode
@@ -654,22 +660,28 @@
 					return [];
 				})
 			]);
-			
+
+			if (!isMounted) return; // user navigated away while fetching (#352, M13)
+
 			// Sort each separately
 			owned.sort((a, b) => a.name.localeCompare(b.name));
 			shared.sort((a, b) => a.name.localeCompare(b.name));
-			
+
 			ownedKnowledgeBases = owned;
 			sharedKnowledgeBases = shared;
 		} catch (err) {
+			if (!isMounted) return;
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			console.error('Error fetching knowledge bases:', err);
 			knowledgeBaseError = err instanceof Error ? err.message : 'Failed to load knowledge bases';
 			ownedKnowledgeBases = [];
 			sharedKnowledgeBases = [];
 		} finally {
-			loadingKnowledgeBases = false;
-			kbFetchAttempted = true; // Mark fetch as attempted
-			console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`);
+			if (isMounted) {
+				loadingKnowledgeBases = false;
+				kbFetchAttempted = true;
+				console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`);
+			}
 		}
 	}
 
@@ -781,32 +793,17 @@
 		fileUploadLoading = true;
 		fileUploadError = '';
 
+		// Create FormData object
+		const formData = new FormData();
+		formData.append('file', file);
+
 		try {
-			const token = getAuthToken();
-			if (!token) {
-				throw new Error('Authentication token not found');
-			}
-
-			// Get the lamb server URL
-			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
-			if (!lambServerUrl) {
-				throw new Error('LAMB server URL not configured');
-			}
-
-			// Create FormData object
-			const formData = new FormData();
-			formData.append('file', file);
-
-			// Call the files/upload endpoint
-			const endpointPath = '/creator/files/upload';
-			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-			
-			const response = await fetch(apiUrl, {
+			// Route through apiFetch so an expired token triggers global session
+			// recovery, and so the response goes through one well-tested code path.
+			// (#352, H11 + M3)
+			const response = await apiFetch('/files/upload', {
 				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${token}`
-				},
-				body: formData
+				body: formData,
 			});
 
 			if (!response.ok) {
@@ -816,18 +813,22 @@
 
 			const data = await response.json();
 			console.log('File uploaded successfully:', data);
-			
+
 			// Refresh the file list
 			await fetchUserFiles();
-			
+
 			// Auto-select the newly uploaded file
 			if (data.path) {
 				selectedFilePath = data.path;
 			}
-			
-			// Clear the file input
+
+			// Clear the file input (both the selected file state and the DOM
+			// element) so re-selecting the same file fires onchange again.
 			input.value = '';
 		} catch (err) {
+			// 'Session expired' was thrown by apiFetch and a redirect is already
+			// in flight — don't paint a duplicate banner.
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			console.error('Error uploading file:', err);
 			fileUploadError = err instanceof Error ? err.message : 'Failed to upload file';
 		} finally {

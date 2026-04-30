@@ -1,27 +1,14 @@
 <script>
-    import { onMount } from 'svelte';
-    import { getOpenTabs, getActiveTabId, setActiveTab, closeTab } from '$lib/stores/aacStore.svelte';
+    import { openTabs, activeTabId, setActiveTab, closeTab } from '$lib/stores/aacStore.svelte';
     import { deleteSession } from '$lib/services/aacService';
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
     import { _ } from '$lib/i18n';
 
-    /** @type {Array<{id: string, title: string, assistantId: number|null, skill: string|null}>} */
-    let tabs = $state([]);
-    /** @type {string|null} */
-    let activeId = $state(null);
-
-    // Poll the store periodically since cross-module $state reactivity
-    // doesn't work reliably in Svelte 5 built mode
-    onMount(() => {
-        function sync() {
-            tabs = [...getOpenTabs()];
-            activeId = getActiveTabId();
-        }
-        sync();
-        const interval = setInterval(sync, 500);
-        return () => clearInterval(interval);
-    });
+    // Subscribe directly to the writable stores via the `$` auto-subscription.
+    // Previously this component polled getOpenTabs() every 500ms because cross-
+    // module $state reactivity didn't propagate in built mode — fixed at the
+    // store level by switching to writable() (#352, H6).
 
     const skillIcons = {
         'about-lamb': '🤖',
@@ -38,7 +25,6 @@
 
     async function switchToTab(id) {
         setActiveTab(id);
-        activeId = id;
         if (!$page.url.pathname.startsWith('/agent') || $page.url.pathname.includes('/history')) {
             await goto(`/agent?session=${id}`);
         }
@@ -46,15 +32,16 @@
 
     async function closeSessionTab(e, id) {
         e.stopPropagation();
+        const wasActive = $activeTabId === id;
         try {
             await deleteSession(id);
         } catch (_) { /* might already be archived */ }
         closeTab(id);
-        tabs = [...getOpenTabs()];
-        activeId = getActiveTabId();
-        if (id === activeId && $page.url.pathname.startsWith('/agent')) {
-            if (tabs.length > 0) {
-                await goto(`/agent?session=${tabs[tabs.length - 1].id}`);
+        // No manual refresh needed — the store update propagates automatically.
+        if (wasActive && $page.url.pathname.startsWith('/agent')) {
+            const remaining = $openTabs;
+            if (remaining.length > 0) {
+                await goto(`/agent?session=${remaining[remaining.length - 1].id}`);
             } else {
                 await goto('/agent/history');
             }
@@ -62,15 +49,15 @@
     }
 </script>
 
-{#if tabs.length > 0}
+{#if $openTabs.length > 0}
     <div class="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8">
         <div class="max-w-7xl mx-auto flex items-center gap-1 overflow-x-auto py-1">
-            {#each tabs as tab}
+            {#each $openTabs as tab}
                 <button
                     onclick={() => switchToTab(tab.id)}
                     class="group flex items-center gap-1.5 px-3 py-1.5 rounded-t-md text-sm whitespace-nowrap
                            transition-colors border border-b-0
-                           {activeId === tab.id && !$page.url.pathname.includes('/history')
+                           {$activeTabId === tab.id && !$page.url.pathname.includes('/history')
                              ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium'
                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                 >

@@ -1,6 +1,14 @@
-import axios from 'axios';
+// Use the shared axios instance from apiClient so all KB requests get
+// global 401 handling (clear session + redirect on token expiry). The local
+// alias keeps existing call sites compiling unchanged. (#352, M1/M2/M3)
+import { apiAxios as axios } from '$lib/services/apiClient';
 import { getApiUrl } from '$lib/config'; // Use the helper for API base
 import { browser } from '$app/environment';
+
+// Keep `axios.isAxiosError` available — re-export from the real package for
+// the few places this service uses it for error-shape detection.
+import { isAxiosError } from 'axios';
+axios.isAxiosError = isAxiosError;
 
 /**
  * @typedef {Object} IngestionConfig

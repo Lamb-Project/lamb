@@ -11,6 +11,7 @@ def _env_bool(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
 # Server Configuration
 DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'false'
 
@@ -20,7 +21,8 @@ DEV_MODE = os.getenv('DEV_MODE', 'false').lower() == 'false'
 # PIPELINES_HOST: Legacy variable, falls back to LAMB_WEB_HOST for backward compatibility
 LAMB_WEB_HOST = os.getenv('LAMB_WEB_HOST') or os.getenv('PIPELINES_HOST')
 if not LAMB_WEB_HOST:
-    raise ValueError("LAMB_WEB_HOST or PIPELINES_HOST environment variable is required")
+    raise ValueError(
+        "LAMB_WEB_HOST or PIPELINES_HOST environment variable is required")
 LAMB_BACKEND_HOST = os.getenv('LAMB_BACKEND_HOST')
 if not LAMB_BACKEND_HOST:
     raise ValueError("LAMB_BACKEND_HOST environment variable is required")
@@ -28,19 +30,22 @@ LAMB_HOST = LAMB_WEB_HOST  # Legacy alias for backward compatibility
 
 # Get the token from environment and strip any whitespace
 # LAMB_BEARER_TOKEN is the new variable name, PIPELINES_BEARER_TOKEN is kept for backward compatibility
-lamb_token = os.getenv('LAMB_BEARER_TOKEN') or os.getenv('PIPELINES_BEARER_TOKEN')
+lamb_token = os.getenv('LAMB_BEARER_TOKEN') or os.getenv(
+    'PIPELINES_BEARER_TOKEN')
 if not lamb_token:
-    raise ValueError("LAMB_BEARER_TOKEN or PIPELINES_BEARER_TOKEN environment variable is required")
+    raise ValueError(
+        "LAMB_BEARER_TOKEN or PIPELINES_BEARER_TOKEN environment variable is required")
 lamb_token = lamb_token.strip()
 
 LAMB_BEARER_TOKEN = lamb_token
 PIPELINES_BEARER_TOKEN = lamb_token  # Legacy alias for backward compatibility
 PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./lamb_assistants")
- 
+
 API_KEY = lamb_token
 # Ollama Configuration
 
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
+OLLAMA_BASE_URL = os.getenv(
+    'OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
 
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'nomic-embed-text')
 
@@ -62,16 +67,22 @@ if not OWI_BASE_URL:
 # OWI_PUBLIC_BASE_URL: Public URL for browser-facing redirects and login URLs
 # Falls back to OWI_BASE_URL if not explicitly set
 OWI_PUBLIC_BASE_URL = os.getenv('OWI_PUBLIC_BASE_URL') or OWI_BASE_URL
-CHROMA_PATH = os.path.join(OWI_PATH, "vector_db") 
+CHROMA_PATH = os.path.join(OWI_PATH, "vector_db")
 
 # Frontend Runtime Configuration
 LAMB_FRONTEND_BASE_URL = os.getenv('LAMB_FRONTEND_BASE_URL', '/creator')
-LAMB_FRONTEND_LAMB_SERVER = os.getenv('LAMB_FRONTEND_LAMB_SERVER') or LAMB_WEB_HOST or 'http://localhost:9099'
+LAMB_FRONTEND_LAMB_SERVER = os.getenv(
+    'LAMB_FRONTEND_LAMB_SERVER') or LAMB_WEB_HOST or 'http://localhost:9099'
 LAMB_FRONTEND_OPENWEBUI_SERVER = (
-    os.getenv('LAMB_FRONTEND_OPENWEBUI_SERVER') or OWI_PUBLIC_BASE_URL or 'http://localhost:8080'
+    os.getenv(
+        'LAMB_FRONTEND_OPENWEBUI_SERVER') or OWI_PUBLIC_BASE_URL or 'http://localhost:8080'
 )
 LAMB_ENABLE_OPENWEBUI = _env_bool('LAMB_ENABLE_OPENWEBUI', True)
 LAMB_ENABLE_DEBUG = _env_bool('LAMB_ENABLE_DEBUG', False)
+# Feature flag for the Library Manager microservice.
+# Enabled by default; set LAMB_LIBRARY_SERVER_ENABLE=DISABLE to turn off.
+LAMB_ENABLE_LIBRARIES = os.getenv(
+    "LAMB_LIBRARY_SERVER_ENABLE", "ENABLE").upper().strip() != "DISABLE"
 
 # Database Configuration
 LAMB_DB_PATH = os.getenv('LAMB_DB_PATH', '/data/lamb')
@@ -123,8 +134,10 @@ if not OWI_ADMIN_PASSWORD:
 # Google Gemini Image Generation Configuration
 # GEMINI_MODELS: Comma-separated list of available Gemini image generation models
 # GEMINI_DEFAULT_MODEL: Default model to use when assistant specifies an invalid model
-GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
-GEMINI_MODELS = os.getenv('GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
+GEMINI_DEFAULT_MODEL = os.getenv(
+    'GEMINI_DEFAULT_MODEL', 'gemini-2.5-flash-image-preview')
+GEMINI_MODELS = os.getenv(
+    'GEMINI_MODELS', 'gemini-2.5-flash-image-preview,gemini-3-pro-image-preview')
 
 # LLM Client Pool Configuration
 # Controls shared HTTP client pools for OpenAI and Ollama connectors
@@ -137,4 +150,5 @@ OLLAMA_REQUEST_TIMEOUT = int(os.getenv('OLLAMA_REQUEST_TIMEOUT', '120'))
 required_vars = ['OWI_PATH']
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 if missing_vars:
-    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+    raise ValueError(
+        f"Missing required environment variables: {', '.join(missing_vars)}")

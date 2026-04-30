@@ -5,11 +5,19 @@
 	import Signup from '$lib/components/Signup.svelte';
 	import UserDashboard from '$lib/components/UserDashboard.svelte';
 	import { user } from '$lib/stores/userStore';
-	import { onMount } from 'svelte';
-	import { marked } from 'marked';
-	import { getApiUrl } from '$lib/config';
+	import { onMount, onDestroy } from 'svelte';
 	import { _, locale } from '$lib/i18n';
+	import { apiFetch } from '$lib/services/apiClient';
 	import { getMyProfile } from '$lib/services/adminService';
+	import { renderMarkdownSafe } from '$lib/utils/sanitize';
+
+	// Track mount status so async fetches that resolve after the user
+	// navigates away don't write state to a destroyed component. Also tag
+	// each loadNews() invocation so a slow request from a previous locale
+	// doesn't overwrite content for the current locale. (#353, H5)
+	let isMounted = true;
+	let newsLoadId = 0;
+	onDestroy(() => { isMounted = false; });
 
 	let config = $state(null);
 	let authMode = $state('login'); // 'login' or 'signup'
@@ -44,13 +52,17 @@
 		try {
 			isLoadingProfile = true;
 			profileError = null;
-			profileData = await getMyProfile($user.token);
+			const data = await getMyProfile($user.token);
+			if (!isMounted) return;
+			profileData = data;
 		} catch (error) {
+			if (!isMounted) return;
+			if (error instanceof Error && error.message.startsWith('Session expired')) return;
 			console.error('Error loading profile:', error);
 			profileError = error instanceof Error ? error.message : 'Failed to load profile';
 			profileData = null;
 		} finally {
-			isLoadingProfile = false;
+			if (isMounted) isLoadingProfile = false;
 		}
 	}
 
@@ -61,39 +73,40 @@
 			return;
 		}
 
-		try {
-			isLoadingNews = true;
-			const currentLang = $locale || 'en';
-			const newsUrl = getApiUrl(`news/${currentLang}`);
+		// Tag this invocation; a slow request from a previous locale must
+		// not overwrite content for the current one. (#353, H5)
+		const myLoadId = ++newsLoadId;
+		isLoadingNews = true;
 
-			const response = await fetch(newsUrl, {
-				headers: {
-					'Authorization': `Bearer ${$user.token}`,
-					'Content-Type': 'application/json'
-				}
+		try {
+			const currentLang = $locale || 'en';
+			const response = await apiFetch(`news/${currentLang}`, {
+				headers: { 'Content-Type': 'application/json' }
 			});
+
+			if (!isMounted || myLoadId !== newsLoadId) return;
 
 			if (response.ok) {
 				const data = await response.json();
+				if (!isMounted || myLoadId !== newsLoadId) return;
 				if (data.success && data.content && data.content.trim()) {
-					newsContent = String(marked.parse(data.content));
+					newsContent = renderMarkdownSafe(data.content);
 				} else {
 					newsContent = '';
 				}
 			} else if (response.status === 404) {
 				// Fallback to English
-				const fallbackUrl = getApiUrl('news/en');
-				const fallbackResponse = await fetch(fallbackUrl, {
-					headers: {
-						'Authorization': `Bearer ${$user.token}`,
-						'Content-Type': 'application/json'
-					}
+				const fallbackResponse = await apiFetch('news/en', {
+					headers: { 'Content-Type': 'application/json' }
 				});
+
+				if (!isMounted || myLoadId !== newsLoadId) return;
 
 				if (fallbackResponse.ok) {
 					const fallbackData = await fallbackResponse.json();
+					if (!isMounted || myLoadId !== newsLoadId) return;
 					if (fallbackData.success && fallbackData.content && fallbackData.content.trim()) {
-						newsContent = String(marked.parse(fallbackData.content));
+						newsContent = renderMarkdownSafe(fallbackData.content);
 					} else {
 						newsContent = '';
 					}
@@ -103,27 +116,32 @@
 			} else if (response.status === 503) {
 				try {
 					const cacheData = await response.json();
+					if (!isMounted || myLoadId !== newsLoadId) return;
 					if (cacheData.success && cacheData.content) {
-						newsContent = String(marked.parse(cacheData.content));
+						newsContent = renderMarkdownSafe(cacheData.content);
 					} else {
 						newsContent = '';
 					}
 				} catch (e) {
+					if (!isMounted || myLoadId !== newsLoadId) return;
 					newsContent = '';
 				}
 			} else {
 				newsContent = '';
 			}
 		} catch (error) {
+			if (!isMounted || myLoadId !== newsLoadId) return;
+			// apiFetch already redirected on session expiry — don't paint a stale error.
+			if (error instanceof Error && error.message.startsWith('Session expired')) return;
 			newsContent = '';
 			console.error('Error fetching news:', error);
 		} finally {
-			isLoadingNews = false;
+			if (isMounted && myLoadId === newsLoadId) isLoadingNews = false;
 		}
 	}
 
 	// Load data when component mounts
-	onMount(async () => {
+	onMount(() => {
 		if ($user.isLoggedIn) {
 			loadProfile();
 			loadNews();
