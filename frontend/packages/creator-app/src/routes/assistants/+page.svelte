@@ -42,9 +42,14 @@
     import Pagination from '$lib/components/common/Pagination.svelte';
     import FilterBar from '$lib/components/common/FilterBar.svelte';
     import { processListData } from '$lib/utils/listHelpers';
+    import { getAssistantMetadataObject, normalizeAssistantData } from '$lib/utils/assistantData';
     import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
+    import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
+    import AssistantTests from '$lib/components/aac/AssistantTests.svelte';
+    import { createSession } from '$lib/services/aacService';
+    import { openTab, closeTab, setActiveTab, getOpenTabs, getActiveTabId } from '$lib/stores/aacStore.svelte';
 
-    // --- State Management --- 
+    // --- State Management ---
     /** @type {'list' | 'create' | 'detail' | 'shared' | 'templates'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
@@ -59,8 +64,58 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'tests' | 'aac'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
+
+    // --- AAC Agent State ---
+    /** @type {string|null} */
+    let activeAacSessionId = $state(null);
+    /** @type {string} */
+    let aacFirstMessage = $state('');
+    /** @type {boolean} Whether the terminal should auto-trigger skill startup */
+    let aacSkillStartup = $state(false);
+    /** @type {boolean} */
+    let aacLaunching = $state(false);
+    let aacTabs = $derived(getOpenTabs());
+
+    /**
+     * Launch an AAC skill session for the current assistant.
+     * @param {string} skill
+     */
+    async function launchAacSkill(skill) {
+        if (!selectedAssistantData?.id || aacLaunching) return;
+        aacLaunching = true;
+        try {
+            const lang = currentLocale === 'ca' ? 'Catalan' : currentLocale === 'es' ? 'Spanish' : currentLocale === 'eu' ? 'Basque' : 'English';
+            const session = await createSession({
+                assistantId: selectedAssistantData.id,
+                skill,
+                context: { language: lang },
+            });
+            const title = session.title || skill;
+            openTab(session.id, title, selectedAssistantData.id, skill);
+            activeAacSessionId = session.id;
+            aacFirstMessage = '';
+            aacSkillStartup = true;
+            detailSubView = 'aac';
+        } catch (e) {
+            console.error('AAC launch error:', e);
+            detailError = `Agent error: ${e.message}`;
+        }
+        aacLaunching = false;
+    }
+
+    /**
+     * Switch to an existing AAC session tab.
+     * @param {string} sessionId
+     */
+    function switchToAacTab(sessionId) {
+        setActiveTab(sessionId);
+        activeAacSessionId = sessionId;
+        aacFirstMessage = '';
+        aacSkillStartup = false; // Existing session, don't re-trigger startup
+        detailSubView = 'aac';
+    }
 
     // --- API Configuration State ---
     let lambServerUrl = $state('');
@@ -230,18 +285,8 @@
             console.log(`Fetching assistant ID: ${id}.`); // Removed edit log here
             const assistantData = await getAssistantById(id);
             if (assistantData) {
-                // Parse metadata (fallback to api_callback for backward compatibility)
-                let parsedCallbackData = {};
-                const metadataStr = assistantData.metadata || assistantData.api_callback;
-                if (metadataStr) {
-                    try {
-                        parsedCallbackData = JSON.parse(metadataStr);
-                    } catch (e) { console.error("Error parsing metadata JSON:", e); }
-                }
-                // Merge assistant data with parsed callback data
-                const fullAssistantData = { 
-                    ...assistantData, 
-                    ...parsedCallbackData, 
+                const fullAssistantData = {
+                    ...normalizeAssistantData(assistantData),
                     id: assistantData.id.toString() // Ensure ID is string and overwrites any potential callback ID
                 };
                 selectedAssistantData = fullAssistantData;
@@ -280,23 +325,6 @@
             configError = error instanceof Error ? error.message : 'Failed to load LAMB configuration.';
             console.error(configError);
             // Optionally disable chat tab if config fails
-        }
-
-        // Handle LTI token from URL (for LTI creator login)
-        if (browser) {
-            const urlToken = $page.url.searchParams.get('token');
-            if (urlToken) {
-                console.log("Token found in URL - storing for LTI creator login");
-                localStorage.setItem('userToken', urlToken);
-                // Update user store with the token
-                user.setToken(urlToken);
-                // Fetch full user profile (name, email, etc.) from the backend
-                user.fetchAndPopulateProfile();
-                // Clean the URL by removing the token parameter
-                const cleanUrl = new URL(window.location.href);
-                cleanUrl.searchParams.delete('token');
-                window.history.replaceState({}, '', cleanUrl.toString());
-            }
         }
 
         // Initialize user token from localStorage
@@ -623,7 +651,10 @@
             const updatedAssistant = await setAssistantPublishStatus(assistantId, desiredStatus);
 
             // Update the local state with the full response from the API
-            selectedAssistantData = updatedAssistant;
+            selectedAssistantData = {
+                ...normalizeAssistantData(updatedAssistant),
+                id: updatedAssistant.id?.toString?.() || updatedAssistant.id
+            };
             console.log('Publish status updated successfully.');
 
             // Optional: Show success message (e.g., toast)
@@ -644,15 +675,8 @@
 
         // Check if the currently displayed assistant uses simple_rag
         let ragProcessor = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-            } catch(e) {
-                console.error("Error parsing metadata for KB fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
 
 		if (ragProcessor !== 'simple_rag') {
 			console.log('Skipping KB fetch for detail view (not simple_rag)');
@@ -688,16 +712,9 @@
         // Check if the currently displayed assistant uses rubric_rag
         let ragProcessor = '';
         let rubricId = '';
-        const metadataStr = selectedAssistantData?.metadata || selectedAssistantData?.api_callback;
-        if (metadataStr) {
-            try {
-                const callbackData = JSON.parse(metadataStr);
-                ragProcessor = callbackData.rag_processor;
-                rubricId = callbackData.rubric_id;
-            } catch(e) {
-                console.error("Error parsing metadata for rubric fetch check:", e);
-            }
-        }
+        const callbackData = getAssistantMetadataObject(selectedAssistantData);
+        ragProcessor = callbackData.rag_processor || '';
+        rubricId = callbackData.rubric_id || '';
 
         if (ragProcessor !== 'rubric_rag' || !rubricId) {
             console.log('Skipping rubric fetch for detail view (not rubric_rag or no rubric_id)');
@@ -973,6 +990,53 @@
                 {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
             </button>
         {/if}
+        {#if isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'tests' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'tests'}
+            >
+                Tests
+            </button>
+        {/if}
+
+        <!-- AAC session tabs (if any are open for this assistant) -->
+        {#each aacTabs.filter(t => t.assistantId === selectedAssistantData?.id) as tab}
+            <button
+                class="group py-2 px-4 text-sm font-medium rounded-t-md flex items-center gap-1 {detailSubView === 'aac' && activeAacSessionId === tab.id ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => switchToAacTab(tab.id)}
+            >
+                🤖 <span class="max-w-[120px] truncate">{tab.title}</span>
+                <span
+                    role="button"
+                    tabindex="0"
+                    onclick={(e) => { e.stopPropagation(); closeTab(tab.id); if (activeAacSessionId === tab.id) detailSubView = 'properties'; }}
+                    onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); closeTab(tab.id); if (activeAacSessionId === tab.id) detailSubView = 'properties'; }}}
+                    class="ml-1 opacity-0 group-hover:opacity-60 hover:opacity-100 text-xs cursor-pointer"
+                    title="Close session"
+                >✕</span>
+            </button>
+        {/each}
+
+        <!-- AAC skill launch buttons (separator + buttons) -->
+        {#if isOwner}
+            <span class="border-l border-gray-300 mx-2 h-6 self-center"></span>
+            <button
+                onclick={() => launchAacSkill('explain-assistant')}
+                disabled={aacLaunching}
+                class="py-1.5 px-3 text-xs font-medium rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-50 disabled:cursor-wait"
+                title="Let the AI agent explain how this assistant works"
+            >
+                {aacLaunching ? '⏳' : '🔍'} Agent Explain
+            </button>
+            <button
+                onclick={() => launchAacSkill('improve-assistant')}
+                disabled={aacLaunching}
+                class="py-1.5 px-3 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 disabled:cursor-wait"
+                title="Let the AI agent suggest improvements"
+            >
+                {aacLaunching ? '⏳' : '✨'} Agent Improve
+            </button>
+        {/if}
     </div>
 
     <!-- Wrapper for Detail Content -->
@@ -1105,17 +1169,7 @@
 
                     <!-- Selected Rubric (if rubric_rag) - Moved here below prompt template -->
                     {#if selectedAssistantData}
-                        {@const apiCallback = (() => {
-                            try {
-                                const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                return typeof metadataStr === 'string' 
-                                    ? JSON.parse(metadataStr) 
-                                    : metadataStr || {};
-                            } catch (e) {
-                                console.error("Error parsing metadata:", e);
-                                return {};
-                            }
-                        })()}
+                        {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
                         {#if apiCallback.rag_processor === 'rubric_rag'}
                             <div class="mt-6 pt-6 border-t border-gray-200">
                                 <div class="block text-sm font-medium text-gray-700 mb-2">{$_('assistants.form.rubric.selectedLabel', { default: 'Selected Rubric' })}</div>
@@ -1207,17 +1261,7 @@
 
                             <!-- Parse metadata -->
                             {#if selectedAssistantData}
-                                {@const apiCallback = (() => {
-                                    try {
-                                        const metadataStr = selectedAssistantData.metadata || selectedAssistantData.api_callback;
-                                        return typeof metadataStr === 'string' 
-                                            ? JSON.parse(metadataStr) 
-                                            : metadataStr || {};
-                                    } catch (e) {
-                                        console.error("Error parsing metadata:", e);
-                                        return {};
-                                    }
-                                })()}
+                                {@const apiCallback = getAssistantMetadataObject(selectedAssistantData)}
 
                                 <div class="space-y-3 text-sm">
                                     <!-- Prompt Processor -->
@@ -1494,6 +1538,24 @@
             <div class="px-6 py-4">
                 <ChatAnalytics assistant={selectedAssistantData} />
             </div>
+        {:else if detailSubView === 'tests'}
+            <!-- Tests Tab -->
+            <AssistantTests
+                assistantId={selectedAssistantData.id}
+                onLaunchSkill={(skill) => launchAacSkill(skill)}
+            />
+        {:else if detailSubView === 'aac' && activeAacSessionId}
+            <!-- AAC Agent Terminal — key forces remount on session/startup change -->
+            {#key `${activeAacSessionId}-${aacSkillStartup}`}
+            <div class="h-[700px]">
+                <AacTerminal
+                    sessionId={activeAacSessionId}
+                    firstMessage={aacFirstMessage}
+                    resumed={!aacFirstMessage && !aacSkillStartup}
+                    skillStartup={aacSkillStartup}
+                />
+            </div>
+            {/key}
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->

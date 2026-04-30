@@ -1,6 +1,7 @@
 import { getApiUrl, getConfig } from '$lib/config';
 import { browser } from '$app/environment';
 import axios from 'axios';
+import { normalizeAssistantData } from '$lib/utils/assistantData';
 
 /**
  * @typedef {Object} Assistant - Defines the structure of an assistant object from the API
@@ -75,7 +76,9 @@ export async function getAssistants(limit = 10, offset = 0) {
 	// Return the expected structure { assistants: [], total_count: 0 }
 	// Ensure defaults if API response is malformed
 	return {
-		assistants: Array.isArray(data?.assistants) ? data.assistants : [],
+		assistants: Array.isArray(data?.assistants)
+			? data.assistants.map(normalizeAssistantData)
+			: [],
 		total_count: typeof data?.total_count === 'number' ? data.total_count : 0
 	};
 }
@@ -119,7 +122,7 @@ export async function getAssistantById(assistantId) {
 		throw new Error(errorDetail);
 	}
 
-	return await response.json();
+	return normalizeAssistantData(await response.json());
 }
 
 /**
@@ -529,7 +532,7 @@ export async function setAssistantPublishStatus(assistantId, publishStatus) {
 			throw new Error(errorDetail);
 		}
 
-		return await response.json();
+		return normalizeAssistantData(await response.json());
 	} catch (error) {
 		let errorMessage = 'Failed to set publish status.';
 
@@ -576,7 +579,9 @@ export async function getSharedAssistants() {
 		const data = await response.json();
 
 		return {
-			assistants: data.assistants || [],
+			assistants: Array.isArray(data.assistants)
+				? data.assistants.map(normalizeAssistantData)
+				: [],
 			count: data.count || 0
 		};
 	} catch (error) {

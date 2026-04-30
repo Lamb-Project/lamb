@@ -3,13 +3,13 @@ Unified LTI Router
 
 Single LTI endpoint that supports:
 - Instructor-configured activities with multiple assistants
-- Student launch into configured activities (with optional consent)
-- Instructor dashboard with usage stats, student log, and anonymized chat transcripts
+- Student launch into configured activities
+- Instructor dashboard with usage stats, student log, and chat transcripts
 - Identity linking for instructor identification
 
 Session management:
 - Instructor flows use LAMB JWTs (via lamb.auth) with lti_type claims
-- Student consent uses short-lived in-memory tokens (one-shot flow)
+- Students launch directly into the activity module (no consent gate)
 
 Endpoint: POST /lamb/v1/lti/launch
 """
@@ -17,16 +17,13 @@ Endpoint: POST /lamb/v1/lti/launch
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from lamb import auth as lamb_auth
 from lamb.lti_activity_manager import LtiActivityManager
 from lamb.database_manager import LambDatabaseManager
-from lamb import auth as lamb_auth
 from lamb.logging_config import get_logger
 from lamb.modules import get_all_modules, get_module
 import os
-import json
-import time
-import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from lamb.modules.base import LTIContext
 
 logger = get_logger(__name__, component="LTI_UNIFIED")
@@ -44,40 +41,6 @@ SESSION_EXPIRED_HTML = "<h2>Session expired.</h2><p>Please click the LTI link in
 # LAMB JWT expiry for LTI instructor sessions
 LTI_DASHBOARD_JWT_EXPIRY = timedelta(days=7)
 LTI_SETUP_JWT_EXPIRY = timedelta(hours=2)
-
-
-# =============================================================================
-# In-memory tokens — ONLY for student consent (short one-shot flow)
-# =============================================================================
-_consent_tokens: dict = {}
-CONSENT_TOKEN_TTL = 600  # 10 minutes
-
-
-def _create_consent_token(data: dict) -> str:
-    """Create a short-lived consent token for student consent flow."""
-    token = secrets.token_urlsafe(32)
-    _consent_tokens[token] = {**data, "expires": time.time() + CONSENT_TOKEN_TTL}
-    now = time.time()
-    expired = [k for k, v in _consent_tokens.items() if v["expires"] < now]
-    for k in expired:
-        del _consent_tokens[k]
-    return token
-
-
-def _validate_consent_token(token: str) -> dict | None:
-    """Validate a consent token. Returns data or None."""
-    data = _consent_tokens.get(token)
-    if not data:
-        return None
-    if time.time() > data["expires"]:
-        del _consent_tokens[token]
-        return None
-    return data
-
-
-def _consume_consent_token(token: str):
-    """Remove a consent token from the store."""
-    _consent_tokens.pop(token, None)
 
 
 # =============================================================================
@@ -124,16 +87,7 @@ def _validate_lti_jwt(token: str, expected_type: str) -> dict | None:
         return None
     return payload
 
-
-def _format_timestamp(ts):
-    """Format a unix timestamp for display."""
-    if not ts:
-        return "—"
-    try:
-        return datetime.fromtimestamp(ts).strftime("%b %d, %Y %H:%M")
-    except (ValueError, OSError):
-        return "—"
-
+# =============================================================================
 
 def _get_activity_module(activity):
     """Resolve the ActivityModule for an activity. Raises 500 if not installed."""
@@ -156,8 +110,8 @@ async def lti_launch(request: Request):
     Decision tree:
     1. Validate OAuth signature
     2. Is there a configured activity for this resource_link_id?
-       YES + instructor -> issue LAMB JWT -> dashboard (no OWI call yet)
-       YES + student    -> consent check -> consent page OR module.on_student_launch()
+       YES + instructor -> module.on_instructor_launch() (dashboard)
+       YES + student    -> module.on_student_launch() (direct launch)
        NO  + instructor -> identify as Creator user -> setup (LAMB JWT)
        NO  + student    -> "not configured yet" page
     """
@@ -217,7 +171,6 @@ async def lti_launch(request: Request):
             public_base = manager.get_public_base_url(request)
 
             # -- CONFIGURED: Instructor -> module dispatch --
-            from lamb.modules.base import LTIContext
             if manager.is_instructor(roles):
                 logger.info(f"Instructor at configured activity {resource_link_id} -> module.on_instructor_launch")
                 ctx = LTIContext(
@@ -234,25 +187,7 @@ async def lti_launch(request: Request):
                 module = _get_activity_module(activity)
                 return module.on_instructor_launch(ctx)
 
-            # -- CONFIGURED: Student -> consent check then module dispatch --
-            from lamb.modules.base import LTIContext
-            student_email = manager.generate_student_email(username, resource_link_id)
-            if manager.check_student_consent(activity, student_email):
-                logger.info(f"Student {student_email} needs consent for activity {resource_link_id}")
-                consent_token = _create_consent_token({
-                    "type": "consent",
-                    "resource_link_id": resource_link_id,
-                    "username": username,
-                    "display_name": display_name,
-                    "lms_user_id": lms_user_id,
-                    "student_email": student_email,
-                    "lis_result_sourcedid": lis_result_sourcedid,
-                })
-                return RedirectResponse(
-                    url=f"{public_base}/m/chat/consent?token={consent_token}",
-                    status_code=303
-                )
-
+            # ── CONFIGURED: Student -> module dispatch ──
             ctx = LTIContext(
                 resource_link_id=resource_link_id,
                 lms_user_id=lms_user_id,
@@ -441,6 +376,21 @@ async def lti_configure_activity(request: Request):
                         status_code=400,
                     )
 
+        # File-evaluation: every selected assistant must have a rubric configured
+        if activity_type == "file_evaluation":
+            for aid in assistant_ids:
+                assistant = db_manager.get_assistant_by_id(aid)
+                if not assistant:
+                    return JSONResponse(
+                        {"detail": f"Assistant {aid} not found"},
+                        status_code=400,
+                    )
+                if not db_manager.assistant_has_rubric_for_eval(assistant.api_callback):
+                    return JSONResponse(
+                        {"detail": f"Assistant '{assistant.name}' does not have a rubric configured for evaluation"},
+                        status_code=400,
+                    )
+
         # Re-fetch creator user from JWT (never trust form data for identity)
         creator_user_ids = data.get("lti_creator_user_ids", [])
         creator_user = None
@@ -520,8 +470,12 @@ async def lti_configure_activity(request: Request):
         public_base = manager.get_public_base_url(request)
         at = activity.get("activity_type") or "chat"
         if at == "file_evaluation":
+            fe_lang = str(payload.get("language", "en")).lower()
+            if fe_lang not in ("en", "es", "ca", "eu"):
+                fe_lang = "en"
             redirect_url = (
-                f"{public_base}/m/file-eval/grading?activity_id={activity['id']}&token={dashboard_token}"
+                f"{public_base}/m/file-eval/grading?activity_id={activity['id']}"
+                f"&lang={fe_lang}&token={dashboard_token}"
             )
         else:
             redirect_url = f"{public_base}/m/chat/dashboard?resource_link_id={resource_link_id}&token={dashboard_token}"
@@ -612,7 +566,7 @@ async def lti_link_account_submit(request: Request):
 
         public_base = manager.get_public_base_url(request)
         return RedirectResponse(
-            url=f"{public_base}/lamb/v1/lti/setup?token={new_token}",
+            url=f"{public_base}/m/chat/setup?token={new_token}",
             status_code=303
         )
 
@@ -657,11 +611,15 @@ async def lti_reconfigure_activity(request: Request):
         if not assistant_ids:
             return HTMLResponse("<h2>Error</h2><p>Please select at least one assistant.</p>", status_code=400)
 
+        # Chat transcript visibility is fixed at initial configuration time.
         chat_visibility_str = form_data.get("chat_visibility_enabled")
         if chat_visibility_str is not None:
             new_chat_vis = 1 if chat_visibility_str == "1" else 0
             if new_chat_vis != activity.get('chat_visibility_enabled', 0):
-                db_manager.update_lti_activity(activity['id'], chat_visibility_enabled=new_chat_vis)
+                return HTMLResponse(
+                    "<h2>Invalid request</h2><p>Chat transcript visibility can only be set when the activity is first configured.</p>",
+                    status_code=400
+                )
 
         # DB update - returns (added_ids, removed_ids)
         added_ids, removed_ids = manager.reconfigure_activity(activity, assistant_ids)
@@ -715,82 +673,6 @@ async def lti_info():
         ]
     })
 
-
-# =============================================================================
-# Student Consent (in-memory tokens — short one-shot flow)
-# =============================================================================
-
-@router.get("/consent/info")
-async def lti_consent_info(request: Request, token: str = ""):
-    """Return JSON data for the student consent page."""
-    data = _validate_consent_token(token)
-    if not data or data.get("type") != "consent":
-        return JSONResponse({"detail": "Session expired"}, status_code=403)
-
-    resource_link_id = data["resource_link_id"]
-    activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-    if not activity:
-        return JSONResponse({"detail": "Activity not found"}, status_code=404)
-
-    return JSONResponse({
-        "activity_name": activity.get("activity_name", "LTI Activity"),
-        "context_title": activity.get("context_title", ""),
-    })
-
-
-@router.post("/consent")
-async def lti_consent_submit(request: Request):
-    """Process student consent acceptance and return redirect URL."""
-    try:
-        payload = await request.json()
-        token = payload.get("token", "")
-        data = _validate_consent_token(token)
-        if not data or data.get("type") != "consent":
-            return JSONResponse({"detail": "Session expired"}, status_code=403)
-
-        resource_link_id = data["resource_link_id"]
-        student_email = data["student_email"]
-        username = data["username"]
-        display_name = data["display_name"]
-        lms_user_id = data.get("lms_user_id")
-
-        activity = db_manager.get_lti_activity_by_resource_link(resource_link_id)
-        if not activity:
-            return JSONResponse({"detail": "Activity not found"}, status_code=404)
-
-        # Record consent before launching
-        db_manager.create_lti_activity_user(
-            activity_id=activity['id'],
-            user_email=student_email,
-            user_name=username,
-            user_display_name=display_name,
-            lms_user_id=lms_user_id
-        )
-        db_manager.record_student_consent(activity['id'], student_email)
-        logger.info(f"Student {student_email} gave consent for activity {resource_link_id}")
-
-        _consume_consent_token(token)
-
-        # Delegate launch to module (returns redirect URL)
-        module = _get_activity_module(activity)
-        _consent_sourced = (data.get("lis_result_sourcedid") or "").strip()
-        consent_lis_sourcedid = _consent_sourced or None
-        redirect_url = module.launch_user(
-            activity=activity,
-            username=username,
-            display_name=display_name,
-            lms_user_id=lms_user_id,
-            lis_result_sourcedid=consent_lis_sourcedid,
-        )
-
-        if not redirect_url:
-            return JSONResponse({"detail": "Failed to launch. Please try again."}, status_code=500)
-
-        return JSONResponse({"status": "success", "redirect_url": redirect_url})
-
-    except Exception as e:
-        logger.error(f"Error processing consent: {str(e)}", exc_info=True)
-        return JSONResponse({"detail": str(e)}, status_code=500)
 
 
 # =============================================================================
@@ -853,7 +735,7 @@ async def lti_dashboard_stats(resource_link_id: str = "", token: str = ""):
 @router.get("/dashboard/students")
 async def lti_dashboard_students(resource_link_id: str = "", token: str = "",
                                   page: int = 1, per_page: int = 20):
-    """Return anonymized student list as JSON."""
+    """Return student list as JSON."""
     data = _validate_lti_jwt(token, "dashboard")
     if not data:
         raise HTTPException(status_code=403, detail="Invalid token")
@@ -869,7 +751,7 @@ async def lti_dashboard_students(resource_link_id: str = "", token: str = "",
 async def lti_dashboard_chats(resource_link_id: str = "", token: str = "",
                                assistant_id: int = None,
                                page: int = 1, per_page: int = 20):
-    """Return anonymized chat list as JSON. Requires chat_visibility enabled."""
+    """Return chat list as JSON. Requires chat_visibility enabled."""
     data = _validate_lti_jwt(token, "dashboard")
     if not data:
         raise HTTPException(status_code=403, detail="Invalid token")

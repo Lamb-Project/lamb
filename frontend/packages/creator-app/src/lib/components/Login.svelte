@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { onMount } from 'svelte';
+  import { replaceSessionWithLoginData } from '$lib/session/sessionManager';
   
   // Event dispatcher for component events
   const dispatch = createEventDispatcher();
@@ -56,7 +57,7 @@
       console.log('Creator user detected, continuing to creator interface');
       
       // For creator users, continue with normal login
-      user.login(result.data); 
+      replaceSessionWithLoginData(result.data); 
       
       success = true;
       message = 'Login successful!'; // Use a generic message or i18n key

@@ -14,6 +14,8 @@
     let selectedActivity = $state('');
     let selectedOrg = $state('');
     let selectedAssistants = $state([]);
+    let showSharedAssistants = $state(true);
+    let includeRubricAssistants = $state(false);
     /** Dynamic module fields from setup (checkbox, select, text, …) @type {Record<string, any>} */
     let dynamicOptions = $state({});
 
@@ -59,6 +61,47 @@
             : []
     );
 
+    function filterAndSortAssistants(list, activity, showShared, includeRubric) {
+        let rows = [...list];
+        if (activity === 'file_evaluation') {
+            rows = rows.filter((a) => a.rubric_eval_ready);
+        } else if (!includeRubric) {
+            rows = rows.filter((a) => !a.rubric_eval_ready);
+        }
+        if (!showShared) {
+            rows = rows.filter((a) => a.access_type !== 'shared');
+        }
+        if (activity === 'chat') {
+            rows.sort((a, b) => {
+                if (a.rubric_eval_ready !== b.rubric_eval_ready) return a.rubric_eval_ready ? 1 : -1;
+                return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+            });
+        } else {
+            rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+        }
+        return rows;
+    }
+
+    let baseAssistantsForActivity = $derived(
+        selectedActivity === 'file_evaluation'
+            ? availableAssistants.filter(a => a.rubric_eval_ready)
+            : availableAssistants
+    );
+
+    let assistantsForCurrentActivity = $derived(
+        filterAndSortAssistants(availableAssistants, selectedActivity, showSharedAssistants, includeRubricAssistants)
+    );
+
+    let emptyDueToFilters = $derived(
+        baseAssistantsForActivity.length > 0 && assistantsForCurrentActivity.length === 0
+    );
+
+    // Clear assistant selection when activity type changes
+    $effect(() => {
+        selectedActivity;
+        selectedAssistants = [];
+    });
+
     // Default first option for select/radio fields (options come from /lti/setup/info)
     $effect(() => {
         if (!setupData?.modules_fields || !selectedActivity) return;
@@ -75,13 +118,6 @@
             }
         }
         if (changed) dynamicOptions = next;
-    });
-
-    // Clear evaluator_id when assistants are selected (backend auto-picks the first one)
-    $effect(() => {
-        if (selectedAssistants.length > 0 && dynamicOptions.evaluator_id) {
-            dynamicOptions = { ...dynamicOptions, evaluator_id: '' };
-        }
     });
 
     // Check if all required dynamic fields have values + conditional group validation
@@ -106,7 +142,11 @@
         return true;
     }
 
-    let canSubmit = $derived(selectedActivity && selectedOrg && selectedAssistants.length > 0 && hasRequiredFields() && !saving);
+    let canSubmit = $derived(
+        selectedActivity && selectedOrg && selectedAssistants.length > 0
+        && selectedAssistants.every(id => assistantsForCurrentActivity.some(a => a.id === id))
+        && hasRequiredFields() && !saving
+    );
 
     function toggleAssistant(id) {
         if (selectedAssistants.includes(id)) {
@@ -235,10 +275,24 @@
                 {#if selectedOrg}
                     <div class="mb-6">
                         <h2 class="text-lg font-semibold text-gray-800 mb-1">Select Assistants</h2>
-                        <p class="text-sm text-gray-600 mb-4">Choose which AI assistants will be available in this activity.</p>
-                        
+                        <p class="text-sm text-gray-600 mb-3">Choose which AI assistants will be available in this activity.</p>
+
+                        <!-- Filters -->
+                        <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3">
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" bind:checked={showSharedAssistants} class="text-blue-600 rounded focus:ring-blue-500" />
+                                Include shared assistants
+                            </label>
+                            {#if selectedActivity === 'chat'}
+                                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                    <input type="checkbox" bind:checked={includeRubricAssistants} class="text-blue-600 rounded focus:ring-blue-500" />
+                                    Include assistants with a rubric
+                                </label>
+                            {/if}
+                        </div>
+
                         <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
-                            {#each availableAssistants as a}
+                            {#each assistantsForCurrentActivity as a}
                                 <label class="flex items-start gap-3 p-3 flex-wrap border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors {selectedAssistants.includes(a.id) ? 'border-blue-300 bg-blue-50' : ''}">
                                     <input type="checkbox" 
                                         name="assistant_ids" 
@@ -255,8 +309,24 @@
                                     </div>
                                 </label>
                             {/each}
-                            {#if availableAssistants.length === 0}
-                                <p class="text-sm text-gray-500 p-4 border rounded-lg bg-gray-50 italic">No published assistants found.</p>
+                            {#if assistantsForCurrentActivity.length === 0 && emptyDueToFilters}
+                                <p class="text-sm text-gray-500 p-4 border rounded-lg bg-gray-50 italic">No assistants match the current filters. Adjust the filters above.</p>
+                            {:else if assistantsForCurrentActivity.length === 0 && selectedActivity === 'file_evaluation'}
+                                <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
+                                    <p class="text-sm text-amber-800 font-medium mb-2">No assistants with a rubric found.</p>
+                                    <p class="text-sm text-amber-700">
+                                        File Evaluation requires an assistant configured with a rubric. Create one via the Creator LTI launch:
+                                    </p>
+                                    <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
+                                </div>
+                            {:else if assistantsForCurrentActivity.length === 0}
+                                <div class="p-4 border border-amber-300 rounded-lg bg-amber-50">
+                                    <p class="text-sm text-amber-800 font-medium mb-2">No published assistants found.</p>
+                                    <p class="text-sm text-amber-700">
+                                        You need to create an assistant first. Use the Creator LTI launch to get started:
+                                    </p>
+                                    <code class="block mt-1 text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded font-mono">/lamb/v1/lti_creator/launch</code>
+                                </div>
                             {/if}
                         </div>
                     </div>
@@ -318,7 +388,7 @@
                                         </div>
                                     </div>
                                 {:else if f.type === 'text'}
-                                    <div class="p-3 border rounded-lg bg-white {f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'opacity-60' : ''}">
+                                    <div class="p-3 border rounded-lg bg-white">
                                         <label class="block font-medium text-gray-900 mb-1" for="dyn-{f.name}">
                                             {f.label}{#if f.required}<span class="text-red-500 ml-1">*</span>{/if}
                                         </label>
@@ -327,9 +397,8 @@
                                             type="text"
                                             name={f.name}
                                             bind:value={dynamicOptions[f.name]}
-                                            disabled={f.name === 'evaluator_id' && selectedAssistants.length > 0}
-                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                            placeholder={f.name === 'evaluator_id' && selectedAssistants.length > 0 ? 'Auto-assigned from selected assistant' : f.label}
+                                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder={f.label}
                                         />
                                     </div>
                                 {:else if f.type === 'number'}

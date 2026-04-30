@@ -213,6 +213,50 @@ class AuthContext:
 
         return access
 
+    def can_access_library(self, library_id: str) -> str:
+        """Check user's access level for a library.
+
+        Returns:
+            ``"owner"`` | ``"shared"`` | ``"none"``
+        """
+        user_id = self.user.get("id")
+        if not user_id:
+            return "none"
+
+        can_access, access_type = _db.user_can_access_library(library_id, user_id)
+        if can_access:
+            return access_type
+
+        if self.is_system_admin:
+            return "owner"
+
+        if self.is_org_admin:
+            entry = _db.get_library(library_id)
+            if entry and entry['organization_id'] == self.organization.get('id'):
+                return "owner"
+
+        return "none"
+
+    def require_library_access(self, library_id: str, level: str = "any") -> str:
+        """Raise ``HTTPException(403/404)`` if library access is insufficient.
+
+        Args:
+            library_id: The library UUID to check.
+            level: Required level — ``"any"``, ``"owner"``.
+
+        Returns:
+            The actual access level string.
+        """
+        access = self.can_access_library(library_id)
+
+        if access == "none":
+            raise HTTPException(status_code=404, detail="Library not found")
+
+        if level == "owner" and access != "owner":
+            raise HTTPException(status_code=403, detail="Only the library owner can perform this action")
+
+        return access
+
     # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------

@@ -99,7 +99,7 @@ export const authService = {
     }
 
     try {
-      const response = await fetch('/creator/profile', {
+      const response = await fetch('/creator/me', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

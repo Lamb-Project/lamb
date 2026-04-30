@@ -766,6 +766,16 @@
         "owner": "Owner",
         "admin": "Admin",
         "member": "Member"
+      },
+      "agent": {
+        "title": "Agent LAMB",
+        "description": "Parla amb l'assistent d'IA per obtenir ajuda, crear assistents, aprendre sobre LAMB o resoldre problemes.",
+        "cta": "Iniciar conversa",
+        "starting": "Iniciant...",
+        "newConversation": "Nova conversa",
+        "confirmNew": "Finalitzar aquesta conversa i iniciar-ne una de nova?",
+        "startNew": "Iniciar nova conversa",
+        "continue": "Continuar la conversa d'avui"
       }
     },
     "help": {
@@ -774,6 +784,96 @@
       "loadingNews": "Loading news...",
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
+    }
+  },
+  "libraries": {
+    "title": "Biblioteques",
+    "pageTitle": "Biblioteques",
+    "pageDescription": "Gestiona les teves biblioteques de documents.",
+    "myLibraries": "Les meves biblioteques",
+    "sharedLibraries": "Compartides",
+    "createNew": "Nova biblioteca",
+    "loading": "Carregant biblioteques...",
+    "loginRequired": "Has d'iniciar sessió per veure les biblioteques.",
+    "noOwned": "Encara no tens biblioteques. Crea'n una per començar!",
+    "noShared": "No hi ha biblioteques compartides disponibles.",
+    "noResults": "Cap biblioteca coincideix amb la teva cerca.",
+    "name": "Nom",
+    "description": "Descripció",
+    "namePlaceholder": "Nom de la biblioteca",
+    "descriptionPlaceholder": "Descripció opcional",
+    "createdAt": "Creada",
+    "owner": "Propietari",
+    "view": "Veure",
+    "delete": "Eliminar",
+    "actions": "Accions",
+    "creating": "Creant...",
+    "createButton": "Crear biblioteca",
+    "createSuccess": "Biblioteca creada correctament.",
+    "deleteSuccess": "Biblioteca eliminada.",
+    "shareSuccess": "Biblioteca compartida amb l'organització.",
+    "unshareSuccess": "La biblioteca ara és privada.",
+    "uploadFile": "Pujar fitxer",
+    "titleOptional": "Títol",
+    "upload": "Pujar",
+    "uploading": "Pujant...",
+    "uploadSuccess": "Fitxer pujat. Processant...",
+    "fileTooLarge": "El fitxer supera el límit de 500 MB.",
+    "importContent": "Importar URL / YouTube",
+    "importSuccess": "Importació iniciada.",
+    "addContent": "Afegir contingut",
+    "export": "Exportar",
+    "itemDeleteSuccess": "Element eliminat.",
+    "detailTitle": "Detalls de la biblioteca",
+    "backButton": "Tornar a biblioteques",
+    "items": {
+      "title": "Elements",
+      "titleCol": "Títol",
+      "source": "Font",
+      "size": "Mida",
+      "status": "Estat",
+      "created": "Creat",
+      "empty": "Sense elements. Puja un fitxer o importa contingut per començar."
+    },
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartida",
+      "private": "Privada"
+    },
+    "createModal": {
+      "title": "Crear biblioteca",
+      "description": "Crea una nova biblioteca de documents per emmagatzemar contingut importat.",
+      "nameRequired": "El nom és obligatori",
+      "nameTooLong": "El nom ha de tenir menys de 100 caràcters"
+    },
+    "deleteModal": {
+      "title": "Eliminar biblioteca",
+      "message": "N'estàs segur? Tot el contingut s'eliminarà permanentment.",
+      "confirm": "Eliminar"
+    },
+    "deleteItemModal": {
+      "title": "Eliminar element",
+      "message": "Estàs segur que vols eliminar aquest element?",
+      "confirm": "Eliminar"
+    },
+    "importModal": {
+      "title": "Importar contingut",
+      "typeLabel": "Tipus d'importació",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "Arxiu ZIP",
+      "titleLabel": "Títol (opcional)",
+      "youtubeUrl": "URL de YouTube",
+      "language": "Idioma de la transcripció",
+      "zipFile": "Fitxer ZIP",
+      "zipHint": "Importa una biblioteca exportada prèviament.",
+      "importing": "Important...",
+      "importButton": "Importar",
+      "invalidUrl": "Es requereix una URL HTTP(S) vàlida.",
+      "invalidYoutubeUrl": "Es requereix una URL de YouTube vàlida.",
+      "zipRequired": "Es requereix un fitxer ZIP.",
+      "zipTooLarge": "El fitxer ZIP supera el límit de 500 MB.",
+      "importFailed": "La importació ha fallat. Torna-ho a provar."
     }
   },
   "fileEval": {

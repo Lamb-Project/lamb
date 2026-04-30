@@ -25,19 +25,23 @@ cd backend && pip install -r requirements-base.txt && pip install -r requirement
 cd backend && PORT=9099 uvicorn main:app --port 9099 --host 0.0.0.0 --forwarded-allow-ips '*' --reload
 
 # Frontend dev server (Svelte on port 5173)
-cd frontend/svelte-app && npm run dev -- --host 0.0.0.0
+cd frontend && pnpm --filter creator-app dev -- --host 0.0.0.0
 
 # KB Server (port 9090)
 cd lamb-kb-server-stable/backend && uvicorn main:app --host 0.0.0.0 --port 9090 --reload
+
+# Library Manager (port 9091)
+cd library-manager && source .venv/bin/activate
+cd backend && LAMB_API_TOKEN=your-token uvicorn main:app --host 0.0.0.0 --port 9091 --reload
 ```
 
-### Frontend (from `frontend/svelte-app/`)
+### Frontend (from `frontend/`)
 ```bash
-npm run build        # production build
-npm run check        # svelte-kit sync + svelte-check (type checking)
-npm run lint         # prettier --check + eslint
-npm run format       # prettier --write
-npm run test:unit    # vitest
+pnpm --filter creator-app build        # production build
+pnpm --filter creator-app check        # svelte-kit sync + svelte-check (type checking)
+pnpm --filter creator-app lint         # prettier --check + eslint
+pnpm --filter creator-app format       # prettier --write
+pnpm --filter creator-app test:unit    # vitest
 ```
 
 ### Playwright E2E tests (from `testing/playwright/`)
@@ -57,6 +61,18 @@ Playwright config: 90s timeout per test, 10s assertion timeout, parallel disable
 pytest                         # runs e2e/ test directory
 pytest -m "not slow"           # skip slow tests
 ```
+
+### Library Manager tests (from `library-manager/`)
+```bash
+# Setup (first time only)
+python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[all,dev]"
+
+# Run tests
+pytest tests/ -v               # all 52 tests
+pytest tests/ --cov=backend    # with coverage report
+ruff check backend/ tests/ --select E,F,W,I,UP,SIM --target-version py311  # lint
+```
+Tests use an in-process ASGI client (no server needed). YouTube transcript test uses a cached response in `tests/.yt_cache/` to avoid rate limits.
 
 ### Applying backend env changes in Docker
 ```bash
@@ -84,6 +100,7 @@ Frontend requests hit `/creator`, which delegates to `/lamb/v1` internally.
 | Backend (FastAPI) | 9099 | Main API server, also serves built frontend SPA in production |
 | Open WebUI | 8080 | Chat interface for end-users, user session management |
 | KB Server | 9090 | Knowledge base document ingestion, embedding, vector search |
+| Library Manager | 9091 | Document repository — imports files into structured markdown with permalinks |
 
 ### Completion Pipeline (plugin system)
 Completions flow through a plugin pipeline in `backend/lamb/completions/`:
@@ -96,13 +113,31 @@ Plugin hooks: `before_completion` → `run_completion` → `after_completion`
 ### Multi-Tenancy
 Organizations are the tenant boundary. Each org isolates users, assistants, KBs, and config. Roles: `owner`, `admin`, `member`. User types: `creator` (builds assistants) vs `end_user` (chat only, redirected to Open WebUI).
 
+### Library Manager (`library-manager/`)
+
+A separate microservice (FastAPI, port 9091) that serves as a **document repository**. It imports documents into a structured, permalinkable markdown format. It does NOT chunk, embed, or interact with vector databases — that is the KB Server's responsibility.
+
+**Terminology:** Libraries **IMPORT** content (document repository). Knowledge Bases **INGEST** content (chunking + embedding). These terms are used consistently throughout the codebase and must not be confused.
+
+**Key decisions:**
+- LAMB is the only caller. Single bearer token auth, no user-level ACL (LAMB handles that).
+- Imports are processed asynchronously via a persistent SQLite-backed job queue with semaphore-controlled concurrency.
+- API keys are sent per-request and held in memory only — never persisted to disk.
+- Every imported document is stored in a common structured format: `metadata.json` + `source_ref.json` + `original/` + `content/full.md` + `content/pages/` + `content/images/`.
+- Five import plugins (simple, markitdown, markitdown_plus, url, youtube), each governed by a tri-state env var (`DISABLE|SIMPLIFIED|ADVANCED`).
+- Internal service: no CORS, no published ports, non-root Docker container, single-instance file lock.
+- 52 tests, 80% coverage. Full README at `library-manager/README.md`.
+
+**LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/packages/creator-app/src/lib/components/libraries/`.
+
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
 - **Open WebUI DB** — `open-webui/backend/data/webui.db`. For historical reasons, Open WebUI is still the authentication provider — LAMB delegates user auth and session management to OWI. This is a known coupling targeted for refactoring (see GitHub issues).
 - **ChromaDB** — vector store for KB embeddings, collections scoped per org+user.
+- **Library Manager DB** — SQLite with WAL mode (`library-manager/data/library-manager.db`). Schema in `library-manager/backend/database/models.py`. Managed by SQLAlchemy `create_all` (no Alembic migrations yet).
 
 ### Frontend
-Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScript). I18n via `svelte-i18n` with locales in `frontend/svelte-app/src/lib/locales/` (en, es, ca, eu). API services in `frontend/svelte-app/src/lib/services/`. Reactive state in `frontend/svelte-app/src/lib/stores/`.
+Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScript). Monorepo with pnpm workspaces: `@lamb/ui` (shared components, stores, i18n), `creator-app` (main SPA), `module-chat` (LTI chat module), `module-file-eval` (LTI file evaluation module). I18n via `svelte-i18n` with locales in `frontend/packages/ui/src/lib/locales/` (en, es, ca, eu). API services in `frontend/packages/creator-app/src/lib/services/`. Reactive state in `frontend/packages/creator-app/src/lib/stores/`.
 
 ## Code Style
 
@@ -113,8 +148,9 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 
 - Backend env: `backend/.env` (copy from `backend/.env.example`)
 - KB Server env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
+- Library Manager env: `library-manager/backend/.env` (copy from `.env.example`) — requires `LAMB_API_TOKEN`
 - Playwright env: `testing/playwright/.env` (copy from `.env.sample`)
-- Frontend runtime config: `frontend/svelte-app/static/config.js` (copy from `config.js.sample`)
+- Frontend runtime config: injected by `backend/docker-entrypoint.py` at container start
 - Docker orchestration: `docker-compose.yaml` (requires `LAMB_PROJECT_PATH` env var)
 - Reverse proxy: `Caddyfile`
 
@@ -122,9 +158,11 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 
 `open-webui/` and `lamb-kb-server-stable/` are separate projects maintained in their own repositories. They are included here only as stable snapshots so Docker Compose can launch them alongside LAMB. **Do not edit code in these directories** — changes belong in their upstream repos. The `frontend/build/` directory is build output. All three are excluded from search via `.cursorignore`.
 
+Note: `library-manager/` is NOT vendored — it is developed in-tree as part of this repository. Edit freely.
+
 ## Version Bumping
 
-Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `node frontend/svelte-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
+Dev version lives in `frontend/packages/creator-app/scripts/generate-version.js`. Run `node frontend/packages/creator-app/scripts/generate-version.js` to regenerate `src/lib/version.js`. Only commit the generator script change, not the generated file.
 
 ## Git commits 
 

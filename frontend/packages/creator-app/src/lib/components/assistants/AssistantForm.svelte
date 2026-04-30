@@ -17,6 +17,7 @@
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
+	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
 
@@ -420,6 +421,7 @@
 		if (!data) return;
 		console.log('[populateFormFields] Called with data:', data);
 		console.log('[populateFormFields] configInitialized:', configInitialized);
+		const metadata = getAssistantMetadataObject(data);
 		
 		name = data.name?.replace(/^\d+_/, '') || '';
 		// Only update description if not preserving current edits
@@ -431,14 +433,14 @@
 		RAG_Top_k = data.RAG_Top_k ?? 3;
 		
 		if (configInitialized) {
-			// Use direct properties from the data object
-			selectedPromptProcessor = data.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
+			// Read plugin settings from top-level fields first, then fallback to metadata.
+			selectedPromptProcessor = data.prompt_processor || metadata.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
 			console.log('[populateFormFields] Set selectedPromptProcessor:', selectedPromptProcessor);
 			
-			selectedConnector = data.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
+			selectedConnector = data.connector || metadata.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 			console.log('[populateFormFields] Set selectedConnector:', selectedConnector);
 			
-			selectedRagProcessor = data.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
+			selectedRagProcessor = data.rag_processor || metadata.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 			console.log('[populateFormFields] Set selectedRagProcessor:', selectedRagProcessor);
 			
 			// Update available models based on the selected connector
@@ -446,7 +448,7 @@
 			console.log('[populateFormFields] Updated availableModels:', availableModels);
 			
 			// Set LLM - ensure we check if the data.llm exists in availableModels
-			const targetLlm = data.llm;
+			const targetLlm = data.llm || metadata.llm;
 			if (targetLlm && availableModels.includes(targetLlm)) {
 				selectedLlm = targetLlm;
 				console.log('[populateFormFields] Set selectedLlm to saved value:', selectedLlm);
@@ -490,12 +492,6 @@
 			// Handle rubric fields if rubric_rag is selected
 			if (selectedRagProcessor === 'rubric_rag') {
 				try {
-					// Parse metadata if it's a string
-					let metadata = data.metadata;
-					if (typeof metadata === 'string') {
-						metadata = JSON.parse(metadata);
-					}
-
 					selectedRubricId = metadata?.rubric_id || '';
 					rubricFormat = metadata?.rubric_format || 'markdown';
 
@@ -513,11 +509,6 @@
 
 			// Handle vision capability
 			try {
-				let metadata = data.metadata;
-				if (typeof metadata === 'string') {
-					metadata = JSON.parse(metadata);
-				}
-
 				visionEnabled = metadata?.capabilities?.vision || false;
 				imageGenerationEnabled = metadata?.capabilities?.image_generation || false;
 				console.log('Populate: Vision capability loaded:', visionEnabled);
@@ -755,17 +746,10 @@
 			const data = await response.json();
 			userFiles = data; // API returns array of {name, path} objects
 			
-			// Set selected file if it exists in metadata (fallback to api_callback)
-			const metadataStr = assistant?.metadata || assistant?.api_callback;
-			if (metadataStr) {
-				try {
-					const callbackData = JSON.parse(metadataStr);
-					if (callbackData.file_path && userFiles.some(file => file.path === callbackData.file_path)) {
-						selectedFilePath = callbackData.file_path;
-					}
-				} catch (e) {
-					console.error('Error parsing metadata for file path:', e);
-				}
+			// Set selected file if it exists in metadata.
+			const callbackData = getAssistantMetadataObject(assistant);
+			if (callbackData.file_path && userFiles.some(file => file.path === callbackData.file_path)) {
+				selectedFilePath = callbackData.file_path;
 			}
 			
 			console.log(`Fetched ${userFiles.length} files`);
