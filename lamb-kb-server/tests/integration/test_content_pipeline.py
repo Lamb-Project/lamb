@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from uuid import uuid4
 
 import pytest
@@ -433,32 +432,20 @@ async def test_counter_aggregation_across_multiple_ingestions(
 async def test_qdrant_happy_path(client: AsyncClient, org_id: str) -> None:
     """Ingest into a Qdrant-backed collection, query, verify results.
 
-    Enables Qdrant temporarily via Option A: pop the DISABLE env var, evict
-    the cached qdrant_backend module so its @register decorator re-runs, then
-    restore env and state after the test.
+    Force-registers QdrantBackend directly into the registry (bypassing the
+    DISABLE env guard) without touching sys.modules. Evicting and re-importing
+    the module would invalidate references already bound by sibling test
+    modules — keep the existing module object in place.
     """
-    import importlib  # noqa: PLC0415
-    import sys  # noqa: PLC0415
-
-    import main  # noqa: PLC0415
     from plugins.base import VectorDBRegistry  # noqa: PLC0415
-    from tests._fakes import register_fake_embedding  # noqa: PLC0415
 
-    _QDRANT_MODULE = "plugins.vector_db.qdrant_backend"
-
-    # --- Enable Qdrant for this test ---
-    original_value = os.environ.pop("VECTOR_DB_QDRANT", None)
-    os.environ["VECTOR_DB_QDRANT"] = "ENABLE"
     try:
-        # Evict the cached module so the @register decorator re-runs under
-        # the new ENABLE env var.
-        sys.modules.pop(_QDRANT_MODULE, None)
-        importlib.import_module(_QDRANT_MODULE)
-        register_fake_embedding()  # Re-inject fake after discovery.
+        from plugins.vector_db.qdrant_backend import QdrantBackend  # noqa: PLC0415
+    except ImportError:
+        pytest.skip("qdrant-client not installed; skipping Qdrant integration test")
 
-        if not VectorDBRegistry.is_registered("qdrant"):
-            pytest.skip("qdrant-client not installed; skipping Qdrant integration test")
-
+    VectorDBRegistry._plugins["qdrant"] = QdrantBackend
+    try:
         # Create a Qdrant-backed collection.
         create_r = await client.post(
             "/collections",
@@ -520,17 +507,7 @@ async def test_qdrant_happy_path(client: AsyncClient, org_id: str) -> None:
         assert results[0]["metadata"]["source_item_id"] == "qdrant-doc-1"
 
     finally:
-        # Restore original env state.
-        os.environ.pop("VECTOR_DB_QDRANT", None)
-        if original_value is not None:
-            os.environ["VECTOR_DB_QDRANT"] = original_value
-        else:
-            os.environ["VECTOR_DB_QDRANT"] = "DISABLE"
-        # Remove Qdrant from the registry and evict the module so subsequent
-        # tests don't see it registered (restoring the DISABLE baseline).
         VectorDBRegistry._plugins.pop("qdrant", None)
-        sys.modules.pop(_QDRANT_MODULE, None)
-        register_fake_embedding()
 
 
 @pytest.mark.asyncio
