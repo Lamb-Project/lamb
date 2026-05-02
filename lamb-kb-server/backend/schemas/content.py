@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # --- Sub-models ---
 
@@ -68,10 +68,27 @@ class DocumentInputPayload(BaseModel):
         default_factory=list,
         description="Pre-split pages for the by_page chunking strategy.",
     )
-    extra_metadata: dict[str, Any] = Field(
+    extra_metadata: dict[str, str | int | float | bool] = Field(
         default_factory=dict,
         description="Free-form metadata merged into every chunk produced from this document.",
     )
+
+    @field_validator("extra_metadata")
+    @classmethod
+    def _validate_extra_metadata(
+        cls, v: dict[str, Any]
+    ) -> dict[str, str | int | float | bool]:
+        for key, value in v.items():
+            if value is None:
+                raise ValueError(
+                    f"extra_metadata[{key!r}] is None; ChromaDB requires non-null primitive values."
+                )
+            if not isinstance(value, (str, int, float, bool)):
+                raise ValueError(
+                    f"extra_metadata[{key!r}] has type {type(value).__name__}; "
+                    f"only str, int, float, bool are allowed."
+                )
+        return v
 
 
 class AddContentRequest(BaseModel):

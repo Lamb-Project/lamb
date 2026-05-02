@@ -300,14 +300,14 @@ async def test_extra_metadata_primitive_values(
 
 
 @pytest.mark.asyncio
-async def test_extra_metadata_none_value_causes_job_failure(
+async def test_extra_metadata_none_value_rejected_at_schema(
     client: AsyncClient, collection: dict
 ) -> None:
-    """extra_metadata containing a None value fails at the vector store.
+    """extra_metadata containing a None value is rejected at the request boundary.
 
-    ChromaDB's Rust bindings cannot convert Python None to a MetadataValue.
-    The schema (dict[str, Any]) accepts None, but the backend rejects it,
-    so the job should fail with a clear error.
+    The schema now declares dict[str, str | int | float | bool] and validates
+    that no value is None, so the request should be rejected with a 422 before
+    a job is ever created.
     """
     r = await client.post(
         f"/collections/{collection['id']}/add-content",
@@ -323,24 +323,20 @@ async def test_extra_metadata_none_value_causes_job_failure(
         },
         headers=AUTH_HEADERS,
     )
-    assert r.status_code == 202
-    job_id = r.json()["job_id"]
-
-    job = await _poll_job(client, job_id)
-    assert job["status"] == "failed", (
-        f"Expected job to fail due to None metadata value, got: {job}"
-    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert any("none_val" in str(e) for e in detail)
 
 
 @pytest.mark.asyncio
-async def test_extra_metadata_nested_dict_causes_job_failure(
+async def test_extra_metadata_nested_dict_rejected_at_schema(
     client: AsyncClient, collection: dict
 ) -> None:
-    """extra_metadata with a nested dict fails at vector store time.
+    """extra_metadata with a nested dict is rejected at the request boundary.
 
-    ChromaDB only accepts primitive metadata values. A nested dict is not a
-    primitive, so the job should fail (the schema layer allows it through,
-    but the vector backend rejects it at storage time).
+    The schema now validates that all values are str/int/float/bool primitives,
+    so a nested dict is caught immediately and returned as a 422 before a job
+    is ever created.
     """
     r = await client.post(
         f"/collections/{collection['id']}/add-content",
@@ -356,15 +352,9 @@ async def test_extra_metadata_nested_dict_causes_job_failure(
         },
         headers=AUTH_HEADERS,
     )
-    # Schema accepts nested dicts (dict[str, Any]) — request succeeds
-    assert r.status_code == 202
-    job_id = r.json()["job_id"]
-
-    job = await _poll_job(client, job_id)
-    # ChromaDB rejects non-primitive metadata values — the job should fail
-    assert job["status"] == "failed", (
-        f"Expected job to fail due to nested dict in metadata, got: {job}"
-    )
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert any("nested" in str(e) for e in detail)
 
 
 @pytest.mark.asyncio
