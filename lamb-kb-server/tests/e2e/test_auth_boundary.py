@@ -105,7 +105,7 @@ def test_protected_endpoint_rejects_wrong_token_over_http(
 
 
 def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
-    """A non-ASCII byte in the bearer token must not grant access.
+    """A non-ASCII byte in the bearer token must return 401, not 500.
 
     HTTP/1.1 header values are decoded by Starlette as latin-1.  We send the
     raw bytes ``b'Bearer test-tok\\xe9n'`` (where 0xE9 = latin-1 'é') directly
@@ -113,17 +113,9 @@ def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
 
     When Starlette decodes the header it produces the string ``'test-tokén'``
     (U+00E9).  FastAPI then calls ``hmac.compare_digest('test-tokén',
-    'test-token')``.  However, ``hmac.compare_digest`` raises ``TypeError``
-    with "comparing strings with non-ASCII characters is not supported" when
-    given a str containing non-ASCII code points.
-
-    The server does not catch this ``TypeError``, so the request results in a
-    500 Internal Server Error rather than a clean 401.  Access is still denied
-    — the 500 is a server-side bug (unhandled exception path), not a security
-    hole — but it is worth documenting as a known rough edge.
-
-    The test asserts the request is not accepted (not 200/2xx) and documents
-    the actual status code.
+    'test-token')``.  ``hmac.compare_digest`` raises ``TypeError`` for strings
+    with non-ASCII code points; ``verify_token`` catches that TypeError and
+    treats it as a comparison mismatch, returning a clean 401.
     """
     # 'é' in latin-1 is a single byte 0xE9, same length as 'n'.
     bad_token_bytes = b"test-tok\xe9n"  # latin-1: é = 0xE9
@@ -141,19 +133,13 @@ def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
     print(
         f"\nBearer <latin-1 é token b'test-tok\\xe9n'> → {r.status_code}"
     )
-    print(
-        "  NOTE: 500 means hmac.compare_digest raised TypeError for non-ASCII str."
-        " Access is still denied but the error is unhandled."
-    )
 
     # The request must NOT be granted (no 2xx).
-    # 401 = clean rejection, 500 = unhandled TypeError from hmac.compare_digest.
     assert r.status_code not in range(200, 300), (
         f"Non-ASCII token must not grant access; got {r.status_code}"
     )
-    # Document the actual observed status code.
-    assert r.status_code in (401, 500), (
-        f"Expected 401 (clean rejection) or 500 (TypeError not handled),"
+    assert r.status_code == 401, (
+        f"Expected 401 (clean rejection of non-ASCII token),"
         f" got {r.status_code}: {r.text}"
     )
 

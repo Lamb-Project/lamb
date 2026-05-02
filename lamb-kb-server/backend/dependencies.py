@@ -31,7 +31,12 @@ async def verify_token(
     Raises:
         HTTPException: 401 if token is missing or invalid.
     """
-    if not hmac.compare_digest(credentials.credentials, LAMB_API_TOKEN):
+    # TypeError is raised for strings with non-ASCII code points (e.g. latin-1 header values).
+    try:
+        is_valid = hmac.compare_digest(credentials.credentials, LAMB_API_TOKEN)
+    except TypeError:
+        is_valid = False
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid service token.",
