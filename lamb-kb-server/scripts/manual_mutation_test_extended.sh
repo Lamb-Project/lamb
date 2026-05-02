@@ -9,7 +9,8 @@ cd "$(dirname "$0")/.."
 RESULTS="mutation-results-extended.txt"
 : > "$RESULTS"
 
-RUNNER="pytest tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
+PYTEST="${PYTEST:-.venv/bin/pytest}"
+RUNNER="$PYTEST tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
 
 apply_mutation() {
     local file="$1"
@@ -68,9 +69,9 @@ apply_mutation "$FILE_INGEST" \
     "EXT-4"
 
 apply_mutation "$FILE_INGEST" \
-    "max(0, (collection.document_count or 0) - 1)" \
-    "max(1, (collection.document_count or 0) - 1)" \
-    "delete_vectors: document_count never goes below 1" \
+    "(Collection.document_count - 1 < 0, 0)," \
+    "(Collection.document_count - 1 < 0, 1)," \
+    "delete_vectors: document_count clamp returns 1 instead of 0 (atomic)" \
     "EXT-5"
 
 apply_mutation "$FILE_INGEST" \

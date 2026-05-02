@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 RESULTS="mutation-results-final.txt"
 : > "$RESULTS"
 
-RUNNER="pytest tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
+PYTEST="${PYTEST:-.venv/bin/pytest}"
+RUNNER="$PYTEST tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
 
 apply_mutation() {
     local file="$1"
