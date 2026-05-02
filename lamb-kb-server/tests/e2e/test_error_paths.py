@@ -27,6 +27,8 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from tests._helpers import AUTH_HEADERS
+
 _KB_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -509,27 +511,29 @@ def test_422_missing_required_field_name(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 # 503 — Backend unavailable
 #
-# Testing 503 in the e2e tier is hard without modifying live server state
-# because it requires the vector DB registry to return None at *query time*,
-# which would require restarting the session-scoped server with a different
-# env var.  The 503 path is covered exhaustively in the integration tier
-# (test_query.py) where monkeypatching the registry is straightforward via
-# ASGI in-process transport.
-#
-# We mark this test as skipped with a clear explanation rather than omitting
-# it, so the intent is documented and the skip appears in the test report.
+# The 503 path requires (a) a collection persisted in SQLite that references
+# a backend, and (b) that backend being unregistered at query time. The
+# ``kb_server_no_chromadb`` fixture provides both via a two-phase server
+# lifecycle sharing one DATA_DIR (see tests/e2e/conftest.py).
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "503 (backend unavailable) cannot be triggered in the e2e tier without "
-        "restarting the session-scoped server with VECTOR_DB_CHROMADB=DISABLE, "
-        "which would break all other e2e tests sharing that server.  "
-        "This path is covered in tests/integration/test_query.py via "
-        "monkeypatching the VectorDBRegistry after collection creation."
+def test_503_backend_unavailable(kb_server_no_chromadb: dict) -> None:
+    """Querying a chromadb-backed collection returns 503 when the backend is disabled."""
+    info = kb_server_no_chromadb["info"]
+    collection_id = kb_server_no_chromadb["collection_id"]
+
+    with httpx.Client(
+        base_url=info["base_url"], headers=AUTH_HEADERS, timeout=30.0
+    ) as client:
+        r = client.post(
+            f"/collections/{collection_id}/query",
+            json={"query_text": "anything", "top_k": 5},
+        )
+
+    assert r.status_code == 503, (
+        f"Expected 503 with chromadb disabled, got {r.status_code}: {r.text}"
     )
-)
-def test_503_backend_unavailable(http: httpx.Client) -> None:
-    """503 is an integration-tier-only test — see skip reason above."""
-    pass  # pragma: no cover
+    body = r.json()
+    _assert_error_response(body)
+    assert "chromadb" in body["detail"].lower()

@@ -197,11 +197,13 @@ def docker_stack() -> Iterator[dict]:
         compose_down(env)
 
 
-@pytest.fixture(scope="session")
-def kb_server_process(docker_stack: dict) -> Iterator[dict]:
-    """Launch the KB server in a subprocess on a free port."""
+def _spawn_kb_server(data_dir: str, env_overrides: dict[str, str] | None = None) -> dict:
+    """Spawn a uvicorn KB server subprocess against *data_dir*.
+
+    Returns an ``info`` dict (base_url, port, data_dir, process). Caller is
+    responsible for stopping the server via :func:`_stop_kb_server`.
+    """
     port = _free_port()
-    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-")
     env = os.environ.copy()
     env.update(
         {
@@ -216,6 +218,8 @@ def kb_server_process(docker_stack: dict) -> Iterator[dict]:
             "QDRANT_URL": "",  # local on-disk mode by default
         }
     )
+    if env_overrides:
+        env.update(env_overrides)
 
     proc = subprocess.Popen(
         [
@@ -242,22 +246,87 @@ def kb_server_process(docker_stack: dict) -> Iterator[dict]:
         out = proc.stdout.read().decode() if proc.stdout else ""
         pytest.fail(f"KB server failed to start:\n{out[-2000:]}")
 
-    info = {
+    return {
         "base_url": base_url,
         "port": port,
         "data_dir": data_dir,
         "process": proc,
     }
 
+
+def _stop_kb_server(info: dict) -> None:
+    """Terminate a server spawned by :func:`_spawn_kb_server`. Idempotent."""
+    proc = info["process"]
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def kb_server_process(docker_stack: dict) -> Iterator[dict]:
+    """Launch the KB server in a subprocess on a free port."""
+    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-")
+    info = _spawn_kb_server(data_dir=data_dir)
     try:
         yield info
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
+        _stop_kb_server(info)
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def kb_server_no_chromadb(docker_stack: dict) -> Iterator[dict]:
+    """Two-phase fixture for testing 503 backend-unavailable.
+
+    Phase 1: spawn a default-config server, create a chromadb-backed collection,
+    stop the server. Phase 2: spawn a second server against the same DATA_DIR
+    with ``VECTOR_DB_CHROMADB=DISABLE`` so the persisted collection's backend is
+    no longer registered. Yields ``{"info": phase2_info, "collection_id": str}``.
+
+    Depends on docker_stack only because Ollama is the simplest registered
+    embedding vendor available to a fresh subprocess (the test fake plugin
+    only registers in the test process). Ollama is not actually contacted —
+    503 fires before the embedding callable is invoked.
+    """
+    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-503-")
+
+    # Phase 1 — chromadb registered, create the collection.
+    info1 = _spawn_kb_server(data_dir=data_dir)
+    try:
+        payload = {
+            "organization_id": "org-503",
+            "name": "kb-503",
+            "description": "503 e2e test",
+            "chunking_strategy": "simple",
+            "chunking_params": {"chunk_size": 400, "chunk_overlap": 0},
+            "embedding": {
+                "vendor": "ollama",
+                "model": "nomic-embed-text",
+                "api_endpoint": f"{docker_stack['ollama_url']}/api/embeddings",
+            },
+            "vector_db_backend": "chromadb",
+        }
+        with httpx.Client(
+            base_url=info1["base_url"], headers=AUTH_HEADERS, timeout=30.0
+        ) as client:
+            r = client.post("/collections", json=payload)
+            assert r.status_code == 201, f"phase-1 create failed: {r.status_code} {r.text}"
+            collection_id = r.json()["id"]
+    finally:
+        _stop_kb_server(info1)
+
+    # Phase 2 — chromadb disabled; persisted collection now points at a
+    # backend that is not registered, so /query returns 503.
+    info2 = _spawn_kb_server(
+        data_dir=data_dir, env_overrides={"VECTOR_DB_CHROMADB": "DISABLE"}
+    )
+    try:
+        yield {"info": info2, "collection_id": collection_id}
+    finally:
+        _stop_kb_server(info2)
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
