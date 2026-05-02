@@ -6,8 +6,10 @@ chunking logic rather than API wiring.
 
 import json
 
-from plugins.base import DocumentInput
-from plugins.chunking._common import build_base_metadata, encode_list, encode_list_json
+import pytest
+
+from plugins.base import ChunkingRegistry, DocumentInput
+from plugins.chunking._common import build_base_metadata, encode_list, encode_list_json, validate_chunking_params
 from plugins.chunking.by_page import ByPageChunking
 from plugins.chunking.by_section import BySectionChunking
 from plugins.chunking.hierarchical import HierarchicalChunking
@@ -669,3 +671,68 @@ def test_hierarchical_oversized_splits_into_multiple_sub_chunks_section_part_1_b
     parts = [c.metadata.get("section_part") for c in chunks if c.metadata.get("section_part") is not None]
     assert parts, "Expected at least one chunk with section_part"
     assert min(parts) == 1, "section_part must be 1-based (minimum value should be 1)"
+
+
+# ---------------------------------------------------------------------------
+# validate_chunking_params — Bug #4 regression tests
+# ---------------------------------------------------------------------------
+
+# Pin the public parameter names for all four strategies so drift is caught.
+_EXPECTED_PARAMS = {
+    "simple": {"chunk_size", "chunk_overlap"},
+    "by_page": {"pages_per_chunk"},
+    "hierarchical": {"parent_chunk_size", "child_chunk_size", "child_chunk_overlap"},
+    "by_section": {"split_on_heading", "headings_per_chunk"},
+}
+
+
+def test_strategy_parameter_names_match_expected() -> None:
+    """Each strategy's get_parameters() names must match the known public API."""
+    for strategy_name, expected in _EXPECTED_PARAMS.items():
+        strategy = ChunkingRegistry.get(strategy_name)
+        assert strategy is not None, f"Strategy '{strategy_name}' not registered"
+        actual = {p.name for p in strategy.get_parameters()}
+        assert actual == expected, (
+            f"Strategy '{strategy_name}': expected params {sorted(expected)}, "
+            f"got {sorted(actual)}"
+        )
+
+
+def test_validate_chunking_params_accepts_known_keys() -> None:
+    """validate_chunking_params must not raise when all keys are in the allow-list."""
+    strategy = SimpleChunking()
+    # Both declared keys → no error.
+    validate_chunking_params(strategy, {"chunk_size": 500, "chunk_overlap": 100})
+    # Subset → also fine.
+    validate_chunking_params(strategy, {"chunk_size": 500})
+    # Empty dict → fine.
+    validate_chunking_params(strategy, {})
+
+
+def test_validate_chunking_params_rejects_unknown_key() -> None:
+    """A typo'd key must raise ValueError naming the bad key."""
+    strategy = SimpleChunking()
+    with pytest.raises(ValueError) as exc_info:
+        validate_chunking_params(strategy, {"chunk_size": 1000, "chunk_overlap_size": 200})
+    assert "chunk_overlap_size" in str(exc_info.value)
+    assert "simple" in str(exc_info.value)
+
+
+def test_validate_chunking_params_rejects_cross_strategy_key() -> None:
+    """A key that belongs to a *different* strategy is also rejected."""
+    strategy = SimpleChunking()
+    # 'pages_per_chunk' is valid for by_page, not for simple
+    with pytest.raises(ValueError) as exc_info:
+        validate_chunking_params(strategy, {"chunk_size": 500, "pages_per_chunk": 2})
+    assert "pages_per_chunk" in str(exc_info.value)
+
+
+def test_validate_chunking_params_error_lists_allowed_keys() -> None:
+    """The ValueError message must include the allowed key names."""
+    strategy = BySectionChunking()
+    with pytest.raises(ValueError) as exc_info:
+        validate_chunking_params(strategy, {"split_on_heading": 2, "bogus_key": 99})
+    msg = str(exc_info.value)
+    assert "bogus_key" in msg
+    assert "split_on_heading" in msg
+    assert "headings_per_chunk" in msg

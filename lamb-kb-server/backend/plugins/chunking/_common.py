@@ -1,16 +1,47 @@
 """Shared helpers for chunking plugins.
 
-Provides ``build_base_metadata`` (attaches standard LAMB fields to every chunk)
-and ``encode_list`` (encodes Python lists as pipe-separated strings so that
-ChromaDB — which only accepts primitive metadata values — never receives a list).
+Provides ``build_base_metadata`` (attaches standard LAMB fields to every chunk),
+``encode_list`` (encodes Python lists as pipe-separated strings so that
+ChromaDB — which only accepts primitive metadata values — never receives a list),
+and ``validate_chunking_params`` (rejects unknown keys before they are silently
+ignored by a strategy's ``params.get(...)`` calls).
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from plugins.base import DocumentInput
+
+if TYPE_CHECKING:
+    from plugins.base import ChunkingStrategy
+
+
+def validate_chunking_params(strategy: "ChunkingStrategy", params: dict) -> None:
+    """Raise ``ValueError`` if *params* contains keys not declared by *strategy*.
+
+    Each chunking strategy reads only the keys it recognises; unknown keys are
+    silently ignored.  This helper catches the case early — before the params are
+    persisted or used — so callers receive a clear error instead of silent
+    misconfiguration (Bug #4).
+
+    Args:
+        strategy: An instantiated chunking strategy.
+        params: The caller-supplied parameter dict to validate.
+
+    Raises:
+        ValueError: When *params* contains at least one key not in the strategy's
+            ``get_parameters()`` allow-list.  The message names both the unknown
+            keys and the allowed set so the caller can fix the typo.
+    """
+    allowed = {p.name for p in strategy.get_parameters()}
+    unknown = set(params) - allowed
+    if unknown:
+        raise ValueError(
+            f"Unknown chunking_params for strategy '{strategy.name}': "
+            f"{sorted(unknown)}. Allowed: {sorted(allowed)}."
+        )
 
 
 def build_base_metadata(

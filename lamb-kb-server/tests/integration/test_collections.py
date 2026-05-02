@@ -67,6 +67,34 @@ async def test_create_collection_unknown_embedding(
 
 
 @pytest.mark.asyncio
+async def test_create_collection_rejects_unknown_chunking_param(
+    client: AsyncClient, org_id: str
+) -> None:
+    """Bug #4 regression: typo'd chunking_params keys must be rejected at create time."""
+    payload = _create_payload(org_id)
+    payload["chunking_params"] = {"chunk_size": 400, "chunk_overlap_size": 100}
+    response = await client.post(
+        "/collections", json=payload, headers=AUTH_HEADERS
+    )
+    assert response.status_code == 422
+    assert "chunk_overlap_size" in response.text
+
+
+@pytest.mark.asyncio
+async def test_create_collection_rejects_cross_strategy_param(
+    client: AsyncClient, org_id: str
+) -> None:
+    """A param valid for another strategy is rejected for this one."""
+    payload = _create_payload(org_id)
+    payload["chunking_params"] = {"chunk_size": 400, "pages_per_chunk": 2}
+    response = await client.post(
+        "/collections", json=payload, headers=AUTH_HEADERS
+    )
+    assert response.status_code == 422
+    assert "pages_per_chunk" in response.text
+
+
+@pytest.mark.asyncio
 async def test_create_collection_duplicate_name(
     client: AsyncClient, org_id: str
 ) -> None:

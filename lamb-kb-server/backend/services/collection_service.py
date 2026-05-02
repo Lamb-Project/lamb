@@ -9,6 +9,7 @@ from config import STORAGE_DIR
 from database.models import Collection
 from fastapi import HTTPException, status
 from plugins.base import ChunkingRegistry, EmbeddingRegistry, VectorDBRegistry
+from plugins.chunking._common import validate_chunking_params
 from schemas.collection import CreateCollectionRequest, UpdateCollectionRequest
 from sqlalchemy.orm import Session
 
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_plugins(req: CreateCollectionRequest) -> None:
-    """Raise 400 if any plugin referenced in the request is not registered."""
+    """Raise 400/422 if any plugin referenced in the request is not registered
+    or if ``chunking_params`` contains keys unknown to the chosen strategy."""
     errors = []
     if not ChunkingRegistry.is_registered(req.chunking_strategy):
         errors.append(
@@ -38,6 +40,18 @@ def _validate_plugins(req: CreateCollectionRequest) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=" | ".join(errors),
         )
+
+    # Validate chunking_params against the chosen strategy's allow-list.
+    # Only reached when the strategy is registered (errors guard above).
+    if req.chunking_params:
+        strategy = ChunkingRegistry.get(req.chunking_strategy)
+        try:
+            validate_chunking_params(strategy, req.chunking_params)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
 
 def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:

@@ -27,7 +27,7 @@ from httpx import AsyncClient
 import tasks.worker as worker_module
 from database.connection import get_session_direct
 from database.models import Collection, IngestionJob
-from plugins.base import Chunk, ChunkingRegistry, ChunkingStrategy, DocumentInput
+from plugins.base import Chunk, ChunkingRegistry, ChunkingStrategy, DocumentInput, PluginParameter
 from tasks.worker import (
     _MAX_ATTEMPTS,
     is_worker_running,
@@ -82,6 +82,15 @@ def _doc_payload(n: int = 1, *, text_prefix: str = "Content") -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Test stand-ins for `simple` use the same collection payload (chunk_size,
+# chunk_overlap). Declaring these params keeps them compatible with the
+# unknown-key validation, even though the chunkers ignore the values.
+_SIMPLE_PARAM_DECL = [
+    PluginParameter(name="chunk_size", type="int"),
+    PluginParameter(name="chunk_overlap", type="int"),
+]
+
+
 class _SleepChunker(ChunkingStrategy):
     """Sleeps before returning trivial chunks — simulates slow chunking."""
 
@@ -90,6 +99,9 @@ class _SleepChunker(ChunkingStrategy):
 
     _sleep_seconds: float = 0.5
     _invocation_count: int = 0
+
+    def get_parameters(self) -> list[PluginParameter]:
+        return list(_SIMPLE_PARAM_DECL)
 
     def chunk(self, document: DocumentInput, params: dict | None = None) -> list[Chunk]:
         _SleepChunker._invocation_count += 1
@@ -102,6 +114,9 @@ class _LongSleepChunker(ChunkingStrategy):
 
     name = "long_sleep_chunker"
     description = "Test-only long sleeping chunker"
+
+    def get_parameters(self) -> list[PluginParameter]:
+        return list(_SIMPLE_PARAM_DECL)
 
     def chunk(self, document: DocumentInput, params: dict | None = None) -> list[Chunk]:
         time.sleep(3)
@@ -116,6 +131,9 @@ class _FailOnNthChunker(ChunkingStrategy):
 
     _call_count: int = 0
     _fail_at: int = 7  # default: fail on 7th call
+
+    def get_parameters(self) -> list[PluginParameter]:
+        return list(_SIMPLE_PARAM_DECL)
 
     def chunk(self, document: DocumentInput, params: dict | None = None) -> list[Chunk]:
         _FailOnNthChunker._call_count += 1

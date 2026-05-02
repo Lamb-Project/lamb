@@ -12,6 +12,7 @@ from plugins.base import (
     EmbeddingRegistry,
     VectorDBRegistry,
 )
+from plugins.chunking._common import validate_chunking_params
 from schemas.content import AddContentRequest
 from sqlalchemy.orm import Session
 from tasks.worker import store_credentials
@@ -155,6 +156,14 @@ def execute_ingestion_job(
             "Was it disabled after collection creation?"
         )
     chunking_params: dict = json.loads(collection.chunking_params or "{}")
+    # Defense-in-depth: params were validated at collection-create time, but a
+    # direct DB write or migration could bypass that. Fail loudly here rather
+    # than silently dropping unknown keys.
+    if chunking_params:
+        try:
+            validate_chunking_params(strategy, chunking_params)
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
 
     # Load vector DB backend.
     backend = VectorDBRegistry.get(collection.vector_db_backend)
