@@ -271,17 +271,15 @@ def test_20_concurrent_add_content_requests_succeed(
         f"Expected at least {n_requests} chunks total, got {total_chunks_from_jobs}"
     )
 
-    # Verify the collection is readable and has a positive chunk count.
-    # NOTE: The collection's chunk_count counter may be less than the sum of
-    # per-job chunk counts due to concurrent read-modify-write updates on the
-    # same collection row (a known concurrency limitation in the ingestion
-    # counter logic).  We assert chunk_count > 0 rather than exact equality.
+    # Verify the collection's chunk_count matches the exact sum of per-job chunks.
     with _client(kb_server_process) as client:
         coll_r = client.get(f"/collections/{collection_id}")
     assert coll_r.status_code == 200
     coll_data = coll_r.json()
-    assert coll_data["chunk_count"] > 0, (
-        f"Collection chunk_count should be > 0 after {n_requests} ingestion jobs"
+    assert coll_data["chunk_count"] == total_chunks_from_jobs, (
+        f"Collection chunk_count {coll_data['chunk_count']} != "
+        f"sum of per-job chunks {total_chunks_from_jobs} "
+        f"(atomic counter update may have lost concurrent increments)"
     )
 
 

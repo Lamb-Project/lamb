@@ -4,6 +4,7 @@ import json
 import logging
 from uuid import uuid4
 
+import sqlalchemy as sa
 from database.models import Collection, IngestionJob
 from fastapi import HTTPException, status
 from plugins.base import (
@@ -212,9 +213,16 @@ def execute_ingestion_job(
             n_stored,
         )
 
-    # Update collection aggregate counters.
-    collection.document_count = (collection.document_count or 0) + len(docs_list)
-    collection.chunk_count = (collection.chunk_count or 0) + total_chunks_added
+    # Atomic counter update — SQLite serializes the increment so concurrent
+    # ingestion jobs against the same collection don't lose contributions.
+    db.execute(
+        sa.update(Collection)
+        .where(Collection.id == collection.id)
+        .values(
+            document_count=Collection.document_count + len(docs_list),
+            chunk_count=Collection.chunk_count + total_chunks_added,
+        )
+    )
     db.commit()
 
     logger.info(
@@ -268,8 +276,21 @@ def delete_vectors(
     )
 
     if deleted_count > 0:
-        collection.chunk_count = max(0, (collection.chunk_count or 0) - deleted_count)
-        collection.document_count = max(0, (collection.document_count or 0) - 1)
+        # Atomic decrement, clamped at 0 via CASE expressions.
+        db.execute(
+            sa.update(Collection)
+            .where(Collection.id == collection.id)
+            .values(
+                chunk_count=sa.case(
+                    (Collection.chunk_count - deleted_count < 0, 0),
+                    else_=Collection.chunk_count - deleted_count,
+                ),
+                document_count=sa.case(
+                    (Collection.document_count - 1 < 0, 0),
+                    else_=Collection.document_count - 1,
+                ),
+            )
+        )
     db.commit()
 
     logger.info(

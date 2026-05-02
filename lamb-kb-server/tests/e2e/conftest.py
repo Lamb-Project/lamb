@@ -89,6 +89,22 @@ def _wait_for_http(url: str, timeout: float = 30.0) -> bool:
     return False
 
 
+def _wait_for_ollama_model(ollama_url: str, model: str, timeout: float = 300.0) -> bool:
+    """Poll ``/api/tags`` until *model* is listed (pull complete)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            r = httpx.get(f"{ollama_url}/api/tags", timeout=5.0)
+            if r.status_code == 200:
+                models = [m.get("name", "") for m in r.json().get("models", [])]
+                if any(name.startswith(model) for name in models):
+                    return True
+        except Exception:
+            pass
+        time.sleep(2.0)
+    return False
+
+
 @pytest.fixture(scope="session")
 def docker_stack() -> Iterator[dict]:
     """Bring up Qdrant + Ollama containers for the e2e tier.
@@ -128,6 +144,11 @@ def docker_stack() -> Iterator[dict]:
             pytest.skip(f"Pre-started Qdrant not reachable at {qdrant_url}")
         if not _wait_for_http(f"{ollama_url}/api/tags", timeout=10):
             pytest.skip(f"Pre-started Ollama not reachable at {ollama_url}")
+        if not _wait_for_ollama_model(ollama_url, "nomic-embed-text", timeout=300):
+            pytest.skip(
+                f"Pre-started Ollama at {ollama_url} does not have "
+                f"nomic-embed-text pulled (run: ollama pull nomic-embed-text)"
+            )
         yield {
             "qdrant_url": qdrant_url,
             "ollama_url": ollama_url,
@@ -158,6 +179,11 @@ def docker_stack() -> Iterator[dict]:
     if not _wait_for_http(f"{ollama_url}/api/tags", timeout=60):
         compose_down(env)
         pytest.skip("Ollama container failed to become ready")
+    # Wait for the embedding model to finish pulling — /api/tags returns 200
+    # before the model is ready, so tests racing the pull see 404s.
+    if not _wait_for_ollama_model(ollama_url, "nomic-embed-text", timeout=300):
+        compose_down(env)
+        pytest.skip("Ollama failed to pull nomic-embed-text within 300s")
 
     info = {
         "qdrant_url": qdrant_url,

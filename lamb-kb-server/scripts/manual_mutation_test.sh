@@ -16,7 +16,8 @@ RESULTS="mutation-results.txt"
 
 # Test runner: unit + worker + content_pipeline. -x stops on first failure
 # so killed mutants exit fast.
-RUNNER="pytest tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
+PYTEST="${PYTEST:-.venv/bin/pytest}"
+RUNNER="$PYTEST tests/unit/test_services.py tests/integration/test_worker.py tests/integration/test_content_pipeline.py -x -q --no-header --tb=no -p no:cacheprovider"
 
 apply_mutation() {
     local file="$1"
@@ -110,15 +111,15 @@ apply_mutation "$FILE_INGEST" \
     "INGEST-9"
 
 apply_mutation "$FILE_INGEST" \
-    "collection.document_count = (collection.document_count or 0) + len(docs_list)" \
-    "collection.document_count = (collection.document_count or 0) - len(docs_list)" \
-    "execute_ingestion_job: document_count decremented" \
+    "document_count=Collection.document_count + len(docs_list)," \
+    "document_count=Collection.document_count - len(docs_list)," \
+    "execute_ingestion_job: document_count decremented (atomic)" \
     "INGEST-10"
 
 apply_mutation "$FILE_INGEST" \
-    "collection.chunk_count = (collection.chunk_count or 0) + total_chunks_added" \
-    "collection.chunk_count = (collection.chunk_count or 0) - total_chunks_added" \
-    "execute_ingestion_job: chunk_count decremented" \
+    "chunk_count=Collection.chunk_count + total_chunks_added," \
+    "chunk_count=Collection.chunk_count - total_chunks_added," \
+    "execute_ingestion_job: chunk_count decremented (atomic)" \
     "INGEST-11"
 
 apply_mutation "$FILE_INGEST" \
@@ -128,15 +129,15 @@ apply_mutation "$FILE_INGEST" \
     "INGEST-12"
 
 apply_mutation "$FILE_INGEST" \
-    "max(0, (collection.chunk_count or 0) - deleted_count)" \
-    "min(0, (collection.chunk_count or 0) - deleted_count)" \
-    "delete_vectors: chunk_count clamp inverted (max → min)" \
+    "(Collection.chunk_count - deleted_count < 0, 0)," \
+    "(Collection.chunk_count - deleted_count < 0, 999)," \
+    "delete_vectors: chunk_count clamp returns junk instead of 0" \
     "INGEST-13"
 
 apply_mutation "$FILE_INGEST" \
-    "max(0, (collection.document_count or 0) - 1)" \
-    "max(0, (collection.document_count or 0) - 0)" \
-    "delete_vectors: document_count never decrements" \
+    "else_=Collection.document_count - 1," \
+    "else_=Collection.document_count - 0," \
+    "delete_vectors: document_count never decrements (atomic)" \
     "INGEST-14"
 
 # ----- worker.py mutations (high-impact only) -----
