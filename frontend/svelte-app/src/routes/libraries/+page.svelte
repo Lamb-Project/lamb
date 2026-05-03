@@ -96,6 +96,10 @@
         wizardOpen = true;
     }
 
+    function closeWizard() {
+        wizardOpen = false;
+    }
+
     function handleWizardDone(event) {
         const refs = event.detail || {};
         // Refresh both lists regardless of which side the wizard touched.
@@ -224,4 +228,11 @@
     </div>
 </div>
 
-<CreateKnowledgeWizard bind:isOpen={wizardOpen} on:done={handleWizardDone} />
+<svelte:window onkeydown={(e) => { if (wizardOpen && e.key === 'Escape') closeWizard(); }} />
+
+{#if wizardOpen}
+    <CreateKnowledgeWizard
+        onclose={closeWizard}
+        on:done={handleWizardDone}
+    />
+{/if}

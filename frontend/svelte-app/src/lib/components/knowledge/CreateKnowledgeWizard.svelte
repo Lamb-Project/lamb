@@ -22,7 +22,7 @@
   Bind via `bind:isOpen`. Emits 'done' when the user finishes.
 -->
 <script>
-    import { createEventDispatcher, tick } from 'svelte';
+    import { createEventDispatcher } from 'svelte';
     import { _ } from '$lib/i18n';
 
     import Step0 from './wizard/Step0_LibraryPath.svelte';
@@ -38,8 +38,8 @@
 
     const dispatch = createEventDispatcher();
 
-    /** @type {{ isOpen: boolean }} */
-    let { isOpen = $bindable(false) } = $props();
+    /** @type {{ onclose?: () => void }} */
+    let { onclose = () => {} } = $props();
 
     /**
      * @typedef {Object} WizardState
@@ -96,17 +96,14 @@
     let currentStep = $state(0);
     let wizardState = $state(structuredClone(initialState));
 
-    // Apply auto-suggested defaults when wizard is opened.
-    $effect(() => {
-        if (isOpen) {
-            if (!wizardState.libraryName) {
-                wizardState.libraryName = `My Library ${todayLabel()}`;
-            }
-            if (!wizardState.ksName) {
-                wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
-            }
-        }
-    });
+    // Apply auto-suggested defaults at mount (component is mounted only
+    // when the parent decides to open it via {#if wizardOpen}).
+    if (!wizardState.libraryName) {
+        wizardState.libraryName = `My Library ${todayLabel()}`;
+    }
+    if (!wizardState.ksName) {
+        wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
+    }
 
     /**
      * Total displayed steps (10).
@@ -162,6 +159,27 @@
 
     function handleStateUpdate(event) {
         const patch = event.detail || {};
+        // Skip no-op updates so that an effect inside a step component that
+        // dispatches the same value on every run doesn't loop forever via
+        // wizardState mutation -> step prop change -> step effect re-run.
+        // Compares by JSON for object/array values to handle freshly-built
+        // patch objects whose contents are unchanged.
+        let changed = false;
+        for (const key of Object.keys(patch)) {
+            const a = wizardState[key];
+            const b = patch[key];
+            if (a === b) continue;
+            if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+                try {
+                    if (JSON.stringify(a) === JSON.stringify(b)) continue;
+                } catch {
+                    /* fallthrough */
+                }
+            }
+            changed = true;
+            break;
+        }
+        if (!changed) return;
         wizardState = { ...wizardState, ...patch };
     }
 
@@ -213,7 +231,7 @@
     }
 
     function close() {
-        isOpen = false;
+        onclose();
         dispatch('close');
     }
 
@@ -263,15 +281,14 @@
     let isSkippableStep = $derived(currentStep === 3 || currentStep === 7);
 </script>
 
-{#if isOpen}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+<!-- Esc handling moved to parent — see /libraries/+page.svelte. -->
+
+<div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-knowledge-wizard-title"
         onclick={handleBackdropClick}
-        onkeydown={handleKeydown}
     >
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -423,5 +440,4 @@
                 </div>
             </footer>
         </div>
-    </div>
-{/if}
+</div>

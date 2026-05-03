@@ -9,7 +9,7 @@
     - validity: { valid: boolean }
 -->
 <script>
-    import { createEventDispatcher, tick } from 'svelte';
+    import { createEventDispatcher, tick, untrack } from 'svelte';
     import { getLibraries } from '$lib/services/libraryService';
     import { _ } from '$lib/i18n';
 
@@ -31,18 +31,25 @@
     });
 
     $effect(() => {
-        const valid = path === 'new' || (path === 'existing' && !!selectedId);
-        dispatch('validity', { valid });
-        if (path === 'new') {
-            dispatch('update', { libraryPath: 'new', existingLibraryId: '' });
-        } else if (selectedId) {
-            const lib = libraries.find((l) => l.id === selectedId);
-            dispatch('update', {
-                libraryPath: 'existing',
-                existingLibraryId: selectedId,
-                libraryName: lib?.name || wizardState.libraryName
-            });
-        }
+        // Track local form state only. Reading wizardState/libraries inside
+        // the effect would track the parent's mutations and cause an
+        // infinite dispatch ↔ update loop.
+        const _p = path; const _s = selectedId;
+        void _p; void _s;
+        untrack(() => {
+            const valid = path === 'new' || (path === 'existing' && !!selectedId);
+            dispatch('validity', { valid });
+            if (path === 'new') {
+                dispatch('update', { libraryPath: 'new', existingLibraryId: '' });
+            } else if (selectedId) {
+                const lib = libraries.find((l) => l.id === selectedId);
+                dispatch('update', {
+                    libraryPath: 'existing',
+                    existingLibraryId: selectedId,
+                    libraryName: lib?.name || wizardState.libraryName,
+                });
+            }
+        });
     });
 
     async function loadLibraries() {

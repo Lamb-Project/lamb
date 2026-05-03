@@ -8,7 +8,7 @@
     - validity: { valid: boolean }
 -->
 <script>
-    import { createEventDispatcher, tick } from 'svelte';
+    import { createEventDispatcher, tick, untrack } from 'svelte';
     import { _ } from '$lib/i18n';
 
     /** @type {{ wizardState: any }} */
@@ -22,25 +22,30 @@
     let nameError = $state('');
 
     $effect(() => {
-        const trimmed = name.trim();
-        if (!trimmed) {
-            nameError = $_('knowledge.wizard.step1.nameRequired', { default: 'Name is required' });
-            dispatch('validity', { valid: false });
-            return;
-        }
-        if (trimmed.length > 100) {
-            nameError = $_('knowledge.wizard.step1.nameTooLong', {
-                default: 'Name must be less than 100 characters'
+        // Track only local form state.
+        const _n = name; const _d = description; const _s = isShared;
+        void _n; void _d; void _s;
+        untrack(() => {
+            const trimmed = name.trim();
+            if (!trimmed) {
+                nameError = $_('knowledge.wizard.step1.nameRequired', { default: 'Name is required' });
+                dispatch('validity', { valid: false });
+                return;
+            }
+            if (trimmed.length > 100) {
+                nameError = $_('knowledge.wizard.step1.nameTooLong', {
+                    default: 'Name must be less than 100 characters'
+                });
+                dispatch('validity', { valid: false });
+                return;
+            }
+            nameError = '';
+            dispatch('validity', { valid: true });
+            dispatch('update', {
+                libraryName: trimmed,
+                libraryDescription: description,
+                libraryIsShared: isShared
             });
-            dispatch('validity', { valid: false });
-            return;
-        }
-        nameError = '';
-        dispatch('validity', { valid: true });
-        dispatch('update', {
-            libraryName: trimmed,
-            libraryDescription: description,
-            libraryIsShared: isShared
         });
     });
 
