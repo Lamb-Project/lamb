@@ -115,6 +115,11 @@ services:
       - PORT=9092
       - GLOBAL_LOG_LEVEL=WARNING
       - KB_LOG_LEVEL=WARNING
+      # Placeholder so chromadb's eager OpenAIEmbeddingFunction validator
+      # passes at collection creation. Real embedding keys are sent
+      # per-request by LAMB on add-content/query and override this fallback.
+      - OPENAI_API_KEY=placeholder-set-per-request
+      - EMBEDDINGS_APIKEY=placeholder-set-per-request
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
