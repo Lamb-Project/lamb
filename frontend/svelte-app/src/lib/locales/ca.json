@@ -957,5 +957,182 @@
       "zipTooLarge": "El fitxer ZIP supera el límit de 500 MB.",
       "importFailed": "La importació ha fallat. Torna-ho a provar."
     }
+  },
+  "knowledgeStores": {
+    "title": "Magatzems de Coneixement",
+    "pageTitle": "Magatzems de Coneixement",
+    "pageDescription": "Gestiona els Magatzems de Coneixement — índexs vectorials construïts a partir del contingut de les biblioteques.",
+    "loading": "Carregant Magatzems de Coneixement...",
+    "loginRequired": "Has d'iniciar sessió per veure els Magatzems de Coneixement.",
+    "myStores": "Els meus Magatzems de Coneixement",
+    "sharedStores": "Compartits",
+    "noOwned": "Encara no tens Magatzems de Coneixement. Crea'n un per començar a indexar contingut de la biblioteca.",
+    "noShared": "No hi ha Magatzems de Coneixement compartits disponibles.",
+    "noResults": "Cap Magatzem de Coneixement coincideix amb la teva cerca.",
+    "noContent": "Encara no hi ha contingut de biblioteca enllaçat. Afegeix contingut per començar a indexar.",
+    "name": "Nom",
+    "namePlaceholder": "Nom",
+    "descriptionPlaceholder": "Descripció",
+    "embedding": "Embedding",
+    "embeddingVendor": "Embedding",
+    "embeddingModel": "Model",
+    "chunking": "Fragmentació",
+    "vectorDb": "Vector DB",
+    "contentCount": "Contingut",
+    "createdAt": "Creat",
+    "updatedAt": "Actualitzat",
+    "created": "Creat",
+    "updated": "Actualitzat",
+    "owner": "Propietari",
+    "actions": "Accions",
+    "view": "Veure",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "remove": "Treure",
+    "query": "Consultar",
+    "runQuery": "Consultar",
+    "querying": "Consultant...",
+    "queryPlaceholder": "Fes una pregunta...",
+    "topK": "Top K",
+    "testQuery": "Consulta de prova",
+    "testQueryHelp": "Executa una cerca per similitud contra aquest Magatzem de Coneixement per verificar que retorna fragments útils.",
+    "score": "puntuació",
+    "linkedContent": "Contingut de Biblioteca Enllaçat",
+    "addContent": "Afegir Contingut",
+    "contentTitle": "Títol",
+    "library": "Biblioteca",
+    "status": "Estat",
+    "chunks": "Fragments",
+    "lockedNotice": "L'estratègia de fragmentació, el proveïdor / model d'embedding i la Vector DB es fixen en crear i no es poden canviar.",
+    "shareSuccess": "Magatzem de Coneixement compartit amb l'organització.",
+    "unshareSuccess": "El Magatzem de Coneixement és ara privat.",
+    "updateSuccess": "Magatzem de Coneixement actualitzat.",
+    "deleteSuccess": "Magatzem de Coneixement eliminat.",
+    "removeContentSuccess": "Contingut tret del Magatzem de Coneixement.",
+    "addContentSuccess": "Contingut a la cua per a la ingesta.",
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartit",
+      "private": "Privat"
+    },
+    "permalinks": {
+      "original": "Font",
+      "markdown": "Markdown",
+      "page": "Pàgina"
+    },
+    "deleteModal": {
+      "title": "Eliminar Magatzem de Coneixement",
+      "message": "Estàs segur que vols eliminar aquest Magatzem de Coneixement? Tots els vectors s'eliminaran permanentment. Els elements de la biblioteca no es veuran afectats.",
+      "confirm": "Eliminar"
+    },
+    "removeModal": {
+      "title": "Treure del Magatzem de Coneixement",
+      "message": "Treure aquest contingut del Magatzem de Coneixement? Els vectors s'eliminaran però l'element de la biblioteca quedarà intacte.",
+      "confirm": "Treure"
+    },
+    "addContentModal": {
+      "title": "Afegir Contingut de Biblioteca al Magatzem de Coneixement",
+      "description": "Tria una biblioteca i els elements a ingerir. Només es poden ingerir elements amb estat \"a punt\".",
+      "libraryLabel": "Biblioteca",
+      "itemsLabel": "Elements a ingerir",
+      "selectAll": "Seleccionar tots",
+      "deselectAll": "Desseleccionar tots",
+      "selected": "seleccionats",
+      "noLibraries": "No hi ha biblioteques disponibles. Crea una biblioteca i importa contingut primer.",
+      "noItems": "Selecciona almenys un element.",
+      "noItems2": "Aquesta biblioteca no té elements a punt per ingerir.",
+      "submit": "Afegir al Magatzem de Coneixement",
+      "submitting": "Afegint..."
+    }
+  },
+  "knowledge": {
+    "title": "Coneixement",
+    "description": "Gestiona biblioteques i Magatzems de Coneixement.",
+    "createKnowledge": "Crear Coneixement",
+    "wizard": {
+      "title": "Crear Coneixement",
+      "next": "Següent",
+      "back": "Enrere",
+      "skip": "Ometre",
+      "create": "Crear",
+      "cancel": "Cancel·lar",
+      "abort": "Avortar",
+      "useExisting": "Utilitzar un d'existent",
+      "createNew": "Crear-ne un de nou",
+      "lockedConfigNotice": "Aquesta configuració es fixa en crear i no es podrà canviar més tard.",
+      "editDefaults": "Editar valors per defecte",
+      "progress": "Pas {current} de {total}",
+      "step0": {
+        "title": "Tria una Biblioteca",
+        "description": "Utilitza una Biblioteca existent o crea'n una de nova.",
+        "newLibrary": "Crear una nova Biblioteca",
+        "existingLibrary": "Utilitzar una Biblioteca existent",
+        "pickLibrary": "Tria una Biblioteca"
+      },
+      "step1": {
+        "title": "Detalls de la Biblioteca",
+        "description": "Posa un nom a la teva Biblioteca i una descripció opcional.",
+        "nameLabel": "Nom de la Biblioteca",
+        "descriptionLabel": "Descripció (opcional)",
+        "sharedLabel": "Compartir amb l'organització"
+      },
+      "step2": {
+        "title": "Configuració d'importació de la Biblioteca",
+        "description": "Els valors per defecte funcionen per a la majoria de casos. Expandeix per personalitzar els plugins d'importació.",
+        "defaultPluginLabel": "Plugin d'importació per defecte"
+      },
+      "step3": {
+        "title": "Afegir contingut inicial",
+        "description": "Opcionalment, puja un o més fitxers ara. Sempre en podràs afegir més més tard.",
+        "uploadHint": "Arrossega els fitxers aquí o fes clic per examinar",
+        "uploaded": "pujat",
+        "processing": "processant",
+        "ready": "a punt",
+        "failed": "fallit"
+      },
+      "step4": {
+        "title": "Tria un Magatzem de Coneixement",
+        "description": "Utilitza un Magatzem de Coneixement existent o crea'n un de nou.",
+        "newKs": "Crear un nou Magatzem de Coneixement",
+        "existingKs": "Utilitzar un Magatzem de Coneixement existent",
+        "pickKs": "Tria un Magatzem de Coneixement"
+      },
+      "step5": {
+        "title": "Detalls del Magatzem de Coneixement",
+        "description": "Nom i descripció opcional per al Magatzem de Coneixement.",
+        "nameLabel": "Nom del Magatzem de Coneixement",
+        "descriptionLabel": "Descripció (opcional)",
+        "sharedLabel": "Compartir amb l'organització"
+      },
+      "step6": {
+        "title": "Configuració del Magatzem de Coneixement",
+        "description": "Aquestes opcions controlen la fragmentació i l'embedding. Queden BLOQUEJADES després de la creació.",
+        "chunkingLabel": "Estratègia de fragmentació",
+        "vectorDbLabel": "Backend de Vector DB",
+        "embeddingVendorLabel": "Proveïdor d'embedding",
+        "embeddingModelLabel": "Model d'embedding"
+      },
+      "step7": {
+        "title": "Tria elements per ingerir",
+        "description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement.",
+        "allItems": "Tots els elements"
+      },
+      "step8": {
+        "title": "Revisar i crear",
+        "description": "Revisa les teves opcions a continuació. Fes clic a Crear per continuar.",
+        "libraryHeading": "Biblioteca",
+        "ksHeading": "Magatzem de Coneixement",
+        "itemsHeading": "Elements a ingerir",
+        "submit": "Crear",
+        "submitting": "Creant..."
+      },
+      "step9": {
+        "title": "Tot llest",
+        "description": "La teva Biblioteca i el Magatzem de Coneixement estan a punt. La ingesta s'executa en segon pla — pots veure el progrés a la pàgina del Magatzem de Coneixement.",
+        "openKs": "Obrir Magatzem de Coneixement",
+        "openLibrary": "Obrir Biblioteca",
+        "createAnother": "Crear-ne un altre"
+      }
+    }
   }
 }

@@ -964,5 +964,182 @@
       "zipTooLarge": "ZIP fitxategiak 500 MB-ko muga gainditzen du.",
       "importFailed": "Inportazioak huts egin du. Saiatu berriro."
     }
+  },
+  "knowledgeStores": {
+    "title": "Ezagutza-biltegiak",
+    "pageTitle": "Ezagutza-biltegiak",
+    "pageDescription": "Kudeatu Ezagutza-biltegiak — liburutegiko edukietatik eraikitako indize bektorialak.",
+    "loading": "Ezagutza-biltegiak kargatzen...",
+    "loginRequired": "Saioa hasi behar duzu Ezagutza-biltegiak ikusteko.",
+    "myStores": "Nire Ezagutza-biltegiak",
+    "sharedStores": "Partekatuak",
+    "noOwned": "Oraindik ez duzu Ezagutza-biltegirik. Sortu bat liburutegiko edukia indexatzen hasteko.",
+    "noShared": "Ez dago partekatutako Ezagutza-biltegirik eskuragarri.",
+    "noResults": "Ez da Ezagutza-biltegirik aurkitu zure bilaketarekin.",
+    "noContent": "Oraindik ez dago liburutegiko edukirik lotuta. Gehitu edukia indexatzen hasteko.",
+    "name": "Izena",
+    "namePlaceholder": "Izena",
+    "descriptionPlaceholder": "Deskribapena",
+    "embedding": "Embedding",
+    "embeddingVendor": "Embedding",
+    "embeddingModel": "Eredua",
+    "chunking": "Zatiketa",
+    "vectorDb": "Vector DB",
+    "contentCount": "Edukia",
+    "createdAt": "Sortua",
+    "updatedAt": "Eguneratua",
+    "created": "Sortua",
+    "updated": "Eguneratua",
+    "owner": "Jabea",
+    "actions": "Ekintzak",
+    "view": "Ikusi",
+    "edit": "Editatu",
+    "delete": "Ezabatu",
+    "remove": "Kendu",
+    "query": "Kontsultatu",
+    "runQuery": "Kontsultatu",
+    "querying": "Kontsultatzen...",
+    "queryPlaceholder": "Egin galdera bat...",
+    "topK": "Top K",
+    "testQuery": "Proba-kontsulta",
+    "testQueryHelp": "Egin antzekotasun-bilaketa bat Ezagutza-biltegi honen aurka, zati erabilgarriak itzultzen dituela egiaztatzeko.",
+    "score": "puntuazioa",
+    "linkedContent": "Lotutako Liburutegiko Edukia",
+    "addContent": "Edukia Gehitu",
+    "contentTitle": "Izenburua",
+    "library": "Liburutegia",
+    "status": "Egoera",
+    "chunks": "Zatiak",
+    "lockedNotice": "Zatiketa-estrategia, embedding hornitzailea / eredua eta Vector DB sortzean blokeatzen dira eta ezin dira aldatu.",
+    "shareSuccess": "Ezagutza-biltegia erakundearekin partekatu da.",
+    "unshareSuccess": "Ezagutza-biltegia pribatua da orain.",
+    "updateSuccess": "Ezagutza-biltegia eguneratua.",
+    "deleteSuccess": "Ezagutza-biltegia ezabatua.",
+    "removeContentSuccess": "Edukia Ezagutza-biltegitik kendu da.",
+    "addContentSuccess": "Edukia ingestiorako ilaran.",
+    "sharing": {
+      "label": "Partekatzea",
+      "shared": "Partekatua",
+      "private": "Pribatua"
+    },
+    "permalinks": {
+      "original": "Iturria",
+      "markdown": "Markdown",
+      "page": "Orria"
+    },
+    "deleteModal": {
+      "title": "Ezagutza-biltegia Ezabatu",
+      "message": "Ziur zaude Ezagutza-biltegi hau ezabatu nahi duzula? Bektore guztiak betirako ezabatuko dira. Liburutegiko elementuek ez dute eraginik izango.",
+      "confirm": "Ezabatu"
+    },
+    "removeModal": {
+      "title": "Ezagutza-biltegitik Kendu",
+      "message": "Eduki hau Ezagutza-biltegitik kendu? Bektoreak ezabatuko dira, baina liburutegiko elementua osorik geratuko da.",
+      "confirm": "Kendu"
+    },
+    "addContentModal": {
+      "title": "Liburutegiko Edukia Ezagutza-biltegira Gehitu",
+      "description": "Aukeratu liburutegi bat eta ingeritu beharreko elementuak. \"Prest\" egoeran dauden elementuak baino ezin dira ingeritu.",
+      "libraryLabel": "Liburutegia",
+      "itemsLabel": "Ingeritzeko elementuak",
+      "selectAll": "Dena hautatu",
+      "deselectAll": "Hautaketa kendu",
+      "selected": "hautatuta",
+      "noLibraries": "Ez dago liburutegirik eskuragarri. Sortu liburutegi bat eta inportatu edukia lehenengo.",
+      "noItems": "Hautatu gutxienez elementu bat.",
+      "noItems2": "Liburutegi honek ez du ingeritzeko prest dagoen elementurik.",
+      "submit": "Ezagutza-biltegira Gehitu",
+      "submitting": "Gehitzen..."
+    }
+  },
+  "knowledge": {
+    "title": "Ezagutza",
+    "description": "Kudeatu liburutegiak eta Ezagutza-biltegiak.",
+    "createKnowledge": "Ezagutza Sortu",
+    "wizard": {
+      "title": "Ezagutza Sortu",
+      "next": "Hurrengoa",
+      "back": "Atzera",
+      "skip": "Saltatu",
+      "create": "Sortu",
+      "cancel": "Utzi",
+      "abort": "Bertan behera utzi",
+      "useExisting": "Erabili lehendik dagoen bat",
+      "createNew": "Sortu berri bat",
+      "lockedConfigNotice": "Ezarpen hauek sortzean blokeatzen dira eta ezin dira gero aldatu.",
+      "editDefaults": "Lehenetsiak editatu",
+      "progress": "{current}. urratsa, {total}etik",
+      "step0": {
+        "title": "Aukeratu Liburutegi bat",
+        "description": "Erabili lehendik dagoen Liburutegi bat edo sortu berri bat.",
+        "newLibrary": "Sortu Liburutegi berri bat",
+        "existingLibrary": "Erabili lehendik dagoen Liburutegi bat",
+        "pickLibrary": "Aukeratu Liburutegi bat"
+      },
+      "step1": {
+        "title": "Liburutegiaren xehetasunak",
+        "description": "Eman izen bat zure Liburutegiari eta deskribapen aukerakoa.",
+        "nameLabel": "Liburutegiaren izena",
+        "descriptionLabel": "Deskribapena (aukerakoa)",
+        "sharedLabel": "Erakundearekin partekatu"
+      },
+      "step2": {
+        "title": "Liburutegiaren inportazio-ezarpenak",
+        "description": "Lehenetsiak kasu gehienetan funtzionatzen dute. Zabaldu inportazio-pluginak pertsonalizatzeko.",
+        "defaultPluginLabel": "Inportazio-plugin lehenetsia"
+      },
+      "step3": {
+        "title": "Hasierako edukia gehitu",
+        "description": "Aukeran, igo fitxategi bat edo gehiago orain. Beti gehiago gehi ditzakezu geroago.",
+        "uploadHint": "Jaregin fitxategiak hemen edo egin klik arakatzeko",
+        "uploaded": "igota",
+        "processing": "prozesatzen",
+        "ready": "prest",
+        "failed": "huts egin du"
+      },
+      "step4": {
+        "title": "Aukeratu Ezagutza-biltegi bat",
+        "description": "Erabili lehendik dagoen Ezagutza-biltegi bat edo sortu berri bat.",
+        "newKs": "Sortu Ezagutza-biltegi berri bat",
+        "existingKs": "Erabili lehendik dagoen Ezagutza-biltegi bat",
+        "pickKs": "Aukeratu Ezagutza-biltegi bat"
+      },
+      "step5": {
+        "title": "Ezagutza-biltegiaren xehetasunak",
+        "description": "Ezagutza-biltegiaren izena eta deskribapen aukerakoa.",
+        "nameLabel": "Ezagutza-biltegiaren izena",
+        "descriptionLabel": "Deskribapena (aukerakoa)",
+        "sharedLabel": "Erakundearekin partekatu"
+      },
+      "step6": {
+        "title": "Ezagutza-biltegiaren konfigurazioa",
+        "description": "Aukera hauek zatiketa eta embedding kontrolatzen dituzte. Sortu ondoren BLOKEATUTA daude.",
+        "chunkingLabel": "Zatiketa-estrategia",
+        "vectorDbLabel": "Vector DB backend-a",
+        "embeddingVendorLabel": "Embedding hornitzailea",
+        "embeddingModelLabel": "Embedding eredua"
+      },
+      "step7": {
+        "title": "Aukeratu ingeritzeko elementuak",
+        "description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian.",
+        "allItems": "Elementu guztiak"
+      },
+      "step8": {
+        "title": "Berrikusi eta sortu",
+        "description": "Berrikusi zure aukerak behean. Egin klik Sortu botoian jarraitzeko.",
+        "libraryHeading": "Liburutegia",
+        "ksHeading": "Ezagutza-biltegia",
+        "itemsHeading": "Ingeritzeko elementuak",
+        "submit": "Sortu",
+        "submitting": "Sortzen..."
+      },
+      "step9": {
+        "title": "Dena prest",
+        "description": "Zure Liburutegia eta Ezagutza-biltegia prest daude. Ingestioa atzeko planoan exekutatzen da — aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
+        "openKs": "Ezagutza-biltegia ireki",
+        "openLibrary": "Liburutegia ireki",
+        "createAnother": "Beste bat sortu"
+      }
+    }
   }
 }

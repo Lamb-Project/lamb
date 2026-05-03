@@ -954,5 +954,182 @@
       "zipTooLarge": "ZIP file exceeds 500 MB limit.",
       "importFailed": "Import failed. Please try again."
     }
+  },
+  "knowledgeStores": {
+    "title": "Knowledge Stores",
+    "pageTitle": "Knowledge Stores",
+    "pageDescription": "Manage Knowledge Stores — vector indexes built from library content.",
+    "loading": "Loading Knowledge Stores...",
+    "loginRequired": "You must be logged in to view Knowledge Stores.",
+    "myStores": "My Knowledge Stores",
+    "sharedStores": "Shared",
+    "noOwned": "You have no Knowledge Stores yet. Create one to start indexing library content.",
+    "noShared": "No shared Knowledge Stores available.",
+    "noResults": "No Knowledge Stores match your search.",
+    "noContent": "No library content linked yet. Add content to start indexing.",
+    "name": "Name",
+    "namePlaceholder": "Name",
+    "descriptionPlaceholder": "Description",
+    "embedding": "Embedding",
+    "embeddingVendor": "Embedding",
+    "embeddingModel": "Model",
+    "chunking": "Chunking",
+    "vectorDb": "Vector DB",
+    "contentCount": "Content",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
+    "created": "Created",
+    "updated": "Updated",
+    "owner": "Owner",
+    "actions": "Actions",
+    "view": "View",
+    "edit": "Edit",
+    "delete": "Delete",
+    "remove": "Remove",
+    "query": "Query",
+    "runQuery": "Query",
+    "querying": "Querying...",
+    "queryPlaceholder": "Ask a question...",
+    "topK": "Top K",
+    "testQuery": "Test Query",
+    "testQueryHelp": "Run a similarity search against this Knowledge Store to verify it returns useful chunks.",
+    "score": "score",
+    "linkedContent": "Linked Library Content",
+    "addContent": "Add Content",
+    "contentTitle": "Title",
+    "library": "Library",
+    "status": "Status",
+    "chunks": "Chunks",
+    "lockedNotice": "Chunking strategy, embedding vendor / model, and vector DB are locked at creation and cannot be changed.",
+    "shareSuccess": "Knowledge Store shared with organization.",
+    "unshareSuccess": "Knowledge Store is now private.",
+    "updateSuccess": "Knowledge Store updated.",
+    "deleteSuccess": "Knowledge Store deleted.",
+    "removeContentSuccess": "Content removed from Knowledge Store.",
+    "addContentSuccess": "Content queued for ingestion.",
+    "sharing": {
+      "label": "Sharing",
+      "shared": "Shared",
+      "private": "Private"
+    },
+    "permalinks": {
+      "original": "Source",
+      "markdown": "Markdown",
+      "page": "Page"
+    },
+    "deleteModal": {
+      "title": "Delete Knowledge Store",
+      "message": "Are you sure you want to delete this Knowledge Store? All vectors will be permanently removed. The library items will not be affected.",
+      "confirm": "Delete"
+    },
+    "removeModal": {
+      "title": "Remove from Knowledge Store",
+      "message": "Remove this content from the Knowledge Store? Vectors will be deleted but the library item remains intact.",
+      "confirm": "Remove"
+    },
+    "addContentModal": {
+      "title": "Add Library Content to Knowledge Store",
+      "description": "Pick a library and the items to ingest. Only items with status \"ready\" can be ingested.",
+      "libraryLabel": "Library",
+      "itemsLabel": "Items to ingest",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "selected": "selected",
+      "noLibraries": "No libraries available. Create a library and import some content first.",
+      "noItems": "Select at least one item.",
+      "noItems2": "This library has no ready items to ingest.",
+      "submit": "Add to Knowledge Store",
+      "submitting": "Adding..."
+    }
+  },
+  "knowledge": {
+    "title": "Knowledge",
+    "description": "Manage libraries and Knowledge Stores.",
+    "createKnowledge": "Create Knowledge",
+    "wizard": {
+      "title": "Create Knowledge",
+      "next": "Next",
+      "back": "Back",
+      "skip": "Skip",
+      "create": "Create",
+      "cancel": "Cancel",
+      "abort": "Abort",
+      "useExisting": "Use an existing",
+      "createNew": "Create new",
+      "lockedConfigNotice": "These settings are locked at creation and cannot be changed later.",
+      "editDefaults": "Edit defaults",
+      "progress": "Step {current} of {total}",
+      "step0": {
+        "title": "Choose a Library",
+        "description": "Use an existing Library or create a new one.",
+        "newLibrary": "Create a new Library",
+        "existingLibrary": "Use an existing Library",
+        "pickLibrary": "Pick a Library"
+      },
+      "step1": {
+        "title": "Library details",
+        "description": "Give your Library a name and an optional description.",
+        "nameLabel": "Library name",
+        "descriptionLabel": "Description (optional)",
+        "sharedLabel": "Share with organization"
+      },
+      "step2": {
+        "title": "Library import settings",
+        "description": "Defaults work for most cases. Expand to customise import plugins.",
+        "defaultPluginLabel": "Default import plugin"
+      },
+      "step3": {
+        "title": "Add initial content",
+        "description": "Optionally upload one or more files now. You can always add more later.",
+        "uploadHint": "Drop files here or click to browse",
+        "uploaded": "uploaded",
+        "processing": "processing",
+        "ready": "ready",
+        "failed": "failed"
+      },
+      "step4": {
+        "title": "Choose a Knowledge Store",
+        "description": "Use an existing Knowledge Store or create a new one.",
+        "newKs": "Create a new Knowledge Store",
+        "existingKs": "Use an existing Knowledge Store",
+        "pickKs": "Pick a Knowledge Store"
+      },
+      "step5": {
+        "title": "Knowledge Store details",
+        "description": "Name and optional description for the Knowledge Store.",
+        "nameLabel": "Knowledge Store name",
+        "descriptionLabel": "Description (optional)",
+        "sharedLabel": "Share with organization"
+      },
+      "step6": {
+        "title": "Knowledge Store configuration",
+        "description": "These choices control chunking and embedding. They are LOCKED after creation.",
+        "chunkingLabel": "Chunking strategy",
+        "vectorDbLabel": "Vector DB backend",
+        "embeddingVendorLabel": "Embedding vendor",
+        "embeddingModelLabel": "Embedding model"
+      },
+      "step7": {
+        "title": "Pick items to ingest",
+        "description": "Choose which library items to index in the Knowledge Store.",
+        "allItems": "All items"
+      },
+      "step8": {
+        "title": "Review & create",
+        "description": "Review your choices below. Click Create to proceed.",
+        "libraryHeading": "Library",
+        "ksHeading": "Knowledge Store",
+        "itemsHeading": "Items to ingest",
+        "submit": "Create",
+        "submitting": "Creating..."
+      },
+      "step9": {
+        "title": "All done",
+        "description": "Your Library and Knowledge Store are ready. Ingestion runs in the background — you can check progress on the Knowledge Store page.",
+        "openKs": "Open Knowledge Store",
+        "openLibrary": "Open Library",
+        "createAnother": "Create another"
+      }
+    }
   }
 }

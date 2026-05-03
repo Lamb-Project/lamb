@@ -968,5 +968,182 @@
       "zipTooLarge": "El archivo ZIP supera el límite de 500 MB.",
       "importFailed": "La importación ha fallado. Inténtalo de nuevo."
     }
+  },
+  "knowledgeStores": {
+    "title": "Almacenes de Conocimiento",
+    "pageTitle": "Almacenes de Conocimiento",
+    "pageDescription": "Gestiona los Almacenes de Conocimiento — índices vectoriales construidos a partir del contenido de las bibliotecas.",
+    "loading": "Cargando Almacenes de Conocimiento...",
+    "loginRequired": "Debes iniciar sesión para ver los Almacenes de Conocimiento.",
+    "myStores": "Mis Almacenes de Conocimiento",
+    "sharedStores": "Compartidos",
+    "noOwned": "Aún no tienes Almacenes de Conocimiento. Crea uno para empezar a indexar contenido de la biblioteca.",
+    "noShared": "No hay Almacenes de Conocimiento compartidos disponibles.",
+    "noResults": "Ningún Almacén de Conocimiento coincide con tu búsqueda.",
+    "noContent": "Aún no hay contenido de biblioteca vinculado. Añade contenido para empezar a indexar.",
+    "name": "Nombre",
+    "namePlaceholder": "Nombre",
+    "descriptionPlaceholder": "Descripción",
+    "embedding": "Embedding",
+    "embeddingVendor": "Embedding",
+    "embeddingModel": "Modelo",
+    "chunking": "Fragmentación",
+    "vectorDb": "Vector DB",
+    "contentCount": "Contenido",
+    "createdAt": "Creado",
+    "updatedAt": "Actualizado",
+    "created": "Creado",
+    "updated": "Actualizado",
+    "owner": "Propietario",
+    "actions": "Acciones",
+    "view": "Ver",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "remove": "Quitar",
+    "query": "Consultar",
+    "runQuery": "Consultar",
+    "querying": "Consultando...",
+    "queryPlaceholder": "Haz una pregunta...",
+    "topK": "Top K",
+    "testQuery": "Consulta de prueba",
+    "testQueryHelp": "Ejecuta una búsqueda por similitud contra este Almacén de Conocimiento para verificar que devuelve fragmentos útiles.",
+    "score": "puntuación",
+    "linkedContent": "Contenido de Biblioteca Vinculado",
+    "addContent": "Añadir Contenido",
+    "contentTitle": "Título",
+    "library": "Biblioteca",
+    "status": "Estado",
+    "chunks": "Fragmentos",
+    "lockedNotice": "La estrategia de fragmentación, el proveedor / modelo de embedding y la Vector DB se fijan al crear y no se pueden cambiar.",
+    "shareSuccess": "Almacén de Conocimiento compartido con la organización.",
+    "unshareSuccess": "El Almacén de Conocimiento es ahora privado.",
+    "updateSuccess": "Almacén de Conocimiento actualizado.",
+    "deleteSuccess": "Almacén de Conocimiento eliminado.",
+    "removeContentSuccess": "Contenido eliminado del Almacén de Conocimiento.",
+    "addContentSuccess": "Contenido en cola para ingesta.",
+    "sharing": {
+      "label": "Compartir",
+      "shared": "Compartido",
+      "private": "Privado"
+    },
+    "permalinks": {
+      "original": "Fuente",
+      "markdown": "Markdown",
+      "page": "Página"
+    },
+    "deleteModal": {
+      "title": "Eliminar Almacén de Conocimiento",
+      "message": "¿Seguro que quieres eliminar este Almacén de Conocimiento? Todos los vectores se eliminarán permanentemente. Los elementos de la biblioteca no se verán afectados.",
+      "confirm": "Eliminar"
+    },
+    "removeModal": {
+      "title": "Quitar del Almacén de Conocimiento",
+      "message": "¿Quitar este contenido del Almacén de Conocimiento? Los vectores se eliminarán pero el elemento de la biblioteca permanecerá intacto.",
+      "confirm": "Quitar"
+    },
+    "addContentModal": {
+      "title": "Añadir Contenido de Biblioteca al Almacén de Conocimiento",
+      "description": "Elige una biblioteca y los elementos a ingerir. Solo se pueden ingerir elementos con estado \"listo\".",
+      "libraryLabel": "Biblioteca",
+      "itemsLabel": "Elementos a ingerir",
+      "selectAll": "Seleccionar todo",
+      "deselectAll": "Deseleccionar todo",
+      "selected": "seleccionados",
+      "noLibraries": "No hay bibliotecas disponibles. Crea una biblioteca e importa contenido primero.",
+      "noItems": "Selecciona al menos un elemento.",
+      "noItems2": "Esta biblioteca no tiene elementos listos para ingerir.",
+      "submit": "Añadir al Almacén de Conocimiento",
+      "submitting": "Añadiendo..."
+    }
+  },
+  "knowledge": {
+    "title": "Conocimiento",
+    "description": "Gestiona bibliotecas y Almacenes de Conocimiento.",
+    "createKnowledge": "Crear Conocimiento",
+    "wizard": {
+      "title": "Crear Conocimiento",
+      "next": "Siguiente",
+      "back": "Atrás",
+      "skip": "Omitir",
+      "create": "Crear",
+      "cancel": "Cancelar",
+      "abort": "Abortar",
+      "useExisting": "Usar uno existente",
+      "createNew": "Crear nuevo",
+      "lockedConfigNotice": "Esta configuración se fija al crear y no se podrá cambiar después.",
+      "editDefaults": "Editar valores por defecto",
+      "progress": "Paso {current} de {total}",
+      "step0": {
+        "title": "Elige una Biblioteca",
+        "description": "Usa una Biblioteca existente o crea una nueva.",
+        "newLibrary": "Crear una nueva Biblioteca",
+        "existingLibrary": "Usar una Biblioteca existente",
+        "pickLibrary": "Elige una Biblioteca"
+      },
+      "step1": {
+        "title": "Detalles de la Biblioteca",
+        "description": "Dale un nombre a tu Biblioteca y una descripción opcional.",
+        "nameLabel": "Nombre de la Biblioteca",
+        "descriptionLabel": "Descripción (opcional)",
+        "sharedLabel": "Compartir con la organización"
+      },
+      "step2": {
+        "title": "Configuración de importación de la Biblioteca",
+        "description": "Los valores por defecto funcionan en la mayoría de los casos. Expande para personalizar los plugins de importación.",
+        "defaultPluginLabel": "Plugin de importación por defecto"
+      },
+      "step3": {
+        "title": "Añadir contenido inicial",
+        "description": "Opcionalmente, sube uno o varios archivos ahora. Siempre podrás añadir más más tarde.",
+        "uploadHint": "Arrastra archivos aquí o haz clic para examinar",
+        "uploaded": "subido",
+        "processing": "procesando",
+        "ready": "listo",
+        "failed": "fallido"
+      },
+      "step4": {
+        "title": "Elige un Almacén de Conocimiento",
+        "description": "Usa un Almacén de Conocimiento existente o crea uno nuevo.",
+        "newKs": "Crear un nuevo Almacén de Conocimiento",
+        "existingKs": "Usar un Almacén de Conocimiento existente",
+        "pickKs": "Elige un Almacén de Conocimiento"
+      },
+      "step5": {
+        "title": "Detalles del Almacén de Conocimiento",
+        "description": "Nombre y descripción opcional para el Almacén de Conocimiento.",
+        "nameLabel": "Nombre del Almacén de Conocimiento",
+        "descriptionLabel": "Descripción (opcional)",
+        "sharedLabel": "Compartir con la organización"
+      },
+      "step6": {
+        "title": "Configuración del Almacén de Conocimiento",
+        "description": "Estas opciones controlan la fragmentación y el embedding. Quedan BLOQUEADAS tras la creación.",
+        "chunkingLabel": "Estrategia de fragmentación",
+        "vectorDbLabel": "Backend de Vector DB",
+        "embeddingVendorLabel": "Proveedor de embedding",
+        "embeddingModelLabel": "Modelo de embedding"
+      },
+      "step7": {
+        "title": "Elige elementos para ingerir",
+        "description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento.",
+        "allItems": "Todos los elementos"
+      },
+      "step8": {
+        "title": "Revisar y crear",
+        "description": "Revisa tus elecciones a continuación. Haz clic en Crear para continuar.",
+        "libraryHeading": "Biblioteca",
+        "ksHeading": "Almacén de Conocimiento",
+        "itemsHeading": "Elementos a ingerir",
+        "submit": "Crear",
+        "submitting": "Creando..."
+      },
+      "step9": {
+        "title": "Todo listo",
+        "description": "Tu Biblioteca y Almacén de Conocimiento están listos. La ingesta se ejecuta en segundo plano — puedes ver el progreso en la página del Almacén de Conocimiento.",
+        "openKs": "Abrir Almacén de Conocimiento",
+        "openLibrary": "Abrir Biblioteca",
+        "createAnother": "Crear otro"
+      }
+    }
   }
 }
