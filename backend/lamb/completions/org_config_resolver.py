@@ -205,6 +205,26 @@ class OrganizationConfigResolver:
         provider_config = self.get_provider_config(vendor)
         return provider_config.get("api_key", "") if provider_config else ""
 
+    def get_provider_endpoint(self, vendor: str) -> str:
+        """Resolve the org-level base URL/endpoint for a provider.
+
+        Used by Knowledge Store create/add-content/query when the caller
+        didn't specify ``embedding_endpoint`` explicitly. Reads
+        ``setups[setup_name].providers[vendor]`` and returns the first of
+        ``endpoint``, ``base_url``, or ``api_endpoint`` that is set.
+
+        Returns empty string if none is configured (the KB Server's plugin
+        default kicks in then — typically ``localhost``).
+        """
+        provider_config = self.get_provider_config(vendor)
+        if not provider_config:
+            return ""
+        for key in ("endpoint", "base_url", "api_endpoint"):
+            value = provider_config.get(key)
+            if value:
+                return value
+        return ""
+
     def get_feature_flag(self, feature: str) -> bool:
         """Get feature flag value"""
         org_config = self.organization.get('config', {})

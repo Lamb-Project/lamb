@@ -158,6 +158,18 @@ async def create_knowledge_store(
     knowledge_store_id = str(uuid.uuid4())
     org_id = auth.organization.get("id")
 
+    # Auto-fill embedding_endpoint from org config if the caller didn't
+    # specify one. Lets Knowledge Store create work out-of-the-box for orgs
+    # that have configured ``providers.{vendor}.endpoint`` (or base_url).
+    resolved_endpoint = body.embedding_endpoint
+    if not resolved_endpoint:
+        from lamb.completions.org_config_resolver import OrganizationConfigResolver
+        resolver = OrganizationConfigResolver(auth.user.get("email"))
+        try:
+            resolved_endpoint = resolver.get_provider_endpoint(body.embedding_vendor) or ""
+        except ValueError:
+            resolved_endpoint = ""
+
     inserted = _db.create_knowledge_store(
         knowledge_store_id=knowledge_store_id,
         name=body.name,
@@ -169,7 +181,7 @@ async def create_knowledge_store(
         vector_db_backend=body.vector_db_backend,
         description=body.description,
         chunking_params=body.chunking_params,
-        embedding_endpoint=body.embedding_endpoint,
+        embedding_endpoint=resolved_endpoint,
         status="provisional",
     )
     if not inserted:
@@ -189,7 +201,7 @@ async def create_knowledge_store(
             vector_db_backend=body.vector_db_backend,
             description=body.description,
             chunking_params=body.chunking_params,
-            embedding_endpoint=body.embedding_endpoint or "",
+            embedding_endpoint=resolved_endpoint or "",
             creator_user=auth.user,
         )
     except Exception as e:
