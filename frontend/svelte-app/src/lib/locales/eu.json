@@ -969,6 +969,8 @@
     "title": "Ezagutza-biltegiak",
     "pageTitle": "Ezagutza-biltegiak",
     "pageDescription": "Kudeatu Ezagutza-biltegiak — liburutegiko edukietatik eraikitako indize bektorialak.",
+    "detailTitle": "Ezagutza-biltegiaren xehetasunak",
+    "backButton": "Ezagutza-biltegietara itzuli",
     "loading": "Ezagutza-biltegiak kargatzen...",
     "loginRequired": "Saioa hasi behar duzu Ezagutza-biltegiak ikusteko.",
     "myStores": "Nire Ezagutza-biltegiak",

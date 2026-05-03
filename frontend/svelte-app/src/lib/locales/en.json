@@ -959,6 +959,8 @@
     "title": "Knowledge Stores",
     "pageTitle": "Knowledge Stores",
     "pageDescription": "Manage Knowledge Stores — vector indexes built from library content.",
+    "detailTitle": "Knowledge Store Details",
+    "backButton": "Back to Knowledge Stores",
     "loading": "Loading Knowledge Stores...",
     "loginRequired": "You must be logged in to view Knowledge Stores.",
     "myStores": "My Knowledge Stores",

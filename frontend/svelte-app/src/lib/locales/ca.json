@@ -962,6 +962,8 @@
     "title": "Magatzems de Coneixement",
     "pageTitle": "Magatzems de Coneixement",
     "pageDescription": "Gestiona els Magatzems de Coneixement — índexs vectorials construïts a partir del contingut de les biblioteques.",
+    "detailTitle": "Detalls del Magatzem de Coneixement",
+    "backButton": "Tornar als Magatzems de Coneixement",
     "loading": "Carregant Magatzems de Coneixement...",
     "loginRequired": "Has d'iniciar sessió per veure els Magatzems de Coneixement.",
     "myStores": "Els meus Magatzems de Coneixement",

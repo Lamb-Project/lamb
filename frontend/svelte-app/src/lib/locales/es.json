@@ -973,6 +973,8 @@
     "title": "Almacenes de Conocimiento",
     "pageTitle": "Almacenes de Conocimiento",
     "pageDescription": "Gestiona los Almacenes de Conocimiento — índices vectoriales construidos a partir del contenido de las bibliotecas.",
+    "detailTitle": "Detalles del Almacén de Conocimiento",
+    "backButton": "Volver a los Almacenes de Conocimiento",
     "loading": "Cargando Almacenes de Conocimiento...",
     "loginRequired": "Debes iniciar sesión para ver los Almacenes de Conocimiento.",
     "myStores": "Mis Almacenes de Conocimiento",
