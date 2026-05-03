@@ -9,6 +9,7 @@
 -->
 <script>
     import { createEventDispatcher, tick } from 'svelte';
+    import { SvelteSet } from 'svelte/reactivity';
     import { getLibraries, getItems } from '$lib/services/libraryService';
     import { addContent } from '$lib/services/knowledgeStoreService';
     import { _ } from '$lib/i18n';
@@ -21,7 +22,7 @@
     let libraries = $state([]);
     let selectedLibraryId = $state('');
     let items = $state([]);
-    let selectedItemIds = $state(new Set());
+    let selectedItemIds = new SvelteSet();
     let loading = $state(false);
     let loadingItems = $state(false);
     let submitting = $state(false);
@@ -55,12 +56,12 @@
         if (!selectedLibraryId) return;
         loadingItems = true;
         items = [];
-        selectedItemIds = new Set();
+        selectedItemIds = new SvelteSet();
         try {
             const data = await getItems(selectedLibraryId, { limit: 100, status: 'ready' });
             items = data?.items ?? [];
             // Default: pre-select all ready items.
-            selectedItemIds = new Set(items.map((i) => i.id));
+            selectedItemIds = new SvelteSet(items.map((i) => i.id));
         } catch (/** @type {unknown} */ err) {
             error = err instanceof Error ? err.message : 'Failed to load items';
         } finally {
@@ -74,14 +75,14 @@
         } else {
             selectedItemIds.add(id);
         }
-        selectedItemIds = new Set(selectedItemIds);
+        selectedItemIds = new SvelteSet(selectedItemIds);
     }
 
     function toggleAll() {
         if (selectedItemIds.size === items.length) {
-            selectedItemIds = new Set();
+            selectedItemIds = new SvelteSet();
         } else {
-            selectedItemIds = new Set(items.map((i) => i.id));
+            selectedItemIds = new SvelteSet(items.map((i) => i.id));
         }
     }
 
@@ -105,7 +106,7 @@
             });
             isOpen = false;
             dispatch('done', { count: selectedItemIds.size });
-            selectedItemIds = new Set();
+            selectedItemIds = new SvelteSet();
         } catch (/** @type {unknown} */ err) {
             error = err instanceof Error ? err.message : 'Failed to add content';
         } finally {
@@ -120,19 +121,19 @@
     }
 
     function handleKeydown(e) {
-        if (e.key === 'Escape') close();
+        if (isOpen && e.key === 'Escape') close();
     }
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 {#if isOpen}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-content-title"
         onclick={close}
-        onkeydown={handleKeydown}
     >
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -79,16 +79,6 @@ function authHeaders() {
     return { Authorization: `Bearer ${token}` };
 }
 
-function errorMessage(error, fallback) {
-    if (axios.isAxiosError(error) && error.response) {
-        return error.response.data?.detail || error.response.data?.message || `Request failed (${error.response.status})`;
-    }
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return fallback;
-}
-
 // ---------------------------------------------------------------------------
 // Discovery
 // ---------------------------------------------------------------------------

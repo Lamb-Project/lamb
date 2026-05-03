@@ -13,7 +13,6 @@
         toggleSharing,
         removeContent,
         queryKnowledgeStore,
-        listContent,
         getContentLinkStatus,
     } from '$lib/services/knowledgeStoreService';
     import { _ } from '$lib/i18n';
@@ -517,6 +516,7 @@
                             {#if r.metadata?.permalink_markdown || r.metadata?.permalink_original || r.metadata?.permalink_page}
                                 <div class="mt-2 flex gap-3 text-xs">
                                     {#if r.metadata.permalink_original}
+                                        <!-- eslint-disable svelte/no-navigation-without-resolve -->
                                         <a
                                             href={r.metadata.permalink_original}
                                             class="text-[#2271b3] hover:underline"
@@ -558,6 +558,7 @@
             {/if}
         </div>
     </div>
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
 
     <!-- Footer metadata -->
     <div class="text-xs text-gray-400 text-right">

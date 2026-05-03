@@ -15,6 +15,7 @@
 -->
 <script>
     import { createEventDispatcher } from 'svelte';
+    import { SvelteSet } from 'svelte/reactivity';
     import { getItems } from '$lib/services/libraryService';
     import { _ } from '$lib/i18n';
 
@@ -24,7 +25,7 @@
     const dispatch = createEventDispatcher();
 
     let items = $state(/** @type {any[]} */ ([]));
-    let selectedIds = $state(new Set(wizardState.selectedItemIds || []));
+    let selectedIds = new SvelteSet(wizardState.selectedItemIds || []);
     let loading = $state(false);
     let error = $state('');
     let isNewLibrary = $derived(wizardState.libraryPath === 'new');
@@ -44,7 +45,7 @@
             items = data?.items ?? [];
             // Pre-select all by default if no prior selection.
             if (selectedIds.size === 0) {
-                selectedIds = new Set(items.map((i) => i.id));
+                selectedIds = new SvelteSet(items.map((i) => i.id));
             }
         } catch (/** @type {unknown} */ err) {
             error = err instanceof Error ? err.message : 'Failed to load items';
@@ -60,14 +61,14 @@
         } else {
             selectedIds.add(id);
         }
-        selectedIds = new Set(selectedIds);
+        selectedIds = new SvelteSet(selectedIds);
     }
 
     function toggleAll() {
         if (selectedIds.size === items.length) {
-            selectedIds = new Set();
+            selectedIds = new SvelteSet();
         } else {
-            selectedIds = new Set(items.map((i) => i.id));
+            selectedIds = new SvelteSet(items.map((i) => i.id));
         }
     }
 
