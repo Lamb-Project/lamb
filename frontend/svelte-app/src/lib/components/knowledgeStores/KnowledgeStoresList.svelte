@@ -65,11 +65,7 @@
                 });
                 return;
             }
-            const data = await getKnowledgeStores();
-            stores = (data || []).map((s) => ({
-                ...s,
-                is_owner: s.owner_user_id === $user.id,
-            }));
+            stores = (await getKnowledgeStores()) || [];
             applyFiltersAndPagination();
         } catch (/** @type {unknown} */ err) {
             console.error('Error loading Knowledge Stores:', err);
