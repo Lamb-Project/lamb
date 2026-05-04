@@ -30,9 +30,9 @@ async function apiFetch(endpoint, options = {}) {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json',
-			...options.headers,
+			...options.headers
 		},
-		...options,
+		...options
 	});
 
 	if (!res.ok) {
@@ -40,7 +40,9 @@ async function apiFetch(endpoint, options = {}) {
 		try {
 			const err = await res.json();
 			detail = err?.detail || detail;
-		} catch (_) { /* ignore */ }
+		} catch (_) {
+			/* ignore */
+		}
 		throw new Error(detail);
 	}
 
@@ -91,7 +93,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 	}
 	return apiFetch('/aac/sessions', {
 		method: 'POST',
-		body: JSON.stringify(body),
+		body: JSON.stringify(body)
 	});
 }
 
@@ -104,7 +106,7 @@ export async function createSession({ assistantId, skill, context } = {}) {
 export async function sendMessage(sessionId, message) {
 	return apiFetch(`/aac/sessions/${sessionId}/message`, {
 		method: 'POST',
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message })
 	});
 }
 
@@ -126,9 +128,9 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json',
+			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message })
 	});
 
 	if (!res.ok) {
@@ -161,7 +163,9 @@ export async function sendMessageStream(sessionId, message, onChunk, onDone, onE
 				else if (data.status && onStatus) onStatus(data);
 				if (data.done && onDone) onDone(data.stats || {});
 				if (data.error && onError) onError(data.error);
-			} catch (_) { /* ignore parse errors */ }
+			} catch (_) {
+				/* ignore parse errors */
+			}
 		}
 	}
 }

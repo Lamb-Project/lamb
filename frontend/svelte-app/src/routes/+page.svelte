@@ -68,7 +68,7 @@
 
 			const response = await fetch(newsUrl, {
 				headers: {
-					'Authorization': `Bearer ${$user.token}`,
+					Authorization: `Bearer ${$user.token}`,
 					'Content-Type': 'application/json'
 				}
 			});
@@ -85,7 +85,7 @@
 				const fallbackUrl = getApiUrl('news/en');
 				const fallbackResponse = await fetch(fallbackUrl, {
 					headers: {
-						'Authorization': `Bearer ${$user.token}`,
+						Authorization: `Bearer ${$user.token}`,
 						'Content-Type': 'application/json'
 					}
 				});
@@ -162,17 +162,22 @@
 <div class="container mx-auto px-4 py-8">
 	{#if $user.isLoggedIn}
 		<!-- Tabs matching admin dashboard style -->
-		<div class="border-b border-gray-200 mb-6">
-			<ul class="flex flex-wrap -mb-px">
+		<div class="mb-6 border-b border-gray-200">
+			<ul class="-mb-px flex flex-wrap">
 				<li class="mr-2">
 					<button
-						class={`inline-block py-2 px-4 text-sm font-medium ${currentTab === 'dashboard' ? 'text-white bg-[#2271b3] border-[#2271b3]' : 'text-gray-500 hover:text-[#2271b3] border-transparent'} rounded-t-lg border-b-2`}
+						class={`inline-block px-4 py-2 text-sm font-medium ${currentTab === 'dashboard' ? 'border-[#2271b3] bg-[#2271b3] text-white' : 'border-transparent text-gray-500 hover:text-[#2271b3]'} rounded-t-lg border-b-2`}
 						onclick={showDashboard}
 						aria-label={$_('home.tabs.dashboard', { default: 'Dashboard' })}
 					>
 						<span class="inline-flex items-center gap-2">
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+								/>
 							</svg>
 							{$_('home.tabs.dashboard', { default: 'Dashboard' })}
 						</span>
@@ -180,13 +185,18 @@
 				</li>
 				<li class="mr-2">
 					<button
-						class={`inline-block py-2 px-4 text-sm font-medium ${currentTab === 'help' ? 'text-white bg-[#2271b3] border-[#2271b3]' : 'text-gray-500 hover:text-[#2271b3] border-transparent'} rounded-t-lg border-b-2`}
+						class={`inline-block px-4 py-2 text-sm font-medium ${currentTab === 'help' ? 'border-[#2271b3] bg-[#2271b3] text-white' : 'border-transparent text-gray-500 hover:text-[#2271b3]'} rounded-t-lg border-b-2`}
 						onclick={showHelp}
 						aria-label={$_('home.tabs.help', { default: 'Help & News' })}
 					>
 						<span class="inline-flex items-center gap-2">
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+								/>
 							</svg>
 							{$_('home.tabs.help', { default: 'Help & News' })}
 						</span>
@@ -206,28 +216,46 @@
 		{:else if currentTab === 'help'}
 			<!-- Help & News tab (former home page content) -->
 			<div>
-				<h1 class="text-2xl font-semibold text-gray-800 mb-2">
+				<h1 class="mb-2 text-2xl font-semibold text-gray-800">
 					{$_('home.help.title', { default: 'Help & News' })}
 				</h1>
-				<p class="text-gray-500 mb-6 text-sm">
+				<p class="mb-6 text-sm text-gray-500">
 					{$_('home.help.subtitle', { default: 'Latest updates and information' })}
 				</p>
 
-				<div class="bg-white shadow rounded-lg p-6">
+				<div class="rounded-lg bg-white p-6 shadow">
 					{#if isLoadingNews}
 						<div class="flex items-center justify-center py-8">
-							<svg class="animate-spin h-6 w-6 text-[#2271b3] mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							<svg
+								class="mr-3 h-6 w-6 animate-spin text-[#2271b3]"
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								></circle>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								></path>
 							</svg>
-							<span class="text-gray-500">{$_('home.help.loadingNews', { default: 'Loading news...' })}</span>
+							<span class="text-gray-500"
+								>{$_('home.help.loadingNews', { default: 'Loading news...' })}</span
+							>
 						</div>
 					{:else if newsContent}
 						<div class="prose max-w-none">
 							{@html newsContent}
 						</div>
 					{:else}
-						<p class="text-center text-gray-500 py-4">
+						<p class="py-4 text-center text-gray-500">
 							{$_('home.help.noNews', { default: 'No news to display.' })}
 						</p>
 					{/if}
@@ -235,7 +263,7 @@
 					<div class="mt-8 text-center">
 						<a
 							href="{base}/assistants"
-							class="inline-block px-4 py-2 bg-[#2271b3] text-white rounded hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]"
+							class="inline-block rounded bg-[#2271b3] px-4 py-2 text-white hover:bg-[#195a91] focus:ring-2 focus:ring-[#2271b3] focus:ring-offset-2 focus:outline-none"
 						>
 							{$_('home.help.viewAssistants', { default: 'View Learning Assistants' })}
 						</a>
@@ -245,17 +273,17 @@
 		{/if}
 	{:else}
 		<!-- Auth container for non-logged in users -->
-		<div class="max-w-md mx-auto bg-white shadow-md rounded-lg overflow-hidden">
+		<div class="mx-auto max-w-md overflow-hidden rounded-lg bg-white shadow-md">
 			{#if authMode === 'login'}
 				<Login on:show-signup={showSignup} />
 			{:else}
 				<Signup on:show-login={showLogin} />
 			{/if}
 		</div>
-		
+
 		<!-- Logo for non-logged in users -->
-		<div class="text-center mt-8">
-			<div class="mx-auto bg-[#e9ecef] p-4 rounded-lg" style="max-width: 400px;">
+		<div class="mt-8 text-center">
+			<div class="mx-auto rounded-lg bg-[#e9ecef] p-4" style="max-width: 400px;">
 				<h2 class="text-3xl font-bold text-[#2271b3]">LAMB</h2>
 				<p class="text-[#195a91]">Learning Assistants Manager and Builder</p>
 			</div>

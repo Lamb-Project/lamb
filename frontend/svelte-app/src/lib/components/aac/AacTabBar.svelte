@@ -24,11 +24,13 @@
 </script>
 
 {#if tabs.length > 0}
-	<div class="flex items-center border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 overflow-x-auto">
+	<div
+		class="flex items-center overflow-x-auto border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800"
+	>
 		<!-- Main view tab -->
 		<button
 			onclick={handleBack}
-			class="px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors"
+			class="border-b-2 px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors"
 			class:border-blue-500={!activeId}
 			class:text-blue-600={!activeId}
 			class:border-transparent={activeId}
@@ -42,7 +44,7 @@
 		{#each tabs as tab}
 			<button
 				onclick={() => handleTabClick(tab.id)}
-				class="group flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors"
+				class="group flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors"
 				class:border-blue-500={activeId === tab.id}
 				class:text-blue-600={activeId === tab.id}
 				class:border-transparent={activeId !== tab.id}
@@ -53,7 +55,7 @@
 				<span class="max-w-[150px] truncate">{tab.title || 'Session'}</span>
 				<button
 					onclick={(e) => handleClose(e, tab.id)}
-					class="ml-1 opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity text-xs"
+					class="ml-1 text-xs opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100"
 					title="Close session"
 				>
 					✕

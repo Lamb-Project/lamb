@@ -1,12 +1,12 @@
 /**
  * Standardized error handling utilities for the LAMB frontend.
- * 
+ *
  * Provides consistent error message extraction from various error types
  * including Axios errors, fetch Response errors, and standard Error objects.
- * 
+ *
  * @example
  * import { handleApiError, extractErrorMessage } from '$lib/utils/errorHandler';
- * 
+ *
  * try {
  *   await saveAssistant(data);
  * } catch (error) {
@@ -26,7 +26,7 @@ import { logger } from './logger.js';
 
 /**
  * Extracts a user-friendly error message from various error types.
- * 
+ *
  * @param {unknown} error - The error to extract message from
  * @returns {string} A user-friendly error message
  */
@@ -38,7 +38,9 @@ export function extractErrorMessage(error) {
 
 	// Handle Axios errors (have response.data structure)
 	if (typeof error === 'object' && 'response' in error) {
-		const axiosError = /** @type {{ response?: { data?: ApiErrorResponse, status?: number } }} */ (error);
+		const axiosError = /** @type {{ response?: { data?: ApiErrorResponse, status?: number } }} */ (
+			error
+		);
 		if (axiosError.response?.data) {
 			const data = axiosError.response.data;
 			if (data.detail) return data.detail;
@@ -71,27 +73,27 @@ export function extractErrorMessage(error) {
 
 /**
  * Handles API errors with logging and returns a user-friendly message.
- * 
+ *
  * @param {unknown} error - The error to handle
  * @param {string} [context='API'] - Context for logging (e.g., component name)
  * @returns {string} A user-friendly error message
  */
 export function handleApiError(error, context = 'API') {
 	const message = extractErrorMessage(error);
-	
+
 	// Log the full error for debugging
 	logger.error(`[${context}]`, error);
-	
+
 	return message;
 }
 
 /**
  * Creates an error handler function bound to a specific context.
  * Useful for components that need to handle multiple errors.
- * 
+ *
  * @param {string} context - The context name for logging
  * @returns {function(unknown): string} A bound error handler function
- * 
+ *
  * @example
  * const handleError = createErrorHandler('AssistantForm');
  * // Later:
@@ -103,19 +105,19 @@ export function createErrorHandler(context) {
 
 /**
  * Checks if an error is a network error (no response from server).
- * 
+ *
  * @param {unknown} error - The error to check
  * @returns {boolean} True if the error is a network error
  */
 export function isNetworkError(error) {
 	if (!error) return false;
-	
+
 	// Axios network errors have no response
 	if (typeof error === 'object' && 'response' in error) {
 		const axiosError = /** @type {{ response?: unknown, request?: unknown }} */ (error);
 		return !axiosError.response && !!axiosError.request;
 	}
-	
+
 	// Check for common network error messages
 	if (error instanceof Error) {
 		const message = error.message.toLowerCase();
@@ -126,26 +128,26 @@ export function isNetworkError(error) {
 			message.includes('networkerror')
 		);
 	}
-	
+
 	return false;
 }
 
 /**
  * Checks if an error is an authentication error (401/403).
- * 
+ *
  * @param {unknown} error - The error to check
  * @returns {boolean} True if the error is an auth error
  */
 export function isAuthError(error) {
 	if (!error) return false;
-	
+
 	// Check Axios error response status
 	if (typeof error === 'object' && 'response' in error) {
 		const axiosError = /** @type {{ response?: { status?: number } }} */ (error);
 		const status = axiosError.response?.status;
 		return status === 401 || status === 403;
 	}
-	
+
 	// Check error message for auth-related keywords
 	if (error instanceof Error) {
 		const message = error.message.toLowerCase();
@@ -156,7 +158,7 @@ export function isAuthError(error) {
 			message.includes('authentication')
 		);
 	}
-	
+
 	return false;
 }
 

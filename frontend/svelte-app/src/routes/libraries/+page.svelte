@@ -13,226 +13,236 @@
     /libraries?section=knowledge-stores&view=detail&id=X → section=knowledge-stores, view=detail
 -->
 <script>
-    import LibrariesList from '$lib/components/libraries/LibrariesList.svelte';
-    import LibraryDetail from '$lib/components/libraries/LibraryDetail.svelte';
-    import KnowledgeStoresList from '$lib/components/knowledgeStores/KnowledgeStoresList.svelte';
-    import KnowledgeStoreDetail from '$lib/components/knowledgeStores/KnowledgeStoreDetail.svelte';
-    import CreateKnowledgeWizard from '$lib/components/knowledge/CreateKnowledgeWizard.svelte';
-    import { _ } from '$lib/i18n';
-    import { page } from '$app/stores';
-    import { goto } from '$app/navigation';
-    import { base } from '$app/paths';
-    import { onMount } from 'svelte';
+	import LibrariesList from '$lib/components/libraries/LibrariesList.svelte';
+	import LibraryDetail from '$lib/components/libraries/LibraryDetail.svelte';
+	import KnowledgeStoresList from '$lib/components/knowledgeStores/KnowledgeStoresList.svelte';
+	import KnowledgeStoreDetail from '$lib/components/knowledgeStores/KnowledgeStoreDetail.svelte';
+	import CreateKnowledgeWizard from '$lib/components/knowledge/CreateKnowledgeWizard.svelte';
+	import { _ } from '$lib/i18n';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
+	import { onMount } from 'svelte';
 
-    /** @type {'libraries'|'knowledge-stores'} */
-    let section = $state('libraries');
-    /** @type {'list'|'detail'} */
-    let view = $state('list');
-    let detailId = $state('');
+	/** @type {'libraries'|'knowledge-stores'} */
+	let section = $state('libraries');
+	/** @type {'list'|'detail'} */
+	let view = $state('list');
+	let detailId = $state('');
 
-    let wizardOpen = $state(false);
+	let wizardOpen = $state(false);
 
-    // Bumped to force the list components to remount/refresh after a
-    // wizard creates new entities. Each list mounts/loads on creation,
-    // so re-keying triggers a fresh load.
-    let librariesListKey = $state(0);
-    let ksListKey = $state(0);
+	// Bumped to force the list components to remount/refresh after a
+	// wizard creates new entities. Each list mounts/loads on creation,
+	// so re-keying triggers a fresh load.
+	let librariesListKey = $state(0);
+	let ksListKey = $state(0);
 
-    onMount(() => {
-        updateStateFromUrl();
-    });
+	onMount(() => {
+		updateStateFromUrl();
+	});
 
-    function updateStateFromUrl() {
-        const params = $page.url.searchParams;
-        const s = params.get('section');
-        const v = params.get('view');
-        const id = params.get('id');
+	function updateStateFromUrl() {
+		const params = $page.url.searchParams;
+		const s = params.get('section');
+		const v = params.get('view');
+		const id = params.get('id');
 
-        section = s === 'knowledge-stores' ? 'knowledge-stores' : 'libraries';
-        view = v === 'detail' && id ? 'detail' : 'list';
-        detailId = view === 'detail' ? id || '' : '';
-    }
+		section = s === 'knowledge-stores' ? 'knowledge-stores' : 'libraries';
+		view = v === 'detail' && id ? 'detail' : 'list';
+		detailId = view === 'detail' ? id || '' : '';
+	}
 
-    $effect(() => {
-        if ($page.url) updateStateFromUrl();
-    });
+	$effect(() => {
+		if ($page.url) updateStateFromUrl();
+	});
 
-    function buildUrl(nextSection, nextView, nextId) {
-        const params = new URLSearchParams();
-        // Always emit section so URLs are explicit going forward.
-        params.set('section', nextSection);
-        if (nextView === 'detail' && nextId) {
-            params.set('view', 'detail');
-            params.set('id', nextId);
-        }
-        const qs = params.toString();
-        return `${base}/libraries${qs ? `?${qs}` : ''}`;
-    }
+	function buildUrl(nextSection, nextView, nextId) {
+		const params = new URLSearchParams();
+		// Always emit section so URLs are explicit going forward.
+		params.set('section', nextSection);
+		if (nextView === 'detail' && nextId) {
+			params.set('view', 'detail');
+			params.set('id', nextId);
+		}
+		const qs = params.toString();
+		return `${base}/libraries${qs ? `?${qs}` : ''}`;
+	}
 
-    function switchSection(nextSection) {
-        if (section === nextSection && view === 'list') return;
-        goto(buildUrl(nextSection, 'list'), { replaceState: false, keepFocus: true });
-    }
+	function switchSection(nextSection) {
+		if (section === nextSection && view === 'list') return;
+		goto(buildUrl(nextSection, 'list'), { replaceState: false, keepFocus: true });
+	}
 
-    function handleLibraryView(event) {
-        goto(buildUrl('libraries', 'detail', event.detail.id), {
-            replaceState: false,
-            keepFocus: true,
-        });
-    }
+	function handleLibraryView(event) {
+		goto(buildUrl('libraries', 'detail', event.detail.id), {
+			replaceState: false,
+			keepFocus: true
+		});
+	}
 
-    function handleKsView(event) {
-        goto(buildUrl('knowledge-stores', 'detail', event.detail.id), {
-            replaceState: false,
-            keepFocus: true,
-        });
-    }
+	function handleKsView(event) {
+		goto(buildUrl('knowledge-stores', 'detail', event.detail.id), {
+			replaceState: false,
+			keepFocus: true
+		});
+	}
 
-    function backToList() {
-        goto(buildUrl(section, 'list'), { replaceState: false, keepFocus: true });
-    }
+	function backToList() {
+		goto(buildUrl(section, 'list'), { replaceState: false, keepFocus: true });
+	}
 
-    function openWizard() {
-        wizardOpen = true;
-    }
+	function openWizard() {
+		wizardOpen = true;
+	}
 
-    function closeWizard() {
-        wizardOpen = false;
-    }
+	function closeWizard() {
+		wizardOpen = false;
+	}
 
-    function handleWizardDone(event) {
-        const refs = event.detail || {};
-        // Refresh both lists regardless of which side the wizard touched.
-        librariesListKey += 1;
-        ksListKey += 1;
+	function handleWizardDone(event) {
+		const refs = event.detail || {};
+		// Refresh both lists regardless of which side the wizard touched.
+		librariesListKey += 1;
+		ksListKey += 1;
 
-        // Prefer navigating to the freshly-created KS (wizard always
-        // ends with a KS reference if completed normally). Fall back to
-        // the library if no KS is present, and otherwise stay where we
-        // are.
-        if (refs.ksId) {
-            goto(buildUrl('knowledge-stores', 'detail', refs.ksId), {
-                replaceState: false,
-                keepFocus: true,
-            });
-        } else if (refs.libraryId) {
-            goto(buildUrl('libraries', 'detail', refs.libraryId), {
-                replaceState: false,
-                keepFocus: true,
-            });
-        }
-    }
+		// Prefer navigating to the freshly-created KS (wizard always
+		// ends with a KS reference if completed normally). Fall back to
+		// the library if no KS is present, and otherwise stay where we
+		// are.
+		if (refs.ksId) {
+			goto(buildUrl('knowledge-stores', 'detail', refs.ksId), {
+				replaceState: false,
+				keepFocus: true
+			});
+		} else if (refs.libraryId) {
+			goto(buildUrl('libraries', 'detail', refs.libraryId), {
+				replaceState: false,
+				keepFocus: true
+			});
+		}
+	}
 </script>
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <div class="pb-5 border-b border-gray-200">
-        {#if view === 'detail' && detailId}
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <button
-                        type="button"
-                        onclick={backToList}
-                        aria-label={section === 'knowledge-stores'
-                            ? $_('knowledgeStores.backButton', { default: 'Back to Knowledge Stores' })
-                            : $_('libraries.backButton', { default: 'Back to libraries' })}
-                        class="mr-3 inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-[#2271b3] hover:bg-[#195a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2271b3]"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                    <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-                        {#if section === 'knowledge-stores'}
-                            {$_('knowledgeStores.detailTitle', { default: 'Knowledge Store Details' })}
-                        {:else}
-                            {$_('libraries.detailTitle', { default: 'Library Details' })}
-                        {/if}
-                    </h1>
-                </div>
-                <button
-                    type="button"
-                    onclick={openWizard}
-                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-[#2271b3] hover:bg-[#195a91]"
-                >
-                    + {$_('knowledge.createKnowledge', { default: 'Create Knowledge' })}
-                </button>
-            </div>
-        {:else}
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-                        {$_('knowledge.title', { default: 'Knowledge' })}
-                    </h1>
-                    <p class="mt-1 text-sm text-gray-500">
-                        {#if section === 'knowledge-stores'}
-                            {$_('knowledgeStores.pageDescription', {
-                                default: 'Manage Knowledge Stores — vector indexes built from library content.',
-                            })}
-                        {:else}
-                            {$_('libraries.pageDescription', {
-                                default: 'Manage your document libraries.',
-                            })}
-                        {/if}
-                    </p>
-                </div>
-                <button
-                    type="button"
-                    onclick={openWizard}
-                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-[#2271b3] hover:bg-[#195a91]"
-                >
-                    + {$_('knowledge.createKnowledge', { default: 'Create Knowledge' })}
-                </button>
-            </div>
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+	<div class="border-b border-gray-200 pb-5">
+		{#if view === 'detail' && detailId}
+			<div class="flex items-center justify-between">
+				<div class="flex items-center">
+					<button
+						type="button"
+						onclick={backToList}
+						aria-label={section === 'knowledge-stores'
+							? $_('knowledgeStores.backButton', { default: 'Back to Knowledge Stores' })
+							: $_('libraries.backButton', { default: 'Back to libraries' })}
+						class="mr-3 inline-flex items-center rounded-full border border-transparent bg-[#2271b3] p-1 text-white shadow-sm hover:bg-[#195a91] focus:ring-2 focus:ring-[#2271b3] focus:ring-offset-2 focus:outline-none"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-5 w-5"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</button>
+					<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:truncate sm:text-3xl">
+						{#if section === 'knowledge-stores'}
+							{$_('knowledgeStores.detailTitle', { default: 'Knowledge Store Details' })}
+						{:else}
+							{$_('libraries.detailTitle', { default: 'Library Details' })}
+						{/if}
+					</h1>
+				</div>
+				<button
+					type="button"
+					onclick={openWizard}
+					class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+				>
+					+ {$_('knowledge.createKnowledge', { default: 'Create Knowledge' })}
+				</button>
+			</div>
+		{:else}
+			<div class="flex items-center justify-between">
+				<div>
+					<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:truncate sm:text-3xl">
+						{$_('knowledge.title', { default: 'Knowledge' })}
+					</h1>
+					<p class="mt-1 text-sm text-gray-500">
+						{#if section === 'knowledge-stores'}
+							{$_('knowledgeStores.pageDescription', {
+								default: 'Manage Knowledge Stores — vector indexes built from library content.'
+							})}
+						{:else}
+							{$_('libraries.pageDescription', {
+								default: 'Manage your document libraries.'
+							})}
+						{/if}
+					</p>
+				</div>
+				<button
+					type="button"
+					onclick={openWizard}
+					class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+				>
+					+ {$_('knowledge.createKnowledge', { default: 'Create Knowledge' })}
+				</button>
+			</div>
 
-            <div class="mt-4 flex gap-6 border-b border-transparent">
-                <button
-                    type="button"
-                    onclick={() => switchSection('libraries')}
-                    class="text-sm font-medium pb-2 -mb-px border-b-2 {section === 'libraries'
-                        ? 'border-[#2271b3] text-[#2271b3]'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'}"
-                >
-                    {$_('libraries.pageTitle', { default: 'Libraries' })}
-                </button>
-                <button
-                    type="button"
-                    onclick={() => switchSection('knowledge-stores')}
-                    class="text-sm font-medium pb-2 -mb-px border-b-2 {section === 'knowledge-stores'
-                        ? 'border-[#2271b3] text-[#2271b3]'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'}"
-                >
-                    {$_('knowledgeStores.pageTitle', { default: 'Knowledge Stores' })}
-                </button>
-            </div>
-        {/if}
-    </div>
+			<div class="mt-4 flex gap-6 border-b border-transparent">
+				<button
+					type="button"
+					onclick={() => switchSection('libraries')}
+					class="-mb-px border-b-2 pb-2 text-sm font-medium {section === 'libraries'
+						? 'border-[#2271b3] text-[#2271b3]'
+						: 'border-transparent text-gray-500 hover:text-gray-700'}"
+				>
+					{$_('libraries.pageTitle', { default: 'Libraries' })}
+				</button>
+				<button
+					type="button"
+					onclick={() => switchSection('knowledge-stores')}
+					class="-mb-px border-b-2 pb-2 text-sm font-medium {section === 'knowledge-stores'
+						? 'border-[#2271b3] text-[#2271b3]'
+						: 'border-transparent text-gray-500 hover:text-gray-700'}"
+				>
+					{$_('knowledgeStores.pageTitle', { default: 'Knowledge Stores' })}
+				</button>
+			</div>
+		{/if}
+	</div>
 
-    <div class="mt-6">
-        {#if section === 'libraries'}
-            {#if view === 'detail' && detailId}
-                <LibraryDetail libraryId={detailId} />
-            {:else}
-                {#key librariesListKey}
-                    <LibrariesList on:view={handleLibraryView} />
-                {/key}
-            {/if}
-        {:else if section === 'knowledge-stores'}
-            {#if view === 'detail' && detailId}
-                <KnowledgeStoreDetail ksId={detailId} />
-            {:else}
-                {#key ksListKey}
-                    <KnowledgeStoresList on:view={handleKsView} />
-                {/key}
-            {/if}
-        {/if}
-    </div>
+	<div class="mt-6">
+		{#if section === 'libraries'}
+			{#if view === 'detail' && detailId}
+				<LibraryDetail libraryId={detailId} />
+			{:else}
+				{#key librariesListKey}
+					<LibrariesList on:view={handleLibraryView} />
+				{/key}
+			{/if}
+		{:else if section === 'knowledge-stores'}
+			{#if view === 'detail' && detailId}
+				<KnowledgeStoreDetail ksId={detailId} />
+			{:else}
+				{#key ksListKey}
+					<KnowledgeStoresList on:view={handleKsView} />
+				{/key}
+			{/if}
+		{/if}
+	</div>
 </div>
 
-<svelte:window onkeydown={(e) => { if (wizardOpen && e.key === 'Escape') closeWizard(); }} />
+<svelte:window
+	onkeydown={(e) => {
+		if (wizardOpen && e.key === 'Escape') closeWizard();
+	}}
+/>
 
 {#if wizardOpen}
-    <CreateKnowledgeWizard
-        onclose={closeWizard}
-        on:done={handleWizardDone}
-    />
+	<CreateKnowledgeWizard onclose={closeWizard} on:done={handleWizardDone} />
 {/if}

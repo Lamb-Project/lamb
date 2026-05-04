@@ -57,11 +57,11 @@ import { browser } from '$app/environment';
  * @throws {Error} If no token is available.
  */
 function authHeaders() {
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-    return { Authorization: `Bearer ${token}` };
+	const token = localStorage.getItem('userToken');
+	if (!token) {
+		throw new Error('User not authenticated.');
+	}
+	return { Authorization: `Bearer ${token}` };
 }
 
 /**
@@ -71,13 +71,17 @@ function authHeaders() {
  * @returns {string}
  */
 function errorMessage(error, fallback) {
-    if (axios.isAxiosError(error) && error.response) {
-        return error.response.data?.detail || error.response.data?.message || `Request failed (${error.response.status})`;
-    }
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return fallback;
+	if (axios.isAxiosError(error) && error.response) {
+		return (
+			error.response.data?.detail ||
+			error.response.data?.message ||
+			`Request failed (${error.response.status})`
+		);
+	}
+	if (error instanceof Error) {
+		return error.message;
+	}
+	return fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,10 +93,10 @@ function errorMessage(error, fallback) {
  * @returns {Promise<Library[]>}
  */
 export async function getLibraries() {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/libraries');
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data?.libraries ?? [];
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/libraries');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.libraries ?? [];
 }
 
 /**
@@ -101,10 +105,10 @@ export async function getLibraries() {
  * @returns {Promise<Library>}
  */
 export async function getLibrary(libraryId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -113,10 +117,12 @@ export async function getLibrary(libraryId) {
  * @returns {Promise<Library>}
  */
 export async function createLibrary(data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/libraries');
-    const response = await axios.post(url, data, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/libraries');
+	const response = await axios.post(url, data, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 /**
@@ -126,10 +132,12 @@ export async function createLibrary(data) {
  * @returns {Promise<Library>}
  */
 export async function updateLibrary(libraryId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.put(url, data, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}`);
+	const response = await axios.put(url, data, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 /**
@@ -138,10 +146,10 @@ export async function updateLibrary(libraryId, data) {
  * @returns {Promise<{ message: string }>}
  */
 export async function deleteLibrary(libraryId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}`);
+	const response = await axios.delete(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -151,10 +159,14 @@ export async function deleteLibrary(libraryId) {
  * @returns {Promise<{ library_id: string, is_shared: boolean, message: string }>}
  */
 export async function toggleSharing(libraryId, isShared) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/share`);
-    const response = await axios.put(url, { is_shared: isShared }, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/share`);
+	const response = await axios.put(
+		url,
+		{ is_shared: isShared },
+		{ headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+	);
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,14 +181,14 @@ export async function toggleSharing(libraryId, isShared) {
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
  */
 export async function uploadFile(libraryId, file, options = {}) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/upload`);
-    const form = new FormData();
-    form.append('file', file);
-    if (options.title) form.append('title', options.title);
-    if (options.pluginName) form.append('plugin_name', options.pluginName);
-    const response = await axios.post(url, form, { headers: authHeaders(), timeout: 120_000 });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/upload`);
+	const form = new FormData();
+	form.append('file', file);
+	if (options.title) form.append('title', options.title);
+	if (options.pluginName) form.append('plugin_name', options.pluginName);
+	const response = await axios.post(url, form, { headers: authHeaders(), timeout: 120_000 });
+	return response.data;
 }
 
 /**
@@ -186,15 +198,17 @@ export async function uploadFile(libraryId, file, options = {}) {
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
  */
 export async function importUrl(libraryId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/import-url`);
-    const body = {
-        url: data.url,
-        plugin_name: data.pluginName || 'url_import',
-        title: data.title || data.url,
-    };
-    const response = await axios.post(url, body, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/import-url`);
+	const body = {
+		url: data.url,
+		plugin_name: data.pluginName || 'url_import',
+		title: data.title || data.url
+	};
+	const response = await axios.post(url, body, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 /**
@@ -204,16 +218,18 @@ export async function importUrl(libraryId, data) {
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
  */
 export async function importYouTube(libraryId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/import-youtube`);
-    const body = {
-        video_url: data.videoUrl,
-        language: data.language || 'en',
-        title: data.title || data.videoUrl,
-        plugin_name: 'youtube_transcript_import',
-    };
-    const response = await axios.post(url, body, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/import-youtube`);
+	const body = {
+		video_url: data.videoUrl,
+		language: data.language || 'en',
+		title: data.title || data.videoUrl,
+		plugin_name: 'youtube_transcript_import'
+	};
+	const response = await axios.post(url, body, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,10 +243,10 @@ export async function importYouTube(libraryId, data) {
  * @returns {Promise<{ items: LibraryItem[], total: number }>}
  */
 export async function getItems(libraryId, params = {}) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items`);
-    const response = await axios.get(url, { headers: authHeaders(), params });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items`);
+	const response = await axios.get(url, { headers: authHeaders(), params });
+	return response.data;
 }
 
 /**
@@ -240,10 +256,10 @@ export async function getItems(libraryId, params = {}) {
  * @returns {Promise<LibraryItem>}
  */
 export async function getItem(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -253,10 +269,10 @@ export async function getItem(libraryId, itemId) {
  * @returns {Promise<{ item_id: string, status: string, error_message?: string }>}
  */
 export async function getItemStatus(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/status`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/status`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -266,10 +282,10 @@ export async function getItemStatus(libraryId, itemId) {
  * @returns {Promise<{ message: string }>}
  */
 export async function deleteItem(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
+	const response = await axios.delete(url, { headers: authHeaders() });
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,10 +297,10 @@ export async function deleteItem(libraryId, itemId) {
  * @returns {Promise<ImportPlugin[]>}
  */
 export async function getPlugins() {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/libraries/plugins');
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data?.plugins ?? [];
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/libraries/plugins');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.plugins ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -298,22 +314,22 @@ export async function getPlugins() {
  * @returns {Promise<void>}
  */
 export async function exportLibrary(libraryId, filename) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/export`);
-    const response = await axios.get(url, {
-        headers: authHeaders(),
-        responseType: 'blob',
-        timeout: 300_000,
-    });
-    const blob = new Blob([response.data], { type: 'application/zip' });
-    const downloadUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = filename || `library-${libraryId.slice(0, 8)}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(downloadUrl);
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/export`);
+	const response = await axios.get(url, {
+		headers: authHeaders(),
+		responseType: 'blob',
+		timeout: 300_000
+	});
+	const blob = new Blob([response.data], { type: 'application/zip' });
+	const downloadUrl = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = downloadUrl;
+	a.download = filename || `library-${libraryId.slice(0, 8)}.zip`;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(downloadUrl);
 }
 
 /**
@@ -322,10 +338,10 @@ export async function exportLibrary(libraryId, filename) {
  * @returns {Promise<{ library_id: string, library_name: string, item_count: number }>}
  */
 export async function importLibrary(file) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/libraries/import');
-    const form = new FormData();
-    form.append('file', file);
-    const response = await axios.post(url, form, { headers: authHeaders(), timeout: 300_000 });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/libraries/import');
+	const form = new FormData();
+	form.append('file', file);
+	const response = await axios.post(url, form, { headers: authHeaders(), timeout: 300_000 });
+	return response.data;
 }

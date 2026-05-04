@@ -17,9 +17,9 @@ async function apiFetch(endpoint, options = {}) {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json',
-			...options.headers,
+			...options.headers
 		},
-		...options,
+		...options
 	});
 
 	if (!res.ok) {
@@ -27,7 +27,9 @@ async function apiFetch(endpoint, options = {}) {
 		try {
 			const err = await res.json();
 			detail = err?.detail || detail;
-		} catch (_) { /* ignore */ }
+		} catch (_) {
+			/* ignore */
+		}
 		throw new Error(detail);
 	}
 
@@ -52,7 +54,7 @@ export async function getScenarios(assistantId) {
 export async function createScenario(assistantId, scenario) {
 	return apiFetch(`/assistant/${assistantId}/tests/scenarios`, {
 		method: 'POST',
-		body: JSON.stringify(scenario),
+		body: JSON.stringify(scenario)
 	});
 }
 
@@ -64,7 +66,7 @@ export async function createScenario(assistantId, scenario) {
  */
 export async function deleteScenario(assistantId, scenarioId) {
 	return apiFetch(`/assistant/${assistantId}/tests/scenarios/${scenarioId}`, {
-		method: 'DELETE',
+		method: 'DELETE'
 	});
 }
 
@@ -82,7 +84,7 @@ export async function runTests(assistantId, options = {}) {
 	if (options.bypass) body.debug_bypass = true;
 	return apiFetch(`/assistant/${assistantId}/tests/run`, {
 		method: 'POST',
-		body: JSON.stringify(body),
+		body: JSON.stringify(body)
 	});
 }
 
@@ -118,7 +120,7 @@ export async function getRunDetail(assistantId, runId) {
 export async function evaluateRun(assistantId, runId, evaluation) {
 	return apiFetch(`/assistant/${assistantId}/tests/runs/${runId}/evaluate`, {
 		method: 'POST',
-		body: JSON.stringify(evaluation),
+		body: JSON.stringify(evaluation)
 	});
 }
 

@@ -72,11 +72,11 @@ import { browser } from '$app/environment';
  */
 
 function authHeaders() {
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-    return { Authorization: `Bearer ${token}` };
+	const token = localStorage.getItem('userToken');
+	if (!token) {
+		throw new Error('User not authenticated.');
+	}
+	return { Authorization: `Bearer ${token}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -90,10 +90,10 @@ function authHeaders() {
  * @returns {Promise<KSOptions>}
  */
 export async function getOptions() {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/knowledge-stores/options');
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/knowledge-stores/options');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,10 +105,10 @@ export async function getOptions() {
  * @returns {Promise<KnowledgeStore[]>}
  */
 export async function getKnowledgeStores() {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/knowledge-stores');
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data?.knowledge_stores ?? [];
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/knowledge-stores');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.knowledge_stores ?? [];
 }
 
 /**
@@ -117,10 +117,10 @@ export async function getKnowledgeStores() {
  * @returns {Promise<KnowledgeStore>}
  */
 export async function getKnowledgeStore(ksId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -139,12 +139,12 @@ export async function getKnowledgeStore(ksId) {
  * @returns {Promise<KnowledgeStore>}
  */
 export async function createKnowledgeStore(data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl('/knowledge-stores');
-    const response = await axios.post(url, data, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/knowledge-stores');
+	const response = await axios.post(url, data, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 /**
@@ -154,12 +154,12 @@ export async function createKnowledgeStore(data) {
  * @returns {Promise<KnowledgeStore>}
  */
 export async function updateKnowledgeStore(ksId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}`);
-    const response = await axios.put(url, data, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}`);
+	const response = await axios.put(url, data, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+	});
+	return response.data;
 }
 
 /**
@@ -168,10 +168,10 @@ export async function updateKnowledgeStore(ksId, data) {
  * @returns {Promise<{ message: string }>}
  */
 export async function deleteKnowledgeStore(ksId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}`);
+	const response = await axios.delete(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -181,12 +181,16 @@ export async function deleteKnowledgeStore(ksId) {
  * @returns {Promise<{ knowledge_store_id: string, is_shared: boolean, message: string }>}
  */
 export async function toggleSharing(ksId, isShared) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/share`);
-    const response = await axios.put(url, { is_shared: isShared }, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/share`);
+	const response = await axios.put(
+		url,
+		{ is_shared: isShared },
+		{
+			headers: { ...authHeaders(), 'Content-Type': 'application/json' }
+		}
+	);
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,14 +204,14 @@ export async function toggleSharing(ksId, isShared) {
  * @returns {Promise<{ job_id: string, status: string, documents_total: number, links: any[] }>}
  */
 export async function addContent(ksId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/content`);
-    const body = { library_id: data.libraryId, item_ids: data.itemIds };
-    const response = await axios.post(url, body, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        timeout: 120_000,
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/content`);
+	const body = { library_id: data.libraryId, item_ids: data.itemIds };
+	const response = await axios.post(url, body, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+		timeout: 120_000
+	});
+	return response.data;
 }
 
 /**
@@ -216,10 +220,10 @@ export async function addContent(ksId, data) {
  * @returns {Promise<KSContentLink[]>}
  */
 export async function listContent(ksId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/content`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data?.content ?? [];
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/content`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.content ?? [];
 }
 
 /**
@@ -229,10 +233,10 @@ export async function listContent(ksId) {
  * @returns {Promise<KSContentLink>}
  */
 export async function getContentLinkStatus(ksId, libraryItemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/content/${libraryItemId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/content/${libraryItemId}`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -243,10 +247,10 @@ export async function getContentLinkStatus(ksId, libraryItemId) {
  * @returns {Promise<{ message: string }>}
  */
 export async function removeContent(ksId, libraryItemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/content/${libraryItemId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/content/${libraryItemId}`);
+	const response = await axios.delete(url, { headers: authHeaders() });
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,14 +265,14 @@ export async function removeContent(ksId, libraryItemId) {
  * @returns {Promise<{ results: KSQueryResult[], query: string, top_k: number }>}
  */
 export async function queryKnowledgeStore(ksId, data) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/query`);
-    const body = { query_text: data.queryText, top_k: data.topK ?? 5 };
-    const response = await axios.post(url, body, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        timeout: 60_000,
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/query`);
+	const body = { query_text: data.queryText, top_k: data.topK ?? 5 };
+	const response = await axios.post(url, body, {
+		headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+		timeout: 60_000
+	});
+	return response.data;
 }
 
 /**
@@ -278,10 +282,10 @@ export async function queryKnowledgeStore(ksId, data) {
  * @returns {Promise<Object>}
  */
 export async function getJobStatus(ksId, jobId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/knowledge-stores/${ksId}/jobs/${jobId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/knowledge-stores/${ksId}/jobs/${jobId}`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,28 +304,28 @@ export async function getJobStatus(ksId, jobId) {
  * @returns {Promise<Map<string, KSContentLink>>}
  */
 export async function waitForLinks(ksId, libraryItemIds, opts = {}) {
-    const onProgress = opts.onProgress || (() => {});
-    const deadline = Date.now() + (opts.maxWaitMs ?? 600_000);
-    const pending = new Set(libraryItemIds);
-    const results = new Map();
-    let delay = 1000;
-    while (pending.size > 0 && Date.now() < deadline) {
-        for (const itemId of [...pending]) {
-            try {
-                const link = await getContentLinkStatus(ksId, itemId);
-                results.set(itemId, link);
-                onProgress(link);
-                if (link.status === 'ready' || link.status === 'failed') {
-                    pending.delete(itemId);
-                }
-            } catch (err) {
-                console.error(`Error polling KS link ${itemId}:`, err);
-            }
-        }
-        if (pending.size > 0) {
-            await new Promise((r) => setTimeout(r, delay));
-            delay = Math.min(delay * 2, 16000);
-        }
-    }
-    return results;
+	const onProgress = opts.onProgress || (() => {});
+	const deadline = Date.now() + (opts.maxWaitMs ?? 600_000);
+	const pending = new Set(libraryItemIds);
+	const results = new Map();
+	let delay = 1000;
+	while (pending.size > 0 && Date.now() < deadline) {
+		for (const itemId of [...pending]) {
+			try {
+				const link = await getContentLinkStatus(ksId, itemId);
+				results.set(itemId, link);
+				onProgress(link);
+				if (link.status === 'ready' || link.status === 'failed') {
+					pending.delete(itemId);
+				}
+			} catch (err) {
+				console.error(`Error polling KS link ${itemId}:`, err);
+			}
+		}
+		if (pending.size > 0) {
+			await new Promise((r) => setTimeout(r, delay));
+			delay = Math.min(delay * 2, 16000);
+		}
+	}
+	return results;
 }
