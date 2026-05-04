@@ -10,6 +10,7 @@ registered in ``main.py`` and resolve to this same command group.
 
 from __future__ import annotations
 
+import sys
 import time
 from typing import Optional
 
@@ -17,7 +18,7 @@ import typer
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
-from lamb_cli.output import format_output, print_error, print_success, print_warning
+from lamb_cli.output import format_output, print_error, print_json, print_success, print_warning
 
 app = typer.Typer(help="Manage Knowledge Stores (new KB Server).")
 
@@ -90,7 +91,25 @@ def show_options(
     fmt = output or get_output_format()
     with get_client() as client:
         data = client.get("/creator/knowledge-stores/options")
-    format_output(data, [], fmt)
+    if fmt == "json":
+        print_json(data)
+        return
+    # Table / plain: render each section as its own list with name + description.
+    cols = [("name", "Name"), ("description", "Description")]
+    for section in ("vector_db_backends", "chunking_strategies", "embedding_vendors"):
+        rows = data.get(section) or []
+        sys.stdout.write(f"\n{section.replace('_', ' ').title()}\n")
+        if rows:
+            format_output(rows, cols, fmt)
+        else:
+            sys.stdout.write("  (none available)\n")
+    models = data.get("embedding_models") or {}
+    sys.stdout.write("\nEmbedding Models\n")
+    if models:
+        for vendor, names in models.items():
+            sys.stdout.write(f"  {vendor}: {', '.join(names) if names else '(none)'}\n")
+    else:
+        sys.stdout.write("  (none configured)\n")
 
 
 # ----------------------------------------------------------------------

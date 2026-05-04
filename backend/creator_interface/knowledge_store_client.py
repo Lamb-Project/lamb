@@ -391,10 +391,42 @@ class KnowledgeStoreClient:
                 return plugins
             return [p for p in plugins if p.get("name") in allowed]
 
+        filtered_vendors = _filter_names(vendors, allowed_vendors)
+
+        # Override the static plugin-level ``api_endpoint`` default with the
+        # org-level ``setups[default].providers[<vendor>].endpoint`` value so
+        # the UI's "create Knowledge Store" form pre-fills with an endpoint
+        # that is reachable from the kb-server-v2 container (e.g. the docker
+        # bridge address) instead of ``localhost``. The static default in the
+        # plugin (#D1 fix) remains the code-level fallback when the org has no
+        # provider config set.
+        user_email = creator_user.get("email") if creator_user else None
+        if user_email:
+            try:
+                resolver = OrganizationConfigResolver(user_email)
+                for vendor in filtered_vendors:
+                    vendor_name = vendor.get("name")
+                    if not vendor_name:
+                        continue
+                    try:
+                        org_endpoint = resolver.get_provider_endpoint(vendor_name) or ""
+                    except ValueError:
+                        org_endpoint = ""
+                    if not org_endpoint:
+                        continue
+                    for param in vendor.get("parameters", []) or []:
+                        if param.get("name") == "api_endpoint":
+                            param["default"] = org_endpoint
+            except Exception as e:
+                logger.warning(
+                    f"Could not override embedding endpoint defaults from org "
+                    f"config for {user_email}: {e}"
+                )
+
         return {
             "vector_db_backends": _filter_names(backends, allowed_backends),
             "chunking_strategies": _filter_names(strategies, allowed_strategies),
-            "embedding_vendors": _filter_names(vendors, allowed_vendors),
+            "embedding_vendors": filtered_vendors,
             "embedding_models": allowed_models_map,
         }
 

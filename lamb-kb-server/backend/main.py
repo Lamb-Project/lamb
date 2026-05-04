@@ -127,10 +127,15 @@ def _discover_plugins() -> None:
     ]
     import importlib  # noqa: PLC0415
 
+    loaded: list[str] = []
+    failed: list[tuple[str, str]] = []
+
     for module_name in _plugin_modules:
         try:
             importlib.import_module(module_name)
-        except Exception:
+            loaded.append(module_name)
+        except Exception as exc:  # noqa: BLE001 — best-effort plugin discovery
+            failed.append((module_name, f"{type(exc).__name__}: {exc}"))
             logger.warning(
                 "Failed to load plugin module '%s' — skipping.",
                 module_name,
@@ -143,9 +148,25 @@ def _discover_plugins() -> None:
         VectorDBRegistry,
     )
 
+    embedding_names = [p["name"] for p in EmbeddingRegistry.list_plugins()]
+    # Defect D4 (lifecycle 2026-05-03): emit a one-line per-category INFO
+    # summary of which embedding plugins successfully registered. This makes
+    # missing optional packages (e.g. the ``ollama`` extra) visible at
+    # startup rather than at first request — when the failure mode is a
+    # confusing 500 from /add-content. The corresponding warnings above
+    # remain the source of truth for *why* a plugin failed.
+    logger.info(
+        "Plugin load summary — embedding loaded=%s | "
+        "vector_db loaded=%s | chunking loaded=%s | failed_modules=%s",
+        embedding_names,
+        [p["name"] for p in VectorDBRegistry.list_plugins()],
+        [p["name"] for p in ChunkingRegistry.list_plugins()],
+        [name for name, _ in failed] or "none",
+    )
+
     logger.info(
         "Discovered plugins — vector_db: %s | chunking: %s | embedding: %s",
         [p["name"] for p in VectorDBRegistry.list_plugins()],
         [p["name"] for p in ChunkingRegistry.list_plugins()],
-        [p["name"] for p in EmbeddingRegistry.list_plugins()],
+        embedding_names,
     )

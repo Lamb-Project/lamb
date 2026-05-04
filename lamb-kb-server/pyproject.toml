@@ -23,6 +23,11 @@ dependencies = [
 
     # Chunking — aligned with lamb-kb-server-stable defaults.
     "langchain-text-splitters>=0.3.0,<0.4.0",
+
+    # Ollama is a first-class embedding vendor. ChromaDB's
+    # OllamaEmbeddingFunction imports the ``ollama`` SDK lazily; without it,
+    # ``ks create --embedding-vendor ollama`` returns HTTP 500.
+    "ollama>=0.3.0",
 ]
 
 [project.optional-dependencies]

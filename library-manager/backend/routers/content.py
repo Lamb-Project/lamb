@@ -445,7 +445,7 @@ async def import_library(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a .zip archive.")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")  # noqa: SIM115 — streaming write needs handle outlive scope
     try:
         bytes_written = 0
         while chunk := await file.read(1024 * 1024):
