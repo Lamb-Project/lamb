@@ -62,6 +62,7 @@ def _wait_for_library_items(
     Backoff schedule: 1s, 2s, 4s, 8s, 16s, then capped at 16s.
     """
     pending = set(item_ids)
+    failed: set[str] = set()
     deadline = time.time() + max_wait_seconds
     delay = 1.0
     while pending and time.time() < deadline:
@@ -77,6 +78,7 @@ def _wait_for_library_items(
                 if status == "failed":
                     err = data.get("error_message") or data.get("error") or "unknown"
                     print_error(f"  {item_id}: failed — {err}")
+                    failed.add(item_id)
                 else:
                     pages = data.get("page_count", "?")
                     print_success(f"  {item_id}: {status} ({pages} pages)")
@@ -87,6 +89,8 @@ def _wait_for_library_items(
         print_warning(
             f"Timed out waiting on {len(pending)} item(s); they remain in flight."
         )
+    if failed:
+        raise typer.Exit(1)
 
 app = typer.Typer(help="Manage document libraries.")
 

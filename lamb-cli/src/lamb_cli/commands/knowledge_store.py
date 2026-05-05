@@ -318,6 +318,7 @@ def _wait_for_items(ks_id: str, library_item_ids: list[str],
     responsive on quick jobs.
     """
     pending = set(library_item_ids)
+    failed: set[str] = set()
     deadline = time.time() + max_wait_seconds
     delay = 1.0
     while pending and time.time() < deadline:
@@ -337,6 +338,7 @@ def _wait_for_items(ks_id: str, library_item_ids: list[str],
                     print_error(
                         f"  {item_id}: failed — {status_data.get('error_message', 'unknown')}"
                     )
+                    failed.add(item_id)
         if pending:
             time.sleep(delay)
             delay = min(delay * 2, 16.0)
@@ -344,6 +346,8 @@ def _wait_for_items(ks_id: str, library_item_ids: list[str],
         print_warning(
             f"Timed out waiting on {len(pending)} item(s); they remain in flight."
         )
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command("status")

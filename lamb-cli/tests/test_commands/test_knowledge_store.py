@@ -415,9 +415,9 @@ class TestKsAddContent:
                     "--wait",
                 ],
             )
-        # The CLI command itself succeeds (exit 0); the failure is reported
-        # via stderr, not via exit code.
-        assert result.exit_code == 0
+        # --wait propagates failed ingestion as a non-zero exit so scripts
+        # can react. The error message is printed to stderr before the exit.
+        assert result.exit_code != 0
         assert "failed" in result.output.lower() or "embedding error" in result.output.lower()
 
     def test_add_content_idempotent_noop(self, httpx_mock, mock_token):
@@ -786,7 +786,9 @@ class TestKsAddContentEdgeCases:
                     "--wait",
                 ],
             )
-        assert result.exit_code == 0  # CLI itself succeeds; job-level fail is reported
+        # --wait surfaces failed ingestion as a non-zero exit so CI/scripts
+        # can fail loudly. The error message appears in stderr first.
+        assert result.exit_code != 0
         assert "OpenAI quota" in result.output
 
     def test_add_content_wait_times_out_gracefully(
