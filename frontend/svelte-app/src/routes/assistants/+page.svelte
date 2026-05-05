@@ -57,7 +57,8 @@
 		closeTab,
 		setActiveTab,
 		getOpenTabs,
-		getActiveTabId
+		getActiveTabId,
+		openTabs as openTabsStore
 	} from '$lib/stores/aacStore.svelte';
 
 	// --- State Management ---
@@ -89,7 +90,9 @@
 	let aacSkillStartup = $state(false);
 	/** @type {boolean} */
 	let aacLaunching = $state(false);
-	let aacTabs = $derived(getOpenTabs());
+	// Subscribe to the openTabs writable store so this list updates when tabs
+	// are opened/closed anywhere in the app (#352, H6).
+	let aacTabs = $derived($openTabsStore);
 
 	/**
 	 * Launch an AAC skill session for the current assistant.
@@ -291,9 +294,15 @@
 	 * @param {number} id
 	 * @param {boolean} forceRefresh - Force refresh even if ID is the same (used after updates)
 	 */
+	// Tag every fetchAssistantDetail call so a slow earlier request that
+	// resolves AFTER a newer one cannot overwrite the now-current selection
+	// with stale data. (#352, M12)
+	let detailFetchSeq = 0;
+
 	async function fetchAssistantDetail(id, forceRefresh = false) {
 		if (lastAttemptedId === id && !forceRefresh) return; // Skip if same ID unless forcing refresh
 		lastAttemptedId = id;
+		const mySeq = ++detailFetchSeq;
 		// startEditMode is already set by the subscription callback
 		loadingDetail = true;
 		detailError = '';
@@ -303,6 +312,7 @@
 		try {
 			console.log(`Fetching assistant ID: ${id}.`); // Removed edit log here
 			const assistantData = await getAssistantById(id);
+			if (mySeq !== detailFetchSeq) return; // a newer fetch has started — drop ours
 			if (assistantData) {
 				const fullAssistantData = {
 					...normalizeAssistantData(assistantData),
@@ -318,11 +328,13 @@
 				showList();
 			}
 		} catch (error) {
+			if (mySeq !== detailFetchSeq) return;
+			if (error instanceof Error && error.message.startsWith('Session expired')) return;
 			console.error('Error fetching assistant details:', error);
 			detailError = error instanceof Error ? error.message : $_('error_fetching_assistant');
 			showList();
 		} finally {
-			loadingDetail = false;
+			if (mySeq === detailFetchSeq) loadingDetail = false;
 		}
 	}
 

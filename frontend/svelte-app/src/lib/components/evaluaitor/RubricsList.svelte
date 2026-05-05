@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { createEventDispatcher } from 'svelte';
 	import { _, locale } from '$lib/i18n';
@@ -46,31 +46,48 @@
 	let totalPages = $state(1);
 	let totalItems = $state(0);
 
+	// Tag every load so a slow earlier fetch (e.g. 'my-rubrics') resolving
+	// after a tab switch can't overwrite the now-current 'templates' list.
+	// Also gate writes behind isMounted so unmount mid-fetch is safe. (#353, M3)
+	let isMounted = true;
+	let loadSeq = 0;
+	onDestroy(() => {
+		isMounted = false;
+	});
+
 	// Load all rubrics based on active tab
 	async function loadRubrics() {
+		const mySeq = ++loadSeq;
 		loading = true;
 		error = null;
 
 		try {
 			// Fetch all rubrics (backend max is 100 items)
 			let response;
-
-			if (activeTab === 'my-rubrics') {
+			const tabAtRequest = activeTab;
+			if (tabAtRequest === 'my-rubrics') {
 				response = await fetchRubrics(100, 0, {});
 			} else {
 				response = await fetchPublicRubrics(100, 0, {});
 			}
 
+			if (!isMounted || mySeq !== loadSeq) return;
+			// The active tab might have changed AGAIN while we awaited; only commit
+			// if the request matches the current tab.
+			if (tabAtRequest !== activeTab) return;
+
 			allRubrics = response.rubrics || [];
 			applyFiltersAndPagination();
 		} catch (err) {
+			if (!isMounted || mySeq !== loadSeq) return;
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			error =
 				err.message || `Failed to load ${activeTab === 'my-rubrics' ? 'rubrics' : 'templates'}`;
 			console.error(`Error loading ${activeTab}:`, err);
 			allRubrics = [];
 			displayRubrics = [];
 		} finally {
-			loading = false;
+			if (isMounted && mySeq === loadSeq) loading = false;
 		}
 	}
 

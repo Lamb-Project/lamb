@@ -22,11 +22,19 @@
 	/** @type {any | null} */
 	let selectedTemplate = $state(null);
 
-	// Load templates when modal opens
+	// Load templates when modal opens. Dedupe across re-runs of the effect so
+	// the same open state doesn't keep firing fetches if other reactive deps
+	// change while the modal is open. The store-level sequence guards already
+	// protect against in-flight races, but skipping the duplicate work here
+	// saves bandwidth. (#353, M3)
+	let lastLoadedOpen = false;
 	$effect(() => {
-		if ($templateSelectModalOpen) {
+		if ($templateSelectModalOpen && !lastLoadedOpen) {
+			lastLoadedOpen = true;
 			loadUserTemplates();
 			loadSharedTemplates();
+		} else if (!$templateSelectModalOpen) {
+			lastLoadedOpen = false;
 		}
 	});
 

@@ -35,10 +35,17 @@ export const templateSelectCallback = writable(null);
 // Error state
 export const templateError = writable(null);
 
+// Sequence counters: every load call increments and tags itself; if a newer
+// call lands first, the older one drops its writes. Prevents last-wins
+// races when $effect re-fires before a previous load completes. (#353, M3)
+let _userLoadSeq = 0;
+let _sharedLoadSeq = 0;
+
 /**
  * Load user's templates
  */
 export async function loadUserTemplates() {
+	const mySeq = ++_userLoadSeq;
 	try {
 		userTemplatesLoading.set(true);
 		templateError.set(null);
@@ -48,14 +55,17 @@ export async function loadUserTemplates() {
 		const offset = (page - 1) * limit;
 
 		const result = await templateService.listUserTemplates(limit, offset);
+		if (mySeq !== _userLoadSeq) return; // a newer call superseded ours
 
 		userTemplates.set(result.templates);
 		userTemplatesTotal.set(result.total);
 	} catch (error) {
+		if (mySeq !== _userLoadSeq) return;
+		if (error instanceof Error && error.message.startsWith('Session expired')) return;
 		console.error('Error loading user templates:', error);
 		templateError.set(error.message || 'Failed to load templates');
 	} finally {
-		userTemplatesLoading.set(false);
+		if (mySeq === _userLoadSeq) userTemplatesLoading.set(false);
 	}
 }
 
@@ -63,6 +73,7 @@ export async function loadUserTemplates() {
  * Load shared templates
  */
 export async function loadSharedTemplates() {
+	const mySeq = ++_sharedLoadSeq;
 	try {
 		sharedTemplatesLoading.set(true);
 		templateError.set(null);
@@ -72,14 +83,17 @@ export async function loadSharedTemplates() {
 		const offset = (page - 1) * limit;
 
 		const result = await templateService.listSharedTemplates(limit, offset);
+		if (mySeq !== _sharedLoadSeq) return;
 
 		sharedTemplates.set(result.templates);
 		sharedTemplatesTotal.set(result.total);
 	} catch (error) {
+		if (mySeq !== _sharedLoadSeq) return;
+		if (error instanceof Error && error.message.startsWith('Session expired')) return;
 		console.error('Error loading shared templates:', error);
 		templateError.set(error.message || 'Failed to load shared templates');
 	} finally {
-		sharedTemplatesLoading.set(false);
+		if (mySeq === _sharedLoadSeq) sharedTemplatesLoading.set(false);
 	}
 }
 

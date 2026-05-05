@@ -167,12 +167,18 @@
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="import-modal-title"
+		tabindex="-1"
 		onclick={handleBackdropClick}
 		onkeydown={handleKeydown}
 	>
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<!-- Inner panel: presentational only — see CreateLibraryModal for context. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="mx-4 w-full max-w-lg rounded-lg bg-white shadow-xl" onclick={stopPropagation}>
+		<div
+			class="mx-4 w-full max-w-lg rounded-lg bg-white shadow-xl"
+			role="presentation"
+			onclick={stopPropagation}
+		>
 			<div class="border-b border-gray-200 px-6 py-4">
 				<h2 id="import-modal-title" class="text-lg font-semibold text-gray-900">
 					{$_('libraries.importModal.title', { default: 'Import Content' })}
@@ -184,10 +190,10 @@
 					<div class="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>
 				{/if}
 
-				<div>
-					<label class="mb-2 block text-sm font-medium text-gray-700">
+				<fieldset>
+					<legend class="mb-2 block text-sm font-medium text-gray-700">
 						{$_('libraries.importModal.typeLabel', { default: 'Import type' })}
-					</label>
+					</legend>
 					<div class="flex gap-2">
 						{#each [{ value: 'url', label: $_( 'libraries.importModal.typeUrl', { default: 'URL' } ) }, { value: 'youtube', label: $_( 'libraries.importModal.typeYouTube', { default: 'YouTube' } ) }, { value: 'zip', label: $_( 'libraries.importModal.typeZip', { default: 'ZIP Archive' } ) }] as tab}
 							<button
@@ -204,7 +210,7 @@
 							</button>
 						{/each}
 					</div>
-				</div>
+				</fieldset>
 
 				{#if importType === 'url'}
 					<div>

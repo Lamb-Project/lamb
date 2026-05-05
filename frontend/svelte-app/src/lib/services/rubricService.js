@@ -1,35 +1,21 @@
 import { getApiUrl } from '$lib/config';
 import { browser } from '$app/environment';
+// Routed through apiFetch so 401 triggers global session recovery (#352).
+import { apiFetch } from '$lib/services/apiClient';
 
 /**
- * Get authentication token from localStorage
- * @returns {string} The token
- */
-function getAuthToken() {
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
-	return token;
-}
-
-/**
- * Make authenticated fetch request
- * @param {string} url - The URL to fetch
+ * Make authenticated fetch request — wraps apiFetch with the JSON Content-Type
+ * default this service relies on. Token is auto-attached by apiFetch.
+ * @param {string} url - The URL to fetch (full URL, since most callers
+ *                       already build it with getApiUrl)
  * @param {Object} options - Fetch options
- * @returns {Promise<Response>} The fetch response
+ * @returns {Promise<Response>}
  */
 async function authenticatedFetch(url, options = {}) {
-	const token = getAuthToken();
-
-	const defaultOptions = {
-		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		}
-	};
-
-	return fetch(url, { ...defaultOptions, ...options });
+	return apiFetch(url, {
+		headers: { 'Content-Type': 'application/json' },
+		...options
+	});
 }
 
 /**
@@ -93,7 +79,7 @@ export async function fetchRubrics(limit = 10, offset = 0, filters = {}) {
 	const apiUrl = getApiUrl(`/rubrics?${params}`);
 	console.log('Fetching rubrics from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
@@ -152,7 +138,7 @@ export async function fetchPublicRubrics(limit = 10, offset = 0, filters = {}) {
 	const apiUrl = getApiUrl(`/rubrics/public?${params}`);
 	console.log('Fetching public rubrics from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
@@ -195,7 +181,7 @@ export async function fetchShowcaseRubrics() {
 	const apiUrl = getApiUrl('/rubrics/showcase');
 	console.log('Fetching showcase rubrics from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
@@ -236,7 +222,7 @@ export async function fetchRubric(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
 	console.log('Fetching rubric from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json'
@@ -286,7 +272,7 @@ export async function createRubric(rubricData) {
 	const apiUrl = getApiUrl('/rubrics');
 	console.log('Creating rubric at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -341,7 +327,7 @@ export async function updateRubric(rubricId, rubricData) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
 	console.log('Updating rubric at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -382,7 +368,7 @@ export async function deleteRubric(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
 	console.log('Deleting rubric at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'DELETE',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -422,7 +408,7 @@ export async function duplicateRubric(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/duplicate`);
 	console.log('Duplicating rubric at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -467,7 +453,7 @@ export async function toggleRubricVisibility(rubricId, isPublic) {
 	const formData = new FormData();
 	formData.append('is_public', isPublic.toString());
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -510,7 +496,7 @@ export async function setShowcaseStatus(rubricId, isShowcase) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/showcase`);
 	console.log('Setting showcase status at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'PUT',
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -552,7 +538,7 @@ export async function exportRubricJSON(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/json`);
 	console.log('Exporting rubric JSON from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`
 		}
@@ -609,7 +595,7 @@ export async function fetchRubricMarkdown(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
 	console.log('Fetching rubric Markdown from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`
 		}
@@ -649,7 +635,7 @@ export async function exportRubricMarkdown(rubricId) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
 	console.log('Exporting rubric Markdown from:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		headers: {
 			Authorization: `Bearer ${token}`
 		}
@@ -710,7 +696,7 @@ export async function importRubric(file) {
 	const apiUrl = getApiUrl('/rubrics/import');
 	console.log('Importing rubric at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`
@@ -764,7 +750,7 @@ export async function aiGenerateRubric(prompt, language = 'en', model = null) {
 		requestBody.model = model;
 	}
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`,
@@ -814,7 +800,7 @@ export async function aiModifyRubric(rubricId, prompt) {
 	const apiUrl = getApiUrl(`/rubrics/${rubricId}/ai-modify`);
 	console.log('Modifying rubric with AI at:', apiUrl);
 
-	const response = await fetch(apiUrl, {
+	const response = await apiFetch(apiUrl, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`,

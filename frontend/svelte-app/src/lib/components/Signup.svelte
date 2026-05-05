@@ -2,7 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { signup } from '$lib/services/authService';
 	import { _, locale } from '$lib/i18n';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	// Event dispatcher for component events
 	const dispatch = createEventDispatcher();
@@ -17,9 +17,15 @@
 	let loading = $state(false);
 
 	let localeLoaded = $state(false);
+	/** @type {ReturnType<typeof setTimeout>|null} */
+	let showLoginTimer = null;
 	onMount(() => {
 		const unsub = locale.subscribe((v) => (localeLoaded = !!v));
 		return unsub;
+	});
+	onDestroy(() => {
+		// Clear the post-success timer so it doesn't fire on a destroyed component (#353, H3-adjacent).
+		if (showLoginTimer) clearTimeout(showLoginTimer);
 	});
 
 	// Handle form submission
@@ -28,20 +34,29 @@
 		message = '';
 		success = false;
 
-		const result = await signup(name, email, password, secretKey);
+		// Wrap in try/catch/finally so an unexpected throw still resets loading,
+		// mirroring the Login.svelte fix from #352. (#353, H2)
+		try {
+			const result = await signup(name, email, password, secretKey);
 
-		if (result.success) {
-			success = true;
-			message = result.message || 'Signup successful!';
-			setTimeout(() => {
-				dispatch('show-login');
-			}, 1500);
-		} else {
+			if (result.success) {
+				success = true;
+				message = result.message || 'Signup successful!';
+				if (showLoginTimer) clearTimeout(showLoginTimer);
+				showLoginTimer = setTimeout(() => {
+					dispatch('show-login');
+				}, 1500);
+			} else {
+				success = false;
+				message = result.error || 'Error signing up';
+			}
+		} catch (err) {
 			success = false;
-			message = result.error || 'Error signing up';
+			message = err instanceof Error ? err.message : 'Signup failed unexpectedly.';
+			console.error('Unexpected signup error:', err);
+		} finally {
+			loading = false;
 		}
-
-		loading = false;
 	}
 
 	// Show login form

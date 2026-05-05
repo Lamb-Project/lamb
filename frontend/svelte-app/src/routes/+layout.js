@@ -23,9 +23,16 @@ export const load = async () => {
 		setLocale(localeToSet);
 	}
 
-	// Wait for the locale to be fully loaded before continuing
-	// This is critical for SSR to work properly
-	await waitLocale();
+	// Wait for the locale to be fully loaded before continuing.
+	// If the locale JSON fails to load (network blip, asset hash drift),
+	// proceed without it — setupI18n() registered a fallback that will
+	// resolve via the existing svelte-i18n machinery on next attempt.
+	// Throwing here would blank the entire app until reload (#352).
+	try {
+		await waitLocale();
+	} catch (err) {
+		console.error('waitLocale failed, continuing with fallback:', err);
+	}
 
 	// The load function needs to return an object, even if empty
 	return {};

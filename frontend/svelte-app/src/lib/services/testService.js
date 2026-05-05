@@ -1,40 +1,6 @@
-import { getApiUrl } from '$lib/config';
-import { browser } from '$app/environment';
-
-/** @returns {string} */
-function getToken() {
-	if (!browser) return '';
-	return localStorage.getItem('userToken') || '';
-}
-
-/** @param {string} endpoint @param {Object} [options] */
-async function apiFetch(endpoint, options = {}) {
-	const token = getToken();
-	if (!token) throw new Error('Not authenticated');
-
-	const url = getApiUrl(endpoint);
-	const res = await fetch(url, {
-		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json',
-			...options.headers
-		},
-		...options
-	});
-
-	if (!res.ok) {
-		let detail = `API error (${res.status})`;
-		try {
-			const err = await res.json();
-			detail = err?.detail || detail;
-		} catch (_) {
-			/* ignore */
-		}
-		throw new Error(detail);
-	}
-
-	return res.json();
-}
+// Routed through the centralized apiJson so 401 triggers global session
+// recovery instead of leaving the test UI in a permanent error state. (#352)
+import { apiJson as apiFetch } from '$lib/services/apiClient';
 
 /**
  * List test scenarios for an assistant.

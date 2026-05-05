@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 LAMB_LIBRARY_SERVER = os.getenv("LAMB_LIBRARY_SERVER", "")
 LAMB_LIBRARY_TOKEN = os.getenv("LAMB_LIBRARY_TOKEN", "")
+LAMB_LIBRARY_SERVER_ENABLE = os.getenv(
+    "LAMB_LIBRARY_SERVER_ENABLE", "ENABLE").upper().strip()
 
 
 class LibraryManagerClient:
@@ -40,7 +42,14 @@ class LibraryManagerClient:
 
         Raises:
             ValueError: If no Library Manager is configured.
+            HTTPException(503): If Library Manager is disabled via env var.
         """
+        if LAMB_LIBRARY_SERVER_ENABLE == "DISABLE":
+            raise HTTPException(
+                status_code=503,
+                detail="Library Manager is disabled (LAMB_LIBRARY_SERVER_ENABLE=DISABLE)",
+            )
+
         user_email = creator_user.get("email")
         if user_email:
             try:
@@ -54,10 +63,12 @@ class LibraryManagerClient:
                         "external_keys": lib_config.get("external_service_keys", {}),
                     }
             except Exception as e:
-                logger.warning(f"Error resolving library config for {user_email}: {e}")
+                logger.warning(
+                    f"Error resolving library config for {user_email}: {e}")
 
         if not self.global_server_url:
-            raise ValueError("Library Manager not configured (set LAMB_LIBRARY_SERVER)")
+            raise ValueError(
+                "Library Manager not configured (set LAMB_LIBRARY_SERVER)")
         return {
             "url": self.global_server_url,
             "token": self.global_token,

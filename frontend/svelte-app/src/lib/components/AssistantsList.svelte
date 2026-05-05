@@ -99,6 +99,10 @@
 	// Lifecycle and Data Loading
 	let localeUnsubscribe = () => {};
 	let userUnsubscribe = () => {};
+	// Track mount status so the retry recursion in loadAllAssistants does not
+	// resume after the component has been destroyed (e.g. logout, route change
+	// mid-retry). Without this, setState fires on a destroyed component. (#352, H8)
+	let isMounted = true;
 
 	onMount(() => {
 		localeUnsubscribe = locale.subscribe((value) => {
@@ -133,6 +137,7 @@
 		}
 
 		return () => {
+			isMounted = false;
 			localeUnsubscribe();
 			if (userUnsubscribe) userUnsubscribe();
 		};
@@ -141,6 +146,7 @@
 	// Load all assistants (with high limit for client-side processing)
 	// retryAttempt tracks whether we've already retried (to avoid infinite loops)
 	async function loadAllAssistants(retryAttempt = false) {
+		if (!isMounted) return;
 		loading = true;
 		error = null;
 		try {
@@ -148,22 +154,25 @@
 			const response = showShared ? await getSharedAssistants() : await getAssistants(100, 0); // Backend max is 100 items
 			console.log('Received assistants:', response);
 
+			if (!isMounted) return;
 			allAssistants = response.assistants || [];
 			applyFiltersAndPagination();
 		} catch (err) {
 			console.error('Error loading assistants:', err);
-			if (!retryAttempt) {
+			if (!retryAttempt && isMounted) {
 				console.log('Will retry loading assistants in 1 second...');
 				loading = true;
 				await new Promise((resolve) => setTimeout(resolve, 1000));
+				if (!isMounted) return; // Don't recurse if unmounted while waiting
 				return loadAllAssistants(true);
 			}
+			if (!isMounted) return;
 			error = err instanceof Error ? err.message : String(err);
 			allAssistants = [];
 			displayAssistants = [];
 			totalItems = 0;
 		} finally {
-			loading = false;
+			if (isMounted) loading = false;
 		}
 	}
 

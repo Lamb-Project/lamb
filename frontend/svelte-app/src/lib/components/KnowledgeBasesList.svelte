@@ -94,24 +94,38 @@
 				return;
 			}
 
-			// Fetch owned and shared KBs separately
-			const [ownedData, sharedData] = await Promise.all([
-				getUserKnowledgeBases().catch((err) => {
-					console.warn('Error fetching owned KBs:', err);
-					return [];
-				}),
-				getSharedKnowledgeBases().catch((err) => {
-					console.warn('Error fetching shared KBs:', err);
-					return [];
-				})
+			// Fetch owned and shared KBs separately. Track errors per side
+			// so the UI can distinguish "you really have no KBs" from "the
+			// request failed". Previously both errors were swallowed and the
+			// user saw an empty list with no indication anything went wrong
+			// (#352, H10).
+			const [ownedResult, sharedResult] = await Promise.allSettled([
+				getUserKnowledgeBases(),
+				getSharedKnowledgeBases()
 			]);
 
-			ownedKnowledgeBases = ownedData || [];
-			sharedKnowledgeBases = sharedData || [];
+			ownedKnowledgeBases = ownedResult.status === 'fulfilled' ? ownedResult.value || [] : [];
+			sharedKnowledgeBases = sharedResult.status === 'fulfilled' ? sharedResult.value || [] : [];
 
-			// Combine for allKnowledgeBases (for backward compatibility if needed)
+			// If both halves failed, surface the error so the user knows
+			// to retry or check connectivity. If only one failed, log it
+			// and keep the partial list visible.
+			if (ownedResult.status === 'rejected' && sharedResult.status === 'rejected') {
+				const ownedErr = ownedResult.reason;
+				error = ownedErr instanceof Error ? ownedErr.message : 'Failed to load knowledge bases';
+				if (ownedErr instanceof Error && ownedErr.message.includes('server offline')) {
+					serverOffline = true;
+				}
+			} else {
+				if (ownedResult.status === 'rejected') {
+					console.warn('Error fetching owned KBs:', ownedResult.reason);
+				}
+				if (sharedResult.status === 'rejected') {
+					console.warn('Error fetching shared KBs:', sharedResult.reason);
+				}
+			}
+
 			allKnowledgeBases = [...ownedKnowledgeBases, ...sharedKnowledgeBases];
-
 			console.log(`Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length}`);
 
 			// Apply filters and pagination after data is loaded

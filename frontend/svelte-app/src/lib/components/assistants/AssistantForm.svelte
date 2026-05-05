@@ -9,14 +9,14 @@
 		getUserKnowledgeBases,
 		getSharedKnowledgeBases
 	} from '$lib/services/knowledgeBaseService'; // Import KB service
-	import { getKnowledgeStores } from '$lib/services/knowledgeStoreService'; // Import Knowledge Store service (Phase 5 #337)
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { goto } from '$app/navigation'; // Import for redirect
 	import { base } from '$app/paths'; // Import base path
 	import { createEventDispatcher } from 'svelte'; // Import event dispatcher
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { getSystemCapabilities } from '$lib/services/assistantService'; // Import service
+	import { apiFetch } from '$lib/services/apiClient';
 	import { locale } from '$lib/i18n';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
@@ -24,6 +24,13 @@
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
+
+	// Track mount status so async fetches that resolve after the user
+	// navigates away don't write state to a destroyed component. (#352, M13)
+	let isMounted = true;
+	onDestroy(() => {
+		isMounted = false;
+	});
 
 	// --- Props ---
 	// Use $props for Svelte 5 runes mode
@@ -109,18 +116,6 @@
 
 	// Computed: combined list for backward compatibility
 	let accessibleKnowledgeBases = $derived([...ownedKnowledgeBases, ...sharedKnowledgeBases]);
-
-	// --- Knowledge Store State (Phase 5 #337 — for rag_processor === 'knowledge_store_rag') ---
-	/** @type {import('$lib/services/knowledgeStoreService').KnowledgeStore[]} */
-	let accessibleKnowledgeStores = $state([]);
-	/** @type {string[]} */
-	let selectedKnowledgeStoreIds = $state([]); // Array of selected KS UUIDs
-	let loadingKnowledgeStores = $state(false);
-	let knowledgeStoreError = $state('');
-	let ksFetchAttempted = $state(false);
-	// Deferred selection pattern (mirrors KB pattern for issue #96)
-	/** @type {string[] | null} */
-	let pendingKSSelections = $state(null);
 
 	// File State for single_file_rag
 	/** @type {Array<{name: string, path: string}>} */
@@ -411,7 +406,6 @@
 		}
 
 		selectedKnowledgeBases = [];
-		selectedKnowledgeStoreIds = [];
 		selectedFilePath = '';
 		visionEnabled = false; // Reset vision capability for new assistants
 		imageGenerationEnabled = false; // Reset image generation capability for new assistants
@@ -431,9 +425,6 @@
 			selectedRagProcessor === 'hierarchical_rag'
 		) {
 			tick().then(fetchKnowledgeBases);
-		}
-		if (selectedRagProcessor === 'knowledge_store_rag') {
-			tick().then(fetchKnowledgeStores);
 		}
 		if (selectedRagProcessor === 'single_file_rag') {
 			tick().then(fetchUserFiles);
@@ -569,18 +560,6 @@
 			} else {
 				// Clear pending selections if not using simple_rag, context_aware_rag, or hierarchical_rag
 				pendingKBSelections = null;
-			}
-
-			// Knowledge Store RAG: pre-load + pre-select (Phase 5 #337)
-			if (selectedRagProcessor === 'knowledge_store_rag') {
-				pendingKSSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
-				console.log('Populate: Stored pending KS selections:', pendingKSSelections);
-				if (!ksFetchAttempted && !loadingKnowledgeStores) {
-					console.log('Populate: Triggering KS fetch');
-					tick().then(fetchKnowledgeStores);
-				}
-			} else {
-				pendingKSSelections = null;
 			}
 
 			// Handle rubric fields if rubric_rag is selected
@@ -771,6 +750,8 @@
 				})
 			]);
 
+			if (!isMounted) return; // user navigated away while fetching (#352, M13)
+
 			// Sort each separately
 			owned.sort((a, b) => a.name.localeCompare(b.name));
 			shared.sort((a, b) => a.name.localeCompare(b.name));
@@ -778,59 +759,20 @@
 			ownedKnowledgeBases = owned;
 			sharedKnowledgeBases = shared;
 		} catch (err) {
+			if (!isMounted) return;
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			console.error('Error fetching knowledge bases:', err);
 			knowledgeBaseError = err instanceof Error ? err.message : 'Failed to load knowledge bases';
 			ownedKnowledgeBases = [];
 			sharedKnowledgeBases = [];
 		} finally {
-			loadingKnowledgeBases = false;
-			kbFetchAttempted = true; // Mark fetch as attempted
-			console.log(
-				`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`
-			);
-		}
-	}
-
-	/** Fetches accessible Knowledge Stores (Phase 5 #337). */
-	async function fetchKnowledgeStores() {
-		if (loadingKnowledgeStores || ksFetchAttempted) {
-			console.log(
-				`Skipping KS fetch (Loading: ${loadingKnowledgeStores}, Attempted: ${ksFetchAttempted})`
-			);
-			return;
-		}
-		if (selectedRagProcessor !== 'knowledge_store_rag') {
-			console.log('Skipping KS fetch (RAG processor is not knowledge_store_rag)');
-			return;
-		}
-
-		console.log('Fetching knowledge stores...');
-		loadingKnowledgeStores = true;
-		knowledgeStoreError = '';
-
-		try {
-			const list = await getKnowledgeStores();
-			// Sort by name for stable rendering.
-			list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-			accessibleKnowledgeStores = list;
-			// Apply any pending selections deferred from populateFormFields.
-			if (pendingKSSelections) {
-				selectedKnowledgeStoreIds = pendingKSSelections.filter((id) =>
-					list.some((ks) => ks.id === id)
+			if (isMounted) {
+				loadingKnowledgeBases = false;
+				kbFetchAttempted = true;
+				console.log(
+					`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`
 				);
-				console.log('KS Fetch: Applied pending selections:', selectedKnowledgeStoreIds);
-				pendingKSSelections = null;
 			}
-		} catch (err) {
-			console.error('Error fetching knowledge stores:', err);
-			knowledgeStoreError = err instanceof Error ? err.message : 'Failed to load knowledge stores';
-			accessibleKnowledgeStores = [];
-		} finally {
-			loadingKnowledgeStores = false;
-			ksFetchAttempted = true;
-			console.log(
-				`KS Fetch complete (Attempted: ${ksFetchAttempted}, Error: '${knowledgeStoreError}', Count: ${accessibleKnowledgeStores.length})`
-			);
 		}
 	}
 
@@ -954,31 +896,16 @@
 		fileUploadLoading = true;
 		fileUploadError = '';
 
+		// Create FormData object
+		const formData = new FormData();
+		formData.append('file', file);
+
 		try {
-			const token = getAuthToken();
-			if (!token) {
-				throw new Error('Authentication token not found');
-			}
-
-			// Get the lamb server URL
-			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
-			if (!lambServerUrl) {
-				throw new Error('LAMB server URL not configured');
-			}
-
-			// Create FormData object
-			const formData = new FormData();
-			formData.append('file', file);
-
-			// Call the files/upload endpoint
-			const endpointPath = '/creator/files/upload';
-			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-
-			const response = await fetch(apiUrl, {
+			// Route through apiFetch so an expired token triggers global session
+			// recovery, and so the response goes through one well-tested code path.
+			// (#352, H11 + M3)
+			const response = await apiFetch('/files/upload', {
 				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${token}`
-				},
 				body: formData
 			});
 
@@ -998,9 +925,13 @@
 				selectedFilePath = data.path;
 			}
 
-			// Clear the file input
+			// Clear the file input (both the selected file state and the DOM
+			// element) so re-selecting the same file fires onchange again.
 			input.value = '';
 		} catch (err) {
+			// 'Session expired' was thrown by apiFetch and a redirect is already
+			// in flight — don't paint a duplicate banner.
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			console.error('Error uploading file:', err);
 			fileUploadError = err instanceof Error ? err.message : 'Failed to upload file';
 		} finally {
@@ -1150,7 +1081,6 @@
 			selectedRagProcessor === 'context_aware_rag' ||
 			selectedRagProcessor === 'hierarchical_rag'
 	);
-	const showKnowledgeStoreSelector = $derived(selectedRagProcessor === 'knowledge_store_rag');
 	const showSingleFileSelector = $derived(selectedRagProcessor === 'single_file_rag');
 	const showRubricSelector = $derived(selectedRagProcessor === 'rubric_rag');
 
@@ -1207,16 +1137,6 @@
 			} else {
 				console.log('Effect: Skipping rubrics fetch (already attempted or loading).');
 			}
-		} else if (selectedRagProcessor === 'knowledge_store_rag' && configInitialized) {
-			// Fetch Knowledge Stores when switching to knowledge_store_rag (Phase 5 #337)
-			if (!ksFetchAttempted && !loadingKnowledgeStores) {
-				console.log(
-					'Effect: Conditions met (knowledge_store_rag, not attempted), calling fetchKnowledgeStores()'
-				);
-				fetchKnowledgeStores();
-			} else {
-				console.log('Effect: Skipping KS fetch (already attempted or loading).');
-			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			if (
@@ -1251,23 +1171,6 @@
 				rubricFormat = 'markdown'; // Reset to default
 				// Note: We don't clear accessibleRubrics or rubricsFetchAttempted to avoid refetching if user switches back
 			}
-		}
-
-		// Reset Knowledge Store state if we moved away from knowledge_store_rag
-		// (kept outside the else-chain because the user may move directly to another RAG processor) (Phase 5 #337)
-		if (
-			selectedRagProcessor !== 'knowledge_store_rag' &&
-			(selectedKnowledgeStoreIds.length > 0 ||
-				accessibleKnowledgeStores.length > 0 ||
-				knowledgeStoreError ||
-				ksFetchAttempted)
-		) {
-			console.log('Effect: Clearing KS state and fetch attempt flag');
-			selectedKnowledgeStoreIds = [];
-			accessibleKnowledgeStores = [];
-			knowledgeStoreError = '';
-			ksFetchAttempted = false;
-			pendingKSSelections = null;
 		}
 	});
 
@@ -1355,9 +1258,7 @@
 				selectedRagProcessor === 'context_aware_rag' ||
 				selectedRagProcessor === 'hierarchical_rag'
 					? selectedKnowledgeBases.join(',')
-					: selectedRagProcessor === 'knowledge_store_rag'
-						? selectedKnowledgeStoreIds.join(',')
-						: '',
+					: '',
 			// Add metadata with the stringified JSON
 			metadata: JSON.stringify(metadataObj),
 			pre_retrieval_endpoint: '',
@@ -1641,19 +1542,6 @@
 								selectedKnowledgeBases =
 									parsedData.RAG_collections?.split(',').filter(Boolean) || [];
 								console.log('Import: KB selections set after fetch:', selectedKnowledgeBases);
-							} else if (selectedRagProcessor === 'knowledge_store_rag') {
-								selectedKnowledgeBases = [];
-								selectedFilePath = '';
-								if (!ksFetchAttempted) {
-									await fetchKnowledgeStores();
-								}
-								selectedKnowledgeStoreIds = (
-									parsedData.RAG_collections?.split(',').filter(Boolean) || []
-								).filter(
-									/** @param {string} id */ (id) =>
-										accessibleKnowledgeStores.some((ks) => ks.id === id)
-								);
-								console.log('Import: KS selections set after fetch:', selectedKnowledgeStoreIds);
 							} else if (selectedRagProcessor === 'single_file_rag') {
 								selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
 								// Fetch files BEFORE setting selection
@@ -2429,8 +2317,6 @@
 							>
 							<select
 								id="rag-processor"
-								name="rag_processor"
-								data-testid="rag-processor-select"
 								bind:value={selectedRagProcessor}
 								onchange={handleFieldChange}
 								disabled={formState === 'edit'}
@@ -2589,85 +2475,6 @@
 													</div>
 												{/if}
 											</div>
-										{/if}
-									</div>
-								{/if}
-
-								<!-- Knowledge Store Selector (Conditional) — Phase 5 #337 -->
-								{#if showKnowledgeStoreSelector}
-									<div data-testid="ks-picker">
-										<h4 class="mb-1 block text-sm font-medium text-gray-700">
-											{$_('assistants.form.knowledgeStores.label', {
-												default: 'Knowledge Stores'
-											})}
-										</h4>
-										<p class="mb-2 text-xs text-gray-500">
-											{$_('assistants.form.knowledgeStores.help', {
-												default:
-													'Select one or more Knowledge Stores to ground this assistant’s answers.'
-											})}
-										</p>
-										{#if loadingKnowledgeStores}
-											<p class="text-sm text-gray-500">
-												{$_('assistants.form.knowledgeStores.loading', {
-													default: 'Loading knowledge stores...'
-												})}
-											</p>
-										{:else if knowledgeStoreError}
-											<p class="text-sm text-red-600">
-												{$_('assistants.form.knowledgeStores.error', {
-													default: 'Error loading knowledge stores:'
-												})}
-												{knowledgeStoreError}
-											</p>
-										{:else if accessibleKnowledgeStores.length === 0}
-											<p class="text-sm text-gray-500">
-												{$_('assistants.form.knowledgeStores.empty', {
-													default: 'No Knowledge Stores available for this organization.'
-												})}
-											</p>
-										{:else}
-											<div
-												class="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border p-2"
-												role="group"
-												aria-labelledby="ks-picker-label"
-											>
-												<span id="ks-picker-label" class="sr-only"
-													>{$_('assistants.form.knowledgeStores.label', {
-														default: 'Knowledge Stores'
-													})}</span
-												>
-												{#each accessibleKnowledgeStores as ks (ks.id)}
-													<label
-														class="flex cursor-pointer items-center space-x-2"
-														data-testid="ks-picker-option"
-														data-ks-id={ks.id}
-													>
-														<input
-															type="checkbox"
-															bind:group={selectedKnowledgeStoreIds}
-															value={ks.id}
-															class="text-brand focus:border-brand focus:ring-brand focus:ring-opacity-50 rounded border-gray-300 shadow-sm focus:ring focus:ring-offset-0"
-														/>
-														<span class="text-sm text-gray-700">
-															{ks.name}
-															{#if ks.is_shared && !ks.is_owner}
-																<span class="ml-2 text-xs text-gray-500">
-																	({$_('assistants.form.knowledgeStores.shared', {
-																		default: 'Shared'
-																	})})
-																</span>
-															{/if}
-														</span>
-													</label>
-												{/each}
-											</div>
-											<p class="mt-1 text-xs text-gray-500" data-testid="ks-picker-selected-count">
-												{selectedKnowledgeStoreIds.length}
-												{$_('assistants.form.knowledgeStores.selectedSuffix', {
-													default: 'selected'
-												})}
-											</p>
 										{/if}
 									</div>
 								{/if}

@@ -1,8 +1,32 @@
 <script>
 	import { writable } from 'svelte/store';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { marked } from 'marked';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+	import { apiFetch } from '$lib/services/apiClient';
+
+	// Track mount status so async fetches that resolve after the user
+	// navigates away don't write state to a destroyed component, and so
+	// the streaming completion can be aborted on unmount. (#353, H1 + H4)
+	let isMounted = true;
+	/** @type {AbortController|null} */
+	let streamAbort = null;
+	onDestroy(() => {
+		isMounted = false;
+		streamAbort?.abort();
+		streamAbort = null;
+	});
+
+	/**
+	 * Treat a "Session expired" error from apiFetch as a no-op for UI
+	 * purposes — the wrapper is already redirecting to login, so painting
+	 * a duplicate banner adds noise.
+	 * @param {unknown} err
+	 * @returns {boolean}
+	 */
+	function isSessionExpired(err) {
+		return err instanceof Error && err.message.startsWith('Session expired');
+	}
 
 	// Configure marked to preserve line breaks (converts \n to <br>)
 	marked.setOptions({
@@ -129,31 +153,30 @@
 	 * Fetch chat list for current assistant
 	 */
 	async function fetchChatList() {
-		if (!apiUrl || !userToken || !assistantId) return;
+		if (!assistantId) return;
 
 		isLoadingChats = true;
 		logWithTime(`Fetching chat list for assistant ${assistantId}`);
 
 		try {
-			const response = await fetch(
-				`${apiUrl}/creator/chats?assistant_id=${assistantId}&per_page=50`,
-				{
-					headers: { Authorization: `Bearer ${userToken}` }
-				}
-			);
+			const response = await apiFetch(`/chats?assistant_id=${assistantId}&per_page=50`);
 
+			if (!isMounted) return;
 			if (!response.ok) {
 				throw new Error(`Failed to fetch chats: ${response.status}`);
 			}
 
 			const data = await response.json();
+			if (!isMounted) return;
 			chatList = data.chats || [];
 			logWithTime(`Loaded ${chatList.length} chats`);
 		} catch (error) {
+			if (!isMounted) return;
+			if (isSessionExpired(error)) return;
 			console.error('Error fetching chat list:', error);
 			chatList = [];
 		} finally {
-			isLoadingChats = false;
+			if (isMounted) isLoadingChats = false;
 		}
 	}
 
@@ -162,21 +185,19 @@
 	 * @param {string} chatId
 	 */
 	async function loadChat(chatId) {
-		if (!apiUrl || !userToken) return;
-
 		logWithTime(`Loading chat ${chatId}`);
 		isLoading = true;
 
 		try {
-			const response = await fetch(`${apiUrl}/creator/chats/${chatId}`, {
-				headers: { Authorization: `Bearer ${userToken}` }
-			});
+			const response = await apiFetch(`/chats/${chatId}`);
 
+			if (!isMounted) return;
 			if (!response.ok) {
 				throw new Error(`Failed to load chat: ${response.status}`);
 			}
 
 			const data = await response.json();
+			if (!isMounted) return;
 
 			// Convert messages from response to our format
 			messages = (data.messages || []).map((msg, idx) => ({
@@ -190,9 +211,11 @@
 
 			logWithTime(`Loaded chat with ${messages.length} messages`);
 		} catch (error) {
+			if (!isMounted) return;
+			if (isSessionExpired(error)) return;
 			console.error('Error loading chat:', error);
 		} finally {
-			isLoading = false;
+			if (isMounted) isLoading = false;
 		}
 	}
 
@@ -220,15 +243,13 @@
 		logWithTime(`Updating chat title to: ${newTitle}`);
 
 		try {
-			const response = await fetch(`${apiUrl}/creator/chats/${currentChatId}`, {
+			const response = await apiFetch(`/chats/${currentChatId}`, {
 				method: 'PUT',
-				headers: {
-					Authorization: `Bearer ${userToken}`,
-					'Content-Type': 'application/json'
-				},
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ title: newTitle })
 			});
 
+			if (!isMounted) return;
 			if (response.ok) {
 				currentChatTitle = newTitle;
 				// Update in chat list
@@ -236,9 +257,11 @@
 				logWithTime('Title updated successfully');
 			}
 		} catch (error) {
+			if (!isMounted) return;
+			if (isSessionExpired(error)) return;
 			console.error('Error updating title:', error);
 		} finally {
-			isEditingTitle = false;
+			if (isMounted) isEditingTitle = false;
 		}
 	}
 
@@ -262,11 +285,11 @@
 		logWithTime(`Deleting chat ${deletingChatId}`);
 
 		try {
-			const response = await fetch(`${apiUrl}/creator/chats/${deletingChatId}`, {
-				method: 'DELETE',
-				headers: { Authorization: `Bearer ${userToken}` }
+			const response = await apiFetch(`/chats/${deletingChatId}`, {
+				method: 'DELETE'
 			});
 
+			if (!isMounted) return;
 			if (response.ok) {
 				chatList = chatList.filter((c) => c.id !== deletingChatId);
 				if (currentChatId === deletingChatId) {
@@ -277,9 +300,11 @@
 				chatToDeleteId = null;
 			}
 		} catch (error) {
+			if (!isMounted) return;
+			if (isSessionExpired(error)) return;
 			console.error('Error deleting chat:', error);
 		} finally {
-			isDeletingChat = false;
+			if (isMounted) isDeletingChat = false;
 		}
 	}
 
@@ -295,21 +320,15 @@
 	// --- API Calls ---
 	/** Fetches available models */
 	async function fetchModels() {
-		if (!apiUrl || !userToken) {
-			modelsError = 'API URL or user token is not configured.';
-			console.error(modelsError);
-			return;
-		}
 		isLoadingModels = true;
 		modelsError = null;
-		logWithTime(`Fetching models from ${apiUrl}/creator/models`);
+		logWithTime('Fetching models from /creator/models'); // apiFetch prepends /creator
 		try {
-			const response = await fetch(`${apiUrl}/creator/models`, {
-				method: 'GET',
-				headers: { Authorization: `Bearer ${userToken}` }
-			});
+			const response = await apiFetch('/models', { method: 'GET' });
+			if (!isMounted) return;
 			if (!response.ok) throw new Error(`Failed to fetch models: ${response.status}`);
 			const data = await response.json();
+			if (!isMounted) return;
 			if (data.data && Array.isArray(data.data)) {
 				const modelIds = data.data
 					.map(/** @param {{ id: string }} model */ (model) => model.id)
@@ -329,6 +348,8 @@
 				throw new Error('Invalid model data format');
 			}
 		} catch (/** @type {unknown} */ error) {
+			if (!isMounted) return;
+			if (isSessionExpired(error)) return;
 			const errorMessage = error instanceof Error ? error.message : 'Failed to load models';
 			modelsError = errorMessage;
 			console.error('Error fetching models:', error);
@@ -338,7 +359,7 @@
 			}
 			logWithTime(`Using fallback models due to error. Selected: ${selectedModel}`);
 		} finally {
-			isLoadingModels = false;
+			if (isMounted) isLoadingModels = false;
 		}
 	}
 
@@ -346,11 +367,17 @@
 	 * Sends messages to the chat API and handles streaming response.
 	 */
 	async function handleSubmit() {
-		if (!input.trim() || isLoading || !apiUrl || !userToken) return;
+		if (!input.trim() || isLoading) return;
 
 		logWithTime(`Submitting message with model: ${selectedModel}`);
 		isLoading = true;
 		isStreaming = true;
+
+		// Cancel any previous in-flight stream so navigation away or rapid
+		// resends don't leave the previous fetch + reader running. (#353, H1)
+		streamAbort?.abort();
+		streamAbort = new AbortController();
+		const signal = streamAbort.signal;
 
 		/** @type {Message} */
 		const newUserMessage = { id: Date.now().toString(), role: 'user', content: input };
@@ -379,19 +406,14 @@
 			if (!assistantId) {
 				throw new Error('Assistant ID is required for chat');
 			}
-			if (!userToken) {
-				throw new Error('User authentication token is required');
-			}
 
-			const endpoint = `${apiUrl}/creator/assistant/${assistantId}/chat/completions`;
+			const endpoint = `/assistant/${assistantId}/chat/completions`;
 			logWithTime(`Sending request to ${endpoint}`);
-			const response = await fetch(endpoint, {
+			const response = await apiFetch(endpoint, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${userToken}`
-				},
-				body: JSON.stringify(payload)
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+				signal
 			});
 
 			if (!response.ok) {
@@ -422,6 +444,14 @@
 				logWithTime('Starting stream processing');
 
 				while (true) {
+					if (signal.aborted) {
+						try {
+							await reader.cancel();
+						} catch (_) {
+							/* noop */
+						}
+						return;
+					}
 					const { done, value } = await reader.read();
 					if (done) {
 						logWithTime('Stream finished.');
@@ -510,14 +540,23 @@
 			// Refresh chat list to update message counts
 			fetchChatList();
 		} catch (/** @type {any} */ error) {
+			// AbortError on unmount or rapid-resend is expected; do not paint
+			// an error message on the (possibly already-replaced) assistant slot.
+			if (error?.name === 'AbortError') return;
+			// Session-expired errors from apiFetch are already redirecting.
+			if (isSessionExpired(error)) return;
 			logWithTime(`Error during chat submission: ${error.message}`);
 			console.error('Chat error:', error);
-			messages = messages.map((msg) =>
-				msg.id === assistantMessageId ? { ...msg, content: `Error: ${error.message}` } : msg
-			);
+			if (isMounted) {
+				messages = messages.map((msg) =>
+					msg.id === assistantMessageId ? { ...msg, content: `Error: ${error.message}` } : msg
+				);
+			}
 		} finally {
-			isLoading = false;
-			isStreaming = false;
+			if (isMounted) {
+				isLoading = false;
+				isStreaming = false;
+			}
 			logWithTime('Chat submission finished.');
 		}
 	}
@@ -535,6 +574,8 @@
 	// --- Lifecycle & Effects ---
 	onMount(() => {
 		logWithTime('ChatInterface mounted.');
+		// fetchModels and fetchChatList are mounted-aware via the isMounted
+		// flag at the top of the script; no extra guard needed here. (#353, H4)
 		fetchModels();
 		fetchChatList();
 	});

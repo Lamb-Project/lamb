@@ -14,7 +14,8 @@ const defaultConfig = {
 	// Feature flags
 	features: {
 		enableOpenWebUi: true,
-		enableDebugMode: true
+		enableDebugMode: true,
+		enableLibraries: true
 	}
 };
 

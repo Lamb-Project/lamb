@@ -1255,6 +1255,274 @@ window.LAMB_CONFIG = {
 
 ---
 
+### 9.6 Frontend Resilience Patterns (Required)
+
+These patterns are mandatory for any new frontend code. They exist because we keep finding the same class of "frontend goes unresponsive, reload fixes it" bugs (issue #352 catalogues 38 instances). Each pattern below has a corresponding ESLint-style smell to scan for in code review.
+
+#### 9.6.1 Loading flags must use `try/finally`
+
+**Rule:** any `loading = true` (or `set(true)`) MUST have a matching reset in a `finally` block, never only in the success branch and never only in `catch`.
+
+```javascript
+// ❌ BAD — error path leaks loading=true forever
+async function submit() {
+  loading = true;
+  const result = await api.call();
+  if (result.success) { handleOk(); loading = false; }
+  else { error = result.error; }   // loading still true
+}
+
+// ❌ BAD — uncaught throw leaks loading=true forever
+async function submit() {
+  loading = true;
+  const result = await api.call();   // throws? we never reach next line
+  loading = false;
+}
+
+// ✅ GOOD — every exit path resets loading
+async function submit() {
+  loading = true;
+  error = null;
+  try {
+    const result = await api.call();
+    if (result.success) handleOk();
+    else error = result.error;
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  } finally {
+    loading = false;
+  }
+}
+```
+
+**Symptom this prevents:** spinners stuck spinning, submit buttons permanently disabled after a network blip.
+
+#### 9.6.2 `await` in `onMount` / `$effect` requires a mounted-check
+
+**Rule:** any async work started in `onMount` or `$effect` MUST check it's still mounted before writing reactive state. Use a local `cancelled` flag plus a teardown.
+
+```javascript
+// ❌ BAD — setState on destroyed component if user navigates away mid-fetch
+onMount(async () => {
+  const data = await api.get(id);
+  state = data;
+});
+
+// ✅ GOOD
+onMount(() => {
+  let cancelled = false;
+  (async () => {
+    try {
+      const data = await api.get(id);
+      if (!cancelled) state = data;
+    } catch (e) {
+      if (!cancelled) error = e.message;
+    }
+  })();
+  return () => { cancelled = true; };
+});
+```
+
+**Symptom this prevents:** stale data from a previous resource appearing after rapid navigation; console errors about updates on destroyed components.
+
+#### 9.6.3 Cancellable fetches use `AbortController`
+
+**Rule:** any fetch that depends on a prop/route param that can change MUST be abortable, and the previous fetch MUST be aborted when the dependency changes.
+
+```javascript
+// ✅ GOOD
+let abortController = null;
+
+async function loadResource(id) {
+  if (abortController) abortController.abort();
+  abortController = new AbortController();
+
+  loading = true;
+  try {
+    const data = await fetch(`/api/${id}`, { signal: abortController.signal })
+      .then(r => r.json());
+    state = data;
+  } catch (e) {
+    if (e.name === 'AbortError') return;   // expected on rapid switch
+    error = e.message;
+  } finally {
+    loading = false;
+  }
+}
+
+onDestroy(() => abortController?.abort());
+```
+
+**Symptom this prevents:** clicking through items in a list shows the wrong details because an earlier request resolved last.
+
+#### 9.6.4 401 must be handled centrally, not per call site
+
+**Rule:** all API calls go through a shared `apiFetch` wrapper that:
+1. Attaches the bearer token
+2. On 401, calls `clearCurrentSession()` from `$lib/session/sessionManager.js` and redirects to login
+3. On 403, surfaces a permission error with a redirect option
+
+Do NOT reimplement 401 handling in each service file. Do NOT silently return `{success:false}` on 401 — that lets the user keep clicking buttons that will all fail.
+
+```javascript
+// $lib/services/apiClient.js — single source of truth
+import { goto } from '$app/navigation';
+import { clearCurrentSession } from '$lib/session/sessionManager';
+
+export async function apiFetch(path, options = {}) {
+  const token = getAuthToken();
+  const res = await fetch(getApiUrl(path), {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Authorization': token ? `Bearer ${token}` : ''
+    }
+  });
+
+  if (res.status === 401) {
+    clearCurrentSession();
+    await goto('/login');
+    throw new Error('Session expired');
+  }
+  return res;
+}
+```
+
+**Symptom this prevents:** "everything is broken until I reload" — the classic OWI session-expiry symptom.
+
+#### 9.6.5 Timers and streams must be cleaned up on destroy
+
+**Rule:** every `setInterval`, `setTimeout`, `EventSource`, and `fetch().body.getReader()` started in a component MUST have a matching cleanup in `onDestroy` (or returned from `onMount`).
+
+```javascript
+// ❌ BAD — timer fires after unmount
+function showSuccess() {
+  successMessage = 'Saved';
+  setTimeout(() => { successMessage = ''; }, 4000);
+}
+
+// ✅ GOOD
+let successTimer = null;
+function showSuccess() {
+  successMessage = 'Saved';
+  clearTimeout(successTimer);
+  successTimer = setTimeout(() => { successMessage = ''; }, 4000);
+}
+onDestroy(() => clearTimeout(successTimer));
+```
+
+For streaming readers, use `AbortController.signal` on the fetch and call `.abort()` from `onDestroy`. The `getReader()` loop will reject with `AbortError` on the next read, breaking cleanly.
+
+**Symptom this prevents:** memory leaks; ghost background HTTP traffic after navigation; stale toasts appearing on the wrong page.
+
+#### 9.6.6 Top-level `await` in `+layout.js` / `+layout.svelte` needs a fallback
+
+**Rule:** anything awaited in `load()` that can fail (locale JSON, runtime config fetch) MUST have a `.catch()` that allows the layout to render with a sensible fallback. A rejected `load()` blanks the page.
+
+```javascript
+// ❌ BAD — locale 404 blanks the entire app
+export const load = async () => {
+  setupI18n();
+  await waitLocale();
+  return {};
+};
+
+// ✅ GOOD
+export const load = async () => {
+  setupI18n();
+  try {
+    await waitLocale();
+  } catch (e) {
+    console.error('Locale load failed, using fallback', e);
+    // fallback locale is already set by setupI18n()
+  }
+  return {};
+};
+```
+
+#### 9.6.7 Stores holding user-scoped state must register with `sessionManager`
+
+**Rule:** any store that caches per-user data (assistants, KBs, AAC sessions, drafts, tabs) MUST expose a `reset()` method and be invoked from `resetAllUserScopedStores()` in `$lib/session/sessionManager.js`. Never hold user state in module-level variables that survive logout.
+
+```javascript
+// $lib/stores/myThing.js
+function createMyThingStore() {
+  const { subscribe, set, update } = writable(initialState);
+  return {
+    subscribe,
+    // …other methods
+    reset: () => set(initialState)   // ← required
+  };
+}
+
+// $lib/session/sessionManager.js — register here
+import { myThing } from '$lib/stores/myThing';
+export function resetAllUserScopedStores() {
+  // …
+  myThing.reset();
+}
+```
+
+**Symptom this prevents:** previous user's data appearing after re-login on the same browser.
+
+#### 9.6.8 No silent error swallowing on data fetches
+
+**Rule:** `Promise.all([call1.catch(()=>[]), call2.catch(()=>[])])` is forbidden for primary data loads. It conflates "empty result" with "request failed", so the UI shows "no items" when in reality the user should see an error and a retry option.
+
+If you genuinely want a partial-failure-tolerant fetch, surface the partial state explicitly (`{ owned: [...], shared: null, sharedError: '...' }`) so the UI can show a banner.
+
+#### 9.6.9 Polling loops check errors and unmount
+
+**Rule:** `setInterval` polls MUST:
+1. Stop on unmount (cleared from `onDestroy`)
+2. Stop on auth errors (don't keep hammering after 401)
+3. Surface non-transient errors after N retries (don't silently spin forever)
+
+```javascript
+// ✅ GOOD pattern
+let pollTimer = null;
+let pollFailures = 0;
+
+async function pollOnce() {
+  try {
+    const status = await apiFetch(`/items/${id}/status`).then(r => r.json());
+    state = status;
+    pollFailures = 0;
+  } catch (e) {
+    pollFailures += 1;
+    if (pollFailures >= 5) {
+      pollError = 'Lost connection to server';
+      stopPolling();
+    }
+  }
+}
+
+function startPolling() {
+  pollOnce();
+  pollTimer = setInterval(pollOnce, 3000);
+}
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+onDestroy(stopPolling);
+```
+
+#### 9.6.10 Code-review checklist (paste into PR template)
+
+For any frontend PR:
+
+- [ ] Every `loading = true` has a `finally { loading = false }` (Pattern A)
+- [ ] Every `await` in `onMount`/`$effect` has a mounted-check (Pattern B)
+- [ ] Cancellable fetches use `AbortController` and abort on dep change (Pattern C)
+- [ ] All API calls go through `apiFetch` (no direct `fetch()` to backend) (Pattern D)
+- [ ] Every `setInterval`/`setTimeout`/stream has cleanup in `onDestroy` (Pattern E)
+- [ ] No `Promise.all([call.catch(()=>[])])` for primary loads
+- [ ] User-scoped stores have `reset()` and are wired into `sessionManager`
+- [ ] Top-level `await` in layout has a `.catch()` fallback
+
+---
+
 ## 10. Development & Deployment
 
 ### 10.1 Quick Start

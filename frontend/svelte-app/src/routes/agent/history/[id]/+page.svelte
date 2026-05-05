@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { _ } from '$lib/i18n';
 	import { getSession } from '$lib/services/aacService';
@@ -12,6 +12,13 @@
 	let error = $state('');
 	let showAudit = $state(false);
 
+	// Don't write state on a destroyed component if the user navigates away
+	// while the session fetch is in flight. (#352, L1)
+	let isMounted = true;
+	onDestroy(() => {
+		isMounted = false;
+	});
+
 	function renderMarkdown(text) {
 		if (!text) return '';
 		return marked.parse(text, { breaks: true });
@@ -20,11 +27,16 @@
 	onMount(async () => {
 		const id = $page.params.id;
 		try {
-			session = await getSession(id);
+			const data = await getSession(id);
+			if (!isMounted) return;
+			session = data;
 		} catch (e) {
+			if (!isMounted) return;
+			if (e instanceof Error && e.message.startsWith('Session expired')) return;
 			error = e.message || 'Session not found';
+		} finally {
+			if (isMounted) loading = false;
 		}
-		loading = false;
 	});
 
 	function getVisibleMessages() {

@@ -6,7 +6,10 @@
  * token auth, getApiUrl() for base URL, browser-only checks.
  */
 
-import axios from 'axios';
+// Shared axios instance with global 401 handling (#352, M1/M2/M3).
+import { apiAxios as axios } from '$lib/services/apiClient';
+import { isAxiosError } from 'axios';
+axios.isAxiosError = isAxiosError;
 import { getApiUrl } from '$lib/config';
 import { browser } from '$app/environment';
 
