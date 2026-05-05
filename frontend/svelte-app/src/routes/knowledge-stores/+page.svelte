@@ -10,6 +10,7 @@
 	import { base } from '$app/paths';
 
 	onMount(() => {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto(`${base}/libraries?section=knowledge-stores`, { replaceState: true });
 	});
 </script>

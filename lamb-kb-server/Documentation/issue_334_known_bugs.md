@@ -1,8 +1,15 @@
 # Known bugs in the new KB Server (#334)
 
-Surfaced during the three-tier test suite (commit `fa532bfe`). Each bug has a regression-guard test that asserts current (incorrect) behavior so the fix doesn't accidentally regress when applied.
+Surfaced during the three-tier test suite (commit `fa532bfe`). Each bug had a regression-guard test that asserted current (incorrect) behavior; those tests have since been flipped to assert the correct behavior alongside the fix.
 
-**Status:** documented, not fixed. Track fixes via follow-up PRs that reference this file.
+**Status:** all four issues fixed. This document is preserved as a record of what was wrong and how it was addressed — see the `fix(#334):` commits referenced in each section below.
+
+| # | Bug | Fix commit |
+|---|---|---|
+| 1 | Latin-1 bearer-token bytes return 500 instead of 401 | `65a9cced` |
+| 2 | `extra_metadata` accepts None / nested dicts but ChromaDB rejects them | `3b7eefbd` |
+| 3 | `collection.chunk_count` race under concurrent ingestion | `4792f24c` |
+| 4 | `chunking_params` silently ignores unknown keys | `434a6bcb` |
 
 ---
 

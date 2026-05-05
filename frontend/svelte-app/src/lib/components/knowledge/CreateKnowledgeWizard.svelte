@@ -235,10 +235,6 @@
 		dispatch('close');
 	}
 
-	function handleKeydown(event) {
-		if (event.key === 'Escape') close();
-	}
-
 	function handleBackdropClick() {
 		close();
 	}
