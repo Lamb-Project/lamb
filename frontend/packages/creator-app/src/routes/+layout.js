@@ -1,7 +1,5 @@
 import { browser } from '$app/environment';
-import '$lib/i18n'; // Import to initialize. Important for SSR!
-import { locale, waitLocale } from 'svelte-i18n';
-import { setupI18n, setLocale, supportedLocales, fallbackLocale } from '$lib/i18n';
+import { locale, waitLocale, setupI18n, setLocale, supportedLocales, fallbackLocale } from '@lamb/ui';
 
 /** @type {import('./$types').LayoutLoad} */
 export const load = async () => {

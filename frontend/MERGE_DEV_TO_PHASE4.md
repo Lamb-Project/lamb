@@ -60,9 +60,51 @@ This was a reference template for `window.LAMB_CONFIG`. The actual config is gen
    - module-file-eval: 4 calls with raw `fetch()` with manual auth headers
    - Requires `apiClient` to be in `@lamb/ui` first (see #2)
 ### Low Priority
+
 6. **Document `window.LAMB_CONFIG` structure**
    - `config.js.sample` was deleted during this merge
    - Consider adding a proper documentation page or keeping a reference in `docs/`
+
+7. **Move `getConfig()` to `@lamb/ui` (fix hardcoded workaround in Nav.svelte)**
+   - **Current workaround:** `Nav.svelte` has a hardcoded `const getConfig = () => window.LAMB_CONFIG || { features: {} };` because `config.js` only exists in `creator-app` and `@lamb/ui` cannot import from it (circular dependency).
+   - **Proper fix:** Create `@lamb/ui/src/lib/config.js` with `getConfig()` (just reads `window.LAMB_CONFIG`). Keep `getApiUrl()` and `getLambApiUrl()` in `creator-app/src/lib/config.js` since those are app-specific. Update `Nav.svelte` to import `getConfig` from `@lamb/ui`.
+
+8. **Migrate 4 files from `marked` to `renderMarkdownSafe` from `@lamb/ui`**
+   - **Current state:** 4 files in `creator-app` import `marked` directly and use `{@html marked(...)}` without sanitization (XSS risk):
+     - `routes/+page.svelte` (line 9)
+     - `lib/components/ChatInterface.svelte` (line 4)
+     - `routes/agent/history/[id]/+page.svelte` (line 8)
+     - `lib/components/aac/AacTerminal.svelte` (line 5)
+   - **Proper fix:** Replace `import { marked } from 'marked'` + `{@html marked(text)}` with `import { renderMarkdownSafe } from '@lamb/ui'` + `{@html renderMarkdownSafe(text)}`. This eliminates the need for `marked` as a direct dependency in `creator-app` and ensures all markdown rendering is sanitized.
+
+9. **Fix `@lamb/ui/i18n` subpath imports in Pagination.svelte and RubricMetadataForm.svelte**
+   - **Risk:** Compilation failure if Vite/SvelteKit doesn't resolve subpath exports correctly
+   - **Files:** `lib/components/common/Pagination.svelte`, `lib/components/evaluaitor/RubricMetadataForm.svelte`
+   - **Current:** `import { _, locale } from '@lamb/ui/i18n';`
+   - **Fix:** Change to `import { _, locale } from '@lamb/ui';` for consistency and reliability
+
+10. **Remove dead imports in `+page.svelte` (root)**
+    - **Risk:** None (dead code), but adds confusion and unnecessary dependencies
+    - **Files:** `routes/+page.svelte`
+    - **Remove:** `import { marked } from 'marked';` (line 9, unused — replaced by `renderMarkdownSafe`)
+    - **Remove:** `import { getApiUrl } from '$lib/config';` (line 10, unused — `apiFetch` resolves URLs internally)
+
+11. **Add sanitization to `module-file-eval` markdown rendering**
+    - **Risk:** XSS if AI-generated content contains malicious payloads
+    - **File:** `module-file-eval/src/routes/grading/+page.svelte`
+    - **Current:** Uses `{@html marked.parse(md)}` without DOMPurify sanitization
+    - **Fix:** Import and use `renderMarkdownSafe` from `@lamb/ui` (once available as a shared export)
+
+12. **Migrate `createEventDispatcher` to Svelte 5 callback props (~15 components)**
+    - **Risk:** Low — Svelte 5 has backwards compat, but deprecated and generates warnings
+    - **Affected:** `Login.svelte`, `Signup.svelte`, `Pagination.svelte`, and ~12 more components
+    - **Fix:** Replace `dispatch('event-name')` + `on:event-name` with callback props (`oneventname={...}`)
+
+13. **Review `hooks.server.js` i18n `locale.set()` in SSR context**
+    - **Risk:** Low — `svelte-i18n` handles this internally, but fragile if `setupI18n()` hasn't run yet
+    - **File:** `creator-app/src/hooks.server.js`
+    - **Current:** Imports `locale` from `@lamb/ui` and calls `locale.set(lang)` in server hooks
+    - **Fix:** If issues arise, move i18n setup logic to `+layout.js` where it's guaranteed to run after `setupI18n()`
 ---
 ## Files affected by this merge
 ### Auto-merged (no conflicts)
@@ -106,7 +148,7 @@ This was a reference template for `window.LAMB_CONFIG`. The actual config is gen
 - `+layout.js` — accepted dev (`try/catch` around `waitLocale()`)
 - `+page.svelte` — merged: `@lamb/ui` imports + `apiFetch`/`sanitize` from dev
 - `org-admin/+page.svelte` — merged: `apiAxios` from dev + `@lamb/ui` imports
-- `Nav.svelte` — accepted HEAD (relative paths correct for `@lamb/ui`) + added `getConfig`
+- `Nav.svelte` — accepted HEAD (relative paths correct for `@lamb/ui`). Added `getConfig` as hardcoded `window.LAMB_CONFIG` read (TODO #7 to move to `@lamb/ui` properly)
 - `userStore.js` — merged: `authService` from HEAD + validation from dev
 ### Deleted
 - `frontend/svelte-app/package.json`

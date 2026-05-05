@@ -77,7 +77,7 @@ config.json
 frontend/svelte-app/.svelte-kit/
 frontend/svelte-app/package-lock.json
 frontend/svelte-app/src/lib/version.js
-/frontnend/svelte-app
+/frontend/svelte-app
 /frontend/package
 /frontend/.env
 /frontend/.env.*
@@ -201,7 +201,7 @@ docker-compose.yaml
 .pnpm-store/
 backend/testing/
 backend/uploads/
-frontend/packages/
+
 
 
 #OPENCODE

@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { getAssistants } from '$lib/services/assistantService'; // We'll port this service next
-import { user } from './userStore';
+import { user } from '@lamb/ui';
 
 /**
  * @typedef {Object} Assistant
@@ -62,7 +62,7 @@ const createAssistantsStore = () => {
     subscribe,
     set,     // Expose set if needed directly
     update,  // Expose update if needed directly
-    
+
     /**
      * Load assistants from the backend
      * @returns {Promise<void>}
@@ -70,14 +70,14 @@ const createAssistantsStore = () => {
     loadAssistants: async () => {
       // Only run in browser
       if (!browser) return;
-      
+
       // Update store to loading state
       update(state => ({
         ...state,
         loading: true,
         error: null
       }));
-      
+
       try {
         // Fetch fresh data from the backend
         // getAssistants returns an object: { assistants: Assistant[], total_count: number }
@@ -111,14 +111,14 @@ const createAssistantsStore = () => {
         }));
       }
     },
-    
+
     /**
      * Reset the store to its initial state
      */
     reset: () => {
       set(initialState); // Reset to initial state
     },
-    
+
     /**
      * Clean up any subscriptions
      */

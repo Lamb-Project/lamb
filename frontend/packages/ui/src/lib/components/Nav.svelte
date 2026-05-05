@@ -4,11 +4,14 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { base } from '$app/paths';
-  import { locale, _ } from '$lib/i18n';
-  import LanguageSelector from '$lib/components/LanguageSelector.svelte';
-  import { VERSION_INFO } from '$lib/version.js';
-  import { getConfig } from '../config.js'; 
-  
+  import { locale, _ } from '../i18n/index.js';
+  import LanguageSelector from '../components/LanguageSelector.svelte';
+  import { VERSION_INFO } from '../version.js';
+  // TODO: Move getConfig to @lamb/ui so it's shared across all modules.
+  // Currently config.js only exists in creator-app, but Nav.svelte needs
+  // getConfig() for feature flags. Hardcoded here as a temporary workaround.
+  const getConfig = () => window.LAMB_CONFIG || { features: {} };
+
   // Format version display
   let versionDisplay = `v${VERSION_INFO.version}`;
   

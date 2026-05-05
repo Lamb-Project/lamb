@@ -11,8 +11,8 @@
 	import { _, locale } from '@lamb/ui';
 	import { getMyProfile } from '$lib/services/adminService';
 	import { apiFetch } from '$lib/services/apiClient';
-	import { renderMarkdownSafe } from '$lib/utils/sanitize';
-
+	import { renderMarkdownSafe } from '@lamb/ui';
+	
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. Also tag
 	// each loadNews() invocation so a slow request from a previous locale

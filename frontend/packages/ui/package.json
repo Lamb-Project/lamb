@@ -33,7 +33,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "svelte-i18n": "^4.0.1"
+    "svelte-i18n": "^4.0.1",
+    "dompurify": "^3.4.1",
+    "marked": "^15.0.12"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"
