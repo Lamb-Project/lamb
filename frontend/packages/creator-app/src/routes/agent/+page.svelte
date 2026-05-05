@@ -4,7 +4,7 @@
     import { _, locale } from '@lamb/ui';
     import { user } from '@lamb/ui';
     import { createSession, getSessions, deleteSession } from '$lib/services/aacService';
-    import { openTab, setActiveTab, getActiveTabId, closeTab } from '$lib/stores/aacStore.svelte';
+    import { openTab, setActiveTab, getActiveTabId, closeTab, activeTabId } from '$lib/stores/aacStore.svelte';
     import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
     import { goto } from '$app/navigation';
 
@@ -13,8 +13,11 @@
     let loading = $state(true);
     let error = $state('');
 
-    // React to global tab bar switches
-    let storeActiveId = $derived(getActiveTabId());
+    // React to global tab bar switches. Subscribe to the writable store so this
+    // updates whenever the active tab changes anywhere in the app — previously
+    // this relied on rune-via-getter dependency tracking that broke when the
+    // store was migrated away from $state runes (#352, H6).
+    let storeActiveId = $derived($activeTabId);
     $effect(() => {
         if (storeActiveId && storeActiveId !== sessionId && !loading) {
             sessionId = storeActiveId;

@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { getAssistants } from '$lib/services/assistantService'; // We'll port this service next
-import { userStore as user } from '@lamb/ui';
+import { user } from './userStore';
 
 /**
  * @typedef {Object} Assistant
@@ -62,7 +62,7 @@ const createAssistantsStore = () => {
     subscribe,
     set,     // Expose set if needed directly
     update,  // Expose update if needed directly
-
+    
     /**
      * Load assistants from the backend
      * @returns {Promise<void>}
@@ -70,36 +70,40 @@ const createAssistantsStore = () => {
     loadAssistants: async () => {
       // Only run in browser
       if (!browser) return;
-
+      
       // Update store to loading state
       update(state => ({
         ...state,
         loading: true,
         error: null
       }));
-
+      
       try {
         // Fetch fresh data from the backend
         // getAssistants returns an object: { assistants: Assistant[], total_count: number }
         const response = await getAssistants();
 
-        // Update store with new data - extract the array
+        // Defensive: an unexpected response shape used to leave the store
+        // with `items: undefined` and the next render iterating over a
+        // non-iterable. Always coerce to an array. (#352, H12)
+        const items = Array.isArray(response?.assistants) ? response.assistants : [];
+
         set({
-          items: response.assistants, // Assign the array to items
+          items,
           loading: false,
           error: null,
           lastLoaded: new Date()
         });
 
-        // Log the length of the assistants array
-        console.log('Assistants store updated with fresh data:', response.assistants?.length || 0, 'items');
+        console.log('Assistants store updated with fresh data:', items.length, 'items');
       } catch (error) {
         console.error('Error loading assistants:', error);
         let message = 'Failed to load assistants';
         if (error instanceof Error) {
           message = error.message;
         }
-        // Update store with error
+        // Update store with error. Preserve any previously loaded items
+        // so a transient failure during a refresh doesn't blank the UI.
         update(state => ({
           ...state,
           loading: false,
@@ -107,14 +111,14 @@ const createAssistantsStore = () => {
         }));
       }
     },
-
+    
     /**
      * Reset the store to its initial state
      */
     reset: () => {
       set(initialState); // Reset to initial state
     },
-
+    
     /**
      * Clean up any subscriptions
      */

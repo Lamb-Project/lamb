@@ -143,12 +143,14 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-modal-title"
+        tabindex="-1"
         onclick={handleBackdropClick}
         onkeydown={handleKeydown}
     >
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <!-- Inner panel: presentational only — see CreateLibraryModal for context. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4" onclick={stopPropagation}>
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4" role="presentation" onclick={stopPropagation}>
             <div class="px-6 py-4 border-b border-gray-200">
                 <h2 id="import-modal-title" class="text-lg font-semibold text-gray-900">
                     {$_('libraries.importModal.title', { default: 'Import Content' })}
@@ -160,10 +162,10 @@
                     <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md" role="alert">{error}</div>
                 {/if}
 
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                <fieldset>
+                    <legend class="block text-sm font-medium text-gray-700 mb-2">
                         {$_('libraries.importModal.typeLabel', { default: 'Import type' })}
-                    </label>
+                    </legend>
                     <div class="flex gap-2">
                         {#each [
                             { value: 'url', label: $_('libraries.importModal.typeUrl', { default: 'URL' }) },
@@ -179,7 +181,7 @@
                             </button>
                         {/each}
                     </div>
-                </div>
+                </fieldset>
 
                 {#if importType === 'url'}
                     <div>

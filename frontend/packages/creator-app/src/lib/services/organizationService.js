@@ -1,4 +1,4 @@
-import { getApiUrl } from '$lib/config';
+import { apiFetch } from '$lib/services/apiClient';
 
 /**
  * Get list of all assistants in the organization
@@ -7,12 +7,10 @@ import { getApiUrl } from '$lib/config';
  */
 export async function getOrganizationAssistants(token) {
   try {
-    const response = await fetch(getApiUrl('/admin/org-admin/assistants'), {
+    const response = await apiFetch('/admin/org-admin/assistants', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
+      token,
+      headers: { 'Content-Type': 'application/json' }
     });
 
     if (!response.ok) {
@@ -26,5 +24,3 @@ export async function getOrganizationAssistants(token) {
     throw error;
   }
 }
-
-
