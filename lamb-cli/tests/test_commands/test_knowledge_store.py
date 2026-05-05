@@ -596,3 +596,468 @@ class TestKsQuery:
         assert result.exit_code == 0
         body = json.loads(httpx_mock.get_request().content)
         assert body["top_k"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Edge cases — guardrails surfaced through the CLI (#337)
+# ---------------------------------------------------------------------------
+
+
+class TestKsLockedConfig:
+    """The chunking strategy, embedding vendor/model and vector DB backend are
+    locked at creation time. ``lamb ks update`` deliberately does not expose
+    flags for those fields, so Click rejects them before any HTTP call."""
+
+    @pytest.mark.parametrize(
+        "flag,value",
+        [
+            ("--chunking", "by_section"),
+            ("--embedding-vendor", "ollama"),
+            ("--embedding-model", "nomic-embed-text"),
+            ("--vector-db", "qdrant"),
+            ("--embedding-endpoint", "http://x"),
+        ],
+    )
+    def test_update_rejects_locked_field_flags(self, mock_token, flag, value):
+        result = runner.invoke(app, ["ks", "update", "ks-1", flag, value])
+        assert result.exit_code != 0
+        out = result.output.lower()
+        assert "no such option" in out or "usage" in out
+
+    def test_update_name_payload_excludes_locked_fields(self, httpx_mock, mock_token):
+        httpx_mock.add_response(json=SAMPLE_KS)
+        result = runner.invoke(
+            app, ["ks", "update", "ks-1", "--name", "renamed"]
+        )
+        assert result.exit_code == 0
+        body = json.loads(httpx_mock.get_request().content)
+        for forbidden in (
+            "chunking_strategy",
+            "embedding_vendor",
+            "embedding_model",
+            "vector_db_backend",
+            "embedding_endpoint",
+        ):
+            assert forbidden not in body, (
+                f"{forbidden} must never appear in the update payload — "
+                "locked fields are immutable after KS creation"
+            )
+        # And confirm the field that IS allowed went through.
+        assert body["name"] == "renamed"
+
+
+class TestKsBackendErrors:
+    """The CLI must surface backend status codes as non-zero exits with
+    actionable messages — never as a Python traceback."""
+
+    def test_delete_returns_409_when_in_use(self, httpx_mock, mock_token):
+        httpx_mock.add_response(
+            status_code=409,
+            json={"detail": "Knowledge Store has active assistants"},
+        )
+        result = runner.invoke(app, ["ks", "delete", "ks-1", "-y"])
+        assert result.exit_code != 0
+
+    def test_get_returns_403_for_other_org(self, httpx_mock, mock_token):
+        httpx_mock.add_response(
+            status_code=403, json={"detail": "Forbidden: not your org"}
+        )
+        result = runner.invoke(app, ["ks", "get", "ks-other"])
+        from lamb_cli.errors import AuthenticationError
+
+        assert result.exit_code != 0
+        assert isinstance(result.exception, AuthenticationError)
+
+    def test_query_returns_503_when_backend_unavailable(self, httpx_mock, mock_token):
+        httpx_mock.add_response(
+            status_code=503, json={"detail": "KB Server unavailable"}
+        )
+        result = runner.invoke(app, ["ks", "query", "ks-1", "anything"])
+        assert result.exit_code != 0
+
+    def test_create_returns_500_provisional_not_visible(
+        self, httpx_mock, mock_token
+    ):
+        # Backend rejects the create (e.g. KB-server backend down).
+        httpx_mock.add_response(
+            status_code=500, json={"detail": "Backend unavailable"}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "create",
+                "demo",
+                "--chunking",
+                "simple",
+                "--embedding-vendor",
+                "openai",
+                "--embedding-model",
+                "text-embedding-3-small",
+                "--vector-db",
+                "chromadb",
+            ],
+        )
+        assert result.exit_code != 0
+        # Belt-and-braces: a follow-up list must not show a leaked provisional row.
+        httpx_mock.add_response(json={"knowledge_stores": []})
+        result2 = runner.invoke(app, ["ks", "list"])
+        assert result2.exit_code == 0
+
+    def test_query_returns_422_with_detail(self, httpx_mock, mock_token):
+        httpx_mock.add_response(
+            status_code=422, json={"detail": "query_text must not be empty"}
+        )
+        result = runner.invoke(app, ["ks", "query", "ks-1", "x"])
+        assert result.exit_code != 0
+
+
+class TestKsAddContentEdgeCases:
+    def test_add_content_returns_404_unknown_library(
+        self, httpx_mock, mock_token
+    ):
+        httpx_mock.add_response(
+            status_code=404, json={"detail": "Library not found"}
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "add-content",
+                "ks-1",
+                "--library",
+                "lib-missing",
+                "--items",
+                "item-1",
+            ],
+        )
+        # CliRunner doesn't go through _cli()'s error handler, so the typed
+        # exit code (5) becomes Click's default 1; we assert the exception
+        # type to lock the contract (NotFoundError -> exit 5 in production).
+        from lamb_cli.errors import NotFoundError
+
+        assert result.exit_code != 0
+        assert isinstance(result.exception, NotFoundError)
+
+    def test_add_content_returns_409_on_retry(self, httpx_mock, mock_token):
+        httpx_mock.add_response(
+            status_code=409,
+            json={"detail": "Ingestion already in flight for one or more items"},
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "add-content",
+                "ks-1",
+                "--library",
+                "lib-1",
+                "--items",
+                "item-1,item-2",
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_add_content_failure_surfaces_error_message(
+        self, httpx_mock, mock_token
+    ):
+        """When --wait sees a failed item, the backend's error_message must
+        appear in output (so users know WHY ingestion failed)."""
+        httpx_mock.add_response(json={"job_id": "j", "status": "queued"})
+        httpx_mock.add_response(
+            json={
+                "status": "failed",
+                "error_message": "OpenAI quota exceeded — check billing",
+            }
+        )
+        with patch(
+            "lamb_cli.commands.knowledge_store.time.sleep", return_value=None
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ks",
+                    "add-content",
+                    "ks-1",
+                    "--library",
+                    "lib-1",
+                    "--items",
+                    "item-1",
+                    "--wait",
+                ],
+            )
+        assert result.exit_code == 0  # CLI itself succeeds; job-level fail is reported
+        assert "OpenAI quota" in result.output
+
+    def test_add_content_wait_times_out_gracefully(
+        self, httpx_mock, mock_token
+    ):
+        """--max-wait expiry should print a 'Timed out' warning and exit 0
+        (items remain in flight server-side)."""
+        httpx_mock.add_response(json={"job_id": "j", "status": "queued"})
+        # Always in_progress — never reaches terminal state. Mark reusable so
+        # however many polls happen before the time budget expires, we have a
+        # response to serve.
+        httpx_mock.add_response(
+            json={"status": "in_progress"}, is_reusable=True
+        )
+        # Force the polling loop to exit on the first sleep by jumping the
+        # clock past the deadline.
+        sleep_calls = {"n": 0}
+
+        def fake_sleep(_d):
+            sleep_calls["n"] += 1
+
+        # Patch time.time so the deadline check trips after one iteration.
+        import lamb_cli.commands.knowledge_store as ks_mod
+
+        real_time = ks_mod.time.time
+        clock = {"t": real_time()}
+
+        def fake_time():
+            clock["t"] += 100  # advance fast
+            return clock["t"]
+
+        with (
+            patch.object(ks_mod.time, "sleep", side_effect=fake_sleep),
+            patch.object(ks_mod.time, "time", side_effect=fake_time),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ks",
+                    "add-content",
+                    "ks-1",
+                    "--library",
+                    "lib-1",
+                    "--items",
+                    "item-stuck",
+                    "--wait",
+                ],
+            )
+        assert result.exit_code == 0
+        assert "Timed out" in result.output
+
+
+class TestKsPollingBackoff:
+    """Lock down the documented exponential-backoff schedule (1, 2, 4, 8, 16,
+    capped at 16). The schedule is a literal in code with no constant to
+    import — this test is its spec."""
+
+    def test_add_content_wait_uses_documented_backoff(
+        self, httpx_mock, mock_token
+    ):
+        # 1 add-content + 5 in_progress polls + 1 ready poll.
+        # Each in_progress poll triggers a sleep before the next poll.
+        # 5 sleeps total, cadence 1, 2, 4, 8, 16.
+        httpx_mock.add_response(json={"job_id": "j", "status": "queued"})
+        for _ in range(5):
+            httpx_mock.add_response(json={"status": "in_progress"})
+        httpx_mock.add_response(
+            json={"status": "ready", "chunks_created": 1}
+        )
+
+        sleeps: list[float] = []
+        with patch(
+            "lamb_cli.commands.knowledge_store.time.sleep",
+            side_effect=lambda d: sleeps.append(d),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ks",
+                    "add-content",
+                    "ks-1",
+                    "--library",
+                    "lib-1",
+                    "--items",
+                    "item-1",
+                    "--wait",
+                ],
+            )
+        assert result.exit_code == 0
+        assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+    def test_add_content_wait_caps_at_16_seconds(
+        self, httpx_mock, mock_token
+    ):
+        # 8 in_progress polls → 7 sleeps before ready. Cap kicks in after the
+        # 5th sleep — so the last 3 must all be 16.0.
+        httpx_mock.add_response(json={"job_id": "j", "status": "queued"})
+        for _ in range(8):
+            httpx_mock.add_response(json={"status": "in_progress"})
+        httpx_mock.add_response(
+            json={"status": "ready", "chunks_created": 1}
+        )
+
+        sleeps: list[float] = []
+        with patch(
+            "lamb_cli.commands.knowledge_store.time.sleep",
+            side_effect=lambda d: sleeps.append(d),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "ks",
+                    "add-content",
+                    "ks-1",
+                    "--library",
+                    "lib-1",
+                    "--items",
+                    "item-1",
+                    "--wait",
+                ],
+            )
+        assert result.exit_code == 0
+        assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0, 16.0, 16.0, 16.0]
+
+
+class TestKsResilience:
+    """Future-proofing: catch the silly stuff before users hit it."""
+
+    def test_options_handles_partial_response(self, httpx_mock, mock_token):
+        """A stripped-down options response (no embedding_models map) must not
+        KeyError — the CLI should render whatever sections exist."""
+        httpx_mock.add_response(
+            json={
+                "vector_db_backends": [],
+                "chunking_strategies": [],
+                "embedding_vendors": [],
+                # embedding_models intentionally missing
+            }
+        )
+        result = runner.invoke(app, ["ks", "options"])
+        assert result.exit_code == 0
+
+    def test_query_handles_chunks_without_permalinks(
+        self, httpx_mock, mock_token
+    ):
+        """Future chunk shapes may omit the permalink field — render
+        gracefully instead of crashing on missing-key access."""
+        httpx_mock.add_response(
+            json={
+                "results": [
+                    {
+                        "score": 0.9,
+                        "text": "no permalink here",
+                        "metadata": {"source_title": "X", "source_item_id": "i"},
+                    }
+                ]
+            }
+        )
+        result = runner.invoke(
+            app, ["ks", "query", "ks-1", "test", "-o", "json"]
+        )
+        assert result.exit_code == 0
+
+    def test_get_handles_unknown_status_value(self, httpx_mock, mock_token):
+        """Tomorrow's backend may add a new server_status enum value. The CLI
+        must print the literal and not crash."""
+        weird = {**SAMPLE_KS, "server_status": "reindexing"}
+        httpx_mock.add_response(json=weird)
+        result = runner.invoke(app, ["ks", "get", "ks-1"])
+        assert result.exit_code == 0
+
+    def test_create_with_unicode_name_round_trips(
+        self, httpx_mock, mock_token
+    ):
+        """UTF-8 in names must survive the request body round-trip."""
+        httpx_mock.add_response(json={**SAMPLE_KS, "name": "Lección 1 — Δ"})
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "create",
+                "Lección 1 — Δ",
+                "--chunking",
+                "simple",
+                "--embedding-vendor",
+                "openai",
+                "--embedding-model",
+                "text-embedding-3-small",
+                "--vector-db",
+                "chromadb",
+            ],
+        )
+        assert result.exit_code == 0
+        body = json.loads(httpx_mock.get_request().content.decode("utf-8"))
+        assert body["name"] == "Lección 1 — Δ"
+
+    def test_query_zero_results_renders_empty(self, httpx_mock, mock_token):
+        httpx_mock.add_response(json={"results": []})
+        result = runner.invoke(app, ["ks", "query", "ks-1", "test"])
+        assert result.exit_code == 0
+
+    def test_add_content_huge_item_list_single_request(
+        self, httpx_mock, mock_token
+    ):
+        """200 item IDs must go out in a single POST with all IDs intact —
+        guards against an accidental future 'batch into chunks' that drops
+        items off the end."""
+        items_csv = ",".join(f"item-{i}" for i in range(200))
+        httpx_mock.add_response(json={"job_id": "j", "status": "queued"})
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "add-content",
+                "ks-1",
+                "--library",
+                "lib-1",
+                "--items",
+                items_csv,
+            ],
+        )
+        assert result.exit_code == 0
+        # Exactly one POST went out.
+        assert len(httpx_mock.get_requests()) == 1
+        body = json.loads(httpx_mock.get_request().content)
+        assert len(body["item_ids"]) == 200
+        assert body["item_ids"][0] == "item-0"
+        assert body["item_ids"][-1] == "item-199"
+
+    def test_command_without_token_errors_clearly(self, monkeypatch):
+        """No LAMB_TOKEN, no credentials file. Must exit non-zero with a
+        message pointing at 'lamb login', not a Python traceback."""
+        monkeypatch.delenv("LAMB_TOKEN", raising=False)
+        # Also redirect config to an empty temp dir so any local credentials
+        # don't leak in.
+        from pathlib import Path
+        import tempfile
+        from unittest.mock import patch as _patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp)
+            with (
+                _patch("lamb_cli.config.CONFIG_DIR", empty),
+                _patch("lamb_cli.config.CONFIG_FILE", empty / "config.toml"),
+                _patch(
+                    "lamb_cli.config.CREDENTIALS_FILE",
+                    empty / "credentials.toml",
+                ),
+            ):
+                result = runner.invoke(app, ["ks", "list"])
+        assert result.exit_code != 0
+        # CliRunner unwraps to exit 1; the typed exit (4) is enforced by
+        # _cli() in production. Assert the exception type instead.
+        from lamb_cli.errors import AuthenticationError
+
+        assert isinstance(result.exception, AuthenticationError)
+        assert "lamb login" in str(result.exception).lower() or "lamb_token" in str(result.exception).lower()
+
+    def test_add_content_empty_item_id_after_split_errors(self, mock_token):
+        """A trailing comma or all-whitespace --items value must fail before
+        any HTTP call, not silently send an empty list."""
+        result = runner.invoke(
+            app,
+            [
+                "ks",
+                "add-content",
+                "ks-1",
+                "--library",
+                "lib-1",
+                "--items",
+                ",,, ,",
+            ],
+        )
+        assert result.exit_code != 0

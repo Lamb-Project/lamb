@@ -12,7 +12,31 @@ from rich.progress import BarColumn, Progress, TextColumn
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
+from lamb_cli.errors import ApiError
 from lamb_cli.output import format_output, print_error, print_success, print_warning
+
+
+def _render_fr10_conflict(exc: ApiError) -> None:
+    """Surface FR-10 deletion conflicts (409) with the blocking KS list.
+
+    The backend returns a body shaped:
+        {"detail": "...", "blocking_knowledge_stores": [{"id": ..., "name": ...}, ...]}
+    We print the human-readable list before re-raising so callers see WHICH
+    Knowledge Stores are holding the item rather than a bare 'API error (409)'.
+    """
+    blocking = exc.body.get("blocking_knowledge_stores") if exc.body else None
+    if not blocking:
+        return
+    print_error(exc.body.get("detail", "Resource is in use by Knowledge Stores."))
+    print_error("Blocking Knowledge Stores:")
+    for ks in blocking:
+        ks_id = ks.get("id", "?") if isinstance(ks, dict) else str(ks)
+        ks_name = ks.get("name", "") if isinstance(ks, dict) else ""
+        suffix = f" — {ks_name}" if ks_name else ""
+        print_error(f"  - {ks_id}{suffix}")
+    print_error(
+        "Run 'lamb ks remove-content <ks_id> <item_id>' for each, then retry."
+    )
 
 
 # lifecycle verification 2026-05-03 (#337): library item polling helper.
@@ -166,8 +190,13 @@ def delete_library(
     """Delete a library and all its content."""
     if not confirm:
         typer.confirm(f"Delete library {library_id}?", abort=True)
-    with get_client() as client:
-        data = client.delete(f"/creator/libraries/{library_id}")
+    try:
+        with get_client() as client:
+            data = client.delete(f"/creator/libraries/{library_id}")
+    except ApiError as exc:
+        if exc.status_code == 409:
+            _render_fr10_conflict(exc)
+        raise
     msg = data.get("message", "Library deleted.") if isinstance(data, dict) else "Library deleted."
     print_success(msg)
 
@@ -339,8 +368,13 @@ def delete_item(
     """Delete an imported item from a library."""
     if not confirm:
         typer.confirm(f"Delete item {item_id} from library {library_id}?", abort=True)
-    with get_client() as client:
-        data = client.delete(f"/creator/libraries/{library_id}/items/{item_id}")
+    try:
+        with get_client() as client:
+            data = client.delete(f"/creator/libraries/{library_id}/items/{item_id}")
+    except ApiError as exc:
+        if exc.status_code == 409:
+            _render_fr10_conflict(exc)
+        raise
     msg = data.get("message", "Item deleted.") if isinstance(data, dict) else "Item deleted."
     print_success(msg)
 
