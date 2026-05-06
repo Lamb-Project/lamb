@@ -1352,6 +1352,167 @@ class LambDatabaseManager:
                 connection.commit()
                 logger.info("Migration 12 and 13 complete")
 
+                # Migration 14: AAC (Agent-Assisted Creator) sessions table
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}aac_sessions'")
+                if not cursor.fetchone():
+                    logger.info("Migration 14: Creating aac_sessions table")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}aac_sessions (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER,
+                            user_email TEXT NOT NULL,
+                            organization_id INTEGER NOT NULL,
+                            status TEXT DEFAULT 'active',
+                            conversation TEXT DEFAULT '[]',
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}aac_sessions_user "
+                        f"ON {self.table_prefix}aac_sessions(user_email)")
+                    connection.commit()
+                    logger.info("Migration 14: aac_sessions table created")
+
+                # Migration 14b: Add title column to aac_sessions if missing
+                cursor.execute(f"PRAGMA table_info({self.table_prefix}aac_sessions)")
+                aac_cols = [row[1] for row in cursor.fetchall()]
+                if 'title' not in aac_cols:
+                    logger.info("Migration 14b: Adding title column to aac_sessions")
+                    cursor.execute(
+                        f"ALTER TABLE {self.table_prefix}aac_sessions ADD COLUMN title TEXT DEFAULT ''")
+                    connection.commit()
+
+                # Migration 15: Assistant test scenarios, runs, and evaluations (#327)
+                cursor.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.table_prefix}assistant_test_scenarios'")
+                if not cursor.fetchone():
+                    logger.info("Migration 15: Creating test scenarios, runs, and evaluations tables")
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_scenarios (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            description TEXT DEFAULT '',
+                            scenario_type TEXT DEFAULT 'single_turn',
+                            messages TEXT NOT NULL,
+                            expected_behavior TEXT DEFAULT '',
+                            tags TEXT DEFAULT '[]',
+                            created_by TEXT NOT NULL,
+                            created_at TIMESTAMP,
+                            updated_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_scenarios_assistant "
+                        f"ON {self.table_prefix}assistant_test_scenarios(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_runs (
+                            id TEXT PRIMARY KEY,
+                            assistant_id INTEGER NOT NULL,
+                            scenario_id TEXT,
+                            input_messages TEXT NOT NULL,
+                            output TEXT NOT NULL,
+                            token_usage TEXT,
+                            assistant_snapshot TEXT,
+                            model_used TEXT,
+                            elapsed_ms REAL,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_runs_assistant "
+                        f"ON {self.table_prefix}assistant_test_runs(assistant_id)")
+
+                    cursor.execute(f"""
+                        CREATE TABLE {self.table_prefix}assistant_test_evaluations (
+                            id TEXT PRIMARY KEY,
+                            test_run_id TEXT NOT NULL,
+                            evaluator TEXT NOT NULL,
+                            verdict TEXT,
+                            notes TEXT DEFAULT '',
+                            dimensions TEXT,
+                            confirmed_by_user BOOLEAN,
+                            created_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}test_evals_run "
+                        f"ON {self.table_prefix}assistant_test_evaluations(test_run_id)")
+
+                    connection.commit()
+                    logger.info("Migration 15: Test tables created")
+
+                # Migration 16: Create library tables
+                logger.info("Migration 16: Creating library tables if not exist")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}libraries (
+                        id TEXT PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        owner_user_id INTEGER NOT NULL,
+                        is_shared INTEGER DEFAULT 0,
+                        import_config TEXT,
+                        status TEXT DEFAULT 'active',
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id),
+                        UNIQUE(organization_id, name)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_owner ON {self.table_prefix}libraries(owner_user_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}libraries_org_shared ON {self.table_prefix}libraries(organization_id, is_shared)")
+
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}library_items (
+                        id TEXT PRIMARY KEY,
+                        library_id TEXT NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        source_type TEXT NOT NULL,
+                        original_filename TEXT,
+                        content_type TEXT,
+                        file_size INTEGER,
+                        source_url TEXT,
+                        import_plugin TEXT NOT NULL,
+                        import_params TEXT,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        uploader_user_id INTEGER NOT NULL,
+                        metadata TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (library_id) REFERENCES {self.table_prefix}libraries(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (uploader_user_id) REFERENCES {self.table_prefix}Creator_users(id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_library ON {self.table_prefix}library_items(library_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_org ON {self.table_prefix}library_items(organization_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}library_items_status ON {self.table_prefix}library_items(status)")
+
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organization_id INTEGER NOT NULL,
+                        actor_user_id INTEGER NOT NULL,
+                        action TEXT NOT NULL,
+                        target_type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        details TEXT,
+                        created_at INTEGER NOT NULL,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id),
+                        FOREIGN KEY (actor_user_id) REFERENCES {self.table_prefix}Creator_users(id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}audit_log_org_date ON {self.table_prefix}audit_log(organization_id, created_at)")
+
+                connection.commit()
+                logger.info("Migration 16 complete")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -7024,6 +7185,465 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    # =====================================================================
+    # Library Methods
+    # =====================================================================
+
+    def create_library(self, library_id: str, name: str, owner_user_id: int,
+                       organization_id: int, description: str = "",
+                       import_config: Dict[str, Any] = None,
+                       status: str = "active") -> Optional[str]:
+        """Register a new library in LAMB's database.
+
+        Args:
+            library_id: UUID generated by LAMB.
+            name: Library display name.
+            owner_user_id: Creator user ID.
+            organization_id: Organization ID.
+            description: Optional description.
+            import_config: Optional default import params.
+            status: Initial status ('active' or 'provisional').
+
+        Returns:
+            The library_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}libraries
+                    (id, organization_id, name, description, owner_user_id, is_shared,
+                     import_config, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+                """, (library_id, organization_id, name, description, owner_user_id,
+                      json.dumps(import_config or {}), status, now, now))
+                logger.info(f"Created library '{name}' (ID: {library_id}) for user {owner_user_id}")
+                return library_id
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error creating library: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error creating library: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_library_status(self, library_id: str, status: str) -> bool:
+        """Update the status of a library (e.g. 'provisional' -> 'active').
+
+        Args:
+            library_id: Library UUID.
+            status: New status value.
+
+        Returns:
+            True if the row was updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status, now, library_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_library(self, library_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a library by ID with owner info.
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            Dict with library fields and owner info, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}libraries l
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
+                    WHERE l.id = ?
+                """, (library_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if isinstance(result.get('is_shared'), int):
+                    result['is_shared'] = bool(result['is_shared'])
+                if result.get('import_config') and isinstance(result['import_config'], str):
+                    try:
+                        result['import_config'] = json.loads(result['import_config'])
+                    except Exception:
+                        result['import_config'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting library: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_accessible_libraries(self, user_id: int, organization_id: int) -> List[Dict[str, Any]]:
+        """Get libraries accessible to user (owned OR shared in org).
+
+        Args:
+            user_id: User ID.
+            organization_id: Organization ID.
+
+        Returns:
+            List of library dicts, owned first.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}libraries l
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
+                    WHERE l.organization_id = ?
+                    AND l.status = 'active'
+                    AND (l.owner_user_id = ? OR l.is_shared = 1)
+                    ORDER BY l.owner_user_id = ? DESC, l.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    d = dict(zip(columns, row))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    if d.get('import_config') and isinstance(d['import_config'], str):
+                        try:
+                            d['import_config'] = json.loads(d['import_config'])
+                        except Exception:
+                            d['import_config'] = {}
+                    results.append(d)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting accessible libraries: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_library(self, library_id: str, user_id: int) -> Tuple[bool, str]:
+        """Check if user can access a library and return access level.
+
+        Args:
+            library_id: Library UUID.
+            user_id: User ID.
+
+        Returns:
+            Tuple of (can_access, access_type) where access_type is 'owner', 'shared', or 'none'.
+        """
+        entry = self.get_library(library_id)
+        if not entry:
+            return (False, 'none')
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        return (False, 'none')
+
+    def toggle_library_sharing(self, library_id: str, is_shared: bool) -> bool:
+        """Toggle the sharing state of a library.
+
+        Args:
+            library_id: Library UUID.
+            is_shared: New sharing state.
+
+        Returns:
+            True if updated, False if not found.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET is_shared = ?, updated_at = ?
+                    WHERE id = ?
+                """, (is_shared, now, library_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error toggling library sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_library(self, library_id: str, name: str = None,
+                       description: str = None) -> bool:
+        """Update library name and/or description.
+
+        Args:
+            library_id: Library UUID.
+            name: New name (or None to keep).
+            description: New description (or None to keep).
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if name is not None:
+                    sets.append("name = ?")
+                    params.append(name)
+                if description is not None:
+                    sets.append("description = ?")
+                    params.append(description)
+                params.append(library_id)
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}libraries
+                    SET {', '.join(sets)}
+                    WHERE id = ?
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_library(self, library_id: str) -> bool:
+        """Delete a library and its items from LAMB DB (cascade).
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}libraries WHERE id = ?", (library_id,))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting library: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def register_library_item(self, item_id: str, library_id: str,
+                              organization_id: int, title: str, source_type: str,
+                              import_plugin: str, uploader_user_id: int,
+                              original_filename: str = None, content_type: str = None,
+                              file_size: int = None, source_url: str = None,
+                              import_params: Dict[str, Any] = None) -> Optional[str]:
+        """Create a library_items record when an import is initiated.
+
+        Args:
+            item_id: UUID from Library Manager.
+            library_id: Parent library UUID.
+            organization_id: Organization ID.
+            title: Document title.
+            source_type: 'file', 'url', or 'youtube'.
+            import_plugin: Plugin name.
+            uploader_user_id: User who initiated the import.
+            original_filename: Original filename (for files).
+            content_type: MIME type.
+            file_size: Size in bytes.
+            source_url: URL (for url/youtube).
+            import_params: Plugin-specific params.
+
+        Returns:
+            The item_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}library_items
+                    (id, library_id, organization_id, title, source_type,
+                     original_filename, content_type, file_size, source_url,
+                     import_plugin, import_params, status, uploader_user_id,
+                     created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """, (item_id, library_id, organization_id, title, source_type,
+                      original_filename, content_type, file_size, source_url,
+                      import_plugin, json.dumps(import_params or {}),
+                      uploader_user_id, now, now))
+                return item_id
+        except sqlite3.Error as e:
+            logger.error(f"Database error registering library item: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_library_item_status(self, item_id: str, status: str,
+                                   metadata: Dict[str, Any] = None) -> bool:
+        """Update the status and metadata of a library item.
+
+        Args:
+            item_id: Item UUID.
+            status: New status.
+            metadata: Optional metadata to store.
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                if metadata is not None:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}library_items
+                        SET status = ?, metadata = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (status, json.dumps(metadata), now, item_id))
+                else:
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}library_items
+                        SET status = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (status, now, item_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating library item status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_library_item(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a library item by ID.
+
+        Args:
+            item_id: Item UUID.
+
+        Returns:
+            Dict with item fields, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}library_items WHERE id = ?
+                """, (item_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if result.get('import_params') and isinstance(result['import_params'], str):
+                    try:
+                        result['import_params'] = json.loads(result['import_params'])
+                    except Exception:
+                        result['import_params'] = {}
+                if result.get('metadata') and isinstance(result['metadata'], str):
+                    try:
+                        result['metadata'] = json.loads(result['metadata'])
+                    except Exception:
+                        result['metadata'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting library item: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def delete_library_item(self, item_id: str) -> bool:
+        """Delete a library item from LAMB DB.
+
+        Args:
+            item_id: Item UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"DELETE FROM {self.table_prefix}library_items WHERE id = ?", (item_id,))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting library item: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def write_audit_log(self, organization_id: int, actor_user_id: int,
+                        action: str, target_type: str, target_id: str,
+                        details: Dict[str, Any] = None) -> Optional[int]:
+        """Write an entry to the audit log.
+
+        Args:
+            organization_id: Organization ID.
+            actor_user_id: User who performed the action.
+            action: Action string (e.g. 'library.create').
+            target_type: Target type ('library' or 'library_item').
+            target_id: Target UUID.
+            details: Optional details dict.
+
+        Returns:
+            Audit log entry ID, or None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}audit_log
+                    (organization_id, actor_user_id, action, target_type, target_id, details, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (organization_id, actor_user_id, action, target_type, target_id,
+                      json.dumps(details or {}), now))
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            logger.error(f"Database error writing audit log: {e}")
+            return None
+        finally:
+            connection.close()
+
     # Assistant Sharing Methods
 
     def share_assistant(self, assistant_id: int, shared_with_user_id: int, shared_by_user_id: int) -> bool:
@@ -8407,6 +9027,24 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    @staticmethod
+    def assistant_has_rubric_for_eval(api_callback: Optional[str]) -> bool:
+        """Check if an assistant's metadata indicates it is ready for rubric-based evaluation.
+
+        Requires both ``rubric_id`` (non-empty) **and** ``rag_processor == "rubric_rag"``
+        so the completions pipeline will actually inject the rubric as context.
+        """
+        if not api_callback:
+            return False
+        try:
+            meta = json.loads(api_callback)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        rubric_id = meta.get("rubric_id")
+        if not rubric_id or not str(rubric_id).strip():
+            return False
+        return meta.get("rag_processor") == "rubric_rag"
+
     def get_published_assistants_for_org_user(self, organization_id: int,
                                                creator_user_id: int,
                                                creator_user_email: str) -> List[Dict[str, Any]]:
@@ -8424,7 +9062,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'owned' as access_type
+                           'owned' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistants a
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
                     WHERE a.owner = ? AND a.organization_id = ?
@@ -8439,7 +9078,8 @@ class LambDatabaseManager:
                 cursor.execute(f"""
                     SELECT a.id, a.name, a.description, a.owner,
                            ap.oauth_consumer_name, ap.group_id, ap.group_name,
-                           'shared' as access_type
+                           'shared' as access_type,
+                           a.api_callback
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}assistant_publish ap ON a.id = ap.assistant_id
@@ -8451,11 +9091,14 @@ class LambDatabaseManager:
                 columns = [col[0] for col in cursor.description]
                 shared = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                # Deduplicate (in case somehow both owned and shared)
+                # Deduplicate and add rubric_eval_ready flag (strip raw api_callback)
                 seen = set()
                 result = []
                 for a in owned + shared:
                     if a['id'] not in seen:
+                        a['rubric_eval_ready'] = self.assistant_has_rubric_for_eval(
+                            a.pop('api_callback', None)
+                        )
                         result.append(a)
                         seen.add(a['id'])
                 return result

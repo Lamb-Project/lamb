@@ -1,7 +1,7 @@
 # LAMB Architecture Documentation v2
 
-**Version:** 2.5
-**Last Updated:** February 16, 2026
+**Version:** 2.6
+**Last Updated:** March 31, 2026
 **Reading Time:** ~40 minutes
 
 > This is the streamlined architecture guide. For deep implementation details, see [lamb_architecture.md](./lamb_architecture.md). For quick navigation, see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md).
@@ -195,6 +195,8 @@ LAMB uses a **dual API architecture** where the Creator Interface acts as an enh
 | `analytics_router` | `/creator/analytics` | Chat analytics |
 | `evaluaitor_router` | `/creator/rubrics` | Rubric management |
 | `prompt_templates_router` | `/creator/prompt-templates` | Prompt templates |
+| `aac_router` | `/creator/aac` | Agent-Assisted Creator (sessions, agent chat) |
+| `test_router` | `/creator/assistant/{id}/tests` | Test scenarios, test runner, evaluations |
 
 **Direct Endpoints in Creator Interface:**
 - `POST /creator/login` — User login
@@ -824,7 +826,7 @@ LAMB supports three types of LTI integration:
 
 #### 8.2.1 Unified LTI (Multi-Assistant Activities) — Recommended
 
-**Purpose:** One LTI tool for the entire LAMB instance. Instructors configure which published assistants are available per activity. Students see multiple assistants in one activity. Instructors get a **dashboard** with usage stats and optional anonymized chat transcript review.
+**Purpose:** One LTI tool for the entire LAMB instance. Instructors configure which published assistants are available per activity. Students see multiple assistants in one activity. Instructors get a **dashboard** with usage stats and optional chat transcript review.
 
 **Global credentials:** Set via `LTI_GLOBAL_CONSUMER_KEY`/`LTI_GLOBAL_SECRET` in `.env`, or overridden by admin via the database.
 
@@ -850,18 +852,15 @@ User clicks LTI link in LMS
               │     • [Manage Assistants] → reconfigure (owner only)
               │
               └── Student:
-                    ├── Chat visibility ON + no consent yet → Consent page
-                    │     → Student accepts → redirect to OWI
-                    └── Otherwise → direct OWI redirect
+                    └── Direct OWI redirect (identity from LMS via LTI)
 ```
 
 **Key Endpoints:**
-- `POST /lamb/v1/lti/launch` — Main LTI entry point (routes to setup, dashboard, consent, or OWI)
+- `POST /lamb/v1/lti/launch` — Main LTI entry point (routes to setup, dashboard, or OWI)
 - `GET /lamb/v1/lti/setup` — Instructor setup page (first-time or reconfigure)
 - `POST /lamb/v1/lti/configure` — Save activity configuration
 - `GET /lamb/v1/lti/dashboard` — Instructor dashboard (HTML) with AJAX data endpoints:
   - `GET /dashboard/stats`, `/dashboard/students`, `/dashboard/chats`, `/dashboard/chats/{id}`
-- `GET /lamb/v1/lti/consent` + `POST` — Student consent page for chat visibility
 - `GET /lamb/v1/lti/enter-chat` — Dashboard → OWI redirect for instructors
 - `GET /lamb/v1/lti/info` — LTI tool configuration info
 
@@ -869,7 +868,7 @@ User clicks LTI link in LMS
 - Activities are bound to one organization (no cross-org mixing)
 - **Activity ownership:** first instructor to configure = owner (can manage assistants for the activity; chat visibility is fixed at creation time)
 - **Instructor dashboard:** any instructor sees stats; only owner can reconfigure
-- **Chat visibility:** opt-in per activity at creation; students must consent on first access; all transcripts anonymized ("Student 1", "Student 2", ...)
+- **Chat visibility:** opt-in per activity at creation; when enabled, instructors see student conversations with real names from the LMS. LMS privacy settings control what identity data is passed to LAMB.
 - Student identity is per `resource_link_id` (each LTI placement = separate identity)
 - Org admins can manage activities: `GET/PUT /creator/admin/lti-activities`
 - Global credentials managed by system admin: `GET/PUT /creator/admin/lti-global-config`
@@ -878,7 +877,7 @@ User clicks LTI link in LMS
 - `lti_global_config` — Global consumer key/secret (singleton)
 - `lti_activities` — Activity records (resource_link_id → org, OWI group, **owner**, **chat_visibility_enabled**)
 - `lti_activity_assistants` — Junction: assistants per activity
-- `lti_activity_users` — Student access tracking (**owi_user_id**, **consent_given_at**, **last_access_at**, **access_count**)
+- `lti_activity_users` — Student access tracking (**owi_user_id**, **last_access_at**, **access_count**, `consent_given_at` kept for backward compat, no longer written)
 - `lti_identity_links` — Maps LMS identities to Creator users
 
 #### 8.2.2 Legacy Student LTI (Single Published Assistant)
@@ -1055,6 +1054,74 @@ The admin user management panel identifies users by type with color-coded badges
 - Can be enabled/disabled by admin
 - Can be promoted to organization admin by a system admin
 
+### 8.7 Agent-Assisted Creator (AAC)
+
+**Purpose:** Conversational agent that helps educators design, configure, test, and refine AI learning assistants. Internal codename: Pastor.
+
+**Architecture:** The AAC runs as a backend module (`backend/lamb/aac/`) inside the existing FastAPI process. It uses `OrganizationConfigResolver` for LLM configuration — API keys stay in-process, never exposed to clients.
+
+**Key Components:**
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Liteshell | `lamb/aac/liteshell/` | CLI-shaped tool interface. Parses command strings (e.g., `lamb assistant get 4`) and calls Creator Interface HTTP endpoints via `LambClient` (from `lamb-cli`). Same code path as the frontend and CLI — validation, sanitization, and auth all enforced. Local-only commands (`docs.index`, `docs.read`, `help`) read files directly. |
+| Agent Docs | `lamb/aac/docs/` | Agent-readable LAMB documentation. 10 topic files with YAML front matter (semantic tags for question routing). Accessed via `docs.index` and `docs.read` liteshell commands. |
+| Agent Loop | `lamb/aac/agent/loop.py` | Async LLM tool-calling loop with authorization. |
+| Authorization | `lamb/aac/authorization.py` | JSON policy (auto/ask/never) per action. Write commands require user confirmation via Python-level classifier, not LLM prompting. |
+| Session Manager | `lamb/aac/session_manager.py` | Session CRUD. Table: `aac_sessions` (Migration 14). |
+| Session Logger | `lamb/aac/session_logger.py` | JSONL file logging per session for research. Config: `AAC_SESSION_LOGGING`, `AAC_LOG_PATH`. |
+| Skills | `lamb/aac/skills/*.md` | Declarative skill files loaded into the agent's system prompt. |
+| Router | `lamb/aac/router.py` | FastAPI endpoints at `/creator/aac/`. |
+
+**Key Endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/creator/aac/sessions` | Start a design session |
+| GET | `/creator/aac/sessions` | List sessions |
+| GET | `/creator/aac/sessions/{id}` | Get session + conversation |
+| DELETE | `/creator/aac/sessions/{id}` | Archive session |
+| POST | `/creator/aac/sessions/{id}/message` | Send message, get agent response |
+
+**CLI:** `lamb aac start|sessions|get|delete|message|chat|history`
+
+> For full design details, see [lamb-agent-assisted-creator.md](./projects/lamb-agent-assisted-creator.md) and [aac-backlog.md](./projects/aac-backlog.md).
+
+### 8.8 Assistant Test Scenarios & Evaluation
+
+**Purpose:** Structured testing and evaluation framework for assistants. Educators define test prompts, run them through the real completion pipeline, and record evaluations. Foundation for the evaluation framework described in issue #172.
+
+**Data Model:**
+
+| Table | Purpose |
+|-------|---------|
+| `assistant_test_scenarios` | Test scenarios: title, messages, expected behavior, type (single_turn/multi_turn/adversarial) |
+| `assistant_test_runs` | Execution results: input, output, token usage, model, assistant config snapshot |
+| `assistant_test_evaluations` | Evaluations: verdict (good/bad/mixed), notes, evaluator (user/agent) |
+
+Tables created via Migration 15.
+
+**Test Runner:** Executes scenarios through the **real completion pipeline** — same code path as production (RAG retrieval, prompt processing, connector). Tracks token usage and elapsed time per run.
+
+**Debug Bypass:** Adding `debug_bypass: true` to a completion request (via the creator interface) overrides the connector to `bypass`, showing the fully constructed messages the LLM would receive — system prompt, RAG context, processed prompt — without calling the LLM. Zero tokens consumed. Available via:
+- `lamb chat <id> --bypass -m "question"` (CLI)
+- `lamb test run <id> --bypass` (test framework)
+- `lamb assistant debug <id> --message "question"` (AAC liteshell)
+
+**Key Endpoints:**
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/creator/assistant/{id}/tests/scenarios` | Create scenario |
+| GET | `/creator/assistant/{id}/tests/scenarios` | List scenarios |
+| POST | `/creator/assistant/{id}/tests/run` | Run scenarios (supports `debug_bypass`) |
+| GET | `/creator/assistant/{id}/tests/runs` | List runs with results |
+| GET | `/creator/assistant/{id}/tests/runs/{rid}` | Full run detail |
+| POST | `/creator/assistant/{id}/tests/runs/{rid}/evaluate` | Submit evaluation |
+| GET | `/creator/assistant/{id}/tests/evaluations` | List evaluations |
+
+**CLI:** `lamb test scenarios|add|run|runs|run-detail|evaluate|evaluations`
+
 ---
 
 ## 9. Frontend Architecture
@@ -1185,6 +1252,274 @@ window.LAMB_CONFIG = {
     }
 };
 ```
+
+---
+
+### 9.6 Frontend Resilience Patterns (Required)
+
+These patterns are mandatory for any new frontend code. They exist because we keep finding the same class of "frontend goes unresponsive, reload fixes it" bugs (issue #352 catalogues 38 instances). Each pattern below has a corresponding ESLint-style smell to scan for in code review.
+
+#### 9.6.1 Loading flags must use `try/finally`
+
+**Rule:** any `loading = true` (or `set(true)`) MUST have a matching reset in a `finally` block, never only in the success branch and never only in `catch`.
+
+```javascript
+// ❌ BAD — error path leaks loading=true forever
+async function submit() {
+  loading = true;
+  const result = await api.call();
+  if (result.success) { handleOk(); loading = false; }
+  else { error = result.error; }   // loading still true
+}
+
+// ❌ BAD — uncaught throw leaks loading=true forever
+async function submit() {
+  loading = true;
+  const result = await api.call();   // throws? we never reach next line
+  loading = false;
+}
+
+// ✅ GOOD — every exit path resets loading
+async function submit() {
+  loading = true;
+  error = null;
+  try {
+    const result = await api.call();
+    if (result.success) handleOk();
+    else error = result.error;
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  } finally {
+    loading = false;
+  }
+}
+```
+
+**Symptom this prevents:** spinners stuck spinning, submit buttons permanently disabled after a network blip.
+
+#### 9.6.2 `await` in `onMount` / `$effect` requires a mounted-check
+
+**Rule:** any async work started in `onMount` or `$effect` MUST check it's still mounted before writing reactive state. Use a local `cancelled` flag plus a teardown.
+
+```javascript
+// ❌ BAD — setState on destroyed component if user navigates away mid-fetch
+onMount(async () => {
+  const data = await api.get(id);
+  state = data;
+});
+
+// ✅ GOOD
+onMount(() => {
+  let cancelled = false;
+  (async () => {
+    try {
+      const data = await api.get(id);
+      if (!cancelled) state = data;
+    } catch (e) {
+      if (!cancelled) error = e.message;
+    }
+  })();
+  return () => { cancelled = true; };
+});
+```
+
+**Symptom this prevents:** stale data from a previous resource appearing after rapid navigation; console errors about updates on destroyed components.
+
+#### 9.6.3 Cancellable fetches use `AbortController`
+
+**Rule:** any fetch that depends on a prop/route param that can change MUST be abortable, and the previous fetch MUST be aborted when the dependency changes.
+
+```javascript
+// ✅ GOOD
+let abortController = null;
+
+async function loadResource(id) {
+  if (abortController) abortController.abort();
+  abortController = new AbortController();
+
+  loading = true;
+  try {
+    const data = await fetch(`/api/${id}`, { signal: abortController.signal })
+      .then(r => r.json());
+    state = data;
+  } catch (e) {
+    if (e.name === 'AbortError') return;   // expected on rapid switch
+    error = e.message;
+  } finally {
+    loading = false;
+  }
+}
+
+onDestroy(() => abortController?.abort());
+```
+
+**Symptom this prevents:** clicking through items in a list shows the wrong details because an earlier request resolved last.
+
+#### 9.6.4 401 must be handled centrally, not per call site
+
+**Rule:** all API calls go through a shared `apiFetch` wrapper that:
+1. Attaches the bearer token
+2. On 401, calls `clearCurrentSession()` from `$lib/session/sessionManager.js` and redirects to login
+3. On 403, surfaces a permission error with a redirect option
+
+Do NOT reimplement 401 handling in each service file. Do NOT silently return `{success:false}` on 401 — that lets the user keep clicking buttons that will all fail.
+
+```javascript
+// $lib/services/apiClient.js — single source of truth
+import { goto } from '$app/navigation';
+import { clearCurrentSession } from '$lib/session/sessionManager';
+
+export async function apiFetch(path, options = {}) {
+  const token = getAuthToken();
+  const res = await fetch(getApiUrl(path), {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Authorization': token ? `Bearer ${token}` : ''
+    }
+  });
+
+  if (res.status === 401) {
+    clearCurrentSession();
+    await goto('/login');
+    throw new Error('Session expired');
+  }
+  return res;
+}
+```
+
+**Symptom this prevents:** "everything is broken until I reload" — the classic OWI session-expiry symptom.
+
+#### 9.6.5 Timers and streams must be cleaned up on destroy
+
+**Rule:** every `setInterval`, `setTimeout`, `EventSource`, and `fetch().body.getReader()` started in a component MUST have a matching cleanup in `onDestroy` (or returned from `onMount`).
+
+```javascript
+// ❌ BAD — timer fires after unmount
+function showSuccess() {
+  successMessage = 'Saved';
+  setTimeout(() => { successMessage = ''; }, 4000);
+}
+
+// ✅ GOOD
+let successTimer = null;
+function showSuccess() {
+  successMessage = 'Saved';
+  clearTimeout(successTimer);
+  successTimer = setTimeout(() => { successMessage = ''; }, 4000);
+}
+onDestroy(() => clearTimeout(successTimer));
+```
+
+For streaming readers, use `AbortController.signal` on the fetch and call `.abort()` from `onDestroy`. The `getReader()` loop will reject with `AbortError` on the next read, breaking cleanly.
+
+**Symptom this prevents:** memory leaks; ghost background HTTP traffic after navigation; stale toasts appearing on the wrong page.
+
+#### 9.6.6 Top-level `await` in `+layout.js` / `+layout.svelte` needs a fallback
+
+**Rule:** anything awaited in `load()` that can fail (locale JSON, runtime config fetch) MUST have a `.catch()` that allows the layout to render with a sensible fallback. A rejected `load()` blanks the page.
+
+```javascript
+// ❌ BAD — locale 404 blanks the entire app
+export const load = async () => {
+  setupI18n();
+  await waitLocale();
+  return {};
+};
+
+// ✅ GOOD
+export const load = async () => {
+  setupI18n();
+  try {
+    await waitLocale();
+  } catch (e) {
+    console.error('Locale load failed, using fallback', e);
+    // fallback locale is already set by setupI18n()
+  }
+  return {};
+};
+```
+
+#### 9.6.7 Stores holding user-scoped state must register with `sessionManager`
+
+**Rule:** any store that caches per-user data (assistants, KBs, AAC sessions, drafts, tabs) MUST expose a `reset()` method and be invoked from `resetAllUserScopedStores()` in `$lib/session/sessionManager.js`. Never hold user state in module-level variables that survive logout.
+
+```javascript
+// $lib/stores/myThing.js
+function createMyThingStore() {
+  const { subscribe, set, update } = writable(initialState);
+  return {
+    subscribe,
+    // …other methods
+    reset: () => set(initialState)   // ← required
+  };
+}
+
+// $lib/session/sessionManager.js — register here
+import { myThing } from '$lib/stores/myThing';
+export function resetAllUserScopedStores() {
+  // …
+  myThing.reset();
+}
+```
+
+**Symptom this prevents:** previous user's data appearing after re-login on the same browser.
+
+#### 9.6.8 No silent error swallowing on data fetches
+
+**Rule:** `Promise.all([call1.catch(()=>[]), call2.catch(()=>[])])` is forbidden for primary data loads. It conflates "empty result" with "request failed", so the UI shows "no items" when in reality the user should see an error and a retry option.
+
+If you genuinely want a partial-failure-tolerant fetch, surface the partial state explicitly (`{ owned: [...], shared: null, sharedError: '...' }`) so the UI can show a banner.
+
+#### 9.6.9 Polling loops check errors and unmount
+
+**Rule:** `setInterval` polls MUST:
+1. Stop on unmount (cleared from `onDestroy`)
+2. Stop on auth errors (don't keep hammering after 401)
+3. Surface non-transient errors after N retries (don't silently spin forever)
+
+```javascript
+// ✅ GOOD pattern
+let pollTimer = null;
+let pollFailures = 0;
+
+async function pollOnce() {
+  try {
+    const status = await apiFetch(`/items/${id}/status`).then(r => r.json());
+    state = status;
+    pollFailures = 0;
+  } catch (e) {
+    pollFailures += 1;
+    if (pollFailures >= 5) {
+      pollError = 'Lost connection to server';
+      stopPolling();
+    }
+  }
+}
+
+function startPolling() {
+  pollOnce();
+  pollTimer = setInterval(pollOnce, 3000);
+}
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+onDestroy(stopPolling);
+```
+
+#### 9.6.10 Code-review checklist (paste into PR template)
+
+For any frontend PR:
+
+- [ ] Every `loading = true` has a `finally { loading = false }` (Pattern A)
+- [ ] Every `await` in `onMount`/`$effect` has a mounted-check (Pattern B)
+- [ ] Cancellable fetches use `AbortController` and abort on dep change (Pattern C)
+- [ ] All API calls go through `apiFetch` (no direct `fetch()` to backend) (Pattern D)
+- [ ] Every `setInterval`/`setTimeout`/stream has cleanup in `onDestroy` (Pattern E)
+- [ ] No `Promise.all([call.catch(()=>[])])` for primary loads
+- [ ] User-scoped stores have `reset()` and are wired into `sessionManager`
+- [ ] Top-level `await` in layout has a `.catch()` fallback
 
 ---
 
@@ -1378,7 +1713,10 @@ DB_LOG_LEVEL=DEBUG
 | Add frontend page | `frontend/svelte-app/src/routes/` |
 | Configure logging | `lamb/logging_config.py` + env vars |
 | Understand completion flow | `lamb/completions/main.py` |
+| Debug what the LLM sees | `lamb chat <id> --bypass` or `debug_bypass` flag |
 | Debug OWI chat integration | `lamb/owi_bridge/` |
+| Work on AAC agent | `lamb/aac/` (liteshell, agent loop, skills, router) |
+| Add test scenarios | `lamb/services/test_service.py`, `test_router.py` |
 
 ### 12.2 Key Files by Task
 
@@ -1393,6 +1731,8 @@ DB_LOG_LEVEL=DEBUG
 | **LTI (Unified)** | `lamb/lti_router.py`, `lamb/lti_activity_manager.py` |
 | **LTI (Student legacy)** | `lamb/lti_users_router.py` |
 | **LTI (Creator)** | `lamb/lti_creator_router.py` |
+| **AAC (Agent-Assisted Creator)** | `lamb/aac/router.py`, `lamb/aac/agent/loop.py`, `lamb/aac/liteshell/` |
+| **Test Scenarios & Evaluation** | `lamb/services/test_service.py`, `lamb/services/test_router.py` |
 | **Frontend** | `frontend/svelte-app/src/routes/`, `src/lib/components/` |
 
 ### 12.3 Common Patterns
@@ -1593,6 +1933,6 @@ API_LOG_LEVEL=DEBUG
 ---
 
 *Maintainers: LAMB Development Team*  
-*Last Updated: February 16, 2026*
-*Version: 2.5*
+*Last Updated: March 31, 2026*
+*Version: 2.6*
 

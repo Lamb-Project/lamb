@@ -15,9 +15,16 @@ export const load = async () => {
 	setupI18n();
 
 	if (browser) {
+		const params = new URLSearchParams(window.location.search);
+		const queryLang = (params.get('lang') || '').toLowerCase();
 		const storedLocale = localStorage.getItem('lang');
-		const localeToSet =
-			storedLocale && supportedLocales.includes(storedLocale) ? storedLocale : fallbackLocale;
+
+		const localeToSet = supportedLocales.includes(queryLang)
+			? queryLang
+			: storedLocale && supportedLocales.includes(storedLocale)
+				? storedLocale
+				: fallbackLocale;
+
 		setLocale(localeToSet);
 	}
 

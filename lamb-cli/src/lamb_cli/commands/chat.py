@@ -50,21 +50,75 @@ def _stream_response(client, assistant_id: int, message: str, chat_id: str | Non
     return returned_chat_id
 
 
+def _bypass_response(client, assistant_id: int, message: str) -> None:
+    """Send a message with debug_bypass — shows what the LLM would see."""
+    body: dict = {
+        "model": f"lamb_assistant.{assistant_id}",
+        "messages": [{"role": "user", "content": message}],
+        "stream": False,
+        "debug_bypass": True,
+        "persist_chat": False,
+    }
+    data = client.post(
+        f"/creator/assistant/{assistant_id}/chat/completions",
+        json=body,
+    )
+    if isinstance(data, dict):
+        choices = data.get("choices", [])
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+            sys.stdout.write(content + "\n")
+        else:
+            sys.stdout.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    else:
+        sys.stdout.write(str(data) + "\n")
+
+
 def chat(
     assistant_id: int = typer.Argument(..., help="Assistant ID to chat with."),
     message: Optional[str] = typer.Option(None, "--message", "-m", help="Single message (non-interactive)."),
     chat_id: Optional[str] = typer.Option(None, "--chat-id", help="Continue an existing chat."),
     no_persist: bool = typer.Option(False, "--no-persist", help="Don't save chat history on server."),
+    bypass: bool = typer.Option(False, "--bypass", "-b", help="Debug bypass: show what the LLM sees (no tokens used)."),
 ) -> None:
     """Chat with a learning assistant.
 
     Interactive mode: run without --message for a REPL. Type /quit to exit.
     Single-message mode: pass --message to send one message and exit.
     Pipe mode: pipe text via stdin (no --message, non-TTY).
+
+    Use --bypass to see the full context the LLM would receive (system prompt,
+    RAG context, processed prompt) without calling the LLM.
     """
     persist = not no_persist
 
     with get_client() as client:
+        if bypass:
+            if message:
+                _bypass_response(client, assistant_id, message)
+            elif sys.stdin.isatty():
+                try:
+                    while True:
+                        try:
+                            user_input = input("You: ")
+                        except EOFError:
+                            break
+                        if user_input.strip().lower() in ("/quit", "/exit"):
+                            break
+                        if not user_input.strip():
+                            continue
+                        sys.stdout.write("[BYPASS] What the LLM sees:\n")
+                        _bypass_response(client, assistant_id, user_input)
+                except KeyboardInterrupt:
+                    sys.stdout.write("\n")
+            else:
+                pipe_message = sys.stdin.read().strip()
+                if not pipe_message:
+                    print_error("No message provided via stdin.")
+                    raise typer.Exit(1)
+                _bypass_response(client, assistant_id, pipe_message)
+            return
+
         if message:
             # Single-message mode
             _stream_response(client, assistant_id, message, chat_id, persist)

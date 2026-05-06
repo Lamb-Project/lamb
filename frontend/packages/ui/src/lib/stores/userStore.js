@@ -30,16 +30,16 @@ function getUrlToken() {
 
 // Initialize user state from localStorage if available
 const bootstrapToken = getUrlToken();
-const storedUser = browser 
+const storedUser = browser
   ? (bootstrapToken
     ? { token: null, name: null, email: null, owiUrl: null, data: null }
     : {
-      token: localStorage.getItem('userToken'),
-      name: localStorage.getItem('userName'),
-      email: localStorage.getItem('userEmail'),
-      owiUrl: localStorage.getItem('OWI_url'),
-      data: getStoredJson('userData') // Use safe parse function
-    })
+    token: localStorage.getItem('userToken'),
+    name: localStorage.getItem('userName'),
+    email: localStorage.getItem('userEmail'),
+    owiUrl: localStorage.getItem('OWI_url'),
+    data: getStoredJson('userData') // Use safe parse function
+  })
   : { token: null, name: null, email: null, owiUrl: null, data: null };
 
 // Create the user store
@@ -110,18 +110,25 @@ const createUserStore = () => {
     /**
      * Fetches the user profile from the backend and populates the store.
      * Should be called after setToken() for LTI login flows.
+     *
+     * Validates that the response carries the minimum required fields
+     * (name + email). Previously a `{success: true, data: {}}` reply would
+     * leave the user "logged in" with name=null/email=null, breaking every
+     * downstream component that assumes those fields exist. Now treated as
+     * a failure and surfaced via the returned result. (#353, H6)
      */
     fetchAndPopulateProfile: async () => {
       const { authService } = await import('../services/authService.js');
       const token = browser ? localStorage.getItem('userToken') : null;
       if (!token) return null;
-      
-      const result = await fetchUserProfile(token);
-      if (result?.success && result.data) {
-        const userData = { ...result.data, token };
+
+      const result = await authService.fetchUserProfile(token);
+      const data = result?.success ? result.data : null;
+      if (data && data.name && data.email) {
+        const userData = { ...data, token };
         if (browser) {
-          localStorage.setItem('userName', userData.name || '');
-          localStorage.setItem('userEmail', userData.email || '');
+          localStorage.setItem('userName', userData.name);
+          localStorage.setItem('userEmail', userData.email);
           if (userData.launch_url) {
             localStorage.setItem('OWI_url', userData.launch_url);
           }
@@ -130,13 +137,22 @@ const createUserStore = () => {
         set({
           isLoggedIn: true,
           token: token,
-          name: userData.name || null,
-          email: userData.email || null,
+          name: userData.name,
+          email: userData.email,
           owiUrl: userData.launch_url || null,
           data: userData
         });
+        return result;
       }
-      return result;
+
+      // Profile response missing required fields — surface a structured
+      // failure so callers (sessionManager.replaceSessionWithToken,
+      // sessionManager.ensureProfileLoaded) can decide whether to clear
+      // the session and force re-login.
+      return {
+        success: false,
+        error: result?.error || 'Profile data missing required fields (name/email)',
+      };
     },
 
     // Logout function

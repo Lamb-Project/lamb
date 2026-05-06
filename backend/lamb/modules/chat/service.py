@@ -227,7 +227,7 @@ class ChatModuleService:
                              assistant_id: int = None,
                              page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         """
-        Get anonymized chat list for the dashboard.
+        Get chat list with real student names for the dashboard.
         Only works if chat_visibility_enabled is true.
         """
         if not activity.get('chat_visibility_enabled'):
@@ -239,13 +239,10 @@ class ChatModuleService:
         if not owi_user_ids:
             return {"chats": [], "total": 0}
 
-        # Build student anonymization map (by created_at order)
-        anon_map = self._build_anonymization_map(activity_id)
+        name_map = self._build_name_map(activity_id)
 
-        # Build assistant name map
         asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
 
-        # Filter to specific assistant if requested
         if assistant_id:
             target_models = [f'lamb_assistant.{assistant_id}']
         else:
@@ -253,39 +250,39 @@ class ChatModuleService:
 
         owi_db = OwiDatabaseManager()
         chats = self._query_activity_chats(owi_db, target_models, owi_user_ids,
-                                            page, per_page, anon_map, asst_map)
+                                            page, per_page, name_map, asst_map)
         total = self._count_activity_chats(owi_db, target_models, owi_user_ids)
 
         return {"chats": chats, "total": total}
 
     def get_dashboard_chat_detail(self, activity: Dict[str, Any],
                                    chat_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single chat's full transcript, anonymized."""
+        """Get a single chat's full transcript with real student names."""
         if not activity.get('chat_visibility_enabled'):
             return None
 
         activity_id = activity['id']
         owi_user_ids = self.db_manager.get_all_activity_user_owi_ids(activity_id)
-        anon_map = self._build_anonymization_map(activity_id)
+        name_map = self._build_name_map(activity_id)
         assistants = self.db_manager.get_activity_assistants(activity_id)
         asst_map = {f'lamb_assistant.{a["id"]}': a["name"] for a in assistants}
 
         owi_db = OwiDatabaseManager()
-        return self._query_chat_detail(owi_db, chat_id, owi_user_ids, anon_map, asst_map)
+        return self._query_chat_detail(owi_db, chat_id, owi_user_ids, name_map, asst_map)
 
     # =========================================================================
     # OWI Chat Query Helpers (private)
     # =========================================================================
 
-    def _build_anonymization_map(self, activity_id: int) -> Dict[str, str]:
-        """Build a map from owi_user_id to 'Student N' (ordered by created_at)."""
+    def _build_name_map(self, activity_id: int) -> Dict[str, str]:
+        """Build a map from owi_user_id to student's real name (from LMS)."""
         all_data = self.db_manager.get_activity_students(activity_id, page=1, per_page=100000)
-        anon = {}
-        for i, student in enumerate(all_data['students']):
+        name_map = {}
+        for student in all_data['students']:
             owi_uid = student.get('owi_user_id')
             if owi_uid:
-                anon[owi_uid] = f"Student {i + 1}"
-        return anon
+                name_map[owi_uid] = student.get('user_display_name') or student.get('user_name') or '(unknown)'
+        return name_map
 
     @staticmethod
     def _count_chats_for_model(owi_db, model_pattern: str,
@@ -348,9 +345,9 @@ class ChatModuleService:
     def _query_activity_chats(owi_db, model_patterns: List[str],
                                owi_user_ids: List[str],
                                page: int, per_page: int,
-                               anon_map: Dict[str, str],
+                               name_map: Dict[str, str],
                                asst_map: Dict[str, str]) -> List[Dict[str, Any]]:
-        """Query paginated chat list for dashboard."""
+        """Query paginated chat list for dashboard with real student names."""
         if not owi_user_ids or not model_patterns:
             return []
         try:
@@ -376,8 +373,7 @@ class ChatModuleService:
             chats = []
             for row in rows:
                 chat_id, user_id, title, created_at, updated_at, chat_json = row
-                anon_name = anon_map.get(user_id, "Unknown Student")
-                # Count messages
+                student_name = name_map.get(user_id, "Unknown Student")
                 msg_count = 0
                 assistant_name = "Unknown"
                 try:
@@ -394,7 +390,7 @@ class ChatModuleService:
 
                 chats.append({
                     "chat_id": chat_id,
-                    "anonymous_student": anon_name,
+                    "student_name": student_name,
                     "assistant_name": assistant_name,
                     "title": title or "(untitled)",
                     "message_count": msg_count,
@@ -409,9 +405,9 @@ class ChatModuleService:
     @staticmethod
     def _query_chat_detail(owi_db, chat_id: str,
                             owi_user_ids: List[str],
-                            anon_map: Dict[str, str],
+                            name_map: Dict[str, str],
                             asst_map: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        """Get full chat transcript, anonymized."""
+        """Get full chat transcript with real student names."""
         if not owi_user_ids:
             return None
         try:
@@ -427,14 +423,12 @@ class ChatModuleService:
                 return None
 
             chat_id_val, user_id, title, created_at, updated_at, chat_json = row
-            anon_name = anon_map.get(user_id, "Unknown Student")
+            student_name = name_map.get(user_id, "Unknown Student")
             chat_data = json_mod.loads(chat_json) if isinstance(chat_json, str) else chat_json
 
-            # Extract messages in order
             messages_raw = chat_data.get('history', {}).get('messages', {})
             messages = []
             if isinstance(messages_raw, dict):
-                # Sort by timestamp or order
                 sorted_msgs = sorted(messages_raw.values(),
                                       key=lambda m: m.get('timestamp', 0))
                 for msg in sorted_msgs:
@@ -442,7 +436,7 @@ class ChatModuleService:
                     content = msg.get('content', '')
                     messages.append({
                         "role": role,
-                        "speaker": anon_name if role == 'user' else _get_assistant_display(msg, asst_map),
+                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
                         "content": content,
                         "timestamp": msg.get('timestamp'),
                     })
@@ -452,12 +446,11 @@ class ChatModuleService:
                     content = msg.get('content', '')
                     messages.append({
                         "role": role,
-                        "speaker": anon_name if role == 'user' else _get_assistant_display(msg, asst_map),
+                        "speaker": student_name if role == 'user' else _get_assistant_display(msg, asst_map),
                         "content": content,
                         "timestamp": msg.get('timestamp'),
                     })
 
-            # Determine assistant name from models
             models = chat_data.get('models', [])
             assistant_name = "Unknown"
             for m in models:
@@ -467,7 +460,7 @@ class ChatModuleService:
 
             return {
                 "chat_id": chat_id_val,
-                "anonymous_student": anon_name,
+                "student_name": student_name,
                 "assistant_name": assistant_name,
                 "title": title or "(untitled)",
                 "message_count": len(messages),

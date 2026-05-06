@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { _ } from 'svelte-i18n';
+	import { setLocale, supportedLocales } from '@lamb/ui';
 	import {
 		getActivityView,
 		startEvaluation,
@@ -182,7 +183,7 @@
 			});
 			await refresh();
 			editingConfig = false;
-			success = $_('fileEval.grading.syncSuccess').replace(/synced.*/, 'updated');
+			success = $_('fileEval.grading.activityConfigSaved');
 		} catch (e) {
 			error = e.message;
 		}
@@ -269,6 +270,10 @@
 			return;
 		}
 		await refresh();
+		const actLang = data?.setup_config?.language?.toLowerCase();
+		if (actLang && supportedLocales.includes(actLang)) {
+			setLocale(actLang);
+		}
 		return () => {
 			if (pollInterval) clearInterval(pollInterval);
 		};

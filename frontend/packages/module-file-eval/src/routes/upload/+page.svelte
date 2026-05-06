@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { _ } from 'svelte-i18n';
+	import { setLocale, supportedLocales } from '@lamb/ui';
 	import {
 		uploadFile,
 		getMySubmission,
@@ -107,6 +108,10 @@
 
 		try {
 			activityView = await getActivityView(activityId);
+			const actLang = activityView?.setup_config?.language?.toLowerCase();
+			if (actLang && supportedLocales.includes(actLang)) {
+				setLocale(actLang);
+			}
 			if (activityView?.submission) {
 				submission = activityView.submission;
 			}

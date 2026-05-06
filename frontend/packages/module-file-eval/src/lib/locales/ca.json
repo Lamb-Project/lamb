@@ -93,6 +93,7 @@
 			"syncMoodle": "Enviar Notes a Moodle",
 			"syncing": "Enviant...",
 			"syncSuccess": "Notes enviades a Moodle correctament",
+			"activityConfigSaved": "S'han desat les dades de l'activitat.",
 			"editGrade": "Editar Nota",
 			"saveGrade": "Guardar",
 			"noSubmissions": "Sense lliuraments encara",

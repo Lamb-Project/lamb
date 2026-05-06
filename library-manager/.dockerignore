@@ -1,0 +1,12 @@
+.venv/
+.git/
+.pytest_cache/
+tests/
+data/
+__pycache__/
+*.egg-info/
+.gitignore
+.dockerignore
+README.md
+backend/.env.example
+tests/.yt_cache/

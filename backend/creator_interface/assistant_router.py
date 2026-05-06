@@ -386,6 +386,33 @@ def validate_update_plugin_metadata(
     return normalized_metadata, None
 
 
+def _ensure_metadata_defaults(metadata_raw) -> str:
+    """Ensure essential fields have defaults in assistant metadata.
+
+    The completion pipeline requires a valid prompt_processor. If not set,
+    the pipeline fails with 'Prompt processor default not found'.
+    """
+    if not metadata_raw:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if isinstance(metadata_raw, str):
+        try:
+            meta = json.loads(metadata_raw)
+        except (json.JSONDecodeError, TypeError):
+            return json.dumps({"prompt_processor": "simple_augment"})
+    elif isinstance(metadata_raw, dict):
+        meta = metadata_raw
+    else:
+        return json.dumps({"prompt_processor": "simple_augment"})
+
+    if not meta.get("prompt_processor"):
+        meta["prompt_processor"] = "simple_augment"
+    if not meta.get("connector"):
+        meta["connector"] = "openai"
+
+    return json.dumps(meta) if isinstance(metadata_raw, str) else meta
+
+
 def prepare_assistant_body(
     original_body: Dict[str, Any], 
     creator_user: Dict[str, Any], 
@@ -422,8 +449,9 @@ def prepare_assistant_body(
             # Use email from creator user object
             "owner": creator_user['email'],
             # Handle metadata as source of truth, copy to api_callback for backward compatibility
-            "metadata": original_body.get("metadata", original_body.get("api_callback", "")),
-            "api_callback": original_body.get("metadata", original_body.get("api_callback", "")),
+            # Ensure essential defaults (prompt_processor) are set
+            "metadata": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
+            "api_callback": _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", ""))),
             # Check for system_prompt first, then instructions as fallback
             "system_prompt": original_body.get("system_prompt", original_body.get("instructions", "")),
             "prompt_template": original_body.get("prompt_template", ""),
@@ -1203,6 +1231,33 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
+        # Fetch current assistant to merge with partial updates (#328)
+        assistant_service = AssistantService()
+        current = assistant_service.get_assistant_by_id(assistant_id)
+        if not current:
+            raise HTTPException(status_code=404, detail=f"Assistant {assistant_id} not found")
+
+        # Merge: fill in missing fields from current assistant so partial
+        # updates don't wipe existing values
+        current_metadata_str = current.api_callback or "{}"
+        merge_defaults = {
+            "name": current.name,
+            "description": current.description or "",
+            "system_prompt": current.system_prompt or "",
+            "prompt_template": current.prompt_template or "",
+            "RAG_Top_k": current.RAG_Top_k or 3,
+            "RAG_collections": current.RAG_collections or "",
+            "metadata": current_metadata_str,
+            "api_callback": current_metadata_str,
+        }
+        for key, default_val in merge_defaults.items():
+            if key not in original_body:
+                original_body[key] = default_val
+
+        # Ensure defaults before validation (fills missing prompt_processor, connector)
+        original_body["metadata"] = _ensure_metadata_defaults(original_body.get("metadata", original_body.get("api_callback", "")))
+        original_body["api_callback"] = original_body["metadata"]
+
         normalized_metadata, metadata_error = validate_update_plugin_metadata(original_body)
         if metadata_error:
             logger.error(
@@ -1213,8 +1268,12 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         original_body["metadata"] = normalized_metadata
         original_body["api_callback"] = normalized_metadata
 
-        # Prepare the assistant body
-        new_body, error = prepare_assistant_body(original_body, creator_user)
+        # Prepare the assistant body (now has all fields — merge complete)
+        # Pass the current name as sanitized_prefixed_name to avoid double-prefixing (#328)
+        new_body, error = prepare_assistant_body(
+            original_body, creator_user,
+            sanitized_prefixed_name=original_body.get("name", current.name),
+        )
         if error:
             logger.error(f"Error preparing update body for assistant {assistant_id}: {error}")
             raise HTTPException(status_code=400, detail=error)

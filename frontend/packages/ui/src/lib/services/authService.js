@@ -74,16 +74,16 @@ export const authService = {
         }
         return { success: true, data: data.data };
       } else {
-        return { 
-          success: false, 
-          error: data.error || 'Login failed' 
+        return {
+          success: false,
+          error: data.error || 'Login failed'
         };
       }
     } catch (error) {
       console.error('Login error:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Network error' 
+      return {
+        success: false,
+        error: error.message || 'Network error'
       };
     }
   },
@@ -99,7 +99,7 @@ export const authService = {
     }
 
     try {
-      const response = await fetch('/creator/profile', {
+      const response = await fetch('/creator/me', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -111,17 +111,107 @@ export const authService = {
       if (response.ok && data.success) {
         return { success: true, data: data.data };
       } else {
-        return { 
-          success: false, 
-          error: data.error || 'Failed to fetch profile' 
+        return {
+          success: false,
+          error: data.error || 'Failed to fetch profile'
         };
       }
     } catch (error) {
       console.error('Profile fetch error:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Network error' 
+      return {
+        success: false,
+        error: error.message || 'Network error'
+      };
+    }
+  },
+  /**
+   * Handles user signup
+   * @param {string} name - User name
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @param {string} secretKey - Secret key for registration
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  signup: async (name, email, password, secretKey) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+    try {
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('secret_key', secretKey);
+      const response = await fetch('/creator/signup', {
+        method: 'POST',
+        body: formData
+      });
+      let data;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        data = {};
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Signup failed');
+      }
+      return data;
+    } catch (error) {
+      console.error('Signup error:', error);
+      let message = 'An error occurred during signup';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      return {
+        success: false,
+        error: message
+      };
+    }
+  },
+  /**
+   * Sends a help request to the LAMB assistant
+   * @param {string} question - User question
+   * @param {string} token - User authentication token
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  getHelp: async (question, token) => {
+    if (!browser) {
+      return { success: false, error: 'Not in browser environment' };
+    }
+    try {
+      const response = await fetch('/creator/lamb_helper_assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ question })
+      });
+      let data;
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        data = {};
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Help request failed');
+      }
+      return data;
+    } catch (error) {
+      console.error('Help request error:', error);
+      let message = 'An error occurred while getting help';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      return {
+        success: false,
+        error: message
       };
     }
   }
+
 };

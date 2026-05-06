@@ -219,10 +219,10 @@ The **unified LTI setup UI** lives in **`frontend/packages/module-chat`** (`/m/c
 
 | Area | Change |
 |------|--------|
-| **`backend/lamb/modules/file_evaluation/__init__.py`** | Setup field order and types: **`title`** (required text, first), **`evaluator_id`**, **`description`**, **`submission_type`** as **`radio`** (Individual / Group), **`max_group_size`** (conditional in UI), **`deadline`** (required `datetime-local`), **`language`**. `on_activity_configured()` persists **`title`** into `setup_config` JSON alongside existing keys. |
+| **`backend/lamb/modules/file_evaluation/__init__.py`** | Setup field order and types: **`title`** (required text, first), **`description`**, **`submission_type`** as **`radio`** (Individual / Group), **`max_group_size`** (conditional in UI), **`deadline`** (required `datetime-local`), **`language`**. **`evaluator_id`** is **not** a setup form field — it is auto-assigned from the first selected assistant in `on_activity_configured()` and persisted into `setup_config` JSON. |
 | **`backend/lamb/lti_router.py`** | `_field_to_json()` exposes **`options`** for **`radio`** as well as `select`. **`POST /lamb/v1/lti/configure`**: for `activity_type == file_evaluation`, validates non-empty **title** and **deadline**; if **group**, **`max_group_size`** must be integer **2–20**. **`activity_name`** on `lti_activities` uses instructor **title** (trimmed) with fallback to LMS context title / `resource_link_id`. |
 | **`backend/lamb/modules/file_evaluation/schemas.py`** | `FileEvalSetupConfig` adds optional **`title`**; **`@model_validator`** enforces **2–20** for `max_group_size` when `submission_type == group` and clears it for individual. |
-| **`frontend/packages/module-chat/src/routes/setup/+page.svelte`** | Renders **`radio`** fields; disables **`evaluator_id`** when at least one assistant checkbox is selected (clears value; backend defaults evaluator to first assistant); shows **`max_group_size`** only for **Group**; client-side validation for deadline and group size; hint **Min 2, Max 20** under group size. |
+| **`frontend/packages/module-chat/src/routes/setup/+page.svelte`** | Renders **`radio`** fields; shows **`max_group_size`** only for **Group**; client-side validation for deadline and group size; hint **Min 2, Max 20** under group size. Generic text field rendering (no `evaluator_id` special-casing). |
 
 **Rebuild** `module-chat` (and optionally `module-file-eval` after grading fixes) so static assets under `/m/chat/app` and `/m/file-eval/app` match source.
 
@@ -276,6 +276,20 @@ When the activity is **group** submission type and the student already has a row
 | `Already submitted to this activity` | 409 | `already_submitted_activity` |
 
 **Frontend:** `apiFetch` (and `apiUpload`) in [`api.js`](frontend/packages/module-file-eval/src/lib/services/api.js) now parse JSON error bodies and expose `error.code` on the thrown Error. `handleJoinGroup` in [`upload/+page.svelte`](frontend/packages/module-file-eval/src/routes/upload/+page.svelte) maps `error.code` to i18n keys (`groupJoinFull`, `groupJoinInvalidCode`, `groupJoinAlreadyMember`, `groupJoinAlreadySubmitted`) under `fileEval.upload`, falling back to the raw message for unknown codes. Keys added in all 8 locale files (en, es, ca, eu).
+
+### 4.16 — Rubric filter for file_evaluation assistant selection (2026-04)
+
+When an instructor configures an LTI activity and selects **File Evaluation**, the assistant list now only shows assistants that are ready for rubric-based evaluation. Assistants shared with the instructor are included if they also meet the rubric criterion. Chat activities continue to show all published assistants without filtering.
+
+| Area | Change |
+|------|--------|
+| **`backend/lamb/database_manager.py`** | New static method **`assistant_has_rubric_for_eval(api_callback)`**: parses the `api_callback` JSON and returns `True` only when `rubric_id` is non-empty **and** `rag_processor == "rubric_rag"` (strict criterion — the completions pipeline must actually load the rubric). **`get_published_assistants_for_org_user()`**: both `SELECT` queries now include `a.api_callback`; the dedup loop computes **`rubric_eval_ready: bool`** per assistant and strips the raw `api_callback` from the returned dict (never sent to the client). |
+| **`backend/lamb/lti_router.py` — `POST /lti/configure`** | When `activity_type == "file_evaluation"`, the endpoint now validates that **every** selected assistant has `rubric_eval_ready == True`. If any assistant lacks a rubric, it returns **HTTP 400** with the assistant name in the error detail. |
+| **`backend/lamb/modules/file_evaluation/__init__.py`** | Removed **`evaluator_id`** from `get_setup_fields()`. The field is no longer exposed in the setup form; the backend auto-assigns it from the first selected assistant in `on_activity_configured()`. |
+| **`frontend/packages/module-chat/src/routes/setup/+page.svelte`** | New `$derived` **`assistantsForCurrentActivity`**: filters `availableAssistants` by `rubric_eval_ready` when `selectedActivity === 'file_evaluation'`; passes through the full list for chat. The assistant list and `canSubmit` use this filtered list. When the filtered list is empty for file-eval, an amber info box shows *"No assistants with a rubric found"* with the static reference path `/lamb/v1/lti_creator/launch` (plain text, not a link — the administrator provides access context). Changing the activity type clears the assistant selection. Removed all `evaluator_id` special-casing from the text input rendering. |
+| **`backend/tests/test_rubric_eval_helper.py`** | 10 parametrized unit tests for `assistant_has_rubric_for_eval`: valid rubric+rag, wrong rag_processor, empty/missing rubric_id, None, empty string, invalid JSON, whitespace, numeric rubric_id. |
+
+**Behaviour note — rubric without evaluator system prompt:** The file-eval pipeline (`EvaluatorClient.evaluate_text`) sends the student document to `run_lamb_assistant`, which applies the assistant's system prompt and RAG context (rubric). If the system prompt is not written for evaluation, the LLM will still produce a response stored in `ai_comment`, but `ai_score` may be `NULL` because `_extract_score_and_feedback` relies on regex patterns (`NOTA FINAL`, `Score`, `x/10`) that a chat-style reply won't contain. The rubric filter ensures the rubric *data* is injected; the quality of the evaluation depends on the assistant's system prompt.
 
 ---
 
@@ -429,3 +443,36 @@ Recommended test coverage:
 - **Standalone `uvicorn lamb.main:app`**: The file-eval schema **repair** and **module migrations** run only from the **root** `backend/main.py` lifespan. Running only `lamb.main` without the full app may skip those steps (document or align startup).
 - **Schema repair data loss**: `repair_file_eval_schema_if_needed` **drops** `mod_file_eval_*` tables when fixing FK mismatch; production deployments need a migration strategy if data must be preserved.
 - **Docker / frontend build**: Ensure the production image runs the same build pipeline that includes `module-file-eval` and `packages/ui` locale updates so `fileEval` strings ship with the bundle.
+
+---
+
+## 11. Update (2026-04-16): LTI setup assistant filters and unified empty states
+
+Changes made in [`frontend/packages/module-chat/src/routes/setup/+page.svelte`](../../frontend/packages/module-chat/src/routes/setup/+page.svelte).
+
+### 11.1 — Client-side filter checkboxes
+
+Two `$state` booleans control filtering of the assistant list returned by the backend (`get_published_assistants_for_org_user`). No new endpoints were added; all filtering and sorting happens in the browser.
+
+| Control | Visibility | Default | Behaviour |
+|---------|-----------|---------|-----------|
+| **Include shared assistants** | Chat + File Evaluation | `true` (checked) | When unchecked, hides assistants with `access_type === 'shared'`. |
+| **Include assistants with a rubric** | Chat only | `false` (unchecked) | When unchecked, hides assistants with `rubric_eval_ready === true`. Not shown for File Evaluation because that list is already restricted to `rubric_eval_ready` assistants. |
+
+**Sorting (Chat only):** Assistants without a rubric appear first; ties broken alphabetically by name (`localeCompare`, case-insensitive). File Evaluation sorts alphabetically only.
+
+The shared-assistants filter state persists when switching between Chat and File Evaluation (single shared control as per product requirements).
+
+### 11.2 — Empty state messages
+
+When the filtered assistant list is empty, the UI displays one of two messages depending on the cause:
+
+| Condition | Style | Message |
+|-----------|-------|---------|
+| Assistants exist in the org but current filters hide all of them (`availableAssistants.length > 0 && filtered.length === 0`) | Gray border, gray background, italic | "No assistants match the current filters. Adjust the filters above." |
+| **File Evaluation** — no assistants with a rubric exist at all | Amber border (`border-amber-300`), amber background (`bg-amber-50`) | "No assistants with a rubric found." + Creator path |
+| **Chat** — no published assistants exist at all | Same amber style | "No published assistants found." + Creator path |
+
+Both amber boxes include the hardcoded Creator LTI path in a `<code>` block: `/lamb/v1/lti_creator/launch`. This is a reference for administrators — no clickable link is rendered.
+
+See also: section 4.16 for the initial `rubric_eval_ready` flag and empty-state implementation.

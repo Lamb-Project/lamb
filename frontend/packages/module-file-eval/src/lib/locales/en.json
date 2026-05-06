@@ -93,6 +93,7 @@
 			"syncMoodle": "Sync Grades to Moodle",
 			"syncing": "Syncing...",
 			"syncSuccess": "Grades sent to Moodle successfully",
+			"activityConfigSaved": "Activity settings saved.",
 			"editGrade": "Edit Grade",
 			"saveGrade": "Save",
 			"noSubmissions": "No submissions yet",

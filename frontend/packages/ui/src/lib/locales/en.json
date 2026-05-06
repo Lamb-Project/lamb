@@ -766,6 +766,16 @@
         "owner": "Owner",
         "admin": "Admin",
         "member": "Member"
+      },
+      "agent": {
+        "title": "LAMB Agent",
+        "description": "Talk to the AI assistant to get help, create assistants, learn about LAMB, or troubleshoot issues.",
+        "cta": "Start conversation",
+        "starting": "Starting...",
+        "newConversation": "New conversation",
+        "confirmNew": "End this conversation and start a new one?",
+        "startNew": "Start new conversation",
+        "continue": "Continue today's conversation"
       }
     },
     "help": {
@@ -774,6 +784,96 @@
       "loadingNews": "Loading news...",
       "noNews": "No news to display.",
       "viewAssistants": "View Learning Assistants"
+    }
+  },
+  "libraries": {
+    "title": "Libraries",
+    "pageTitle": "Libraries",
+    "pageDescription": "Manage your document libraries.",
+    "myLibraries": "My Libraries",
+    "sharedLibraries": "Shared",
+    "createNew": "New Library",
+    "loading": "Loading libraries...",
+    "loginRequired": "You must be logged in to view libraries.",
+    "noOwned": "You have no libraries yet. Create one to get started!",
+    "noShared": "No shared libraries available.",
+    "noResults": "No libraries match your search.",
+    "name": "Name",
+    "description": "Description",
+    "namePlaceholder": "Enter library name",
+    "descriptionPlaceholder": "Optional description",
+    "createdAt": "Created",
+    "owner": "Owner",
+    "view": "View",
+    "delete": "Delete",
+    "actions": "Actions",
+    "creating": "Creating...",
+    "createButton": "Create Library",
+    "createSuccess": "Library created successfully.",
+    "deleteSuccess": "Library deleted.",
+    "shareSuccess": "Library shared with organization.",
+    "unshareSuccess": "Library is now private.",
+    "uploadFile": "Upload file",
+    "titleOptional": "Title",
+    "upload": "Upload",
+    "uploading": "Uploading...",
+    "uploadSuccess": "File uploaded. Processing...",
+    "fileTooLarge": "File exceeds 500 MB limit.",
+    "importContent": "Import URL / YouTube",
+    "importSuccess": "Import started.",
+    "addContent": "Add Content",
+    "export": "Export",
+    "itemDeleteSuccess": "Item deleted.",
+    "detailTitle": "Library Details",
+    "backButton": "Back to libraries",
+    "items": {
+      "title": "Items",
+      "titleCol": "Title",
+      "source": "Source",
+      "size": "Size",
+      "status": "Status",
+      "created": "Created",
+      "empty": "No items yet. Upload a file or import content to get started."
+    },
+    "sharing": {
+      "label": "Sharing",
+      "shared": "Shared",
+      "private": "Private"
+    },
+    "createModal": {
+      "title": "Create Library",
+      "description": "Create a new document library to store imported content.",
+      "nameRequired": "Name is required",
+      "nameTooLong": "Name must be less than 100 characters"
+    },
+    "deleteModal": {
+      "title": "Delete Library",
+      "message": "Are you sure? All content will be permanently removed.",
+      "confirm": "Delete"
+    },
+    "deleteItemModal": {
+      "title": "Delete Item",
+      "message": "Are you sure you want to delete this item?",
+      "confirm": "Delete"
+    },
+    "importModal": {
+      "title": "Import Content",
+      "typeLabel": "Import type",
+      "typeUrl": "URL",
+      "typeYouTube": "YouTube",
+      "typeZip": "ZIP Archive",
+      "titleLabel": "Title (optional)",
+      "youtubeUrl": "YouTube URL",
+      "language": "Transcript language",
+      "zipFile": "ZIP file",
+      "zipHint": "Import a previously exported library.",
+      "importing": "Importing...",
+      "importButton": "Import",
+      "invalidUrl": "A valid HTTP(S) URL is required.",
+      "invalidYoutubeUrl": "A valid YouTube URL is required.",
+      "zipRequired": "A ZIP file is required.",
+      "zipTooLarge": "ZIP file exceeds 500 MB limit.",
+      "importFailed": "Import failed. Please try again."
     }
   },
   "fileEval": {

@@ -49,6 +49,7 @@
     "@ai-sdk/svelte": "^2.0.0",
     "ai": "^4.3.7",
     "axios": "^1.8.1",
+    "dompurify": "^3.4.1",
     "flowbite-svelte": "^0.48.6",
     "flowbite-svelte-icons": "^2.1.1",
     "marked": "^15.0.12",

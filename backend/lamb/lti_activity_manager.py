@@ -320,15 +320,6 @@ class LtiActivityManager:
         return f"{proto}://{host}{prefix}{request.url.path}"
 
     @staticmethod
-    def get_owi_redirect_url(token: str) -> str:
-        """Build the OWI redirect URL with token."""
-        import config
-        owi_public = (os.getenv("OWI_PUBLIC_BASE_URL")
-                      or os.getenv("OWI_BASE_URL")
-                      or config.OWI_PUBLIC_BASE_URL)
-        return f"{owi_public}/api/v1/auths/complete?token={token}"
-
-    @staticmethod
     def get_public_base_url(request) -> str:
         """Get the public-facing base URL for LAMB."""
         public = os.getenv("LAMB_PUBLIC_BASE_URL")
@@ -339,25 +330,7 @@ class LtiActivityManager:
         prefix = request.headers.get("X-Forwarded-Prefix", "")
         return f"{proto}://{host}{prefix}"
 
-    # =========================================================================
-    # Consent
-    # =========================================================================
 
-    def check_student_consent(self, activity: Dict[str, Any], user_email: str) -> bool:
-        """
-        Check if a student needs to give consent for chat visibility.
-        Returns True if consent is needed (chat_visibility enabled + no consent yet).
-        """
-        if not activity.get('chat_visibility_enabled'):
-            return False
-        user_record = self.db_manager.get_activity_user(activity['id'], user_email)
-        if not user_record:
-            return True  # New user, consent needed
-        return user_record.get('consent_given_at') is None
-
-    def record_consent(self, activity_id: int, user_email: str) -> bool:
-        """Record student consent for chat visibility."""
-        return self.db_manager.record_student_consent(activity_id, user_email)
 
     # =========================================================================
     # Dashboard Data (DB-only)
@@ -365,16 +338,17 @@ class LtiActivityManager:
 
     def get_dashboard_students(self, activity_id: int, page: int = 1,
                                 per_page: int = 20) -> Dict[str, Any]:
-        """Get anonymized student list for the dashboard."""
+        """Get student list for the dashboard with real names from the LMS."""
         data = self.db_manager.get_activity_students(activity_id, page, per_page)
-        offset = (page - 1) * per_page
-        anonymized = []
-        for i, student in enumerate(data['students']):
-            anonymized.append({
-                "anonymous_id": f"Student {offset + i + 1}",
+        students = []
+        for student in data['students']:
+            students.append({
+                "name": student.get('user_display_name') or student.get('user_name') or '(unknown)',
+                "username": student.get('user_name', ''),
                 "first_access": student['created_at'],
                 "last_access": student.get('last_access_at') or student['created_at'],
                 "access_count": student.get('access_count', 0),
-                "has_consented": student.get('consent_given_at') is not None,
             })
-        return {"students": anonymized, "total": data['total']}
+        return {"students": students, "total": data['total']}
+
+   

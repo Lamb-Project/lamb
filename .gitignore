@@ -74,6 +74,10 @@ config.json
 /frontend/node_modules
 /frontend/build
 /frontend/.svelte-kit
+frontend/svelte-app/.svelte-kit/
+frontend/svelte-app/package-lock.json
+frontend/svelte-app/src/lib/version.js
+/frontend/svelte-app
 /frontend/package
 /frontend/.env
 /frontend/.env.*
@@ -91,13 +95,10 @@ frontend/packages/**/pnpm-lock.yaml
 
 # SvelteKit generated files (all packages)
 frontend/packages/**/.svelte-kit/
-# svelte-app lives under frontend/svelte-app (not covered by /frontend/.svelte-kit)
-frontend/svelte-app/.svelte-kit/
 
 # package-lock.json files (using pnpm instead)
 frontend/package-lock.json
 frontend/packages/**/package-lock.json
-frontend/svelte-app/package-lock.json
 
 # Local tooling / scratch (not product source)
 aac_logs/
@@ -106,11 +107,6 @@ aac_logs/
 # (Do not commit local timestamps; build/dev runs the generator.)
 frontend/packages/creator-app/src/lib/version.js
 frontend/packages/module-chat/src/lib/version.js
-frontend/svelte-app/src/lib/version.js
-
-# Allow committing Svelte/Vite config for the frontend app
-!frontend/svelte-app/svelte.config.js
-!frontend/svelte-app/vite.config.js
 
 # IDE and editors
 .idea/
@@ -162,7 +158,6 @@ out/
 build/
 Documentation/human-context.md
 testcurls.md
-frontend/svelte-app/static/config.js
 
 # Open-WebUI specific ignores
 open-webui/backend/data/
@@ -203,6 +198,11 @@ test-results/
 .last-run.json
 backend/static/cache
 docker-compose.yaml
+.pnpm-store/
+backend/testing/
+backend/uploads/
+
+
 
 #OPENCODE
 .opencode/                # Carpeta de skills y caché local
@@ -214,6 +214,13 @@ CONTEXT.md
 
 
 ./clinerules
+
+
+
+.playwright-mcp
+
+aac_logs/
+
 
 
 

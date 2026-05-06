@@ -44,8 +44,12 @@
     import { processListData } from '$lib/utils/listHelpers';
     import { getAssistantMetadataObject, normalizeAssistantData } from '$lib/utils/assistantData';
     import PromptTemplatesContent from '$lib/components/promptTemplates/PromptTemplatesContent.svelte';
+    import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
+    import AssistantTests from '$lib/components/aac/AssistantTests.svelte';
+    import { createSession } from '$lib/services/aacService';
+    import { openTab, closeTab, setActiveTab, getOpenTabs, getActiveTabId, openTabs as openTabsStore } from '$lib/stores/aacStore.svelte';
 
-    // --- State Management --- 
+    // --- State Management ---
     /** @type {'list' | 'create' | 'detail' | 'shared' | 'templates'} */
     let currentView = $state('list'); // Revert back to 'list'
     /** @type {string | null | undefined} */
@@ -60,8 +64,60 @@
     let startEditMode = $state(false); // New state for initial edit mode
 
     // --- Detail View Sub-Tab State ---
-    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics'} */
+    /** @type {'properties' | 'chat' | 'edit' | 'share' | 'analytics' | 'tests' | 'aac'} */
     let detailSubView = $state($page.url.searchParams.get('startInEdit') === 'true' ? 'edit' : 'properties');
+
+    // --- AAC Agent State ---
+    /** @type {string|null} */
+    let activeAacSessionId = $state(null);
+    /** @type {string} */
+    let aacFirstMessage = $state('');
+    /** @type {boolean} Whether the terminal should auto-trigger skill startup */
+    let aacSkillStartup = $state(false);
+    /** @type {boolean} */
+    let aacLaunching = $state(false);
+    // Subscribe to the openTabs writable store so this list updates when tabs
+    // are opened/closed anywhere in the app (#352, H6).
+    let aacTabs = $derived($openTabsStore);
+
+    /**
+     * Launch an AAC skill session for the current assistant.
+     * @param {string} skill
+     */
+    async function launchAacSkill(skill) {
+        if (!selectedAssistantData?.id || aacLaunching) return;
+        aacLaunching = true;
+        try {
+            const lang = currentLocale === 'ca' ? 'Catalan' : currentLocale === 'es' ? 'Spanish' : currentLocale === 'eu' ? 'Basque' : 'English';
+            const session = await createSession({
+                assistantId: selectedAssistantData.id,
+                skill,
+                context: { language: lang },
+            });
+            const title = session.title || skill;
+            openTab(session.id, title, selectedAssistantData.id, skill);
+            activeAacSessionId = session.id;
+            aacFirstMessage = '';
+            aacSkillStartup = true;
+            detailSubView = 'aac';
+        } catch (e) {
+            console.error('AAC launch error:', e);
+            detailError = `Agent error: ${e.message}`;
+        }
+        aacLaunching = false;
+    }
+
+    /**
+     * Switch to an existing AAC session tab.
+     * @param {string} sessionId
+     */
+    function switchToAacTab(sessionId) {
+        setActiveTab(sessionId);
+        activeAacSessionId = sessionId;
+        aacFirstMessage = '';
+        aacSkillStartup = false; // Existing session, don't re-trigger startup
+        detailSubView = 'aac';
+    }
 
     // --- API Configuration State ---
     let lambServerUrl = $state('');
@@ -218,9 +274,15 @@
      * @param {number} id
      * @param {boolean} forceRefresh - Force refresh even if ID is the same (used after updates)
      */
-    async function fetchAssistantDetail(id, forceRefresh = false) { 
+    // Tag every fetchAssistantDetail call so a slow earlier request that
+    // resolves AFTER a newer one cannot overwrite the now-current selection
+    // with stale data. (#352, M12)
+    let detailFetchSeq = 0;
+
+    async function fetchAssistantDetail(id, forceRefresh = false) {
         if (lastAttemptedId === id && !forceRefresh) return; // Skip if same ID unless forcing refresh
         lastAttemptedId = id;
+        const mySeq = ++detailFetchSeq;
         // startEditMode is already set by the subscription callback
         loadingDetail = true;
         detailError = '';
@@ -230,6 +292,7 @@
         try {
             console.log(`Fetching assistant ID: ${id}.`); // Removed edit log here
             const assistantData = await getAssistantById(id);
+            if (mySeq !== detailFetchSeq) return; // a newer fetch has started — drop ours
             if (assistantData) {
                 const fullAssistantData = {
                     ...normalizeAssistantData(assistantData),
@@ -245,11 +308,13 @@
                 showList();
             }
         } catch (error) {
+            if (mySeq !== detailFetchSeq) return;
+            if (error instanceof Error && error.message.startsWith('Session expired')) return;
             console.error('Error fetching assistant details:', error);
             detailError = error instanceof Error ? error.message : $_('error_fetching_assistant');
             showList();
         } finally {
-            loadingDetail = false;
+            if (mySeq === detailFetchSeq) loadingDetail = false;
         }
     }
 
@@ -936,6 +1001,53 @@
                 {currentLocale ? $_('assistants.detail.activityTab', { default: 'Activity' }) : 'Activity'}
             </button>
         {/if}
+        {#if isOwner}
+            <button
+                class="py-2 px-4 text-sm font-medium rounded-t-md {detailSubView === 'tests' ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => detailSubView = 'tests'}
+            >
+                Tests
+            </button>
+        {/if}
+
+        <!-- AAC session tabs (if any are open for this assistant) -->
+        {#each aacTabs.filter(t => t.assistantId === selectedAssistantData?.id) as tab}
+            <button
+                class="group py-2 px-4 text-sm font-medium rounded-t-md flex items-center gap-1 {detailSubView === 'aac' && activeAacSessionId === tab.id ? 'bg-gray-100 border border-b-0 border-gray-300 text-brand' : 'text-gray-600 hover:text-gray-800'}"
+                onclick={() => switchToAacTab(tab.id)}
+            >
+                🤖 <span class="max-w-[120px] truncate">{tab.title}</span>
+                <span
+                    role="button"
+                    tabindex="0"
+                    onclick={(e) => { e.stopPropagation(); closeTab(tab.id); if (activeAacSessionId === tab.id) detailSubView = 'properties'; }}
+                    onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); closeTab(tab.id); if (activeAacSessionId === tab.id) detailSubView = 'properties'; }}}
+                    class="ml-1 opacity-0 group-hover:opacity-60 hover:opacity-100 text-xs cursor-pointer"
+                    title="Close session"
+                >✕</span>
+            </button>
+        {/each}
+
+        <!-- AAC skill launch buttons (separator + buttons) -->
+        {#if isOwner}
+            <span class="border-l border-gray-300 mx-2 h-6 self-center"></span>
+            <button
+                onclick={() => launchAacSkill('explain-assistant')}
+                disabled={aacLaunching}
+                class="py-1.5 px-3 text-xs font-medium rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 disabled:opacity-50 disabled:cursor-wait"
+                title="Let the AI agent explain how this assistant works"
+            >
+                {aacLaunching ? '⏳' : '🔍'} Agent Explain
+            </button>
+            <button
+                onclick={() => launchAacSkill('improve-assistant')}
+                disabled={aacLaunching}
+                class="py-1.5 px-3 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 disabled:cursor-wait"
+                title="Let the AI agent suggest improvements"
+            >
+                {aacLaunching ? '⏳' : '✨'} Agent Improve
+            </button>
+        {/if}
     </div>
 
     <!-- Wrapper for Detail Content -->
@@ -1437,6 +1549,24 @@
             <div class="px-6 py-4">
                 <ChatAnalytics assistant={selectedAssistantData} />
             </div>
+        {:else if detailSubView === 'tests'}
+            <!-- Tests Tab -->
+            <AssistantTests
+                assistantId={selectedAssistantData.id}
+                onLaunchSkill={(skill) => launchAacSkill(skill)}
+            />
+        {:else if detailSubView === 'aac' && activeAacSessionId}
+            <!-- AAC Agent Terminal — key forces remount on session/startup change -->
+            {#key `${activeAacSessionId}-${aacSkillStartup}`}
+            <div class="h-[700px]">
+                <AacTerminal
+                    sessionId={activeAacSessionId}
+                    firstMessage={aacFirstMessage}
+                    resumed={!aacFirstMessage && !aacSkillStartup}
+                    skillStartup={aacSkillStartup}
+                />
+            </div>
+            {/key}
         {/if}
     {/if}
     </div> <!-- Closes Wrapper for Detail Content -->
