@@ -48,7 +48,12 @@
 
 	let submitting = $state(false);
 	let error = $state('');
-	let progressMessage = $state('');
+
+	/**
+	 * @typedef {{ label: string; status: 'pending' | 'running' | 'done' | 'failed' }} ProgressStep
+	 */
+	/** @type {ProgressStep[]} */
+	let progressSteps = $state([]);
 
 	$effect(() => {
 		dispatch('validity', { valid: !submitting });
@@ -79,9 +84,22 @@
 		return 'timeout';
 	}
 
+	/** @param {string} label */
+	function pushStep(label) {
+		progressSteps = [...progressSteps, { label, status: 'running' }];
+	}
+
+	/** @param {'done'|'failed'} status */
+	function finishStep(status) {
+		progressSteps = progressSteps.map((s, i) =>
+			i === progressSteps.length - 1 ? { ...s, status } : s
+		);
+	}
+
 	async function handleCreate() {
 		submitting = true;
 		error = '';
+		progressSteps = [];
 
 		let libraryId = wizardState.existingLibraryId;
 		let libraryName = wizardState.libraryName;
@@ -91,15 +109,18 @@
 		try {
 			// 1. Create library if new.
 			if (wizardState.libraryPath === 'new') {
-				progressMessage = $_('knowledge.wizard.step8.progressLibrary', {
-					default: 'Creating library...'
-				});
+				pushStep(
+					$_('knowledge.wizard.step8.progressLibrary', {
+						default: 'Creating library...'
+					})
+				);
 				const lib = await createLibrary({
 					name: wizardState.libraryName,
 					description: wizardState.libraryDescription || ''
 				});
 				libraryId = lib.id;
 				libraryName = lib.name;
+				finishStep('done');
 
 				if (wizardState.libraryIsShared) {
 					try {
@@ -117,25 +138,32 @@
 			if (wizardState.libraryPath === 'new' && pending.length > 0 && libraryId) {
 				for (let i = 0; i < pending.length; i += 1) {
 					const f = pending[i];
-					progressMessage = $_('knowledge.wizard.step8.progressUpload', {
-						default: 'Uploading {name} ({n}/{total})...',
-						values: { name: f.name, n: i + 1, total: pending.length }
-					});
+					pushStep(
+						$_('knowledge.wizard.step8.progressUpload', {
+							default: 'Uploading {name} ({n}/{total})...',
+							values: { name: f.name, n: i + 1, total: pending.length }
+						})
+					);
 					try {
 						const result = await uploadFile(libraryId, f, {
 							pluginName: wizardState.libraryImportConfig?.pluginName
 						});
 						const itemId = result.item_id;
-						progressMessage = $_('knowledge.wizard.step8.progressIngestStatus', {
-							default: 'Waiting for {name} to finish importing...',
-							values: { name: f.name }
-						});
+						finishStep('done');
+						pushStep(
+							$_('knowledge.wizard.step8.progressIngestStatus', {
+								default: 'Waiting for {name} to finish importing...',
+								values: { name: f.name }
+							})
+						);
 						const finalStatus = await pollItem(libraryId, itemId);
+						finishStep(finalStatus === 'ready' ? 'done' : 'failed');
 						if (finalStatus === 'ready') {
 							newlyReadyIds.push(itemId);
 						}
 					} catch (e) {
 						console.error(`Upload failed for ${f.name}`, e);
+						finishStep('failed');
 					}
 				}
 			}
@@ -145,10 +173,12 @@
 			if (wizardState.libraryPath === 'new' && pendingUrlSources.length > 0 && libraryId) {
 				for (let i = 0; i < pendingUrlSources.length; i += 1) {
 					const src = pendingUrlSources[i];
-					progressMessage = $_('knowledge.wizard.step8.progressImportUrl', {
-						default: 'Importing {url} ({n}/{total})...',
-						values: { url: src.title || src.url, n: i + 1, total: pendingUrlSources.length }
-					});
+					pushStep(
+						$_('knowledge.wizard.step8.progressImportUrl', {
+							default: 'Importing {url} ({n}/{total})...',
+							values: { url: src.title || src.url, n: i + 1, total: pendingUrlSources.length }
+						})
+					);
 					try {
 						let result;
 						if (src.type === 'youtube') {
@@ -164,25 +194,32 @@
 							});
 						}
 						const itemId = result.item_id;
-						progressMessage = $_('knowledge.wizard.step8.progressIngestStatus', {
-							default: 'Waiting for {name} to finish importing...',
-							values: { name: src.title || src.url }
-						});
+						finishStep('done');
+						pushStep(
+							$_('knowledge.wizard.step8.progressIngestStatus', {
+								default: 'Waiting for {name} to finish importing...',
+								values: { name: src.title || src.url }
+							})
+						);
 						const finalStatus = await pollItem(libraryId, itemId);
+						finishStep(finalStatus === 'ready' ? 'done' : 'failed');
 						if (finalStatus === 'ready') {
 							newlyReadyIds.push(itemId);
 						}
 					} catch (e) {
 						console.error(`URL import failed for ${src.url}`, e);
+						finishStep('failed');
 					}
 				}
 			}
 
 			// 3. Create KS if new.
 			if (wizardState.ksPath === 'new') {
-				progressMessage = $_('knowledge.wizard.step8.progressKS', {
-					default: 'Creating Knowledge Store...'
-				});
+				pushStep(
+					$_('knowledge.wizard.step8.progressKS', {
+						default: 'Creating Knowledge Store...'
+					})
+				);
 				const ks = await createKnowledgeStore({
 					name: wizardState.ksName,
 					description: wizardState.ksDescription || '',
@@ -195,6 +232,7 @@
 				});
 				ksId = ks.id;
 				ksName = ks.name;
+				finishStep('done');
 
 				if (wizardState.ksIsShared) {
 					try {
@@ -216,14 +254,18 @@
 
 			// 5. Ingest content into KS.
 			if (libraryId && ksId && itemsToIngest.length > 0) {
-				progressMessage = $_('knowledge.wizard.step8.progressIngest', {
-					default: 'Queuing {n} item(s) for ingestion...',
-					values: { n: itemsToIngest.length }
-				});
+				pushStep(
+					$_('knowledge.wizard.step8.progressIngest', {
+						default: 'Queuing {n} item(s) for ingestion...',
+						values: { n: itemsToIngest.length }
+					})
+				);
 				try {
 					await addContent(ksId, { libraryId, itemIds: itemsToIngest });
+					finishStep('done');
 				} catch (e) {
 					console.error('addContent failed', e);
+					finishStep('failed');
 					// Don't fail the whole wizard — KS and library exist.
 				}
 			}
@@ -232,9 +274,14 @@
 			dispatch('created', { libraryId, libraryName, ksId, ksName });
 		} catch (/** @type {unknown} */ err) {
 			error = err instanceof Error ? err.message : 'Failed to create';
+			if (
+				progressSteps.length > 0 &&
+				progressSteps[progressSteps.length - 1].status === 'running'
+			) {
+				finishStep('failed');
+			}
 		} finally {
 			submitting = false;
-			progressMessage = '';
 		}
 	}
 
@@ -246,129 +293,260 @@
 	});
 </script>
 
-<div class="space-y-4">
-	<h3 class="text-base font-semibold text-gray-900">
-		{$_('knowledge.wizard.step8.heading', { default: 'Review & create' })}
-	</h3>
-	<p class="text-sm text-gray-600">
-		{$_('knowledge.wizard.step8.description', {
-			default:
-				'Double-check the summary below. Nothing has been created yet — clicking "Create" will create the resources and queue the ingestion.'
-		})}
-	</p>
+<div class="space-y-5">
+	<div>
+		<h3 class="text-base font-semibold text-gray-900">
+			{$_('knowledge.wizard.step8.heading', { default: 'Review & create' })}
+		</h3>
+		<p class="mt-1 text-sm text-gray-500">
+			{$_('knowledge.wizard.step8.description', {
+				default:
+					'Double-check the summary below. Nothing has been created yet — clicking "Create" will create the resources and queue the ingestion.'
+			})}
+		</p>
+	</div>
 
 	{#if error}
-		<div class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700" role="alert">
-			{error}
+		<div
+			class="flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+			role="alert"
+		>
+			<svg
+				class="mt-0.5 h-4 w-4 shrink-0 text-red-500"
+				viewBox="0 0 20 20"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path
+					fill-rule="evenodd"
+					d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-4.75a.75.75 0 001.5 0v-4.5a.75.75 0 00-1.5 0v4.5zm.75-7a.75.75 0 100 1.5.75.75 0 000-1.5z"
+					clip-rule="evenodd"
+				/>
+			</svg>
+			<div class="min-w-0 flex-1">
+				<p class="font-medium">{error}</p>
+				<button
+					type="button"
+					onclick={handleCreate}
+					class="mt-1 font-medium underline hover:no-underline"
+				>
+					{$_('knowledge.wizard.step8.retry', { default: 'Retry' })}
+				</button>
+			</div>
 		</div>
 	{/if}
 
-	<div class="divide-y rounded-md border border-gray-200">
-		<div class="p-3">
-			<div class="text-xs tracking-wide text-gray-500 uppercase">
+	<!-- Summary cards -->
+	<div class="space-y-3">
+		<!-- Library card -->
+		<div class="rounded-lg border border-gray-200 bg-white p-4">
+			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
 				{$_('knowledge.wizard.step8.libraryHeading', { default: 'Library' })}
-			</div>
-			<div class="text-sm font-medium text-gray-900">
-				{wizardState.libraryName || '-'}
-				<span class="ml-2 text-xs text-gray-400">
-					({wizardState.libraryPath === 'existing'
+			</p>
+			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.libraryStep.selectLabel', { default: 'Library' })}
+				</dt>
+				<dd class="text-gray-900">{wizardState.libraryName || '-'}</dd>
+
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
+				</dt>
+				<dd class="text-gray-900">
+					{wizardState.libraryPath === 'existing'
 						? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
-						: $_('knowledge.wizard.createNew', { default: 'Create new' })})
-				</span>
-			</div>
-			{#if wizardState.libraryDescription}
-				<div class="mt-1 text-xs text-gray-500">{wizardState.libraryDescription}</div>
-			{/if}
-			{#if wizardState.libraryPath === 'new'}
-				<div class="mt-1 text-xs text-gray-500">
-					{$_('knowledge.wizard.step8.libraryPlugin', {
-						default: 'Import plugin: {plugin}',
-						values: { plugin: wizardState.libraryImportConfig?.pluginName || 'simple_import' }
-					})}
-				</div>
-				<div class="mt-1 text-xs text-gray-500">
-					{$_('knowledge.wizard.step8.libraryFileCount', {
-						default: '{n} file(s) to upload',
-						values: { n: (wizardState.pendingFiles ?? []).length }
-					})}
-				</div>
-				{#if (wizardState.pendingUrlSources ?? []).length > 0}
-					<div class="mt-1 text-xs text-gray-500">
-						{$_('knowledge.wizard.step8.libraryUrlCount', {
-							default: '{n} URL/YouTube source(s) to import',
-							values: { n: (wizardState.pendingUrlSources ?? []).length }
-						})}
-					</div>
+						: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+				</dd>
+
+				{#if wizardState.libraryDescription}
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.libraryStep.descriptionLabel', { default: 'Description' })}
+					</dt>
+					<dd class="text-gray-900">{wizardState.libraryDescription}</dd>
 				{/if}
-			{/if}
+
+				{#if wizardState.libraryPath === 'new'}
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
+					</dt>
+					<dd class="text-gray-900">
+						{wizardState.libraryImportConfig?.pluginName || 'simple_import'}
+					</dd>
+
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.libraryContent.queuedLabel', { default: 'Queued sources' })}
+					</dt>
+					<dd class="text-gray-900">
+						{$_('knowledge.wizard.step8.libraryFileCount', {
+							default: '{n} file(s) to upload',
+							values: { n: (wizardState.pendingFiles ?? []).length }
+						})}
+						{#if (wizardState.pendingUrlSources ?? []).length > 0}
+							+
+							{$_('knowledge.wizard.step8.libraryUrlCount', {
+								default: '{n} URL/YouTube source(s) to import',
+								values: { n: (wizardState.pendingUrlSources ?? []).length }
+							})}
+						{/if}
+					</dd>
+				{/if}
+			</dl>
 		</div>
 
-		<div class="p-3">
-			<div class="text-xs tracking-wide text-gray-500 uppercase">
+		<!-- Knowledge Store card -->
+		<div class="rounded-lg border border-gray-200 bg-white p-4">
+			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
 				{$_('knowledge.wizard.step8.ksHeading', { default: 'Knowledge Store' })}
-			</div>
-			<div class="text-sm font-medium text-gray-900">
-				{wizardState.ksName || '-'}
-				<span class="ml-2 text-xs text-gray-400">
-					({wizardState.ksPath === 'existing'
+			</p>
+			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.ksStep.selectLabel', { default: 'Knowledge Store' })}
+				</dt>
+				<dd class="text-gray-900">{wizardState.ksName || '-'}</dd>
+
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
+				</dt>
+				<dd class="text-gray-900">
+					{wizardState.ksPath === 'existing'
 						? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
-						: $_('knowledge.wizard.createNew', { default: 'Create new' })})
-				</span>
-			</div>
-			{#if wizardState.ksPath === 'new'}
-				<div class="mt-1 space-y-0.5 text-xs text-gray-500">
-					<div>
-						{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}: {wizardState
-							.ksConfig?.chunking_strategy || '-'}
-					</div>
-					<div>
-						{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}: {wizardState
-							.ksConfig?.embedding_vendor || '-'}
-					</div>
-					<div>
-						{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}: {wizardState
-							.ksConfig?.embedding_model || '-'}
-					</div>
-					<div>
-						{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}: {wizardState
-							.ksConfig?.vector_db_backend || '-'}
-					</div>
-				</div>
-			{/if}
+						: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+				</dd>
+
+				{#if wizardState.ksPath === 'new'}
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}
+					</dt>
+					<dd class="text-gray-900">{wizardState.ksConfig?.chunking_strategy || '-'}</dd>
+
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}
+					</dt>
+					<dd class="text-gray-900">{wizardState.ksConfig?.embedding_vendor || '-'}</dd>
+
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}
+					</dt>
+					<dd class="text-gray-900">{wizardState.ksConfig?.embedding_model || '-'}</dd>
+
+					<dt class="font-medium text-gray-500">
+						{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
+					</dt>
+					<dd class="text-gray-900">{wizardState.ksConfig?.vector_db_backend || '-'}</dd>
+				{/if}
+			</dl>
 		</div>
 
-		<div class="p-3">
-			<div class="text-xs tracking-wide text-gray-500 uppercase">
+		<!-- Content / Ingestion card -->
+		<div class="rounded-lg border border-gray-200 bg-white p-4">
+			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
 				{$_('knowledge.wizard.step8.ingestionHeading', { default: 'Ingestion' })}
-			</div>
-			<div class="text-sm text-gray-900">
-				{$_('knowledge.wizard.step8.ingestionCount', {
-					default: '{n} item(s) will be ingested',
-					values: { n: summarySelectedCount }
-				})}
-			</div>
+			</p>
+			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.step8.itemsHeading', { default: 'Items to ingest' })}
+				</dt>
+				<dd class="text-gray-900">
+					{$_('knowledge.wizard.step8.ingestionCount', {
+						default: '{n} item(s) will be ingested',
+						values: { n: summarySelectedCount }
+					})}
+				</dd>
+			</dl>
 		</div>
 	</div>
 
-	{#if submitting && progressMessage}
+	<!-- Progress steps during creation -->
+	{#if submitting && progressSteps.length > 0}
 		<div
-			class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"
+			class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3"
 			aria-live="polite"
+			aria-label="Creation progress"
 		>
-			{progressMessage}
+			<ul class="space-y-2">
+				{#each progressSteps as step (step.label + step.status)}
+					<li class="flex items-center gap-2 pl-1 text-sm text-blue-900">
+						{#if step.status === 'running'}
+							<!-- Spinner -->
+							<svg
+								class="h-4 w-4 shrink-0 animate-spin text-blue-500"
+								viewBox="0 0 24 24"
+								fill="none"
+								aria-hidden="true"
+							>
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+								/>
+							</svg>
+						{:else if step.status === 'done'}
+							<!-- Checkmark -->
+							<svg
+								class="h-4 w-4 shrink-0 text-green-500"
+								viewBox="0 0 20 20"
+								fill="currentColor"
+								aria-hidden="true"
+							>
+								<path
+									fill-rule="evenodd"
+									d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+									clip-rule="evenodd"
+								/>
+							</svg>
+						{:else}
+							<!-- X / failed -->
+							<svg
+								class="h-4 w-4 shrink-0 text-red-400"
+								viewBox="0 0 20 20"
+								fill="currentColor"
+								aria-hidden="true"
+							>
+								<path
+									d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
+								/>
+							</svg>
+						{/if}
+						<span class={step.status === 'failed' ? 'text-red-700 line-through' : ''}
+							>{step.label}</span
+						>
+					</li>
+				{/each}
+			</ul>
 		</div>
 	{/if}
 
-	<div class="flex justify-end">
+	<div class="flex justify-end pt-1">
 		<button
 			type="button"
 			onclick={handleCreate}
 			disabled={submitting}
-			class="rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91] disabled:opacity-50"
+			class="inline-flex items-center gap-2 rounded-md bg-[#2271b3] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#195a91] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2271b3] disabled:cursor-not-allowed disabled:opacity-50"
 		>
+			{#if submitting}
+				<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<circle
+						class="opacity-25"
+						cx="12"
+						cy="12"
+						r="10"
+						stroke="currentColor"
+						stroke-width="4"
+					/>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+				</svg>
+			{/if}
 			{submitting
 				? $_('knowledge.wizard.creating', { default: 'Creating...' })
-				: $_('knowledge.wizard.create', { default: 'Create' })}
+				: $_('knowledge.wizard.step8.submit', { default: 'Create' })}
 		</button>
 	</div>
 </div>

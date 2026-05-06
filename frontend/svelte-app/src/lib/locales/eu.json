@@ -1080,7 +1080,7 @@
 		}
 	},
 	"knowledge": {
-		"title": "Ezagutza",
+		"title": "Ezagutza-iturriak",
 		"description": "Kudeatu liburutegiak eta Ezagutza-biltegiak.",
 		"createKnowledge": "Ezagutza Sortu",
 		"wizard": {
@@ -1150,7 +1150,8 @@
 				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
-				"endpointLabel": "Embedding endpoint (optional)"
+				"endpointLabel": "Embedding endpoint (optional)",
+				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan."
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
@@ -1176,7 +1177,8 @@
 				"progressIngestStatus": "Waiting for {name} to finish importing...",
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
-				"progressIngest": "Queuing {n} item(s) for ingestion..."
+				"progressIngest": "Queuing {n} item(s) for ingestion...",
+				"retry": "Saiatu berriro"
 			},
 			"step9": {
 				"title": "Dena prest",

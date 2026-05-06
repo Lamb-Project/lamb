@@ -1080,7 +1080,7 @@
 		}
 	},
 	"knowledge": {
-		"title": "Conocimiento",
+		"title": "Fuentes de conocimiento",
 		"description": "Gestiona bibliotecas y Almacenes de Conocimiento.",
 		"createKnowledge": "Crear Conocimiento",
 		"wizard": {
@@ -1150,7 +1150,8 @@
 				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
-				"endpointLabel": "Embedding endpoint (optional)"
+				"endpointLabel": "Embedding endpoint (optional)",
+				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización."
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
@@ -1176,7 +1177,8 @@
 				"progressIngestStatus": "Waiting for {name} to finish importing...",
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
-				"progressIngest": "Queuing {n} item(s) for ingestion..."
+				"progressIngest": "Queuing {n} item(s) for ingestion...",
+				"retry": "Reintentar"
 			},
 			"step9": {
 				"title": "Todo listo",

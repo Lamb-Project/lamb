@@ -202,8 +202,8 @@
 		{:else}
 			<div class="flex items-center justify-between">
 				<div>
-					<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:truncate sm:text-3xl">
-						{$_('knowledge.title', { default: 'Knowledge' })}
+					<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:text-3xl">
+						{$_('knowledge.title', { default: 'Sources of Knowledge' })}
 					</h1>
 					<p class="mt-1 text-sm text-gray-500">
 						{#if section === 'knowledge-stores'}

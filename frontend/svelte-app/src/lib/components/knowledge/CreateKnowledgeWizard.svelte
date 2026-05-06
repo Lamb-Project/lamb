@@ -103,7 +103,6 @@
 	const STEP_KS_CONTENT = 4;
 	const STEP_REVIEW = 5;
 	const STEP_DONE = 6;
-	const TOTAL_VISIBLE_STEPS = 5; // Steps 1-5; Done is not counted
 
 	let currentStep = $state(STEP_LIBRARY_SETUP);
 	let wizardState = $state(structuredClone(defaultWizardState));
@@ -169,6 +168,17 @@
 		if (step === STEP_LIBRARY_CONTENT && wizardState.libraryPath === 'existing') {
 			return true;
 		}
+		if (step === STEP_KS_CONTENT) {
+			// Skip when both paths are 'new' and the user queued content in Step 2 —
+			// those uploads will auto-ingest in Review, so the picker is a no-op.
+			if (
+				wizardState.libraryPath === 'new' &&
+				wizardState.ksPath === 'new' &&
+				(wizardState.pendingFiles.length > 0 || wizardState.pendingUrlSources.length > 0)
+			) {
+				return true;
+			}
+		}
 		return false;
 	}
 
@@ -187,8 +197,17 @@
 	}
 
 	// ── Visible step number for progress ────────────────────────────────────
+	// totalVisibleSteps is derived so skipping Step 4 reduces the count.
+	let totalVisibleSteps = $derived.by(() => {
+		let n = 0;
+		for (let i = STEP_LIBRARY_SETUP; i <= STEP_REVIEW; i++) {
+			if (!isStepSkipped(i)) n++;
+		}
+		return n;
+	});
+
 	let visibleStepNumber = $derived.by(() => {
-		if (currentStep > STEP_REVIEW) return TOTAL_VISIBLE_STEPS;
+		if (currentStep > STEP_REVIEW) return totalVisibleSteps;
 		let n = 0;
 		for (let i = STEP_LIBRARY_SETUP; i <= currentStep; i++) {
 			if (!isStepSkipped(i) && i <= STEP_REVIEW) n++;
@@ -353,7 +372,7 @@
 />
 
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+	class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 sm:pt-12"
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="create-knowledge-wizard-title"
@@ -413,7 +432,7 @@
 					<span class="font-medium text-[#2271b3]">
 						{$_('knowledge.wizard.stepProgress', {
 							default: 'Step {n} of {total}',
-							values: { n: visibleStepNumber, total: TOTAL_VISIBLE_STEPS }
+							values: { n: visibleStepNumber, total: totalVisibleSteps }
 						})}
 					</span>
 					<span class="text-gray-300">|</span>
@@ -422,13 +441,13 @@
 				<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
 					<div
 						class="h-full bg-[#2271b3] transition-all"
-						style="width: {(visibleStepNumber / TOTAL_VISIBLE_STEPS) * 100}%"
+						style="width: {(visibleStepNumber / totalVisibleSteps) * 100}%"
 					></div>
 				</div>
 			{/if}
 		</header>
 
-		<div class="flex-1 overflow-y-auto px-6 py-5">
+		<div class="min-h-[480px] flex-1 overflow-y-auto px-6 py-5">
 			{#if currentStep === STEP_LIBRARY_SETUP}
 				<StepLibrarySetup
 					{wizardState}

@@ -90,8 +90,18 @@
 			if (!chunkingStrategy && options.chunking_strategies?.length) {
 				chunkingStrategy = options.chunking_strategies[0].name;
 			}
-			if (!embeddingVendor && options.embedding_vendors?.length) {
-				embeddingVendor = options.embedding_vendors[0].name;
+			// Default to a vendor the org has actually configured. The backend
+			// tags each vendor with `api_key_configured`; vendors without a key
+			// are kept in the list (so the UI can explain the gap) but are not
+			// chosen as the default and the option is shown as disabled below.
+			const enabledVendors = (options.embedding_vendors || []).filter(
+				(/** @type {any} */ v) => v.api_key_configured !== false
+			);
+			const draftVendor = embeddingVendor;
+			const draftIsValid =
+				draftVendor && enabledVendors.some((/** @type {any} */ v) => v.name === draftVendor);
+			if (!draftIsValid) {
+				embeddingVendor = enabledVendors.length > 0 ? enabledVendors[0].name : '';
 			}
 			if (!vectorDb && options.vector_db_backends?.length) {
 				vectorDb = options.vector_db_backends[0].name;
@@ -102,6 +112,18 @@
 			loadingOptions = false;
 		}
 	}
+
+	let enabledVendors = $derived.by(() =>
+		(options.embedding_vendors || []).filter(
+			(/** @type {any} */ v) => v.api_key_configured !== false
+		)
+	);
+
+	let hasNoConfiguredVendor = $derived(
+		!loadingOptions &&
+			(options.embedding_vendors || []).length > 0 &&
+			enabledVendors.length === 0
+	);
 
 	let availableModels = $derived.by(() => {
 		if (!embeddingVendor) return [];
@@ -402,12 +424,23 @@
 							<select
 								id="wizard-ks-vendor"
 								bind:value={embeddingVendor}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+								disabled={hasNoConfiguredVendor}
+								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
 							>
 								{#each options.embedding_vendors ?? [] as v (v.name)}
-									<option value={v.name}>{v.name}</option>
+									<option value={v.name} disabled={v.api_key_configured === false}>
+										{v.name}{v.api_key_configured === false ? ' — not configured' : ''}
+									</option>
 								{/each}
 							</select>
+							{#if hasNoConfiguredVendor}
+								<p class="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+									{$_('knowledge.wizard.step6.noVendorConfigured', {
+										default:
+											'Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.'
+									})}
+								</p>
+							{/if}
 						</div>
 
 						<div>

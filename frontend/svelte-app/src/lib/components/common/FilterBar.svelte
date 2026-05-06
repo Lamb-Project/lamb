@@ -132,7 +132,7 @@
 	<!-- Filter controls -->
 	<div class={collapsible && !isExpanded ? 'hidden sm:block' : 'block'}>
 		<div class="p-4">
-			<div class="flex flex-col gap-4 lg:flex-row">
+			<div class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap">
 				<!-- Search input -->
 				<div class="min-w-0 flex-1">
 					<div class="relative">
@@ -179,7 +179,7 @@
 				</div>
 
 				<!-- Filter dropdowns and sort controls -->
-				<div class="flex flex-wrap items-center gap-2">
+				<div class="flex flex-shrink-0 flex-wrap items-center gap-2">
 					<!-- Filter dropdowns -->
 					{#each filters as filter}
 						<select

@@ -408,6 +408,15 @@ class KnowledgeStoreClient:
                     vendor_name = vendor.get("name")
                     if not vendor_name:
                         continue
+                    # Tag the vendor with whether the org has an API key set —
+                    # the UI uses this to gate the dropdown so users never see
+                    # a vendor their org cannot actually call. ``local`` plugins
+                    # don't need a key and are always available.
+                    try:
+                        api_key = resolver.get_provider_api_key(vendor_name) or ""
+                    except ValueError:
+                        api_key = ""
+                    vendor["api_key_configured"] = bool(api_key) or vendor_name == "local"
                     try:
                         org_endpoint = resolver.get_provider_endpoint(vendor_name) or ""
                     except ValueError:
@@ -422,6 +431,11 @@ class KnowledgeStoreClient:
                     f"Could not override embedding endpoint defaults from org "
                     f"config for {user_email}: {e}"
                 )
+        else:
+            # No user context — leave the field unset; frontend treats absent
+            # as "unknown / show all" so the wizard still works for tests.
+            for vendor in filtered_vendors:
+                vendor.setdefault("api_key_configured", True)
 
         return {
             "vector_db_backends": _filter_names(backends, allowed_backends),

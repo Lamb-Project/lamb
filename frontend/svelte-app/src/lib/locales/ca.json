@@ -1080,7 +1080,7 @@
 		}
 	},
 	"knowledge": {
-		"title": "Coneixement",
+		"title": "Fonts de coneixement",
 		"description": "Gestiona biblioteques i Magatzems de Coneixement.",
 		"createKnowledge": "Crear Coneixement",
 		"wizard": {
@@ -1150,7 +1150,8 @@
 				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
-				"endpointLabel": "Embedding endpoint (optional)"
+				"endpointLabel": "Embedding endpoint (optional)",
+				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització."
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
@@ -1176,7 +1177,8 @@
 				"progressIngestStatus": "Waiting for {name} to finish importing...",
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
-				"progressIngest": "Queuing {n} item(s) for ingestion..."
+				"progressIngest": "Queuing {n} item(s) for ingestion...",
+				"retry": "Torna a intentar"
 			},
 			"step9": {
 				"title": "Tot llest",
