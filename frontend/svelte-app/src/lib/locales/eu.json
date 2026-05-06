@@ -65,14 +65,14 @@
 		"confirmDelete": "Ziur zaude laguntzaile hau ezabatu nahi duzula?",
 		"created": "Sortua",
 		"id": "ID",
-		"published": "Argitaratua",
-		"notPublished": "Ez Argitaratua",
+		"published": "Argitaratuta",
+		"notPublished": "Argitaratu gabe",
 		"configuration": "Konfigurazioa",
 		"promptProcessor": "Prompt Prozesatzailea",
 		"connector": "Konektorea",
 		"llm": "LLM",
 		"ragProcessor": "RAG Prozesatzailea",
-		"noDescription": "Deskripziorik gabe",
+		"noDescription": "Deskribapenik gabe",
 		"showing": "Erakusten",
 		"to": "tik",
 		"of": "ra",
@@ -113,15 +113,15 @@
 		"ltiKey": "LTI Gakoa",
 		"ltiSecret": "LTI Sekretua",
 		"publishModal": {
-			"title": "Laguntzailea Argitaratu",
-			"groupName": "Taldearen Izena",
-			"oauthConsumer": "OAuth Kontsumitzailearen Izena",
+			"title": "Argitaratu Laguntzailea",
+			"groupName": "Talde Izena",
+			"oauthConsumer": "OAuth Kontsumitzaile Izena",
 			"publish": "Argitaratu",
-			"success": "Laguntzailea ongi argitaratu da!",
-			"publishing": "Argitaratzen...",
 			"cancel": "Utzi",
 			"groupNamePlaceholder": "adib., laguntzaile_123",
-			"oauthConsumerPlaceholder": "adib., 123_consumer"
+			"oauthConsumerPlaceholder": "adib., 123_consumer",
+			"publishing": "Argitaratzen...",
+			"success": "Laguntzailea behar bezala argitaratu da!"
 		},
 		"publish": "Argitaratu",
 		"unpublish": "Argitaratzea kendu",
@@ -197,23 +197,7 @@
 			"filePath": "Fitxategi Bidea",
 			"ragTopK": "Top-k Emaitzak"
 		},
-		"published": "Argitaratuta",
-		"notPublished": "Argitaratu gabe",
-		"loading": "Laguntzaileak kargatzen...",
 		"noAssistantsFound": "Ez da laguntzailerik aurkitu.",
-		"confirmDelete": "Ziur zaude laguntzaile hau ezabatu nahi duzula?",
-		"noDescription": "Deskribapenik gabe",
-		"publishModal": {
-			"title": "Argitaratu Laguntzailea",
-			"groupName": "Talde Izena",
-			"oauthConsumer": "OAuth Kontsumitzaile Izena",
-			"publish": "Argitaratu",
-			"cancel": "Utzi",
-			"groupNamePlaceholder": "adib., laguntzaile_123",
-			"oauthConsumerPlaceholder": "adib., 123_consumer",
-			"publishing": "Argitaratzen...",
-			"success": "Laguntzailea behar bezala argitaratu da!"
-		},
 		"editAssistant": "Editatu Laguntzailea",
 		"cloneAssistant": "Klonatu Laguntzailea",
 		"deleteAssistant": "Ezabatu Laguntzailea",
@@ -306,12 +290,10 @@
 		}
 	},
 	"help": {
-		"title": "Laguntza",
-		"askQuestion": "Galdera bat egin",
-		"send": "Bidali",
-		"close": "Itxi",
 		"title": "LAMB Laguntza",
-		"askQuestion": "Galdetu LAMBi edozer..."
+		"askQuestion": "Galdetu LAMBi edozer...",
+		"send": "Bidali",
+		"close": "Itxi"
 	},
 	"common": {
 		"loading": "Kargatzen...",
@@ -331,7 +313,41 @@
 		"refresh": "Eguneratu",
 		"publicate": "Argitaratu",
 		"export": "Esportatu",
-		"exporting": "Esportatzen..."
+		"exporting": "Esportatzen...",
+		"retry": "Berriro saiatu"
+	},
+	"list": {
+		"searchPlaceholder": "Bilatu...",
+		"clearAll": "Dena garbitu",
+		"noResults": "Ez dago elementurik iragazkiekin bat datorrenik.",
+		"noItems": "Oraindik ez dago elementurik.",
+		"errorTitle": "Kargatzean errorea",
+		"retry": "Berriro saiatu",
+		"moreActions": "Ekintza gehiago",
+		"filters": {
+			"sharing": "Partekatu",
+			"my": "Nirea",
+			"shared": "Partekatua",
+			"hasItems": "Elementuak ditu",
+			"withItems": "Elementuekin",
+			"empty": "Hutsa",
+			"created": "Sortua",
+			"today": "Gaur",
+			"thisWeek": "Aste honetan",
+			"thisMonth": "Hilabete honetan",
+			"embedding": "Txertaketa",
+			"local": "Lokala",
+			"chunking": "Zatiketa",
+			"chunkingSimple": "Sinplea",
+			"chunkingHierarchical": "Hierarkikoa",
+			"chunkingByPage": "Orrialdeka",
+			"chunkingBySection": "Atalka",
+			"content": "Edukia",
+			"hasContent": "Edukia du"
+		}
+	},
+	"table": {
+		"resetColumns": "Zutabeak berrezarri"
 	},
 	"knowledgeBases": {
 		"title": "Ezagutza Baseak",
@@ -882,6 +898,9 @@
 		"myLibraries": "Nire Liburutegiak",
 		"sharedLibraries": "Partekatuak",
 		"createNew": "Liburutegi Berria",
+		"createNewTitle": "Liburutegi berri bat sortu eta, aukeran, Ezagutza-biltegia gehitu",
+		"createWithKS": "Sortu Ezagutza-biltegiarekin →",
+		"createWithKSTitle": "Liburutegi berri bat eta Ezagutza-biltegia urrats bakarrean sortu",
 		"loading": "Liburutegiak kargatzen...",
 		"loginRequired": "Saioa hasi behar duzu liburutegiak ikusteko.",
 		"noOwned": "Ez duzu liburutegirik. Sortu bat hasteko!",
@@ -927,7 +946,9 @@
 		"sharing": {
 			"label": "Partekatzea",
 			"shared": "Partekatua",
-			"private": "Pribatua"
+			"private": "Pribatua",
+			"share": "Partekatu",
+			"makePrivate": "Pribatu egin"
 		},
 		"createModal": {
 			"title": "Liburutegia Sortu",
@@ -975,6 +996,8 @@
 		"loginRequired": "Saioa hasi behar duzu Ezagutza-biltegiak ikusteko.",
 		"myStores": "Nire Ezagutza-biltegiak",
 		"sharedStores": "Partekatuak",
+		"createNew": "Ezagutza-biltegia Berria",
+		"createNewTitle": "Sortu Ezagutza-biltegia lehendik dagoen liburutegiko edukitik",
 		"noOwned": "Oraindik ez duzu Ezagutza-biltegirik. Sortu bat liburutegiko edukia indexatzen hasteko.",
 		"noShared": "Ez dago partekatutako Ezagutza-biltegirik eskuragarri.",
 		"noResults": "Ez da Ezagutza-biltegirik aurkitu zure bilaketarekin.",
@@ -1022,7 +1045,9 @@
 		"sharing": {
 			"label": "Partekatzea",
 			"shared": "Partekatua",
-			"private": "Pribatua"
+			"private": "Pribatua",
+			"share": "Partekatu",
+			"makePrivate": "Pribatu egin"
 		},
 		"permalinks": {
 			"original": "Iturria",
@@ -1068,7 +1093,10 @@
 			"abort": "Bertan behera utzi",
 			"useExisting": "Erabili lehendik dagoen bat",
 			"createNew": "Sortu berri bat",
-			"lockedConfigNotice": "Ezarpen hauek sortzean blokeatzen dira eta ezin dira gero aldatu.",
+			"lockedConfigNotice": {
+				"title": "Ezarpen hauek ezin dira geroago aldatu.",
+				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat."
+			},
 			"editDefaults": "Lehenetsiak editatu",
 			"progress": "{current}. urratsa, {total}etik",
 			"step0": {
@@ -1114,12 +1142,15 @@
 				"sharedLabel": "Erakundearekin partekatu"
 			},
 			"step6": {
-				"title": "Ezagutza-biltegiaren konfigurazioa",
-				"description": "Aukera hauek zatiketa eta embedding kontrolatzen dituzte. Sortu ondoren BLOKEATUTA daude.",
-				"chunkingLabel": "Zatiketa-estrategia",
-				"vectorDbLabel": "Vector DB backend-a",
-				"embeddingVendorLabel": "Embedding hornitzailea",
-				"embeddingModelLabel": "Embedding eredua"
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
+				"chunkingLabel": "Chunking strategy",
+				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
+				"vendorLabel": "Embedding vendor",
+				"modelLabel": "Embedding model",
+				"endpointLabel": "Embedding endpoint (optional)"
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
@@ -1127,13 +1158,25 @@
 				"allItems": "Elementu guztiak"
 			},
 			"step8": {
-				"title": "Berrikusi eta sortu",
-				"description": "Berrikusi zure aukerak behean. Egin klik Sortu botoian jarraitzeko.",
-				"libraryHeading": "Liburutegia",
-				"ksHeading": "Ezagutza-biltegia",
-				"itemsHeading": "Ingeritzeko elementuak",
-				"submit": "Sortu",
-				"submitting": "Sortzen..."
+				"title": "Review & create",
+				"description": "Review your choices below. Click Create to proceed.",
+				"libraryHeading": "Library",
+				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
+				"submit": "Create",
+				"submitting": "Creating...",
+				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
+				"libraryFileCount": "{n} file(s) to upload",
+				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
+				"progressLibrary": "Creating library...",
+				"progressUpload": "Uploading {name} ({n}/{total})...",
+				"progressIngestStatus": "Waiting for {name} to finish importing...",
+				"progressImportUrl": "Importing {url} ({n}/{total})...",
+				"progressKS": "Creating Knowledge Store...",
+				"progressIngest": "Queuing {n} item(s) for ingestion..."
 			},
 			"step9": {
 				"title": "Dena prest",
@@ -1142,6 +1185,70 @@
 				"openKs": "Ezagutza-biltegia ireki",
 				"openLibrary": "Liburutegia ireki",
 				"createAnother": "Beste bat sortu"
+			},
+			"stepProgress": "{n}. urratsa {total}etik",
+			"creating": "Sortzen...",
+			"draft": {
+				"banner": "Bukaeratu gabeko zirriborro bat duzu {time}tik.",
+				"resume": "Jarraitu",
+				"discard": "Baztertu",
+				"savePrompt": {
+					"title": "Zirriborro gisa gorde?",
+					"body": "Zure aurrerapena gordeta egongo da saioa edo fitxa itxi arte.",
+					"save": "Zirriborroa gorde"
+				}
+			},
+			"libraryStep": {
+				"title": "Liburutegiaren konfigurazioa",
+				"heading": "Liburutegia",
+				"description": "Hautatu lehendik dagoen Liburutegi bat edo sortu berri bat. Knowledge Store bat beti Liburutegi batetik elikatzen da.",
+				"legend": "Liburutegi bidea",
+				"createNewHint": "Hasi Liburutegi berri bat eta inportatu dokumentuak.",
+				"useExistingHint": "Hautatu dagoeneko duzun Liburutegi bat eta jauzi egin Knowledge Store urratsetara.",
+				"noLibraries": "Ez dago liburutegirik. Hautatu \"Berria sortu\".",
+				"selectLabel": "Liburutegia",
+				"nameRequired": "Izena beharrezkoa da",
+				"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu",
+				"shareLabel": "Partekatu nire erakundearekin",
+				"shareHint": "Geroago alda dezakezu Liburutegiaren xehetasun ikuspegitik.",
+				"advancedLabel": "Aurreratua: inportazio plugina eta parametroak",
+				"noPlugins": "Ez dago inportazio pluginik.",
+				"pluginLabel": "Inportazio plugina",
+				"pluginNote": "Plugin bakoitzeko parametroak geroago pertsonaliza daitezke liburutegiaren xehetasun ikuspegitik."
+			},
+			"libraryContent": {
+				"title": "Liburutegiaren edukia",
+				"heading": "Hasierako edukia",
+				"description": "Gehitu edukia zure Liburutegi berriari orain (aukerakoa). Edukia geroago ere gehi dezakezu.",
+				"sourceTypeFiles": "Fitxategiak",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Fitxategiak hautatu",
+				"invalidUrl": "HTTP(S) URL baliodun bat behar da.",
+				"invalidYoutubeUrl": "YouTube URL baliodun bat behar da.",
+				"titleOptional": "Izenburua (aukerakoa)",
+				"youtubeUrl": "YouTube URL",
+				"ytLanguage": "Transkripzioaren hizkuntza",
+				"addUrl": "+ URL gehitu",
+				"addYouTube": "+ YouTube gehitu",
+				"queuedLabel": "Iturri ilarakoak",
+				"uploadNote": "Edukia inportatuko da \"Sortu\" sakatzean Berrikuspena urratsean.",
+				"emptyHint": "Ez dago iturririk ilaran. Urrats hau saltatu dezakezu."
+			},
+			"ksStep": {
+				"title": "Knowledge Store konfigurazioa",
+				"heading": "Knowledge Store",
+				"description": "Hautatu lehendik dagoen Knowledge Store bat edo sortu berri bat. Lehendik dauden Knowledge Store-ek beren jatorrizko konfigurazioa mantentzen dute.",
+				"legend": "Knowledge Store bidea",
+				"createNewHint": "Konfiguratu Knowledge Store berri bat zatiketa eta txertaketa ezarpenekin.",
+				"useExistingHint": "Hautatu dagoeneko sortutako Knowledge Store bat eta ingestatu eduki gehiago.",
+				"noStores": "Ez dago Knowledge Store-rik. Hautatu \"Berria sortu\".",
+				"selectLabel": "Knowledge Store",
+				"nameRequired": "Izena beharrezkoa da",
+				"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu",
+				"shareLabel": "Partekatu nire erakundearekin",
+				"shareHint": "Geroago alda dezakezu Knowledge Store xehetasun ikuspegitik.",
+				"advancedLabel": "Aurreratua: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala"
 			}
 		}
 	}

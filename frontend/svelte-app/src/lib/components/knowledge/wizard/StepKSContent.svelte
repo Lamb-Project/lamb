@@ -1,13 +1,14 @@
 <!--
-  @component Step7_PickItems
+  @component StepKSContent
+  Step 4 of the 5-step wizard (renamed from Step7_PickItems).
   Multi-select picker over the chosen library's "ready" items. ALL items
   are pre-selected by default. Skippable.
 
   Note: when a NEW library is being created, files have been collected in
-  Step 3 but not yet uploaded — those uploads happen in Step 8. So in the
-  new-library path, this list will only show pre-existing items in the
+  Step 2 but not yet uploaded — those uploads happen in Step 5 (Review).
+  So in the new-library path, this list will only show pre-existing items in the
   library if any exist (typically empty for a fresh library). The freshly
-  uploaded items will be picked up automatically in Step 8.
+  uploaded items will be picked up automatically in the Review step.
 
   Emits:
     - update: { selectedItemIds }
@@ -97,11 +98,14 @@
 					'You are creating a new Library. Any files you added in the previous step will be uploaded and automatically queued for ingestion when you click "Create".'
 			})}
 		</div>
-		{#if (wizardState.pendingFiles ?? []).length > 0}
+		{#if (wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length > 0}
 			<div class="text-sm text-gray-700">
 				{$_('knowledge.wizard.step7.pendingCount', {
-					default: '{n} file(s) ready to upload',
-					values: { n: wizardState.pendingFiles.length }
+					default: '{n} source(s) ready to import',
+					values: {
+						n:
+							(wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length
+					}
 				})}
 			</div>
 		{/if}

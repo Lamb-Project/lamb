@@ -163,29 +163,47 @@ export function paginateItems(items, page, itemsPerPage) {
 }
 
 /**
+ * Apply multiple predicate functions to filter an array.
+ * All predicates must return true for an item to be included (AND logic).
+ * Backward compatible: if predicates is empty or not an array, returns items unchanged.
+ *
+ * @param {Array} items - Array to filter
+ * @param {Array<function>} predicates - Array of predicate functions (item) => boolean
+ * @returns {Array} Filtered items
+ *
+ * @example
+ * filterByPredicates(libraries, [
+ *   item => item.is_owner !== false,
+ *   item => (item.item_count ?? 0) > 0,
+ * ])
+ */
+export function filterByPredicates(items, predicates) {
+	if (!predicates || !Array.isArray(predicates) || predicates.length === 0) {
+		return items;
+	}
+	return items.filter((item) => predicates.every((p) => p(item)));
+}
+
+/**
  * Apply all filters, sorting, and pagination to an array
  * This is the main function that combines all operations in the correct order:
  * 1. Filter by search
- * 2. Filter by filters
- * 3. Sort
- * 4. Paginate
+ * 2. Filter by filters (key-value map)
+ * 3. Filter by predicates (array of functions — composable, combinable)
+ * 4. Sort
+ * 5. Paginate
  *
- * @param {Array} items - Original items array
- * @param {Object} options - Processing options
- * @param {string} [options.search=''] - Search term
- * @param {Array<string>} [options.searchFields=[]] - Fields to search in
- * @param {Record<string, any>} [options.filters={}] - Filter criteria
- * @param {string} [options.sortBy=''] - Field to sort by
- * @param {'asc'|'desc'} [options.sortOrder='asc'] - Sort order
- * @param {number} [options.page=1] - Current page (1-indexed)
- * @param {number} [options.itemsPerPage=10] - Items per page
- * @returns {Object} Processed results with metadata
+ * @template T
+ * @param {T[]} items - Original items array
+ * @param {{ search?: string, searchFields?: string[], filters?: Record<string, any>, predicates?: ((item: T) => boolean)[], sortBy?: string, sortOrder?: 'asc'|'desc', page?: number, itemsPerPage?: number }} [options] - Processing options
+ * @returns {{ items: T[], totalItems: number, totalPages: number, filteredCount: number, originalCount: number, currentPage: number }} Processed results with metadata
  *
  * @example
  * processListData(users, {
  *   search: "john",
  *   searchFields: ["name", "email"],
  *   filters: { role: "admin" },
+ *   predicates: [item => item.is_shared],
  *   sortBy: "name",
  *   sortOrder: "asc",
  *   page: 1,
@@ -205,6 +223,7 @@ export function processListData(items, options = {}) {
 		search = '',
 		searchFields = [],
 		filters = {},
+		predicates = [],
 		sortBy = '',
 		sortOrder = 'asc',
 		page = 1,
@@ -219,7 +238,8 @@ export function processListData(items, options = {}) {
 			totalItems: 0,
 			totalPages: 0,
 			filteredCount: 0,
-			originalCount: 0
+			originalCount: 0,
+			currentPage: 1
 		};
 	}
 
@@ -228,20 +248,23 @@ export function processListData(items, options = {}) {
 	// Step 1: Filter by search
 	let filtered = filterBySearch(items, search, searchFields);
 
-	// Step 2: Filter by filters
+	// Step 2: Filter by filters (key-value map)
 	filtered = filterByFilters(filtered, filters);
 
-	// Step 3: Sort
+	// Step 3: Filter by predicates (composable functions)
+	filtered = filterByPredicates(filtered, predicates);
+
+	// Step 4: Sort
 	const sorted = sortItems(filtered, sortBy, sortOrder);
 
-	// Step 4: Calculate pagination metadata
+	// Step 5: Calculate pagination metadata
 	const filteredCount = sorted.length;
 	const totalPages = Math.ceil(filteredCount / itemsPerPage) || 1;
 
 	// Ensure page is within bounds
 	const safePage = Math.max(1, Math.min(page, totalPages));
 
-	// Step 5: Paginate
+	// Step 6: Paginate
 	const paginated = paginateItems(sorted, safePage, itemsPerPage);
 
 	return {

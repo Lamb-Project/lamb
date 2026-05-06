@@ -13,23 +13,19 @@
 		"name": "Nom",
 		"secretKey": "Clau Secreta",
 		"forgotPassword": "Ha oblidat la contrasenya?",
-		"noAccount": "No té un compte?",
+		"noAccount": "No tens compte?",
 		"alreadyAccount": "Ja té un compte?",
-		"loginSuccess": "Inici de sessió exitós!",
+		"loginSuccess": "Inici de sessió correcte!",
 		"loginError": "Error a l'iniciar sessió. Si us plau, verifiqui les seves credencials.",
-		"signupSuccess": "Compte creat amb èxit!",
+		"signupSuccess": "Registre correcte! Si us plau, inicia sessió.",
 		"signupError": "Error al registrar-se. Si us plau, intenti-ho de nou.",
-		"logout": "Tancar Sessió",
+		"logout": "Tancar sessió",
 		"loginTitle": "Iniciar sessió",
 		"signupTitle": "Registrar-se",
 		"secretKeyHint": "Necessites una clau secreta per registrar-te",
 		"loginButton": "Iniciar sessió",
 		"signupButton": "Registrar-se",
-		"logout": "Tancar sessió",
 		"loading": "Carregant...",
-		"loginSuccess": "Inici de sessió correcte!",
-		"signupSuccess": "Registre correcte! Si us plau, inicia sessió.",
-		"noAccount": "No tens compte?",
 		"haveAccount": "Ja tens compte?",
 		"signupLink": "Registra't",
 		"loginLink": "Inicia sessió"
@@ -279,12 +275,7 @@
 			"filePath": "Ruta de Fitxer",
 			"ragTopK": "Resultats Top-k"
 		},
-		"published": "Publicat",
-		"notPublished": "No Publicat",
-		"loading": "Carregant assistents...",
 		"noAssistantsFound": "No s'han trobat assistents.",
-		"confirmDelete": "Estàs segur que vols eliminar aquest assistent?",
-		"noDescription": "Sense descripció",
 		"editAssistant": "Editar Assistent",
 		"cloneAssistant": "Clonar Assistent",
 		"deleteAssistant": "Eliminar Assistent",
@@ -299,12 +290,10 @@
 		"notSet": "No establert"
 	},
 	"help": {
-		"title": "Ajuda",
-		"askQuestion": "Fer una pregunta",
-		"send": "Enviar",
-		"close": "Tancar",
 		"title": "Ajuda LAMB",
-		"askQuestion": "Pregunta a LAMB el que vulguis..."
+		"askQuestion": "Pregunta a LAMB el que vulguis...",
+		"send": "Enviar",
+		"close": "Tancar"
 	},
 	"common": {
 		"loading": "Carregant...",
@@ -324,7 +313,41 @@
 		"refresh": "Actualitzar",
 		"publicate": "Publicar",
 		"export": "Exportar",
-		"exporting": "Exportant..."
+		"exporting": "Exportant...",
+		"retry": "Tornar a intentar"
+	},
+	"list": {
+		"searchPlaceholder": "Cerca...",
+		"clearAll": "Esborrar tot",
+		"noResults": "Cap element coincideix amb els filtres.",
+		"noItems": "Encara no hi ha elements.",
+		"errorTitle": "Error en carregar",
+		"retry": "Tornar a intentar",
+		"moreActions": "Més accions",
+		"filters": {
+			"sharing": "Compartit",
+			"my": "Meu",
+			"shared": "Compartit",
+			"hasItems": "Té elements",
+			"withItems": "Amb elements",
+			"empty": "Buit",
+			"created": "Creat",
+			"today": "Avui",
+			"thisWeek": "Aquesta setmana",
+			"thisMonth": "Aquest mes",
+			"embedding": "Embedding",
+			"local": "Local",
+			"chunking": "Fragmentació",
+			"chunkingSimple": "Simple",
+			"chunkingHierarchical": "Jeràrquic",
+			"chunkingByPage": "Per pàgina",
+			"chunkingBySection": "Per secció",
+			"content": "Contingut",
+			"hasContent": "Té contingut"
+		}
+	},
+	"table": {
+		"resetColumns": "Restablir columnes"
 	},
 	"knowledgeBases": {
 		"title": "Bases de Coneixement",
@@ -875,6 +898,9 @@
 		"myLibraries": "Les meves Biblioteques",
 		"sharedLibraries": "Compartides",
 		"createNew": "Nova Biblioteca",
+		"createNewTitle": "Crea una nova Biblioteca i, opcionalment, un Magatzem de Coneixement",
+		"createWithKS": "Crea amb Magatzem de Coneixement →",
+		"createWithKSTitle": "Crea una nova Biblioteca i adjunta un Magatzem de Coneixement en un sol pas",
 		"loading": "Carregant biblioteques...",
 		"loginRequired": "Has d'iniciar sessió per veure les biblioteques.",
 		"noOwned": "No tens biblioteques. Crea'n una per començar!",
@@ -920,7 +946,9 @@
 		"sharing": {
 			"label": "Compartir",
 			"shared": "Compartida",
-			"private": "Privada"
+			"private": "Privada",
+			"share": "Compartir",
+			"makePrivate": "Fer privada"
 		},
 		"createModal": {
 			"title": "Crear Biblioteca",
@@ -968,6 +996,8 @@
 		"loginRequired": "Has d'iniciar sessió per veure els Magatzems de Coneixement.",
 		"myStores": "Els meus Magatzems de Coneixement",
 		"sharedStores": "Compartits",
+		"createNew": "Nou Magatzem de Coneixement",
+		"createNewTitle": "Crea un Magatzem de Coneixement a partir del contingut d'una biblioteca existent",
 		"noOwned": "Encara no tens Magatzems de Coneixement. Crea'n un per començar a indexar contingut de la biblioteca.",
 		"noShared": "No hi ha Magatzems de Coneixement compartits disponibles.",
 		"noResults": "Cap Magatzem de Coneixement coincideix amb la teva cerca.",
@@ -1015,7 +1045,9 @@
 		"sharing": {
 			"label": "Compartir",
 			"shared": "Compartit",
-			"private": "Privat"
+			"private": "Privat",
+			"share": "Compartir",
+			"makePrivate": "Fer privat"
 		},
 		"permalinks": {
 			"original": "Font",
@@ -1061,7 +1093,10 @@
 			"abort": "Avortar",
 			"useExisting": "Utilitzar un d'existent",
 			"createNew": "Crear-ne un de nou",
-			"lockedConfigNotice": "Aquesta configuració es fixa en crear i no es podrà canviar més tard.",
+			"lockedConfigNotice": {
+				"title": "Aquests ajustos no es poden canviar més tard.",
+				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge."
+			},
 			"editDefaults": "Editar valors per defecte",
 			"progress": "Pas {current} de {total}",
 			"step0": {
@@ -1107,12 +1142,15 @@
 				"sharedLabel": "Compartir amb l'organització"
 			},
 			"step6": {
-				"title": "Configuració del Magatzem de Coneixement",
-				"description": "Aquestes opcions controlen la fragmentació i l'embedding. Queden BLOQUEJADES després de la creació.",
-				"chunkingLabel": "Estratègia de fragmentació",
-				"vectorDbLabel": "Backend de Vector DB",
-				"embeddingVendorLabel": "Proveïdor d'embedding",
-				"embeddingModelLabel": "Model d'embedding"
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
+				"chunkingLabel": "Chunking strategy",
+				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
+				"vendorLabel": "Embedding vendor",
+				"modelLabel": "Embedding model",
+				"endpointLabel": "Embedding endpoint (optional)"
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
@@ -1120,13 +1158,25 @@
 				"allItems": "Tots els elements"
 			},
 			"step8": {
-				"title": "Revisar i crear",
-				"description": "Revisa les teves opcions a continuació. Fes clic a Crear per continuar.",
-				"libraryHeading": "Biblioteca",
-				"ksHeading": "Magatzem de Coneixement",
-				"itemsHeading": "Elements a ingerir",
-				"submit": "Crear",
-				"submitting": "Creant..."
+				"title": "Review & create",
+				"description": "Review your choices below. Click Create to proceed.",
+				"libraryHeading": "Library",
+				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
+				"submit": "Create",
+				"submitting": "Creating...",
+				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
+				"libraryFileCount": "{n} file(s) to upload",
+				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
+				"progressLibrary": "Creating library...",
+				"progressUpload": "Uploading {name} ({n}/{total})...",
+				"progressIngestStatus": "Waiting for {name} to finish importing...",
+				"progressImportUrl": "Importing {url} ({n}/{total})...",
+				"progressKS": "Creating Knowledge Store...",
+				"progressIngest": "Queuing {n} item(s) for ingestion..."
 			},
 			"step9": {
 				"title": "Tot llest",
@@ -1135,6 +1185,70 @@
 				"openKs": "Obrir Magatzem de Coneixement",
 				"openLibrary": "Obrir Biblioteca",
 				"createAnother": "Crear-ne un altre"
+			},
+			"stepProgress": "Pas {n} de {total}",
+			"creating": "Creant...",
+			"draft": {
+				"banner": "Tens un esborrany sense acabar de {time}.",
+				"resume": "Reprendre",
+				"discard": "Descartar",
+				"savePrompt": {
+					"title": "Desar com a esborrany?",
+					"body": "El teu progrés es guardarà fins que tanquis la sessió o la pestanya.",
+					"save": "Desar esborrany"
+				}
+			},
+			"libraryStep": {
+				"title": "Configuració de Biblioteca",
+				"heading": "Biblioteca",
+				"description": "Tria una Biblioteca existent o crea'n una de nova. Un Emmagatzematge de Coneixement sempre s'alimenta d'una Biblioteca.",
+				"legend": "Camí de Biblioteca",
+				"createNewHint": "Comença una Biblioteca nova i importa documents.",
+				"useExistingHint": "Tria una Biblioteca que ja tinguis i salta als passos de l'Emmagatzematge de Coneixement.",
+				"noLibraries": "No hi ha biblioteques disponibles. Tria \"Crear nova\".",
+				"selectLabel": "Biblioteca",
+				"nameRequired": "El nom és obligatori",
+				"nameTooLong": "El nom ha de tenir menys de 100 caràcters",
+				"shareLabel": "Compartir amb la meva organització",
+				"shareHint": "Ho pots canviar més tard des de la vista de detall de la Biblioteca.",
+				"advancedLabel": "Avançat: complement d'importació i paràmetres",
+				"noPlugins": "No hi ha complements d'importació disponibles.",
+				"pluginLabel": "Complement d'importació",
+				"pluginNote": "Els paràmetres per complement es poden personalitzar més tard des de la vista de detall de la biblioteca."
+			},
+			"libraryContent": {
+				"title": "Contingut de Biblioteca",
+				"heading": "Contingut inicial",
+				"description": "Afegeix contingut a la teva nova Biblioteca ara (opcional). També pots ometre-ho i afegir contingut més tard.",
+				"sourceTypeFiles": "Fitxers",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Seleccionar fitxers",
+				"invalidUrl": "Es requereix una URL HTTP(S) vàlida.",
+				"invalidYoutubeUrl": "Es requereix una URL de YouTube vàlida.",
+				"titleOptional": "Títol (opcional)",
+				"youtubeUrl": "URL de YouTube",
+				"ytLanguage": "Idioma de la transcripció",
+				"addUrl": "+ Afegir URL",
+				"addYouTube": "+ Afegir YouTube",
+				"queuedLabel": "Fonts a la cua",
+				"uploadNote": "El contingut s'importarà quan facis clic a \"Crear\" al pas de Revisió.",
+				"emptyHint": "No hi ha contingut a la cua. Pots ometre aquest pas."
+			},
+			"ksStep": {
+				"title": "Configuració d'Emmagatzematge de Coneixement",
+				"heading": "Emmagatzematge de Coneixement",
+				"description": "Tria un Emmagatzematge de Coneixement existent o crea'n un de nou. Els emmagatzematges existents conserven la seva configuració de fragmentació i embeddings original.",
+				"legend": "Camí d'Emmagatzematge de Coneixement",
+				"createNewHint": "Configura un nou Emmagatzematge de Coneixement amb ajustos de fragmentació i embeddings.",
+				"useExistingHint": "Tria un Emmagatzematge de Coneixement ja creat i ingereix més contingut.",
+				"noStores": "No hi ha Emmagatzematges de Coneixement disponibles. Tria \"Crear nou\".",
+				"selectLabel": "Emmagatzematge de Coneixement",
+				"nameRequired": "El nom és obligatori",
+				"nameTooLong": "El nom ha de tenir menys de 100 caràcters",
+				"shareLabel": "Compartir amb la meva organització",
+				"shareHint": "Ho pots canviar més tard des de la vista de detall de l'Emmagatzematge de Coneixement.",
+				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embeddings, base de dades vectorial"
 			}
 		}
 	}

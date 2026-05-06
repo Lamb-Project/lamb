@@ -197,12 +197,7 @@
 			"filePath": "File Path",
 			"ragTopK": "Top-k Results"
 		},
-		"published": "Published",
-		"notPublished": "Not Published",
-		"loading": "Loading assistants...",
 		"noAssistantsFound": "No assistants found.",
-		"confirmDelete": "Are you sure you want to delete this assistant?",
-		"noDescription": "No description provided",
 		"editAssistant": "Edit Assistant",
 		"cloneAssistant": "Clone Assistant",
 		"deleteAssistant": "Delete Assistant",
@@ -295,16 +290,14 @@
 		}
 	},
 	"help": {
-		"title": "Help",
-		"askQuestion": "Ask a question",
-		"send": "Send",
-		"close": "Close",
 		"title": "LAMB Help",
-		"askQuestion": "Ask LAMB anything..."
+		"askQuestion": "Ask LAMB anything...",
+		"send": "Send",
+		"close": "Close"
 	},
 	"common": {
 		"loading": "Loading...",
-		"error": "An error occurred",
+		"error": "Error",
 		"success": "Success!",
 		"cancel": "Cancel",
 		"save": "Save",
@@ -315,13 +308,46 @@
 		"publishing": "Publishing",
 		"published": "Published",
 		"notPublished": "Not Published",
-		"error": "Error",
 		"selectOption": "-- Select --",
 		"notSet": "Not set",
 		"refresh": "Refresh",
 		"publicate": "Publish",
 		"export": "Export",
-		"exporting": "Exporting..."
+		"exporting": "Exporting...",
+		"retry": "Retry"
+	},
+	"list": {
+		"searchPlaceholder": "Search...",
+		"clearAll": "Clear all",
+		"noResults": "No items match your filters.",
+		"noItems": "No items yet.",
+		"errorTitle": "Failed to load",
+		"retry": "Retry",
+		"moreActions": "More actions",
+		"filters": {
+			"sharing": "Sharing",
+			"my": "Mine",
+			"shared": "Shared",
+			"hasItems": "Has items",
+			"withItems": "With items",
+			"empty": "Empty",
+			"created": "Created",
+			"today": "Today",
+			"thisWeek": "This week",
+			"thisMonth": "This month",
+			"embedding": "Embedding",
+			"local": "Local",
+			"chunking": "Chunking",
+			"chunkingSimple": "Simple",
+			"chunkingHierarchical": "Hierarchical",
+			"chunkingByPage": "By page",
+			"chunkingBySection": "By section",
+			"content": "Content",
+			"hasContent": "Has content"
+		}
+	},
+	"table": {
+		"resetColumns": "Reset columns"
 	},
 	"knowledgeBases": {
 		"title": "Knowledge Bases",
@@ -872,6 +898,9 @@
 		"myLibraries": "My Libraries",
 		"sharedLibraries": "Shared",
 		"createNew": "New Library",
+		"createNewTitle": "Create a new Library and optionally a Knowledge Store from it",
+		"createWithKS": "Create with Knowledge Store →",
+		"createWithKSTitle": "Create a new Library and attach a Knowledge Store in one step",
 		"loading": "Loading libraries...",
 		"loginRequired": "You must be logged in to view libraries.",
 		"noOwned": "You have no libraries yet. Create one to get started!",
@@ -917,7 +946,9 @@
 		"sharing": {
 			"label": "Sharing",
 			"shared": "Shared",
-			"private": "Private"
+			"private": "Private",
+			"share": "Share",
+			"makePrivate": "Make private"
 		},
 		"createModal": {
 			"title": "Create Library",
@@ -965,6 +996,8 @@
 		"loginRequired": "You must be logged in to view Knowledge Stores.",
 		"myStores": "My Knowledge Stores",
 		"sharedStores": "Shared",
+		"createNew": "New Knowledge Store",
+		"createNewTitle": "Create a Knowledge Store from existing library content",
 		"noOwned": "You have no Knowledge Stores yet. Create one to start indexing library content.",
 		"noShared": "No shared Knowledge Stores available.",
 		"noResults": "No Knowledge Stores match your search.",
@@ -1012,7 +1045,9 @@
 		"sharing": {
 			"label": "Sharing",
 			"shared": "Shared",
-			"private": "Private"
+			"private": "Private",
+			"share": "Share",
+			"makePrivate": "Make private"
 		},
 		"permalinks": {
 			"original": "Source",
@@ -1058,7 +1093,10 @@
 			"abort": "Abort",
 			"useExisting": "Use an existing",
 			"createNew": "Create new",
-			"lockedConfigNotice": "These settings are locked at creation and cannot be changed later.",
+			"lockedConfigNotice": {
+				"title": "These settings cannot be changed later.",
+				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store."
+			},
 			"editDefaults": "Edit defaults",
 			"progress": "Step {current} of {total}",
 			"step0": {
@@ -1109,7 +1147,10 @@
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
 				"embeddingVendorLabel": "Embedding vendor",
-				"embeddingModelLabel": "Embedding model"
+				"embeddingModelLabel": "Embedding model",
+				"vendorLabel": "Embedding vendor",
+				"modelLabel": "Embedding model",
+				"endpointLabel": "Embedding endpoint (optional)"
 			},
 			"step7": {
 				"title": "Pick items to ingest",
@@ -1123,7 +1164,19 @@
 				"ksHeading": "Knowledge Store",
 				"itemsHeading": "Items to ingest",
 				"submit": "Create",
-				"submitting": "Creating..."
+				"submitting": "Creating...",
+				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
+				"libraryFileCount": "{n} file(s) to upload",
+				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
+				"progressLibrary": "Creating library...",
+				"progressUpload": "Uploading {name} ({n}/{total})...",
+				"progressIngestStatus": "Waiting for {name} to finish importing...",
+				"progressImportUrl": "Importing {url} ({n}/{total})...",
+				"progressKS": "Creating Knowledge Store...",
+				"progressIngest": "Queuing {n} item(s) for ingestion..."
 			},
 			"step9": {
 				"title": "All done",
@@ -1132,6 +1185,70 @@
 				"openKs": "Open Knowledge Store",
 				"openLibrary": "Open Library",
 				"createAnother": "Create another"
+			},
+			"stepProgress": "Step {n} of {total}",
+			"creating": "Creating...",
+			"draft": {
+				"banner": "You have an unfinished draft from {time}.",
+				"resume": "Resume",
+				"discard": "Discard",
+				"savePrompt": {
+					"title": "Save as draft?",
+					"body": "Your progress will be saved until you log out or close the tab.",
+					"save": "Save draft"
+				}
+			},
+			"libraryStep": {
+				"title": "Library Setup",
+				"heading": "Library",
+				"description": "Pick an existing Library or create a new one. A Knowledge Store is always populated from a Library.",
+				"legend": "Library path",
+				"createNewHint": "Start a fresh Library and import documents.",
+				"useExistingHint": "Pick a Library you already have and skip ahead to the Knowledge Store steps.",
+				"noLibraries": "No libraries available. Choose \"Create new\" instead.",
+				"selectLabel": "Library",
+				"nameRequired": "Name is required",
+				"nameTooLong": "Name must be less than 100 characters",
+				"shareLabel": "Share with my organization",
+				"shareHint": "You can change this later from the Library detail view.",
+				"advancedLabel": "Advanced: import plugin & params",
+				"noPlugins": "No import plugins available.",
+				"pluginLabel": "Import plugin",
+				"pluginNote": "Per-plugin parameters can be customized later from the library detail view."
+			},
+			"libraryContent": {
+				"title": "Library Content",
+				"heading": "Initial content",
+				"description": "Optionally add content to your new Library now. You can also skip this and add content later.",
+				"sourceTypeFiles": "Files",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Pick files",
+				"invalidUrl": "A valid HTTP(S) URL is required.",
+				"invalidYoutubeUrl": "A valid YouTube URL is required.",
+				"titleOptional": "Title (optional)",
+				"youtubeUrl": "YouTube URL",
+				"ytLanguage": "Transcript language",
+				"addUrl": "+ Add URL",
+				"addYouTube": "+ Add YouTube",
+				"queuedLabel": "Queued sources",
+				"uploadNote": "Content will be imported when you click \"Create\" in the Review step.",
+				"emptyHint": "No content queued. You can skip this step."
+			},
+			"ksStep": {
+				"title": "Knowledge Store Setup",
+				"heading": "Knowledge Store",
+				"description": "Pick an existing Knowledge Store or create a new one. Existing stores keep their original chunking and embedding settings.",
+				"legend": "Knowledge Store path",
+				"createNewHint": "Configure a new Knowledge Store with chunking and embedding settings.",
+				"useExistingHint": "Pick a Knowledge Store you already created and ingest more content into it.",
+				"noStores": "No knowledge stores available. Choose \"Create new\" instead.",
+				"selectLabel": "Knowledge Store",
+				"nameRequired": "Name is required",
+				"nameTooLong": "Name must be less than 100 characters",
+				"shareLabel": "Share with my organization",
+				"shareHint": "You can change this later from the Knowledge Store detail view.",
+				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB"
 			}
 		}
 	}

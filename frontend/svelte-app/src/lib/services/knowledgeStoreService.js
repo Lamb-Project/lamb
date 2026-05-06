@@ -32,6 +32,7 @@ import { browser } from '$app/environment';
  * @property {string} [server_status]
  * @property {number} [document_count]
  * @property {number} [chunk_count]
+ * @property {number} [content_count]
  * @property {Array<KSContentLink>} [content]
  * @property {string} [owner_name]
  * @property {string} [owner_email]

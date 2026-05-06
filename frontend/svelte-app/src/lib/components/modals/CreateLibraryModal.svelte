@@ -7,6 +7,13 @@
 	import { createEventDispatcher, tick } from 'svelte';
 	import { createLibrary } from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
+	import { user } from '$lib/stores/userStore';
+	import {
+		saveDraft,
+		clearDraft,
+		getDraft,
+		formatDraftAge
+	} from '$lib/stores/wizardDraftStore.svelte.js';
 
 	const dispatch = createEventDispatcher();
 
@@ -17,18 +24,49 @@
 	let name = $state('');
 	let description = $state('');
 
-	/** Open the modal and reset the form. */
+	const DRAFT_KIND = 'createLibrary';
+	let userId = $derived($user?.data?.id || $user?.email || '_anon');
+	let draftBannerVisible = $state(false);
+	let draftSavedAt = $state('');
+
+	// Auto-save on field change (debounced inside saveDraft).
+	$effect(() => {
+		if (!isOpen) return;
+		saveDraft(userId, DRAFT_KIND, { name, description });
+	});
+
+	/** Open the modal and check for an existing draft. */
 	export async function open() {
 		isOpen = true;
 		resetForm();
+		// Check for draft before resetting to draft state.
+		const draft = getDraft(userId, DRAFT_KIND);
+		if (draft?.state) {
+			draftBannerVisible = true;
+			draftSavedAt = draft.savedAt || '';
+		}
 		await tick();
 		document.getElementById('lib-name')?.focus();
 	}
 
+	function resumeDraft() {
+		const draft = getDraft(userId, DRAFT_KIND);
+		if (!draft?.state) return;
+		name = draft.state.name || '';
+		description = draft.state.description || '';
+		draftBannerVisible = false;
+	}
+
+	function discardDraft() {
+		clearDraft(userId, DRAFT_KIND);
+		draftBannerVisible = false;
+	}
+
 	function close() {
 		if (isSubmitting) return;
+		// Save silently on close (already done by the reactive effect).
 		isOpen = false;
-		resetForm();
+		draftBannerVisible = false;
 		dispatch('close');
 	}
 
@@ -38,6 +76,8 @@
 		error = '';
 		nameError = '';
 		isSubmitting = false;
+		draftBannerVisible = false;
+		draftSavedAt = '';
 	}
 
 	function validate() {
@@ -55,6 +95,7 @@
 		return true;
 	}
 
+	/** @param {SubmitEvent} event */
 	async function handleSubmit(event) {
 		event.preventDefault();
 		if (!validate()) return;
@@ -67,6 +108,7 @@
 				name: name.trim(),
 				description: description.trim() || ''
 			});
+			clearDraft(userId, DRAFT_KIND);
 			isOpen = false;
 			dispatch('created', { id: result.id, name: result.name });
 			resetForm();
@@ -76,6 +118,7 @@
 		}
 	}
 
+	/** @param {KeyboardEvent} event */
 	function handleKeydown(event) {
 		if (event.key === 'Escape') close();
 	}
@@ -84,13 +127,13 @@
 		close();
 	}
 
+	/** @param {MouseEvent} event */
 	function stopPropagation(event) {
 		event.stopPropagation();
 	}
 </script>
 
 {#if isOpen}
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 		role="dialog"
@@ -103,8 +146,6 @@
 		<!-- Inner panel: presentational only — clicks are stopped to keep the
              backdrop from closing the modal, but it has no semantic interaction
              of its own (the backdrop and form inputs handle keyboard / aria). -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="mx-4 w-full max-w-md rounded-lg bg-white shadow-xl"
 			role="presentation"
@@ -122,6 +163,36 @@
 			</div>
 
 			<form onsubmit={handleSubmit} class="space-y-4 px-6 py-4">
+				{#if draftBannerVisible}
+					<div
+						class="flex items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800"
+						role="status"
+					>
+						<span>
+							{$_('knowledge.wizard.draft.banner', {
+								default: 'You have an unfinished draft from {time}.',
+								values: { time: formatDraftAge(draftSavedAt) }
+							})}
+						</span>
+						<div class="flex items-center gap-2">
+							<button
+								type="button"
+								onclick={resumeDraft}
+								class="font-medium underline hover:no-underline"
+							>
+								{$_('knowledge.wizard.draft.resume', { default: 'Resume' })}
+							</button>
+							<button
+								type="button"
+								onclick={discardDraft}
+								class="text-blue-600 hover:text-blue-800"
+							>
+								{$_('knowledge.wizard.draft.discard', { default: 'Discard' })}
+							</button>
+						</div>
+					</div>
+				{/if}
+
 				{#if error}
 					<div class="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>
 				{/if}

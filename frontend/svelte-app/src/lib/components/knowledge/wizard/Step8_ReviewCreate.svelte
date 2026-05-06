@@ -30,6 +30,8 @@
 		createLibrary,
 		toggleSharing as toggleLibrarySharing,
 		uploadFile,
+		importUrl,
+		importYouTube,
 		getItemStatus
 	} from '$lib/services/libraryService';
 	import {
@@ -138,6 +140,44 @@
 				}
 			}
 
+			// 2b. Import pending URL / YouTube sources.
+			const pendingUrlSources = wizardState.pendingUrlSources ?? [];
+			if (wizardState.libraryPath === 'new' && pendingUrlSources.length > 0 && libraryId) {
+				for (let i = 0; i < pendingUrlSources.length; i += 1) {
+					const src = pendingUrlSources[i];
+					progressMessage = $_('knowledge.wizard.step8.progressImportUrl', {
+						default: 'Importing {url} ({n}/{total})...',
+						values: { url: src.title || src.url, n: i + 1, total: pendingUrlSources.length }
+					});
+					try {
+						let result;
+						if (src.type === 'youtube') {
+							result = await importYouTube(libraryId, {
+								videoUrl: src.url,
+								language: src.language || 'en',
+								title: src.title || undefined
+							});
+						} else {
+							result = await importUrl(libraryId, {
+								url: src.url,
+								title: src.title || undefined
+							});
+						}
+						const itemId = result.item_id;
+						progressMessage = $_('knowledge.wizard.step8.progressIngestStatus', {
+							default: 'Waiting for {name} to finish importing...',
+							values: { name: src.title || src.url }
+						});
+						const finalStatus = await pollItem(libraryId, itemId);
+						if (finalStatus === 'ready') {
+							newlyReadyIds.push(itemId);
+						}
+					} catch (e) {
+						console.error(`URL import failed for ${src.url}`, e);
+					}
+				}
+			}
+
 			// 3. Create KS if new.
 			if (wizardState.ksPath === 'new') {
 				progressMessage = $_('knowledge.wizard.step8.progressKS', {
@@ -200,7 +240,7 @@
 
 	let summarySelectedCount = $derived.by(() => {
 		if (wizardState.libraryPath === 'new') {
-			return (wizardState.pendingFiles ?? []).length;
+			return (wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length;
 		}
 		return (wizardState.selectedItemIds ?? []).length;
 	});
@@ -252,6 +292,14 @@
 						values: { n: (wizardState.pendingFiles ?? []).length }
 					})}
 				</div>
+				{#if (wizardState.pendingUrlSources ?? []).length > 0}
+					<div class="mt-1 text-xs text-gray-500">
+						{$_('knowledge.wizard.step8.libraryUrlCount', {
+							default: '{n} URL/YouTube source(s) to import',
+							values: { n: (wizardState.pendingUrlSources ?? []).length }
+						})}
+					</div>
+				{/if}
 			{/if}
 		</div>
 

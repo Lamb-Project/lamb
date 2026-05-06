@@ -2,44 +2,43 @@
   @component CreateKnowledgeWizard
   Top-level shell for the unified Library + Knowledge Store creation wizard.
 
-  State machine:
-    Step 0: Library path (existing/new)
-    Step 1: Library details                (skipped if existing library)
-    Step 2: Library import config           (skipped if existing library)
-    Step 3: Library content (optional)      (skipped if existing library; otherwise skippable)
-    Step 4: Knowledge Store path
-    Step 5: KS details                      (skipped if existing KS)
-    Step 6: KS config (locked at create)    (skipped if existing KS)
-    Step 7: Pick items to ingest (optional)
-    Step 8: Review & create
-    Step 9: Done
+  5-step state machine:
+    Step 1: Library setup (StepLibrarySetup)        — always shown
+    Step 2: Library content (StepLibraryContent)    — skipped if libraryPath === 'existing'
+    Step 3: KS setup (StepKSSetup)                  — always shown
+    Step 4: KS content (StepKSContent)              — skippable
+    Step 5: Review & create (StepReviewCreate)      — always shown
+    Step 6: Done (StepDone)                         — post-create success; not counted in progress
 
-  All DB-writing actions live in Step 8 — Steps 1-7 only collect state.
-  Step 3 holds File objects in memory until Step 8 actually creates the
-  library and uploads them. This keeps the wizard fully reversible until
-  the user clicks "Create".
+  All DB-writing actions live in Step 5 — Steps 1-4 only collect state.
+  Draft persistence: saves to sessionStorage on every state change, restored
+  only on explicit user click of "Resume".
 
-  Bind via `bind:isOpen`. Emits 'done' when the user finishes.
+  Bind via `onclose` prop. Emits 'done' when the user finishes.
 -->
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import { _ } from '$lib/i18n';
+	import { user } from '$lib/stores/userStore';
+	import {
+		saveDraft,
+		clearDraft,
+		getDraft,
+		formatDraftAge
+	} from '$lib/stores/wizardDraftStore.svelte.js';
+	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
-	import Step0 from './wizard/Step0_LibraryPath.svelte';
-	import Step1 from './wizard/Step1_LibraryDetails.svelte';
-	import Step2 from './wizard/Step2_LibraryConfig.svelte';
-	import Step3 from './wizard/Step3_LibraryContent.svelte';
-	import Step4 from './wizard/Step4_KSPath.svelte';
-	import Step5 from './wizard/Step5_KSDetails.svelte';
-	import Step6 from './wizard/Step6_KSConfig.svelte';
-	import Step7 from './wizard/Step7_PickItems.svelte';
-	import Step8 from './wizard/Step8_ReviewCreate.svelte';
-	import Step9 from './wizard/Step9_Done.svelte';
+	import StepLibrarySetup from './wizard/StepLibrarySetup.svelte';
+	import StepLibraryContent from './wizard/StepLibraryContent.svelte';
+	import StepKSSetup from './wizard/StepKSSetup.svelte';
+	import StepKSContent from './wizard/StepKSContent.svelte';
+	import StepReviewCreate from './wizard/Step8_ReviewCreate.svelte';
+	import StepDone from './wizard/Step9_Done.svelte';
 
 	const dispatch = createEventDispatcher();
 
-	/** @type {{ onclose?: () => void }} */
-	let { onclose = () => {} } = $props();
+	/** @type {{ onclose?: () => void, initialState?: Record<string, any> | null }} */
+	let { onclose = () => {}, initialState = null } = $props();
 
 	/**
 	 * @typedef {Object} WizardState
@@ -50,6 +49,7 @@
 	 * @property {boolean} libraryIsShared
 	 * @property {{ pluginName: string, params: Object }} libraryImportConfig
 	 * @property {File[]} pendingFiles
+	 * @property {Array<{ type: 'url'|'youtube', url: string, title?: string, language?: string }>} pendingUrlSources
 	 * @property {Array<{ id: string, title: string }>} uploadedItems
 	 * @property {'existing'|'new'} ksPath
 	 * @property {string} existingKsId
@@ -67,7 +67,7 @@
 	}
 
 	/** @type {WizardState} */
-	const initialState = {
+	const defaultWizardState = {
 		libraryPath: 'new',
 		existingLibraryId: '',
 		libraryName: '',
@@ -75,6 +75,7 @@
 		libraryIsShared: false,
 		libraryImportConfig: { pluginName: 'simple_import', params: {} },
 		pendingFiles: [],
+		pendingUrlSources: [],
 		uploadedItems: [],
 		ksPath: 'new',
 		existingKsId: '',
@@ -93,11 +94,20 @@
 		createdRefs: { libraryId: '', libraryName: '', ksId: '', ksName: '' }
 	};
 
-	let currentStep = $state(0);
-	let wizardState = $state(structuredClone(initialState));
+	// ── Step indices (internal, 1-based for display) ────────────────────────
+	// Internal step numbers: 1=LibrarySetup, 2=LibraryContent, 3=KSSetup,
+	//                        4=KSContent, 5=ReviewCreate, 6=Done
+	const STEP_LIBRARY_SETUP = 1;
+	const STEP_LIBRARY_CONTENT = 2;
+	const STEP_KS_SETUP = 3;
+	const STEP_KS_CONTENT = 4;
+	const STEP_REVIEW = 5;
+	const STEP_DONE = 6;
+	const TOTAL_VISIBLE_STEPS = 5; // Steps 1-5; Done is not counted
 
-	// Apply auto-suggested defaults at mount (component is mounted only
-	// when the parent decides to open it via {#if wizardOpen}).
+	let currentStep = $state(STEP_LIBRARY_SETUP);
+	let wizardState = $state(structuredClone(defaultWizardState));
+
 	if (!wizardState.libraryName) {
 		wizardState.libraryName = `My Library ${todayLabel()}`;
 	}
@@ -105,68 +115,117 @@
 		wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
 	}
 
-	/**
-	 * Total displayed steps (10).
-	 */
-	const TOTAL_STEPS = 10;
+	// ── Draft persistence ────────────────────────────────────────────────────
+	let userId = $derived($user?.data?.id || $user?.email || '_anon');
+	const DRAFT_KIND = 'createKnowledge';
 
+	let draftBannerVisible = $state(false);
+	let draftSavedAt = $state('');
+	let showCancelConfirm = $state(false);
+
+	onMount(() => {
+		const draft = getDraft(userId, DRAFT_KIND);
+		if (draft) {
+			// Existing draft: show banner, don't apply initialState (draft wins).
+			draftBannerVisible = true;
+			draftSavedAt = draft.savedAt || '';
+		} else if (initialState && typeof initialState === 'object') {
+			// No draft: shallow-merge caller-supplied initial state into defaults.
+			wizardState = { ...wizardState, ...initialState };
+		}
+	});
+
+	// Auto-save on any state change (debounced inside saveDraft).
+	$effect(() => {
+		// Depend on the full wizardState snapshot. JSON.stringify forces deep tracking.
+		const _snap = JSON.stringify(wizardState);
+		void _snap;
+		saveDraft(userId, DRAFT_KIND, wizardState);
+	});
+
+	function resumeDraft() {
+		const draft = getDraft(userId, DRAFT_KIND);
+		if (!draft?.state) return;
+		// File objects cannot be stored in sessionStorage; pendingFiles will be [].
+		wizardState = {
+			...structuredClone(defaultWizardState),
+			...draft.state,
+			pendingFiles: []
+		};
+		draftBannerVisible = false;
+	}
+
+	function discardDraft() {
+		clearDraft(userId, DRAFT_KIND);
+		draftBannerVisible = false;
+	}
+
+	// ── Step skip logic ──────────────────────────────────────────────────────
 	/**
-	 * Determine whether a given step number should be skipped given current state.
 	 * @param {number} step
 	 * @returns {boolean}
 	 */
 	function isStepSkipped(step) {
-		if ((step === 1 || step === 2 || step === 3) && wizardState.libraryPath === 'existing') {
-			return true;
-		}
-		if ((step === 5 || step === 6) && wizardState.ksPath === 'existing') {
+		if (step === STEP_LIBRARY_CONTENT && wizardState.libraryPath === 'existing') {
 			return true;
 		}
 		return false;
 	}
 
-	/**
-	 * Compute next step index (skipping irrelevant steps).
-	 * @param {number} from
-	 * @returns {number}
-	 */
+	/** @param {number} from */
 	function nextStep(from) {
 		let s = from + 1;
-		while (s < TOTAL_STEPS && isStepSkipped(s)) {
-			s += 1;
-		}
-		return Math.min(s, TOTAL_STEPS - 1);
+		while (s < STEP_DONE && isStepSkipped(s)) s += 1;
+		return Math.min(s, STEP_DONE);
 	}
 
-	/**
-	 * Compute previous step index (skipping irrelevant steps).
-	 * @param {number} from
-	 * @returns {number}
-	 */
+	/** @param {number} from */
 	function prevStep(from) {
 		let s = from - 1;
-		while (s > 0 && isStepSkipped(s)) {
-			s -= 1;
-		}
-		return Math.max(s, 0);
+		while (s > STEP_LIBRARY_SETUP && isStepSkipped(s)) s -= 1;
+		return Math.max(s, STEP_LIBRARY_SETUP);
 	}
 
+	// ── Visible step number for progress ────────────────────────────────────
+	let visibleStepNumber = $derived.by(() => {
+		if (currentStep > STEP_REVIEW) return TOTAL_VISIBLE_STEPS;
+		let n = 0;
+		for (let i = STEP_LIBRARY_SETUP; i <= currentStep; i++) {
+			if (!isStepSkipped(i) && i <= STEP_REVIEW) n++;
+		}
+		return n;
+	});
+
+	// ── Step titles ──────────────────────────────────────────────────────────
+	/** @type {Record<number, () => string>} */
+	const stepTitles = {
+		[STEP_LIBRARY_SETUP]: () =>
+			$_('knowledge.wizard.libraryStep.title', { default: 'Library Setup' }),
+		[STEP_LIBRARY_CONTENT]: () =>
+			$_('knowledge.wizard.libraryContent.title', { default: 'Library Content' }),
+		[STEP_KS_SETUP]: () =>
+			$_('knowledge.wizard.ksStep.title', { default: 'Knowledge Store Setup' }),
+		[STEP_KS_CONTENT]: () =>
+			$_('knowledge.wizard.step7.title', { default: 'Pick Items to Ingest' }),
+		[STEP_REVIEW]: () => $_('knowledge.wizard.step8.title', { default: 'Review & Create' }),
+		[STEP_DONE]: () => $_('knowledge.wizard.step9.title', { default: 'Done' })
+	};
+	let stepLabel = $derived((stepTitles[currentStep] || (() => ''))());
+
+	// ── Validity / navigation ────────────────────────────────────────────────
 	let canAdvance = $state(true);
 
+	/** @param {CustomEvent<{valid:boolean}>} event */
 	function handleStepValidity(event) {
 		canAdvance = !!event.detail?.valid;
 	}
 
+	/** @param {CustomEvent<any>} event */
 	function handleStateUpdate(event) {
-		const patch = event.detail || {};
-		// Skip no-op updates so that an effect inside a step component that
-		// dispatches the same value on every run doesn't loop forever via
-		// wizardState mutation -> step prop change -> step effect re-run.
-		// Compares by JSON for object/array values to handle freshly-built
-		// patch objects whose contents are unchanged.
+		const patch = /** @type {Record<string, any>} */ (event.detail || {});
 		let changed = false;
 		for (const key of Object.keys(patch)) {
-			const a = wizardState[key];
+			const a = /** @type {Record<string, any>} */ (wizardState)[key];
 			const b = patch[key];
 			if (a === b) continue;
 			if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
@@ -184,28 +243,26 @@
 	}
 
 	function goNext() {
-		if (currentStep === TOTAL_STEPS - 1) {
-			close();
-			return;
-		}
+		if (currentStep >= STEP_REVIEW) return;
 		currentStep = nextStep(currentStep);
 		canAdvance = true;
 	}
 
 	function goBack() {
-		if (currentStep === 0) return;
+		if (currentStep <= STEP_LIBRARY_SETUP) return;
 		currentStep = prevStep(currentStep);
 		canAdvance = true;
 	}
 
 	function goSkip() {
-		// Step 3 and Step 7 are skippable.
-		if (currentStep === 3 || currentStep === 7) {
+		// Step 2 (library content) and Step 4 (KS content) are skippable.
+		if (currentStep === STEP_LIBRARY_CONTENT || currentStep === STEP_KS_CONTENT) {
 			currentStep = nextStep(currentStep);
 			canAdvance = true;
 		}
 	}
 
+	/** @param {CustomEvent<any>} event */
 	function handleCreated(event) {
 		const refs = event.detail || {};
 		wizardState.createdRefs = {
@@ -214,20 +271,23 @@
 			ksId: refs.ksId || wizardState.createdRefs.ksId,
 			ksName: refs.ksName || wizardState.createdRefs.ksName
 		};
-		currentStep = 9;
+		clearDraft(userId, DRAFT_KIND);
+		currentStep = STEP_DONE;
 	}
 
+	/** @param {CustomEvent<any>} event */
 	function handleDone(event) {
 		dispatch('done', event.detail || wizardState.createdRefs);
 		close();
 	}
 
 	function handleCreateAnother() {
-		wizardState = structuredClone(initialState);
+		wizardState = structuredClone(defaultWizardState);
 		wizardState.libraryName = `My Library ${todayLabel()}`;
 		wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
-		currentStep = 0;
+		currentStep = STEP_LIBRARY_SETUP;
 		canAdvance = true;
+		discardDraft();
 	}
 
 	function close() {
@@ -235,56 +295,71 @@
 		dispatch('close');
 	}
 
-	function handleBackdropClick() {
+	function handleCancelClick() {
+		// Show save-as-draft prompt.
+		showCancelConfirm = true;
+	}
+
+	function handleCancelSave() {
+		// Already saved by the reactive effect; just close.
+		showCancelConfirm = false;
 		close();
 	}
 
+	function handleCancelDiscard() {
+		showCancelConfirm = false;
+		clearDraft(userId, DRAFT_KIND);
+		close();
+	}
+
+	function handleBackdropClick() {
+		// Outside-click: save silently (draft already persisted by reactive effect).
+		close();
+	}
+
+	/** @param {KeyboardEvent} event */
+	function handleKeydown(event) {
+		if (event.key === 'Escape') {
+			close();
+		}
+	}
+
+	/** @param {MouseEvent} event */
 	function stopPropagation(event) {
 		event.stopPropagation();
 	}
 
-	const stepTitles = [
-		$_('knowledge.wizard.step0.title', { default: 'Choose Library' }),
-		$_('knowledge.wizard.step1.title', { default: 'Library Details' }),
-		$_('knowledge.wizard.step2.title', { default: 'Library Import Config' }),
-		$_('knowledge.wizard.step3.title', { default: 'Initial Content' }),
-		$_('knowledge.wizard.step4.title', { default: 'Choose Knowledge Store' }),
-		$_('knowledge.wizard.step5.title', { default: 'Knowledge Store Details' }),
-		$_('knowledge.wizard.step6.title', { default: 'Knowledge Store Configuration' }),
-		$_('knowledge.wizard.step7.title', { default: 'Pick Items' }),
-		$_('knowledge.wizard.step8.title', { default: 'Review & Create' }),
-		$_('knowledge.wizard.step9.title', { default: 'Done' })
-	];
-
-	let stepLabel = $derived(stepTitles[currentStep] || '');
-	let visibleStepNumber = $derived.by(() => {
-		let n = 0;
-		for (let i = 0; i <= currentStep; i += 1) {
-			if (!isStepSkipped(i)) n += 1;
-		}
-		return n;
-	});
-	let visibleStepTotal = $derived.by(() => {
-		let n = 0;
-		for (let i = 0; i < TOTAL_STEPS; i += 1) {
-			if (!isStepSkipped(i)) n += 1;
-		}
-		return n;
-	});
-
-	let isLastInteractiveStep = $derived(currentStep === 8);
-	let isDoneStep = $derived(currentStep === 9);
-	let isSkippableStep = $derived(currentStep === 3 || currentStep === 7);
+	let isLastInteractiveStep = $derived(currentStep === STEP_REVIEW);
+	let isDoneStep = $derived(currentStep === STEP_DONE);
+	let isSkippableStep = $derived(
+		currentStep === STEP_LIBRARY_CONTENT || currentStep === STEP_KS_CONTENT
+	);
 </script>
 
 <!-- Esc handling moved to parent — see /libraries/+page.svelte. -->
+
+<!-- Cancel / Save-as-draft modal -->
+<ConfirmationModal
+	bind:isOpen={showCancelConfirm}
+	variant="info"
+	title={$_('knowledge.wizard.draft.savePrompt.title', { default: 'Save as draft?' })}
+	message={$_('knowledge.wizard.draft.savePrompt.body', {
+		default: 'Your progress will be saved until you log out or close the tab.'
+	})}
+	confirmText={$_('knowledge.wizard.draft.savePrompt.save', { default: 'Save draft' })}
+	cancelText={$_('knowledge.wizard.draft.discard', { default: 'Discard' })}
+	onconfirm={handleCancelSave}
+	oncancel={handleCancelDiscard}
+/>
 
 <div
 	class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="create-knowledge-wizard-title"
+	tabindex="-1"
 	onclick={handleBackdropClick}
+	onkeydown={handleKeydown}
 >
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -293,63 +368,96 @@
 		onclick={stopPropagation}
 	>
 		<header class="border-b border-gray-200 px-6 py-4">
+			<!-- Draft banner -->
+			{#if draftBannerVisible}
+				<div
+					class="mb-3 flex items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800"
+					role="status"
+				>
+					<span>
+						{$_('knowledge.wizard.draft.banner', {
+							default: 'You have an unfinished draft from {time}.',
+							values: { time: formatDraftAge(draftSavedAt) }
+						})}
+					</span>
+					<div class="flex items-center gap-2">
+						<button
+							type="button"
+							onclick={resumeDraft}
+							class="font-medium underline hover:no-underline"
+						>
+							{$_('knowledge.wizard.draft.resume', { default: 'Resume' })}
+						</button>
+						<button type="button" onclick={discardDraft} class="text-blue-600 hover:text-blue-800">
+							{$_('knowledge.wizard.draft.discard', { default: 'Discard' })}
+						</button>
+					</div>
+				</div>
+			{/if}
+
 			<div class="flex items-center justify-between">
 				<h2 id="create-knowledge-wizard-title" class="text-lg font-semibold text-gray-900">
 					{$_('knowledge.wizard.title', { default: 'Create Knowledge' })}
 				</h2>
 				<button
 					type="button"
-					onclick={close}
+					onclick={handleCancelClick}
 					class="px-2 text-xl leading-none text-gray-400 hover:text-gray-600"
 					aria-label={$_('common.close', { default: 'Close' })}
 				>
 					&times;
 				</button>
 			</div>
-			<div class="mt-2 flex items-center gap-3 text-sm text-gray-600" aria-live="polite">
-				<span class="font-medium text-[#2271b3]">
-					{$_('knowledge.wizard.stepProgress', {
-						default: 'Step {n} of {total}',
-						values: { n: visibleStepNumber, total: visibleStepTotal }
-					})}
-				</span>
-				<span class="text-gray-300">|</span>
-				<span>{stepLabel}</span>
-			</div>
-			<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
-				<div
-					class="h-full bg-[#2271b3] transition-all"
-					style="width: {(visibleStepNumber / visibleStepTotal) * 100}%"
-				></div>
-			</div>
+			{#if !isDoneStep}
+				<div class="mt-2 flex items-center gap-3 text-sm text-gray-600" aria-live="polite">
+					<span class="font-medium text-[#2271b3]">
+						{$_('knowledge.wizard.stepProgress', {
+							default: 'Step {n} of {total}',
+							values: { n: visibleStepNumber, total: TOTAL_VISIBLE_STEPS }
+						})}
+					</span>
+					<span class="text-gray-300">|</span>
+					<span>{stepLabel}</span>
+				</div>
+				<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+					<div
+						class="h-full bg-[#2271b3] transition-all"
+						style="width: {(visibleStepNumber / TOTAL_VISIBLE_STEPS) * 100}%"
+					></div>
+				</div>
+			{/if}
 		</header>
 
 		<div class="flex-1 overflow-y-auto px-6 py-5">
-			{#if currentStep === 0}
-				<Step0 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 1}
-				<Step1 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 2}
-				<Step2 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 3}
-				<Step3 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 4}
-				<Step4 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 5}
-				<Step5 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 6}
-				<Step6 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 7}
-				<Step7 {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === 8}
-				<Step8
+			{#if currentStep === STEP_LIBRARY_SETUP}
+				<StepLibrarySetup
+					{wizardState}
+					on:update={handleStateUpdate}
+					on:validity={handleStepValidity}
+				/>
+			{:else if currentStep === STEP_LIBRARY_CONTENT}
+				<StepLibraryContent
+					{wizardState}
+					on:update={handleStateUpdate}
+					on:validity={handleStepValidity}
+				/>
+			{:else if currentStep === STEP_KS_SETUP}
+				<StepKSSetup {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
+			{:else if currentStep === STEP_KS_CONTENT}
+				<StepKSContent
+					{wizardState}
+					on:update={handleStateUpdate}
+					on:validity={handleStepValidity}
+				/>
+			{:else if currentStep === STEP_REVIEW}
+				<StepReviewCreate
 					{wizardState}
 					on:update={handleStateUpdate}
 					on:validity={handleStepValidity}
 					on:created={handleCreated}
 				/>
-			{:else if currentStep === 9}
-				<Step9 {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
+			{:else if currentStep === STEP_DONE}
+				<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
 			{/if}
 		</div>
 
@@ -357,7 +465,7 @@
 			<button
 				type="button"
 				onclick={goBack}
-				disabled={currentStep === 0 || isDoneStep}
+				disabled={currentStep === STEP_LIBRARY_SETUP || isDoneStep}
 				class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
 			>
 				{$_('knowledge.wizard.back', { default: 'Back' })}

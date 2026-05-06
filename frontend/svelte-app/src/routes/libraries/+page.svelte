@@ -23,6 +23,7 @@
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	/** @type {'libraries'|'knowledge-stores'} */
 	let section = $state('libraries');
@@ -31,6 +32,8 @@
 	let detailId = $state('');
 
 	let wizardOpen = $state(false);
+	/** @type {Record<string, any> | null} */
+	let wizardInitialState = $state(null);
 
 	// Bumped to force the list components to remount/refresh after a
 	// wizard creates new entities. Each list mounts/loads on creation,
@@ -57,8 +60,13 @@
 		if ($page.url) updateStateFromUrl();
 	});
 
+	/**
+	 * @param {string} nextSection
+	 * @param {string} [nextView]
+	 * @param {string} [nextId]
+	 */
 	function buildUrl(nextSection, nextView, nextId) {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		// Always emit section so URLs are explicit going forward.
 		params.set('section', nextSection);
 		if (nextView === 'detail' && nextId) {
@@ -69,19 +77,25 @@
 		return `${base}/libraries${qs ? `?${qs}` : ''}`;
 	}
 
+	/** @param {string} nextSection */
 	function switchSection(nextSection) {
 		if (section === nextSection && view === 'list') return;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto(buildUrl(nextSection, 'list'), { replaceState: false, keepFocus: true });
 	}
 
+	/** @param {CustomEvent<{id: string}>} event */
 	function handleLibraryView(event) {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto(buildUrl('libraries', 'detail', event.detail.id), {
 			replaceState: false,
 			keepFocus: true
 		});
 	}
 
+	/** @param {CustomEvent<{id: string}>} event */
 	function handleKsView(event) {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto(buildUrl('knowledge-stores', 'detail', event.detail.id), {
 			replaceState: false,
 			keepFocus: true
@@ -89,17 +103,34 @@
 	}
 
 	function backToList() {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto(buildUrl(section, 'list'), { replaceState: false, keepFocus: true });
 	}
 
 	function openWizard() {
+		wizardInitialState = null;
+		wizardOpen = true;
+	}
+
+	/**
+	 * @param {Record<string, any>} state
+	 */
+	function openWizardWithState(state) {
+		wizardInitialState = state;
 		wizardOpen = true;
 	}
 
 	function closeWizard() {
 		wizardOpen = false;
+		wizardInitialState = null;
 	}
 
+	/** @param {CustomEvent<Record<string, any>>} event */
+	function handleCreateWithInitialState(event) {
+		openWizardWithState(event.detail || {});
+	}
+
+	/** @param {CustomEvent<Record<string, any>>} event */
 	function handleWizardDone(event) {
 		const refs = event.detail || {};
 		// Refresh both lists regardless of which side the wizard touched.
@@ -111,11 +142,13 @@
 		// the library if no KS is present, and otherwise stay where we
 		// are.
 		if (refs.ksId) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto(buildUrl('knowledge-stores', 'detail', refs.ksId), {
 				replaceState: false,
 				keepFocus: true
 			});
 		} else if (refs.libraryId) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto(buildUrl('libraries', 'detail', refs.libraryId), {
 				replaceState: false,
 				keepFocus: true
@@ -222,7 +255,10 @@
 				<LibraryDetail libraryId={detailId} />
 			{:else}
 				{#key librariesListKey}
-					<LibrariesList on:view={handleLibraryView} />
+					<LibrariesList
+						on:view={handleLibraryView}
+						on:createWithInitialState={handleCreateWithInitialState}
+					/>
 				{/key}
 			{/if}
 		{:else if section === 'knowledge-stores'}
@@ -230,7 +266,10 @@
 				<KnowledgeStoreDetail ksId={detailId} />
 			{:else}
 				{#key ksListKey}
-					<KnowledgeStoresList on:view={handleKsView} />
+					<KnowledgeStoresList
+						on:view={handleKsView}
+						on:createWithInitialState={handleCreateWithInitialState}
+					/>
 				{/key}
 			{/if}
 		{/if}
@@ -244,5 +283,9 @@
 />
 
 {#if wizardOpen}
-	<CreateKnowledgeWizard onclose={closeWizard} on:done={handleWizardDone} />
+	<CreateKnowledgeWizard
+		onclose={closeWizard}
+		on:done={handleWizardDone}
+		initialState={wizardInitialState}
+	/>
 {/if}

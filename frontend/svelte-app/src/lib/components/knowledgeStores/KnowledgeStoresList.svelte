@@ -1,11 +1,7 @@
 <!--
   @component KnowledgeStoresList
-  Displays owned and shared Knowledge Stores with tabs, search, sort,
-  pagination, and actions (share, delete). Mirrors LibrariesList.svelte
-  structure so users moving between the two surfaces have the same UX.
-
-  Creation goes through the unified wizard launcher on the parent page —
-  this component does NOT host its own create modal.
+  Displays Knowledge Stores with combinable filter chips, resizable columns,
+  skeleton loading, icon-button actions, and localStorage-persisted page size.
 -->
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
@@ -18,34 +14,287 @@
 	import { user } from '$lib/stores/userStore';
 	import { processListData } from '$lib/utils/listHelpers';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-	import FilterBar from '$lib/components/common/FilterBar.svelte';
-	import Pagination from '$lib/components/common/Pagination.svelte';
+	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
+	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 
 	const dispatch = createEventDispatcher();
 
+	const LS_PAGE_SIZE = 'lamb.list.knowledgeStores.itemsPerPage';
+
+	/** @returns {number} */
+	function loadItemsPerPage() {
+		try {
+			const v = localStorage.getItem(LS_PAGE_SIZE);
+			if (v) return parseInt(v, 10) || 10;
+		} catch {
+			// ignore
+		}
+		return 10;
+	}
+
+	/** @type {import('$lib/services/knowledgeStoreService').KnowledgeStore[]} */
 	let stores = $state([]);
+	/** @type {import('$lib/services/knowledgeStoreService').KnowledgeStore[]} */
 	let displayStores = $state([]);
 	let loading = $state(true);
 	let error = $state('');
 	let successMessage = $state('');
 
-	let currentTab = $state('my');
-
 	let searchTerm = $state('');
 	let sortBy = $state('created_at');
-	let sortOrder = $state('desc');
+	/** @type {'asc'|'desc'} */
+	let sortOrder = $state(/** @type {'asc'|'desc'} */ ('desc'));
 	let currentPage = $state(1);
-	let itemsPerPage = $state(10);
+	let itemsPerPage = $state(loadItemsPerPage());
 	let totalPages = $state(1);
 	let totalItems = $state(0);
 
+	// Combinable filters
+	let sharingFilter = $state('all'); // 'my' | 'shared' | 'all'
+	let embeddingFilter = $state('any'); // 'openai' | 'ollama' | 'local' | 'any'
+	let chunkingFilter = $state('any'); // 'simple' | 'hierarchical' | 'by_page' | 'by_section' | 'any'
+	let contentFilter = $state('any'); // 'empty' | 'has-content' | 'any'
+	let createdFilter = $state('any'); // 'today' | 'this-week' | 'this-month' | 'any'
+
+	// Delete modal
 	let showDeleteModal = $state(false);
 	let isDeleting = $state(false);
 	let deleteTarget = $state({ id: '', name: '' });
 
-	let ownedStores = $derived(stores.filter((s) => s.is_owner !== false));
-	let sharedStores = $derived(stores.filter((s) => s.is_owner === false));
-	let currentTabStores = $derived(currentTab === 'my' ? ownedStores : sharedStores);
+	// Overflow menu state
+	let openMenuId = $state(/** @type {string|null} */ (null));
+
+	// Column definitions for ResizableTable
+	const columns = [
+		{ key: 'name', label: $_('knowledgeStores.name', { default: 'Name' }), defaultWidth: 200 },
+		{
+			key: 'embedding',
+			label: $_('knowledgeStores.embedding', { default: 'Embedding' }),
+			defaultWidth: 120
+		},
+		{
+			key: 'chunking',
+			label: $_('knowledgeStores.chunking', { default: 'Chunking' }),
+			defaultWidth: 120
+		},
+		{
+			key: 'content',
+			label: $_('knowledgeStores.contentCount', { default: 'Content' }),
+			defaultWidth: 80
+		},
+		{
+			key: 'sharing',
+			label: $_('knowledgeStores.sharing.label', { default: 'Sharing' }),
+			defaultWidth: 100
+		},
+		{
+			key: 'created',
+			label: $_('knowledgeStores.createdAt', { default: 'Created' }),
+			defaultWidth: 100
+		},
+		{
+			key: 'actions',
+			label: $_('knowledgeStores.actions', { default: 'Actions' }),
+			defaultWidth: 80
+		}
+	];
+
+	// --- Filter predicates ---
+	let activePredicates = $derived(() => {
+		/** @type {Array<(item: any) => boolean>} */
+		const preds = [];
+		if (sharingFilter === 'my') preds.push((s) => s.is_owner !== false);
+		if (sharingFilter === 'shared') preds.push((s) => s.is_owner === false);
+		if (embeddingFilter !== 'any') {
+			preds.push((s) => (s.embedding_vendor || '').toLowerCase() === embeddingFilter);
+		}
+		if (chunkingFilter !== 'any') {
+			preds.push((s) => (s.chunking_strategy || '') === chunkingFilter);
+		}
+		if (contentFilter === 'empty') preds.push((s) => (s.content_count ?? 0) === 0);
+		if (contentFilter === 'has-content') preds.push((s) => (s.content_count ?? 0) > 0);
+		if (createdFilter !== 'any') {
+			const now = Date.now();
+			const DAY = 86400000;
+			const todayStart = now - (now % DAY);
+			if (createdFilter === 'today') {
+				preds.push((s) => {
+					const t =
+						typeof s.created_at === 'number'
+							? s.created_at * 1000
+							: Date.parse(String(s.created_at));
+					return t >= todayStart;
+				});
+			} else if (createdFilter === 'this-week') {
+				preds.push((s) => {
+					const t =
+						typeof s.created_at === 'number'
+							? s.created_at * 1000
+							: Date.parse(String(s.created_at));
+					return now - t <= 7 * DAY;
+				});
+			} else if (createdFilter === 'this-month') {
+				preds.push((s) => {
+					const t =
+						typeof s.created_at === 'number'
+							? s.created_at * 1000
+							: Date.parse(String(s.created_at));
+					return now - t <= 30 * DAY;
+				});
+			}
+		}
+		return preds;
+	});
+
+	// --- Active filter chips ---
+	let activeChips = $derived(() => {
+		/** @type {Array<{id: string, label: string, value: string, onClear: () => void}>} */
+		const chips = [];
+		if (sharingFilter !== 'all') {
+			chips.push({
+				id: 'sharing',
+				label: $_('list.filters.sharing', { default: 'Sharing' }),
+				value:
+					sharingFilter === 'my'
+						? $_('list.filters.my', { default: 'Mine' })
+						: $_('list.filters.shared', { default: 'Shared' }),
+				onClear: () => {
+					sharingFilter = 'all';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (embeddingFilter !== 'any') {
+			chips.push({
+				id: 'embedding',
+				label: $_('list.filters.embedding', { default: 'Embedding' }),
+				value: embeddingFilter,
+				onClear: () => {
+					embeddingFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (chunkingFilter !== 'any') {
+			chips.push({
+				id: 'chunking',
+				label: $_('list.filters.chunking', { default: 'Chunking' }),
+				value: chunkingFilter,
+				onClear: () => {
+					chunkingFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (contentFilter !== 'any') {
+			chips.push({
+				id: 'content',
+				label: $_('list.filters.content', { default: 'Content' }),
+				value:
+					contentFilter === 'empty'
+						? $_('list.filters.empty', { default: 'Empty' })
+						: $_('list.filters.hasContent', { default: 'Has content' }),
+				onClear: () => {
+					contentFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (createdFilter !== 'any') {
+			/** @type {Record<string, string>} */
+			const createdLabels = {
+				today: $_('list.filters.today', { default: 'Today' }),
+				'this-week': $_('list.filters.thisWeek', { default: 'This week' }),
+				'this-month': $_('list.filters.thisMonth', { default: 'This month' })
+			};
+			chips.push({
+				id: 'created',
+				label: $_('list.filters.created', { default: 'Created' }),
+				value: createdLabels[createdFilter] || createdFilter,
+				onClear: () => {
+					createdFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		return chips;
+	});
+
+	// Filters array for FilterBar dropdowns
+	let filterDefs = $derived([
+		{
+			key: 'sharing',
+			label: $_('list.filters.sharing', { default: 'Sharing' }),
+			options: [
+				{ value: 'my', label: $_('list.filters.my', { default: 'Mine' }) },
+				{ value: 'shared', label: $_('list.filters.shared', { default: 'Shared' }) }
+			]
+		},
+		{
+			key: 'embedding',
+			label: $_('list.filters.embedding', { default: 'Embedding' }),
+			options: [
+				{ value: 'openai', label: 'OpenAI' },
+				{ value: 'ollama', label: 'Ollama' },
+				{ value: 'local', label: $_('list.filters.local', { default: 'Local' }) }
+			]
+		},
+		{
+			key: 'chunking',
+			label: $_('list.filters.chunking', { default: 'Chunking' }),
+			options: [
+				{ value: 'simple', label: $_('list.filters.chunkingSimple', { default: 'Simple' }) },
+				{
+					value: 'hierarchical',
+					label: $_('list.filters.chunkingHierarchical', { default: 'Hierarchical' })
+				},
+				{ value: 'by_page', label: $_('list.filters.chunkingByPage', { default: 'By page' }) },
+				{
+					value: 'by_section',
+					label: $_('list.filters.chunkingBySection', { default: 'By section' })
+				}
+			]
+		},
+		{
+			key: 'content',
+			label: $_('list.filters.content', { default: 'Content' }),
+			options: [
+				{ value: 'empty', label: $_('list.filters.empty', { default: 'Empty' }) },
+				{ value: 'has-content', label: $_('list.filters.hasContent', { default: 'Has content' }) }
+			]
+		},
+		{
+			key: 'created',
+			label: $_('list.filters.created', { default: 'Created' }),
+			options: [
+				{ value: 'today', label: $_('list.filters.today', { default: 'Today' }) },
+				{ value: 'this-week', label: $_('list.filters.thisWeek', { default: 'This week' }) },
+				{ value: 'this-month', label: $_('list.filters.thisMonth', { default: 'This month' }) }
+			]
+		}
+	]);
+
+	let filterValues = $derived({
+		sharing: sharingFilter !== 'all' ? sharingFilter : '',
+		embedding: embeddingFilter !== 'any' ? embeddingFilter : '',
+		chunking: chunkingFilter !== 'any' ? chunkingFilter : '',
+		content: contentFilter !== 'any' ? contentFilter : '',
+		created: createdFilter !== 'any' ? createdFilter : ''
+	});
+
+	let isFiltered = $derived(
+		searchTerm.trim() !== '' ||
+			sharingFilter !== 'all' ||
+			embeddingFilter !== 'any' ||
+			chunkingFilter !== 'any' ||
+			contentFilter !== 'any' ||
+			createdFilter !== 'any'
+	);
 
 	onMount(async () => {
 		await loadStores();
@@ -77,10 +326,11 @@
 	}
 
 	function applyFiltersAndPagination() {
-		const result = processListData(currentTabStores, {
+		const result = processListData(stores, {
 			search: searchTerm,
 			searchFields: ['name', 'description', 'id', 'embedding_vendor', 'embedding_model'],
 			filters: {},
+			predicates: activePredicates(),
 			sortBy,
 			sortOrder,
 			page: currentPage,
@@ -92,40 +342,77 @@
 		currentPage = result.currentPage;
 	}
 
-	$effect(() => {
-		currentTab;
-		currentPage = 1;
-		applyFiltersAndPagination();
-	});
-
-	function handleTabSwitch(tab) {
-		currentTab = tab;
-		searchTerm = '';
-		currentPage = 1;
-		applyFiltersAndPagination();
-	}
-
+	/** @param {CustomEvent<{value: string}>} event */
 	function handleSearchChange(event) {
 		searchTerm = event.detail.value;
 		currentPage = 1;
 		applyFiltersAndPagination();
 	}
 
+	/** @param {CustomEvent<{key: string, value: string}>} event */
+	function handleFilterChange(event) {
+		const { key, value } = event.detail;
+		if (key === 'sharing') sharingFilter = value || 'all';
+		if (key === 'embedding') embeddingFilter = value || 'any';
+		if (key === 'chunking') chunkingFilter = value || 'any';
+		if (key === 'content') contentFilter = value || 'any';
+		if (key === 'created') createdFilter = value || 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
+
+	/** @param {CustomEvent<{sortBy: string, sortOrder: 'asc'|'desc'}>} event */
 	function handleSortChange(event) {
 		sortBy = event.detail.sortBy;
 		sortOrder = event.detail.sortOrder;
 		applyFiltersAndPagination();
 	}
 
+	function handleClearFilters() {
+		searchTerm = '';
+		sharingFilter = 'all';
+		embeddingFilter = 'any';
+		chunkingFilter = 'any';
+		contentFilter = 'any';
+		createdFilter = 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
+
+	function handleClearAllChips() {
+		sharingFilter = 'all';
+		embeddingFilter = 'any';
+		chunkingFilter = 'any';
+		contentFilter = 'any';
+		createdFilter = 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
+
+	/** @param {CustomEvent<{page: number}>} event */
 	function handlePageChange(event) {
 		currentPage = event.detail.page;
 		applyFiltersAndPagination();
 	}
 
+	/** @param {CustomEvent<{itemsPerPage: number}>} event */
+	function handleItemsPerPageChange(event) {
+		itemsPerPage = event.detail.itemsPerPage;
+		currentPage = 1;
+		try {
+			localStorage.setItem(LS_PAGE_SIZE, String(itemsPerPage));
+		} catch {
+			// ignore
+		}
+		applyFiltersAndPagination();
+	}
+
+	/** @param {string} id */
 	function viewStore(id) {
 		dispatch('view', { id });
 	}
 
+	/** @param {string} msg */
 	function showSuccess(msg) {
 		successMessage = msg;
 		setTimeout(() => {
@@ -133,6 +420,7 @@
 		}, 4000);
 	}
 
+	/** @param {import('$lib/services/knowledgeStoreService').KnowledgeStore} ks */
 	function requestDelete(ks) {
 		deleteTarget = { id: ks.id, name: ks.name };
 		showDeleteModal = true;
@@ -156,14 +444,16 @@
 		}
 	}
 
+	/** @param {import('$lib/services/knowledgeStoreService').KnowledgeStore} ks */
 	async function handleToggleSharing(ks) {
 		if (!ks.is_owner && ks.is_owner !== undefined) return;
 		const newState = !ks.is_shared;
+		openMenuId = null;
 		try {
 			await toggleSharing(ks.id, newState);
-			ks.is_shared = newState;
 			const idx = stores.findIndex((s) => s.id === ks.id);
 			if (idx !== -1) stores[idx].is_shared = newState;
+			stores = [...stores];
 			applyFiltersAndPagination();
 			showSuccess(
 				newState
@@ -179,6 +469,7 @@
 		}
 	}
 
+	/** @param {number|string|null|undefined} ts */
 	function formatDate(ts) {
 		if (!ts) return '';
 		const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
@@ -188,200 +479,249 @@
 			day: 'numeric'
 		});
 	}
+
+	/** @param {string} id */
+	function toggleMenu(id) {
+		openMenuId = openMenuId === id ? null : id;
+	}
 </script>
 
-<div class="overflow-hidden rounded-lg bg-white shadow">
-	<div class="flex items-center justify-between border-b border-gray-200 px-4 py-4 sm:px-6">
-		<div class="flex gap-4">
+<!-- Close overflow menu on outside click -->
+<svelte:window
+	onclick={(e) => {
+		if (!(/** @type {Element} */ (e.target)?.closest?.('[data-overflow-menu]'))) openMenuId = null;
+	}}
+/>
+
+<EntityListShell
+	isLoading={loading}
+	isError={!!error}
+	errorMessage={error}
+	isEmpty={displayStores.length === 0 && !loading && !error}
+	{isFiltered}
+	{currentPage}
+	{totalPages}
+	{totalItems}
+	{itemsPerPage}
+	filters={filterDefs}
+	{filterValues}
+	activeChips={activeChips()}
+	searchValue={searchTerm}
+	searchPlaceholder={$_('list.searchPlaceholder', { default: 'Search knowledge stores...' })}
+	sortOptions={[
+		{ value: 'name', label: $_('knowledgeStores.name', { default: 'Name' }) },
+		{ value: 'created_at', label: $_('knowledgeStores.createdAt', { default: 'Created' }) }
+	]}
+	{sortBy}
+	{sortOrder}
+	onRetry={loadStores}
+	onSearchChange={handleSearchChange}
+	onFilterChange={handleFilterChange}
+	onSortChange={handleSortChange}
+	onClearFilters={handleClearFilters}
+	onClearAllChips={handleClearAllChips}
+	onPageChange={handlePageChange}
+	onItemsPerPageChange={handleItemsPerPageChange}
+>
+	{#snippet headerActions()}
+		<div class="flex items-center gap-2">
 			<button
 				type="button"
-				class="border-b-2 pb-1 text-sm font-medium {currentTab === 'my'
-					? 'border-[#2271b3] text-[#2271b3]'
-					: 'border-transparent text-gray-500 hover:text-gray-700'}"
-				onclick={() => handleTabSwitch('my')}
-			>
-				{$_('knowledgeStores.myStores', { default: 'My Knowledge Stores' })}
-				<span class="ml-1 text-xs text-gray-400">({ownedStores.length})</span>
-			</button>
-			<button
-				type="button"
-				class="border-b-2 pb-1 text-sm font-medium {currentTab === 'shared'
-					? 'border-[#2271b3] text-[#2271b3]'
-					: 'border-transparent text-gray-500 hover:text-gray-700'}"
-				onclick={() => handleTabSwitch('shared')}
-			>
-				{$_('knowledgeStores.sharedStores', { default: 'Shared' })}
-				<span class="ml-1 text-xs text-gray-400">({sharedStores.length})</span>
-			</button>
-		</div>
-	</div>
-
-	{#if successMessage}
-		<div
-			class="border-b border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700"
-			role="status"
-		>
-			{successMessage}
-		</div>
-	{/if}
-
-	{#if currentTabStores.length > 0}
-		<div class="border-b border-gray-100 px-4 py-3">
-			<FilterBar
-				bind:searchTerm
-				on:search={handleSearchChange}
-				on:sort={handleSortChange}
-				sortOptions={[
-					{ value: 'name', label: $_('knowledgeStores.name', { default: 'Name' }) },
-					{ value: 'created_at', label: $_('knowledgeStores.createdAt', { default: 'Created' }) }
-				]}
-				{sortBy}
-				{sortOrder}
-			/>
-		</div>
-	{/if}
-
-	{#if loading}
-		<div class="p-6 text-center">
-			<div class="animate-pulse text-gray-500">
-				{$_('knowledgeStores.loading', { default: 'Loading Knowledge Stores...' })}
-			</div>
-		</div>
-	{:else if error}
-		<div class="p-6 text-center" role="alert">
-			<p class="text-red-500">{error}</p>
-			<button
-				onclick={() => loadStores()}
-				class="mt-3 rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white hover:bg-[#195a91]"
-			>
-				{$_('common.retry', { default: 'Retry' })}
-			</button>
-		</div>
-	{:else if displayStores.length === 0}
-		<div class="p-6 text-center text-gray-500">
-			{#if currentTabStores.length === 0}
-				{currentTab === 'my'
-					? $_('knowledgeStores.noOwned', {
-							default:
-								'You have no Knowledge Stores yet. Create one to start indexing library content.'
-						})
-					: $_('knowledgeStores.noShared', {
-							default: 'No shared Knowledge Stores available.'
-						})}
-			{:else}
-				{$_('knowledgeStores.noResults', {
-					default: 'No Knowledge Stores match your search.'
+				onclick={() => dispatch('createWithInitialState', { libraryPath: 'existing' })}
+				title={$_('knowledgeStores.createNewTitle', {
+					default: 'Create a Knowledge Store from existing library content'
 				})}
-			{/if}
+				class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+			>
+				+ {$_('knowledgeStores.createNew', { default: 'New Knowledge Store' })}
+			</button>
 		</div>
-	{:else}
-		<div class="overflow-x-auto">
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
-					<tr>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.name', { default: 'Name' })}
-						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.embedding', { default: 'Embedding' })}
-						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.chunking', { default: 'Chunking' })}
-						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.contentCount', { default: 'Content' })}
-						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.sharing.label', { default: 'Sharing' })}
-						</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.createdAt', { default: 'Created' })}
-						</th>
-						<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-							{$_('knowledgeStores.actions', { default: 'Actions' })}
-						</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-gray-200 bg-white">
-					{#each displayStores as ks (ks.id)}
-						<tr class="hover:bg-gray-50">
-							<td class="px-4 py-3">
-								<button
-									type="button"
-									onclick={() => viewStore(ks.id)}
-									class="cursor-pointer border-0 bg-transparent p-0 text-left font-medium text-[#2271b3] hover:underline"
-								>
-									{ks.name}
-								</button>
-								{#if ks.description}
-									<p class="mt-0.5 max-w-xs truncate text-xs text-gray-500">
-										{ks.description}
-									</p>
-								{/if}
-							</td>
-							<td class="px-4 py-3 text-xs text-gray-600">
-								<div>{ks.embedding_vendor}</div>
-								<div class="text-gray-400">{ks.embedding_model}</div>
-							</td>
-							<td class="px-4 py-3 text-xs text-gray-600">{ks.chunking_strategy}</td>
-							<td class="px-4 py-3 text-sm text-gray-500">{ks.content_count ?? 0}</td>
-							<td class="px-4 py-3">
-								{#if currentTab === 'my'}
-									<button
-										type="button"
-										onclick={() => handleToggleSharing(ks)}
-										class="rounded border px-2 py-1 text-xs {ks.is_shared
-											? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-											: 'border-gray-300 bg-gray-50 text-gray-600 hover:bg-gray-100'}"
-									>
-										{ks.is_shared
-											? $_('knowledgeStores.sharing.shared', { default: 'Shared' })
-											: $_('knowledgeStores.sharing.private', { default: 'Private' })}
-									</button>
-								{:else}
-									<span class="text-xs text-gray-500">
-										{ks.owner_name || ks.owner_email || ''}
-									</span>
-								{/if}
-							</td>
-							<td class="px-4 py-3 text-sm text-gray-500">{formatDate(ks.created_at)}</td>
-							<td class="px-4 py-3 text-right">
-								<button
-									type="button"
-									onclick={() => viewStore(ks.id)}
-									class="mr-3 text-sm text-[#2271b3] hover:underline"
-								>
-									{$_('knowledgeStores.view', { default: 'View' })}
-								</button>
-								{#if currentTab === 'my'}
-									<button
-										type="button"
-										onclick={() => requestDelete(ks)}
-										class="text-sm text-red-600 hover:text-red-900"
-									>
-										{$_('knowledgeStores.delete', { default: 'Delete' })}
-									</button>
-								{/if}
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+	{/snippet}
 
-		{#if totalPages > 1}
-			<div class="border-t border-gray-100 px-4 py-3">
-				<Pagination
-					{currentPage}
-					{totalPages}
-					{totalItems}
-					{itemsPerPage}
-					on:pageChange={handlePageChange}
-				/>
+	{#snippet emptyState()}
+		<p class="text-sm font-medium text-gray-700">
+			{isFiltered
+				? $_('knowledgeStores.noResults', { default: 'No Knowledge Stores match your filters.' })
+				: $_('knowledgeStores.noOwned', {
+						default:
+							'You have no Knowledge Stores yet. Create one to start indexing library content.'
+					})}
+		</p>
+		{#if !isFiltered}
+			<button
+				type="button"
+				onclick={() => dispatch('createWithInitialState', { libraryPath: 'existing' })}
+				title={$_('knowledgeStores.createNewTitle', {
+					default: 'Create a Knowledge Store from existing library content'
+				})}
+				class="mt-4 inline-flex items-center rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+			>
+				+ {$_('knowledgeStores.createNew', { default: 'New Knowledge Store' })}
+			</button>
+		{/if}
+	{/snippet}
+
+	{#snippet table()}
+		{#if successMessage}
+			<div
+				class="border-b border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700"
+				role="status"
+			>
+				{successMessage}
 			</div>
 		{/if}
-	{/if}
-</div>
+		<ResizableTable tableId="knowledgeStores" {columns}>
+			<tbody class="divide-y divide-gray-200 bg-white">
+				{#each displayStores as ks (ks.id)}
+					<tr class="hover:bg-gray-50">
+						<!-- Name -->
+						<td class="overflow-hidden px-4 py-2.5">
+							<button
+								type="button"
+								onclick={() => viewStore(ks.id)}
+								class="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-[#2271b3] hover:underline"
+							>
+								{ks.name}
+							</button>
+							{#if ks.description}
+								<p class="mt-0.5 truncate text-xs text-gray-500">{ks.description}</p>
+							{/if}
+						</td>
+						<!-- Embedding -->
+						<td class="overflow-hidden px-4 py-2.5 text-xs text-gray-600">
+							<div class="truncate">{ks.embedding_vendor}</div>
+							<div class="truncate text-gray-400">{ks.embedding_model}</div>
+						</td>
+						<!-- Chunking -->
+						<td class="truncate px-4 py-2.5 text-xs text-gray-600">{ks.chunking_strategy}</td>
+						<!-- Content count -->
+						<td class="px-4 py-2.5 text-sm text-gray-500">{ks.content_count ?? 0}</td>
+						<!-- Sharing badge -->
+						<td class="px-4 py-2.5">
+							{#if ks.is_owner !== false}
+								<span
+									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {ks.is_shared
+										? 'bg-green-100 text-green-700'
+										: 'bg-gray-100 text-gray-600'}"
+								>
+									{ks.is_shared
+										? $_('knowledgeStores.sharing.shared', { default: 'Shared' })
+										: $_('knowledgeStores.sharing.private', { default: 'Private' })}
+								</span>
+							{:else}
+								<span class="text-xs text-gray-400">{ks.owner_name || ks.owner_email || ''}</span>
+							{/if}
+						</td>
+						<!-- Created -->
+						<td class="px-4 py-2.5 text-sm text-gray-500">{formatDate(ks.created_at)}</td>
+						<!-- Actions -->
+						<td class="px-4 py-2.5">
+							<div class="flex items-center justify-end gap-1">
+								<!-- View icon button -->
+								<button
+									type="button"
+									onclick={() => viewStore(ks.id)}
+									title={$_('knowledgeStores.view', { default: 'View' })}
+									aria-label="{$_('knowledgeStores.view', { default: 'View' })} {ks.name}"
+									class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2271b3]"
+								>
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+										/>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+										/>
+									</svg>
+								</button>
+
+								<!-- Overflow menu -->
+								{#if ks.is_owner !== false}
+									<div class="relative" data-overflow-menu>
+										<button
+											type="button"
+											onclick={() => toggleMenu(ks.id)}
+											title={$_('list.moreActions', { default: 'More actions' })}
+											aria-label="{$_('list.moreActions', {
+												default: 'More actions'
+											})} for {ks.name}"
+											class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+										>
+											<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+												<path
+													d="M12 5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 13.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 22a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"
+												/>
+											</svg>
+										</button>
+										{#if openMenuId === ks.id}
+											<div
+												class="absolute right-0 z-10 mt-1 w-44 rounded-md border border-gray-200 bg-white shadow-lg"
+												data-overflow-menu
+											>
+												<button
+													type="button"
+													onclick={() => handleToggleSharing(ks)}
+													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+												>
+													<svg
+														class="h-4 w-4"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+														/>
+													</svg>
+													{ks.is_shared
+														? $_('knowledgeStores.sharing.makePrivate', { default: 'Make private' })
+														: $_('knowledgeStores.sharing.share', { default: 'Share' })}
+												</button>
+												<hr class="border-gray-100" />
+												<button
+													type="button"
+													onclick={() => {
+														openMenuId = null;
+														requestDelete(ks);
+													}}
+													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+												>
+													<svg
+														class="h-4 w-4"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+														/>
+													</svg>
+													{$_('knowledgeStores.delete', { default: 'Delete' })}
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</ResizableTable>
+	{/snippet}
+</EntityListShell>
 
 <ConfirmationModal
 	bind:isOpen={showDeleteModal}

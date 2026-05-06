@@ -13,23 +13,19 @@
 		"name": "Nombre",
 		"secretKey": "Clave Secreta",
 		"forgotPassword": "¿Olvidó su contraseña?",
-		"noAccount": "¿No tiene una cuenta?",
+		"noAccount": "¿No tienes cuenta?",
 		"alreadyAccount": "¿Ya tiene una cuenta?",
 		"loginSuccess": "¡Inicio de sesión exitoso!",
 		"loginError": "Error al iniciar sesión. Por favor, verifique sus credenciales.",
-		"signupSuccess": "¡Cuenta creada exitosamente!",
+		"signupSuccess": "¡Registro exitoso! Por favor inicia sesión.",
 		"signupError": "Error al registrarse. Por favor, inténtelo de nuevo.",
-		"logout": "Cerrar Sesión",
+		"logout": "Cerrar sesión",
 		"loginTitle": "Iniciar sesión",
 		"signupTitle": "Registrarse",
 		"secretKeyHint": "Necesitas una clave secreta para registrarte",
 		"loginButton": "Iniciar sesión",
 		"signupButton": "Registrarse",
-		"logout": "Cerrar sesión",
 		"loading": "Cargando...",
-		"loginSuccess": "¡Inicio de sesión exitoso!",
-		"signupSuccess": "¡Registro exitoso! Por favor inicia sesión.",
-		"noAccount": "¿No tienes cuenta?",
 		"haveAccount": "¿Ya tienes cuenta?",
 		"signupLink": "Regístrate",
 		"loginLink": "Inicia sesión"
@@ -197,13 +193,13 @@
 		"publishModal": {
 			"title": "Publicar Asistente",
 			"groupName": "Nombre del Grupo",
-			"oauthConsumer": "Nombre del Consumidor OAuth",
+			"oauthConsumer": "Nombre Consumidor OAuth",
 			"publish": "Publicar",
-			"success": "¡Asistente publicado exitosamente!",
-			"publishing": "Publicando...",
 			"cancel": "Cancelar",
 			"groupNamePlaceholder": "ej., asistente_123",
-			"oauthConsumerPlaceholder": "ej., 123_consumer"
+			"oauthConsumerPlaceholder": "ej., 123_consumer",
+			"publishing": "Publicando...",
+			"success": "¡Asistente publicado con éxito!"
 		},
 		"publish": "Publicar",
 		"unpublish": "Despublicar",
@@ -279,23 +275,7 @@
 			"filePath": "Ruta de Archivo",
 			"ragTopK": "Resultados Top-k"
 		},
-		"published": "Publicado",
-		"notPublished": "No Publicado",
-		"loading": "Cargando asistentes...",
 		"noAssistantsFound": "No se encontraron asistentes.",
-		"confirmDelete": "¿Estás seguro de que quieres eliminar este asistente?",
-		"noDescription": "Sin descripción",
-		"publishModal": {
-			"title": "Publicar Asistente",
-			"groupName": "Nombre del Grupo",
-			"oauthConsumer": "Nombre Consumidor OAuth",
-			"publish": "Publicar",
-			"cancel": "Cancelar",
-			"groupNamePlaceholder": "ej., asistente_123",
-			"oauthConsumerPlaceholder": "ej., 123_consumer",
-			"publishing": "Publicando...",
-			"success": "¡Asistente publicado con éxito!"
-		},
 		"editAssistant": "Editar Asistente",
 		"cloneAssistant": "Clonar Asistente",
 		"deleteAssistant": "Eliminar Asistente",
@@ -310,12 +290,10 @@
 		"errorTitle": "Error:"
 	},
 	"help": {
-		"title": "Ayuda",
-		"askQuestion": "Hacer una pregunta",
-		"send": "Enviar",
-		"close": "Cerrar",
 		"title": "Ayuda LAMB",
-		"askQuestion": "Pregunta a LAMB lo que sea..."
+		"askQuestion": "Pregunta a LAMB lo que sea...",
+		"send": "Enviar",
+		"close": "Cerrar"
 	},
 	"common": {
 		"loading": "Cargando...",
@@ -335,7 +313,41 @@
 		"refresh": "Actualizar",
 		"publicate": "Publicar",
 		"export": "Exportar",
-		"exporting": "Exportando..."
+		"exporting": "Exportando...",
+		"retry": "Reintentar"
+	},
+	"list": {
+		"searchPlaceholder": "Buscar...",
+		"clearAll": "Borrar todo",
+		"noResults": "Ningún elemento coincide con los filtros.",
+		"noItems": "Aún no hay elementos.",
+		"errorTitle": "Error al cargar",
+		"retry": "Reintentar",
+		"moreActions": "Más acciones",
+		"filters": {
+			"sharing": "Compartido",
+			"my": "Mío",
+			"shared": "Compartido",
+			"hasItems": "Tiene elementos",
+			"withItems": "Con elementos",
+			"empty": "Vacío",
+			"created": "Creado",
+			"today": "Hoy",
+			"thisWeek": "Esta semana",
+			"thisMonth": "Este mes",
+			"embedding": "Embedding",
+			"local": "Local",
+			"chunking": "Fragmentación",
+			"chunkingSimple": "Simple",
+			"chunkingHierarchical": "Jerárquico",
+			"chunkingByPage": "Por página",
+			"chunkingBySection": "Por sección",
+			"content": "Contenido",
+			"hasContent": "Tiene contenido"
+		}
+	},
+	"table": {
+		"resetColumns": "Restablecer columnas"
 	},
 	"knowledgeBases": {
 		"title": "Bases de Conocimiento",
@@ -886,6 +898,9 @@
 		"myLibraries": "Mis Bibliotecas",
 		"sharedLibraries": "Compartidas",
 		"createNew": "Nueva Biblioteca",
+		"createNewTitle": "Crear una nueva Biblioteca y, opcionalmente, un Almacén de Conocimiento a partir de ella",
+		"createWithKS": "Crear con Almacén de Conocimiento →",
+		"createWithKSTitle": "Crear una nueva Biblioteca y adjuntar un Almacén de Conocimiento en un solo paso",
 		"loading": "Cargando bibliotecas...",
 		"loginRequired": "Debes iniciar sesión para ver las bibliotecas.",
 		"noOwned": "No tienes bibliotecas. ¡Crea una para empezar!",
@@ -931,7 +946,9 @@
 		"sharing": {
 			"label": "Compartir",
 			"shared": "Compartida",
-			"private": "Privada"
+			"private": "Privada",
+			"share": "Compartir",
+			"makePrivate": "Hacer privada"
 		},
 		"createModal": {
 			"title": "Crear Biblioteca",
@@ -979,6 +996,8 @@
 		"loginRequired": "Debes iniciar sesión para ver los Almacenes de Conocimiento.",
 		"myStores": "Mis Almacenes de Conocimiento",
 		"sharedStores": "Compartidos",
+		"createNew": "Nuevo Almacén de Conocimiento",
+		"createNewTitle": "Crear un Almacén de Conocimiento a partir del contenido de una biblioteca existente",
 		"noOwned": "Aún no tienes Almacenes de Conocimiento. Crea uno para empezar a indexar contenido de la biblioteca.",
 		"noShared": "No hay Almacenes de Conocimiento compartidos disponibles.",
 		"noResults": "Ningún Almacén de Conocimiento coincide con tu búsqueda.",
@@ -1026,7 +1045,9 @@
 		"sharing": {
 			"label": "Compartir",
 			"shared": "Compartido",
-			"private": "Privado"
+			"private": "Privado",
+			"share": "Compartir",
+			"makePrivate": "Hacer privado"
 		},
 		"permalinks": {
 			"original": "Fuente",
@@ -1072,7 +1093,10 @@
 			"abort": "Abortar",
 			"useExisting": "Usar uno existente",
 			"createNew": "Crear nuevo",
-			"lockedConfigNotice": "Esta configuración se fija al crear y no se podrá cambiar después.",
+			"lockedConfigNotice": {
+				"title": "Estos ajustes no se pueden cambiar después.",
+				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén."
+			},
 			"editDefaults": "Editar valores por defecto",
 			"progress": "Paso {current} de {total}",
 			"step0": {
@@ -1118,12 +1142,15 @@
 				"sharedLabel": "Compartir con la organización"
 			},
 			"step6": {
-				"title": "Configuración del Almacén de Conocimiento",
-				"description": "Estas opciones controlan la fragmentación y el embedding. Quedan BLOQUEADAS tras la creación.",
-				"chunkingLabel": "Estrategia de fragmentación",
-				"vectorDbLabel": "Backend de Vector DB",
-				"embeddingVendorLabel": "Proveedor de embedding",
-				"embeddingModelLabel": "Modelo de embedding"
+				"title": "Knowledge Store configuration",
+				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
+				"chunkingLabel": "Chunking strategy",
+				"vectorDbLabel": "Vector DB backend",
+				"embeddingVendorLabel": "Embedding vendor",
+				"embeddingModelLabel": "Embedding model",
+				"vendorLabel": "Embedding vendor",
+				"modelLabel": "Embedding model",
+				"endpointLabel": "Embedding endpoint (optional)"
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
@@ -1131,13 +1158,25 @@
 				"allItems": "Todos los elementos"
 			},
 			"step8": {
-				"title": "Revisar y crear",
-				"description": "Revisa tus elecciones a continuación. Haz clic en Crear para continuar.",
-				"libraryHeading": "Biblioteca",
-				"ksHeading": "Almacén de Conocimiento",
-				"itemsHeading": "Elementos a ingerir",
-				"submit": "Crear",
-				"submitting": "Creando..."
+				"title": "Review & create",
+				"description": "Review your choices below. Click Create to proceed.",
+				"libraryHeading": "Library",
+				"ksHeading": "Knowledge Store",
+				"itemsHeading": "Items to ingest",
+				"submit": "Create",
+				"submitting": "Creating...",
+				"heading": "Review & create",
+				"ingestionHeading": "Ingestion",
+				"ingestionCount": "{n} item(s) will be ingested",
+				"libraryPlugin": "Import plugin: {plugin}",
+				"libraryFileCount": "{n} file(s) to upload",
+				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
+				"progressLibrary": "Creating library...",
+				"progressUpload": "Uploading {name} ({n}/{total})...",
+				"progressIngestStatus": "Waiting for {name} to finish importing...",
+				"progressImportUrl": "Importing {url} ({n}/{total})...",
+				"progressKS": "Creating Knowledge Store...",
+				"progressIngest": "Queuing {n} item(s) for ingestion..."
 			},
 			"step9": {
 				"title": "Todo listo",
@@ -1146,6 +1185,70 @@
 				"openKs": "Abrir Almacén de Conocimiento",
 				"openLibrary": "Abrir Biblioteca",
 				"createAnother": "Crear otro"
+			},
+			"stepProgress": "Paso {n} de {total}",
+			"creating": "Creando...",
+			"draft": {
+				"banner": "Tienes un borrador sin terminar de {time}.",
+				"resume": "Retomar",
+				"discard": "Descartar",
+				"savePrompt": {
+					"title": "¿Guardar como borrador?",
+					"body": "Tu progreso se guardará hasta que cierres sesión o la pestaña.",
+					"save": "Guardar borrador"
+				}
+			},
+			"libraryStep": {
+				"title": "Configuración de Biblioteca",
+				"heading": "Biblioteca",
+				"description": "Elige una Biblioteca existente o crea una nueva. Un Almacén de Conocimiento siempre se alimenta de una Biblioteca.",
+				"legend": "Ruta de Biblioteca",
+				"createNewHint": "Empieza una Biblioteca nueva e importa documentos.",
+				"useExistingHint": "Elige una Biblioteca que ya tengas y salta a los pasos del Almacén de Conocimiento.",
+				"noLibraries": "No hay bibliotecas disponibles. Elige \"Crear nueva\".",
+				"selectLabel": "Biblioteca",
+				"nameRequired": "El nombre es obligatorio",
+				"nameTooLong": "El nombre debe tener menos de 100 caracteres",
+				"shareLabel": "Compartir con mi organización",
+				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle de la Biblioteca.",
+				"advancedLabel": "Avanzado: plugin de importación y parámetros",
+				"noPlugins": "No hay plugins de importación disponibles.",
+				"pluginLabel": "Plugin de importación",
+				"pluginNote": "Los parámetros por plugin se pueden personalizar más tarde desde la vista de detalle de la biblioteca."
+			},
+			"libraryContent": {
+				"title": "Contenido de Biblioteca",
+				"heading": "Contenido inicial",
+				"description": "Añade contenido a tu nueva Biblioteca ahora (opcional). También puedes omitir esto y añadir contenido más tarde.",
+				"sourceTypeFiles": "Archivos",
+				"sourceTypeUrl": "URL",
+				"sourceTypeYouTube": "YouTube",
+				"pickLabel": "Seleccionar archivos",
+				"invalidUrl": "Se requiere una URL HTTP(S) válida.",
+				"invalidYoutubeUrl": "Se requiere una URL de YouTube válida.",
+				"titleOptional": "Título (opcional)",
+				"youtubeUrl": "URL de YouTube",
+				"ytLanguage": "Idioma de la transcripción",
+				"addUrl": "+ Añadir URL",
+				"addYouTube": "+ Añadir YouTube",
+				"queuedLabel": "Fuentes en cola",
+				"uploadNote": "El contenido se importará cuando hagas clic en \"Crear\" en el paso de Revisión.",
+				"emptyHint": "No hay contenido en cola. Puedes omitir este paso."
+			},
+			"ksStep": {
+				"title": "Configuración de Almacén de Conocimiento",
+				"heading": "Almacén de Conocimiento",
+				"description": "Elige un Almacén de Conocimiento existente o crea uno nuevo. Los almacenes existentes mantienen su estrategia de fragmentación y embeddings originales.",
+				"legend": "Ruta de Almacén de Conocimiento",
+				"createNewHint": "Configura un nuevo Almacén de Conocimiento con ajustes de fragmentación y embeddings.",
+				"useExistingHint": "Elige un Almacén de Conocimiento ya creado e ingesta más contenido.",
+				"noStores": "No hay Almacenes de Conocimiento disponibles. Elige \"Crear nuevo\".",
+				"selectLabel": "Almacén de Conocimiento",
+				"nameRequired": "El nombre es obligatorio",
+				"nameTooLong": "El nombre debe tener menos de 100 caracteres",
+				"shareLabel": "Compartir con mi organización",
+				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle del Almacén de Conocimiento.",
+				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embeddings, base de datos vectorial"
 			}
 		}
 	}
