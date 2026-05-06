@@ -138,7 +138,7 @@
 		/>
 		<!-- Active filter chips -->
 		{#if activeChips.length > 0}
-			<div class="flex flex-wrap items-center gap-2 px-4 pt-1 pb-3">
+			<div class="flex flex-wrap items-center gap-2 px-4 pt-4 pb-2">
 				{#each activeChips as chip (chip.id)}
 					<FilterChip id={chip.id} label={chip.label} value={chip.value} onClear={chip.onClear} />
 				{/each}

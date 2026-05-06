@@ -134,7 +134,7 @@
 		<div class="p-4">
 			<div class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap">
 				<!-- Search input -->
-				<div class="min-w-0 flex-1">
+				<div class="min-w-[18rem] flex-shrink-0 basis-72">
 					<div class="relative">
 						<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
 							<svg

@@ -572,10 +572,10 @@
 		{/if}
 		<ResizableTable tableId="knowledgeStores" {columns}>
 			<tbody class="divide-y divide-gray-200 bg-white">
-				{#each displayStores as ks (ks.id)}
+				{#each displayStores as ks, rowIdx (ks.id)}
 					<tr class="hover:bg-gray-50">
 						<!-- Name -->
-						<td class="overflow-hidden px-4 py-2.5">
+						<td class="overflow-hidden px-4 py-2">
 							<button
 								type="button"
 								onclick={() => viewStore(ks.id)}
@@ -588,16 +588,16 @@
 							{/if}
 						</td>
 						<!-- Embedding -->
-						<td class="overflow-hidden px-4 py-2.5 text-xs text-gray-600">
+						<td class="overflow-hidden px-4 py-2 text-xs text-gray-600">
 							<div class="truncate">{ks.embedding_vendor}</div>
 							<div class="truncate text-gray-400">{ks.embedding_model}</div>
 						</td>
 						<!-- Chunking -->
-						<td class="truncate px-4 py-2.5 text-xs text-gray-600">{ks.chunking_strategy}</td>
+						<td class="truncate px-4 py-2 text-xs text-gray-600">{ks.chunking_strategy}</td>
 						<!-- Content count -->
-						<td class="px-4 py-2.5 text-sm text-gray-500">{ks.content_count ?? 0}</td>
+						<td class="px-4 py-2 text-sm text-gray-500">{ks.content_count ?? 0}</td>
 						<!-- Sharing badge -->
-						<td class="px-4 py-2.5">
+						<td class="px-4 py-2">
 							{#if ks.is_owner !== false}
 								<span
 									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {ks.is_shared
@@ -613,9 +613,9 @@
 							{/if}
 						</td>
 						<!-- Created -->
-						<td class="px-4 py-2.5 text-sm text-gray-500">{formatDate(ks.created_at)}</td>
+						<td class="px-4 py-2 text-sm text-gray-500">{formatDate(ks.created_at)}</td>
 						<!-- Actions -->
-						<td class="px-4 py-2.5">
+						<td class="px-4 py-2">
 							<div class="flex items-center justify-end gap-1">
 								<!-- View icon button -->
 								<button
@@ -661,7 +661,10 @@
 										</button>
 										{#if openMenuId === ks.id}
 											<div
-												class="absolute right-0 z-10 mt-1 w-44 rounded-md border border-gray-200 bg-white shadow-lg"
+												class="absolute right-0 z-10 w-44 rounded-md border border-gray-200 bg-white shadow-lg {rowIdx >=
+												displayStores.length - 2
+													? 'bottom-full mb-1'
+													: 'top-full mt-1'}"
 												data-overflow-menu
 											>
 												<button
