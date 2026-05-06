@@ -5,10 +5,11 @@
     import { goto } from '$app/navigation';
     import { base } from '$app/paths';
     import { _ } from '@lamb/ui'; // Assuming i18n setup
-    import axios from 'axios';
+    import { apiAxios as axios, authenticatedFetch } from '$lib/services/apiClient';
+    import { isAxiosError } from 'axios';
+    axios.isAxiosError = isAxiosError;
     import { getApiUrl, getConfig } from '$lib/config';
-    import { user } from '@lamb/ui'; // Import user store for auth token
-    import { authenticatedFetch } from '$lib/utils/apiClient';
+    import { user } from '@lamb/ui';
     import * as adminService from '$lib/services/adminService'; // Import admin service for bulk operations
     import { ConfirmationModal } from '@lamb/ui';
     

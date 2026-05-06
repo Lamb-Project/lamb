@@ -9,7 +9,6 @@
 	import { startSessionPolling, stopSessionPolling } from '$lib/utils/sessionGuard';
 	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
-	import '$lib/utils/apiClient';
 
 	let { children } = $props();
 	let sessionReady = $state(!browser || !new URL(window.location.href).searchParams.get('token'));
