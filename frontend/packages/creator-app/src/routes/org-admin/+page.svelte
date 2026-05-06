@@ -3,11 +3,10 @@
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
     import { base } from '$app/paths';
-    import { apiAxios as axios } from '$lib/services/apiClient';
+    import { apiAxios as axios, authenticatedFetch } from '$lib/services/apiClient';
     import { isAxiosError } from 'axios';
     axios.isAxiosError = isAxiosError;
     import { user } from '@lamb/ui';
-    import { authenticatedFetch } from '$lib/utils/apiClient';
     import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import { ConfirmationModal } from '@lamb/ui';
