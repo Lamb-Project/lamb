@@ -147,9 +147,8 @@ test.describe.serial("Knowledge Store UI", () => {
     // URL should now carry section=knowledge-stores
     await expect(page).toHaveURL(/[?&]section=knowledge-stores/);
 
-    // The KS list owned/shared sub-tab buttons should appear.
-    await expect(page.getByRole("button", { name: /My Knowledge Stores/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("button", { name: /^Shared/i })).toBeVisible();
+    // The KS list toolbar should show the "+ New Knowledge Store" button.
+    await expect(page.getByRole("button", { name: /\+\s*New Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
 
     // Switch back to Libraries.
     await page.getByRole("button", { name: /^Libraries$/ }).click();
@@ -160,8 +159,8 @@ test.describe.serial("Knowledge Store UI", () => {
     await page.goto("/libraries?section=knowledge-stores");
     await page.waitForLoadState("domcontentloaded");
 
-    // The owned/shared tabs in KnowledgeStoresList should be visible.
-    await expect(page.getByRole("button", { name: /My Knowledge Stores/i })).toBeVisible({ timeout: 10_000 });
+    // The KS list toolbar button confirms KnowledgeStoresList rendered.
+    await expect(page.getByRole("button", { name: /\+\s*New Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
 
     // The Knowledge Stores sub-tab should be the active one. The active
     // button has the [#2271b3] color class — easiest stable check is that
@@ -176,7 +175,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(page).toHaveURL(/\/libraries\?(?:.*&)?section=knowledge-stores/);
   });
 
-  test("seeded Knowledge Store appears in the My Knowledge Stores list", async ({ page }) => {
+  test("seeded Knowledge Store appears in the list", async ({ page }) => {
     test.skip(!seededKsId, "Seeding the KS failed — list-render assertion not applicable.");
 
     await page.goto("/libraries?section=knowledge-stores");
@@ -195,7 +194,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(page.getByRole("columnheader", { name: /^Actions$/i })).toBeVisible();
   });
 
-  test("clicking Create Knowledge opens the wizard at Step 0", async ({ page }) => {
+  test("clicking Create Knowledge opens the wizard at Step 1", async ({ page }) => {
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
 
@@ -204,15 +203,15 @@ test.describe.serial("Knowledge Store UI", () => {
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Step 0 heading: "Library"
+    // Step 1 heading: "Library"
     await expect(dialog.getByRole("heading", { name: /^Library$/i })).toBeVisible();
 
-    // Esc closes the wizard cleanly.
+    // Esc closes the wizard cleanly (Esc handler now closes silently, saving draft).
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
   });
 
-  test("new-library wizard path walks Step 0 -> Step 4 and aborts without persisting", async ({ page }) => {
+  test("new-library wizard path walks Step 1 -> Step 3 and aborts without persisting", async ({ page }) => {
     // Capture pre-wizard counts so we can confirm nothing was created.
     const beforeLibs = await apiCall(page, "GET", "/creator/libraries");
     const beforeKs = await apiCall(page, "GET", "/creator/knowledge-stores");
@@ -226,14 +225,12 @@ test.describe.serial("Knowledge Store UI", () => {
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Step 0 — pick "Create new" (default). Click Next.
+    // Step 1 (Library setup) — pick "Create new" (default), fill in name, click Next.
     await expect(dialog.getByRole("heading", { name: /^Library$/i })).toBeVisible();
     const newRadio = dialog.locator('input[type="radio"][value="new"]').first();
     await newRadio.check();
-    await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Step 1 — auto-suggested library name should be pre-populated.
-    await expect(dialog.getByRole("heading", { name: /Library details/i })).toBeVisible({ timeout: 5_000 });
+    // The name input should be pre-populated with a suggested name.
     const nameInput = dialog.locator("#wizard-library-name");
     await expect(nameInput).toBeVisible();
     const suggestedName = await nameInput.inputValue();
@@ -244,21 +241,17 @@ test.describe.serial("Knowledge Store UI", () => {
     await nameInput.fill(uniqueName);
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Step 2 — defaults are valid; just click Next.
-    await expect(dialog.getByRole("heading", { name: /Library import config/i })).toBeVisible({ timeout: 5_000 });
-    await dialog.getByRole("button", { name: /^Next$/ }).click();
-
-    // Step 3 — skippable. Click Skip.
+    // Step 2 (Library content) — skippable. Click Skip.
     await expect(dialog.getByRole("heading", { name: /Initial content/i })).toBeVisible({ timeout: 5_000 });
     await dialog.getByRole("button", { name: /^Skip$/ }).click();
 
-    // Step 4 — "Knowledge Store" path picker. Pick "Create new".
+    // Step 3 (KS setup) — "Knowledge Store" heading. Pick "Create new".
     await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).toBeVisible({ timeout: 5_000 });
     const newKsRadio = dialog.locator('input[type="radio"][value="new"]').first();
     await newKsRadio.check();
 
-    // Abort by closing the wizard. All DB writes happen at Step 8, so
-    // nothing should have been persisted.
+    // Abort by closing the wizard. All DB writes happen at Step 5 (Review & create),
+    // so nothing should have been persisted.
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
 
@@ -273,7 +266,7 @@ test.describe.serial("Knowledge Store UI", () => {
     expect(matched).toBeUndefined();
   });
 
-  test("existing-Library skip rule jumps from Step 0 directly to Step 4", async ({ page }) => {
+  test("existing-Library skip rule jumps from Step 1 to Step 3", async ({ page }) => {
     // Need at least one accessible library for this assertion.
     const libs = await apiCall(page, "GET", "/creator/libraries");
     const haveLib =
@@ -287,34 +280,34 @@ test.describe.serial("Knowledge Store UI", () => {
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Pick "Use existing" library.
+    // Step 1 (Library setup) — pick "Use existing" library.
     const existingRadio = dialog.locator('input[type="radio"][value="existing"]').first();
     await existingRadio.check();
 
     // The library dropdown should appear; first library auto-selected.
-    await expect(dialog.locator("#step0-library-select")).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator("#wizard-library-select")).toBeVisible({ timeout: 5_000 });
 
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Skip rule: Step 1, 2, 3 are skipped — next visible step is Step 4 ("Knowledge Store").
+    // Skip rule: Step 2 (Library content) is skipped — next visible step is Step 3 ("Knowledge Store").
     await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).toBeVisible({ timeout: 5_000 });
-    // The Library-details heading must NOT be visible.
-    await expect(dialog.getByRole("heading", { name: /Library details/i })).not.toBeVisible();
+    // The Library content heading must NOT be visible.
+    await expect(dialog.getByRole("heading", { name: /Initial content/i })).not.toBeVisible();
 
     // Close cleanly.
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
   });
 
-  test("existing-KS skip rule jumps from Step 4 directly to Step 7", async ({ page }) => {
-    test.skip(!seededKsId, "Seeded KS missing — existing-KS skip rule cannot be tested.");
+  test("existing-KS proceeds from Step 3 to Step 4 (KS content)", async ({ page }) => {
+    test.skip(!seededKsId, "Seeded KS missing — existing-KS path cannot be tested.");
 
     // Need at least one library for the existing-Library path (so we can
-    // skip directly to Step 4 without having to fill out Steps 1-3).
+    // skip directly to Step 3 without having to fill out Step 2).
     const libs = await apiCall(page, "GET", "/creator/libraries");
     const haveLib =
       libs.status === 200 && Array.isArray(libs.data?.libraries) && libs.data.libraries.length > 0;
-    test.skip(!haveLib, "No libraries accessible to this user — cannot reach Step 4 cleanly.");
+    test.skip(!haveLib, "No libraries accessible to this user — cannot reach Step 3 cleanly.");
 
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
@@ -323,28 +316,29 @@ test.describe.serial("Knowledge Store UI", () => {
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Step 0 — existing library to skip Steps 1-3.
+    // Step 1 (Library setup) — pick "Use existing" library to skip Step 2 (Library content).
     await dialog.locator('input[type="radio"][value="existing"]').first().check();
-    await expect(dialog.locator("#step0-library-select")).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator("#wizard-library-select")).toBeVisible({ timeout: 5_000 });
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Step 4 — pick "Use existing Knowledge Store".
+    // Step 3 (KS setup) — pick "Use existing Knowledge Store".
     await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).toBeVisible({ timeout: 5_000 });
     await dialog.locator('input[type="radio"][value="existing"]').first().check();
-    await expect(dialog.locator("#step4-ks-select")).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator("#wizard-ks-select")).toBeVisible({ timeout: 5_000 });
 
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Skip rule: Steps 5, 6 skipped — next visible step is Step 7 ("Pick items to ingest").
+    // Step 4 (KS content) — "Pick items to ingest" heading.
+    // (Step 4 is not auto-skipped when ksPath==='existing'; user picks items to add.)
     await expect(dialog.getByRole("heading", { name: /Pick items to ingest/i })).toBeVisible({ timeout: 5_000 });
-    // Step 5 ("Knowledge Store Details" heading) must NOT be visible.
-    await expect(dialog.getByRole("heading", { name: /Knowledge Store Details/i })).not.toBeVisible();
+    // The KS setup heading must NOT be visible.
+    await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).not.toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
   });
 
-  test("Back button on Step 4 returns to the previous non-skipped step (Step 0)", async ({ page }) => {
+  test("Back button on Step 3 returns to Step 1 (skipping Step 2 when library is existing)", async ({ page }) => {
     const libs = await apiCall(page, "GET", "/creator/libraries");
     const haveLib =
       libs.status === 200 && Array.isArray(libs.data?.libraries) && libs.data.libraries.length > 0;
@@ -357,14 +351,15 @@ test.describe.serial("Knowledge Store UI", () => {
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // Existing library path so Steps 1-3 are skipped.
+    // Step 1 (Library setup) — existing library path so Step 2 (Library content) is skipped.
     await dialog.locator('input[type="radio"][value="existing"]').first().check();
-    await expect(dialog.locator("#step0-library-select")).toBeVisible({ timeout: 5_000 });
+    await expect(dialog.locator("#wizard-library-select")).toBeVisible({ timeout: 5_000 });
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
+    // Now on Step 3 (KS setup).
     await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).toBeVisible({ timeout: 5_000 });
 
-    // Click Back — should return to Step 0 (Library), skipping 3, 2, 1.
+    // Click Back — should return to Step 1 (Library setup), skipping Step 2.
     await dialog.getByRole("button", { name: /^Back$/ }).click();
     await expect(dialog.getByRole("heading", { name: /^Library$/i })).toBeVisible({ timeout: 5_000 });
 
