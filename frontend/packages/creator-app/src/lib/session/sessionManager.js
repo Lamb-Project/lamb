@@ -67,11 +67,19 @@ export async function replaceSessionWithToken(token) {
  * Ensure the current session has a fully-loaded user profile.
  * Recovery path for page refreshes where the profile wasn't fully
  * populated (e.g. interrupted LTI flow that saved a token but not the name).
+ *
+ * If the profile fetch returns incomplete data (missing name/email), clear
+ * the session — staying half-logged-in is worse than forcing a re-login,
+ * because every downstream component breaks on `null` user fields. (#353, H6)
  */
 export async function ensureProfileLoaded() {
 	if (!browser) return;
 	const { isLoggedIn, name } = get(user);
 	if (isLoggedIn && !name) {
-		await user.fetchAndPopulateProfile();
+		const result = await user.fetchAndPopulateProfile();
+		if (!result?.success) {
+			console.warn('Profile bootstrap failed, clearing session:', result?.error);
+			clearCurrentSession();
+		}
 	}
 }
