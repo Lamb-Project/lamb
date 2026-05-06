@@ -6,37 +6,45 @@ const browser = typeof window !== 'undefined';
  */
 export const authService = {
   /**
-   * Get the current auth token from localStorage
+   * Get the current auth token from localStorage.
+   * Reads from 'userToken' which is the authoritative source
+   * (managed by userStore, apiClient, and LTI bootstrap flow).
    */
   getToken: () => {
     if (!browser) return null;
-    return localStorage.getItem('authToken');
+    return localStorage.getItem('userToken');
   },
 
   /**
-   * Set the auth token in localStorage
+   * Set the auth token in localStorage.
+   * **DEPRECATED:** Use userStore.setToken() instead.
+   * Kept for backwards compat, but writes to 'userToken' now.
    */
   setToken: (token) => {
     if (!browser) return;
     if (token) {
-      localStorage.setItem('authToken', token);
+      localStorage.setItem('userToken', token);
     } else {
-      localStorage.removeItem('authToken');
+      localStorage.removeItem('userToken');
     }
   },
 
   /**
-   * Clear auth token on logout
+   * Clear auth token on logout.
+   * **DEPRECATED:** Use userStore.logout() and clearCurrentSession() instead.
+   * Kept for backwards compat.
    */
   logout: () => {
     if (browser) {
-      localStorage.removeItem('authToken');
+      localStorage.removeItem('userToken');
       localStorage.removeItem('user');
     }
   },
 
   /**
-   * Get authorization headers for API requests
+   * Get authorization headers for API requests.
+   * **DEPRECATED:** Use apiClient.apiFetch() or apiClient.apiJson() instead.
+   * Kept for backwards compat with modules that aren't using apiClient yet.
    */
   getAuthHeaders: () => {
     const token = authService.getToken();
@@ -68,10 +76,10 @@ export const authService = {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Store token if present in response
-        if (data.data?.token) {
-          authService.setToken(data.data.token);
-        }
+        // Don't write token here — the caller (Login.svelte via
+        // replaceSessionWithLoginData) will invoke userStore.login(userData),
+        // which handles all token + metadata persistence. Writing here would
+        // be redundant and create a double-write inconsistency (#token-key-fix).
         return { success: true, data: data.data };
       } else {
         return {

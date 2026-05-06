@@ -2,10 +2,10 @@
  * Template Service
  * 
  * Handles API communication for prompt templates management.
- * All methods require authentication via JWT token.
+ * All methods require authentication via JWT token (auto-attached by apiAxios interceptor).
  */
 
-// Shared axios instance with global 401 handling (#352, M1/M2/M3).
+// Shared axios instance with global 401 handling and auto-injected bearer token (#352, M1/M2/M3).
 import { apiAxios as axios } from '$lib/services/apiClient';
 import { isAxiosError } from 'axios';
 axios.isAxiosError = isAxiosError;
@@ -16,20 +16,6 @@ const API_BASE = config.api.lambServer;
 const TEMPLATES_BASE = `${API_BASE}/creator/prompt-templates`;
 
 /**
- * Get authorization headers with JWT token
- */
-function getAuthHeaders() {
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('No authentication token found');
-    }
-    return {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
-}
-
-/**
  * List user's own templates
  * @param {number} limit - Number of templates per page
  * @param {number} offset - Offset for pagination
@@ -38,7 +24,6 @@ function getAuthHeaders() {
 export async function listUserTemplates(limit = 50, offset = 0) {
     try {
         const response = await axios.get(`${TEMPLATES_BASE}/list`, {
-            headers: getAuthHeaders(),
             params: { limit, offset }
         });
         return response.data;
@@ -57,7 +42,6 @@ export async function listUserTemplates(limit = 50, offset = 0) {
 export async function listSharedTemplates(limit = 50, offset = 0) {
     try {
         const response = await axios.get(`${TEMPLATES_BASE}/shared`, {
-            headers: getAuthHeaders(),
             params: { limit, offset }
         });
         return response.data;
@@ -74,9 +58,7 @@ export async function listSharedTemplates(limit = 50, offset = 0) {
  */
 export async function getTemplate(templateId) {
     try {
-        const response = await axios.get(`${TEMPLATES_BASE}/${templateId}`, {
-            headers: getAuthHeaders()
-        });
+        const response = await axios.get(`${TEMPLATES_BASE}/${templateId}`);
         return response.data;
     } catch (error) {
         console.error('Error getting template:', error);
@@ -96,9 +78,7 @@ export async function getTemplate(templateId) {
  */
 export async function createTemplate(templateData) {
     try {
-        const response = await axios.post(`${TEMPLATES_BASE}/create`, templateData, {
-            headers: getAuthHeaders()
-        });
+        const response = await axios.post(`${TEMPLATES_BASE}/create`, templateData);
         return response.data;
     } catch (error) {
         console.error('Error creating template:', error);
@@ -114,9 +94,7 @@ export async function createTemplate(templateData) {
  */
 export async function updateTemplate(templateId, updates) {
     try {
-        const response = await axios.put(`${TEMPLATES_BASE}/${templateId}`, updates, {
-            headers: getAuthHeaders()
-        });
+        const response = await axios.put(`${TEMPLATES_BASE}/${templateId}`, updates);
         return response.data;
     } catch (error) {
         console.error('Error updating template:', error);
@@ -131,9 +109,7 @@ export async function updateTemplate(templateId, updates) {
  */
 export async function deleteTemplate(templateId) {
     try {
-        await axios.delete(`${TEMPLATES_BASE}/${templateId}`, {
-            headers: getAuthHeaders()
-        });
+        await axios.delete(`${TEMPLATES_BASE}/${templateId}`);
     } catch (error) {
         console.error('Error deleting template:', error);
         throw error;
@@ -150,8 +126,7 @@ export async function duplicateTemplate(templateId, newName = null) {
     try {
         const response = await axios.post(
             `${TEMPLATES_BASE}/${templateId}/duplicate`,
-            { new_name: newName },
-            { headers: getAuthHeaders() }
+            { new_name: newName }
         );
         return response.data;
     } catch (error) {
@@ -170,8 +145,7 @@ export async function toggleTemplateSharing(templateId, isShared) {
     try {
         const response = await axios.put(
             `${TEMPLATES_BASE}/${templateId}/share`,
-            { is_shared: isShared },
-            { headers: getAuthHeaders() }
+            { is_shared: isShared }
         );
         return response.data;
     } catch (error) {
@@ -189,8 +163,7 @@ export async function exportTemplates(templateIds) {
     try {
         const response = await axios.post(
             `${TEMPLATES_BASE}/export`,
-            { template_ids: templateIds },
-            { headers: getAuthHeaders() }
+            { template_ids: templateIds }
         );
         return response.data;
     } catch (error) {

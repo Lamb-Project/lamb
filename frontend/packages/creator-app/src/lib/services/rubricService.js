@@ -58,10 +58,6 @@ export async function fetchRubrics(limit = 10, offset = 0, filters = {}) {
     if (!browser) {
         throw new Error('fetchRubrics called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     // Build query parameters
     const params = new URLSearchParams({
@@ -79,12 +75,8 @@ export async function fetchRubrics(limit = 10, offset = 0, filters = {}) {
     const apiUrl = getApiUrl(`/rubrics?${params}`);
     console.log('Fetching rubrics from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    });
+    // Token auto-attached by authenticatedFetch and apiFetch interceptor
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to fetch rubrics';
@@ -119,10 +111,6 @@ export async function fetchPublicRubrics(limit = 10, offset = 0, filters = {}) {
     if (!browser) {
         throw new Error('fetchPublicRubrics called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const params = new URLSearchParams({
         limit: limit.toString(),
@@ -138,12 +126,8 @@ export async function fetchPublicRubrics(limit = 10, offset = 0, filters = {}) {
     const apiUrl = getApiUrl(`/rubrics/public?${params}`);
     console.log('Fetching public rubrics from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    });
+    // Token auto-attached by authenticatedFetch and apiFetch interceptor
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to fetch public rubrics';
@@ -173,20 +157,12 @@ export async function fetchShowcaseRubrics() {
     if (!browser) {
         throw new Error('fetchShowcaseRubrics called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl('/rubrics/showcase');
     console.log('Fetching showcase rubrics from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    });
+    // Token auto-attached by authenticatedFetch and apiFetch interceptor
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to fetch showcase rubrics';
@@ -214,20 +190,12 @@ export async function fetchRubric(rubricId) {
     if (!browser) {
         throw new Error('fetchRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Fetching rubric from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    });
+    // Token auto-attached by authenticatedFetch and apiFetch interceptor
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = `Failed to fetch rubric with ID ${rubricId}`;
@@ -254,10 +222,6 @@ export async function createRubric(rubricData) {
     if (!browser) {
         throw new Error('createRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     // Convert rubric data to form data format expected by backend
     const formData = new FormData();
@@ -272,12 +236,9 @@ export async function createRubric(rubricData) {
     const apiUrl = getApiUrl('/rubrics');
     console.log('Creating rubric at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`
-            // Don't set Content-Type for FormData, let browser set it
-        },
         body: formData
     });
 
@@ -307,10 +268,6 @@ export async function updateRubric(rubricId, rubricData) {
     if (!browser) {
         throw new Error('updateRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     // Convert to form data
     const formData = new FormData();
@@ -327,11 +284,9 @@ export async function updateRubric(rubricId, rubricData) {
     const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Updating rubric at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        },
         body: formData
     });
 
@@ -360,19 +315,13 @@ export async function deleteRubric(rubricId) {
     if (!browser) {
         throw new Error('deleteRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}`);
     console.log('Deleting rubric at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        method: 'DELETE',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
+        method: 'DELETE'
     });
 
     if (!response.ok) {
@@ -400,19 +349,13 @@ export async function duplicateRubric(rubricId) {
     if (!browser) {
         throw new Error('duplicateRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/duplicate`);
     console.log('Duplicating rubric at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
+        method: 'POST'
     });
 
     if (!response.ok) {
@@ -441,10 +384,6 @@ export async function toggleRubricVisibility(rubricId, isPublic) {
     if (!browser) {
         throw new Error('toggleRubricVisibility called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/visibility`);
     console.log('Toggling rubric visibility at:', apiUrl);
@@ -453,12 +392,9 @@ export async function toggleRubricVisibility(rubricId, isPublic) {
     const formData = new FormData();
     formData.append('is_public', isPublic.toString());
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`
-            // Don't set Content-Type - let browser set it for FormData
-        },
         body: formData
     });
 
@@ -488,20 +424,13 @@ export async function setShowcaseStatus(rubricId, isShowcase) {
     if (!browser) {
         throw new Error('setShowcaseStatus called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/showcase`);
     console.log('Setting showcase status at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ isShowcase })
     });
 
@@ -530,19 +459,12 @@ export async function exportRubricJSON(rubricId) {
     if (!browser) {
         throw new Error('exportRubricJSON called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/json`);
     console.log('Exporting rubric JSON from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
-    });
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to export rubric as JSON';
@@ -587,19 +509,12 @@ export async function fetchRubricMarkdown(rubricId) {
     if (!browser) {
         throw new Error('fetchRubricMarkdown called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
     console.log('Fetching rubric Markdown from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
-    });
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to fetch rubric as Markdown';
@@ -627,19 +542,12 @@ export async function exportRubricMarkdown(rubricId) {
     if (!browser) {
         throw new Error('exportRubricMarkdown called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/export/markdown`);
     console.log('Exporting rubric Markdown from:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
-    });
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl);
 
     if (!response.ok) {
         let errorDetail = 'Failed to export rubric as Markdown';
@@ -684,10 +592,6 @@ export async function importRubric(file) {
     if (!browser) {
         throw new Error('importRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     // Create form data with file
     const formData = new FormData();
@@ -696,11 +600,9 @@ export async function importRubric(file) {
     const apiUrl = getApiUrl('/rubrics/import');
     console.log('Importing rubric at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`
-        },
         body: formData
     });
 
@@ -737,10 +639,6 @@ export async function aiGenerateRubric(prompt, language = 'en', model = null) {
     if (!browser) {
         throw new Error('aiGenerateRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl('/rubrics/ai-generate');
     console.log('Generating rubric with AI at:', apiUrl, 'language:', language);
@@ -750,12 +648,9 @@ export async function aiGenerateRubric(prompt, language = 'en', model = null) {
         requestBody.model = model;
     }
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify(requestBody)
     });
 
@@ -792,20 +687,13 @@ export async function aiModifyRubric(rubricId, prompt) {
     if (!browser) {
         throw new Error('aiModifyRubric called outside browser context');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
 
     const apiUrl = getApiUrl(`/rubrics/${rubricId}/ai-modify`);
     console.log('Modifying rubric with AI at:', apiUrl);
 
-    const response = await apiFetch(apiUrl, {
+    // Token auto-attached by authenticatedFetch
+    const response = await authenticatedFetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ prompt })
     });
 
