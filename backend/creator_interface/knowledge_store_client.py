@@ -408,15 +408,17 @@ class KnowledgeStoreClient:
                     vendor_name = vendor.get("name")
                     if not vendor_name:
                         continue
-                    # Tag the vendor with whether the org has an API key set —
-                    # the UI uses this to gate the dropdown so users never see
-                    # a vendor their org cannot actually call. ``local`` plugins
-                    # don't need a key and are always available.
+                    # Tag the vendor with whether the org has it configured.
+                    # "Configured" means the org has a non-empty entry under
+                    # setups.default.providers.<vendor> — the entry need not
+                    # contain an api_key (e.g. ollama uses base_url, no key).
+                    # ``local`` plugins are configuration-free and always
+                    # available.
                     try:
-                        api_key = resolver.get_provider_api_key(vendor_name) or ""
-                    except ValueError:
-                        api_key = ""
-                    vendor["api_key_configured"] = bool(api_key) or vendor_name == "local"
+                        provider_cfg = resolver.get_provider_config(vendor_name) or {}
+                    except Exception:
+                        provider_cfg = {}
+                    vendor["api_key_configured"] = bool(provider_cfg) or vendor_name == "local"
                     try:
                         org_endpoint = resolver.get_provider_endpoint(vendor_name) or ""
                     except ValueError:
@@ -428,7 +430,7 @@ class KnowledgeStoreClient:
                             param["default"] = org_endpoint
             except Exception as e:
                 logger.warning(
-                    f"Could not override embedding endpoint defaults from org "
+                    f"Could not resolve embedding-vendor availability from org "
                     f"config for {user_email}: {e}"
                 )
         else:
