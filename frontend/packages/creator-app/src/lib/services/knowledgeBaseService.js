@@ -60,20 +60,12 @@ export async function getUserKnowledgeBases() {
         throw new Error('Knowledge base fetching is only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.'); 
-    }
-
     const url = getApiUrl('/knowledgebases/user');
     console.log(`Fetching owned knowledge bases from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Raw Owned KB Response Data:', response.data);
 
@@ -112,20 +104,12 @@ export async function getSharedKnowledgeBases() {
         throw new Error('Knowledge base fetching is only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.'); 
-    }
-
     const url = getApiUrl('/knowledgebases/shared');
     console.log(`Fetching shared knowledge bases from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Raw Shared KB Response Data:', response.data);
 
@@ -192,18 +176,13 @@ export async function createKnowledgeBase(data) {
         throw new Error('Knowledge base creation is only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl('/knowledgebases');
     console.log(`Creating knowledge base at: ${url}`);
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.post(url, data, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -259,20 +238,12 @@ export async function getKnowledgeBaseDetails(kbId) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}`);
     console.log(`Fetching knowledge base details from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Knowledge base details response:', response.data);
         
@@ -348,20 +319,12 @@ export async function getIngestionPlugins() {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl('/knowledgebases/ingestion-plugins');
     console.log(`Fetching ingestion plugins from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Ingestion plugins response:', response.data);
         
@@ -415,11 +378,6 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/plugin-ingest-file`);
     console.log(`Uploading file to KB ${kbId} using plugin ${pluginName}`);
 
@@ -436,9 +394,9 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
     });
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.post(url, formData, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'multipart/form-data'
             }
         });
@@ -496,20 +454,12 @@ export async function getQueryPlugins() {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl('/knowledgebases/query-plugins');
     console.log(`Fetching query plugins from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Query plugins response:', response.data);
         
@@ -570,11 +520,6 @@ export async function queryKnowledgeBase(kbId, queryText, pluginName, pluginPara
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/query`);
     const payload = {
         query_text: queryText,
@@ -585,9 +530,9 @@ export async function queryKnowledgeBase(kbId, queryText, pluginName, pluginPara
     console.log('Query payload:', payload);
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.post(url, payload, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -642,11 +587,6 @@ export async function runBaseIngestionPlugin(kbId, pluginName, pluginParams = {}
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     // Assume a new endpoint for base ingestion
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/plugin-ingest-base`);
     console.log(`Running base ingestion on KB ${kbId} using plugin ${pluginName}`);
@@ -657,9 +597,9 @@ export async function runBaseIngestionPlugin(kbId, pluginName, pluginParams = {}
     };
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.post(url, payload, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -709,15 +649,10 @@ export async function deleteKnowledgeBaseFile(kbId, fileId, hard = true) {
     if (!browser) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/files/${fileId}`) + `?hard=${hard}`;
     try {
-        const response = await axios.delete(url, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.delete(url);
         return response.data;
     } catch (error) {
         let msg = 'Failed to delete file.';
@@ -736,11 +671,10 @@ export async function deleteKnowledgeBaseFile(kbId, fileId, hard = true) {
  */
 export async function deleteKnowledgeBase(kbId) {
     if (!browser) throw new Error('Knowledge base operations are only available in the browser.');
-    const token = localStorage.getItem('userToken');
-    if (!token) throw new Error('User not authenticated.');
     const url = getApiUrl(`/knowledgebases/kb/${kbId}`);
     try {
-        const response = await axios.delete(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.delete(url);
         return response.data;
     } catch (error) {
         let msg = 'Failed to delete knowledge base.';
@@ -874,11 +808,6 @@ export async function listIngestionJobs(kbId, options = {}) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const { status, limit = 50, offset = 0, sort_by = 'created_at', sort_order = 'desc' } = options;
     
     const params = new URLSearchParams({
@@ -895,11 +824,8 @@ export async function listIngestionJobs(kbId, options = {}) {
     console.log(`Listing ingestion jobs from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Ingestion jobs response:', response.data);
         
@@ -940,20 +866,12 @@ export async function getIngestionJobStatus(kbId, jobId) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/ingestion-jobs/${jobId}`);
     console.log(`Getting ingestion job status from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Ingestion job status response:', response.data);
         
@@ -995,20 +913,12 @@ export async function getIngestionStatusSummary(kbId) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/ingestion-status`);
     console.log(`Getting ingestion status summary from: ${url}`);
 
     try {
-        const response = await axios.get(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.get(url);
 
         console.log('Ingestion status summary response:', response.data);
         
@@ -1050,20 +960,15 @@ export async function retryIngestionJob(kbId, jobId, overrideParams = null) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/ingestion-jobs/${jobId}/retry`);
     console.log(`Retrying ingestion job at: ${url}`);
 
     const body = overrideParams ? { override_params: overrideParams } : {};
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.post(url, body, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -1113,20 +1018,12 @@ export async function cancelIngestionJob(kbId, jobId) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/ingestion-jobs/${jobId}/cancel`);
     console.log(`Cancelling ingestion job at: ${url}`);
 
     try {
-        const response = await axios.post(url, {}, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // Token auto-attached by apiAxios interceptor
+        const response = await axios.post(url, {});
 
         console.log('Cancel ingestion job response:', response.data);
         
@@ -1173,21 +1070,16 @@ export async function toggleKBSharing(kbId, isShared) {
         throw new Error('Knowledge base operations are only available in the browser.');
     }
 
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-
     const url = getApiUrl(`/knowledgebases/kb/${kbId}/share`);
     console.log(`Toggling KB ${kbId} sharing to ${isShared}`);
 
     try {
+        // Token auto-attached by apiAxios interceptor
         const response = await axios.put(
             url,
             { is_shared: isShared },
             {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 }
             }
@@ -1212,3 +1104,4 @@ export async function toggleKBSharing(kbId, isShared) {
         throw new Error(errorMessage);
     }
 }
+

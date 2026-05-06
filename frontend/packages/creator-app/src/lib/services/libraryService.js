@@ -56,15 +56,13 @@ import { browser } from '$app/environment';
 
 /**
  * Return auth headers using the stored token.
+ * **DEPRECATED:** Token is now auto-attached by apiAxios interceptor.
+ * Kept for backwards compat only.
  * @returns {{ Authorization: string }}
  * @throws {Error} If no token is available.
  */
 function authHeaders() {
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('User not authenticated.');
-    }
-    return { Authorization: `Bearer ${token}` };
+    return {};
 }
 
 /**
@@ -94,7 +92,7 @@ function errorMessage(error, fallback) {
 export async function getLibraries() {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl('/libraries');
-    const response = await axios.get(url, { headers: authHeaders() });
+    const response = await axios.get(url);
     return response.data?.libraries ?? [];
 }
 
@@ -106,7 +104,7 @@ export async function getLibraries() {
 export async function getLibrary(libraryId) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
+    const response = await axios.get(url);
     return response.data;
 }
 
@@ -118,7 +116,7 @@ export async function getLibrary(libraryId) {
 export async function createLibrary(data) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl('/libraries');
-    const response = await axios.post(url, data, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+    const response = await axios.post(url, data, { headers: { 'Content-Type': 'application/json' } });
     return response.data;
 }
 
@@ -131,7 +129,7 @@ export async function createLibrary(data) {
 export async function updateLibrary(libraryId, data) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.put(url, data, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+    const response = await axios.put(url, data, { headers: { 'Content-Type': 'application/json' } });
     return response.data;
 }
 
@@ -143,7 +141,7 @@ export async function updateLibrary(libraryId, data) {
 export async function deleteLibrary(libraryId) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
+    const response = await axios.delete(url);
     return response.data;
 }
 
@@ -156,7 +154,7 @@ export async function deleteLibrary(libraryId) {
 export async function toggleSharing(libraryId, isShared) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/share`);
-    const response = await axios.put(url, { is_shared: isShared }, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+    const response = await axios.put(url, { is_shared: isShared }, { headers: { 'Content-Type': 'application/json' } });
     return response.data;
 }
 
@@ -178,7 +176,7 @@ export async function uploadFile(libraryId, file, options = {}) {
     form.append('file', file);
     if (options.title) form.append('title', options.title);
     if (options.pluginName) form.append('plugin_name', options.pluginName);
-    const response = await axios.post(url, form, { headers: authHeaders(), timeout: 120_000 });
+    const response = await axios.post(url, form, { timeout: 120_000 });
     return response.data;
 }
 
@@ -196,7 +194,7 @@ export async function importUrl(libraryId, data) {
         plugin_name: data.pluginName || 'url_import',
         title: data.title || data.url,
     };
-    const response = await axios.post(url, body, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+    const response = await axios.post(url, body, { headers: { 'Content-Type': 'application/json' } });
     return response.data;
 }
 
@@ -215,7 +213,7 @@ export async function importYouTube(libraryId, data) {
         title: data.title || data.videoUrl,
         plugin_name: 'youtube_transcript_import',
     };
-    const response = await axios.post(url, body, { headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+    const response = await axios.post(url, body, { headers: { 'Content-Type': 'application/json' } });
     return response.data;
 }
 
@@ -232,7 +230,7 @@ export async function importYouTube(libraryId, data) {
 export async function getItems(libraryId, params = {}) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/items`);
-    const response = await axios.get(url, { headers: authHeaders(), params });
+    const response = await axios.get(url, { params });
     return response.data;
 }
 
@@ -245,7 +243,7 @@ export async function getItems(libraryId, params = {}) {
 export async function getItem(libraryId, itemId) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
-    const response = await axios.get(url, { headers: authHeaders() });
+    const response = await axios.get(url);
     return response.data;
 }
 
@@ -258,7 +256,7 @@ export async function getItem(libraryId, itemId) {
 export async function getItemStatus(libraryId, itemId) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/status`);
-    const response = await axios.get(url, { headers: authHeaders() });
+    const response = await axios.get(url);
     return response.data;
 }
 
@@ -271,7 +269,7 @@ export async function getItemStatus(libraryId, itemId) {
 export async function deleteItem(libraryId, itemId) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}`);
-    const response = await axios.delete(url, { headers: authHeaders() });
+    const response = await axios.delete(url);
     return response.data;
 }
 
@@ -286,7 +284,7 @@ export async function deleteItem(libraryId, itemId) {
 export async function getPlugins() {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl('/libraries/plugins');
-    const response = await axios.get(url, { headers: authHeaders() });
+    const response = await axios.get(url);
     return response.data?.plugins ?? [];
 }
 
@@ -304,7 +302,6 @@ export async function exportLibrary(libraryId, filename) {
     if (!browser) throw new Error('Browser only.');
     const url = getApiUrl(`/libraries/${libraryId}/export`);
     const response = await axios.get(url, {
-        headers: authHeaders(),
         responseType: 'blob',
         timeout: 300_000,
     });
@@ -329,6 +326,6 @@ export async function importLibrary(file) {
     const url = getApiUrl('/libraries/import');
     const form = new FormData();
     form.append('file', file);
-    const response = await axios.post(url, form, { headers: authHeaders(), timeout: 300_000 });
+    const response = await axios.post(url, form, { timeout: 300_000 });
     return response.data;
 }

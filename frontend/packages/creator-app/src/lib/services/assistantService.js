@@ -1,7 +1,7 @@
 import { getApiUrl, getConfig } from '$lib/config';
 import { browser } from '$app/environment';
 // Shared axios instance with global 401 handling (#352, M1/M2/M3).
-import { apiAxios as axios } from '$lib/services/apiClient';
+import { apiAxios as axios, apiJson, apiFetch } from '$lib/services/apiClient';
 import { isAxiosError } from 'axios';
 axios.isAxiosError = isAxiosError;
 import { normalizeAssistantData } from '$lib/utils/assistantData';
@@ -44,10 +44,6 @@ export async function getAssistants(limit = 10, offset = 0) {
 		console.warn('getAssistants called outside browser context');
 		return { assistants: [], total_count: 0 }; // Return empty paginated structure
 	}
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 
 	const urlParams = new URLSearchParams({
 		limit: limit.toString(),
@@ -55,26 +51,8 @@ export async function getAssistants(limit = 10, offset = 0) {
 	});
 	const apiUrl = getApiUrl(`/assistant/get_assistants?${urlParams}`);
 
-	const response = await fetch(apiUrl, {
-		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		}
-	});
-
-	if (!response.ok) {
-		let errorDetail = 'Failed to fetch assistants';
-		try {
-			const error = await response.json();
-			errorDetail = error?.detail || errorDetail;
-		} catch (e) {
-			// Ignore if response is not JSON
-		}
-		console.error('API error response status:', response.status, 'Detail:', errorDetail);
-		throw new Error(errorDetail);
-	}
-
-	const data = await response.json();
+	// Token auto-attached by apiJson
+	const data = await apiJson(apiUrl, { method: 'GET' });
 
 	// Return the expected structure { assistants: [], total_count: 0 }
 	// Ensure defaults if API response is malformed
@@ -96,36 +74,18 @@ export async function getAssistantById(assistantId) {
 	if (!browser) {
 		throw new Error('getAssistantById called outside browser context');
 	}
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 
 	const apiUrl = getApiUrl(`/assistant/get_assistant/${assistantId}`);
 
-	const response = await fetch(apiUrl, {
+	// Token auto-attached by apiJson
+	const data = await apiJson(apiUrl, {
+		method: 'GET',
 		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json',
 			'Cache-Control': 'no-cache, no-store, must-revalidate',
 			Pragma: 'no-cache'
 		},
-		cache: 'no-store' // Prevent browser caching of GET request
+		cache: 'no-store'
 	});
-
-	if (!response.ok) {
-		let errorDetail = `Failed to fetch assistant with ID ${assistantId}`;
-		try {
-			const error = await response.json();
-			errorDetail = error?.detail || errorDetail;
-		} catch (e) {
-			/* Ignore */
-		}
-		console.error('API error response status:', response.status, 'Detail:', errorDetail);
-		throw new Error(errorDetail);
-	}
-
-	return normalizeAssistantData(await response.json());
 }
 
 /**
@@ -137,10 +97,6 @@ export async function getAssistantById(assistantId) {
  * @returns {Promise<any>}
  */
 export async function publishAssistant(assistantId, assistantName, groupName, oauthConsumerName) {
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 
 	const apiUrl = getApiUrl(`/assistant/update_assistant/${assistantId}`);
 
@@ -151,12 +107,9 @@ export async function publishAssistant(assistantId, assistantName, groupName, oa
 		is_published: true
 	};
 
-	const response = await fetch(apiUrl, {
+	// Token auto-attached by apiJson
+	const data = await apiJson(apiUrl, {
 		method: 'PUT',
-		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		},
 		body: JSON.stringify(bodyData)
 	});
 
@@ -184,31 +137,12 @@ export async function publishAssistant(assistantId, assistantName, groupName, oa
  */
 export async function unpublishAssistant(assistantId, groupId, userEmail) {
 	// Use the correct publish status endpoint and method
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 	const apiUrl = getApiUrl(`/assistant/publish/${assistantId}`);
-	const response = await fetch(apiUrl, {
+	// Token auto-attached by apiJson
+	const data = await apiJson(apiUrl, {
 		method: 'PUT',
-		headers: {
-			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
-		},
 		body: JSON.stringify({ publish_status: false })
 	});
-	if (!response.ok) {
-		let errorDetail = 'Failed to unpublish assistant';
-		try {
-			const error = await response.json();
-			errorDetail = error?.detail || errorDetail;
-		} catch (e) {
-			/* Ignore */
-		}
-		console.error('Unpublish error:', response.status, errorDetail);
-		throw new Error(errorDetail);
-	}
-	return await response.json();
 }
 
 /**
@@ -218,10 +152,6 @@ export async function unpublishAssistant(assistantId, groupId, userEmail) {
  */
 export async function deleteAssistant(id) {
 	try {
-		const token = localStorage.getItem('userToken');
-		if (!token) {
-			throw new Error('Not authenticated');
-		}
 		const userEmail = localStorage.getItem('userEmail');
 		if (!userEmail) {
 			throw new Error('User email not found in localStorage');
@@ -232,11 +162,9 @@ export async function deleteAssistant(id) {
 			`/assistant/delete_assistant/${id}?owner=${encodeURIComponent(userEmail)}`
 		);
 
-		const response = await fetch(apiUrl, {
-			method: 'DELETE',
-			headers: {
-				Authorization: `Bearer ${token}`
-			}
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(apiUrl, {
+			method: 'DELETE'
 		});
 
 		if (!response.ok) {
@@ -282,27 +210,10 @@ export async function deleteAssistant(id) {
  * @returns {Promise<SystemCapabilities>} System capabilities
  */
 export async function getSystemCapabilities() {
-	const token = localStorage.getItem('userToken'); // Simplified auth check for now
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
-	// Assuming capabilities endpoint is relative to base URL
-	const response = await fetch(getApiUrl(`/system/capabilities`), {
-		headers: {
-			Authorization: `Bearer ${token}`
-		}
+	// Token auto-attached by apiJson
+	const data = await apiJson(getApiUrl(`/system/capabilities`), {
+		method: 'GET'
 	});
-	if (!response.ok) {
-		let errorDetail = 'Failed to fetch system capabilities';
-		try {
-			const error = await response.json();
-			errorDetail = error?.detail || errorDetail;
-		} catch (e) {
-			/* Ignore */
-		}
-		throw new Error(errorDetail);
-	}
-	return await response.json();
 }
 
 /**
@@ -314,10 +225,6 @@ export async function getSystemCapabilities() {
 export async function createAssistant(assistantData) {
 	if (!browser) {
 		throw new Error('Cannot create assistant in server environment');
-	}
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
 	}
 
 	const url = getApiUrl('/assistant/create_assistant');
@@ -366,18 +273,13 @@ export async function createAssistant(assistantData) {
  * @throws {Error}
  */
 export async function downloadAssistant(assistantId) {
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 	// TODO: Confirm this endpoint exists and works as expected
 	const apiUrl = getApiUrl(`/assistant/download_assistant/${assistantId}`);
 
 	try {
-		const response = await fetch(apiUrl, {
-			headers: {
-				Authorization: `Bearer ${token}`
-			}
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(apiUrl, {
+			method: 'GET'
 		});
 
 		if (!response.ok) {
@@ -430,10 +332,6 @@ export async function updateAssistant(assistantId, assistantData) {
 	if (!browser) {
 		throw new Error('Cannot update assistant in server environment');
 	}
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 
 	// Ensure assistantData only contains allowed fields for update
 	const allowedFields = [
@@ -462,29 +360,11 @@ export async function updateAssistant(assistantId, assistantData) {
 	const url = getApiUrl(`/assistant/update_assistant/${assistantId}`);
 
 	try {
-		const response = await fetch(url, {
+		// Token auto-attached by apiJson
+		const data = await apiJson(url, {
 			method: 'PUT',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				'Content-Type': 'application/json'
-			},
 			body: JSON.stringify(filteredData)
 		});
-
-		if (!response.ok) {
-			let errorDetail = `Failed to update assistant with ID ${assistantId}`;
-			try {
-				const error = await response.json();
-				errorDetail = error?.detail || errorDetail;
-			} catch (e) {
-				/* Ignore */
-			}
-			console.error('API error response status:', response.status, 'Detail:', errorDetail);
-			throw new Error(errorDetail);
-		}
-
-		return await response.json();
-	} catch (error) {
 		console.error('Error updating assistant:', error);
 		let errorMessage = 'Failed to update assistant.';
 
@@ -507,18 +387,14 @@ export async function setAssistantPublishStatus(assistantId, publishStatus) {
 	if (!browser) {
 		throw new Error('Cannot change publish status in server environment');
 	}
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
 
 	const apiUrl = getApiUrl(`/assistant/publish/${assistantId}`);
 
 	try {
-		const response = await fetch(apiUrl, {
+		// Token auto-attached by apiFetch
+		const response = await apiFetch(apiUrl, {
 			method: 'PUT',
 			headers: {
-				Authorization: `Bearer ${token}`,
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({ publish_status: publishStatus })
@@ -558,28 +434,13 @@ export async function getSharedAssistants() {
 		return { assistants: [], count: 0 };
 	}
 
-	const token = localStorage.getItem('userToken');
-	if (!token) {
-		throw new Error('Not authenticated');
-	}
-
 	try {
 		const config = getConfig();
 		const baseUrl = config.api.lambServer || 'http://localhost:9099';
 		const apiUrl = `${baseUrl}/creator/lamb/assistant-sharing/shared-with-me`;
 
-		const response = await fetch(apiUrl, {
-			headers: {
-				Authorization: `Bearer ${token}`
-			}
-		});
-
-		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-			throw new Error(errorData.detail || 'Failed to fetch shared assistants');
-		}
-
-		const data = await response.json();
+		// Token auto-attached by apiJson
+		const data = await apiJson(apiUrl, { method: 'GET' });
 
 		return {
 			assistants: Array.isArray(data.assistants)
@@ -591,3 +452,4 @@ export async function getSharedAssistants() {
 		throw error;
 	}
 }
+

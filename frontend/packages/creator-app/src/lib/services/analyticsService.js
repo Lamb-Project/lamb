@@ -68,15 +68,12 @@ axios.isAxiosError = isAxiosError;
 
 /**
  * Helper function to get auth headers
+ * **DEPRECATED:** Token is now auto-attached by apiAxios interceptor.
+ * Kept for backwards compat only.
  * @returns {Object} Headers object with Authorization
  */
 function getAuthHeaders() {
-    const token = browser ? localStorage.getItem('userToken') : null;
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
     return {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
     };
 }
@@ -110,9 +107,7 @@ export async function getAssistantChats(assistantId, options = {}) {
     
     const url = getApiUrl(`/analytics/assistant/${assistantId}/chats?${params.toString()}`);
     
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
+    const response = await axios.get(url);
     
     return response.data;
 }
@@ -130,9 +125,7 @@ export async function getChatDetail(assistantId, chatId) {
     
     const url = getApiUrl(`/analytics/assistant/${assistantId}/chats/${chatId}`);
     
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
+    const response = await axios.get(url);
     
     return response.data;
 }
@@ -159,9 +152,7 @@ export async function getAssistantStats(assistantId, options = {}) {
     const queryString = params.toString();
     const url = getApiUrl(`/analytics/assistant/${assistantId}/stats${queryString ? '?' + queryString : ''}`);
     
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
+    const response = await axios.get(url);
     
     return response.data;
 }
@@ -189,9 +180,7 @@ export async function getAssistantTimeline(assistantId, options = {}) {
     
     const url = getApiUrl(`/analytics/assistant/${assistantId}/timeline?${params.toString()}`);
     
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
+    const response = await axios.get(url);
     
     return response.data;
 }
@@ -234,4 +223,5 @@ export function formatShortDate(isoDate) {
         return isoDate;
     }
 }
+
 
