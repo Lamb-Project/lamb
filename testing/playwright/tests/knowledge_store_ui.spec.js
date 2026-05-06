@@ -120,7 +120,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await page.waitForLoadState("domcontentloaded");
   });
 
-  test("default /libraries route shows sub-tabs and Create Knowledge button", async ({ page }) => {
+  test("default /libraries route shows sub-tabs and tab-contextual create buttons", async ({ page }) => {
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
 
@@ -133,9 +133,11 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(librariesTab).toBeVisible();
     await expect(ksTab).toBeVisible();
 
-    // "Create Knowledge" button (top-right)
-    const createBtn = page.getByRole("button", { name: /\+\s*Create Knowledge/i });
-    await expect(createBtn).toBeVisible();
+    // The redundant top-right "Create Knowledge" button has been removed.
+    // The contextual + New Library button on the Libraries tab is the
+    // primary create affordance now.
+    const newLibBtn = page.getByRole("button", { name: /\+\s*New Library/i });
+    await expect(newLibBtn).toBeVisible();
   });
 
   test("clicking the Knowledge Stores sub-tab updates the URL and renders the list", async ({ page }) => {
@@ -198,7 +200,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
 
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
 
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -220,7 +222,7 @@ test.describe.serial("Knowledge Store UI", () => {
 
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
 
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -275,7 +277,7 @@ test.describe.serial("Knowledge Store UI", () => {
 
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
 
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -311,7 +313,7 @@ test.describe.serial("Knowledge Store UI", () => {
 
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
 
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -346,7 +348,7 @@ test.describe.serial("Knowledge Store UI", () => {
 
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
 
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -376,7 +378,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
 
-    await page.getByRole("button", { name: /\+\s*Create Knowledge/i }).click();
+    await page.getByRole("button", { name: /Create with Knowledge Store/i }).click();
     const dialog = page.getByRole("dialog", { name: /Create Knowledge/i });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
