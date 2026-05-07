@@ -276,8 +276,21 @@
 	}
 
 	function goSkip() {
-		// Step 2 (library content) and Step 4 (KS content) are skippable.
-		if (currentStep === STEP_LIBRARY_CONTENT || currentStep === STEP_KS_CONTENT) {
+		// Skipping Step 4 (KS content) means "ingest nothing into the
+		// Knowledge Store right now — the library will still receive every
+		// queued item, the user can ingest them later from the KS detail
+		// page". So we clear the selection before advancing. Clicking Next
+		// instead keeps whatever the user picked.
+		if (currentStep === STEP_KS_CONTENT) {
+			wizardState.selectedItemIds = [];
+			currentStep = nextStep(currentStep);
+			canAdvance = true;
+			return;
+		}
+		// Step 2 (library content) was previously skippable too; keep this
+		// branch as a safety net even though isSkippableStep no longer
+		// surfaces the Skip button there.
+		if (currentStep === STEP_LIBRARY_CONTENT) {
 			currentStep = nextStep(currentStep);
 			canAdvance = true;
 		}

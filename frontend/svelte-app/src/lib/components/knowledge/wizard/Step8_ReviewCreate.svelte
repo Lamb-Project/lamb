@@ -243,47 +243,35 @@
 				}
 			}
 
-			// 4. Compute final list of item IDs to ingest.
+			// 4. Compute final list of item IDs to ingest. An empty selection
+			// is now meaningful — it's the explicit "Skip" outcome from
+			// Step 4 and means "create the KS but ingest nothing right now".
+			// We do NOT silently fall back to "everything" on empty.
 			/** @type {string[]} */
 			let itemsToIngest = [];
 			if (wizardState.libraryPath === 'new') {
 				const selectedIds = wizardState.selectedItemIds || [];
-				const hasPendingSelection = selectedIds.some(
-					(/** @type {string} */ id) =>
-						id.startsWith('pendingFile_') || id.startsWith('pendingUrl_')
-				);
-				if (hasPendingSelection) {
-					// Map transient IDs back to uploaded item IDs.
-					// pendingFile_<i> → newlyReadyIds[i] (files uploaded first, then URLs)
-					const pendingFiles = wizardState.pendingFiles ?? [];
-					// newlyReadyIds is ordered: files first, then URLs (matching upload order above).
-					for (const selId of selectedIds) {
-						const fileMatch = selId.match(/^pendingFile_(\d+)$/);
-						const urlMatch = selId.match(/^pendingUrl_(\d+)$/);
-						if (fileMatch) {
-							const idx = parseInt(fileMatch[1], 10);
-							if (idx < pendingFiles.length && idx < newlyReadyIds.length) {
-								itemsToIngest.push(newlyReadyIds[idx]);
-							}
-						} else if (urlMatch) {
-							const idx = parseInt(urlMatch[1], 10);
-							// URL items come after file items in newlyReadyIds.
-							const urlOffset = pendingFiles.length;
-							if (urlOffset + idx < newlyReadyIds.length) {
-								itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
-							}
+				const pendingFiles = wizardState.pendingFiles ?? [];
+				// Map transient IDs (pendingFile_<i> / pendingUrl_<i>) back to
+				// uploaded item IDs. newlyReadyIds is ordered files-first, then URLs.
+				for (const selId of selectedIds) {
+					const fileMatch = selId.match(/^pendingFile_(\d+)$/);
+					const urlMatch = selId.match(/^pendingUrl_(\d+)$/);
+					if (fileMatch) {
+						const idx = parseInt(fileMatch[1], 10);
+						if (idx < pendingFiles.length && idx < newlyReadyIds.length) {
+							itemsToIngest.push(newlyReadyIds[idx]);
 						}
+					} else if (urlMatch) {
+						const idx = parseInt(urlMatch[1], 10);
+						const urlOffset = pendingFiles.length;
+						if (urlOffset + idx < newlyReadyIds.length) {
+							itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
+						}
+					} else {
+						// Real item ID (e.g. from a resumed draft) — pass through.
+						itemsToIngest.push(selId);
 					}
-					// Fallback: if mapping yielded nothing, ingest everything.
-					if (itemsToIngest.length === 0) {
-						itemsToIngest = newlyReadyIds;
-					}
-				} else if (selectedIds.length === 0) {
-					// No selection stored — default to all (safety fallback).
-					itemsToIngest = newlyReadyIds;
-				} else {
-					// Real item IDs (e.g. from a resumed draft with existing items).
-					itemsToIngest = selectedIds;
 				}
 			} else {
 				itemsToIngest = [...(wizardState.selectedItemIds || [])];
@@ -504,23 +492,9 @@
 			</dl>
 		</div>
 
-		<!-- Content / Ingestion card -->
-		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
-				{$_('knowledge.wizard.step8.ingestionHeading', { default: 'Ingestion' })}
-			</p>
-			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-				<dt class="font-medium text-gray-500">
-					{$_('knowledge.wizard.step8.itemsHeading', { default: 'Items to ingest' })}
-				</dt>
-				<dd class="text-gray-900">
-					{$_('knowledge.wizard.step8.ingestionCount', {
-						default: '{n} item(s) will be ingested',
-						values: { n: summarySelectedCount }
-					})}
-				</dd>
-			</dl>
-		</div>
+		<!-- Ingestion section removed — the Knowledge Store card already
+             shows "Items to ingest: N of total" so a separate card here was
+             redundant. -->
 	</div>
 
 	<!-- Progress steps during creation -->
