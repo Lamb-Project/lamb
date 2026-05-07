@@ -323,15 +323,11 @@
 	let summarySelectedCount = $derived.by(() => {
 		if (wizardState.libraryPath === 'new') {
 			const selectedIds = wizardState.selectedItemIds ?? [];
-			// If selection contains transient pending IDs, count only those.
-			const hasPendingIds = selectedIds.some(
-				(/** @type {string} */ id) => id.startsWith('pendingFile_') || id.startsWith('pendingUrl_')
-			);
-			if (hasPendingIds) {
-				return selectedIds.length;
-			}
-			// No pending IDs stored (e.g. step was skipped or draft resumed) — default to all.
-			return summaryTotalCount;
+			// An empty selection is the explicit Skip outcome — count is 0,
+			// not "default to total". The wizard never advances past Step 4
+			// without either a populated selection (Next) or a deliberate
+			// clear (Skip), so empty here always means "ingest nothing".
+			return selectedIds.length;
 		}
 		return (wizardState.selectedItemIds ?? []).length;
 	});
