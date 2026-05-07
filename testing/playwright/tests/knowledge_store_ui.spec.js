@@ -243,9 +243,10 @@ test.describe.serial("Knowledge Store UI", () => {
     await nameInput.fill(uniqueName);
     await dialog.getByRole("button", { name: /^Next$/ }).click();
 
-    // Step 2 (Library content) — skippable. Click Skip.
+    // Step 2 (Library content) — Skip button removed, optionality is spelled
+    // out by the inline hint card. Just click Next with an empty queue.
     await expect(dialog.getByRole("heading", { name: /Initial content/i })).toBeVisible({ timeout: 5_000 });
-    await dialog.getByRole("button", { name: /^Skip$/ }).click();
+    await dialog.getByRole("button", { name: /^Next$/ }).click();
 
     // Step 3 (KS setup) — "Knowledge Store" heading. Pick "Create new".
     await expect(dialog.getByRole("heading", { name: /^Knowledge Store$/i })).toBeVisible({ timeout: 5_000 });
