@@ -41,12 +41,18 @@
 	} from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 
-	/** @type {{ wizardState: any }} */
-	let { wizardState } = $props();
+	/** @type {{ wizardState: any, submitting?: boolean }} */
+	let { wizardState, submitting = $bindable(false) } = $props();
 
 	const dispatch = createEventDispatcher();
 
-	let submitting = $state(false);
+	// Exposed to the wizard shell so the footer can host the Create button.
+	// Wizard binds this component via bind:this and calls submit() from its
+	// footer Create button so the button visually aligns with Back/Skip.
+	export function submit() {
+		return handleCreate();
+	}
+
 	let error = $state('');
 
 	/**
@@ -561,29 +567,7 @@
 		</div>
 	{/if}
 
-	<div class="flex justify-end pt-1">
-		<button
-			type="button"
-			onclick={handleCreate}
-			disabled={submitting}
-			class="inline-flex items-center gap-2 rounded-md bg-[#2271b3] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#195a91] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2271b3] disabled:cursor-not-allowed disabled:opacity-50"
-		>
-			{#if submitting}
-				<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<circle
-						class="opacity-25"
-						cx="12"
-						cy="12"
-						r="10"
-						stroke="currentColor"
-						stroke-width="4"
-					/>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-				</svg>
-			{/if}
-			{submitting
-				? $_('knowledge.wizard.creating', { default: 'Creating...' })
-				: $_('knowledge.wizard.step8.submit', { default: 'Create' })}
-		</button>
-	</div>
+	<!-- Create button lives in the wizard shell footer (alongside Back) so
+	     it doesn't push the dialog content into a scroll. The wizard calls
+	     this component's exported submit() when the user clicks it. -->
 </div>

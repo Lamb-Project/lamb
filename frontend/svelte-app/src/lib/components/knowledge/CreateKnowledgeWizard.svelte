@@ -370,6 +370,13 @@
 	// hint card inside StepLibraryContent, and the Next button works fine
 	// with an empty queue, so a separate Skip would be redundant noise.
 	let isSkippableStep = $derived(currentStep === STEP_KS_CONTENT);
+
+	// Bind to the Review step so the wizard footer can host a Create button
+	// that aligns with Back/Skip instead of getting pushed below the
+	// dialog's scroll area inside Step 5's content.
+	/** @type {{ submit: () => void } | null} */
+	let reviewStepRef = $state(null);
+	let reviewSubmitting = $state(false);
 </script>
 
 <!-- Esc handling moved to parent — see /libraries/+page.svelte. -->
@@ -487,6 +494,8 @@
 				/>
 			{:else if currentStep === STEP_REVIEW}
 				<StepReviewCreate
+					bind:this={reviewStepRef}
+					bind:submitting={reviewSubmitting}
 					{wizardState}
 					on:update={handleStateUpdate}
 					on:validity={handleStepValidity}
@@ -526,6 +535,36 @@
 						class="rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91] disabled:opacity-50"
 					>
 						{$_('knowledge.wizard.next', { default: 'Next' })}
+					</button>
+				{/if}
+
+				{#if isLastInteractiveStep && !isDoneStep}
+					<button
+						type="button"
+						onclick={() => reviewStepRef?.submit()}
+						disabled={reviewSubmitting}
+						class="inline-flex items-center gap-2 rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91] disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{#if reviewSubmitting}
+							<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								/>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+								/>
+							</svg>
+						{/if}
+						{reviewSubmitting
+							? $_('knowledge.wizard.creating', { default: 'Creating...' })
+							: $_('knowledge.wizard.step8.submit', { default: 'Create' })}
 					</button>
 				{/if}
 
