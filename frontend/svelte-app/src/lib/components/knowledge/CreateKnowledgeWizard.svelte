@@ -139,16 +139,19 @@
 	});
 
 	// Auto-save on any state change (debounced inside saveDraft).
-	// Critical: while the resume banner is up, the wizard is showing its
-	// freshly-initialised default state, NOT the saved draft. Saving in that
-	// window would stomp the user's previous work with fresh defaults — so
-	// the user clicks Resume and gets defaults restored. Skip the save until
-	// the user has either Resumed or Discarded (both flip draftBannerVisible
-	// to false), or there was no draft to resume in the first place.
+	// Skip the very first run: that one fires synchronously on mount with
+	// the freshly-cloned defaults, and saving then would stomp any existing
+	// sessionStorage draft with defaults BEFORE onMount has had a chance
+	// to surface the resume banner. Every later run reflects something the
+	// user (or resumeDraft) actually changed, so it's free to save.
+	let initialSaveSkipped = false;
 	$effect(() => {
 		const _snap = JSON.stringify(wizardState);
 		void _snap;
-		if (draftBannerVisible) return;
+		if (!initialSaveSkipped) {
+			initialSaveSkipped = true;
+			return;
+		}
 		saveDraft(userId, DRAFT_KIND, wizardState);
 	});
 
