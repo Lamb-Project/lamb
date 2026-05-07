@@ -32,6 +32,10 @@
 	// only in-place mutations would be tracked and the toggle button would
 	// appear inert.
 	let selectedIds = $state(new SvelteSet(wizardState.selectedItemIds || []));
+	// Tracks whether the one-time "select everything by default" pass has run.
+	// Without this guard, the pre-select $effect would re-fire every time the
+	// user clicks Deselect all (which sets size to 0) and immediately undo it.
+	let didPreselect = $state((wizardState.selectedItemIds || []).length > 0);
 	let loading = $state(false);
 	let error = $state('');
 	let isNewLibrary = $derived(wizardState.libraryPath === 'new');
@@ -56,10 +60,13 @@
 		return result;
 	});
 
-	// Pre-select all pending items when the component first enters the new-library path.
+	// Pre-select all pending items when the component first enters the
+	// new-library path. Guarded by didPreselect so explicit Deselect all
+	// from the user is preserved instead of getting auto-reverted.
 	$effect(() => {
-		if (isNewLibrary && pendingItems.length > 0 && selectedIds.size === 0) {
+		if (isNewLibrary && pendingItems.length > 0 && !didPreselect) {
 			selectedIds = new SvelteSet(pendingItems.map((p) => p.id));
+			didPreselect = true;
 		}
 	});
 
