@@ -35,10 +35,18 @@
 		saveDraft(userId, DRAFT_KIND, { name, description });
 	});
 
+	/** Suggest a default library name like "My Library 2026-05-07". */
+	function suggestDefaultName() {
+		const today = new Date().toISOString().slice(0, 10);
+		return `My Library ${today}`;
+	}
+
 	/** Open the modal and check for an existing draft. */
 	export async function open() {
 		isOpen = true;
 		resetForm();
+		// Pre-fill with a sensible default — user can overwrite.
+		name = suggestDefaultName();
 		// Check for draft before resetting to draft state.
 		const draft = getDraft(userId, DRAFT_KIND);
 		if (draft?.state) {
@@ -46,7 +54,12 @@
 			draftSavedAt = draft.savedAt || '';
 		}
 		await tick();
-		document.getElementById('lib-name')?.focus();
+		// Select the suggested name so typing replaces it cleanly.
+		const input = /** @type {HTMLInputElement|null} */ (
+			document.getElementById('lib-name')
+		);
+		input?.focus();
+		input?.select();
 	}
 
 	function resumeDraft() {

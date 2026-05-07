@@ -27,7 +27,11 @@
 	const dispatch = createEventDispatcher();
 
 	let items = $state(/** @type {any[]} */ ([]));
-	let selectedIds = new SvelteSet(wizardState.selectedItemIds || []);
+	// Wrap in $state so reassignment (e.g. `selectedIds = new SvelteSet()` for
+	// Select all / Deselect all) triggers reactive re-renders. Without $state,
+	// only in-place mutations would be tracked and the toggle button would
+	// appear inert.
+	let selectedIds = $state(new SvelteSet(wizardState.selectedItemIds || []));
 	let loading = $state(false);
 	let error = $state('');
 	let isNewLibrary = $derived(wizardState.libraryPath === 'new');
@@ -128,17 +132,6 @@
 				})}
 			</div>
 		{:else}
-			<p class="text-sm text-gray-600">
-				{$_('knowledge.wizard.step7.newLibraryPendingNote', {
-					default:
-						"{files} file(s), {urls} URL/YouTube source(s) will be uploaded to the new Library. By default all are selected for ingestion into the Knowledge Store. Optionally uncheck the ones you don't want in this Knowledge Store.",
-					values: {
-						files: (wizardState.pendingFiles ?? []).length,
-						urls: (wizardState.pendingUrlSources ?? []).length
-					}
-				})}
-			</p>
-
 			<div class="flex items-center justify-between">
 				<span class="text-sm text-gray-700">
 					{selectedIds.size} / {pendingItems.length}

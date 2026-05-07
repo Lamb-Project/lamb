@@ -91,7 +91,7 @@
 {#if isOpen}
 	<!-- Modal Overlay -->
 	<div
-		class="bg-opacity-75 fixed inset-0 z-40 bg-gray-500 transition-opacity"
+		class="fixed inset-0 z-40 bg-gray-500/75 transition-opacity"
 		onclick={handleOverlayClick}
 		aria-hidden="true"
 	></div>
