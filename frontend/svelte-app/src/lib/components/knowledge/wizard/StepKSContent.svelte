@@ -4,11 +4,12 @@
   Multi-select picker over the chosen library's "ready" items. ALL items
   are pre-selected by default. Skippable.
 
-  Note: when a NEW library is being created, files have been collected in
-  Step 2 but not yet uploaded — those uploads happen in Step 5 (Review).
-  So in the new-library path, this list will only show pre-existing items in the
-  library if any exist (typically empty for a fresh library). The freshly
-  uploaded items will be picked up automatically in the Review step.
+  For the NEW-library path: files/URLs queued in Step 2 don't exist in
+  the library yet (uploads happen in Step 5 / Review). This step shows a
+  checklist of those pending items so the user can uncheck the ones they
+  do NOT want ingested. All are pre-selected. IDs take the form
+  `pendingFile_<i>` / `pendingUrl_<i>` — Review maps these back to the
+  real uploaded item IDs.
 
   Emits:
     - update: { selectedItemIds }
@@ -30,6 +31,33 @@
 	let loading = $state(false);
 	let error = $state('');
 	let isNewLibrary = $derived(wizardState.libraryPath === 'new');
+
+	// Build a flat list of pending items with transient IDs for the new-library path.
+	let pendingItems = $derived.by(() => {
+		/** @type {Array<{ id: string, label: string, detail: string }>} */
+		const result = [];
+		const files = wizardState.pendingFiles ?? [];
+		const urls = wizardState.pendingUrlSources ?? [];
+		for (let i = 0; i < files.length; i++) {
+			result.push({ id: `pendingFile_${i}`, label: files[i].name, detail: 'file' });
+		}
+		for (let i = 0; i < urls.length; i++) {
+			const src = urls[i];
+			result.push({
+				id: `pendingUrl_${i}`,
+				label: src.title || src.url,
+				detail: src.type === 'youtube' ? 'youtube' : 'url'
+			});
+		}
+		return result;
+	});
+
+	// Pre-select all pending items when the component first enters the new-library path.
+	$effect(() => {
+		if (isNewLibrary && pendingItems.length > 0 && selectedIds.size === 0) {
+			selectedIds = new SvelteSet(pendingItems.map((p) => p.id));
+		}
+	});
 
 	$effect(() => {
 		if (wizardState.libraryPath === 'existing' && wizardState.existingLibraryId) {
@@ -66,10 +94,11 @@
 	}
 
 	function toggleAll() {
-		if (selectedIds.size === items.length) {
+		const allIds = isNewLibrary ? pendingItems.map((p) => p.id) : items.map((i) => i.id);
+		if (selectedIds.size === allIds.length) {
 			selectedIds = new SvelteSet();
 		} else {
-			selectedIds = new SvelteSet(items.map((i) => i.id));
+			selectedIds = new SvelteSet(allIds);
 		}
 	}
 
@@ -92,21 +121,52 @@
 	</p>
 
 	{#if isNewLibrary}
-		<div class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-			{$_('knowledge.wizard.step7.newLibraryNote', {
-				default:
-					'You are creating a new Library. Any files you added in the previous step will be uploaded and automatically queued for ingestion when you click "Create".'
-			})}
-		</div>
-		{#if (wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length > 0}
-			<div class="text-sm text-gray-700">
-				{$_('knowledge.wizard.step7.pendingCount', {
-					default: '{n} source(s) ready to import',
+		{#if pendingItems.length === 0}
+			<div class="text-sm text-gray-500">
+				{$_('knowledge.wizard.step7.noItems', {
+					default: 'This library has no ready items. You can skip this step and add content later.'
+				})}
+			</div>
+		{:else}
+			<p class="text-sm text-gray-600">
+				{$_('knowledge.wizard.step7.newLibraryPendingNote', {
+					default:
+						"{files} file(s), {urls} URL/YouTube source(s) will be uploaded to the new Library. By default all are selected for ingestion into the Knowledge Store. Optionally uncheck the ones you don't want in this Knowledge Store.",
 					values: {
-						n:
-							(wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length
+						files: (wizardState.pendingFiles ?? []).length,
+						urls: (wizardState.pendingUrlSources ?? []).length
 					}
 				})}
+			</p>
+
+			<div class="flex items-center justify-between">
+				<span class="text-sm text-gray-700">
+					{selectedIds.size} / {pendingItems.length}
+					{$_('knowledgeStores.addContentModal.selected', { default: 'selected' })}
+				</span>
+				<button type="button" onclick={toggleAll} class="text-xs text-[#2271b3] hover:underline">
+					{selectedIds.size === pendingItems.length
+						? $_('knowledgeStores.addContentModal.deselectAll', { default: 'Deselect all' })
+						: $_('knowledgeStores.addContentModal.selectAll', { default: 'Select all' })}
+				</button>
+			</div>
+
+			<div class="max-h-72 overflow-y-auto rounded border border-gray-200">
+				{#each pendingItems as pItem (pItem.id)}
+					<label
+						class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
+					>
+						<input
+							type="checkbox"
+							checked={selectedIds.has(pItem.id)}
+							onchange={() => toggleItem(pItem.id)}
+						/>
+						<div class="min-w-0 flex-1">
+							<div class="truncate text-sm font-medium text-gray-900">{pItem.label}</div>
+							<div class="truncate text-xs text-gray-400">{pItem.detail}</div>
+						</div>
+					</label>
+				{/each}
 			</div>
 		{/if}
 	{:else if loading}

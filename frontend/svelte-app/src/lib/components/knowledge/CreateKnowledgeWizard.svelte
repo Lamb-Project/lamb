@@ -169,12 +169,14 @@
 			return true;
 		}
 		if (step === STEP_KS_CONTENT) {
-			// Skip when both paths are 'new' and the user queued content in Step 2 —
-			// those uploads will auto-ingest in Review, so the picker is a no-op.
+			// Skip only when there is genuinely nothing to pick: new library with
+			// no queued content. (Existing-library + zero accessible items is also
+			// a candidate, but StepKSContent already shows an empty-state hint —
+			// no need to skip a step that is informationally useful.)
 			if (
 				wizardState.libraryPath === 'new' &&
-				wizardState.ksPath === 'new' &&
-				(wizardState.pendingFiles.length > 0 || wizardState.pendingUrlSources.length > 0)
+				wizardState.pendingFiles.length === 0 &&
+				wizardState.pendingUrlSources.length === 0
 			) {
 				return true;
 			}
@@ -350,9 +352,11 @@
 
 	let isLastInteractiveStep = $derived(currentStep === STEP_REVIEW);
 	let isDoneStep = $derived(currentStep === STEP_DONE);
-	let isSkippableStep = $derived(
-		currentStep === STEP_LIBRARY_CONTENT || currentStep === STEP_KS_CONTENT
-	);
+	// Only Step 4 (KS content picker) keeps an explicit Skip button — the
+	// optionality of Step 2 (Library content) is now spelled out by the inline
+	// hint card inside StepLibraryContent, and the Next button works fine
+	// with an empty queue, so a separate Skip would be redundant noise.
+	let isSkippableStep = $derived(currentStep === STEP_KS_CONTENT);
 </script>
 
 <!-- Esc handling moved to parent — see /libraries/+page.svelte. -->

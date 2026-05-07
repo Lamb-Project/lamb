@@ -1164,6 +1164,7 @@
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
 				"itemsHeading": "Items to ingest",
+				"itemsToIngest": "Elementos a ingerir",
 				"submit": "Create",
 				"submitting": "Creating...",
 				"heading": "Review & create",
@@ -1234,6 +1235,8 @@
 				"addUrl": "+ Añadir URL",
 				"addYouTube": "+ Añadir YouTube",
 				"queuedLabel": "Fuentes en cola",
+				"queuedSources": "Fuentes en cola",
+				"optionalHint": "Añadir contenido aquí es opcional — también puedes añadir archivos, URLs o transcripciones de YouTube más tarde desde la vista de detalle de la Biblioteca. Nota: un Knowledge Store solo puede ingerir elementos que existan en su Biblioteca, así que lo que omitas ahora deberás añadirlo antes a la Biblioteca.",
 				"uploadNote": "El contenido se importará cuando hagas clic en \"Crear\" en el paso de Revisión.",
 				"emptyHint": "No hay contenido en cola. Puedes omitir este paso."
 			},

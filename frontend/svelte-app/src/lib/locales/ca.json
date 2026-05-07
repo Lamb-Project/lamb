@@ -1164,6 +1164,7 @@
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
 				"itemsHeading": "Items to ingest",
+				"itemsToIngest": "Elements a ingerir",
 				"submit": "Create",
 				"submitting": "Creating...",
 				"heading": "Review & create",
@@ -1234,6 +1235,8 @@
 				"addUrl": "+ Afegir URL",
 				"addYouTube": "+ Afegir YouTube",
 				"queuedLabel": "Fonts a la cua",
+				"queuedSources": "Fonts a la cua",
+				"optionalHint": "Afegir contingut aquí és opcional — també pots afegir fitxers, URLs o transcripcions de YouTube més tard des de la vista de detall de la Biblioteca. Nota: un Knowledge Store només pot ingerir elements que existeixin a la seva Biblioteca, per tant el que ometis ara hauràs d'afegir-ho abans a la Biblioteca.",
 				"uploadNote": "El contingut s'importarà quan facis clic a \"Crear\" al pas de Revisió.",
 				"emptyHint": "No hi ha contingut a la cua. Pots ometre aquest pas."
 			},

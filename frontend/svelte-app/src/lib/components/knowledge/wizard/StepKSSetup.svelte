@@ -120,9 +120,7 @@
 	);
 
 	let hasNoConfiguredVendor = $derived(
-		!loadingOptions &&
-			(options.embedding_vendors || []).length > 0 &&
-			enabledVendors.length === 0
+		!loadingOptions && (options.embedding_vendors || []).length > 0 && enabledVendors.length === 0
 	);
 
 	let availableModels = $derived.by(() => {
@@ -434,7 +432,9 @@
 								{/each}
 							</select>
 							{#if hasNoConfiguredVendor}
-								<p class="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+								<p
+									class="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+								>
 									{$_('knowledge.wizard.step6.noVendorConfigured', {
 										default:
 											'Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.'

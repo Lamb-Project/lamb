@@ -1164,6 +1164,7 @@
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
 				"itemsHeading": "Items to ingest",
+				"itemsToIngest": "Items to ingest",
 				"submit": "Create",
 				"submitting": "Creating...",
 				"heading": "Review & create",
@@ -1234,6 +1235,8 @@
 				"addUrl": "+ Add URL",
 				"addYouTube": "+ Add YouTube",
 				"queuedLabel": "Queued sources",
+				"queuedSources": "Queued sources",
+				"optionalHint": "Adding content here is optional — you can also add files, URLs, or YouTube transcripts later from the Library detail page. Note: a Knowledge Store can only ingest items that exist in its Library, so anything you skip now must be added to the Library before it can land in the Knowledge Store.",
 				"uploadNote": "Content will be imported when you click \"Create\" in the Review step.",
 				"emptyHint": "No content queued. You can skip this step."
 			},

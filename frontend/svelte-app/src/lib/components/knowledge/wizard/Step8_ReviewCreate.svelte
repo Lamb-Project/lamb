@@ -247,7 +247,44 @@
 			/** @type {string[]} */
 			let itemsToIngest = [];
 			if (wizardState.libraryPath === 'new') {
-				itemsToIngest = newlyReadyIds;
+				const selectedIds = wizardState.selectedItemIds || [];
+				const hasPendingSelection = selectedIds.some(
+					(/** @type {string} */ id) =>
+						id.startsWith('pendingFile_') || id.startsWith('pendingUrl_')
+				);
+				if (hasPendingSelection) {
+					// Map transient IDs back to uploaded item IDs.
+					// pendingFile_<i> → newlyReadyIds[i] (files uploaded first, then URLs)
+					const pendingFiles = wizardState.pendingFiles ?? [];
+					// newlyReadyIds is ordered: files first, then URLs (matching upload order above).
+					for (const selId of selectedIds) {
+						const fileMatch = selId.match(/^pendingFile_(\d+)$/);
+						const urlMatch = selId.match(/^pendingUrl_(\d+)$/);
+						if (fileMatch) {
+							const idx = parseInt(fileMatch[1], 10);
+							if (idx < pendingFiles.length && idx < newlyReadyIds.length) {
+								itemsToIngest.push(newlyReadyIds[idx]);
+							}
+						} else if (urlMatch) {
+							const idx = parseInt(urlMatch[1], 10);
+							// URL items come after file items in newlyReadyIds.
+							const urlOffset = pendingFiles.length;
+							if (urlOffset + idx < newlyReadyIds.length) {
+								itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
+							}
+						}
+					}
+					// Fallback: if mapping yielded nothing, ingest everything.
+					if (itemsToIngest.length === 0) {
+						itemsToIngest = newlyReadyIds;
+					}
+				} else if (selectedIds.length === 0) {
+					// No selection stored — default to all (safety fallback).
+					itemsToIngest = newlyReadyIds;
+				} else {
+					// Real item IDs (e.g. from a resumed draft with existing items).
+					itemsToIngest = selectedIds;
+				}
 			} else {
 				itemsToIngest = [...(wizardState.selectedItemIds || [])];
 			}
@@ -285,9 +322,28 @@
 		}
 	}
 
-	let summarySelectedCount = $derived.by(() => {
+	/** Total items that will exist in the library after upload (for display). */
+	let summaryTotalCount = $derived.by(() => {
 		if (wizardState.libraryPath === 'new') {
 			return (wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length;
+		}
+		// For existing library, total = same as selected (we don't know the full count here).
+		return (wizardState.selectedItemIds ?? []).length;
+	});
+
+	/** Number of items the user has chosen to ingest (may be a subset). */
+	let summarySelectedCount = $derived.by(() => {
+		if (wizardState.libraryPath === 'new') {
+			const selectedIds = wizardState.selectedItemIds ?? [];
+			// If selection contains transient pending IDs, count only those.
+			const hasPendingIds = selectedIds.some(
+				(/** @type {string} */ id) => id.startsWith('pendingFile_') || id.startsWith('pendingUrl_')
+			);
+			if (hasPendingIds) {
+				return selectedIds.length;
+			}
+			// No pending IDs stored (e.g. step was skipped or draft resumed) — default to all.
+			return summaryTotalCount;
 		}
 		return (wizardState.selectedItemIds ?? []).length;
 	});
@@ -411,6 +467,17 @@
 					{wizardState.ksPath === 'existing'
 						? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
 						: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+				</dd>
+
+				<dt class="font-medium text-gray-500">
+					{$_('knowledge.wizard.step8.itemsToIngest', { default: 'Items to ingest' })}
+				</dt>
+				<dd class="text-gray-900">
+					{#if summarySelectedCount < summaryTotalCount}
+						{summarySelectedCount} of {summaryTotalCount}
+					{:else}
+						{summarySelectedCount}
+					{/if}
 				</dd>
 
 				{#if wizardState.ksPath === 'new'}

@@ -1164,6 +1164,7 @@
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
 				"itemsHeading": "Items to ingest",
+				"itemsToIngest": "Ingeritzeko elementuak",
 				"submit": "Create",
 				"submitting": "Creating...",
 				"heading": "Review & create",
@@ -1234,6 +1235,8 @@
 				"addUrl": "+ URL gehitu",
 				"addYouTube": "+ YouTube gehitu",
 				"queuedLabel": "Iturri ilarakoak",
+				"queuedSources": "Iturri zerrendatuak",
+				"optionalHint": "Eduki gehitzea hemen aukerakoa da — fitxategiak, URLak edo YouTubeko transkripzioak ere geroago gehi ditzakezu Bibliotekaren xehetasun-ikuspegitik. Oharra: Knowledge Store batek soilik bere Bibliotekan dauden elementuak ingeritu ditzake; beraz, orain saltatzen duzuna Bibliotekara gehitu beharko duzu lehenik.",
 				"uploadNote": "Edukia inportatuko da \"Sortu\" sakatzean Berrikuspena urratsean.",
 				"emptyHint": "Ez dago iturririk ilaran. Urrats hau saltatu dezakezu."
 			},

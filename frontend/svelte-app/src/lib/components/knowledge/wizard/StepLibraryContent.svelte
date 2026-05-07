@@ -141,12 +141,31 @@
 	<h3 class="text-base font-semibold text-gray-900">
 		{$_('knowledge.wizard.libraryContent.heading', { default: 'Initial content' })}
 	</h3>
-	<p class="text-sm text-gray-600">
-		{$_('knowledge.wizard.libraryContent.description', {
+
+	<!-- Optional-step info card -->
+	<div
+		class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900"
+		role="note"
+	>
+		<span class="mr-1.5 inline-block align-text-bottom" aria-hidden="true">
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				class="inline h-4 w-4"
+				viewBox="0 0 20 20"
+				fill="currentColor"
+			>
+				<path
+					fill-rule="evenodd"
+					d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+					clip-rule="evenodd"
+				/>
+			</svg>
+		</span>
+		{$_('knowledge.wizard.libraryContent.optionalHint', {
 			default:
-				'Optionally add content to your new Library now. You can also skip this and add content later.'
+				'Adding content here is optional — you can also add files, URLs, or YouTube transcripts later from the Library detail page. Note: a Knowledge Store can only ingest items that exist in its Library, so anything you skip now must be added to the Library before it can land in the Knowledge Store.'
 		})}
-	</p>
+	</div>
 
 	<!-- Source type selector -->
 	<div class="flex gap-2">
@@ -277,7 +296,7 @@
 	{#if totalSources > 0}
 		<div>
 			<p class="mb-1 text-xs font-medium tracking-wide text-gray-500 uppercase">
-				{$_('knowledge.wizard.libraryContent.queuedLabel', { default: 'Queued sources' })}
+				{$_('knowledge.wizard.libraryContent.queuedSources', { default: 'Queued sources' })}
 				({totalSources})
 			</p>
 			<div class="divide-y rounded-md border border-gray-200">
