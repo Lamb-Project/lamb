@@ -121,6 +121,10 @@
 	let draftBannerVisible = $state(false);
 	let draftSavedAt = $state('');
 	let showCancelConfirm = $state(false);
+	// Bumped whenever wizardState is replaced wholesale (e.g. resumeDraft).
+	// Step components re-mount on bump so their locally-cached form fields
+	// pick up the new values.
+	let wizardStateVersion = $state(0);
 
 	onMount(() => {
 		const draft = getDraft(userId, DRAFT_KIND);
@@ -135,10 +139,16 @@
 	});
 
 	// Auto-save on any state change (debounced inside saveDraft).
+	// Critical: while the resume banner is up, the wizard is showing its
+	// freshly-initialised default state, NOT the saved draft. Saving in that
+	// window would stomp the user's previous work with fresh defaults — so
+	// the user clicks Resume and gets defaults restored. Skip the save until
+	// the user has either Resumed or Discarded (both flip draftBannerVisible
+	// to false), or there was no draft to resume in the first place.
 	$effect(() => {
-		// Depend on the full wizardState snapshot. JSON.stringify forces deep tracking.
 		const _snap = JSON.stringify(wizardState);
 		void _snap;
+		if (draftBannerVisible) return;
 		saveDraft(userId, DRAFT_KIND, wizardState);
 	});
 
@@ -151,6 +161,9 @@
 			...draft.state,
 			pendingFiles: []
 		};
+		// Force the active step component to re-mount so its locally-cached
+		// $state form fields re-initialise from the resumed wizardState.
+		wizardStateVersion += 1;
 		draftBannerVisible = false;
 	}
 
@@ -472,6 +485,11 @@
 		</header>
 
 		<div class="min-h-[480px] flex-1 overflow-y-auto px-6 py-5">
+			<!-- Step components seed their local form fields from wizardState
+			     on mount only. When resumeDraft swaps wizardState wholesale,
+			     bump wizardStateVersion to force the active step to re-mount
+			     so it picks up the resumed values. -->
+			{#key wizardStateVersion}
 			{#if currentStep === STEP_LIBRARY_SETUP}
 				<StepLibrarySetup
 					{wizardState}
@@ -504,6 +522,7 @@
 			{:else if currentStep === STEP_DONE}
 				<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
 			{/if}
+			{/key}
 		</div>
 
 		<footer class="flex items-center justify-between gap-2 border-t border-gray-200 px-6 py-4">
