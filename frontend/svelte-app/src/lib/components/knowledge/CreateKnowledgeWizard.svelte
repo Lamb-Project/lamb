@@ -144,26 +144,48 @@
 	// sessionStorage draft with defaults BEFORE onMount has had a chance
 	// to surface the resume banner. Every later run reflects something the
 	// user (or resumeDraft) actually changed, so it's free to save.
+	// We also persist currentStep alongside wizardState so Resume lands the
+	// user back on the step they left off on.
 	let initialSaveSkipped = false;
 	$effect(() => {
 		const _snap = JSON.stringify(wizardState);
+		const _step = currentStep;
 		void _snap;
+		void _step;
 		if (!initialSaveSkipped) {
 			initialSaveSkipped = true;
 			return;
 		}
-		saveDraft(userId, DRAFT_KIND, wizardState);
+		// Don't write when the wizard is on the post-create Done screen.
+		if (currentStep === STEP_DONE) return;
+		saveDraft(userId, DRAFT_KIND, { ...wizardState, __currentStep: currentStep });
 	});
 
 	function resumeDraft() {
 		const draft = getDraft(userId, DRAFT_KIND);
 		if (!draft?.state) return;
+		// Pull __currentStep out before merging — it's a wizard-level field,
+		// not part of WizardState proper.
+		const { __currentStep, ...savedWizardState } = draft.state;
 		// File objects cannot be stored in sessionStorage; pendingFiles will be [].
 		wizardState = {
 			...structuredClone(defaultWizardState),
-			...draft.state,
+			...savedWizardState,
 			pendingFiles: []
 		};
+		// Restore the step the user was on. Clamp to valid interactive range
+		// (Library Setup .. Review) — never resume into Done. If the resumed
+		// state would now skip the saved step (e.g. libraryPath flipped to
+		// existing), advance to the next non-skipped step.
+		if (
+			typeof __currentStep === 'number' &&
+			__currentStep >= STEP_LIBRARY_SETUP &&
+			__currentStep <= STEP_REVIEW
+		) {
+			let target = __currentStep;
+			while (target < STEP_REVIEW && isStepSkipped(target)) target += 1;
+			currentStep = target;
+		}
 		// Force the active step component to re-mount so its locally-cached
 		// $state form fields re-initialise from the resumed wizardState.
 		wizardStateVersion += 1;
