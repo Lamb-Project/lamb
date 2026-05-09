@@ -26,6 +26,11 @@
 		getDraft,
 		formatDraftAge
 	} from '$lib/stores/wizardDraftStore.svelte.js';
+	import {
+		saveFiles,
+		getFiles,
+		clearFiles
+	} from '$lib/stores/wizardFileStore.svelte.js';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
 	import StepLibrarySetup from './wizard/StepLibrarySetup.svelte';
@@ -159,19 +164,25 @@
 		// Don't write when the wizard is on the post-create Done screen.
 		if (currentStep === STEP_DONE) return;
 		saveDraft(userId, DRAFT_KIND, { ...wizardState, __currentStep: currentStep });
+		// Files cannot ride sessionStorage (File is not JSON-serialisable);
+		// they go to a sibling IndexedDB store so screenshots/PDFs survive.
+		saveFiles(userId, DRAFT_KIND, wizardState.pendingFiles || []);
 	});
 
-	function resumeDraft() {
+	async function resumeDraft() {
 		const draft = getDraft(userId, DRAFT_KIND);
 		if (!draft?.state) return;
 		// Pull __currentStep out before merging — it's a wizard-level field,
 		// not part of WizardState proper.
 		const { __currentStep, ...savedWizardState } = draft.state;
-		// File objects cannot be stored in sessionStorage; pendingFiles will be [].
+		// Pull persisted File objects from IndexedDB (sessionStorage can't
+		// hold them). On miss we fall back to an empty array — the rest of
+		// the draft still applies.
+		const restoredFiles = await getFiles(userId, DRAFT_KIND);
 		wizardState = {
 			...structuredClone(defaultWizardState),
 			...savedWizardState,
-			pendingFiles: []
+			pendingFiles: restoredFiles
 		};
 		// Restore the step the user was on. Clamp to valid interactive range
 		// (Library Setup .. Review) — never resume into Done. If the resumed
@@ -194,6 +205,7 @@
 
 	function discardDraft() {
 		clearDraft(userId, DRAFT_KIND);
+		clearFiles(userId, DRAFT_KIND);
 		draftBannerVisible = false;
 	}
 
@@ -344,6 +356,7 @@
 			ksName: refs.ksName || wizardState.createdRefs.ksName
 		};
 		clearDraft(userId, DRAFT_KIND);
+		clearFiles(userId, DRAFT_KIND);
 		currentStep = STEP_DONE;
 	}
 
@@ -381,6 +394,7 @@
 	function handleCancelDiscard() {
 		showCancelConfirm = false;
 		clearDraft(userId, DRAFT_KIND);
+		clearFiles(userId, DRAFT_KIND);
 		close();
 	}
 
