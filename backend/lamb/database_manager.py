@@ -667,6 +667,9 @@ class LambDatabaseManager:
                 logger.info(
                     f"Updated admin user role to 'admin' in system organization")
 
+        # Ensure LAMB-side system role matches OWI (bootstrap admin should be system admin).
+        self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin')
+
     def run_migrations(self):
         """Run database migrations for schema updates"""
         logger.info("Running database migrations")
