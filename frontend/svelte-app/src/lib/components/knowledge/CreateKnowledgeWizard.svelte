@@ -31,7 +31,6 @@
 		getFiles,
 		clearFiles
 	} from '$lib/stores/wizardFileStore.svelte.js';
-	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
 	import StepLibrarySetup from './wizard/StepLibrarySetup.svelte';
 	import StepLibraryContent from './wizard/StepLibraryContent.svelte';
@@ -125,7 +124,6 @@
 
 	let draftBannerVisible = $state(false);
 	let draftSavedAt = $state('');
-	let showCancelConfirm = $state(false);
 	// Bumped whenever wizardState is replaced wholesale (e.g. resumeDraft).
 	// Step components re-mount on bump so their locally-cached form fields
 	// pick up the new values.
@@ -381,20 +379,11 @@
 	}
 
 	function handleCancelClick() {
-		// Show save-as-draft prompt.
-		showCancelConfirm = true;
-	}
-
-	function handleCancelSave() {
-		// Already saved by the reactive effect; just close.
-		showCancelConfirm = false;
-		close();
-	}
-
-	function handleCancelDiscard() {
-		showCancelConfirm = false;
-		clearDraft(userId, DRAFT_KIND);
-		clearFiles(userId, DRAFT_KIND);
+		// X button closes silently — same behaviour as Esc and outside-click.
+		// The draft is already auto-saved by the reactive effect, so a
+		// "Save as draft?" confirmation would be redundant. If the user
+		// wants to discard, they can do so from the Resume banner on next
+		// open.
 		close();
 	}
 
@@ -431,21 +420,12 @@
 	let reviewSubmitting = $state(false);
 </script>
 
-<!-- Esc handling moved to parent — see /libraries/+page.svelte. -->
+<!-- Esc handling lives in /libraries/+page.svelte's <svelte:window>. -->
+<!-- Cancel/save-as-draft confirmation removed: Esc, outside-click, and X
+     all close silently — the auto-save effect has already persisted the
+     draft, and the Resume banner on next open offers an explicit Discard
+     when the user wants to drop their work. -->
 
-<!-- Cancel / Save-as-draft modal -->
-<ConfirmationModal
-	bind:isOpen={showCancelConfirm}
-	variant="info"
-	title={$_('knowledge.wizard.draft.savePrompt.title', { default: 'Save as draft?' })}
-	message={$_('knowledge.wizard.draft.savePrompt.body', {
-		default: 'Your progress will be saved until you log out or close the tab.'
-	})}
-	confirmText={$_('knowledge.wizard.draft.savePrompt.save', { default: 'Save draft' })}
-	cancelText={$_('knowledge.wizard.draft.discard', { default: 'Discard' })}
-	onconfirm={handleCancelSave}
-	oncancel={handleCancelDiscard}
-/>
 
 <div
 	class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 sm:pt-12"
