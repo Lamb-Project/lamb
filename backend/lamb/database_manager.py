@@ -656,6 +656,9 @@ class LambDatabaseManager:
                 logger.info(
                     f"Updated admin user role to 'admin' in system organization")
 
+        # Ensure LAMB-side system role matches OWI (bootstrap admin should be system admin).
+        self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin')
+
     def run_migrations(self):
         """Run database migrations for schema updates"""
         logger.info("Running database migrations")
@@ -2072,13 +2075,19 @@ class LambDatabaseManager:
                     WHERE organization_id = ?
                 """, (org_id,))
 
-                # 4. Creator_users (organization_roles, lti_identity_links,
-                #    kb_registry, prompt_templates and bulk_import_logs all
-                #    carry ON DELETE CASCADE / SET NULL and follow).
+                # 4. Creator_users — move them to the system org rather than
+                #    deleting them, so users survive organization deletion.
                 cursor.execute(f"""
-                    DELETE FROM {self.table_prefix}Creator_users
+                    SELECT id FROM {self.table_prefix}organizations
+                    WHERE is_system = 1 LIMIT 1
+                """)
+                sys_row = cursor.fetchone()
+                system_org_id = sys_row[0] if sys_row else None
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
                     WHERE organization_id = ?
-                """, (org_id,))
+                """, (system_org_id, int(time.time()), org_id))
 
                 # 5. collections
                 cursor.execute(f"""
