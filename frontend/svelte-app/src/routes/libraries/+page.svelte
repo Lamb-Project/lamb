@@ -137,10 +137,27 @@
 		librariesListKey += 1;
 		ksListKey += 1;
 
-		// Prefer navigating to the freshly-created KS (wizard always
-		// ends with a KS reference if completed normally). Fall back to
-		// the library if no KS is present, and otherwise stay where we
-		// are.
+		// Honour the user's choice from Step 9 ("Open Knowledge Store" vs
+		// "Open Library"). The Done step embeds ``target: 'ks' | 'library'``
+		// in the dispatched payload. Fall back to whichever side has an
+		// id when no explicit target is set.
+		const target = refs.target;
+		if (target === 'library' && refs.libraryId) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(buildUrl('libraries', 'detail', refs.libraryId), {
+				replaceState: false,
+				keepFocus: true
+			});
+			return;
+		}
+		if (target === 'ks' && refs.ksId) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(buildUrl('knowledge-stores', 'detail', refs.ksId), {
+				replaceState: false,
+				keepFocus: true
+			});
+			return;
+		}
 		if (refs.ksId) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto(buildUrl('knowledge-stores', 'detail', refs.ksId), {
@@ -182,7 +199,9 @@
 						/>
 					</svg>
 				</button>
-				<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:truncate sm:text-3xl">
+				<h1
+					class="text-2xl leading-tight font-bold text-gray-900 sm:truncate sm:text-3xl sm:leading-tight"
+				>
 					{#if section === 'knowledge-stores'}
 						{$_('knowledgeStores.detailTitle', { default: 'Knowledge Store Details' })}
 					{:else}
@@ -192,7 +211,7 @@
 			</div>
 		{:else}
 			<div>
-				<h1 class="text-2xl leading-7 font-bold text-gray-900 sm:text-3xl">
+				<h1 class="text-2xl leading-tight font-bold text-gray-900 sm:text-3xl sm:leading-tight">
 					{$_('knowledge.title', { default: 'Sources of Knowledge' })}
 				</h1>
 				<p class="mt-1 text-sm text-gray-500">
@@ -237,10 +256,7 @@
 				<LibraryDetail libraryId={detailId} />
 			{:else}
 				{#key librariesListKey}
-					<LibrariesList
-						on:view={handleLibraryView}
-						on:createWithInitialState={handleCreateWithInitialState}
-					/>
+					<LibrariesList on:view={handleLibraryView} />
 				{/key}
 			{/if}
 		{:else if section === 'knowledge-stores'}

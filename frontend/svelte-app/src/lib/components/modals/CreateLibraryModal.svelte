@@ -5,6 +5,7 @@
 -->
 <script>
 	import { createEventDispatcher, tick } from 'svelte';
+	import axios from 'axios';
 	import { createLibrary } from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
 	import { user } from '$lib/stores/userStore';
@@ -126,7 +127,15 @@
 			dispatch('created', { id: result.id, name: result.name });
 			resetForm();
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Failed to create library';
+			if (axios.isAxiosError(err) && err.response) {
+				const data = err.response.data;
+				error =
+					(typeof data?.detail === 'string' && data.detail) ||
+					(typeof data?.message === 'string' && data.message) ||
+					`Request failed (${err.response.status})`;
+			} else {
+				error = err instanceof Error ? err.message : 'Failed to create library';
+			}
 			isSubmitting = false;
 		}
 	}

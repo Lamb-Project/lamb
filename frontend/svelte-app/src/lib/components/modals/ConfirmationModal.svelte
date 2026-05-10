@@ -2,9 +2,24 @@
 	import { _, locale } from '$lib/i18n';
 
 	// --- Props ---
+	/**
+	 * @typedef {Object} ModalBlocker
+	 * @property {string} id - opaque id passed back to onRemoveBlocker
+	 * @property {string} name - display name shown in the list
+	 * @property {number|null} [contentCount] - total items inside the
+	 *   referencing entity, rendered as "(N items)" when provided
+	 * @property {boolean} [removing] - when true, the row's button shows
+	 *   a spinner / disabled state
+	 */
+
 	let {
 		isOpen = $bindable(false),
 		isLoading = $bindable(false),
+		error = $bindable(''),
+		blockers = $bindable(/** @type {ModalBlocker[]} */ ([])),
+		blockersTitle = '',
+		blockerRemoveLabel = '',
+		onRemoveBlocker = (/** @type {string} */ _id) => {},
 		title = '',
 		message = '',
 		confirmText = '',
@@ -167,6 +182,66 @@
 				<p class="text-sm break-words whitespace-pre-line text-gray-700">
 					{message}
 				</p>
+				{#if error}
+					<div
+						class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm break-words whitespace-pre-line text-red-700"
+						role="alert"
+					>
+						{error}
+					</div>
+				{/if}
+				{#if blockers && blockers.length > 0}
+					<div class="mt-4 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+						<div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold tracking-wide text-gray-600 uppercase">
+							{blockersTitle ||
+								(localeLoaded
+									? $_('common.referencingItems', { default: 'Referenced by' })
+									: 'Referenced by')}
+						</div>
+						<ul class="divide-y divide-gray-200 bg-white">
+							{#each blockers as b (b.id)}
+								<li class="flex items-center justify-between gap-3 px-3 py-2">
+									<div class="min-w-0 flex-1">
+										<p class="truncate text-sm font-medium text-gray-900" title={b.name}>
+											{b.name}
+										</p>
+										{#if typeof b.contentCount === 'number'}
+											<p class="text-xs text-gray-500">
+												{b.contentCount}
+												{localeLoaded
+													? $_('common.itemsLowercase', { default: 'items' })
+													: 'items'}
+											</p>
+										{/if}
+									</div>
+									<button
+										type="button"
+										onclick={() => onRemoveBlocker(b.id)}
+										disabled={!!b.removing}
+										class="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										{#if b.removing}
+											<svg
+												class="h-3 w-3 animate-spin"
+												xmlns="http://www.w3.org/2000/svg"
+												fill="none"
+												viewBox="0 0 24 24"
+												aria-hidden="true"
+											>
+												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+											</svg>
+										{/if}
+										{blockerRemoveLabel ||
+											(localeLoaded
+												? $_('common.remove', { default: 'Remove' })
+												: 'Remove')}
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 				{#if isLoading}
 					<p class="mt-2 flex items-center text-sm text-gray-500">
 						<svg

@@ -33,9 +33,11 @@
 	// appear inert.
 	let selectedIds = $state(new SvelteSet(wizardState.selectedItemIds || []));
 	// Tracks whether the one-time "select everything by default" pass has run.
-	// Without this guard, the pre-select $effect would re-fire every time the
-	// user clicks Deselect all (which sets size to 0) and immediately undo it.
-	let didPreselect = $state((wizardState.selectedItemIds || []).length > 0);
+	// Persisted in wizardState so navigating Back/Next doesn't re-run the
+	// pre-select pass and clobber an explicit Deselect all from the user.
+	let didPreselect = $state(
+		!!wizardState.selectionInitialized || (wizardState.selectedItemIds || []).length > 0
+	);
 	let loading = $state(false);
 	let error = $state('');
 	let isNewLibrary = $derived(wizardState.libraryPath === 'new');
@@ -60,13 +62,16 @@
 		return result;
 	});
 
-	// Pre-select all pending items when the component first enters the
-	// new-library path. Guarded by didPreselect so explicit Deselect all
-	// from the user is preserved instead of getting auto-reverted.
+	// Pre-select all pending items the first time this step renders with
+	// queued content (works for both new and existing-library flows).
+	// Guarded by didPreselect so an explicit Deselect-all from the user
+	// is preserved instead of getting auto-reverted on remount.
 	$effect(() => {
-		if (isNewLibrary && pendingItems.length > 0 && !didPreselect) {
-			selectedIds = new SvelteSet(pendingItems.map((p) => p.id));
+		if (pendingItems.length > 0 && !didPreselect) {
+			const next = new SvelteSet([...selectedIds, ...pendingItems.map((p) => p.id)]);
+			selectedIds = next;
 			didPreselect = true;
+			dispatch('update', { selectionInitialized: true });
 		}
 	});
 
@@ -83,9 +88,13 @@
 		try {
 			const data = await getItems(libraryId, { limit: 200, status: 'ready' });
 			items = data?.items ?? [];
-			// Pre-select all by default if no prior selection.
-			if (selectedIds.size === 0) {
+			// Pre-select all by default only on first visit. After the user
+			// has navigated past this step once (selectionInitialized=true),
+			// respect their selection — including the empty set from
+			// Deselect all + Back from Review.
+			if (selectedIds.size === 0 && !wizardState.selectionInitialized) {
 				selectedIds = new SvelteSet(items.map((i) => i.id));
+				dispatch('update', { selectionInitialized: true });
 			}
 		} catch (/** @type {unknown} */ err) {
 			error = err instanceof Error ? err.message : 'Failed to load items';
@@ -102,15 +111,22 @@
 			selectedIds.add(id);
 		}
 		selectedIds = new SvelteSet(selectedIds);
+		didPreselect = true;
+		dispatch('update', { selectionInitialized: true });
 	}
 
 	function toggleAll() {
-		const allIds = isNewLibrary ? pendingItems.map((p) => p.id) : items.map((i) => i.id);
+		const allIds = [
+			...(isNewLibrary ? [] : items.map((i) => i.id)),
+			...pendingItems.map((p) => p.id)
+		];
 		if (selectedIds.size === allIds.length) {
 			selectedIds = new SvelteSet();
 		} else {
 			selectedIds = new SvelteSet(allIds);
 		}
+		didPreselect = true;
+		dispatch('update', { selectionInitialized: true });
 	}
 
 	$effect(() => {
@@ -131,8 +147,30 @@
 		})}
 	</p>
 
-	{#if isNewLibrary}
-		{#if pendingItems.length === 0}
+	{#if loading && !isNewLibrary}
+		<div class="text-sm text-gray-500">{$_('common.loading', { default: 'Loading...' })}</div>
+	{:else if error && !isNewLibrary}
+		<div class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700" role="alert">
+			{error}
+		</div>
+	{:else}
+		{@const existingRows = isNewLibrary
+			? []
+			: items.map((i) => ({
+					id: i.id,
+					label: i.title,
+					detail: `${i.source_type} · ${i.id}`,
+					isNew: false
+				}))}
+		{@const pendingRows = pendingItems.map((p) => ({
+			id: p.id,
+			label: p.label,
+			detail: p.detail,
+			isNew: true
+		}))}
+		{@const allRows = [...existingRows, ...pendingRows]}
+
+		{#if allRows.length === 0}
 			<div class="text-sm text-gray-500">
 				{$_('knowledge.wizard.step7.noItems', {
 					default: 'This library has no ready items. You can skip this step and add content later.'
@@ -141,75 +179,42 @@
 		{:else}
 			<div class="flex items-center justify-between">
 				<span class="text-sm text-gray-700">
-					{selectedIds.size} / {pendingItems.length}
+					{selectedIds.size} / {allRows.length}
 					{$_('knowledgeStores.addContentModal.selected', { default: 'selected' })}
 				</span>
 				<button type="button" onclick={toggleAll} class="text-xs text-[#2271b3] hover:underline">
-					{selectedIds.size === pendingItems.length
+					{selectedIds.size === allRows.length
 						? $_('knowledgeStores.addContentModal.deselectAll', { default: 'Deselect all' })
 						: $_('knowledgeStores.addContentModal.selectAll', { default: 'Select all' })}
 				</button>
 			</div>
 
 			<div class="max-h-72 overflow-y-auto rounded border border-gray-200">
-				{#each pendingItems as pItem (pItem.id)}
+				{#each allRows as row (row.id)}
 					<label
 						class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
 					>
 						<input
 							type="checkbox"
-							checked={selectedIds.has(pItem.id)}
-							onchange={() => toggleItem(pItem.id)}
+							checked={selectedIds.has(row.id)}
+							onchange={() => toggleItem(row.id)}
 						/>
 						<div class="min-w-0 flex-1">
-							<div class="truncate text-sm font-medium text-gray-900">{pItem.label}</div>
-							<div class="truncate text-xs text-gray-400">{pItem.detail}</div>
+							<div class="flex items-center gap-2">
+								<span class="truncate text-sm font-medium text-gray-900">{row.label}</span>
+								{#if row.isNew}
+									<span
+										class="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium tracking-wide text-blue-800 uppercase"
+									>
+										{$_('knowledge.wizard.step7.newBadge', { default: 'New' })}
+									</span>
+								{/if}
+							</div>
+							<div class="truncate text-xs text-gray-400">{row.detail}</div>
 						</div>
 					</label>
 				{/each}
 			</div>
 		{/if}
-	{:else if loading}
-		<div class="text-sm text-gray-500">{$_('common.loading', { default: 'Loading...' })}</div>
-	{:else if error}
-		<div class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700" role="alert">
-			{error}
-		</div>
-	{:else if items.length === 0}
-		<div class="text-sm text-gray-500">
-			{$_('knowledge.wizard.step7.noItems', {
-				default: 'This library has no ready items. You can skip this step and add content later.'
-			})}
-		</div>
-	{:else}
-		<div class="flex items-center justify-between">
-			<span class="text-sm text-gray-700">
-				{selectedIds.size} / {items.length}
-				{$_('knowledgeStores.addContentModal.selected', { default: 'selected' })}
-			</span>
-			<button type="button" onclick={toggleAll} class="text-xs text-[#2271b3] hover:underline">
-				{selectedIds.size === items.length
-					? $_('knowledgeStores.addContentModal.deselectAll', { default: 'Deselect all' })
-					: $_('knowledgeStores.addContentModal.selectAll', { default: 'Select all' })}
-			</button>
-		</div>
-
-		<div class="max-h-72 overflow-y-auto rounded border border-gray-200">
-			{#each items as item (item.id)}
-				<label
-					class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
-				>
-					<input
-						type="checkbox"
-						checked={selectedIds.has(item.id)}
-						onchange={() => toggleItem(item.id)}
-					/>
-					<div class="min-w-0 flex-1">
-						<div class="truncate text-sm font-medium text-gray-900">{item.title}</div>
-						<div class="truncate text-xs text-gray-400">{item.source_type} · {item.id}</div>
-					</div>
-				</label>
-			{/each}
-		</div>
 	{/if}
 </div>

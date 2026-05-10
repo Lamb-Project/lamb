@@ -7,6 +7,8 @@
   Reactively reloads when the libraryId prop changes (Marc's #336 finding).
 -->
 <script>
+	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import {
 		getKnowledgeStore,
 		updateKnowledgeStore,
@@ -17,7 +19,7 @@
 	} from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-	import AddContentToKSModal from './AddContentToKSModal.svelte';
+	import CreateKnowledgeWizard from '$lib/components/knowledge/CreateKnowledgeWizard.svelte';
 
 	/** @type {{ ksId: string }} */
 	let { ksId } = $props();
@@ -212,13 +214,26 @@
 		return d.toLocaleString();
 	}
 
-	async function handleAddContentDone() {
+	/** @param {CustomEvent<Record<string, any>>} event */
+	async function handleAddContentDone(event) {
+		const refs = event?.detail || {};
 		showAddContent = false;
 		showSuccess(
 			$_('knowledgeStores.addContentSuccess', {
 				default: 'Content queued for ingestion.'
 			})
 		);
+		// Honour the user's choice from Step 9. "Open Library" navigates
+		// to the library detail page; "Open Knowledge Store" or
+		// "Create another" stay on this KS and just refresh.
+		if (refs.target === 'library' && refs.libraryId) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(`${base}/libraries?section=libraries&view=detail&id=${refs.libraryId}`, {
+				replaceState: false,
+				keepFocus: true
+			});
+			return;
+		}
 		await loadAll();
 	}
 </script>
@@ -290,7 +305,12 @@
 				{:else}
 					<h2 class="text-xl font-semibold text-gray-900">{ks.name}</h2>
 					{#if ks.description}
-						<p class="mt-1 text-sm text-gray-600">{ks.description}</p>
+						<p
+							class="mt-1 line-clamp-3 text-sm text-gray-600 break-words"
+							title={ks.description}
+						>
+							{ks.description}
+						</p>
 					{/if}
 					<p class="mt-1 text-xs text-gray-400">{ks.id}</p>
 				{/if}
@@ -570,7 +590,13 @@
 	</div>
 {/if}
 
-<AddContentToKSModal bind:isOpen={showAddContent} {ksId} on:done={handleAddContentDone} />
+{#if showAddContent}
+	<CreateKnowledgeWizard
+		initialState={{ ksPath: 'existing', existingKsId: ksId, ksName: ks?.name || '' }}
+		onclose={() => (showAddContent = false)}
+		on:done={handleAddContentDone}
+	/>
+{/if}
 
 <ConfirmationModal
 	bind:isOpen={showRemoveModal}

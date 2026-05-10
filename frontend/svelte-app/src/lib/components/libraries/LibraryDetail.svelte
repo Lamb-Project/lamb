@@ -5,6 +5,7 @@
 -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import axios from 'axios';
 	import {
 		getLibrary,
 		getItems,
@@ -15,6 +16,33 @@
 		toggleSharing
 	} from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
+	import {
+		getKnowledgeStores,
+		removeContent as removeKsContent
+	} from '$lib/services/knowledgeStoreService';
+
+	/** @param {unknown} err @param {string} fallback @returns {string} */
+	function readableError(err, fallback) {
+		if (axios.isAxiosError(err) && err.response) {
+			const data = err.response.data;
+			// FastAPI's HTTPException body: ``detail`` may be a string or
+			// a dict (e.g. the FR-10 delete-blocked response carries
+			// ``{ message, knowledge_stores: [...] }``). Surface whichever
+			// form is most useful, with a list of KS names appended when
+			// available.
+			const rawDetail = data?.detail;
+			if (typeof rawDetail === 'string' && rawDetail) return rawDetail;
+			if (rawDetail && typeof rawDetail === 'object') {
+				if (typeof rawDetail.message === 'string' && rawDetail.message) {
+					return rawDetail.message;
+				}
+			}
+			if (typeof data?.message === 'string' && data.message) return data.message;
+			return `Request failed (${err.response.status})`;
+		}
+		if (err instanceof Error && err.message) return err.message;
+		return fallback;
+	}
 	import { user } from '$lib/stores/userStore';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import ImportModal from '$lib/components/modals/ImportModal.svelte';
@@ -43,6 +71,9 @@
 	// Delete item modal
 	let showDeleteItemModal = $state(false);
 	let isDeletingItem = $state(false);
+	let deleteItemError = $state('');
+	/** @type {{ id: string, name: string, contentCount: number|null, removing: boolean }[]} */
+	let deleteItemBlockers = $state([]);
 	let deleteItemTarget = $state({ id: '', title: '' });
 
 	// Import modal ref
@@ -80,7 +111,34 @@
 		}
 	});
 
-	async function loadData() {
+	/**
+	 * Refresh just the items list (no library metadata reload, no
+	 * ``loading`` flag toggle). Used after upload / import / delete so the
+	 * page doesn't flicker through any skeleton or even momentarily re-key
+	 * the metadata card.
+	 */
+	async function refreshItems() {
+		try {
+			const itemsData = await getItems(libraryId, { limit: 100 });
+			if (!isMounted) return;
+			items = itemsData.items || [];
+			totalItems = itemsData.total || items.length;
+			startPollingIfNeeded();
+		} catch (/** @type {unknown} */ err) {
+			console.error('refreshItems failed', err);
+		}
+	}
+
+	/**
+	 * Load library + items.
+	 * @param {{ silent?: boolean }} [opts] When ``silent`` is true, the
+	 *   ``loading`` flag is not toggled — used for in-place refreshes (e.g.
+	 *   after a file upload, polling tick, or item delete) so the page
+	 *   doesn't flash back to the blank "Loading library…" skeleton.
+	 *   Errors are still surfaced.
+	 */
+	async function loadData(opts = {}) {
+		const silent = !!opts.silent;
 		// Tag this run; if a newer call starts before we finish, our writes
 		// are dropped on resolution to prevent stale data from clobbering
 		// the current view (#352, M4).
@@ -90,7 +148,7 @@
 			clearInterval(pollInterval);
 			pollInterval = null;
 		}
-		loading = true;
+		if (!silent) loading = true;
 		error = '';
 		try {
 			const [lib, itemsData] = await Promise.all([
@@ -109,7 +167,7 @@
 			console.error('Error loading library:', err);
 			error = err instanceof Error ? err.message : 'Failed to load library';
 		} finally {
-			if (isMounted && myLoadId === currentLoadId) loading = false;
+			if (isMounted && myLoadId === currentLoadId && !silent) loading = false;
 		}
 	}
 
@@ -217,9 +275,10 @@
 			selectedFile = null;
 			fileTitle = '';
 			showSuccess($_('libraries.uploadSuccess', { default: 'File uploaded. Processing...' }));
-			await loadData();
+			await refreshItems();
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Upload failed';
+			error = readableError(err, 'Upload failed');
+			console.error('uploadFile failed', err);
 		} finally {
 			uploading = false;
 		}
@@ -228,26 +287,91 @@
 	// Import callback
 	async function handleImported() {
 		showSuccess($_('libraries.importSuccess', { default: 'Import started.' }));
-		await loadData();
+		await refreshItems();
 	}
 
 	// Delete item
 	function requestDeleteItem(item) {
 		deleteItemTarget = { id: item.id, title: item.title };
+		deleteItemError = '';
+		deleteItemBlockers = [];
 		showDeleteItemModal = true;
 	}
 
 	async function handleDeleteItemConfirm() {
 		isDeletingItem = true;
+		deleteItemError = '';
 		try {
 			await deleteItem(libraryId, deleteItemTarget.id);
 			showDeleteItemModal = false;
+			deleteItemBlockers = [];
 			showSuccess($_('libraries.itemDeleteSuccess', { default: 'Item deleted.' }));
-			await loadData();
+			await refreshItems();
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Delete failed';
+			// FR-10: a 409 with a structured ``detail`` lists the Knowledge
+			// Stores still referencing this item. Show them in their own
+			// section with a Remove button per row so the user can clear
+			// the references inline and retry the delete without leaving
+			// the dialog. Falls back to a plain error string for any other
+			// failure shape.
+			console.error('deleteItem failed', err);
+			const isAxios = !!(err && typeof err === 'object' && /** @type {any} */ (err).isAxiosError);
+			const status = isAxios ? /** @type {any} */ (err).response?.status : null;
+			const detail = isAxios ? /** @type {any} */ (err).response?.data?.detail : null;
+			if (status === 409 && detail && typeof detail === 'object') {
+				deleteItemError = typeof detail.message === 'string' ? detail.message : 'Delete failed';
+				const referenced = Array.isArray(detail.knowledge_stores) ? detail.knowledge_stores : [];
+				const initial = referenced.map((k) => ({
+					id: String(k?.id || ''),
+					name: k?.name || k?.id || 'Knowledge Store',
+					contentCount: /** @type {number|null} */ (null),
+					removing: false
+				}));
+				deleteItemBlockers = initial;
+				// Enrich with content counts asynchronously so the rows can
+				// render immediately and the count fades in once available.
+				try {
+					const allKs = await getKnowledgeStores();
+					const byId = new Map(allKs.map((k) => [k.id, k]));
+					deleteItemBlockers = deleteItemBlockers.map((b) => {
+						const full = byId.get(b.id);
+						return {
+							...b,
+							contentCount:
+								typeof full?.content_count === 'number' ? full.content_count : null
+						};
+					});
+				} catch (e) {
+					console.warn('Could not enrich blockers with content counts', e);
+				}
+			} else {
+				deleteItemError = readableError(err, 'Delete failed');
+			}
 		} finally {
 			isDeletingItem = false;
+		}
+	}
+
+	/** Remove the current item's link from a single Knowledge Store. */
+	async function handleRemoveBlocker(/** @type {string} */ ksId) {
+		// Mark just the targeted row as removing.
+		deleteItemBlockers = deleteItemBlockers.map((b) =>
+			b.id === ksId ? { ...b, removing: true } : b
+		);
+		try {
+			await removeKsContent(ksId, deleteItemTarget.id);
+			deleteItemBlockers = deleteItemBlockers.filter((b) => b.id !== ksId);
+			if (deleteItemBlockers.length === 0) {
+				// All references cleared — clear the error so the Confirm
+				// button reads as actionable again.
+				deleteItemError = '';
+			}
+		} catch (/** @type {unknown} */ e) {
+			console.error('removeKsContent failed', e);
+			deleteItemBlockers = deleteItemBlockers.map((b) =>
+				b.id === ksId ? { ...b, removing: false } : b
+			);
+			deleteItemError = readableError(e, 'Could not remove this link.');
 		}
 	}
 
@@ -336,9 +460,16 @@
 		<div class="rounded-lg bg-white p-6 shadow">
 			<div class="flex items-start justify-between">
 				<div>
-					<h2 class="text-xl font-semibold text-gray-900">{library.name}</h2>
+					<h2 class="text-xl leading-8 font-semibold text-gray-900 break-words">
+						{library.name}
+					</h2>
 					{#if library.description}
-						<p class="mt-1 text-sm text-gray-500">{library.description}</p>
+						<p
+							class="mt-1 line-clamp-3 text-sm text-gray-500 break-words"
+							title={library.description}
+						>
+							{library.description}
+						</p>
 					{/if}
 				</div>
 				<div class="flex gap-2">
@@ -526,6 +657,15 @@
 <ConfirmationModal
 	bind:isOpen={showDeleteItemModal}
 	bind:isLoading={isDeletingItem}
+	bind:error={deleteItemError}
+	bind:blockers={deleteItemBlockers}
+	blockersTitle={$_('libraries.deleteItemModal.blockersTitle', {
+		default: 'Referenced by Knowledge Stores'
+	})}
+	blockerRemoveLabel={$_('libraries.deleteItemModal.blockerRemove', {
+		default: 'Remove from KS'
+	})}
+	onRemoveBlocker={handleRemoveBlocker}
 	title={$_('libraries.deleteItemModal.title', { default: 'Delete Item' })}
 	message={$_('libraries.deleteItemModal.message', {
 		default: `Are you sure you want to delete "${deleteItemTarget.title}"?`
@@ -535,5 +675,7 @@
 	onconfirm={handleDeleteItemConfirm}
 	oncancel={() => {
 		showDeleteItemModal = false;
+		deleteItemError = '';
+		deleteItemBlockers = [];
 	}}
 />

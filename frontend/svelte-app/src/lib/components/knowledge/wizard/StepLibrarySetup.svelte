@@ -13,6 +13,24 @@
 -->
 <script>
 	import { createEventDispatcher, tick, untrack } from 'svelte';
+	import axios from 'axios';
+
+	/** @param {unknown} err @param {string} fallback @returns {string} */
+	function readableError(err, fallback) {
+		if (axios.isAxiosError(err) && err.response) {
+			const data = err.response.data;
+			const detail =
+				typeof data?.detail === 'string'
+					? data.detail
+					: typeof data?.message === 'string'
+						? data.message
+						: '';
+			if (detail) return detail;
+			return `Request failed (${err.response.status})`;
+		}
+		if (err instanceof Error && err.message) return err.message;
+		return fallback;
+	}
 	import { getLibraries, getPlugins } from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
 
@@ -27,10 +45,11 @@
 
 	let libraries = $state(/** @type {any[]} */ ([]));
 	let loadingLibraries = $state(false);
+	let librariesLoaded = $state(false);
 	let libraryError = $state('');
 
 	$effect(() => {
-		if (path === 'existing' && libraries.length === 0 && !loadingLibraries) {
+		if (path === 'existing' && !librariesLoaded && !loadingLibraries) {
 			loadLibraries();
 		}
 	});
@@ -45,9 +64,11 @@
 			}
 			await tick();
 		} catch (/** @type {unknown} */ err) {
-			libraryError = err instanceof Error ? err.message : 'Failed to load libraries';
+			libraryError = readableError(err, 'Failed to load libraries');
+			console.error('loadLibraries failed', err);
 		} finally {
 			loadingLibraries = false;
+			librariesLoaded = true;
 		}
 	}
 
@@ -79,7 +100,8 @@
 				pluginName = simple?.name || plugins[0].name;
 			}
 		} catch (/** @type {unknown} */ err) {
-			pluginError = err instanceof Error ? err.message : 'Failed to load plugins';
+			pluginError = readableError(err, 'Failed to load plugins');
+			console.error('loadPlugins failed', err);
 		} finally {
 			loadingPlugins = false;
 		}
@@ -103,6 +125,11 @@
 		void _pluginName;
 
 		untrack(() => {
+			// Persist the radio choice immediately so the draft retains the
+			// last-clicked path even when the rest of the form is still
+			// incomplete (e.g. name empty → early-return below).
+			dispatch('update', { libraryPath: path });
+
 			if (path === 'existing') {
 				const valid = !!selectedId;
 				dispatch('validity', { valid });
@@ -238,7 +265,7 @@
 								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
 							>
 								{#each libraries as lib (lib.id)}
-									<option value={lib.id}>{lib.name} ({lib.item_count} items)</option>
+									<option value={lib.id}>{lib.name} ({lib.item_count ?? 0} items)</option>
 								{/each}
 							</select>
 						{/if}

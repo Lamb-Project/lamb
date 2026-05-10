@@ -14,8 +14,26 @@
 -->
 <script>
 	import { createEventDispatcher, tick, untrack } from 'svelte';
+	import axios from 'axios';
 	import { getKnowledgeStores, getOptions } from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
+
+	/** @param {unknown} err @param {string} fallback @returns {string} */
+	function readableError(err, fallback) {
+		if (axios.isAxiosError(err) && err.response) {
+			const data = err.response.data;
+			const detail =
+				typeof data?.detail === 'string'
+					? data.detail
+					: typeof data?.message === 'string'
+						? data.message
+						: '';
+			if (detail) return detail;
+			return `Request failed (${err.response.status})`;
+		}
+		if (err instanceof Error && err.message) return err.message;
+		return fallback;
+	}
 
 	/** @type {{ wizardState: any }} */
 	let { wizardState } = $props();
@@ -28,10 +46,11 @@
 
 	let stores = $state(/** @type {any[]} */ ([]));
 	let loadingStores = $state(false);
+	let storesLoaded = $state(false);
 	let storeError = $state('');
 
 	$effect(() => {
-		if (path === 'existing' && stores.length === 0 && !loadingStores) {
+		if (path === 'existing' && !storesLoaded && !loadingStores) {
 			loadStores();
 		}
 	});
@@ -46,9 +65,11 @@
 			}
 			await tick();
 		} catch (/** @type {unknown} */ err) {
-			storeError = err instanceof Error ? err.message : 'Failed to load knowledge stores';
+			storeError = readableError(err, 'Failed to load knowledge stores');
+			console.error('loadStores failed', err);
 		} finally {
 			loadingStores = false;
+			storesLoaded = true;
 		}
 	}
 
@@ -68,6 +89,7 @@
 		})
 	);
 	let loadingOptions = $state(false);
+	let optionsLoaded = $state(false);
 	let optionsError = $state('');
 
 	let chunkingStrategy = $state(wizardState.ksConfig?.chunking_strategy || '');
@@ -77,7 +99,7 @@
 	let vectorDb = $state(wizardState.ksConfig?.vector_db_backend || '');
 
 	$effect(() => {
-		if (path === 'new' && !loadingOptions && options.chunking_strategies.length === 0) {
+		if (path === 'new' && !loadingOptions && !optionsLoaded) {
 			loadOptions();
 		}
 	});
@@ -107,9 +129,11 @@
 				vectorDb = options.vector_db_backends[0].name;
 			}
 		} catch (/** @type {unknown} */ err) {
-			optionsError = err instanceof Error ? err.message : 'Failed to load options';
+			optionsError = readableError(err, 'Failed to load options');
+			console.error('loadOptions failed', err);
 		} finally {
 			loadingOptions = false;
+			optionsLoaded = true;
 		}
 	}
 
@@ -132,6 +156,16 @@
 		if (availableModels.length > 0 && !availableModels.includes(embeddingModel)) {
 			embeddingModel = availableModels[0];
 		}
+	});
+
+	// Auto-expand the Advanced section so users can see (and fill) any
+	// required field that the API didn't auto-populate — otherwise Next
+	// stays disabled with no visible reason why.
+	let advancedOpen = $state(false);
+	$effect(() => {
+		if (path !== 'new' || !optionsLoaded) return;
+		const missing = !chunkingStrategy || !embeddingVendor || !embeddingModel || !vectorDb;
+		if (missing) advancedOpen = true;
 	});
 
 	// ── Validity + dispatch ──────────────────────────────────────────────────
@@ -158,6 +192,11 @@
 		void _vectorDb;
 
 		untrack(() => {
+			// Persist the radio choice immediately so the draft retains the
+			// last-clicked path even when the rest of the form is still
+			// incomplete (e.g. name empty → early-return below).
+			dispatch('update', { ksPath: path });
+
 			if (path === 'existing') {
 				const valid = !!selectedId;
 				dispatch('validity', { valid });
@@ -361,7 +400,7 @@
 			</label>
 
 			<!-- Advanced: locked config -->
-			<details class="rounded-md border border-gray-200 bg-white">
+			<details bind:open={advancedOpen} class="rounded-md border border-gray-200 bg-white">
 				<summary
 					class="cursor-pointer px-3 py-2 text-sm font-medium text-[#2271b3] select-none hover:underline"
 				>
@@ -403,11 +442,14 @@
 						<div>
 							<label for="wizard-ks-chunking" class="block text-sm font-medium text-gray-700">
 								{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}
+								<span class="text-red-500">*</span>
 							</label>
 							<select
 								id="wizard-ks-chunking"
 								bind:value={chunkingStrategy}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {chunkingStrategy
+									? 'border-gray-300'
+									: 'border-red-500'}"
 							>
 								{#each options.chunking_strategies ?? [] as s (s.name)}
 									<option value={s.name}>{s.name}</option>
@@ -418,12 +460,15 @@
 						<div>
 							<label for="wizard-ks-vendor" class="block text-sm font-medium text-gray-700">
 								{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}
+								<span class="text-red-500">*</span>
 							</label>
 							<select
 								id="wizard-ks-vendor"
 								bind:value={embeddingVendor}
 								disabled={hasNoConfiguredVendor}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
+								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 {embeddingVendor
+									? 'border-gray-300'
+									: 'border-red-500'}"
 							>
 								{#each options.embedding_vendors ?? [] as v (v.name)}
 									<option value={v.name} disabled={v.api_key_configured === false}>
@@ -446,26 +491,51 @@
 						<div>
 							<label for="wizard-ks-model" class="block text-sm font-medium text-gray-700">
 								{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}
+								<span class="text-red-500">*</span>
 							</label>
-							<select
-								id="wizard-ks-model"
-								bind:value={embeddingModel}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-							>
-								{#each availableModels as m (m)}
-									<option value={m}>{m}</option>
-								{/each}
-							</select>
+							{#if availableModels.length > 0}
+								<select
+									id="wizard-ks-model"
+									bind:value={embeddingModel}
+									class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {embeddingModel
+										? 'border-gray-300'
+										: 'border-red-500'}"
+								>
+									{#each availableModels as m (m)}
+										<option value={m}>{m}</option>
+									{/each}
+								</select>
+							{:else}
+								<input
+									type="text"
+									id="wizard-ks-model"
+									bind:value={embeddingModel}
+									placeholder="e.g. text-embedding-3-small"
+									class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {embeddingModel
+										? 'border-gray-300'
+										: 'border-red-500'}"
+								/>
+								{#if !embeddingModel}
+									<p class="mt-1 text-xs text-red-600" role="alert">
+										{$_('knowledge.wizard.step6.modelRequired', {
+											default: 'No models returned by the API for this vendor — type a model name to continue.'
+										})}
+									</p>
+								{/if}
+							{/if}
 						</div>
 
 						<div>
 							<label for="wizard-ks-vectordb" class="block text-sm font-medium text-gray-700">
 								{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
+								<span class="text-red-500">*</span>
 							</label>
 							<select
 								id="wizard-ks-vectordb"
 								bind:value={vectorDb}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {vectorDb
+									? 'border-gray-300'
+									: 'border-red-500'}"
 							>
 								{#each options.vector_db_backends ?? [] as b (b.name)}
 									<option value={b.name}>{b.name}</option>
