@@ -5,6 +5,20 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="MAIN")
 
+# Default prompt template used when an assistant is configured with a real
+# RAG processor (knowledge_store_rag, simple_rag, …) but no explicit
+# prompt_template. Without this default, simple_augment would silently drop
+# the retrieved ``rag_context`` because the empty template contains no
+# ``{context}`` placeholder, which looks like "RAG retrieves but the LLM
+# never sees it" to the user. Kept in sync with the lamb-cli default
+# (lifecycle verification 2026-05-03 — see lamb-cli/src/lamb_cli/commands/
+# assistant.py).
+DEFAULT_RAG_PROMPT_TEMPLATE = (
+    "Use the following context to answer the question. "
+    "If the context does not contain the answer, say you do not know.\n\n"
+    "Context:\n{context}\n\nQuestion: {user_input}"
+)
+
 
 def _has_vision_capability(assistant: Assistant) -> bool:
     """
@@ -84,12 +98,31 @@ def prompt_processor(
                 "role": "system",
                 "content": assistant.system_prompt
             })
-        
+
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
-        
+
+        # If RAG context was produced but the assistant has an empty / missing
+        # prompt template, substitute the default template so the retrieved
+        # chunks actually reach the LLM. Otherwise the {context} substitution
+        # below would silently drop them. (Defect D3 — lifecycle 2026-05-03.)
+        effective_template = assistant.prompt_template
+        if (not effective_template) and rag_context:
+            context_text = (
+                rag_context.get("context", "")
+                if isinstance(rag_context, dict)
+                else str(rag_context)
+            )
+            if context_text:
+                logger.info(
+                    "simple_augment: applying DEFAULT_RAG_PROMPT_TEMPLATE "
+                    "because assistant has empty prompt_template but "
+                    "rag_context is present (defect D3 fallback)."
+                )
+                effective_template = DEFAULT_RAG_PROMPT_TEMPLATE
+
         # Process the last message using the prompt template
-        if assistant.prompt_template:
+        if effective_template:
             # Check if assistant has vision capabilities
             has_vision = _has_vision_capability(assistant)
 
@@ -108,7 +141,7 @@ def prompt_processor(
 
                 # Create augmented text content with template
                 logger.debug(f"User message: {user_input_text}")
-                augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                augmented_text = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available
                 if rag_context:
@@ -149,7 +182,7 @@ def prompt_processor(
 
                 # Replace placeholders in template
                 logger.debug(f"User message: {user_input_text}")
-                prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available
                 if rag_context:

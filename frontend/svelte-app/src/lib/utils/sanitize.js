@@ -33,7 +33,7 @@ export function renderMarkdownSafe(text, options = {}) {
 	return DOMPurify.sanitize(html, {
 		// Strip event handlers and javascript: URIs by default. Allow common
 		// safe tags + class/id attrs so Tailwind prose styles still apply.
-		USE_PROFILES: { html: true },
+		USE_PROFILES: { html: true }
 	});
 }
 

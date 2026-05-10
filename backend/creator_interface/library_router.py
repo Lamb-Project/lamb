@@ -466,8 +466,39 @@ async def delete_item(
     item_id: str,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Delete an imported item."""
+    """Delete an imported item.
+
+    FR-10: blocked with 409 if any active Knowledge Store still references
+    this item via ``kb_content_links``. Caller must remove the content from
+    every referencing KS first.
+    """
     auth.require_library_access(library_id, level="owner")
+
+    referencing_links = _db.get_kb_content_links_for_item(item_id)
+    active_links = [
+        l for l in referencing_links
+        if l.get("status") != "failed"
+    ]
+    if active_links:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    "Cannot delete library item: it is referenced by one or more "
+                    "Knowledge Stores. Remove the content from each Knowledge "
+                    "Store first."
+                ),
+                "knowledge_stores": [
+                    {
+                        "id": l.get("knowledge_store_id"),
+                        "name": l.get("knowledge_store_name"),
+                        "status": l.get("status"),
+                    }
+                    for l in active_links
+                ],
+            },
+        )
+
     await _client.delete_item(library_id, item_id, creator_user=auth.user)
     _db.delete_library_item(item_id)
     _audit(auth, "library.delete_item", "library_item", item_id)

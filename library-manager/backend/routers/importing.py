@@ -146,6 +146,16 @@ async def import_file(
 
     file_size = temp_path.stat().st_size
 
+    # Reject empty uploads outright — a 0-byte file produces an empty
+    # ``content/full.md`` and a useless library item that never serves any
+    # downstream RAG / KS use. Refuse it before any DB row or job is queued.
+    if file_size == 0:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty (0 bytes). Cannot import an empty file.",
+        )
+
     try:
         item_id, job_id = import_service.queue_file_import(
             db=db,

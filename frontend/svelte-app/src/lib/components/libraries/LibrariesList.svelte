@@ -1,338 +1,651 @@
 <!--
   @component LibrariesList
-  Displays owned and shared libraries with search, sort, pagination,
-  and actions (create, share, delete). Emits 'view' event to parent.
+  Displays libraries with combinable filter chips, resizable columns,
+  skeleton loading, icon-button actions, and localStorage-persisted page size.
 -->
 <script>
-    import { onMount, createEventDispatcher } from 'svelte';
-    import { getLibraries, deleteLibrary, toggleSharing } from '$lib/services/libraryService';
-    import { _ } from '$lib/i18n';
-    import { user } from '$lib/stores/userStore';
-    import { processListData } from '$lib/utils/listHelpers';
-    import CreateLibraryModal from '$lib/components/modals/CreateLibraryModal.svelte';
-    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-    import FilterBar from '$lib/components/common/FilterBar.svelte';
-    import Pagination from '$lib/components/common/Pagination.svelte';
+	import { onMount, createEventDispatcher } from 'svelte';
+	import { getLibraries, deleteLibrary, toggleSharing } from '$lib/services/libraryService';
+	import { _ } from '$lib/i18n';
+	import { user } from '$lib/stores/userStore';
+	import { processListData } from '$lib/utils/listHelpers';
+	import CreateLibraryModal from '$lib/components/modals/CreateLibraryModal.svelte';
+	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
+	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 
-    const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher();
 
-    // Data
-    let libraries = $state([]);
-    let displayLibraries = $state([]);
-    let loading = $state(true);
-    let error = $state('');
-    let successMessage = $state('');
+	const LS_PAGE_SIZE = 'lamb.list.libraries.itemsPerPage';
 
-    // Tabs
-    let currentTab = $state('my');
+	/** @returns {number} */
+	function loadItemsPerPage() {
+		try {
+			const v = localStorage.getItem(LS_PAGE_SIZE);
+			if (v) return parseInt(v, 10) || 10;
+		} catch {
+			// ignore
+		}
+		return 10;
+	}
 
-    // Filter / sort / pagination
-    let searchTerm = $state('');
-    let sortBy = $state('created_at');
-    let sortOrder = $state('desc');
-    let currentPage = $state(1);
-    let itemsPerPage = $state(10);
-    let totalPages = $state(1);
-    let totalItems = $state(0);
+	// Data
+	/** @type {import('$lib/services/libraryService').Library[]} */
+	let libraries = $state([]);
+	/** @type {import('$lib/services/libraryService').Library[]} */
+	let displayLibraries = $state([]);
+	let loading = $state(true);
+	let error = $state('');
+	let successMessage = $state('');
 
-    // Delete modal
-    let showDeleteModal = $state(false);
-    let isDeleting = $state(false);
-    let deleteTarget = $state({ id: '', name: '' });
+	// Filter / sort / pagination
+	let searchTerm = $state('');
+	let sortBy = $state('created_at');
+	/** @type {'asc'|'desc'} */
+	let sortOrder = $state(/** @type {'asc'|'desc'} */ ('desc'));
+	let currentPage = $state(1);
+	let itemsPerPage = $state(loadItemsPerPage());
+	let totalPages = $state(1);
+	let totalItems = $state(0);
 
-    // Refs
-    let createModal;
+	// Combinable filters
+	let sharingFilter = $state('all'); // 'my' | 'shared' | 'all'
+	let hasItemsFilter = $state('any'); // 'with-items' | 'empty' | 'any'
+	let createdFilter = $state('any'); // 'today' | 'this-week' | 'this-month' | 'any'
 
-    let ownedLibraries = $derived(libraries.filter(l => l.is_owner !== false));
-    let sharedLibraries = $derived(libraries.filter(l => l.is_owner === false));
-    let currentTabLibraries = $derived(currentTab === 'my' ? ownedLibraries : sharedLibraries);
+	// Delete modal
+	let showDeleteModal = $state(false);
+	let isDeleting = $state(false);
+	let deleteTarget = $state({ id: '', name: '' });
 
-    onMount(async () => {
-        await loadLibraries();
-    });
+	// Overflow menu state (sharing toggle)
+	let openMenuId = $state(/** @type {string|null} */ (null));
 
-    async function loadLibraries() {
-        loading = true;
-        error = '';
-        try {
-            if (!$user.isLoggedIn) {
-                error = $_('libraries.loginRequired', { default: 'You must be logged in to view libraries.' });
-                return;
-            }
-            libraries = await getLibraries();
-            applyFiltersAndPagination();
-        } catch (/** @type {unknown} */ err) {
-            console.error('Error loading libraries:', err);
-            error = err instanceof Error ? err.message : 'Failed to load libraries';
-            libraries = [];
-        } finally {
-            loading = false;
-        }
-    }
+	// Refs
+	/** @type {any} */
+	let createModal;
 
-    function applyFiltersAndPagination() {
-        const result = processListData(currentTabLibraries, {
-            search: searchTerm,
-            searchFields: ['name', 'description', 'id'],
-            filters: {},
-            sortBy,
-            sortOrder,
-            page: currentPage,
-            itemsPerPage,
-        });
-        displayLibraries = result.items;
-        totalItems = result.filteredCount;
-        totalPages = result.totalPages;
-        currentPage = result.currentPage;
-    }
+	// --- Filter predicates ---
+	let activePredicates = $derived(() => {
+		/** @type {Array<(item: any) => boolean>} */
+		const preds = [];
+		if (sharingFilter === 'my') preds.push((l) => l.is_owner !== false);
+		if (sharingFilter === 'shared') preds.push((l) => l.is_owner === false);
+		if (hasItemsFilter === 'with-items') preds.push((l) => (l.item_count ?? 0) > 0);
+		if (hasItemsFilter === 'empty') preds.push((l) => (l.item_count ?? 0) === 0);
+		if (createdFilter !== 'any') {
+			const now = Date.now();
+			const DAY = 86400000;
+			const todayStart = now - (now % DAY);
+			if (createdFilter === 'today') {
+				preds.push((l) => {
+					const t =
+						typeof l.created_at === 'number'
+							? l.created_at * 1000
+							: Date.parse(String(l.created_at));
+					return t >= todayStart;
+				});
+			} else if (createdFilter === 'this-week') {
+				preds.push((l) => {
+					const t =
+						typeof l.created_at === 'number'
+							? l.created_at * 1000
+							: Date.parse(String(l.created_at));
+					return now - t <= 7 * DAY;
+				});
+			} else if (createdFilter === 'this-month') {
+				preds.push((l) => {
+					const t =
+						typeof l.created_at === 'number'
+							? l.created_at * 1000
+							: Date.parse(String(l.created_at));
+					return now - t <= 30 * DAY;
+				});
+			}
+		}
+		return preds;
+	});
 
-    $effect(() => {
-        currentTab;
-        currentPage = 1;
-        applyFiltersAndPagination();
-    });
+	// --- Active filter chips ---
+	let activeChips = $derived(() => {
+		/** @type {Array<{id: string, label: string, value: string, onClear: () => void}>} */
+		const chips = [];
+		if (sharingFilter !== 'all') {
+			chips.push({
+				id: 'sharing',
+				label: $_('list.filters.sharing', { default: 'Sharing' }),
+				value:
+					sharingFilter === 'my'
+						? $_('list.filters.my', { default: 'Mine' })
+						: $_('list.filters.shared', { default: 'Shared' }),
+				onClear: () => {
+					sharingFilter = 'all';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (hasItemsFilter !== 'any') {
+			chips.push({
+				id: 'hasItems',
+				label: $_('list.filters.hasItems', { default: 'Items' }),
+				value:
+					hasItemsFilter === 'with-items'
+						? $_('list.filters.withItems', { default: 'With items' })
+						: $_('list.filters.empty', { default: 'Empty' }),
+				onClear: () => {
+					hasItemsFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		if (createdFilter !== 'any') {
+			/** @type {Record<string, string>} */
+			const createdLabels = {
+				today: $_('list.filters.today', { default: 'Today' }),
+				'this-week': $_('list.filters.thisWeek', { default: 'This week' }),
+				'this-month': $_('list.filters.thisMonth', { default: 'This month' })
+			};
+			chips.push({
+				id: 'created',
+				label: $_('list.filters.created', { default: 'Created' }),
+				value: createdLabels[createdFilter] || createdFilter,
+				onClear: () => {
+					createdFilter = 'any';
+					currentPage = 1;
+					applyFiltersAndPagination();
+				}
+			});
+		}
+		return chips;
+	});
 
-    function handleTabSwitch(tab) {
-        currentTab = tab;
-        searchTerm = '';
-        currentPage = 1;
-        applyFiltersAndPagination();
-    }
+	// Filters array for FilterBar dropdowns
+	let filterDefs = $derived([
+		{
+			key: 'sharing',
+			label: $_('list.filters.sharing', { default: 'Sharing' }),
+			options: [
+				{ value: 'my', label: $_('list.filters.my', { default: 'Mine' }) },
+				{ value: 'shared', label: $_('list.filters.shared', { default: 'Shared' }) }
+			]
+		},
+		{
+			key: 'hasItems',
+			label: $_('list.filters.hasItems', { default: 'Has items' }),
+			options: [
+				{ value: 'with-items', label: $_('list.filters.withItems', { default: 'With items' }) },
+				{ value: 'empty', label: $_('list.filters.empty', { default: 'Empty' }) }
+			]
+		},
+		{
+			key: 'created',
+			label: $_('list.filters.created', { default: 'Created' }),
+			options: [
+				{ value: 'today', label: $_('list.filters.today', { default: 'Today' }) },
+				{ value: 'this-week', label: $_('list.filters.thisWeek', { default: 'This week' }) },
+				{ value: 'this-month', label: $_('list.filters.thisMonth', { default: 'This month' }) }
+			]
+		}
+	]);
 
-    function handleSearchChange(event) {
-        searchTerm = event.detail.value;
-        currentPage = 1;
-        applyFiltersAndPagination();
-    }
+	let filterValues = $derived({
+		sharing: sharingFilter !== 'all' ? sharingFilter : '',
+		hasItems: hasItemsFilter !== 'any' ? hasItemsFilter : '',
+		created: createdFilter !== 'any' ? createdFilter : ''
+	});
 
-    function handleSortChange(event) {
-        sortBy = event.detail.sortBy;
-        sortOrder = event.detail.sortOrder;
-        applyFiltersAndPagination();
-    }
+	// Column definitions for ResizableTable
+	const columns = [
+		{ key: 'name', label: $_('libraries.name', { default: 'Name' }), defaultWidth: 260 },
+		{ key: 'items', label: $_('libraries.items.title', { default: 'Items' }), defaultWidth: 80 },
+		{
+			key: 'sharing',
+			label: $_('libraries.sharing.label', { default: 'Sharing' }),
+			defaultWidth: 120
+		},
+		{ key: 'created', label: $_('libraries.createdAt', { default: 'Created' }), defaultWidth: 120 },
+		{ key: 'actions', label: $_('libraries.actions', { default: 'Actions' }), defaultWidth: 100 }
+	];
 
-    function handlePageChange(event) {
-        currentPage = event.detail.page;
-        applyFiltersAndPagination();
-    }
+	let isFiltered = $derived(
+		searchTerm.trim() !== '' ||
+			sharingFilter !== 'all' ||
+			hasItemsFilter !== 'any' ||
+			createdFilter !== 'any'
+	);
 
-    function viewLibrary(id) {
-        dispatch('view', { id });
-    }
+	onMount(async () => {
+		await loadLibraries();
+	});
 
-    function showSuccess(msg) {
-        successMessage = msg;
-        setTimeout(() => { successMessage = ''; }, 4000);
-    }
+	async function loadLibraries() {
+		loading = true;
+		error = '';
+		try {
+			if (!$user.isLoggedIn) {
+				error = $_('libraries.loginRequired', {
+					default: 'You must be logged in to view libraries.'
+				});
+				return;
+			}
+			libraries = await getLibraries();
+			applyFiltersAndPagination();
+		} catch (/** @type {unknown} */ err) {
+			console.error('Error loading libraries:', err);
+			error = err instanceof Error ? err.message : 'Failed to load libraries';
+			libraries = [];
+		} finally {
+			loading = false;
+		}
+	}
 
-    async function handleCreated(event) {
-        showSuccess($_('libraries.createSuccess', { default: `Library "${event.detail.name}" created.` }));
-        await loadLibraries();
-    }
+	function applyFiltersAndPagination() {
+		const result = processListData(libraries, {
+			search: searchTerm,
+			searchFields: ['name', 'description', 'id'],
+			filters: {},
+			predicates: activePredicates(),
+			sortBy,
+			sortOrder,
+			page: currentPage,
+			itemsPerPage
+		});
+		displayLibraries = result.items;
+		totalItems = result.filteredCount;
+		totalPages = result.totalPages;
+		currentPage = result.currentPage;
+	}
 
-    function requestDelete(lib) {
-        deleteTarget = { id: lib.id, name: lib.name };
-        showDeleteModal = true;
-    }
+	/** @param {CustomEvent<{value: string}>} event */
+	function handleSearchChange(event) {
+		searchTerm = event.detail.value;
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
 
-    async function handleDeleteConfirm() {
-        isDeleting = true;
-        try {
-            await deleteLibrary(deleteTarget.id);
-            showDeleteModal = false;
-            showSuccess($_('libraries.deleteSuccess', { default: `Library "${deleteTarget.name}" deleted.` }));
-            await loadLibraries();
-        } catch (/** @type {unknown} */ err) {
-            error = err instanceof Error ? err.message : 'Delete failed';
-        } finally {
-            isDeleting = false;
-        }
-    }
+	/** @param {CustomEvent<{key: string, value: string}>} event */
+	function handleFilterChange(event) {
+		const { key, value } = event.detail;
+		if (key === 'sharing') sharingFilter = value || 'all';
+		if (key === 'hasItems') hasItemsFilter = value || 'any';
+		if (key === 'created') createdFilter = value || 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
 
-    async function handleToggleSharing(lib) {
-        if (!lib.is_owner && lib.is_owner !== undefined) return;
-        const newState = !lib.is_shared;
-        try {
-            await toggleSharing(lib.id, newState);
-            lib.is_shared = newState;
-            const idx = libraries.findIndex(l => l.id === lib.id);
-            if (idx !== -1) libraries[idx].is_shared = newState;
-            applyFiltersAndPagination();
-            showSuccess(newState
-                ? $_('libraries.shareSuccess', { default: 'Library shared with organization.' })
-                : $_('libraries.unshareSuccess', { default: 'Library is now private.' }));
-        } catch (/** @type {unknown} */ err) {
-            error = err instanceof Error ? err.message : 'Failed to toggle sharing';
-        }
-    }
+	/** @param {CustomEvent<{sortBy: string, sortOrder: 'asc'|'desc'}>} event */
+	function handleSortChange(event) {
+		sortBy = event.detail.sortBy;
+		sortOrder = event.detail.sortOrder;
+		applyFiltersAndPagination();
+	}
 
-    function formatDate(ts) {
-        if (!ts) return '';
-        const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
-        return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    }
+	function handleClearFilters() {
+		searchTerm = '';
+		sharingFilter = 'all';
+		hasItemsFilter = 'any';
+		createdFilter = 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
+
+	function handleClearAllChips() {
+		sharingFilter = 'all';
+		hasItemsFilter = 'any';
+		createdFilter = 'any';
+		currentPage = 1;
+		applyFiltersAndPagination();
+	}
+
+	/** @param {CustomEvent<{page: number}>} event */
+	function handlePageChange(event) {
+		currentPage = event.detail.page;
+		applyFiltersAndPagination();
+	}
+
+	/** @param {CustomEvent<{itemsPerPage: number}>} event */
+	function handleItemsPerPageChange(event) {
+		itemsPerPage = event.detail.itemsPerPage;
+		currentPage = 1;
+		try {
+			localStorage.setItem(LS_PAGE_SIZE, String(itemsPerPage));
+		} catch {
+			// ignore
+		}
+		applyFiltersAndPagination();
+	}
+
+	/** @param {string} id */
+	function viewLibrary(id) {
+		dispatch('view', { id });
+	}
+
+	/** @param {string} msg */
+	function showSuccess(msg) {
+		successMessage = msg;
+		setTimeout(() => {
+			successMessage = '';
+		}, 4000);
+	}
+
+	/** @param {CustomEvent<{id: string, name: string}>} event */
+	async function handleCreated(event) {
+		showSuccess(
+			$_('libraries.createSuccess', { default: `Library "${event.detail.name}" created.` })
+		);
+		await loadLibraries();
+	}
+
+	/** @param {import('$lib/services/libraryService').Library} lib */
+	function requestDelete(lib) {
+		deleteTarget = { id: lib.id, name: lib.name };
+		showDeleteModal = true;
+	}
+
+	async function handleDeleteConfirm() {
+		isDeleting = true;
+		try {
+			await deleteLibrary(deleteTarget.id);
+			showDeleteModal = false;
+			showSuccess(
+				$_('libraries.deleteSuccess', { default: `Library "${deleteTarget.name}" deleted.` })
+			);
+			await loadLibraries();
+		} catch (/** @type {unknown} */ err) {
+			error = err instanceof Error ? err.message : 'Delete failed';
+		} finally {
+			isDeleting = false;
+		}
+	}
+
+	/** @param {import('$lib/services/libraryService').Library} lib */
+	async function handleToggleSharing(lib) {
+		if (!lib.is_owner && lib.is_owner !== undefined) return;
+		const newState = !lib.is_shared;
+		openMenuId = null;
+		try {
+			await toggleSharing(lib.id, newState);
+			const idx = libraries.findIndex((l) => l.id === lib.id);
+			if (idx !== -1) libraries[idx].is_shared = newState;
+			libraries = [...libraries];
+			applyFiltersAndPagination();
+			showSuccess(
+				newState
+					? $_('libraries.shareSuccess', { default: 'Library shared with organization.' })
+					: $_('libraries.unshareSuccess', { default: 'Library is now private.' })
+			);
+		} catch (/** @type {unknown} */ err) {
+			error = err instanceof Error ? err.message : 'Failed to toggle sharing';
+		}
+	}
+
+	/** @param {number|string|null|undefined} ts */
+	function formatDate(ts) {
+		if (!ts) return '';
+		const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+		return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+	}
+
+	/** @param {string} id */
+	function toggleMenu(id) {
+		openMenuId = openMenuId === id ? null : id;
+	}
 </script>
 
-<div class="bg-white shadow rounded-lg overflow-hidden">
-    <div class="px-4 py-4 sm:px-6 flex items-center justify-between border-b border-gray-200">
-        <div class="flex gap-4">
-            <button
-                type="button"
-                class="text-sm font-medium pb-1 border-b-2 {currentTab === 'my' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700'}"
-                onclick={() => handleTabSwitch('my')}
-            >
-                {$_('libraries.myLibraries', { default: 'My Libraries' })}
-                <span class="ml-1 text-xs text-gray-400">({ownedLibraries.length})</span>
-            </button>
-            <button
-                type="button"
-                class="text-sm font-medium pb-1 border-b-2 {currentTab === 'shared' ? 'border-[#2271b3] text-[#2271b3]' : 'border-transparent text-gray-500 hover:text-gray-700'}"
-                onclick={() => handleTabSwitch('shared')}
-            >
-                {$_('libraries.sharedLibraries', { default: 'Shared' })}
-                <span class="ml-1 text-xs text-gray-400">({sharedLibraries.length})</span>
-            </button>
-        </div>
-        <button
-            type="button"
-            onclick={() => createModal.open()}
-            class="inline-flex items-center px-3 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-[#2271b3] hover:bg-[#195a91]"
-        >
-            + {$_('libraries.createNew', { default: 'New Library' })}
-        </button>
-    </div>
+<!-- Close overflow menu on outside click -->
+<svelte:window
+	onclick={(e) => {
+		if (!(/** @type {Element} */ (e.target)?.closest?.('[data-overflow-menu]'))) openMenuId = null;
+	}}
+/>
 
-    {#if successMessage}
-        <div class="px-4 py-3 bg-green-50 border-b border-green-100 text-sm text-green-700" role="status">{successMessage}</div>
-    {/if}
+<EntityListShell
+	isLoading={loading}
+	isError={!!error}
+	errorMessage={error}
+	isEmpty={displayLibraries.length === 0 && !loading && !error}
+	{isFiltered}
+	{currentPage}
+	{totalPages}
+	{totalItems}
+	{itemsPerPage}
+	filters={filterDefs}
+	{filterValues}
+	activeChips={activeChips()}
+	searchValue={searchTerm}
+	searchPlaceholder={$_('list.searchPlaceholder', { default: 'Search libraries...' })}
+	sortOptions={[
+		{ value: 'name', label: $_('libraries.name', { default: 'Name' }) },
+		{ value: 'created_at', label: $_('libraries.createdAt', { default: 'Created' }) }
+	]}
+	{sortBy}
+	{sortOrder}
+	onRetry={loadLibraries}
+	onSearchChange={handleSearchChange}
+	onFilterChange={handleFilterChange}
+	onSortChange={handleSortChange}
+	onClearFilters={handleClearFilters}
+	onClearAllChips={handleClearAllChips}
+	onPageChange={handlePageChange}
+	onItemsPerPageChange={handleItemsPerPageChange}
+>
+	{#snippet headerActions()}
+		<div class="flex items-center gap-2">
+			<button
+				type="button"
+				onclick={() => createModal.open()}
+				title={$_('libraries.createNewTitle', {
+					default: 'Create a new Library and optionally a Knowledge Store from it'
+				})}
+				class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+			>
+				+ {$_('libraries.createNew', { default: 'New Library' })}
+			</button>
+			<button
+				type="button"
+				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
+				title={$_('libraries.createWithKSTitle', {
+					default: 'Create a new Library and attach a Knowledge Store in one step'
+				})}
+				class="inline-flex items-center rounded-md border border-[#2271b3] bg-white px-3 py-2 text-sm font-medium text-[#2271b3] hover:bg-blue-50"
+			>
+				{$_('libraries.createWithKS', { default: 'Create with Knowledge Store →' })}
+			</button>
+		</div>
+	{/snippet}
 
-    {#if currentTabLibraries.length > 0}
-        <div class="px-4 py-3 border-b border-gray-100">
-            <FilterBar
-                bind:searchTerm
-                on:search={handleSearchChange}
-                on:sort={handleSortChange}
-                sortOptions={[
-                    { value: 'name', label: $_('libraries.name', { default: 'Name' }) },
-                    { value: 'created_at', label: $_('libraries.createdAt', { default: 'Created' }) },
-                ]}
-                {sortBy}
-                {sortOrder}
-            />
-        </div>
-    {/if}
+	{#snippet emptyState()}
+		<p class="text-sm font-medium text-gray-700">
+			{isFiltered
+				? $_('libraries.noResults', { default: 'No libraries match your filters.' })
+				: $_('libraries.noOwned', {
+						default: 'You have no libraries yet. Create one to get started!'
+					})}
+		</p>
+		{#if !isFiltered}
+			<button
+				type="button"
+				onclick={() => createModal.open()}
+				class="mt-4 inline-flex items-center rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+			>
+				+ {$_('libraries.createNew', { default: 'New Library' })}
+			</button>
+		{/if}
+	{/snippet}
 
-    {#if loading}
-        <div class="p-6 text-center">
-            <div class="animate-pulse text-gray-500">{$_('libraries.loading', { default: 'Loading libraries...' })}</div>
-        </div>
-    {:else if error}
-        <div class="p-6 text-center" role="alert">
-            <p class="text-red-500">{error}</p>
-            <button
-                onclick={() => loadLibraries()}
-                class="mt-3 px-4 py-2 text-sm font-medium text-white rounded-md bg-[#2271b3] hover:bg-[#195a91]"
-            >
-                {$_('common.retry', { default: 'Retry' })}
-            </button>
-        </div>
-    {:else if displayLibraries.length === 0}
-        <div class="p-6 text-center text-gray-500">
-            {#if currentTabLibraries.length === 0}
-                {currentTab === 'my'
-                    ? $_('libraries.noOwned', { default: 'You have no libraries yet. Create one to get started!' })
-                    : $_('libraries.noShared', { default: 'No shared libraries available.' })}
-            {:else}
-                {$_('libraries.noResults', { default: 'No libraries match your search.' })}
-            {/if}
-        </div>
-    {:else}
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{$_('libraries.name', { default: 'Name' })}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{$_('libraries.items.title', { default: 'Items' })}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{$_('libraries.sharing.label', { default: 'Sharing' })}</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{$_('libraries.createdAt', { default: 'Created' })}</th>
-                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{$_('libraries.actions', { default: 'Actions' })}</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {#each displayLibraries as lib (lib.id)}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3">
-                                <button
-                                    type="button"
-                                    onclick={() => viewLibrary(lib.id)}
-                                    class="text-left font-medium text-[#2271b3] hover:underline bg-transparent border-0 cursor-pointer p-0"
-                                >
-                                    {lib.name}
-                                </button>
-                                {#if lib.description}
-                                    <p class="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{lib.description}</p>
-                                {/if}
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-500">{lib.item_count ?? ''}</td>
-                            <td class="px-4 py-3">
-                                {#if currentTab === 'my'}
-                                    <button
-                                        type="button"
-                                        onclick={() => handleToggleSharing(lib)}
-                                        class="text-xs px-2 py-1 rounded border {lib.is_shared ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100' : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100'}"
-                                    >
-                                        {lib.is_shared
-                                            ? $_('libraries.sharing.shared', { default: 'Shared' })
-                                            : $_('libraries.sharing.private', { default: 'Private' })}
-                                    </button>
-                                {:else}
-                                    <span class="text-xs text-gray-500">
-                                        {lib.owner_name || lib.owner_email || ''}
-                                    </span>
-                                {/if}
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-500">{formatDate(lib.created_at)}</td>
-                            <td class="px-4 py-3 text-right">
-                                <button
-                                    type="button"
-                                    onclick={() => viewLibrary(lib.id)}
-                                    class="text-sm text-[#2271b3] hover:underline mr-3"
-                                >
-                                    {$_('libraries.view', { default: 'View' })}
-                                </button>
-                                {#if currentTab === 'my'}
-                                    <button
-                                        type="button"
-                                        onclick={() => requestDelete(lib)}
-                                        class="text-sm text-red-600 hover:text-red-900"
-                                    >
-                                        {$_('libraries.delete', { default: 'Delete' })}
-                                    </button>
-                                {/if}
-                            </td>
-                        </tr>
-                    {/each}
-                </tbody>
-            </table>
-        </div>
+	{#snippet table()}
+		{#if successMessage}
+			<div
+				class="border-b border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700"
+				role="status"
+			>
+				{successMessage}
+			</div>
+		{/if}
+		<ResizableTable tableId="libraries" {columns}>
+			<tbody class="divide-y divide-gray-200 bg-white">
+				{#each displayLibraries as lib, rowIdx (lib.id)}
+					<tr class="hover:bg-gray-50">
+						<!-- Name -->
+						<td class="overflow-hidden px-4 py-2">
+							<button
+								type="button"
+								onclick={() => viewLibrary(lib.id)}
+								class="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-[#2271b3] hover:underline"
+							>
+								{lib.name}
+							</button>
+							{#if lib.description}
+								<p class="mt-0.5 truncate text-xs text-gray-500">{lib.description}</p>
+							{/if}
+						</td>
+						<!-- Items -->
+						<td class="px-4 py-2 text-sm text-gray-500">{lib.item_count ?? 0}</td>
+						<!-- Sharing badge -->
+						<td class="px-4 py-2">
+							{#if lib.is_owner !== false}
+								<span
+									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {lib.is_shared
+										? 'bg-green-100 text-green-700'
+										: 'bg-gray-100 text-gray-600'}"
+								>
+									{lib.is_shared
+										? $_('libraries.sharing.shared', { default: 'Shared' })
+										: $_('libraries.sharing.private', { default: 'Private' })}
+								</span>
+							{:else}
+								<span class="text-xs text-gray-400">{lib.owner_name || lib.owner_email || ''}</span>
+							{/if}
+						</td>
+						<!-- Created -->
+						<td class="px-4 py-2 text-sm text-gray-500">{formatDate(lib.created_at)}</td>
+						<!-- Actions -->
+						<td class="px-4 py-2">
+							<div class="flex items-center justify-end gap-1">
+								<!-- View icon button -->
+								<button
+									type="button"
+									onclick={() => viewLibrary(lib.id)}
+									title={$_('libraries.view', { default: 'View' })}
+									aria-label="{$_('libraries.view', { default: 'View' })} {lib.name}"
+									class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2271b3]"
+								>
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+										/>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+										/>
+									</svg>
+								</button>
 
-        {#if totalPages > 1}
-            <div class="px-4 py-3 border-t border-gray-100">
-                <Pagination {currentPage} {totalPages} {totalItems} {itemsPerPage} on:pageChange={handlePageChange} />
-            </div>
-        {/if}
-    {/if}
-</div>
+								<!-- Overflow menu (share + delete) -->
+								{#if lib.is_owner !== false}
+									<div class="relative" data-overflow-menu>
+										<button
+											type="button"
+											onclick={() => toggleMenu(lib.id)}
+											title={$_('list.moreActions', { default: 'More actions' })}
+											aria-label="{$_('list.moreActions', {
+												default: 'More actions'
+											})} for {lib.name}"
+											class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+										>
+											<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+												<path
+													d="M12 5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 13.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 22a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"
+												/>
+											</svg>
+										</button>
+										{#if openMenuId === lib.id}
+											<div
+												class="absolute right-0 z-10 w-40 rounded-md border border-gray-200 bg-white shadow-lg {rowIdx >=
+												displayLibraries.length - 2
+													? 'bottom-full mb-1'
+													: 'top-full mt-1'}"
+												data-overflow-menu
+											>
+												<button
+													type="button"
+													onclick={() => handleToggleSharing(lib)}
+													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+												>
+													<svg
+														class="h-4 w-4"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+														/>
+													</svg>
+													{lib.is_shared
+														? $_('libraries.sharing.makePrivate', { default: 'Make private' })
+														: $_('libraries.sharing.share', { default: 'Share' })}
+												</button>
+												<hr class="border-gray-100" />
+												<button
+													type="button"
+													onclick={() => {
+														openMenuId = null;
+														requestDelete(lib);
+													}}
+													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+												>
+													<svg
+														class="h-4 w-4"
+														fill="none"
+														stroke="currentColor"
+														viewBox="0 0 24 24"
+													>
+														<path
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															stroke-width="2"
+															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+														/>
+													</svg>
+													{$_('libraries.delete', { default: 'Delete' })}
+												</button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</ResizableTable>
+	{/snippet}
+</EntityListShell>
 
 <CreateLibraryModal bind:this={createModal} on:created={handleCreated} />
 
 <ConfirmationModal
-    bind:isOpen={showDeleteModal}
-    bind:isLoading={isDeleting}
-    title={$_('libraries.deleteModal.title', { default: 'Delete Library' })}
-    message={$_('libraries.deleteModal.message', { default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.` })}
-    confirmText={$_('libraries.deleteModal.confirm', { default: 'Delete' })}
-    variant="danger"
-    onconfirm={handleDeleteConfirm}
-    oncancel={() => { showDeleteModal = false; }}
+	bind:isOpen={showDeleteModal}
+	bind:isLoading={isDeleting}
+	title={$_('libraries.deleteModal.title', { default: 'Delete Library' })}
+	message={$_('libraries.deleteModal.message', {
+		default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.`
+	})}
+	confirmText={$_('libraries.deleteModal.confirm', { default: 'Delete' })}
+	variant="danger"
+	onconfirm={handleDeleteConfirm}
+	oncancel={() => {
+		showDeleteModal = false;
+	}}
 />

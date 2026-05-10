@@ -1493,6 +1493,62 @@ class LambDatabaseManager:
                 connection.commit()
                 logger.info("Migration 16 complete")
 
+                # Migration 17: Create knowledge_stores and kb_content_links tables.
+                # These power the new KB Server (port 9092) integration. The
+                # existing kb_registry table (stable KB Server) is untouched.
+                logger.info("Migration 17: Creating knowledge store tables if not exist")
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}knowledge_stores (
+                        id TEXT PRIMARY KEY,
+                        organization_id INTEGER NOT NULL,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        owner_user_id INTEGER NOT NULL,
+                        is_shared INTEGER DEFAULT 0,
+                        chunking_strategy TEXT NOT NULL,
+                        chunking_params TEXT,
+                        embedding_vendor TEXT NOT NULL,
+                        embedding_model TEXT NOT NULL,
+                        embedding_endpoint TEXT,
+                        vector_db_backend TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (owner_user_id) REFERENCES {self.table_prefix}Creator_users(id),
+                        UNIQUE(organization_id, name)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}knowledge_stores_owner ON {self.table_prefix}knowledge_stores(owner_user_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}knowledge_stores_org_shared ON {self.table_prefix}knowledge_stores(organization_id, is_shared)")
+
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_prefix}kb_content_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        knowledge_store_id TEXT NOT NULL,
+                        library_id TEXT NOT NULL,
+                        library_item_id TEXT NOT NULL,
+                        organization_id INTEGER NOT NULL,
+                        kb_job_id TEXT,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        chunks_created INTEGER DEFAULT 0,
+                        error_message TEXT,
+                        created_by_user_id INTEGER NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        FOREIGN KEY (knowledge_store_id) REFERENCES {self.table_prefix}knowledge_stores(id) ON DELETE CASCADE,
+                        FOREIGN KEY (organization_id) REFERENCES {self.table_prefix}organizations(id) ON DELETE CASCADE,
+                        FOREIGN KEY (created_by_user_id) REFERENCES {self.table_prefix}Creator_users(id),
+                        UNIQUE(knowledge_store_id, library_item_id)
+                    )
+                """)
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_content_links_ks ON {self.table_prefix}kb_content_links(knowledge_store_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_content_links_item ON {self.table_prefix}kb_content_links(library_item_id)")
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{self.table_prefix}kb_content_links_status ON {self.table_prefix}kb_content_links(status)")
+
+                connection.commit()
+                logger.info("Migration 17 complete")
+
         except sqlite3.Error as e:
             logger.error(f"Migration error: {e}")
         finally:
@@ -7614,6 +7670,541 @@ class LambDatabaseManager:
         except sqlite3.Error as e:
             logger.error(f"Database error writing audit log: {e}")
             return None
+        finally:
+            connection.close()
+
+    # =====================================================================
+    # Knowledge Store Methods (new KB Server, port 9092)
+    # =====================================================================
+
+    def create_knowledge_store(self, knowledge_store_id: str, name: str,
+                               owner_user_id: int, organization_id: int,
+                               chunking_strategy: str, embedding_vendor: str,
+                               embedding_model: str, vector_db_backend: str,
+                               description: str = "",
+                               chunking_params: Dict[str, Any] = None,
+                               embedding_endpoint: str = None,
+                               status: str = "active") -> Optional[str]:
+        """Register a new knowledge store in LAMB's database.
+
+        Args:
+            knowledge_store_id: UUID generated by LAMB.
+            name: Display name (unique within organization).
+            owner_user_id: Creator user ID.
+            organization_id: Organization ID.
+            chunking_strategy: Locked at creation (e.g. 'simple', 'hierarchical').
+            embedding_vendor: Locked vendor (e.g. 'openai', 'ollama').
+            embedding_model: Locked model identifier.
+            vector_db_backend: Locked backend (e.g. 'chromadb', 'qdrant').
+            description: Optional description.
+            chunking_params: Strategy-specific parameters (locked).
+            embedding_endpoint: Optional override for vendor API URL (locked).
+            status: Initial status ('active' or 'provisional').
+
+        Returns:
+            The knowledge_store_id if successful, None on failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}knowledge_stores
+                    (id, organization_id, name, description, owner_user_id, is_shared,
+                     chunking_strategy, chunking_params,
+                     embedding_vendor, embedding_model, embedding_endpoint,
+                     vector_db_backend, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (knowledge_store_id, organization_id, name, description,
+                      owner_user_id, chunking_strategy,
+                      json.dumps(chunking_params or {}),
+                      embedding_vendor, embedding_model, embedding_endpoint,
+                      vector_db_backend, status, now, now))
+                logger.info(f"Created knowledge store '{name}' (ID: {knowledge_store_id}) for user {owner_user_id}")
+                return knowledge_store_id
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error creating knowledge store: {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error creating knowledge store: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_knowledge_store_status(self, knowledge_store_id: str, status: str) -> bool:
+        """Update the status of a knowledge store (provisional -> active).
+
+        Args:
+            knowledge_store_id: KS UUID.
+            status: New status value.
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status, now, knowledge_store_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating knowledge store status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_knowledge_store(self, knowledge_store_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a knowledge store by ID with owner info.
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            Dict with KS fields and owner info, or None.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    FROM {self.table_prefix}knowledge_stores ks
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON ks.owner_user_id = cu.id
+                    WHERE ks.id = ?
+                """, (knowledge_store_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                result = dict(zip(columns, row))
+                if isinstance(result.get('is_shared'), int):
+                    result['is_shared'] = bool(result['is_shared'])
+                if result.get('chunking_params') and isinstance(result['chunking_params'], str):
+                    try:
+                        result['chunking_params'] = json.loads(result['chunking_params'])
+                    except Exception:
+                        result['chunking_params'] = {}
+                return result
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting knowledge store: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_accessible_knowledge_stores(self, user_id: int,
+                                        organization_id: int) -> List[Dict[str, Any]]:
+        """Get knowledge stores accessible to user (owned OR shared in org).
+
+        Args:
+            user_id: User ID.
+            organization_id: Organization ID.
+
+        Returns:
+            List of KS dicts, owned first.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.*, cu.user_name as owner_name, cu.user_email as owner_email,
+                           (SELECT COUNT(*) FROM {self.table_prefix}kb_content_links kcl
+                            WHERE kcl.knowledge_store_id = ks.id) as content_count
+                    FROM {self.table_prefix}knowledge_stores ks
+                    LEFT JOIN {self.table_prefix}Creator_users cu ON ks.owner_user_id = cu.id
+                    WHERE ks.organization_id = ?
+                    AND ks.status = 'active'
+                    AND (ks.owner_user_id = ? OR ks.is_shared = 1)
+                    ORDER BY ks.owner_user_id = ? DESC, ks.updated_at DESC
+                """, (organization_id, user_id, user_id))
+                columns = [desc[0] for desc in cursor.description]
+                results = []
+                for row in cursor.fetchall():
+                    d = dict(zip(columns, row))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    if d.get('chunking_params') and isinstance(d['chunking_params'], str):
+                        try:
+                            d['chunking_params'] = json.loads(d['chunking_params'])
+                        except Exception:
+                            d['chunking_params'] = {}
+                    results.append(d)
+                return results
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting accessible knowledge stores: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def user_can_access_knowledge_store(self, knowledge_store_id: str,
+                                        user_id: int) -> Tuple[bool, str]:
+        """Check if a user can access a knowledge store and return access level.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            user_id: User ID.
+
+        Returns:
+            Tuple of (can_access, access_type) where access_type is
+            'owner', 'shared', or 'none'.
+        """
+        entry = self.get_knowledge_store(knowledge_store_id)
+        if not entry:
+            return (False, 'none')
+        if entry['owner_user_id'] == user_id:
+            return (True, 'owner')
+        user = self.get_creator_user_by_id(user_id)
+        if user and entry['is_shared'] and entry['organization_id'] == user.get('organization_id'):
+            return (True, 'shared')
+        return (False, 'none')
+
+    def toggle_knowledge_store_sharing(self, knowledge_store_id: str,
+                                       is_shared: bool) -> bool:
+        """Toggle the sharing state of a knowledge store.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            is_shared: New sharing state.
+
+        Returns:
+            True if updated, False if not found.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET is_shared = ?, updated_at = ?
+                    WHERE id = ?
+                """, (is_shared, now, knowledge_store_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error toggling knowledge store sharing: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def update_knowledge_store(self, knowledge_store_id: str,
+                               name: str = None,
+                               description: str = None) -> bool:
+        """Update knowledge store name and/or description.
+
+        Only ``name`` and ``description`` are mutable. Store setup (chunking,
+        embedding, vector DB) is locked at creation per ADR-3.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            name: New name (or None to keep).
+            description: New description (or None to keep).
+
+        Returns:
+            True if updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if name is not None:
+                    sets.append("name = ?")
+                    params.append(name)
+                if description is not None:
+                    sets.append("description = ?")
+                    params.append(description)
+                params.append(knowledge_store_id)
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}knowledge_stores
+                    SET {', '.join(sets)}
+                    WHERE id = ?
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating knowledge store: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_knowledge_store(self, knowledge_store_id: str) -> bool:
+        """Delete a knowledge store (cascades to kb_content_links).
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            True if deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f"DELETE FROM {self.table_prefix}knowledge_stores WHERE id = ?",
+                    (knowledge_store_id,),
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting knowledge store: {e}")
+            return False
+        finally:
+            connection.close()
+
+    # ---------- kb_content_links ----------
+
+    def register_kb_content_link(self, knowledge_store_id: str, library_id: str,
+                                 library_item_id: str, organization_id: int,
+                                 created_by_user_id: int,
+                                 kb_job_id: str = None,
+                                 status: str = "pending") -> Optional[int]:
+        """Create a content-link row tracking a library item ingested into a KS.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            library_id: Library UUID.
+            library_item_id: Library item UUID.
+            organization_id: Organization ID.
+            created_by_user_id: User who initiated the ingestion.
+            kb_job_id: Optional KB Server job UUID for status polling.
+            status: Initial status (default 'pending').
+
+        Returns:
+            The new row ID, or None on conflict / failure.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                cursor.execute(f"""
+                    INSERT INTO {self.table_prefix}kb_content_links
+                    (knowledge_store_id, library_id, library_item_id,
+                     organization_id, kb_job_id, status, chunks_created,
+                     created_by_user_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                """, (knowledge_store_id, library_id, library_item_id,
+                      organization_id, kb_job_id, status,
+                      created_by_user_id, now, now))
+                return cursor.lastrowid
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"kb_content_links integrity error (likely duplicate): {e}")
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Database error registering kb_content_link: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def update_kb_content_link_status(self, link_id: int = None,
+                                      knowledge_store_id: str = None,
+                                      library_item_id: str = None,
+                                      kb_job_id: str = None,
+                                      status: str = None,
+                                      chunks_created: int = None,
+                                      error_message: str = None) -> bool:
+        """Update a content link's status / job info.
+
+        Lookup by either ``link_id`` or the (``knowledge_store_id``,
+        ``library_item_id``) pair.
+
+        Args:
+            link_id: Row PK (preferred when known).
+            knowledge_store_id: KS UUID (paired with library_item_id).
+            library_item_id: Library item UUID (paired with knowledge_store_id).
+            kb_job_id: Optional new job UUID.
+            status: Optional new status.
+            chunks_created: Optional updated chunk count.
+            error_message: Optional error string.
+
+        Returns:
+            True if a row was updated.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                now = int(time.time())
+                sets = ["updated_at = ?"]
+                params = [now]
+                if status is not None:
+                    sets.append("status = ?")
+                    params.append(status)
+                if kb_job_id is not None:
+                    sets.append("kb_job_id = ?")
+                    params.append(kb_job_id)
+                if chunks_created is not None:
+                    sets.append("chunks_created = ?")
+                    params.append(chunks_created)
+                if error_message is not None:
+                    sets.append("error_message = ?")
+                    params.append(error_message)
+                if link_id is not None:
+                    where = "id = ?"
+                    params.append(link_id)
+                elif knowledge_store_id is not None and library_item_id is not None:
+                    where = "knowledge_store_id = ? AND library_item_id = ?"
+                    params.extend([knowledge_store_id, library_item_id])
+                else:
+                    return False
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}kb_content_links
+                    SET {', '.join(sets)}
+                    WHERE {where}
+                """, params)
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error updating kb_content_link status: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def delete_kb_content_link(self, knowledge_store_id: str,
+                               library_item_id: str) -> bool:
+        """Delete a content link by (KS, library item) pair.
+
+        Args:
+            knowledge_store_id: KS UUID.
+            library_item_id: Library item UUID.
+
+        Returns:
+            True if a row was deleted.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return False
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    DELETE FROM {self.table_prefix}kb_content_links
+                    WHERE knowledge_store_id = ? AND library_item_id = ?
+                """, (knowledge_store_id, library_item_id))
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Database error deleting kb_content_link: {e}")
+            return False
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_ks(self, knowledge_store_id: str
+                                    ) -> List[Dict[str, Any]]:
+        """List all content links for a knowledge store, joined with item info.
+
+        Args:
+            knowledge_store_id: KS UUID.
+
+        Returns:
+            List of dicts with link + item + library fields.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*,
+                           li.title as item_title,
+                           li.source_type as item_source_type,
+                           li.original_filename as item_filename,
+                           li.source_url as item_source_url,
+                           li.status as item_status,
+                           lib.name as library_name
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}library_items li ON kcl.library_item_id = li.id
+                    LEFT JOIN {self.table_prefix}libraries lib ON kcl.library_id = lib.id
+                    WHERE kcl.knowledge_store_id = ?
+                    ORDER BY kcl.created_at DESC
+                """, (knowledge_store_id,))
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for KS: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_kb_content_link(self, knowledge_store_id: str,
+                            library_item_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single content link by (KS, library item)."""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT * FROM {self.table_prefix}kb_content_links
+                    WHERE knowledge_store_id = ? AND library_item_id = ?
+                """, (knowledge_store_id, library_item_id))
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_link: {e}")
+            return None
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_item(self, library_item_id: str
+                                      ) -> List[Dict[str, Any]]:
+        """List all knowledge stores referencing a given library item.
+
+        Used by FR-10 enforcement: a library item cannot be deleted if any
+        active (non-failed) link exists.
+
+        Args:
+            library_item_id: Library item UUID.
+
+        Returns:
+            List of link rows with KS info attached.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*, ks.name as knowledge_store_name
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    WHERE kcl.library_item_id = ?
+                """, (library_item_id,))
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for item: {e}")
+            return []
         finally:
             connection.close()
 

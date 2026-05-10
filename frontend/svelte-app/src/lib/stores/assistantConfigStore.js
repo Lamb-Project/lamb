@@ -324,8 +324,7 @@ function createAssistantConfigStore() {
 					const key = localStorage.key(index);
 					if (
 						key &&
-						(key.startsWith(CAPABILITIES_CACHE_PREFIX) ||
-							key.startsWith(DEFAULTS_CACHE_PREFIX))
+						(key.startsWith(CAPABILITIES_CACHE_PREFIX) || key.startsWith(DEFAULTS_CACHE_PREFIX))
 					) {
 						keysToRemove.push(key);
 					}

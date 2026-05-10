@@ -63,16 +63,21 @@
 	});
 </script>
 
-<div class="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+<div class="flex min-h-screen flex-col bg-gray-50 text-gray-900">
 	<Nav />
 	<GlobalAacTabBar />
 
-	<main class="w-full mx-auto py-6 sm:px-6 lg:px-8 flex-grow">
+	<main class="mx-auto w-full flex-grow py-6 sm:px-6 lg:px-8">
 		{#if sessionError}
-			<div class="max-w-md mx-auto mt-12 bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+			<div
+				class="mx-auto mt-12 max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-center"
+			>
 				<h2 class="text-lg font-semibold text-red-800">Unable to start session</h2>
-				<p class="text-sm text-red-600 mt-2">{sessionError}</p>
-				<a href="{base}/" class="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline">
+				<p class="mt-2 text-sm text-red-600">{sessionError}</p>
+				<a
+					href="{base}/"
+					class="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline"
+				>
 					Return to login
 				</a>
 			</div>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Optional
 
 import typer
@@ -11,7 +12,85 @@ from rich.progress import BarColumn, Progress, TextColumn
 
 from lamb_cli.client import get_client
 from lamb_cli.config import get_output_format
+from lamb_cli.errors import ApiError
 from lamb_cli.output import format_output, print_error, print_success, print_warning
+
+
+def _render_fr10_conflict(exc: ApiError) -> None:
+    """Surface FR-10 deletion conflicts (409) with the blocking KS list.
+
+    The backend returns a body shaped:
+        {"detail": "...", "blocking_knowledge_stores": [{"id": ..., "name": ...}, ...]}
+    We print the human-readable list before re-raising so callers see WHICH
+    Knowledge Stores are holding the item rather than a bare 'API error (409)'.
+    """
+    blocking = exc.body.get("blocking_knowledge_stores") if exc.body else None
+    if not blocking:
+        return
+    print_error(exc.body.get("detail", "Resource is in use by Knowledge Stores."))
+    print_error("Blocking Knowledge Stores:")
+    for ks in blocking:
+        ks_id = ks.get("id", "?") if isinstance(ks, dict) else str(ks)
+        ks_name = ks.get("name", "") if isinstance(ks, dict) else ""
+        suffix = f" — {ks_name}" if ks_name else ""
+        print_error(f"  - {ks_id}{suffix}")
+    print_error(
+        "Run 'lamb ks remove-content <ks_id> <item_id>' for each, then retry."
+    )
+
+
+# lifecycle verification 2026-05-03 (#337): library item polling helper.
+# Mirrors knowledge_store._wait_for_items but targets the
+# /creator/libraries/{lib}/items/{item} endpoint where status is one of
+# pending | processing | ready | failed.
+_TERMINAL_ITEM_STATES = {"ready", "failed", "completed"}
+
+
+def _poll_library_item(library_id: str, item_id: str) -> dict:
+    """Single-shot status fetch for one (library, item) pair."""
+    with get_client(timeout=60.0) as client:
+        return client.get(f"/creator/libraries/{library_id}/items/{item_id}")
+
+
+def _wait_for_library_items(
+    library_id: str,
+    item_ids: list[str],
+    max_wait_seconds: int = 600,
+) -> None:
+    """Poll each library item with exponential backoff until ready/failed.
+
+    Backoff schedule: 1s, 2s, 4s, 8s, 16s, then capped at 16s.
+    """
+    pending = set(item_ids)
+    failed: set[str] = set()
+    deadline = time.time() + max_wait_seconds
+    delay = 1.0
+    while pending and time.time() < deadline:
+        for item_id in list(pending):
+            try:
+                data = _poll_library_item(library_id, item_id)
+            except Exception as e:  # noqa: BLE001 - report and keep polling
+                print_warning(f"  {item_id}: poll error — {e}")
+                continue
+            status = data.get("status") if isinstance(data, dict) else None
+            if status in _TERMINAL_ITEM_STATES:
+                pending.discard(item_id)
+                if status == "failed":
+                    err = data.get("error_message") or data.get("error") or "unknown"
+                    print_error(f"  {item_id}: failed — {err}")
+                    failed.add(item_id)
+                else:
+                    pages = data.get("page_count", "?")
+                    print_success(f"  {item_id}: {status} ({pages} pages)")
+        if pending:
+            time.sleep(delay)
+            delay = min(delay * 2, 16.0)
+    if pending:
+        print_warning(
+            f"Timed out waiting on {len(pending)} item(s); they remain in flight."
+        )
+    if failed:
+        raise typer.Exit(1)
 
 app = typer.Typer(help="Manage document libraries.")
 
@@ -115,8 +194,13 @@ def delete_library(
     """Delete a library and all its content."""
     if not confirm:
         typer.confirm(f"Delete library {library_id}?", abort=True)
-    with get_client() as client:
-        data = client.delete(f"/creator/libraries/{library_id}")
+    try:
+        with get_client() as client:
+            data = client.delete(f"/creator/libraries/{library_id}")
+    except ApiError as exc:
+        if exc.status_code == 409:
+            _render_fr10_conflict(exc)
+        raise
     msg = data.get("message", "Library deleted.") if isinstance(data, dict) else "Library deleted."
     print_success(msg)
 
@@ -142,6 +226,10 @@ def upload_files(
     files: list[str] = typer.Argument(..., help="File paths to upload."),
     plugin: Optional[str] = typer.Option(None, "--plugin", "-p", help="Import plugin name."),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Document title (default: filename)."),
+    # lifecycle verification 2026-05-03 (#337): allow blocking until import
+    # finishes so scripts/CI can act on the produced item without manually polling.
+    wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
+    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
 ) -> None:
     """Upload files to a library for import."""
     for fp in files:
@@ -149,6 +237,7 @@ def upload_files(
             print_error(f"File not found: {fp}")
             raise typer.Exit(1)
 
+    item_ids: list[str] = []
     with get_client(timeout=120.0) as client:
         with Progress(
             TextColumn("[progress.description]{task.description}"),
@@ -169,11 +258,17 @@ def upload_files(
                     data=data,
                 )
                 item_id = resp.get("item_id", "?") if isinstance(resp, dict) else "?"
+                if isinstance(resp, dict) and resp.get("item_id"):
+                    item_ids.append(resp["item_id"])
                 progress.update(task, advance=1)
                 print_success(f"  {os.path.basename(fp)} → item {item_id}")
 
     count = len(files)
     print_success(f"Uploaded {count} file{'s' if count != 1 else ''} to library {library_id}.")
+
+    if wait and item_ids:
+        print_success("Waiting for items to finish importing...")
+        _wait_for_library_items(library_id, item_ids, max_wait_seconds=max_wait)
 
 
 @app.command("import-url")
@@ -183,6 +278,9 @@ def import_url(
     plugin: str = typer.Option("url_import", "--plugin", "-p", help="Import plugin name."),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Document title."),
     depth: Optional[int] = typer.Option(None, "--depth", help="Max crawl depth."),
+    # lifecycle verification 2026-05-03 (#337)
+    wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
+    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
 ) -> None:
     """Import content from a URL."""
     body: dict = {
@@ -194,10 +292,14 @@ def import_url(
         body["plugin_params"] = {"max_discovery_depth": depth}
     with get_client(timeout=120.0) as client:
         data = client.post(f"/creator/libraries/{library_id}/import-url", json=body)
-    if isinstance(data, dict) and data.get("item_id"):
-        print_success(f"Import started. Item ID: {data['item_id']}")
+    item_id = data.get("item_id") if isinstance(data, dict) else None
+    if item_id:
+        print_success(f"Import started. Item ID: {item_id}")
     else:
         print_success("Import request submitted.")
+    if wait and item_id:
+        print_success("Waiting for item to finish importing...")
+        _wait_for_library_items(library_id, [item_id], max_wait_seconds=max_wait)
 
 
 @app.command("import-youtube")
@@ -206,6 +308,9 @@ def import_youtube(
     url: str = typer.Option(..., "--url", help="YouTube video URL."),
     language: str = typer.Option("en", "--language", "-l", help="Transcript language (ISO 639-1)."),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Document title."),
+    # lifecycle verification 2026-05-03 (#337)
+    wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
+    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
 ) -> None:
     """Import a YouTube video transcript."""
     body: dict = {
@@ -216,10 +321,14 @@ def import_youtube(
     }
     with get_client(timeout=120.0) as client:
         data = client.post(f"/creator/libraries/{library_id}/import-youtube", json=body)
-    if isinstance(data, dict) and data.get("item_id"):
-        print_success(f"Import started. Item ID: {data['item_id']}")
+    item_id = data.get("item_id") if isinstance(data, dict) else None
+    if item_id:
+        print_success(f"Import started. Item ID: {item_id}")
     else:
         print_success("Import request submitted.")
+    if wait and item_id:
+        print_success("Waiting for item to finish importing...")
+        _wait_for_library_items(library_id, [item_id], max_wait_seconds=max_wait)
 
 
 @app.command("items")
@@ -263,8 +372,13 @@ def delete_item(
     """Delete an imported item from a library."""
     if not confirm:
         typer.confirm(f"Delete item {item_id} from library {library_id}?", abort=True)
-    with get_client() as client:
-        data = client.delete(f"/creator/libraries/{library_id}/items/{item_id}")
+    try:
+        with get_client() as client:
+            data = client.delete(f"/creator/libraries/{library_id}/items/{item_id}")
+    except ApiError as exc:
+        if exc.status_code == 409:
+            _render_fr10_conflict(exc)
+        raise
     msg = data.get("message", "Item deleted.") if isinstance(data, dict) else "Item deleted."
     print_success(msg)
 

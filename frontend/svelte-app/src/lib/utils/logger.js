@@ -1,12 +1,12 @@
 /**
  * Centralized logging utility for the LAMB frontend.
- * 
+ *
  * In development mode (import.meta.env.DEV), all log levels are active.
  * In production mode, only warn and error levels are active.
- * 
+ *
  * @example
  * import { logger } from '$lib/utils/logger';
- * 
+ *
  * logger.debug('Fetching assistants...', { limit: 10 });
  * logger.info('User logged in', { email: user.email });
  * logger.warn('API returned unexpected format');
