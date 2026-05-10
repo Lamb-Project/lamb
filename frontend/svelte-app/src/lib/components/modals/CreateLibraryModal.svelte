@@ -56,9 +56,7 @@
 		}
 		await tick();
 		// Select the suggested name so typing replaces it cleanly.
-		const input = /** @type {HTMLInputElement|null} */ (
-			document.getElementById('lib-name')
-		);
+		const input = /** @type {HTMLInputElement|null} */ (document.getElementById('lib-name'));
 		input?.focus();
 		input?.select();
 	}

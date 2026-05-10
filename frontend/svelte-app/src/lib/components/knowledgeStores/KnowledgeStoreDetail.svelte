@@ -305,10 +305,7 @@
 				{:else}
 					<h2 class="text-xl font-semibold text-gray-900">{ks.name}</h2>
 					{#if ks.description}
-						<p
-							class="mt-1 line-clamp-3 text-sm text-gray-600 break-words"
-							title={ks.description}
-						>
+						<p class="mt-1 line-clamp-3 text-sm break-words text-gray-600" title={ks.description}>
 							{ks.description}
 						</p>
 					{/if}

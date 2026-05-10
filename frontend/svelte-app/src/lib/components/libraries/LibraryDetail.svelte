@@ -5,6 +5,7 @@
 -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import axios from 'axios';
 	import {
 		getLibrary,
@@ -20,6 +21,8 @@
 		getKnowledgeStores,
 		removeContent as removeKsContent
 	} from '$lib/services/knowledgeStoreService';
+	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+	import ImportModal from '$lib/components/modals/ImportModal.svelte';
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
 	function readableError(err, fallback) {
@@ -43,9 +46,6 @@
 		if (err instanceof Error && err.message) return err.message;
 		return fallback;
 	}
-	import { user } from '$lib/stores/userStore';
-	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-	import ImportModal from '$lib/components/modals/ImportModal.svelte';
 
 	let { libraryId = '' } = $props();
 
@@ -64,7 +64,12 @@
 	let uploading = $state(false);
 
 	// Polling
-	let pendingItemIds = $state(new Set());
+	// $state wrap is required because we reassign (`pendingItemIds = new
+	// SvelteSet(...)`) on each poll cycle. SvelteSet is reactive for
+	// in-place mutations on its own, but reassignment to a fresh instance
+	// still needs $state to trigger reactive re-renders.
+	// eslint-disable-next-line svelte/no-unnecessary-state-wrap
+	let pendingItemIds = $state(new SvelteSet());
 	let pollInterval = $state(null);
 	let pollFailures = 0;
 
@@ -176,7 +181,7 @@
 		pollFailures = 0;
 		const pending = items.filter((i) => i.status === 'processing' || i.status === 'pending');
 		if (pending.length === 0) return;
-		pendingItemIds = new Set(pending.map((i) => i.id));
+		pendingItemIds = new SvelteSet(pending.map((i) => i.id));
 		pollInterval = setInterval(pollPendingItems, 3000);
 	}
 
@@ -194,7 +199,7 @@
 				if (!isMounted) return;
 				if (status.status === 'ready' || status.status === 'failed') {
 					pendingItemIds.delete(itemId);
-					pendingItemIds = new Set(pendingItemIds);
+					pendingItemIds = new SvelteSet(pendingItemIds);
 					const idx = items.findIndex((i) => i.id === itemId);
 					if (idx !== -1) {
 						items[idx] = { ...items[idx], status: status.status };
@@ -268,7 +273,7 @@
 		uploading = true;
 		error = '';
 		try {
-			const result = await uploadFile(libraryId, selectedFile, {
+			await uploadFile(libraryId, selectedFile, {
 				title: fileTitle.trim() || selectedFile.name,
 				pluginName: pluginForFile(selectedFile)
 			});
@@ -337,8 +342,7 @@
 						const full = byId.get(b.id);
 						return {
 							...b,
-							contentCount:
-								typeof full?.content_count === 'number' ? full.content_count : null
+							contentCount: typeof full?.content_count === 'number' ? full.content_count : null
 						};
 					});
 				} catch (e) {
@@ -460,12 +464,12 @@
 		<div class="rounded-lg bg-white p-6 shadow">
 			<div class="flex items-start justify-between">
 				<div>
-					<h2 class="text-xl leading-8 font-semibold text-gray-900 break-words">
+					<h2 class="text-xl leading-8 font-semibold break-words text-gray-900">
 						{library.name}
 					</h2>
 					{#if library.description}
 						<p
-							class="mt-1 line-clamp-3 text-sm text-gray-500 break-words"
+							class="mt-1 line-clamp-3 text-sm break-words text-gray-500"
 							title={library.description}
 						>
 							{library.description}

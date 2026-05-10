@@ -26,11 +26,7 @@
 		getDraft,
 		formatDraftAge
 	} from '$lib/stores/wizardDraftStore.svelte.js';
-	import {
-		saveFiles,
-		getFiles,
-		clearFiles
-	} from '$lib/stores/wizardFileStore.svelte.js';
+	import { saveFiles, getFiles, clearFiles } from '$lib/stores/wizardFileStore.svelte.js';
 
 	import StepLibrarySetup from './wizard/StepLibrarySetup.svelte';
 	import StepLibraryContent from './wizard/StepLibraryContent.svelte';
@@ -62,6 +58,7 @@
 	 * @property {boolean} ksIsShared
 	 * @property {{ chunking_strategy: string, chunking_params: Object, embedding_vendor: string, embedding_model: string, embedding_endpoint: string, vector_db_backend: string }} ksConfig
 	 * @property {string[]} selectedItemIds
+	 * @property {boolean} selectionInitialized
 	 * @property {{ libraryId: string, libraryName: string, ksId: string, ksName: string }} createdRefs
 	 */
 
@@ -463,7 +460,6 @@
      draft, and the Resume banner on next open offers an explicit Discard
      when the user wants to drop their work. -->
 
-
 <div
 	class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 sm:pt-12"
 	role="dialog"
@@ -550,38 +546,42 @@
 			     bump wizardStateVersion to force the active step to re-mount
 			     so it picks up the resumed values. -->
 			{#key wizardStateVersion}
-			{#if currentStep === STEP_LIBRARY_SETUP}
-				<StepLibrarySetup
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_LIBRARY_CONTENT}
-				<StepLibraryContent
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_KS_SETUP}
-				<StepKSSetup {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === STEP_KS_CONTENT}
-				<StepKSContent
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_REVIEW}
-				<StepReviewCreate
-					bind:this={reviewStepRef}
-					bind:submitting={reviewSubmitting}
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-					on:created={handleCreated}
-				/>
-			{:else if currentStep === STEP_DONE}
-				<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
-			{/if}
+				{#if currentStep === STEP_LIBRARY_SETUP}
+					<StepLibrarySetup
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_LIBRARY_CONTENT}
+					<StepLibraryContent
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_KS_SETUP}
+					<StepKSSetup
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_KS_CONTENT}
+					<StepKSContent
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_REVIEW}
+					<StepReviewCreate
+						bind:this={reviewStepRef}
+						bind:submitting={reviewSubmitting}
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+						on:created={handleCreated}
+					/>
+				{:else if currentStep === STEP_DONE}
+					<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
+				{/if}
 			{/key}
 		</div>
 

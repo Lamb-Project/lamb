@@ -518,7 +518,8 @@
 								{#if !embeddingModel}
 									<p class="mt-1 text-xs text-red-600" role="alert">
 										{$_('knowledge.wizard.step6.modelRequired', {
-											default: 'No models returned by the API for this vendor — type a model name to continue.'
+											default:
+												'No models returned by the API for this vendor — type a model name to continue.'
 										})}
 									</p>
 								{/if}

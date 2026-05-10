@@ -19,7 +19,8 @@
 		blockers = $bindable(/** @type {ModalBlocker[]} */ ([])),
 		blockersTitle = '',
 		blockerRemoveLabel = '',
-		onRemoveBlocker = (/** @type {string} */ _id) => {},
+		/** @type {(id: string) => void} */
+		onRemoveBlocker = () => {},
 		title = '',
 		message = '',
 		confirmText = '',
@@ -192,7 +193,9 @@
 				{/if}
 				{#if blockers && blockers.length > 0}
 					<div class="mt-4 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
-						<div class="border-b border-gray-200 px-3 py-2 text-xs font-semibold tracking-wide text-gray-600 uppercase">
+						<div
+							class="border-b border-gray-200 px-3 py-2 text-xs font-semibold tracking-wide text-gray-600 uppercase"
+						>
 							{blockersTitle ||
 								(localeLoaded
 									? $_('common.referencingItems', { default: 'Referenced by' })
@@ -208,9 +211,7 @@
 										{#if typeof b.contentCount === 'number'}
 											<p class="text-xs text-gray-500">
 												{b.contentCount}
-												{localeLoaded
-													? $_('common.itemsLowercase', { default: 'items' })
-													: 'items'}
+												{localeLoaded ? $_('common.itemsLowercase', { default: 'items' }) : 'items'}
 											</p>
 										{/if}
 									</div>
@@ -228,14 +229,23 @@
 												viewBox="0 0 24 24"
 												aria-hidden="true"
 											>
-												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+												<circle
+													class="opacity-25"
+													cx="12"
+													cy="12"
+													r="10"
+													stroke="currentColor"
+													stroke-width="4"
+												/>
+												<path
+													class="opacity-75"
+													fill="currentColor"
+													d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+												/>
 											</svg>
 										{/if}
 										{blockerRemoveLabel ||
-											(localeLoaded
-												? $_('common.remove', { default: 'Remove' })
-												: 'Remove')}
+											(localeLoaded ? $_('common.remove', { default: 'Remove' }) : 'Remove')}
 									</button>
 								</li>
 							{/each}

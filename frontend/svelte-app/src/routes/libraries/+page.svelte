@@ -107,11 +107,6 @@
 		goto(buildUrl(section, 'list'), { replaceState: false, keepFocus: true });
 	}
 
-	function openWizard() {
-		wizardInitialState = null;
-		wizardOpen = true;
-	}
-
 	/**
 	 * @param {Record<string, any>} state
 	 */

@@ -211,7 +211,7 @@
 				submitting = false;
 				return;
 			}
-		} catch (/** @type {unknown} */ _) {
+		} catch {
 			// Pre-flight is best-effort; fall through to the real create path.
 		}
 

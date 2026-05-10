@@ -31,6 +31,7 @@
 	// Select all / Deselect all) triggers reactive re-renders. Without $state,
 	// only in-place mutations would be tracked and the toggle button would
 	// appear inert.
+	// eslint-disable-next-line svelte/no-unnecessary-state-wrap
 	let selectedIds = $state(new SvelteSet(wizardState.selectedItemIds || []));
 	// Tracks whether the one-time "select everything by default" pass has run.
 	// Persisted in wizardState so navigating Back/Next doesn't re-run the
