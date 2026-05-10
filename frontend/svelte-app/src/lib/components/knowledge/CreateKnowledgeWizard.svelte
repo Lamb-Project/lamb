@@ -26,11 +26,7 @@
 		getDraft,
 		formatDraftAge
 	} from '$lib/stores/wizardDraftStore.svelte.js';
-	import {
-		saveFiles,
-		getFiles,
-		clearFiles
-	} from '$lib/stores/wizardFileStore.svelte.js';
+	import { saveFiles, getFiles, clearFiles } from '$lib/stores/wizardFileStore.svelte.js';
 
 	import StepLibrarySetup from './wizard/StepLibrarySetup.svelte';
 	import StepLibraryContent from './wizard/StepLibraryContent.svelte';
@@ -62,6 +58,7 @@
 	 * @property {boolean} ksIsShared
 	 * @property {{ chunking_strategy: string, chunking_params: Object, embedding_vendor: string, embedding_model: string, embedding_endpoint: string, vector_db_backend: string }} ksConfig
 	 * @property {string[]} selectedItemIds
+	 * @property {boolean} selectionInitialized
 	 * @property {{ libraryId: string, libraryName: string, ksId: string, ksName: string }} createdRefs
 	 */
 
@@ -95,6 +92,7 @@
 			vector_db_backend: ''
 		},
 		selectedItemIds: [],
+		selectionInitialized: false,
 		createdRefs: { libraryId: '', libraryName: '', ksId: '', ksName: '' }
 	};
 
@@ -130,14 +128,19 @@
 	let wizardStateVersion = $state(0);
 
 	onMount(() => {
+		// Always apply caller-supplied initialState first — it represents
+		// the explicit context of the click (e.g. "Add Content" on a KS
+		// detail page passes ``{ ksPath: 'existing', existingKsId }``,
+		// which would be silently overridden by a stale draft from a
+		// different flow). The Resume banner below still lets the user
+		// opt back into the saved draft if that's what they want.
+		if (initialState && typeof initialState === 'object') {
+			wizardState = { ...wizardState, ...initialState };
+		}
 		const draft = getDraft(userId, DRAFT_KIND);
 		if (draft) {
-			// Existing draft: show banner, don't apply initialState (draft wins).
 			draftBannerVisible = true;
 			draftSavedAt = draft.savedAt || '';
-		} else if (initialState && typeof initialState === 'object') {
-			// No draft: shallow-merge caller-supplied initial state into defaults.
-			wizardState = { ...wizardState, ...initialState };
 		}
 	});
 
@@ -205,6 +208,20 @@
 		clearDraft(userId, DRAFT_KIND);
 		clearFiles(userId, DRAFT_KIND);
 		draftBannerVisible = false;
+		// Re-apply caller-supplied initialState (e.g. the KS-detail "Add
+		// Content" button's `ksPath: 'existing', existingKsId: ...`) so
+		// discarding a stale draft doesn't drop the calling context.
+		if (initialState && typeof initialState === 'object') {
+			wizardState = { ...structuredClone(defaultWizardState), ...initialState };
+			if (!wizardState.libraryName) {
+				wizardState.libraryName = `My Library ${todayLabel()}`;
+			}
+			if (!wizardState.ksName) {
+				wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
+			}
+			currentStep = STEP_LIBRARY_SETUP;
+			wizardStateVersion += 1;
+		}
 	}
 
 	// ── Step skip logic ──────────────────────────────────────────────────────
@@ -213,14 +230,16 @@
 	 * @returns {boolean}
 	 */
 	function isStepSkipped(step) {
-		if (step === STEP_LIBRARY_CONTENT && wizardState.libraryPath === 'existing') {
-			return true;
-		}
+		// Library Content (Step 2) is now ALWAYS shown — even when picking
+		// an existing library — so the user can queue more files / URLs to
+		// import into that library and ingest them into the KS in one
+		// pass. Previously this step was hidden for existing-library
+		// flows, which made the KS-detail "Add Content" button useless
+		// for adding new source content.
 		if (step === STEP_KS_CONTENT) {
 			// Skip only when there is genuinely nothing to pick: new library with
-			// no queued content. (Existing-library + zero accessible items is also
-			// a candidate, but StepKSContent already shows an empty-state hint —
-			// no need to skip a step that is informationally useful.)
+			// no queued content. Existing libraries always show this step so
+			// the user can pick items to ingest.
 			if (
 				wizardState.libraryPath === 'new' &&
 				wizardState.pendingFiles.length === 0 &&
@@ -320,6 +339,21 @@
 	function goBack() {
 		if (currentStep <= STEP_LIBRARY_SETUP) return;
 		currentStep = prevStep(currentStep);
+		canAdvance = true;
+	}
+
+	function goToFirst() {
+		currentStep = STEP_LIBRARY_SETUP;
+		canAdvance = true;
+	}
+
+	function goToReview() {
+		// Land on the first non-skipped step at or before Review. Mirrors
+		// the same skip logic Next/Back use so the user never sees a blank
+		// content step.
+		let s = STEP_REVIEW;
+		while (s > STEP_LIBRARY_SETUP && isStepSkipped(s)) s -= 1;
+		currentStep = s;
 		canAdvance = true;
 	}
 
@@ -426,7 +460,6 @@
      draft, and the Resume banner on next open offers an explicit Discard
      when the user wants to drop their work. -->
 
-
 <div
 	class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-8 sm:pt-12"
 	role="dialog"
@@ -472,7 +505,11 @@
 
 			<div class="flex items-center justify-between">
 				<h2 id="create-knowledge-wizard-title" class="text-lg font-semibold text-gray-900">
-					{$_('knowledge.wizard.title', { default: 'Create Knowledge' })}
+					{#if wizardState.ksPath === 'existing' && wizardState.existingKsId}
+						{$_('knowledge.wizard.titleAddContent', { default: 'Add Content' })}
+					{:else}
+						{$_('knowledge.wizard.title', { default: 'Create Knowledge' })}
+					{/if}
 				</h2>
 				<button
 					type="button"
@@ -509,38 +546,42 @@
 			     bump wizardStateVersion to force the active step to re-mount
 			     so it picks up the resumed values. -->
 			{#key wizardStateVersion}
-			{#if currentStep === STEP_LIBRARY_SETUP}
-				<StepLibrarySetup
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_LIBRARY_CONTENT}
-				<StepLibraryContent
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_KS_SETUP}
-				<StepKSSetup {wizardState} on:update={handleStateUpdate} on:validity={handleStepValidity} />
-			{:else if currentStep === STEP_KS_CONTENT}
-				<StepKSContent
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-				/>
-			{:else if currentStep === STEP_REVIEW}
-				<StepReviewCreate
-					bind:this={reviewStepRef}
-					bind:submitting={reviewSubmitting}
-					{wizardState}
-					on:update={handleStateUpdate}
-					on:validity={handleStepValidity}
-					on:created={handleCreated}
-				/>
-			{:else if currentStep === STEP_DONE}
-				<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
-			{/if}
+				{#if currentStep === STEP_LIBRARY_SETUP}
+					<StepLibrarySetup
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_LIBRARY_CONTENT}
+					<StepLibraryContent
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_KS_SETUP}
+					<StepKSSetup
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_KS_CONTENT}
+					<StepKSContent
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+					/>
+				{:else if currentStep === STEP_REVIEW}
+					<StepReviewCreate
+						bind:this={reviewStepRef}
+						bind:submitting={reviewSubmitting}
+						{wizardState}
+						on:update={handleStateUpdate}
+						on:validity={handleStepValidity}
+						on:created={handleCreated}
+					/>
+				{:else if currentStep === STEP_DONE}
+					<StepDone {wizardState} on:done={handleDone} on:createAnother={handleCreateAnother} />
+				{/if}
 			{/key}
 		</div>
 
@@ -555,6 +596,33 @@
 			</button>
 
 			<div class="flex items-center gap-2">
+				{#if !isDoneStep}
+					<button
+						type="button"
+						onclick={goToFirst}
+						disabled={currentStep === STEP_LIBRARY_SETUP}
+						title={$_('knowledge.wizard.jumpToFirstTitle', {
+							default: 'Jump to Step 1 (Library Setup)'
+						})}
+						class="text-sm font-medium text-[#2271b3] hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+					>
+						{$_('knowledge.wizard.jumpToFirst', { default: 'Go to start' })}
+					</button>
+					<span class="text-gray-300" aria-hidden="true">|</span>
+					<button
+						type="button"
+						onclick={goToReview}
+						disabled={isLastInteractiveStep}
+						title={$_('knowledge.wizard.jumpToReviewTitle', {
+							default: 'Jump to Review & Create'
+						})}
+						class="text-sm font-medium text-[#2271b3] hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+					>
+						{$_('knowledge.wizard.jumpToReview', { default: 'Go to review' })}
+					</button>
+					<span class="mx-1 text-gray-300" aria-hidden="true">·</span>
+				{/if}
+
 				{#if isSkippableStep}
 					<button
 						type="button"
@@ -600,9 +668,15 @@
 								/>
 							</svg>
 						{/if}
-						{reviewSubmitting
-							? $_('knowledge.wizard.creating', { default: 'Creating...' })
-							: $_('knowledge.wizard.step8.submit', { default: 'Create' })}
+						{#if reviewSubmitting}
+							{wizardState.ksPath === 'existing' && wizardState.existingKsId
+								? $_('knowledge.wizard.adding', { default: 'Adding...' })
+								: $_('knowledge.wizard.creating', { default: 'Creating...' })}
+						{:else if wizardState.ksPath === 'existing' && wizardState.existingKsId}
+							{$_('knowledge.wizard.step8.submitAdd', { default: 'Add' })}
+						{:else}
+							{$_('knowledge.wizard.step8.submit', { default: 'Create' })}
+						{/if}
 					</button>
 				{/if}
 

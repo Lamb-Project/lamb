@@ -439,11 +439,35 @@ class KnowledgeStoreClient:
             for vendor in filtered_vendors:
                 vendor.setdefault("api_key_configured", True)
 
+        # Per-vendor model list: if the org's allow-list specifies models for
+        # a vendor, use it. Otherwise fall back to the vendor plugin's own
+        # default (its ``model`` parameter's ``default`` value) so the UI has
+        # at least one model to pre-select. Without this fallback, an org that
+        # configures ``allowed_embedding_vendors`` but skips
+        # ``allowed_embedding_models`` ships an empty model dropdown and the
+        # wizard's "Next" stays disabled with no way forward.
+        resolved_models_map: Dict[str, List[str]] = {}
+        for vendor in filtered_vendors:
+            vendor_name = vendor.get("name")
+            if not vendor_name:
+                continue
+            org_allowed = allowed_models_map.get(vendor_name) or []
+            if org_allowed:
+                resolved_models_map[vendor_name] = org_allowed
+                continue
+            plugin_default = ""
+            for param in vendor.get("parameters", []) or []:
+                if param.get("name") == "model":
+                    plugin_default = (param.get("default") or "").strip()
+                    break
+            if plugin_default:
+                resolved_models_map[vendor_name] = [plugin_default]
+
         return {
             "vector_db_backends": _filter_names(backends, allowed_backends),
             "chunking_strategies": _filter_names(strategies, allowed_strategies),
             "embedding_vendors": filtered_vendors,
-            "embedding_models": allowed_models_map,
+            "embedding_models": resolved_models_map,
         }
 
     def validate_against_allow_list(

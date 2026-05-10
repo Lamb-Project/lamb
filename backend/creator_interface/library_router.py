@@ -411,7 +411,7 @@ async def import_youtube(
 @router.get("/{library_id}/items")
 async def list_items(
     library_id: str,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: Optional[str] = Query(None),
     auth: AuthContext = Depends(get_auth_context),

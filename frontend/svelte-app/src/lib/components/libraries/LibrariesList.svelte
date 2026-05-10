@@ -432,28 +432,16 @@
 	onItemsPerPageChange={handleItemsPerPageChange}
 >
 	{#snippet headerActions()}
-		<div class="flex items-center gap-2">
-			<button
-				type="button"
-				onclick={() => createModal.open()}
-				title={$_('libraries.createNewTitle', {
-					default: 'Create a new Library and optionally a Knowledge Store from it'
-				})}
-				class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
-			>
-				+ {$_('libraries.createNew', { default: 'New Library' })}
-			</button>
-			<button
-				type="button"
-				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
-				title={$_('libraries.createWithKSTitle', {
-					default: 'Create a new Library and attach a Knowledge Store in one step'
-				})}
-				class="inline-flex items-center rounded-md border border-[#2271b3] bg-white px-3 py-2 text-sm font-medium text-[#2271b3] hover:bg-blue-50"
-			>
-				{$_('libraries.createWithKS', { default: 'Create with Knowledge Store →' })}
-			</button>
-		</div>
+		<button
+			type="button"
+			onclick={() => createModal.open()}
+			title={$_('libraries.createNewTitle', {
+				default: 'Create a new Library'
+			})}
+			class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+		>
+			+ {$_('libraries.createNew', { default: 'New Library' })}
+		</button>
 	{/snippet}
 
 	{#snippet emptyState()}

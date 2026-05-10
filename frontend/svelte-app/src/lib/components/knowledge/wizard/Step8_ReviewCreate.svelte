@@ -26,8 +26,10 @@
 -->
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import axios from 'axios';
 	import {
 		createLibrary,
+		getLibraries,
 		toggleSharing as toggleLibrarySharing,
 		uploadFile,
 		importUrl,
@@ -36,10 +38,51 @@
 	} from '$lib/services/libraryService';
 	import {
 		createKnowledgeStore,
+		getKnowledgeStores,
 		toggleSharing as toggleKSSharing,
 		addContent
 	} from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
+
+	// Same auto-routing rule the Library Detail page uses for inline file
+	// uploads: only the simple-import plugin is right for plain-text
+	// extensions; everything else (PDF, DOCX, XLSX, ...) needs markitdown.
+	// Without this routing the wizard always sent ``simple_import``,
+	// which rejects PDF with a 400 before the file ever reaches disk.
+	const SIMPLE_IMPORT_EXTENSIONS = new Set(['txt', 'md', 'html', 'htm']);
+	/** @param {File} file */
+	function pluginForFile(file) {
+		const ext = file.name.split('.').pop()?.toLowerCase() || '';
+		return SIMPLE_IMPORT_EXTENSIONS.has(ext) ? 'simple_import' : 'markitdown_import';
+	}
+
+	/**
+	 * Extract a user-readable message from a thrown error. Axios surfaces
+	 * the status-code generic message ("Request failed with status code 409")
+	 * on `err.message`, which is useless to users — the actionable text is in
+	 * `err.response.data.detail` (FastAPI's HTTPException payload). Fall
+	 * through to `data.message`, then to a tagged status code, then the
+	 * caller's fallback.
+	 *
+	 * @param {unknown} err
+	 * @param {string} fallback
+	 * @returns {string}
+	 */
+	function readableError(err, fallback) {
+		if (axios.isAxiosError(err) && err.response) {
+			const data = err.response.data;
+			const detail =
+				typeof data?.detail === 'string'
+					? data.detail
+					: typeof data?.message === 'string'
+						? data.message
+						: '';
+			if (detail) return detail;
+			return `Request failed (${err.response.status})`;
+		}
+		if (err instanceof Error && err.message) return err.message;
+		return fallback;
+	}
 
 	/** @type {{ wizardState: any, submitting?: boolean }} */
 	let { wizardState, submitting = $bindable(false) } = $props();
@@ -112,6 +155,66 @@
 		let ksId = wizardState.existingKsId;
 		let ksName = wizardState.ksName;
 
+		// Pre-flight name-conflict check: aggregate every duplicate-name
+		// problem before doing any actual creation, so the user sees ALL
+		// conflicts at once instead of being shown library errors first
+		// and KS errors only after fixing the library name.
+		try {
+			const conflicts = [];
+			const proposedLibName = (wizardState.libraryName || '').trim().toLowerCase();
+			const proposedKsName = (wizardState.ksName || '').trim().toLowerCase();
+			const checks = [];
+			if (wizardState.libraryPath === 'new' && proposedLibName) {
+				checks.push(
+					getLibraries()
+						.then((libs) => {
+							const taken = (libs || []).some(
+								(l) => (l?.name || '').trim().toLowerCase() === proposedLibName
+							);
+							if (taken) {
+								conflicts.push(
+									$_('knowledge.wizard.step8.libraryNameTaken', {
+										default: 'A library named "{name}" already exists.',
+										values: { name: wizardState.libraryName.trim() }
+									})
+								);
+							}
+						})
+						.catch(() => {
+							// If the lookup fails, fall through; the create call
+							// itself will still surface a 409 if there's a real conflict.
+						})
+				);
+			}
+			if (wizardState.ksPath === 'new' && proposedKsName) {
+				checks.push(
+					getKnowledgeStores()
+						.then((stores) => {
+							const taken = (stores || []).some(
+								(s) => (s?.name || '').trim().toLowerCase() === proposedKsName
+							);
+							if (taken) {
+								conflicts.push(
+									$_('knowledge.wizard.step8.ksNameTaken', {
+										default: 'A Knowledge Store named "{name}" already exists.',
+										values: { name: wizardState.ksName.trim() }
+									})
+								);
+							}
+						})
+						.catch(() => {})
+				);
+			}
+			await Promise.all(checks);
+			if (conflicts.length > 0) {
+				error = conflicts.join(' ');
+				submitting = false;
+				return;
+			}
+		} catch {
+			// Pre-flight is best-effort; fall through to the real create path.
+		}
+
 		try {
 			// 1. Create library if new.
 			if (wizardState.libraryPath === 'new') {
@@ -137,11 +240,15 @@
 				}
 			}
 
-			// 2. Upload pending files (only when new-library path; pendingFiles only collected then).
+			// 2. Upload pending files queued in Step 2. Runs for BOTH new
+			// and existing libraries — when adding content to an existing
+			// library/KS, the user may queue new files in Step 2 and we
+			// need to upload them here before the Pick-Items mapping can
+			// link them.
 			/** @type {string[]} */
 			const newlyReadyIds = [];
 			const pending = wizardState.pendingFiles ?? [];
-			if (wizardState.libraryPath === 'new' && pending.length > 0 && libraryId) {
+			if (pending.length > 0 && libraryId) {
 				for (let i = 0; i < pending.length; i += 1) {
 					const f = pending[i];
 					pushStep(
@@ -152,7 +259,7 @@
 					);
 					try {
 						const result = await uploadFile(libraryId, f, {
-							pluginName: wizardState.libraryImportConfig?.pluginName
+							pluginName: pluginForFile(f)
 						});
 						const itemId = result.item_id;
 						finishStep('done');
@@ -174,9 +281,10 @@
 				}
 			}
 
-			// 2b. Import pending URL / YouTube sources.
+			// 2b. Import pending URL / YouTube sources. Same rationale as
+			// the file-upload block above — runs regardless of library path.
 			const pendingUrlSources = wizardState.pendingUrlSources ?? [];
-			if (wizardState.libraryPath === 'new' && pendingUrlSources.length > 0 && libraryId) {
+			if (pendingUrlSources.length > 0 && libraryId) {
 				for (let i = 0; i < pendingUrlSources.length; i += 1) {
 					const src = pendingUrlSources[i];
 					pushStep(
@@ -253,13 +361,19 @@
 			// is now meaningful — it's the explicit "Skip" outcome from
 			// Step 4 and means "create the KS but ingest nothing right now".
 			// We do NOT silently fall back to "everything" on empty.
+			//
+			// Selected IDs may be a mix of:
+			//   - Real DB item IDs (existing library items the user picked)
+			//   - Transient ``pendingFile_<i>`` / ``pendingUrl_<i>`` ids from
+			//     items the user queued in Step 2 (need to be mapped back to
+			//     the freshly-uploaded item ids in ``newlyReadyIds``).
+			// This unified mapping works for both new and existing library
+			// flows now that Step 2 is shown for both.
 			/** @type {string[]} */
 			let itemsToIngest = [];
-			if (wizardState.libraryPath === 'new') {
+			{
 				const selectedIds = wizardState.selectedItemIds || [];
 				const pendingFiles = wizardState.pendingFiles ?? [];
-				// Map transient IDs (pendingFile_<i> / pendingUrl_<i>) back to
-				// uploaded item IDs. newlyReadyIds is ordered files-first, then URLs.
 				for (const selId of selectedIds) {
 					const fileMatch = selId.match(/^pendingFile_(\d+)$/);
 					const urlMatch = selId.match(/^pendingUrl_(\d+)$/);
@@ -275,12 +389,10 @@
 							itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
 						}
 					} else {
-						// Real item ID (e.g. from a resumed draft) — pass through.
+						// Real item ID (existing-library pick or resumed draft).
 						itemsToIngest.push(selId);
 					}
 				}
-			} else {
-				itemsToIngest = [...(wizardState.selectedItemIds || [])];
 			}
 
 			// 5. Ingest content into KS.
@@ -304,7 +416,7 @@
 			// 6. Done.
 			dispatch('created', { libraryId, libraryName, ksId, ksName });
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Failed to create';
+			error = readableError(err, 'Failed to create');
 			if (
 				progressSteps.length > 0 &&
 				progressSteps[progressSteps.length - 1].status === 'running'
@@ -462,13 +574,7 @@
 				<dt class="font-medium text-gray-500">
 					{$_('knowledge.wizard.step8.itemsToIngest', { default: 'Items to ingest' })}
 				</dt>
-				<dd class="text-gray-900">
-					{#if summarySelectedCount < summaryTotalCount}
-						{summarySelectedCount} of {summaryTotalCount}
-					{:else}
-						{summarySelectedCount}
-					{/if}
-				</dd>
+				<dd class="text-gray-900">{summarySelectedCount} of {summaryTotalCount}</dd>
 
 				{#if wizardState.ksPath === 'new'}
 					<dt class="font-medium text-gray-500">

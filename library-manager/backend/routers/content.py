@@ -38,7 +38,7 @@ router = APIRouter(prefix="/libraries", tags=["Content"], dependencies=[Depends(
 @router.get("/{lib_id}/items", response_model=ContentItemListResponse)
 async def list_items(
     lib_id: str,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status_filter: str = Query(None, alias="status"),
     ids: str = Query(None, description="Comma-separated item IDs to filter."),

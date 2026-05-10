@@ -7338,7 +7338,11 @@ class LambDatabaseManager:
             organization_id: Organization ID.
 
         Returns:
-            List of library dicts, owned first.
+            List of library dicts, owned first. Each entry includes an
+            ``item_count`` derived from a COUNT(*) on
+            ``{prefix}library_items`` (all statuses — pending, completed,
+            failed — so the listing reflects every import the user has
+            kicked off, matching what they see in the library detail view).
         """
         connection = self.get_connection()
         if not connection:
@@ -7347,7 +7351,11 @@ class LambDatabaseManager:
             with connection:
                 cursor = connection.cursor()
                 cursor.execute(f"""
-                    SELECT l.*, cu.user_name as owner_name, cu.user_email as owner_email
+                    SELECT l.*,
+                           cu.user_name as owner_name,
+                           cu.user_email as owner_email,
+                           (SELECT COUNT(*) FROM {self.table_prefix}library_items li
+                            WHERE li.library_id = l.id) as item_count
                     FROM {self.table_prefix}libraries l
                     LEFT JOIN {self.table_prefix}Creator_users cu ON l.owner_user_id = cu.id
                     WHERE l.organization_id = ?

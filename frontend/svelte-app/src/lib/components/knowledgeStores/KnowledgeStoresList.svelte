@@ -527,7 +527,7 @@
 		<div class="flex items-center gap-2">
 			<button
 				type="button"
-				onclick={() => dispatch('createWithInitialState', { libraryPath: 'existing' })}
+				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
 				title={$_('knowledgeStores.createNewTitle', {
 					default: 'Create a Knowledge Store from existing library content'
 				})}
@@ -550,7 +550,7 @@
 		{#if !isFiltered}
 			<button
 				type="button"
-				onclick={() => dispatch('createWithInitialState', { libraryPath: 'existing' })}
+				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
 				title={$_('knowledgeStores.createNewTitle', {
 					default: 'Create a Knowledge Store from existing library content'
 				})}
