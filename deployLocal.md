@@ -1,0 +1,576 @@
+# LAMB NEXT — Local Deployment Guide
+
+This document is designed to be fed to an AI coding agent (like GitHub Copilot) that will autonomously deploy LAMB NEXT locally for development or testing purposes.
+
+**Assumptions:**
+- Docker and Docker Compose (V2) are installed on the local machine.
+- Git is installed and the agent has access to the LAMB source repository.
+- No DNS, TLS certificates, or cloud infrastructure are needed — everything runs on `localhost`.
+
+---
+
+## Phase 0: Gather Information (via `askQuestions`)
+
+Before touching any files, the agent MUST collect these from the user using the `vscode_askQuestions` tool. Do NOT proceed until all answers are received.
+
+### 0.1 — Operating System & Shell
+
+| Question | Purpose | Options / Notes |
+|----------|---------|-----------------|
+| Operating system | Determines install path, shell commands, and Docker setup | `Linux` or `Windows` |
+| Windows shell | (Only if Windows) Which shell to use for all commands | `PowerShell` (native) or `WSL` (Windows Subsystem for Linux) |
+
+> **Insight:** WSL behaves like Linux for all shell commands (bash, `sudo`, heredocs, etc.). If the user chooses WSL, treat the environment as Linux throughout this guide. PowerShell requires different syntax for many operations (see Phase 1–3 for platform-specific commands).
+
+### 0.2 — Workspace Setup
+
+| Question | Purpose | Options / Notes |
+|----------|---------|-----------------|
+| Install location | Where to clone the repo | **Linux / WSL:** `/opt/lamb` — **Windows PowerShell:** `C:\lamb` |
+| Git branch | Which branch to use | Default: `main` |
+
+### 0.3 — API Keys & Model Configuration
+
+| Question | Purpose | Default / Fallback |
+|----------|---------|---------------------|
+| OpenAI API key | `OPENAI_API_KEY` and `EMBEDDINGS_APIKEY` | Required unless using Ollama for everything |
+| OpenAI base URL | `OPENAI_BASE_URL` | `https://api.openai.com/v1` |
+| OpenAI model | `OPENAI_MODEL` | `gpt-4o-mini` |
+| OpenAI model list | `OPENAI_MODELS` | `gpt-4o-mini,gpt-4o` |
+| Embeddings vendor | `EMBEDDINGS_VENDOR` | `openai` or `ollama` (local, no API key needed) |
+| Embeddings model | `EMBEDDINGS_MODEL` | `text-embedding-3-large` (OpenAI) or `nomic-embed-text` (Ollama) |
+| Embeddings endpoint | `EMBEDDINGS_ENDPOINT` | `https://api.openai.com/v1` (OpenAI) or `http://ollama:11434` (Ollama) |
+| Embeddings API key | `EMBEDDINGS_APIKEY` | Same as `OPENAI_API_KEY` for OpenAI; leave empty for Ollama |
+
+> **IMPORTANT:** If the user has an existing `backend/.env` file or `.env.example`, extract keys from those files as defaults to pre-fill the questions.
+
+### 0.4 — Feature Toggles & Secrets
+
+| Question | Purpose | Default |
+|----------|---------|---------|
+| Enable signup? | `SIGNUP_ENABLED` | `true` |
+| Enable dev mode? | `DEV_MODE` | `true` (for local dev) |
+| Enable Ollama? | Adds `--profile ollama` to compose | `false` — ask the user if they want local LLM inference via Ollama |
+| Signup secret key | `SIGNUP_SECRET_KEY` | Auto-generate a random string |
+| LAMB bearer token | `LAMB_BEARER_TOKEN` | Auto-generate a random string |
+| OWI admin name/email/password | Bootstrap admin account for OpenWebUI | e.g., `Admin` / `admin@localhost.local` / auto-generated password |
+
+### 0.5 — Port Configuration
+
+| Question | Purpose | Default |
+|----------|---------|---------|
+| LAMB port | Backend API port | `9099` |
+| KB port | Knowledge base server port | `9090` |
+| OpenWebUI port | Chat interface port | `8080` |
+| Ollama port | Local LLM port (if enabled) | `11434` |
+
+> **Insight:** The defaults work for most users. Only ask about port overrides if the user mentions port conflicts.
+
+---
+
+## Phase 1: Prerequisites Check
+
+The agent MUST verify these before proceeding. Check them on the local machine (no SSH needed).
+
+### 1.1 — Check Docker
+
+```bash
+docker --version
+docker compose version
+```
+
+Expected: Docker 29+ and Docker Compose V2 (the plugin, invoked as `docker compose`).
+
+If Docker is not installed, tell the user to install it:
+- **Windows/Mac:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- **Linux:** `curl -fsSL https://get.docker.com | sh`
+
+### 1.2 — Check Available Disk Space
+
+```bash
+df -h <install-location>
+```
+
+The stack's Docker images total ~3-4 GB. With volumes, plan for at least 10 GB free.
+
+### 1.3 — Check Port Availability
+
+```bash
+# Check if default ports are already in use
+lsof -i :9099 2>/dev/null || netstat -tlnp 2>/dev/null | grep -E '9099|9090|8080|11434'
+```
+
+If any ports are in use, ask the user to either free them or choose alternative ports in Phase 0.5.
+
+---
+
+## Phase 2: Clone the Repository
+
+### 2.1 — Create the Install Directory
+
+```bash
+sudo mkdir -p <install-location>
+sudo chown $(whoami) <install-location>
+```
+
+Or on Windows (PowerShell as Administrator):
+
+```powershell
+New-Item -ItemType Directory -Path <install-location> -Force
+```
+
+### 2.2 — Clone
+
+```bash
+git clone https://github.com/Lamb-Project/lamb.git <install-location>
+cd <install-location>
+```
+
+If the user specified a branch:
+
+```bash
+git checkout <branch>
+```
+
+---
+
+## Phase 3: Create the `.env` File
+
+The `.env` file lives in the repo root (same directory as `docker-compose.next.yaml`).
+
+### 3.1 — Required Variables (compose fails if missing)
+
+These MUST be set. The compose file uses `${VAR?error message}` syntax.
+
+| Variable | Local Default | Notes |
+|----------|--------------|-------|
+| `LAMB_WEB_HOST` | `http://localhost:9099` | The URL where the LAMB frontend is accessed |
+| `LAMB_BACKEND_HOST` | `http://lamb:9099` | Internal Docker service name — NOT `localhost` |
+| `LAMB_BEARER_TOKEN` | Auto-generated | Strong random string |
+| `LAMB_DB_PATH` | `/data/lamb` | Path INSIDE the container |
+| `OWI_BASE_URL` | `http://openwebui:8080` | Internal Docker service name |
+| `OWI_PATH` | `/data/openwebui` | Path INSIDE the container |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Or user's custom endpoint |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Or user's custom model |
+| `SIGNUP_SECRET_KEY` | Auto-generated | Strong random string |
+| `OWI_ADMIN_NAME` | `Admin` | OpenWebUI bootstrap admin |
+| `OWI_ADMIN_EMAIL` | `admin@localhost.local` | OpenWebUI bootstrap admin |
+| `OWI_ADMIN_PASSWORD` | Auto-generated | Strong password |
+
+### 3.2 — KB Embeddings Variables
+
+| Variable | Local Default (Ollama) | Local Default (OpenAI) |
+|----------|------------------------|-------------------------|
+| `EMBEDDINGS_VENDOR` | `ollama` | `openai` |
+| `EMBEDDINGS_MODEL` | `nomic-embed-text` | `text-embedding-3-large` |
+| `EMBEDDINGS_APIKEY` | (empty) | Same as `OPENAI_API_KEY` |
+| `EMBEDDINGS_ENDPOINT` | `http://ollama:11434` | `https://api.openai.com/v1` |
+
+> **Insight:** If the user is NOT running Ollama, they MUST use OpenAI for embeddings. The KB server requires a working embeddings provider.
+
+### 3.3 — Optional Variables
+
+```bash
+OPENAI_API_KEY=sk-...               # only if using OpenAI
+OPENAI_MODELS=gpt-4o-mini,gpt-4o    # comma-separated list of available models
+LAMB_KB_SERVER=http://kb:9090       # default, can omit
+LAMB_KB_SERVER_TOKEN=0p3n-w3bu!     # must match KB's LAMB_API_KEY
+LTI_SECRET=lamb-lti-secret-key-2024 # override in production-like testing
+SIGNUP_ENABLED=true
+DEV_MODE=true                       # true for local dev
+GLOBAL_LOG_LEVEL=WARNING
+WEBUI_SECRET_KEY=                   # optional, auto-generated if empty
+LAMB_PORT=9099
+KB_PORT=9090
+OPENWEBUI_PORT=8080
+```
+
+### 3.4 — Key Insights for the Agent
+
+- **`LAMB_BACKEND_HOST`** is an INTERNAL Docker network URL (`http://lamb:9099`), NOT `localhost`. The `lamb` part is the Docker Compose service name.
+- **`OWI_BASE_URL`** likewise uses the Docker service name: `http://openwebui:8080`.
+- **`LAMB_DB_PATH`** and **`OWI_PATH`** are paths INSIDE the container, not on the host. The defaults use Docker named volumes.
+- **`LAMB_WEB_HOST`** IS `http://localhost:9099` — this is the URL the browser uses, so it must point to the host.
+- **API key reuse** — The user may want the same key for both `OPENAI_API_KEY` (lamb service) and `EMBEDDINGS_APIKEY` (kb service), or different keys. Ask explicitly.
+
+### 3.5 — Write the File
+
+The agent should construct the `.env` from the collected answers and write it:
+
+```bash
+cat > <install-location>/.env << 'ENVEOF'
+# ============================================================================
+# LAMB NEXT — Local Development .env
+# ============================================================================
+
+# --- Required ---
+LAMB_WEB_HOST=http://localhost:9099
+LAMB_BACKEND_HOST=http://lamb:9099
+LAMB_BEARER_TOKEN=<auto-generated>
+LAMB_DB_PATH=/data/lamb
+OWI_BASE_URL=http://openwebui:8080
+OWI_PATH=/data/openwebui
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+SIGNUP_SECRET_KEY=<auto-generated>
+OWI_ADMIN_NAME=Admin
+OWI_ADMIN_EMAIL=admin@localhost.local
+OWI_ADMIN_PASSWORD=<auto-generated>
+
+# --- KB Embeddings  ---
+EMBEDDINGS_VENDOR=openai
+EMBEDDINGS_MODEL=text-embedding-3-large
+EMBEDDINGS_APIKEY=sk-...
+EMBEDDINGS_ENDPOINT=https://api.openai.com/v1
+
+# --- Optional ---
+OPENAI_API_KEY=sk-...
+OPENAI_MODELS=gpt-4o-mini,gpt-4o
+SIGNUP_ENABLED=true
+DEV_MODE=true
+GLOBAL_LOG_LEVEL=WARNING
+ENVEOF
+```
+
+> **Insight:** Use single-quoted `'ENVEOF'` (heredoc delimiter) to prevent shell variable expansion. Auto-generate passwords using: `openssl rand -hex 32`.
+
+---
+
+## Phase 4: Launch the Stack
+
+### 4.1 — Pull Images and Start (Without Ollama)
+
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml up -d
+```
+
+### 4.2 — With Ollama (Local LLM Inference)
+
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml --profile ollama up -d
+```
+
+> **Note:** The first run downloads ~3-4 GB of Docker images (more with Ollama). This may take several minutes. The agent should run this in async mode with a generous timeout (≥300s).
+
+> **Insight:** When using the Ollama profile, the user will need to pull models inside the Ollama container before they can be used. See Phase 5.5.
+
+### 4.3 — Windows-Specific Notes
+
+On Windows with Docker Desktop:
+- Ensure the WSL2 backend is running.
+- `host.docker.internal` is available for services that need to reach the host.
+- Volume mounts work with WSL2 paths. If the repo is on a Windows drive (e.g., `C:\`), use the Docker Desktop file sharing settings to allow that drive.
+
+---
+
+## Phase 5: Verify the Deployment
+
+### 5.1 — Check Container Status
+
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml ps
+```
+
+All services should show `Up` and `healthy`:
+
+| Container | Expected Status |
+|-----------|----------------|
+| `lamb-lamb-1` | Up (healthy) |
+| `lamb-kb-1` | Up (healthy) |
+| `lamb-openwebui-1` | Up (healthy) |
+| `lamb-ollama-1` | Up (only if Ollama profile enabled) |
+
+### 5.2 — Check Logs
+
+```bash
+docker compose -f docker-compose.next.yaml logs -f --tail=50
+```
+
+Look for:
+- Lamb: `Uvicorn running on http://0.0.0.0:9099`
+- OpenWebUI: `Uvicorn running on http://0.0.0.0:8080`
+- KB: `Uvicorn running on http://0.0.0.0:9090`
+
+### 5.3 — Verify Services Are Reachable
+
+Open these URLs in a browser:
+
+| Service | URL | What You Should See |
+|---------|-----|---------------------|
+| LAMB Creator Interface | `http://localhost:9099` | LAMB sign-in / creator page |
+| OpenWebUI Chat | `http://localhost:8080` | OpenWebUI sign-in page |
+| KB Server API | `http://localhost:9090/docs` | FastAPI Swagger docs |
+| LAMB API Docs | `http://localhost:9099/docs` | FastAPI Swagger docs |
+
+### 5.4 — Verify Health Endpoints
+
+```bash
+curl -s http://localhost:8080/health
+curl -s http://localhost:9099/health
+curl -s http://localhost:9090/health
+```
+
+All should return HTTP 200 or similar success response.
+
+### 5.5 — Pull Ollama Models (if using Ollama profile)
+
+If the Ollama profile is enabled, pull the embedding model and optionally a chat model:
+
+```bash
+# Pull the embedding model (required for KB)
+docker exec lamb-ollama-1 ollama pull nomic-embed-text
+
+# Optional: pull a chat model for local inference
+docker exec lamb-ollama-1 ollama pull llama3.2
+```
+
+> **Insight:** The `nomic-embed-text` model is required for KB embeddings if `EMBEDDINGS_VENDOR=ollama`. Without it, KB ingestion will fail.
+
+---
+
+## Phase 6: Day-to-Day Operations (Cheatsheet)
+
+### Stop the stack
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml down
+```
+
+### Start the stack
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml up -d
+```
+
+### Update images and restart
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml pull && docker compose -f docker-compose.next.yaml up -d
+```
+
+### View logs for a specific service
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml logs -f lamb
+```
+
+### Restart a single service
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml restart lamb
+```
+
+### Rebuild after code changes (when using local build)
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml up -d --build
+```
+
+### Reset all data (WARNING: deletes all databases and uploaded files)
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml down -v
+```
+
+### Access a service shell
+```bash
+docker exec -it lamb-lamb-1 bash
+docker exec -it lamb-kb-1 bash
+docker exec -it lamb-openwebui-1 bash
+```
+
+---
+
+## Phase 7: Tear Down
+
+### Stop and remove containers, networks
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml down
+```
+
+### Also remove volumes (deletes ALL data)
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml down -v
+```
+
+### Remove images to free disk space
+```bash
+docker rmi ghcr.io/lamb-project/lamb:latest
+docker rmi ghcr.io/lamb-project/lamb-kb:latest
+docker rmi ghcr.io/lamb-project/openwebui:latest
+docker rmi ollama/ollama:latest  # if Ollama was used
+```
+
+### Remove the repo
+```bash
+sudo rm -rf <install-location>
+```
+
+---
+
+## Appendix A: Complete Local `.env` Template
+
+```bash
+# ============================================================================
+# LAMB NEXT — Local Development .env
+# ============================================================================
+
+# --- Required ---
+LAMB_WEB_HOST=http://localhost:9099
+LAMB_BACKEND_HOST=http://lamb:9099
+LAMB_BEARER_TOKEN=<strong-random-string>
+LAMB_DB_PATH=/data/lamb
+OWI_BASE_URL=http://openwebui:8080
+OWI_PATH=/data/openwebui
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+SIGNUP_SECRET_KEY=<strong-random-string>
+OWI_ADMIN_NAME=Admin
+OWI_ADMIN_EMAIL=admin@localhost.local
+OWI_ADMIN_PASSWORD=<strong-password>
+
+# --- KB Embeddings (Ollama — no API key needed) ---
+# EMBEDDINGS_VENDOR=ollama
+# EMBEDDINGS_MODEL=nomic-embed-text
+# EMBEDDINGS_APIKEY=
+# EMBEDDINGS_ENDPOINT=http://ollama:11434
+
+# --- KB Embeddings ---
+EMBEDDINGS_VENDOR=openai
+EMBEDDINGS_MODEL=text-embedding-3-large
+EMBEDDINGS_APIKEY=sk-...
+EMBEDDINGS_ENDPOINT=https://api.openai.com/v1
+
+# --- Optional / Tweaks ---
+OPENAI_MODELS=gpt-4o-mini,gpt-4o
+LAMB_KB_SERVER=http://kb:9090
+LAMB_KB_SERVER_TOKEN=0p3n-w3bu!
+LTI_SECRET=lamb-lti-secret-key-2024
+SIGNUP_ENABLED=true
+DEV_MODE=true
+GLOBAL_LOG_LEVEL=WARNING
+WEBUI_SECRET_KEY=
+
+# --- Ports (only if overriding defaults) ---
+# LAMB_PORT=9099
+# KB_PORT=9090
+# OPENWEBUI_PORT=8080
+```
+
+---
+
+## Appendix B: Architecture Reference (Local)
+
+| Service | Internal Port | Local URL | Docker Image |
+|---------|--------------|-----------|--------------|
+| `lamb` | 9099 | `http://localhost:9099` | `ghcr.io/lamb-project/lamb:latest` |
+| `kb` | 9090 | `http://localhost:9090` | `ghcr.io/lamb-project/lamb-kb:latest` |
+| `openwebui` | 8080 | `http://localhost:8080` | `ghcr.io/lamb-project/openwebui:latest` |
+| `ollama` (optional) | 11434 | `http://localhost:11434` | `ollama/ollama:latest` |
+
+**Service dependencies:**
+- `lamb` depends on `kb` (service_started) and `openwebui` (service_healthy)
+- `kb` is independent
+- `openwebui` is independent
+- `ollama` is independent (used by `kb` for embeddings and by `lamb` for chat if configured)
+
+**Docker volumes:**
+- `lamb-data` — LAMB database and uploads
+- `kb-data` — KB server database and vector store
+- `kb-static` — KB server static files
+- `openwebui-data` — OpenWebUI database and configuration
+- `ollama-data` — Ollama models (only with Ollama profile)
+
+---
+
+## Appendix C: Known Gotchas
+
+1. **Docker Compose version:** The `docker compose` (V2, space, no hyphen) command is required. The old `docker-compose` (V1) won't work with the compose file syntax.
+
+2. **`.env` file location:** Must be in the same directory as `docker-compose.next.yaml` (the repo root). Docker Compose reads it automatically when running from that directory.
+
+3. **Required variable failures:** Missing `?Set VARNAME` variables cause `docker compose` to fail with a clear error message. This is a fast-fail mechanism — the agent should double-check all required vars before running compose.
+
+4. **OpenWebUI startup race:** The `lamb` service has `depends_on: openwebui: condition: service_healthy`. OpenWebUI may take 30-60 seconds on first boot to initialize its database. The healthcheck prevents the race.
+
+5. **Ollama model pull:** When using the Ollama profile, models are NOT included in the image. The user must pull them manually with `docker exec lamb-ollama-1 ollama pull <model>`. The embedding model (`nomic-embed-text`) is required for KB ingestion.
+
+6. **Port conflicts:** If ports 9099, 9090, 8080, or 11434 are already in use, the stack will fail to start. Check with `lsof -i :PORT` before launching.
+
+7. **Memory usage:** Running all services (lamb + kb + openwebui) uses ~2-3 GB RAM. Adding Ollama with models adds 1-4 GB more depending on the models loaded.
+
+8. **`DEV_MODE=true` implications:** When `DEV_MODE=true`, the backend exposes additional debug/admin endpoints and may use development-oriented settings. This is appropriate for local development.
+
+9. **Docker Desktop on Windows/Mac:** If using Docker Desktop, ensure the file sharing settings include the drive where the repo is cloned. WSL2 backend is recommended for Windows.
+
+10. **No TLS locally:** The local deployment uses plain HTTP on localhost. Do not set `LAMB_WEB_HOST` to an `https://` URL — it won't work without Caddy and TLS certificates.
+
+---
+
+## Appendix D: Agent Workflow Checklist
+
+The agent should follow this sequence and check off each step:
+
+- [ ] **0.1** — Ask operating system and (if Windows) PowerShell vs WSL
+- [ ] **0.2** — Ask install location, branch
+- [ ] **0.3** — Ask API keys, model configuration, embeddings vendor
+- [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama), generate secrets
+- [ ] **0.5** — Confirm port configuration
+- [ ] **1.1** — Verify Docker and Docker Compose are installed
+- [ ] **1.2** — Check available disk space
+- [ ] **1.3** — Check port availability
+- [ ] **2.1** — Create install directory
+- [ ] **2.2** — Clone repository (and checkout branch if needed)
+- [ ] **3** — Create `.env` file with all collected variables
+- [ ] **4** — Run `docker compose -f docker-compose.next.yaml up -d` (with `--profile ollama` if needed)
+- [ ] **5.1** — Verify all containers are Up and healthy
+- [ ] **5.2** — Check logs for startup errors
+- [ ] **5.3** — Report access URLs to user
+- [ ] **5.4** — Verify health endpoints
+- [ ] **5.5** — Pull Ollama models if using Ollama profile
+
+---
+
+## Appendix E: Quick Start (Minimal Path)
+
+For users who want to skip the interactive questions and go fast, the agent can use these defaults:
+
+```bash
+# Clone
+git clone https://github.com/Lamb-Project/lamb.git /opt/lamb
+cd /opt/lamb
+
+# Generate secrets
+LAMB_BEARER_TOKEN=$(openssl rand -hex 32)
+SIGNUP_SECRET_KEY=$(openssl rand -hex 32)
+ADMIN_PASSWORD=$(openssl rand -hex 16)
+
+# Write .env
+cat > .env << ENVEOF
+LAMB_WEB_HOST=http://localhost:9099
+LAMB_BACKEND_HOST=http://lamb:9099
+LAMB_BEARER_TOKEN=$LAMB_BEARER_TOKEN
+LAMB_DB_PATH=/data/lamb
+OWI_BASE_URL=http://openwebui:8080
+OWI_PATH=/data/openwebui
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-REPLACE_ME
+SIGNUP_SECRET_KEY=$SIGNUP_SECRET_KEY
+OWI_ADMIN_NAME=Admin
+OWI_ADMIN_EMAIL=admin@localhost.local
+OWI_ADMIN_PASSWORD=$ADMIN_PASSWORD
+EMBEDDINGS_VENDOR=ollama
+EMBEDDINGS_MODEL=nomic-embed-text
+EMBEDDINGS_APIKEY=
+EMBEDDINGS_ENDPOINT=http://ollama:11434
+OPENAI_MODELS=gpt-4o-mini,gpt-4o
+SIGNUP_ENABLED=true
+DEV_MODE=true
+ENVEOF
+
+# Launch (with Ollama for embeddings)
+docker compose -f docker-compose.next.yaml --profile ollama up -d
+
+# Pull the embedding model
+docker exec lamb-ollama-1 ollama pull nomic-embed-text
+```
+
+> **Note:** The user MUST replace `sk-REPLACE_ME` with a real OpenAI API key, or configure their preferred LLM provider. If they want to skip Ollama entirely, they must set `EMBEDDINGS_VENDOR=openai` and provide both `EMBEDDINGS_APIKEY` and `EMBEDDINGS_ENDPOINT`.
