@@ -13,6 +13,7 @@ import logging
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -22,6 +23,8 @@ import main
 from database.connection import get_session_direct
 from database.models import IngestionJob
 from tests._helpers import AUTH_HEADERS
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +50,7 @@ def test_empty_token_refuses_start(tmp_path) -> None:
         [sys.executable, "-c", script, str(tmp_path)],
         capture_output=True,
         text=True,
-        cwd="/home/novelia/Documents/lamb/lamb-kb-server",
+        cwd=str(_REPO_ROOT),
     )
     assert result.returncode != 0, (
         "Expected non-zero exit when LAMB_API_TOKEN is empty, "
