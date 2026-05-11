@@ -113,7 +113,22 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    augmented_text = augmented_text.replace("{context}", "\n\n" + context + "\n\n")
+                    
+                    # Format sources if available
+                    sources_text = ""
+                    if isinstance(rag_context, dict) and "sources" in rag_context:
+                        sources = rag_context["sources"]
+                        if sources:
+                            sources_text = "\n\n## Available Sources\n\n"
+                            for i, source in enumerate(sources, 1):
+                                title = source.get("title", "Unknown")
+                                url = source.get("url", "")
+                                similarity = source.get("similarity", 0)
+                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+                    
+                    # Combine context with sources
+                    full_context = context + sources_text
+                    augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     augmented_text = augmented_text.replace("{context}", "")
 
@@ -154,7 +169,22 @@ def prompt_processor(
                 # Add RAG context if available
                 if rag_context:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    prompt = prompt.replace("{context}", "\n\n" + context + "\n\n")
+                    
+                    # Format sources if available
+                    sources_text = ""
+                    if isinstance(rag_context, dict) and "sources" in rag_context:
+                        sources = rag_context["sources"]
+                        if sources:
+                            sources_text = "\n\n## Available Sources\n\n"
+                            for i, source in enumerate(sources, 1):
+                                title = source.get("title", "Unknown")
+                                url = source.get("url", "")
+                                similarity = source.get("similarity", 0)
+                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+                    
+                    # Combine context with sources
+                    full_context = context + sources_text
+                    prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     prompt = prompt.replace("{context}", "")
 
