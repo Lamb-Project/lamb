@@ -1,6 +1,6 @@
 services:
   lamb:
-    image: ghcr.io/Lamb-Project/lamb:latest
+    image: ghcr.io/lamb-project/lamb:latest
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -14,6 +14,7 @@ services:
       LAMB_WEB_HOST: ${LAMB_WEB_HOST?Set LAMB_WEB_HOST}
       LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN?Set LAMB_BEARER_TOKEN}
       LAMB_KB_SERVER_TOKEN: ${LAMB_KB_SERVER_TOKEN:-0p3n-w3bu!}
+      LAMB_WORKERS: ${LAMB_WORKERS:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL?Set OPENAI_BASE_URL}
       OPENAI_MODEL: ${OPENAI_MODEL?Set OPENAI_MODEL}
@@ -35,7 +36,7 @@ services:
         condition: service_healthy
 
   kb:
-    image: ghcr.io/Lamb-Project/lamb-kb:latest
+    image: ghcr.io/lamb-project/lamb-kb:latest
     build:
       context: ./lamb-kb-server-stable
       dockerfile: Dockerfile
@@ -57,7 +58,7 @@ services:
       - kb-static:/app/backend/static
 
   openwebui:
-    image: ghcr.io/Lamb-Project/openwebui:latest
+    image: ghcr.io/lamb-project/openwebui:latest
     build:
       context: ./open-webui
       dockerfile: Dockerfile
