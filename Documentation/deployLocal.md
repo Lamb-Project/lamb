@@ -13,6 +13,30 @@ This document is designed to be fed to an AI coding agent (like GitHub Copilot) 
 
 Before touching any files, the agent MUST collect these from the user using the `vscode_askQuestions` tool. Do NOT proceed until all answers are received.
 
+### 0.0 — Pre-Flight: Check for Existing `.env`
+
+> **CRITICAL — Do this FIRST, before asking any questions.**
+
+If the user already has a `.env` file (at `<install-location>/.env` or in the current workspace), the agent MUST read it and extract all values. Use these as **pre-filled defaults** for the questions in sections 0.2–0.5. This dramatically reduces the number of questions — if the `.env` is complete, the user may only need to confirm a handful of values.
+
+> **🔍 AI Agent Note:** `.env` files are **gitignored** — glob-based file search will miss them. Use `list_dir` on the repo root, `backend/`, and `lamb-kb-server-stable/backend/` instead, or use `includeIgnoredFiles: true`. Read any `.env` found (priority: `<root>/.env` > `backend/.env` > `lamb-kb-server-stable/backend/.env` > `.env.example` files).
+
+**Priority order for defaults:**
+1. Existing `.env` at the install location (highest priority)
+2. `backend/.env` or `backend/.env.example` in the repo
+3. `lamb-kb-server-stable/backend/.env.example` (for embeddings vars)
+4. Built-in defaults documented in sections 0.2–0.5 below (lowest priority)
+
+**What to extract from the existing `.env`:**
+- `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_MODELS`
+- `EMBEDDINGS_VENDOR`, `EMBEDDINGS_MODEL`, `EMBEDDINGS_APIKEY`, `EMBEDDINGS_ENDPOINT`
+- `LAMB_BEARER_TOKEN`, `SIGNUP_SECRET_KEY`, `SIGNUP_ENABLED`, `DEV_MODE`
+- `LAMB_WEB_HOST`, `LAMB_PORT`, `KB_PORT`, `OPENWEBUI_PORT`
+- `OWI_ADMIN_NAME`, `OWI_ADMIN_EMAIL`, `OWI_ADMIN_PASSWORD`
+- Any other configured variables
+
+> **Insight:** If a fully pre-filled `.env` already exists (all required vars present), the agent can skip directly to Phase 1 after a quick confirmation with the user. The user can also place a pre-filled `.env` in the clone target directory *before* the agent runs, ensuring a near-silent deployment.
+
 ### 0.1 — Operating System & Shell
 
 | Question | Purpose | Options / Notes |
@@ -28,6 +52,7 @@ Before touching any files, the agent MUST collect these from the user using the 
 |----------|---------|-----------------|
 | Install location | Where to clone the repo | **Linux / WSL:** `/opt/lamb` — **Windows PowerShell:** `C:\lamb` |
 | Git branch | Which branch to use | Default: `main` |
+| Existing data? | Does the user have data from a previous LAMB installation to migrate? | `yes` or `no`. If yes, the agent must ask for the **old project path** (where the old LAMB install lives — database, OpenWebUI data, KB server data). |
 
 ### 0.3 — API Keys & Model Configuration
 
@@ -233,6 +258,143 @@ ENVEOF
 ```
 
 > **Insight:** Use single-quoted `'ENVEOF'` (heredoc delimiter) to prevent shell variable expansion. Auto-generate passwords using: `openssl rand -hex 32`.
+
+---
+
+## Phase 3.5: Migrate Existing Data (GATE — Conditional)
+
+> **Only execute this phase if the user answered `yes` to "Existing data?" in Phase 0.2. If this is a fresh install with no prior data, skip to Phase 4.**
+
+The old LAMB stack stored data in host directories. The new stack uses **named Docker volumes**. This phase copies existing data into the new volumes so the user doesn't lose their database, OpenWebUI accounts, or KB server collections.
+
+### 3.5.1 — What the agent needs
+
+From Phase 0.2, the agent should have:
+- **`<old-project-path>`** — the directory where the old LAMB installation lives (e.g., `/opt/lamb-old` or `C:\lamb-old`)
+- **`<install-location>`** — the new install directory (from Phase 0.2)
+
+The expected data locations inside the old project:
+
+| Data | Old location (relative to old project path) | New volume |
+|------|---------------------------------------------|------------|
+| LAMB database | `<old-project-path>/lamb_v4.db` | `lamb-data` (file: `lamb_v4.db`) |
+| OpenWebUI data | `<old-project-path>/open-webui/backend/data/` | `openwebui-data` |
+| KB server data | `<old-project-path>/lamb-kb-server-stable/backend/data/` | `kb-data` |
+
+> **Insight:** The agent should verify these paths exist before attempting migration. If any path is missing, warn the user but continue with the others. If ALL paths are missing, the old project path may be wrong — ask the user to confirm.
+
+### 3.5.2 — Create the named volumes (without starting services)
+
+First, create the volumes by doing a no-start launch. The `.env` file must already exist (Phase 3).
+
+**Linux / WSL:**
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml up --no-start
+```
+
+**Windows PowerShell:**
+```powershell
+cd <install-location>
+docker compose -f docker-compose.next.yaml up --no-start
+```
+
+> **Note:** This will pull the images. If you want to avoid that, use `docker volume create` instead for each volume (`lamb-data`, `openwebui-data`, `kb-data`, `kb-static`). But `up --no-start` is simpler and guarantees the volume names match the compose project.
+
+The compose project name defaults to the directory name (e.g., `lamb`). Volume names follow the pattern `<project-name>_<volume-name>` (e.g., `lamb_lamb-data`, `lamb_openwebui-data`, `lamb_kb-data`, `lamb_kb-static`).
+
+To check the exact volume names:
+```bash
+docker volume ls --filter "name=<install-location-basename>"
+```
+
+Store the volume names — they'll be used in the copy commands below. The agent can either use the explicit names or shell-expand them.
+
+> **Insight:** If the user specified a custom compose project name (via `COMPOSE_PROJECT_NAME` in `.env` or `--project-name`), volume names use that instead. By default they're derived from the directory name.
+
+### 3.5.3 — Copy the LAMB database
+
+**Linux / WSL:**
+```bash
+docker run --rm \
+  -v <old-project-path>/lamb_v4.db:/src/lamb_v4.db:ro \
+  -v <project>_lamb-data:/dst \
+  alpine cp /src/lamb_v4.db /dst/lamb_v4.db
+```
+
+**Windows PowerShell:**
+```powershell
+docker run --rm `
+  -v <old-project-path>/lamb_v4.db:/src/lamb_v4.db:ro `
+  -v <project>_lamb-data:/dst `
+  alpine cp /src/lamb_v4.db /dst/lamb_v4.db
+```
+
+> **Insight:** On Windows with Docker Desktop + WSL2, paths like `C:\lamb-old\lamb_v4.db` must be converted. Docker accepts `/c/lamb-old/lamb_v4.db` or `C:\lamb-old\lamb_v4.db` depending on configuration. If the copy fails with "no such file", try both forms.
+
+### 3.5.4 — Copy the OpenWebUI data
+
+**Linux / WSL:**
+```bash
+docker run --rm \
+  -v <old-project-path>/open-webui/backend/data:/src:ro \
+  -v <project>_openwebui-data:/dst \
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+**Windows PowerShell:**
+```powershell
+docker run --rm `
+  -v <old-project-path>/open-webui/backend/data:/src:ro `
+  -v <project>_openwebui-data:/dst `
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+### 3.5.5 — Copy the KB server data
+
+**Linux / WSL:**
+```bash
+docker run --rm \
+  -v <old-project-path>/lamb-kb-server-stable/backend/data:/src:ro \
+  -v <project>_kb-data:/dst \
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+**Windows PowerShell:**
+```powershell
+docker run --rm `
+  -v <old-project-path>/lamb-kb-server-stable/backend/data:/src:ro `
+  -v <project>_kb-data:/dst `
+  alpine sh -c "cp -r /src/. /dst/"
+```
+
+### 3.5.6 — Verify the migration
+
+```bash
+# Check LAMB database
+docker run --rm -v <project>_lamb-data:/data alpine ls -la /data
+# Expected: lamb_v4.db
+
+# Check OpenWebUI data
+docker run --rm -v <project>_openwebui-data:/data alpine ls -la /data
+# Expected: webui.db, vector_db/, uploads/, etc.
+
+# Check KB server data
+docker run --rm -v <project>_kb-data:/data alpine ls -la /data
+# Expected: lamb-kb-server.db, chromadb/, etc.
+```
+
+### 3.5.7 — Migration gotchas
+
+1. **Old stack must be stopped:** If the old LAMB containers are still running with bind-mounts to these data directories, the copy may produce inconsistent results. Ask the user to stop the old stack first: `docker compose -f docker-compose.yaml down` (from the old project directory).
+
+2. **Database schema changes:** The new LAMB images may have a different database schema. On first boot, the `lamb` service auto-migrates the database. This is normal — the migration scripts are idempotent.
+
+3. **OpenWebUI version:** The new OpenWebUI image may be a different version than the old one. The database auto-migrates on first boot, but if the version gap is large, there could be issues. The agent should note the old OpenWebUI version if known.
+
+4. **Large KB data:** The KB server data can include ChromaDB embeddings which may be several GB. The copy may take a while. Run in sync mode with a generous timeout.
+
+5. **Old data is untouched:** The migration only *copies* data. The original files at the old project path are not modified or deleted. The user can revert by stopping the new stack and restarting the old one.
 
 ---
 
@@ -509,7 +671,7 @@ WEBUI_SECRET_KEY=
 The agent should follow this sequence and check off each step:
 
 - [ ] **0.1** — Ask operating system and (if Windows) PowerShell vs WSL
-- [ ] **0.2** — Ask install location, branch
+- [ ] **0.2** — Ask install location, branch, existing data (and old project path if applicable)
 - [ ] **0.3** — Ask API keys, model configuration, embeddings vendor
 - [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama), generate secrets
 - [ ] **0.5** — Confirm port configuration
@@ -519,6 +681,7 @@ The agent should follow this sequence and check off each step:
 - [ ] **2.1** — Create install directory
 - [ ] **2.2** — Clone repository (and checkout branch if needed)
 - [ ] **3** — Create `.env` file with all collected variables
+- [ ] **3.5** — (If existing data) Stop old stack, create volumes, copy LAMB DB, OWI data, KB data, verify
 - [ ] **4** — Run `docker compose -f docker-compose.next.yaml up -d` (with `--profile ollama` if needed)
 - [ ] **5.1** — Verify all containers are Up and healthy
 - [ ] **5.2** — Check logs for startup errors
