@@ -17,7 +17,7 @@
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
-import { extractModelsFromConnectorData } from './assistantFormUtils.svelte.js';
+import { extractModelsFromConnectorData, getAuthToken } from './assistantFormUtils.svelte.js';
 import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
