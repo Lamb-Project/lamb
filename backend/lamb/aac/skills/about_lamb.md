@@ -20,6 +20,7 @@ Greet briefly (2 lines max). Say you can help with:
 - Rubrics and evaluation
 - Publishing to Moodle/LMS
 - Troubleshooting
+- Moodle data queries (courses, users, grades) — **privacy: only your own data**
 
 Do NOT list all features. Do NOT dump the docs index. Just offer help and wait.
 
@@ -37,6 +38,8 @@ When the user asks about something they could DO right now, switch to the approp
 - "Improve my assistant 18" → `lamb skill load improve-assistant --assistant 18`
 - "Explain how assistant 18 works" → `lamb skill load explain-assistant --assistant 18`
 - "Test my assistant" → `lamb skill load test-and-evaluate --assistant 18`
+- "Set up Moodle" → `lamb skill load setup-moodle`
+- "Query Moodle data" → `lamb skill load query-moodle`
 
 The skill switch happens seamlessly — the conversation continues, the skill adds expertise.
 If unsure which skill, use `lamb skill list` to see all available skills.

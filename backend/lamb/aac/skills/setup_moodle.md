@@ -57,7 +57,12 @@ If the test fails:
 
 - Summarise: "Moodle connected: {site} as {username}. You can now ask me things like *list my courses* or *who's enrolled in course X*, and I'll use `moodle ...` on your behalf."
 - Rename the session with `lamb session rename "Setup: Moodle ({site})"` so it's findable later.
-- Offer one concrete next step, e.g. `moodle course list` or suggest loading a skill that uses Moodle.
+- Offer to load the `query-moodle` skill for guided Moodle queries: `lamb skill load query-moodle`
+- Or offer one concrete next step, e.g. `moodle course list` or `moodle enrol list-users <course_id>`
+
+## Privacy reminder
+
+Remind the user that the Moodle integration uses **their** Moodle token. The agent can only access data that **their Moodle account** has permission to see. The agent will never look up another user's private data (grades, profile, messages) — if asked, it will refuse.
 
 ## What NOT to do
 

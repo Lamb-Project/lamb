@@ -121,6 +121,10 @@ class ActionAuthorizer:
             tokens = tokens[1:]
         if not tokens:
             return None
+        # Passthrough commands (like moodle) use just the group name as key
+        from lamb.aac.liteshell.commands import PASSTHROUGH_COMMANDS
+        if tokens[0] in PASSTHROUGH_COMMANDS:
+            return tokens[0]
         if len(tokens) >= 2 and not tokens[1].startswith("-"):
             return f"{tokens[0]}.{tokens[1]}"
         return tokens[0]

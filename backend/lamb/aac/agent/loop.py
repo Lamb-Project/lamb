@@ -49,6 +49,51 @@ CHAT: lamb assistant chat <id> --message "text"  (send a message, get a real res
 TEST: lamb test scenarios <id> | add <id> <title> --message "text" | run <id> [--bypass] | runs <id> | evaluate <run_id> <good|bad|mixed>
 WRITE: lamb assistant create <name> [--system-prompt "..." --llm model ...] | update <id> [...] | delete <id>
 
+## Moodle Integration (if configured)
+
+When the user has a Moodle integration set up, you can run `moodle ...` commands to query and manage their Moodle LMS. Use `lamb docs read moodle-cli` to see all available commands, or load the `query-moodle` skill for guided interaction.
+
+Key moodle commands:
+READ: moodle course list | get <id> | search <query> | contents <id>
+READ: moodle user me | list | get <id>
+READ: moodle enrol my-courses | list-users <course_id>
+READ: moodle grade get <course_id> | report <course_id>
+READ: moodle assign list | submissions <id>
+READ: moodle forum list <course_id> | discussions <forum_id>
+READ: moodle quiz list <course_id> | attempts <quiz_id>
+READ: moodle calendar events
+READ: moodle completion status <course_id>
+READ: moodle cohort list
+READ: moodle site info | functions
+WRITE: moodle assign grade | forum post | message send | completion update
+WRITE: moodle course create | update | delete
+WRITE: moodle user create | update | delete
+WRITE: moodle cohort create | delete | add-members | remove-members
+WRITE: moodle role assign | unassign
+WRITE: moodle calendar create
+WRITE: moodle file upload
+ESCAPE: moodle call <function_name> -P key=value  (any Moodle WS function)
+
+Always ask the user before running WRITE moodle commands. For READ commands, just run them.
+
+### TIMESTAMPS — Always convert to readable dates
+
+Moodle returns Unix timestamps (e.g. `duedate: 1744320000`) for dates. **Always** convert these to a human-readable format (e.g. "Apr 10, 2026 14:30") when presenting results. Never show raw timestamps. Never ask the user "do you want me to convert that?" — just do it.
+
+Fields that are timestamps: `duedate`, `timestart`, `timecreated`, `timemodified`, `lastaccess`, `timeend`, `timeduration`.
+
+### PRIVACY — CRITICAL: You can ONLY access YOUR data
+
+The moodle-cli runs with YOUR Moodle token. You MUST enforce these rules:
+
+**NEVER query another user by ID.** Commands with `--user-id` or `<user_id>` (`moodle user get <id>`, `moodle grade get --user-id <id>`, `moodle grade report --user-id <id>`, `moodle completion status --user-id <id>`, `moodle message send <user_id>`) may ONLY be used with the authenticated user's own ID.
+
+**Prefer self-scoped commands:** Use `moodle user me` (not `moodle user get <id>`). Use `moodle enrol my-courses` (not `moodle course list`).
+
+**Allowed exceptions:** `moodle enrol list-users <course_id>` is OK (teacher context). `moodle course list`, `moodle course get <id>`, `moodle course contents <id>` are OK (course data, not personal data).
+
+**If the user asks about another user's data**, politely refuse: "I can only access Moodle data for your account. I cannot look up other users' private information."
+
 debug and --bypass = inspect mode. It runs the full prompt assembly (system prompt + RAG context + template)
 WITHOUT calling the LLM. It returns the constructed messages array — this IS the expected output.
 An empty or minimal response from debug is NORMAL for non-RAG assistants (no KB content to inject).
@@ -104,7 +149,7 @@ NEVER refuse a user's explicit request. If they want to run a real test, run it.
 
 When the user asks to do something covered by a specific skill (create, improve, explain, test an assistant),
 use `lamb skill load <skill-id>` to switch. Available skills: about-lamb, create-assistant, improve-assistant,
-explain-assistant, test-and-evaluate. Use `lamb skill list` if unsure.
+explain-assistant, test-and-evaluate, setup-moodle, query-moodle. Use `lamb skill list` if unsure.
 
 End EVERY response with numbered options. EXACTLY this format, no variations:
 
@@ -192,6 +237,11 @@ _TOOL_LABELS = {
     "session.rename": "Renaming session",
     "docs.index": "Loading documentation index",
     "docs.read": "Reading documentation",
+    "moodle": "Running Moodle command",
+    "integration.list": "Checking integrations",
+    "integration.test": "Testing integration",
+    "integration.save": "Saving integration",
+    "integration.remove": "Removing integration",
 }
 
 
@@ -200,11 +250,15 @@ def _parse_action_key(cmd: str) -> str:
     tokens = cmd.strip().split()
     if tokens and tokens[0] == "lamb":
         tokens = tokens[1:]
+    if not tokens:
+        return ""
+    # Passthrough commands (like moodle) use just the group name as key
+    from lamb.aac.liteshell.commands import PASSTHROUGH_COMMANDS
+    if tokens[0] in PASSTHROUGH_COMMANDS:
+        return tokens[0]
     if len(tokens) >= 2 and not tokens[1].startswith("-"):
         return f"{tokens[0]}.{tokens[1]}"
-    elif tokens:
-        return tokens[0]
-    return ""
+    return tokens[0]
 
 
 def _describe_tool_call(tc: Any) -> str:
@@ -276,6 +330,12 @@ def _summarize_result(action_key: str, result: Any) -> str:
         elif action_key == "kb.get":
             files = d.get("files", [])
             return f"name={d.get('name','?')}, {len(files)} files"
+        elif action_key == "moodle":
+            cmd = d.get("command", "")
+            exit_code = d.get("exit_code", -1)
+            stdout = d.get("stdout", "")
+            lines = [l for l in stdout.split("\n") if l.strip()]
+            return f"exit={exit_code}, {len(lines)} lines, cmd={cmd[:60]}"
     except Exception:
         pass
 
@@ -324,6 +384,10 @@ def _extract_artifacts(cmd: str, result: Any) -> list[dict]:
     # For test commands, the resource type is the assistant being tested
     if resource_type == "test" and resource_id:
         return [{"type": "assistant", "id": resource_id, "action": action}]
+
+    # For moodle commands, capture the subcommand as the resource type
+    if resource_type == "moodle" and subcommand:
+        return [{"type": f"moodle/{subcommand}", "id": resource_id, "action": action}]
 
     if resource_id:
         return [{"type": resource_type, "id": resource_id, "action": action}]

@@ -74,6 +74,8 @@ async def create_session(
         "explain-assistant": "Explain",
         "test-and-evaluate": "Test",
         "test-lti-tools": "LTI Setup",
+        "setup-moodle": "Setup: Moodle",
+        "query-moodle": "Moodle Query",
     }
     if skill_id:
         base = _skill_titles.get(skill_id, skill_id)
