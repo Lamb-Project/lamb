@@ -930,6 +930,13 @@
 		"addContent": "Afegir Contingut",
 		"export": "Exportar",
 		"itemDeleteSuccess": "Element eliminat.",
+		"viewContent": "Veure",
+		"itemContentModal": {
+			"title": "Contingut de l'element",
+			"close": "Tancar",
+			"loadError": "No s'ha pogut carregar el contingut.",
+			"empty": "Sense contingut."
+		},
 		"detailTitle": "Detalls de la Biblioteca",
 		"backButton": "Tornar a biblioteques",
 		"items": {
@@ -961,8 +968,10 @@
 		},
 		"deleteItemModal": {
 			"title": "Eliminar Element",
+			"blockedTitle": "No es pot eliminar — en ús",
 			"message": "Estàs segur que vols eliminar aquest element?",
-			"confirm": "Eliminar"
+			"confirm": "Eliminar",
+			"blockedMessage": "Aquest element està referenciat per una o més bases de coneixement. Elimina'l de cadascuna abans d'esborrar-lo."
 		},
 		"importModal": {
 			"title": "Importar Contingut",

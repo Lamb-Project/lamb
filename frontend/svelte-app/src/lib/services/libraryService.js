@@ -266,6 +266,39 @@ export async function getItem(libraryId, itemId) {
 }
 
 /**
+ * Get the rendered markdown content of an item.
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @returns {Promise<string>} Raw markdown
+ */
+export async function getItemContent(libraryId, itemId) {
+    if (!browser) throw new Error('Browser only.');
+    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/content`);
+    const response = await axios.get(url, {
+        headers: authHeaders(),
+        params: { format: 'markdown' },
+        responseType: 'text',
+        transformResponse: (v) => v
+    });
+    return response.data;
+}
+
+/**
+ * Pre-check which Knowledge Stores reference an item — used before
+ * showing the delete-confirm modal so we can route directly to the
+ * blockers panel when the item is in use.
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @returns {Promise<{ item_id: string, knowledge_stores: Array<{ id: string, name: string, status: string }> }>}
+ */
+export async function getItemKbLinks(libraryId, itemId) {
+    if (!browser) throw new Error('Browser only.');
+    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/kb-links`);
+    const response = await axios.get(url, { headers: authHeaders() });
+    return response.data;
+}
+
+/**
  * Get the import status for an item.
  * @param {string} libraryId
  * @param {string} itemId

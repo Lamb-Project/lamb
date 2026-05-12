@@ -82,25 +82,32 @@
 		}
 	});
 
-	/** @param {string} libraryId */
+	// Race guard for rapid library switches (#370).
+	let loadSeq = 0;
+
+	/**
+	 * Load "ready" items for a library, dropping stale responses if a newer
+	 * load was issued before this one resolved. Pre-selects everything on
+	 * first visit; preserves the user's explicit selection otherwise.
+	 * @param {string} libraryId
+	 */
 	async function loadItems(libraryId) {
+		const mySeq = ++loadSeq;
 		loading = true;
 		error = '';
 		try {
 			const data = await getItems(libraryId, { limit: 200, status: 'ready' });
+			if (mySeq !== loadSeq) return;
 			items = data?.items ?? [];
-			// Pre-select all by default only on first visit. After the user
-			// has navigated past this step once (selectionInitialized=true),
-			// respect their selection — including the empty set from
-			// Deselect all + Back from Review.
 			if (selectedIds.size === 0 && !wizardState.selectionInitialized) {
 				selectedIds = new SvelteSet(items.map((i) => i.id));
 				dispatch('update', { selectionInitialized: true });
 			}
 		} catch (/** @type {unknown} */ err) {
+			if (mySeq !== loadSeq) return;
 			error = err instanceof Error ? err.message : 'Failed to load items';
 		} finally {
-			loading = false;
+			if (mySeq === loadSeq) loading = false;
 		}
 	}
 

@@ -930,6 +930,13 @@
 		"addContent": "Edukia Gehitu",
 		"export": "Esportatu",
 		"itemDeleteSuccess": "Elementua ezabatua.",
+		"viewContent": "Ikusi",
+		"itemContentModal": {
+			"title": "Elementuaren edukia",
+			"close": "Itxi",
+			"loadError": "Ezin izan da edukia kargatu.",
+			"empty": "Edukirik ez."
+		},
 		"detailTitle": "Liburutegiaren Xehetasunak",
 		"backButton": "Liburutegietara itzuli",
 		"items": {
@@ -961,8 +968,10 @@
 		},
 		"deleteItemModal": {
 			"title": "Elementua Ezabatu",
+			"blockedTitle": "Ezin da ezabatu — erabiltzen ari da",
 			"message": "Ziur zaude elementu hau ezabatu nahi duzula?",
-			"confirm": "Ezabatu"
+			"confirm": "Ezabatu",
+			"blockedMessage": "Elementu hau ezagutza-base batek baino gehiagok erreferentziatzen dute. Ezabatu aurretik kendu denetatik."
 		},
 		"importModal": {
 			"title": "Edukia Inportatu",

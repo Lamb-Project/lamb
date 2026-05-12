@@ -930,6 +930,13 @@
 		"addContent": "Add Content",
 		"export": "Export",
 		"itemDeleteSuccess": "Item deleted.",
+		"viewContent": "View",
+		"itemContentModal": {
+			"title": "Item Content",
+			"close": "Close",
+			"loadError": "Failed to load content.",
+			"empty": "No content."
+		},
 		"detailTitle": "Library Details",
 		"backButton": "Back to libraries",
 		"items": {
@@ -961,8 +968,10 @@
 		},
 		"deleteItemModal": {
 			"title": "Delete Item",
+			"blockedTitle": "Cannot delete — in use",
 			"message": "Are you sure you want to delete this item?",
-			"confirm": "Delete"
+			"confirm": "Delete",
+			"blockedMessage": "This item is referenced by one or more Knowledge Stores. Remove it from each before deleting."
 		},
 		"importModal": {
 			"title": "Import Content",

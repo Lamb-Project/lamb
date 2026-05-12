@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from typing import Optional
 
@@ -361,6 +362,39 @@ def get_item(
     with get_client() as client:
         data = client.get(f"/creator/libraries/{library_id}/items/{item_id}")
     format_output(data, ITEM_LIST_COLUMNS, fmt, detail_fields=ITEM_DETAIL_FIELDS)
+
+
+@app.command("item-content")
+def get_item_content(
+    library_id: str = typer.Argument(..., help="Library ID."),
+    item_id: str = typer.Argument(..., help="Item ID."),
+    format: str = typer.Option(
+        "markdown", "--format", "-f",
+        help="Content format: markdown or text.",
+    ),
+) -> None:
+    """Print the full content of an imported library item to stdout."""
+    if format not in ("markdown", "text"):
+        print_error(f"Invalid format '{format}'. Use 'markdown' or 'text'.")
+        raise typer.Exit(2)
+    try:
+        with get_client() as client:
+            content = client.get(
+                f"/creator/libraries/{library_id}/items/{item_id}/content",
+                params={"format": format},
+            )
+    except ApiError as exc:
+        if exc.status_code == 413:
+            print_error("Item is too large to print. Download the original instead.")
+            raise typer.Exit(2)
+        raise
+    if isinstance(content, str):
+        sys.stdout.write(content)
+        if not content.endswith("\n"):
+            sys.stdout.write("\n")
+    else:
+        from lamb_cli.output import print_json
+        print_json(content)
 
 
 @app.command("delete-item")
