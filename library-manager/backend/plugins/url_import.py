@@ -69,16 +69,18 @@ class UrlImportPlugin(LibraryImportPlugin):
 
         t0 = time.monotonic()
         try:
+            # firecrawl-py >= 2.x: crawl_url() → crawl(), kwargs not a params dict.
+            from firecrawl.v2.types import ScrapeOptions  # noqa: PLC0415
             app = FirecrawlApp(api_key=api_key, api_url=api_url)
-            crawl_params = {
-                "limit": limit,
-                "maxDepth": max_depth,
-                "scrapeOptions": {"formats": ["markdown"]},
-            }
-            if not crawl_domain:
-                crawl_params["allowExternalLinks"] = False
-
-            crawl_result = app.crawl_url(url, params=crawl_params, poll_interval=5)
+            crawl_result = app.crawl(
+                url,
+                limit=limit,
+                max_discovery_depth=max_depth,
+                crawl_entire_domain=crawl_domain,
+                allow_external_links=False,
+                scrape_options=ScrapeOptions(formats=["markdown"]),
+                poll_interval=5,
+            )
         except Exception as exc:
             raise RuntimeError(f"Firecrawl crawl failed for {url}: {exc}") from exc
 
@@ -109,13 +111,25 @@ class UrlImportPlugin(LibraryImportPlugin):
 
             if hasattr(doc, "markdown"):
                 page_md = doc.markdown or ""
-                page_url = getattr(doc, "url", "") or (
-                    getattr(doc, "metadata", {}) or {}
-                ).get("sourceURL", "")
-                page_title = (getattr(doc, "metadata", {}) or {}).get("title", "")
+                # firecrawl-py 2.x metadata is a Pydantic model (attrs);
+                # legacy dict form used camelCase (sourceURL). Handle both.
+                meta = getattr(doc, "metadata", None)
+                if meta is not None and not isinstance(meta, dict):
+                    page_url = (
+                        getattr(meta, "url", "")
+                        or getattr(meta, "source_url", "")
+                        or ""
+                    )
+                    page_title = getattr(meta, "title", "") or ""
+                elif isinstance(meta, dict):
+                    page_url = meta.get("sourceURL", "") or meta.get("source_url", "")
+                    page_title = meta.get("title", "")
+                page_url = page_url or getattr(doc, "url", "")
             elif isinstance(doc, dict):
                 page_md = doc.get("markdown", "")
-                page_url = doc.get("metadata", {}).get("sourceURL", "")
+                page_url = doc.get("metadata", {}).get("sourceURL", "") or doc.get(
+                    "metadata", {}
+                ).get("source_url", "")
                 page_title = doc.get("metadata", {}).get("title", "")
 
             if page_md.strip():
