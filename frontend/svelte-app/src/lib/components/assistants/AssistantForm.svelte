@@ -21,6 +21,7 @@
 import AssistantFormHeader from './AssistantFormHeader.svelte';
 import AssistantNameField from './AssistantNameField.svelte';
 import AssistantDescriptionField from './AssistantDescriptionField.svelte';
+import AssistantPromptFields from './AssistantPromptFields.svelte';
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
@@ -142,20 +143,6 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 	let successMessage = $state('');
 	
 	// Handler for template selection
-	function handleTemplateSelected(/** @type {any} */ template) {
-		// Only populate system_prompt and prompt_template
-		system_prompt = template.system_prompt || '';
-		prompt_template = template.prompt_template || '';
-		// Mark form as dirty since we're making changes
-		formDirty = true;
-	}
-	
-	// Handler to open template selection modal
-	function handleLoadTemplate() {
-		openTemplateSelectModal(handleTemplateSelected);
-	} 
-
-	// Initialize with default, will be set correctly by populate/reset functions later
 	let ragProcessor = $state('simple_rag'); 
 	let isProcessing = $state(false);
 	let serverError = $state('');
@@ -167,27 +154,8 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 	let formDirty = $state(false);
 	let previousAssistantId = $state(null);
 
-	/** @type {HTMLTextAreaElement | null} */
-	let textareaRef = $state(null);
 	/** @type {string[]} */
 	let ragPlaceholders = $state([]);  // Initialize as empty array to be filled from config
-	// Plain text placeholder to avoid template interpolation issues
-	const promptPlaceholderText = "e.g. Use the {context} to answer the question: {user_input}";
-
-	/**
-	 * Determines if a field should be editable based on current form state
-	 * @param {string} fieldName - The name of the field to check
-	 * @returns {boolean} Whether the field should be editable
-	 */
-	function isFieldEditable(fieldName) {
-		// In create mode, all fields are editable
-		if (formState === 'create') return true;
-		
-		// In edit mode, certain fields may be restricted
-		// Add specific field restrictions here if needed
-		// For now, make all fields editable
-		return true;
-	}
 
 	/**
 	 * Mark form as dirty when user makes changes
@@ -205,32 +173,6 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 	 * @param {string} text - The text to process
 	 * @returns {string} HTML string with highlighted placeholders
 	 */
-	function highlightPlaceholders(text) {
-		if (!text) return '';
-		let result = text;
-		// Escape HTML to prevent XSS
-		result = result.replace(/&/g, '&amp;')
-					  .replace(/</g, '&lt;')
-					  .replace(/>/g, '&gt;')
-					  .replace(/"/g, '&quot;')
-					  .replace(/'/g, '&#039;');
-		
-		// Replace placeholders with highlighted spans
-		for (const placeholder of ragPlaceholders) {
-			const escapedPlaceholder = placeholder.replace(/&/g, '&amp;')
-											   .replace(/</g, '&lt;')
-											   .replace(/>/g, '&gt;')
-											   .replace(/"/g, '&quot;')
-											   .replace(/'/g, '&#039;');
-			
-			result = result.replace(
-				new RegExp(escapedPlaceholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), 
-				`<span class="bg-blue-100 text-blue-800 font-medium px-1 rounded">${escapedPlaceholder}</span>`
-			);
-		}
-		return result;
-	}
-
 	// --- Store Integration and Initialization ---
 	$effect(() => {
 		console.log('AssistantForm.svelte: $effect (assistant prop) running...');
@@ -1248,22 +1190,6 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 		inputElement.value = '';
 	}
 
-	/** @param {string} placeholder */
-	function insertPlaceholder(placeholder) {
-		if (textareaRef) {
-			const start = textareaRef.selectionStart;
-			const end = textareaRef.selectionEnd;
-			const text = prompt_template;
-			prompt_template = text.substring(0, start) + placeholder + text.substring(end);
-			textareaRef.focus();
-			tick().then(() => {
-				if (textareaRef) {
-					textareaRef.selectionStart = textareaRef.selectionEnd = start + placeholder.length;
-				}
-			});
-		}
-	}
-
 </script>
 
 	<div class="p-4 md:p-6 border rounded-md shadow-sm bg-white">
@@ -1306,68 +1232,17 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 						onchange={handleFieldChange}
 					/>
 
-				<!-- System Prompt -->
-				<div>
-					<div class="flex items-center justify-between mb-2">
-						<label for="system-prompt" class="block text-sm font-medium text-gray-700">{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}</label>
-						{#if formState === 'create'}
-							<button
-								type="button"
-								onclick={handleLoadTemplate}
-								class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
-							>
-								<svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-								</svg>
-								{$_('promptTemplates.loadTemplate', { default: 'Load Template' })}
-							</button>
-						{/if}
-					</div>
-				<textarea id="system-prompt" name="system_prompt" bind:value={system_prompt} oninput={handleFieldChange} rows="4"
-						  disabled={false}
-						  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
-						  placeholder={$_('assistants.form.systemPrompt.placeholder', { default: 'Define the assistant\'s role and personality...' })}></textarea>
-				</div>
-
-					<!-- Prompt Template -->
-					<div>
-						<label for="prompt-template" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptTemplate.label', { default: 'Prompt Template' })}</label>
-						<div class="mt-1 mb-2">
-							<span class="text-xs text-gray-600 dark:text-gray-400">{$_('insert_placeholder') || 'Insert placeholder:'}:</span>
-							{#each ragPlaceholders as placeholder}
-								<button type="button"
-									class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand"
-									onclick={() => insertPlaceholder(placeholder)}
-								>
-									{placeholder}
-								</button>
-							{/each}
-						</div>
-				<textarea 
-					bind:this={textareaRef}
-					bind:value={prompt_template}
-					oninput={handleFieldChange}
-					id="prompt_template" 
-					rows="6"
-					class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
-					placeholder={promptPlaceholderText}
-					disabled={!isFieldEditable('prompt_template')}
-				></textarea>
-
-						<!-- Add preview box with highlighted placeholders -->
-						{#if prompt_template}
-							<div class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-								<div class="text-xs text-gray-500 mb-1">{$_('preview') || 'Preview with highlighted placeholders:'}</div>
-								<div class="whitespace-pre-wrap" data-testid="prompt-preview">
-									{@html highlightPlaceholders(prompt_template)}
-								</div>
-							</div>
-						{/if}
-
-						{#if selectedPromptProcessor === 'template_validator_processor'}
-							<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.promptTemplate.help', { default: 'This processor requires a valid prompt template.' })}</p>
-						{/if}
-					</div>
+				<AssistantPromptFields
+					bind:systemPrompt={system_prompt}
+					bind:promptTemplate={prompt_template}
+					{ragPlaceholders}
+					{selectedPromptProcessor}
+					{formState}
+					onchange={handleFieldChange}
+					onTemplateApplied={() => {
+						formDirty = true;
+					}}
+				/>
 
 					<!-- Rubric Selector (Moved below prompt template) -->
 					{#if showRubricSelector}
@@ -1903,6 +1778,6 @@ import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 	{/if} 
 
 	<!-- Template Selection Modal -->
-	<TemplateSelectModal onSelect={handleTemplateSelected} />
+	<TemplateSelectModal />
 
 </div> 
