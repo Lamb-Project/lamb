@@ -1,5 +1,4 @@
 <script>
-	console.log('AssistantForm.svelte: Initializing script...'); // Log component init
 	// Placeholder for Assistant Creation Form
 	import { _ } from '$lib/i18n';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore'; // Import the store
@@ -8,15 +7,8 @@
 	import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
-	import { goto } from '$app/navigation'; // Import for redirect
-	import { base } from '$app/paths'; // Import base path
-	import { onMount, onDestroy } from 'svelte';
-	import { getSystemCapabilities } from '$lib/services/assistantService'; // Import service
-	import { apiFetch } from '$lib/services/apiClient';
-	import { locale } from '$lib/i18n';
+	import { onDestroy } from 'svelte';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
-	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
-	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
 import { extractModelsFromConnectorData, getAuthToken, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
@@ -42,13 +34,12 @@ import FormActions from './FormActions.svelte';
 		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
 		onCancel = /** @type {() => void} */ (() => {})
 	} = $props(); 
-	console.log(`[AssistantForm] Received props: assistant=${!!assistant}, startInEdit=${startInEdit}`); // Log received props
 
 	// --- Component State ---
 	/** @type {'edit' | 'create'} */
 	// Initialize formState based on assistant and startInEdit prop
 	let initialMode = assistant ? 'edit' : 'create';
-	console.log(`[AssistantForm] Calculated initialMode: ${initialMode}`); // Log calculated initial mode
+
 	let formState = $state(initialMode); 
 	/** @type {any | null} */ // Store initial data for cancel/revert
 	let initialAssistantData = $state(null); 
@@ -127,7 +118,6 @@ import FormActions from './FormActions.svelte';
 	let configPanel = $state(null);
 	let availableModels = $derived(configPanel?.getAvailableModels() || []);
 
-
 	// Loading/error/success state
 	let formError = $state('');
 	let formLoading = $state(false); 
@@ -135,11 +125,7 @@ import FormActions from './FormActions.svelte';
 	let successMessage = $state('');
 	
 	// Handler for template selection
-	let ragProcessor = $state('simple_rag'); 
-	let isProcessing = $state(false);
-	let serverError = $state('');
 	let importError = $state(''); // State for import errors
-	let localeLoaded = $state(false);
 
 	// Form dirty state tracking to prevent overwriting user edits
 	// See: Documentation/lamb_architecture.md Section 16.1
@@ -155,7 +141,7 @@ import FormActions from './FormActions.svelte';
 	 */
 	function handleFieldChange() {
 		if (!formDirty) {
-			console.log('[AssistantForm] Form marked as dirty - user made changes');
+
 		}
 		formDirty = true;
 	}
@@ -167,7 +153,6 @@ import FormActions from './FormActions.svelte';
 	 */
 	// --- Store Integration and Initialization ---
 	$effect(() => {
-		console.log('AssistantForm.svelte: $effect (assistant prop) running...');
 
 		const assistantIdChanged = assistant?.id !== initialAssistantData?.id;
 		const assistantNullStatusChanged = (assistant === null && initialAssistantData !== null) || (assistant !== null && initialAssistantData === null);
@@ -180,27 +165,22 @@ import FormActions from './FormActions.svelte';
 			 assistant.description !== initialAssistantData.description);
 
 		if (assistantIdChanged || assistantNullStatusChanged || assistantDataChanged) {
-			console.log(`[AssistantForm] Assistant change detected (ID changed: ${assistantIdChanged}, Null status changed: ${assistantNullStatusChanged}, Data changed: ${assistantDataChanged})`);
-			if (assistant) {
-				console.log('[AssistantForm] Assistant prop received or changed:', assistant);
-				console.log('Assistant prop received or changed:', assistant);
-				initialAssistantData = { ...assistant };
-				console.log('Stored initial assistant data:', initialAssistantData);
-				// Always set to edit mode when assistant changes
-				formState = 'edit';
-				console.log(`Initial formState set to: ${formState}`);
 
-				// Track assistant ID for dirty state management
+			if (assistant) {
+
+				initialAssistantData = { ...assistant };
+
+				formState = 'edit';
+
 				previousAssistantId = assistant.id;
 				// Reset dirty state when loading a different assistant
 				formDirty = false;
-				console.log('[AssistantForm] Loading new assistant, formDirty reset to false');
 
 				populateFormFields(assistant);
 				formError = '';
 				successMessage = '';
 			} else {
-				console.log('No assistant prop, setting create mode.');
+
 				formState = 'create';
 				initialAssistantData = null;
 				previousAssistantId = null;
@@ -216,11 +196,10 @@ import FormActions from './FormActions.svelte';
 			// Configuration dropdowns (connector, llm, rag processor, etc.) should only be
 			// populated on initial load or explicit assistant change (handled above)
 			if (assistant && !formDirty) {
-				console.log('[AssistantForm] Skipping full repopulation - form is clean but only assistant reference changed. Protecting user selections.');
-				// We intentionally do NOT call populateFormFields here to protect dropdown selections
+
 				// The only case where we'd repopulate is on actual ID change (handled above)
 			} else if (assistant && formDirty) {
-				console.log('[AssistantForm] Skipping repopulation - form is dirty (user has unsaved changes)');
+
 			}
 		}
 	});
@@ -228,30 +207,26 @@ import FormActions from './FormActions.svelte';
 	// Effect for loading config and applying defaults
 	$effect.pre(() => {
 		if (!configInitialized && !$assistantConfigStore.loading && !$assistantConfigStore.systemCapabilities) {
-			console.log('AssistantForm.svelte: $effect.pre - Explicitly calling loadConfig()...');
+
 			assistantConfigStore.loadConfig();
 		}
 
 		const unsubscribe = assistantConfigStore.subscribe(state => {
-			// console.log(`AssistantForm.svelte: Store subscribed - State (Loading: ${state.loading}, Caps: ${!!state.systemCapabilities}, Defaults: ${!!state.configDefaults}, Initialized: ${configInitialized})`);
 
 			if (!state.loading && state.systemCapabilities && state.configDefaults && !configInitialized) {
 				const capabilities = state.systemCapabilities;
-				
-				console.log('Populating dropdown options from capabilities...');
+
 				promptProcessors = capabilities.prompt_processors || [];
 				connectorsList = Object.keys(capabilities.connectors || {});
 				ragProcessors = capabilities.rag_processors || [];
-				// console.log('Options populated:', { promptProcessors, connectorsList, ragProcessors });
 
 				configInitialized = true; 
 
 				if (formState === 'create') {
-					console.log('Applying defaults for CREATE mode...');
+
 					resetFormFieldsToDefaults(); // Use helper
 				} else {
-					console.log('Config loaded for VIEW/EDIT mode. Repopulating fields.');
-					// Use initialAssistantData here as assistant prop might not be stable yet
+
 					populateFormFields(initialAssistantData); 
 				}
 			}
@@ -265,11 +240,10 @@ import FormActions from './FormActions.svelte';
 		// Apply pending selections AFTER fetch completes (not just when arrays have items)
 		// This handles cases where user has no KBs or KBs were deleted
 		if (pendingKBSelections !== null && kbFetchAttempted && !loadingKnowledgeBases) {
-			console.log('Effect: KB fetch complete, applying pending selections:', pendingKBSelections);
-			console.log('Effect: Available KBs - Owned:', ownedKnowledgeBases.length, 'Shared:', sharedKnowledgeBases.length);
+
 			selectedKnowledgeBases = pendingKBSelections;
 			pendingKBSelections = null; // Clear pending state
-			console.log('Effect: KB selections applied:', selectedKnowledgeBases);
+
 		}
 	});
 
@@ -299,7 +273,7 @@ import FormActions from './FormActions.svelte';
 		// Reset name/description only if truly starting fresh?
 		// name = '';
 		// description = ''; 
-		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor, availableModels });
+
 		if (isKbBasedRag(selectedRagProcessor)) {
 			tick().then(fetchKnowledgeBases);
 		}
@@ -316,7 +290,7 @@ import FormActions from './FormActions.svelte';
 		formState = 'edit';
 		formError = '';
 		successMessage = '';
-		console.log('Switched to EDIT mode');
+
 	}
 
 	function switchToViewMode() {
@@ -326,12 +300,10 @@ import FormActions from './FormActions.svelte';
 		}
 		// Reset dirty state when canceling (user discarded changes)
 		formDirty = false;
-		console.log('[AssistantForm] User canceled changes, formDirty reset to false');
+
 		formError = '';
 		successMessage = '';
-		console.log('Switched back to VIEW mode');
-		
-		// Notify parent
+
 		onCancel();
 	}
 
@@ -348,8 +320,7 @@ import FormActions from './FormActions.svelte';
 	 */
 	function populateFormFields(data, preserveDescription = false) {
 		if (!data) return;
-		console.log('[populateFormFields] Called with data:', data);
-		console.log('[populateFormFields] configInitialized:', configInitialized);
+
 		const metadata = getAssistantMetadataObject(data);
 		
 		name = data.name?.replace(/^\d+_/, '') || '';
@@ -364,19 +335,13 @@ import FormActions from './FormActions.svelte';
 		if (configInitialized) {
 			// Read plugin settings from top-level fields first, then fallback to metadata.
 			selectedPromptProcessor = data.prompt_processor || metadata.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
-			console.log('[populateFormFields] Set selectedPromptProcessor:', selectedPromptProcessor);
-			
+
 			selectedConnector = data.connector || metadata.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
-			console.log('[populateFormFields] Set selectedConnector:', selectedConnector);
-			
+
 			selectedRagProcessor = data.rag_processor || metadata.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
-			console.log('[populateFormFields] Set selectedRagProcessor:', selectedRagProcessor);
-			
-			// Update available models based on the selected connector
+
 			configPanel?.updateAvailableModels();
-			console.log('[populateFormFields] Updated availableModels:', availableModels);
-			
-			// Set LLM - use the shared selector
+
 			const targetLlm = data.llm || metadata.llm;
 			selectedLlm = createModelSelector(targetLlm, availableModels);
 
@@ -389,11 +354,9 @@ import FormActions from './FormActions.svelte';
 			if (isKbBasedRag(selectedRagProcessor)) {
 				// Store selections to be applied later
 				pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
-				console.log('Populate: Stored pending KB selections:', pendingKBSelections);
-				
-				// Trigger fetch if needed (don't wait)
+
 				if (!kbFetchAttempted && !loadingKnowledgeBases) {
-					console.log('Populate: Triggering KB fetch');
+
 					tick().then(fetchKnowledgeBases);
 				}
 			} else {
@@ -409,7 +372,7 @@ import FormActions from './FormActions.svelte';
 
 					// Fetch rubrics if needed
 					if (!rubricsFetchAttempted && !loadingRubrics) {
-						console.log('Populate: Triggering rubrics fetch');
+
 						tick().then(fetchRubricsList);
 					}
 				} catch (e) {
@@ -423,8 +386,7 @@ import FormActions from './FormActions.svelte';
 			try {
 				visionEnabled = metadata?.capabilities?.vision || false;
 				imageGenerationEnabled = metadata?.capabilities?.image_generation || false;
-				console.log('Populate: Vision capability loaded:', visionEnabled);
-				console.log('Populate: Image generation capability loaded:', imageGenerationEnabled);
+
 			} catch (e) {
 				console.warn('Failed to parse vision capability from metadata:', e);
 				visionEnabled = false;
@@ -435,30 +397,21 @@ import FormActions from './FormActions.svelte';
 		} else {
 			console.warn('[populateFormFields] Config not initialized yet, skipping dropdown population');
 		}
-		console.log('[populateFormFields] Complete. Final values:', { 
-			name, 
-			description: description.substring(0, 50) + '...', 
-			selectedPromptProcessor, 
-			selectedConnector, 
-			selectedLlm, 
-			selectedRagProcessor 
-		});
 	}
 
 	/** Fetches accessible knowledge bases */
 	async function fetchKnowledgeBases() {
 		// Prevent fetch if already loading OR if already attempted for this selection
 		if (loadingKnowledgeBases || kbFetchAttempted) {
-			console.log(`Skipping KB fetch (Loading: ${loadingKnowledgeBases}, Attempted: ${kbFetchAttempted})`);
+
 			return;
 		}
 		// Ensure we actually need KBs
 		if (!isKbBasedRag(selectedRagProcessor)) {
-			console.log('Skipping KB fetch (RAG processor is not simple_rag, context_aware_rag, or hierarchical_rag)');
+
 			return;
 		}
 
-		console.log('Fetching knowledge bases...');
 		loadingKnowledgeBases = true;
 		knowledgeBaseError = '';
 		// Don't clear selected KBs here on refetch
@@ -496,7 +449,7 @@ import FormActions from './FormActions.svelte';
 			if (isMounted) {
 				loadingKnowledgeBases = false;
 				kbFetchAttempted = true;
-				console.log(`KB Fetch complete (Attempted: ${kbFetchAttempted}, Error: '${knowledgeBaseError}', Owned: ${ownedKnowledgeBases.length}, Shared: ${sharedKnowledgeBases.length})`);
+
 			}
 		}
 	}
@@ -504,16 +457,15 @@ import FormActions from './FormActions.svelte';
 	async function fetchRubricsList() {
 		// Prevent fetch if already loading OR if already attempted for this selection
 		if (loadingRubrics || rubricsFetchAttempted) {
-			console.log(`Skipping rubrics fetch (Loading: ${loadingRubrics}, Attempted: ${rubricsFetchAttempted})`);
+
 			return;
 		}
 		// Ensure we actually need rubrics
 		if (!isRubricRag(selectedRagProcessor)) {
-			console.log('Skipping rubrics fetch (RAG processor is not rubric_rag)');
+
 			return;
 		}
 
-		console.log('Fetching accessible rubrics...');
 		loadingRubrics = true;
 		rubricError = '';
 
@@ -521,7 +473,7 @@ import FormActions from './FormActions.svelte';
 			const response = await fetchAccessibleRubrics();
 			const rubrics = response.rubrics || [];
 			accessibleRubrics = rubrics;
-			console.log(`Loaded ${rubrics.length} accessible rubrics`);
+
 		} catch (err) {
 			console.error('Error fetching accessible rubrics:', err);
 			rubricError = err instanceof Error ? err.message : 'Failed to load rubrics';
@@ -529,18 +481,17 @@ import FormActions from './FormActions.svelte';
 		} finally {
 			loadingRubrics = false;
 			rubricsFetchAttempted = true; // Mark fetch as attempted
-			console.log(`Rubrics Fetch complete (Attempted: ${rubricsFetchAttempted}, Error: '${rubricError}', Count: ${accessibleRubrics.length})`);
+
 		}
 	}
 
 	/** Fetches the user's files from the server */
 	async function fetchUserFiles() {
 		if (loadingFiles) {
-			console.log('Skipping files fetch (already loading)');
+
 			return;
 		}
 
-		console.log('Fetching user files...');
 		loadingFiles = true;
 		fileError = '';
 
@@ -579,8 +530,7 @@ import FormActions from './FormActions.svelte';
 			if (callbackData.file_path && userFiles.some(file => file.path === callbackData.file_path)) {
 				selectedFilePath = callbackData.file_path;
 			}
-			
-			console.log(`Fetched ${userFiles.length} files`);
+
 		} catch (err) {
 			console.error('Error fetching user files:', err);
 			fileError = err instanceof Error ? err.message : 'Failed to load files';
@@ -599,36 +549,36 @@ import FormActions from './FormActions.svelte';
 	
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
 	$effect(() => {
-		console.log(`Effect: RAG processor changed to ${selectedRagProcessor}`);
+
 		if ((isKbBasedRag(selectedRagProcessor)) && configInitialized) {
 			// Trigger fetch only if we land on simple_rag, context_aware_rag, or hierarchical_rag and haven't attempted the fetch yet
-			console.log(`Effect: Checking KB fetch need (Attempted: ${kbFetchAttempted})`);
+
 			if (!kbFetchAttempted && !loadingKnowledgeBases) { // Check attempted flag, ignore error here
-				console.log('Effect: Conditions met (simple_rag/context_aware_rag/hierarchical_rag, not attempted), calling fetchKnowledgeBases()');
+
 				fetchKnowledgeBases();
 			} else {
-				console.log('Effect: Skipping KB fetch (already attempted or loading).');
+
 			}
 		} else if (isSingleFileRag(selectedRagProcessor) && configInitialized) {
 			// Fetch files when switching to single_file_rag
 			if (!filesFetchAttempted && !loadingFiles) {
-				console.log('Effect: Conditions met (single_file_rag, not attempted), calling fetchUserFiles()');
+
 				fetchUserFiles();
 			} else {
-				console.log('Effect: Skipping files fetch (already attempted or loading).');
+
 			}
 		} else if (isRubricRag(selectedRagProcessor) && configInitialized) {
 			// Fetch rubrics when switching to rubric_rag
 			if (!rubricsFetchAttempted && !loadingRubrics) {
-				console.log('Effect: Conditions met (rubric_rag, not attempted), calling fetchRubricsList()');
+
 				tick().then(fetchRubricsList);
 			} else {
-				console.log('Effect: Skipping rubrics fetch (already attempted or loading).');
+
 			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
 			if (accessibleKnowledgeBases.length > 0 || selectedKnowledgeBases.length > 0 || knowledgeBaseError || kbFetchAttempted) {
-				console.log('Effect: Clearing KB state and fetch attempt flag');
+
 				ownedKnowledgeBases = [];
 				sharedKnowledgeBases = [];
 				selectedKnowledgeBases = [];
@@ -740,13 +690,12 @@ import FormActions from './FormActions.svelte';
 			/** @type {AssistantResponse} */
 			let response;
 			if (formState === 'edit' && initialAssistantData?.id) { // Check formState and ID from initial data
-				console.log('Submitting UPDATE for assistant:', initialAssistantData.id, assistantDataPayload);
+
 				const updateResponse = await updateAssistant(initialAssistantData.id.toString(), assistantDataPayload); // Ensure ID is string
 				successMessage = 'Assistant updated successfully!';
 				// Reset dirty state after successful save
 				formDirty = false;
-				console.log('[AssistantForm] Changes saved successfully, formDirty reset to false');
-				// After update, store the updated data as the new initial state
+
 				// and stay in edit mode. The parent page handles list refresh via the event.
 				// Preserve the original metadata structure (object) instead of using the payload's stringified version
 				initialAssistantData = {
@@ -765,7 +714,7 @@ import FormActions from './FormActions.svelte';
 				successMessage = 'Assistant created successfully!';
 				// Reset dirty state after successful create
 				formDirty = false;
-				console.log('[AssistantForm] Assistant created successfully, formDirty reset to false');
+
 				onFormSuccess({ assistantId: createResponse.assistant_id });
 			} else {
 				throw new Error('Invalid form state for submission.');
@@ -793,9 +742,7 @@ import FormActions from './FormActions.svelte';
 
 		if (files && files.length > 0) {
 			const file = files[0];
-			console.log('Selected file:', file.name, file.type, file.size);
 
-			// Basic validation
 			if (file.type !== 'application/json' && !file.name.toLowerCase().endsWith('.json')) {
 				importError = $_('assistants.form.import.invalidFile', { default: 'Invalid file type. Please select a .json file.' });
 				console.error(importError);
@@ -808,20 +755,14 @@ import FormActions from './FormActions.svelte';
 			reader.onload = async (e) => {
 				const content = e.target?.result;
 				if (typeof content === 'string') {
-					console.log('--- Imported Assistant JSON Content ---');
-					console.log('-------------------------------------');
 
-					// Use extracted pure validator
 					const storeState = get(assistantConfigStore);
 					const capabilities = storeState.systemCapabilities;
 					const { parsedData, callbackData, validationLog, hasErrors } = validateImportedAssistant(
 						content, capabilities, extractModelsFromConnectorData
 					);
 
-					// --- Log Validation Summary ---
-					console.log('--- Assistant Import Validation Results ---');
-					validationLog.forEach(log => console.log(log));
-					console.log('-------------------------------------------');
+					// --- Validation Summary ---
 
 					if (!hasErrors && parsedData && callbackData) {
 						try {
@@ -852,22 +793,22 @@ import FormActions from './FormActions.svelte';
 							selectedFilePath = ''; // Clear file path if switching to simple RAG, context_aware_rag, or hierarchical_rag
 							// Fetch KBs BEFORE setting selections
 							if (!kbFetchAttempted) {
-								console.log('Import: Awaiting KB fetch to complete before setting selections');
+
 								await fetchKnowledgeBases(); // ✅ WAIT for KBs to load
 							}
 							// NOW set selections when KB list is ready
 							selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
-							console.log('Import: KB selections set after fetch:', selectedKnowledgeBases);
+
 						} else if (isSingleFileRag(selectedRagProcessor)) {
 							selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
 							// Fetch files BEFORE setting selection
 							if (!filesFetchAttempted) {
-								console.log('Import: Awaiting files fetch to complete before setting selection');
+
 								await fetchUserFiles(); // ✅ WAIT for files to load
 							}
 							// NOW set selection when file list is ready
 							selectedFilePath = callbackData.file_path || '';
-							console.log('Import: File selection set after fetch:', selectedFilePath);
+
 						} else { // No RAG
 							selectedKnowledgeBases = [];
 							selectedFilePath = '';
