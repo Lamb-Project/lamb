@@ -14,7 +14,9 @@
 		deleteItem,
 		getItemStatus,
 		exportLibrary,
-		toggleSharing
+		toggleSharing,
+		getItemContent,
+		getItemKbLinks
 	} from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
 	import {
@@ -23,6 +25,7 @@
 	} from '$lib/services/knowledgeStoreService';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import ImportModal from '$lib/components/modals/ImportModal.svelte';
+	import ItemContentModal from '$lib/components/libraries/ItemContentModal.svelte';
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
 	function readableError(err, fallback) {
@@ -80,6 +83,14 @@
 	/** @type {{ id: string, name: string, contentCount: number|null, removing: boolean }[]} */
 	let deleteItemBlockers = $state([]);
 	let deleteItemTarget = $state({ id: '', title: '' });
+
+	// View item content modal
+	let showItemContentModal = $state(false);
+	let isLoadingItemContent = $state(false);
+	let itemContentTarget = $state({ id: '', title: '' });
+	let itemContent = $state('');
+	/** @type {string|null} */
+	let itemContentError = $state(null);
 
 	// Import modal ref
 	let importModal;
@@ -289,18 +300,78 @@
 		}
 	}
 
+	// View item content
+	async function requestViewItem(item) {
+		itemContentTarget = { id: item.id, title: item.title };
+		itemContent = '';
+		itemContentError = null;
+		showItemContentModal = true;
+		isLoadingItemContent = true;
+		try {
+			itemContent = await getItemContent(libraryId, item.id);
+		} catch (/** @type {unknown} */ err) {
+			itemContentError = err instanceof Error
+				? err.message
+				: $_('libraries.itemContentModal.loadError', { default: 'Failed to load content.' });
+		} finally {
+			isLoadingItemContent = false;
+		}
+	}
+
 	// Import callback
 	async function handleImported() {
 		showSuccess($_('libraries.importSuccess', { default: 'Import started.' }));
 		await refreshItems();
 	}
 
-	// Delete item
-	function requestDeleteItem(item) {
+	/**
+	 * Open the delete modal in either "blocked" (KS references found) or
+	 * "confirm" mode based on a pre-flight kb-links lookup. Falls through to
+	 * confirm mode if the pre-check itself fails — the delete handler still
+	 * enforces FR-10 with the 409 fallback below.
+	 * @param {{ id: string, title: string }} item
+	 */
+	async function requestDeleteItem(item) {
 		deleteItemTarget = { id: item.id, title: item.title };
 		deleteItemError = '';
 		deleteItemBlockers = [];
+		try {
+			const links = await getItemKbLinks(libraryId, item.id);
+			const referenced = Array.isArray(links?.knowledge_stores) ? links.knowledge_stores : [];
+			if (referenced.length > 0) {
+				deleteItemError = $_('libraries.deleteItemModal.blockedMessage', {
+					default:
+						'This item is referenced by one or more Knowledge Stores. Remove it from each before deleting.'
+				});
+				deleteItemBlockers = referenced.map((k) => ({
+					id: String(k?.id || ''),
+					name: k?.name || k?.id || 'Knowledge Store',
+					contentCount: /** @type {number|null} */ (null),
+					removing: false
+				}));
+				await enrichBlockersWithCounts();
+			}
+		} catch (/** @type {unknown} */ err) {
+			console.warn('kb-links pre-check failed; falling back to delete-time check', err);
+		}
 		showDeleteItemModal = true;
+	}
+
+	/** Add `content_count` to each blocker row from the KS list, best-effort. */
+	async function enrichBlockersWithCounts() {
+		try {
+			const allKs = await getKnowledgeStores();
+			const byId = new Map(allKs.map((k) => [k.id, k]));
+			deleteItemBlockers = deleteItemBlockers.map((b) => {
+				const full = byId.get(b.id);
+				return {
+					...b,
+					contentCount: typeof full?.content_count === 'number' ? full.content_count : null
+				};
+			});
+		} catch (e) {
+			console.warn('Could not enrich blockers with content counts', e);
+		}
 	}
 
 	async function handleDeleteItemConfirm() {
@@ -313,12 +384,8 @@
 			showSuccess($_('libraries.itemDeleteSuccess', { default: 'Item deleted.' }));
 			await refreshItems();
 		} catch (/** @type {unknown} */ err) {
-			// FR-10: a 409 with a structured ``detail`` lists the Knowledge
-			// Stores still referencing this item. Show them in their own
-			// section with a Remove button per row so the user can clear
-			// the references inline and retry the delete without leaving
-			// the dialog. Falls back to a plain error string for any other
-			// failure shape.
+			// FR-10 fallback: if the pre-check missed (e.g. raced with a new
+			// link), the 409 from DELETE carries the same blockers shape.
 			console.error('deleteItem failed', err);
 			const isAxios = !!(err && typeof err === 'object' && /** @type {any} */ (err).isAxiosError);
 			const status = isAxios ? /** @type {any} */ (err).response?.status : null;
@@ -326,28 +393,13 @@
 			if (status === 409 && detail && typeof detail === 'object') {
 				deleteItemError = typeof detail.message === 'string' ? detail.message : 'Delete failed';
 				const referenced = Array.isArray(detail.knowledge_stores) ? detail.knowledge_stores : [];
-				const initial = referenced.map((k) => ({
+				deleteItemBlockers = referenced.map((k) => ({
 					id: String(k?.id || ''),
 					name: k?.name || k?.id || 'Knowledge Store',
 					contentCount: /** @type {number|null} */ (null),
 					removing: false
 				}));
-				deleteItemBlockers = initial;
-				// Enrich with content counts asynchronously so the rows can
-				// render immediately and the count fades in once available.
-				try {
-					const allKs = await getKnowledgeStores();
-					const byId = new Map(allKs.map((k) => [k.id, k]));
-					deleteItemBlockers = deleteItemBlockers.map((b) => {
-						const full = byId.get(b.id);
-						return {
-							...b,
-							contentCount: typeof full?.content_count === 'number' ? full.content_count : null
-						};
-					});
-				} catch (e) {
-					console.warn('Could not enrich blockers with content counts', e);
-				}
+				await enrichBlockersWithCounts();
 			} else {
 				deleteItemError = readableError(err, 'Delete failed');
 			}
@@ -607,11 +659,9 @@
 								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
 									>{$_('libraries.items.created', { default: 'Created' })}</th
 								>
-								{#if isOwner}
-									<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"
-										>{$_('libraries.actions', { default: 'Actions' })}</th
-									>
-								{/if}
+								<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"
+									>{$_('libraries.actions', { default: 'Actions' })}</th
+								>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-gray-200 bg-white">
@@ -635,8 +685,17 @@
 										</span>
 									</td>
 									<td class="px-4 py-3 text-sm text-gray-500">{formatDate(item.created_at)}</td>
-									{#if isOwner}
-										<td class="px-4 py-3 text-right">
+									<td class="px-4 py-3 text-right whitespace-nowrap">
+										{#if item.status === 'completed' || item.status === 'ready'}
+											<button
+												type="button"
+												onclick={() => requestViewItem(item)}
+												class="mr-4 text-sm text-blue-600 hover:text-blue-900"
+											>
+												{$_('libraries.viewContent', { default: 'View' })}
+											</button>
+										{/if}
+										{#if isOwner}
 											<button
 												type="button"
 												onclick={() => requestDeleteItem(item)}
@@ -644,8 +703,8 @@
 											>
 												{$_('libraries.delete', { default: 'Delete' })}
 											</button>
-										</td>
-									{/if}
+										{/if}
+									</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -670,16 +729,32 @@
 		default: 'Remove from KS'
 	})}
 	onRemoveBlocker={handleRemoveBlocker}
-	title={$_('libraries.deleteItemModal.title', { default: 'Delete Item' })}
-	message={$_('libraries.deleteItemModal.message', {
-		default: `Are you sure you want to delete "${deleteItemTarget.title}"?`
-	})}
+	title={deleteItemBlockers.length > 0
+		? $_('libraries.deleteItemModal.blockedTitle', { default: 'Cannot delete — in use' })
+		: $_('libraries.deleteItemModal.title', { default: 'Delete Item' })}
+	message={deleteItemBlockers.length > 0
+		? ''
+		: $_('libraries.deleteItemModal.message', {
+				default: `Are you sure you want to delete "${deleteItemTarget.title}"?`
+			})}
 	confirmText={$_('libraries.deleteItemModal.confirm', { default: 'Delete' })}
+	hideConfirm={deleteItemBlockers.length > 0}
 	variant="danger"
 	onconfirm={handleDeleteItemConfirm}
 	oncancel={() => {
 		showDeleteItemModal = false;
 		deleteItemError = '';
 		deleteItemBlockers = [];
+	}}
+/>
+
+<ItemContentModal
+	bind:isOpen={showItemContentModal}
+	bind:isLoading={isLoadingItemContent}
+	title={itemContentTarget.title}
+	content={itemContent}
+	error={itemContentError}
+	onclose={() => {
+		showItemContentModal = false;
 	}}
 />

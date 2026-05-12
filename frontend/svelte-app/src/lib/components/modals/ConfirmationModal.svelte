@@ -26,6 +26,9 @@
 		confirmText = '',
 		cancelText = '',
 		variant = 'danger', // 'danger' | 'warning' | 'info'
+		// Hide the primary Confirm button (e.g. when the modal is opened in
+		// "blocked" mode and the action is currently impossible).
+		hideConfirm = false,
 		onconfirm = () => {},
 		oncancel = () => {}
 	} = $props();
@@ -180,9 +183,11 @@
 
 			<!-- Modal Body -->
 			<div class="px-4 py-5 sm:p-6">
-				<p class="text-sm break-words whitespace-pre-line text-gray-700">
-					{message}
-				</p>
+				{#if message}
+					<p class="text-sm break-words whitespace-pre-line text-gray-700">
+						{message}
+					</p>
+				{/if}
 				{#if error}
 					<div
 						class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm break-words whitespace-pre-line text-red-700"
@@ -283,6 +288,7 @@
 			<div
 				class="flex flex-col-reverse gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row-reverse sm:px-6"
 			>
+				{#if !hideConfirm}
 				<button
 					type="button"
 					class="inline-flex w-full justify-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:opacity-50 sm:ml-3 sm:w-auto sm:text-sm {styles.confirmBg} {styles.confirmRing}"
@@ -314,6 +320,7 @@
 					{/if}
 					{displayConfirmText}
 				</button>
+				{/if}
 				<button
 					type="button"
 					class="focus:ring-brand inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:opacity-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"

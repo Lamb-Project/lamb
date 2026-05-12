@@ -417,6 +417,31 @@
 			dispatch('created', { libraryId, libraryName, ksId, ksName });
 		} catch (/** @type {unknown} */ err) {
 			error = readableError(err, 'Failed to create');
+			// Replace a bare "Network Error" with the duplicate-name message
+			// when that's the real cause (the pre-flight check may have
+			// silently failed too).
+			const isNoResponseAxios =
+				!!err &&
+				typeof err === 'object' &&
+				/** @type {any} */ (err).isAxiosError === true &&
+				!/** @type {any} */ (err).response;
+			if (isNoResponseAxios && wizardState.ksPath === 'new' && wizardState.ksName) {
+				try {
+					const stores = await getKnowledgeStores();
+					const proposed = wizardState.ksName.trim().toLowerCase();
+					const dup = (stores || []).some(
+						(s) => (s?.name || '').trim().toLowerCase() === proposed
+					);
+					if (dup) {
+						error = $_('knowledge.wizard.step8.ksNameTaken', {
+							default: 'A Knowledge Store named "{name}" already exists.',
+							values: { name: wizardState.ksName.trim() }
+						});
+					}
+				} catch (e) {
+					console.warn('Duplicate-name fallback check failed', e);
+				}
+			}
 			if (
 				progressSteps.length > 0 &&
 				progressSteps[progressSteps.length - 1].status === 'running'

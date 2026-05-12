@@ -925,3 +925,57 @@ class TestLibraryResilience:
         url = str(httpx_mock.get_request().url)
         assert "limit=50" in url
         assert "offset=100" in url
+
+
+class TestItemContent:
+    """Tests for ``lamb library item-content`` (#370)."""
+
+    def test_prints_markdown_to_stdout(self, httpx_mock, mock_token, mock_server_url):
+        body = b"# Title\n\nbody line 1\nbody line 2\n"
+        httpx_mock.add_response(
+            url="http://test-server:9099/creator/libraries/L1/items/I1/content?format=markdown",
+            content=body,
+            headers={"content-type": "text/markdown"},
+        )
+
+        result = runner.invoke(app, ["library", "item-content", "L1", "I1"])
+
+        assert result.exit_code == 0
+        assert "# Title" in result.output
+        assert "body line 1" in result.output
+        assert "body line 2" in result.output
+
+    def test_text_format(self, httpx_mock, mock_token, mock_server_url):
+        body = b"plain text body"
+        httpx_mock.add_response(
+            url="http://test-server:9099/creator/libraries/L1/items/I1/content?format=text",
+            content=body,
+            headers={"content-type": "text/plain"},
+        )
+
+        result = runner.invoke(
+            app, ["library", "item-content", "L1", "I1", "--format", "text"]
+        )
+
+        assert result.exit_code == 0
+        assert "plain text body" in result.output
+
+    def test_invalid_format_exits_with_2(self, mock_token, mock_server_url):
+        result = runner.invoke(
+            app, ["library", "item-content", "L1", "I1", "--format", "html"]
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid format" in result.output
+
+    def test_413_shows_friendly_error(self, httpx_mock, mock_token, mock_server_url):
+        httpx_mock.add_response(
+            url="http://test-server:9099/creator/libraries/L1/items/I1/content?format=markdown",
+            status_code=413,
+            json={"detail": "Content exceeds 5 MB."},
+        )
+
+        result = runner.invoke(app, ["library", "item-content", "L1", "I1"])
+
+        assert result.exit_code == 2
+        assert "too large" in result.output.lower()

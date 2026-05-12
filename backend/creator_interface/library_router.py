@@ -6,7 +6,7 @@ Manager -> update LAMB DB -> audit log -> return response.
 
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -458,6 +458,79 @@ async def get_item_status(
         _db.update_library_item_status(item_id, lm_status)
 
     return result
+
+
+MAX_CONTENT_BYTES = 5 * 1024 * 1024  # 5 MB inline-content cap
+
+
+@router.get("/{library_id}/items/{item_id}/content")
+async def get_item_content(
+    library_id: str,
+    item_id: str,
+    format: Literal["markdown", "text"] = "markdown",
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Return the full rendered content of an imported item.
+
+    HTML output is intentionally not exposed — Library Manager's
+    ``format=html`` uses an unsanitized server-side renderer. Clients
+    that need HTML must request markdown and sanitize on their side.
+    """
+    auth.require_library_access(library_id, level="any")
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath=f"content?format={format}",
+        creator_user=auth.user,
+    )
+    if len(response.content) > MAX_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB. "
+                "Download the original file instead."
+            ),
+        )
+    default_media = "text/markdown" if format == "markdown" else "text/plain"
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", default_media),
+    )
+
+
+@router.get("/{library_id}/items/{item_id}/kb-links")
+async def get_item_kb_links(
+    library_id: str,
+    item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List Knowledge Stores that actively reference this library item.
+
+    Pre-check used by the UI before showing the delete-confirm modal so it
+    can branch into "blocked" mode without round-tripping through a 409.
+    Failed ingestions are excluded (FR-10 doesn't block on them).
+
+    Returns:
+        dict: ``{"item_id": str, "knowledge_stores": [{id, name, status}, ...]}``
+        — same shape as ``detail.knowledge_stores`` in the FR-10 409 body.
+    """
+    auth.require_library_access(library_id, level="any")
+    referencing_links = _db.get_kb_content_links_for_item(item_id)
+    active_links = [
+        l for l in referencing_links
+        if l.get("status") != "failed"
+    ]
+    return {
+        "item_id": item_id,
+        "knowledge_stores": [
+            {
+                "id": l.get("knowledge_store_id"),
+                "name": l.get("knowledge_store_name"),
+                "status": l.get("status"),
+            }
+            for l in active_links
+        ],
+    }
 
 
 @router.delete("/{library_id}/items/{item_id}")
