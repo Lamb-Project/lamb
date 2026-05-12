@@ -436,9 +436,9 @@
 
     // Effect to handle programmatic navigation to detail view (e.g., after creation)
     /**
-     * Handles the custom event dispatched when an assistant is successfully created.
+     * Handles successful assistant creation.
      * Navigates to the list view.
-     * @param {CustomEvent<{ assistantId: number }>} event - The custom event containing the new assistant's ID.
+     * @param {{ assistantId: number }} detail
      */
     function handleAssistantCreated({ assistantId }) {
     if (typeof assistantId === 'number') {
@@ -453,9 +453,9 @@
   }
 
     /**
-     * Handles the custom event dispatched when an assistant is successfully updated.
+     * Handles successful assistant update.
      * Navigates back to the list view.
-     * @param {CustomEvent<{ assistantId: number }>} event - The custom event containing the updated assistant's ID.
+     * @param {{ assistantId: number }} detail
      */
     function handleAssistantUpdated({ assistantId }) {
     const updatedAssistantId = assistantId;

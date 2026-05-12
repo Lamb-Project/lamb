@@ -36,11 +36,7 @@ import FormActions from './FormActions.svelte';
 	} = $props(); 
 
 	// --- Component State ---
-	/** @type {'edit' | 'create'} */
-	// Initialize formState based on assistant and startInEdit prop
-	let initialMode = assistant ? 'edit' : 'create';
-
-	let formState = $state(initialMode); 
+	let formState = $state(/** @type {'edit' | 'create'} */ ('create')); 
 	/** @type {any | null} */ // Store initial data for cancel/revert
 	let initialAssistantData = $state(null); 
 
@@ -115,6 +111,7 @@ import FormActions from './FormActions.svelte';
 	let rubricsFetchAttempted = $state(false);
 
 	/** @type {import('./ConfigurationPanel.svelte').default | null} */
+	/** @type {any} */
 	let configPanel = $state(null);
 	let availableModels = $derived(configPanel?.getAvailableModels() || []);
 
@@ -653,6 +650,7 @@ import FormActions from './FormActions.svelte';
 		}
 
 		// Construct the data for the metadata field
+		/** @type {Record<string, any>} */
 		const metadataObj = {
 			prompt_processor: selectedPromptProcessor,
 			connector: selectedConnector,
