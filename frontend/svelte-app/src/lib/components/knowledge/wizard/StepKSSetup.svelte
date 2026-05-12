@@ -93,10 +93,79 @@
 	let optionsError = $state('');
 
 	let chunkingStrategy = $state(wizardState.ksConfig?.chunking_strategy || '');
+	let chunkingParams = $state(
+		/** @type {Record<string, number>} */ (wizardState.ksConfig?.chunking_params || {})
+	);
+	let chunkingParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 	let embeddingVendor = $state(wizardState.ksConfig?.embedding_vendor || '');
 	let embeddingModel = $state(wizardState.ksConfig?.embedding_model || '');
 	let embeddingEndpoint = $state(wizardState.ksConfig?.embedding_endpoint || '');
 	let vectorDb = $state(wizardState.ksConfig?.vector_db_backend || '');
+
+	// Param descriptors for the currently-selected strategy. Each entry has
+	// { name, type, description, default, min_value, max_value }.
+	let currentStrategyParams = $derived.by(() => {
+		const s = (options.chunking_strategies ?? []).find(
+			(/** @type {any} */ s) => s.name === chunkingStrategy
+		);
+		return s?.parameters ?? [];
+	});
+
+	// When the user switches chunking strategy, reset chunking_params to the
+	// new strategy's defaults — but only fill in keys the user hasn't already
+	// set. This means a draft with custom values survives a re-mount, while a
+	// fresh strategy pick gets sensible defaults so "Next" works immediately.
+	//
+	// The read of `chunkingParams` here is wrapped in `untrack()` because the
+	// effect is meant to fire only when the chunking strategy changes — NOT
+	// every time the user edits one of the per-strategy inputs. Without
+	// untrack, the write at the bottom would re-trigger this effect on the
+	// same write it just produced, looping forever.
+	$effect(() => {
+		const params = currentStrategyParams;
+		if (!params.length) return;
+		untrack(() => {
+			const next = /** @type {Record<string, number>} */ ({});
+			let changed = Object.keys(chunkingParams).length !== params.length;
+			for (const p of params) {
+				const existing = chunkingParams[p.name];
+				const value = typeof existing === 'number' ? existing : Number(p.default);
+				next[p.name] = value;
+				if (existing !== value) changed = true;
+			}
+			if (changed) chunkingParams = next;
+		});
+	});
+
+	// Validate each numeric param against its declared min/max. Empty error
+	// map means the form is valid w.r.t. chunking params.
+	$effect(() => {
+		const params = currentStrategyParams;
+		const errs = /** @type {Record<string, string>} */ ({});
+		for (const p of params) {
+			const v = chunkingParams[p.name];
+			if (v === undefined || v === null || Number.isNaN(v)) {
+				errs[p.name] = $_('knowledge.wizard.ksStep.paramRequired', {
+					default: 'Required'
+				});
+				continue;
+			}
+			if (typeof p.min_value === 'number' && v < p.min_value) {
+				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooSmall', {
+					values: { min: p.min_value },
+					default: `Must be ≥ ${p.min_value}`
+				});
+				continue;
+			}
+			if (typeof p.max_value === 'number' && v > p.max_value) {
+				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooLarge', {
+					values: { max: p.max_value },
+					default: `Must be ≤ ${p.max_value}`
+				});
+			}
+		}
+		chunkingParamErrors = errs;
+	});
 
 	$effect(() => {
 		if (path === 'new' && !loadingOptions && !optionsLoaded) {
@@ -176,6 +245,8 @@
 		const _description = description;
 		const _isShared = isShared;
 		const _chunking = chunkingStrategy;
+		const _params = chunkingParams;
+		const _paramErrors = chunkingParamErrors;
 		const _vendor = embeddingVendor;
 		const _model = embeddingModel;
 		const _endpoint = embeddingEndpoint;
@@ -186,10 +257,17 @@
 		void _description;
 		void _isShared;
 		void _chunking;
+		void _params;
+		void _paramErrors;
 		void _vendor;
 		void _model;
 		void _endpoint;
 		void _vectorDb;
+		// Touch each chunking-param value so the effect re-runs on edits
+		// (Svelte 5 tracks reads, and a shallow ref-equality check on the
+		// dict isn't enough when only a property changes).
+		for (const k of Object.keys(_params || {})) void _params[k];
+		for (const k of Object.keys(_paramErrors || {})) void _paramErrors[k];
 
 		untrack(() => {
 			// Persist the radio choice immediately so the draft retains the
@@ -228,7 +306,8 @@
 				return;
 			}
 			const configValid = !!chunkingStrategy && !!embeddingVendor && !!embeddingModel && !!vectorDb;
-			if (!configValid) {
+			const paramsValid = Object.keys(chunkingParamErrors).length === 0;
+			if (!configValid || !paramsValid) {
 				nameError = '';
 				dispatch('validity', { valid: false });
 				return;
@@ -243,7 +322,7 @@
 				ksIsShared: isShared,
 				ksConfig: {
 					chunking_strategy: chunkingStrategy,
-					chunking_params: {},
+					chunking_params: { ...chunkingParams },
 					embedding_vendor: embeddingVendor,
 					embedding_model: embeddingModel,
 					embedding_endpoint: embeddingEndpoint,
@@ -416,13 +495,19 @@
 					>
 						<strong class="font-semibold">
 							{$_('knowledge.wizard.lockedConfigNotice.title', {
-								default: 'These settings cannot be changed later.'
+								default: 'Some of these settings cannot be changed later.'
 							})}
 						</strong>
 						<p class="mt-1 text-xs">
 							{$_('knowledge.wizard.lockedConfigNotice.body', {
 								default:
-									'Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store.'
+									'Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created — to change them, create a new Knowledge Store.'
+							})}
+						</p>
+						<p class="mt-1 text-xs">
+							{$_('knowledge.wizard.lockedConfigNotice.paramsBody', {
+								default:
+									'Chunking parameters can be edited later, but changes only apply to newly ingested content — existing chunks keep the parameters they were originally created with.'
 							})}
 						</p>
 					</div>
@@ -456,6 +541,65 @@
 								{/each}
 							</select>
 						</div>
+
+						{#if currentStrategyParams.length > 0}
+							<fieldset class="mt-1 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+								<legend class="px-1 text-xs font-medium text-gray-700">
+									{$_('knowledge.wizard.ksStep.chunkingParamsLabel', {
+										values: { strategy: chunkingStrategy },
+										default: `${chunkingStrategy} parameters`
+									})}
+								</legend>
+								<p class="text-xs text-gray-500">
+									{$_('knowledge.wizard.ksStep.chunkingParamsHint', {
+										default:
+											'Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content ingested after the edit.'
+									})}
+								</p>
+								{#each currentStrategyParams as p (p.name)}
+									<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+										<label
+											for="wizard-ks-param-{p.name}"
+											class="block w-full text-xs font-medium text-gray-700 sm:w-1/3"
+											title={p.description}
+										>
+											{p.name}
+											{#if typeof p.min_value === 'number' || typeof p.max_value === 'number'}
+												<span class="font-normal text-gray-400">
+													({p.min_value ?? '−∞'}–{p.max_value ?? '∞'})
+												</span>
+											{/if}
+										</label>
+										<input
+											id="wizard-ks-param-{p.name}"
+											type="number"
+											min={p.min_value ?? undefined}
+											max={p.max_value ?? undefined}
+											step="1"
+											value={chunkingParams[p.name]}
+											oninput={(/** @type {Event} */ e) => {
+												const raw = /** @type {HTMLInputElement} */ (e.currentTarget).value;
+												const v = raw === '' ? Number.NaN : Number(raw);
+												chunkingParams = { ...chunkingParams, [p.name]: v };
+											}}
+											class="block w-full rounded-md border px-2 py-1 text-sm sm:w-32 {chunkingParamErrors[
+												p.name
+											]
+												? 'border-red-500'
+												: 'border-gray-300'}"
+										/>
+										<span class="grow text-xs text-gray-500 sm:text-right">
+											{p.description}
+										</span>
+									</div>
+									{#if chunkingParamErrors[p.name]}
+										<p class="text-xs text-red-600 sm:pl-[33%]" role="alert">
+											{chunkingParamErrors[p.name]}
+										</p>
+									{/if}
+								{/each}
+							</fieldset>
+						{/if}
 
 						<div>
 							<label for="wizard-ks-vendor" class="block text-sm font-medium text-gray-700">

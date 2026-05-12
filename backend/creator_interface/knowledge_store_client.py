@@ -232,14 +232,21 @@ class KnowledgeStoreClient:
 
     async def update_collection(self, knowledge_store_id: str,
                                 name: str = None, description: str = None,
+                                chunking_params: Optional[Dict[str, Any]] = None,
                                 creator_user: Dict[str, Any] = None) -> Dict:
-        """Update mutable fields of a collection (name, description)."""
+        """Update mutable fields of a collection (name, description, chunking_params).
+
+        ``chunking_params`` updates apply only to content ingested AFTER the
+        change — existing chunks keep their original parameters.
+        """
         config = self._get_ks_config(creator_user)
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if description is not None:
             body["description"] = description
+        if chunking_params is not None:
+            body["chunking_params"] = chunking_params
         return await self._request(
             "PUT", f"/collections/{knowledge_store_id}", config, json=body,
         )

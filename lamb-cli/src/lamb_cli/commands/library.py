@@ -145,6 +145,18 @@ PLUGIN_COLUMNS = [
     ("supported_source_types", "Sources"),
 ]
 
+LIBRARY_KS_COLUMNS = [
+    ("id", "KS ID"),
+    ("name", "Name"),
+    ("embedding_vendor", "Vendor"),
+    ("embedding_model", "Model"),
+    ("vector_db_backend", "Backend"),
+    ("item_count", "Items"),
+    ("ready_count", "Ready"),
+    ("failed_count", "Failed"),
+    ("access", "Access"),
+]
+
 
 @app.command("list")
 def list_libraries(
@@ -368,33 +380,143 @@ def get_item(
 def get_item_content(
     library_id: str = typer.Argument(..., help="Library ID."),
     item_id: str = typer.Argument(..., help="Item ID."),
+    view: str = typer.Option(
+        "markdown", "--view",
+        help="What to view: 'markdown' (extracted content) or 'original' (source file).",
+    ),
     format: str = typer.Option(
         "markdown", "--format", "-f",
-        help="Content format: markdown or text.",
+        help="Markdown sub-format: 'markdown' or 'text'. Ignored when --view original.",
+    ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output-file",
+        help="Path to write to. For --view original, defaults to the source filename "
+             "in the current directory; binary content is always written to a file, "
+             "never to stdout.",
     ),
 ) -> None:
-    """Print the full content of an imported library item to stdout."""
-    if format not in ("markdown", "text"):
-        print_error(f"Invalid format '{format}'. Use 'markdown' or 'text'.")
+    """Print or download the content of an imported library item.
+
+    Two modes via ``--view``:
+
+    * ``markdown`` (default) — print the extracted markdown / plain text to
+      stdout, or save it to ``--output-file``. Respects ``--format``.
+    * ``original`` — fetch the original source file (PDF, DOCX, etc.) and
+      save it to ``--output-file`` (default: the file's original name in
+      the current directory). For URL / YouTube items, no binary original
+      exists; the source URL is printed to stdout instead.
+    """
+    if view not in ("markdown", "original"):
+        print_error(f"Invalid --view '{view}'. Use 'markdown' or 'original'.")
         raise typer.Exit(2)
-    try:
-        with get_client() as client:
-            content = client.get(
-                f"/creator/libraries/{library_id}/items/{item_id}/content",
-                params={"format": format},
-            )
-    except ApiError as exc:
-        if exc.status_code == 413:
-            print_error("Item is too large to print. Download the original instead.")
+
+    if view == "markdown":
+        if format not in ("markdown", "text"):
+            print_error(f"Invalid format '{format}'. Use 'markdown' or 'text'.")
             raise typer.Exit(2)
-        raise
-    if isinstance(content, str):
-        sys.stdout.write(content)
-        if not content.endswith("\n"):
+        try:
+            with get_client() as client:
+                content = client.get(
+                    f"/creator/libraries/{library_id}/items/{item_id}/content",
+                    params={"format": format},
+                )
+        except ApiError as exc:
+            if exc.status_code == 413:
+                print_error(
+                    "Item is too large to print. Use --view original to download it."
+                )
+                raise typer.Exit(2)
+            raise
+        text = content if isinstance(content, str) else None
+        if text is None:
+            from lamb_cli.output import print_json
+            print_json(content)
+            return
+        if output_file:
+            with open(output_file, "w", encoding="utf-8") as fp:
+                fp.write(text)
+                if not text.endswith("\n"):
+                    fp.write("\n")
+            print_success(f"Saved markdown to {output_file}")
+            return
+        sys.stdout.write(text)
+        if not text.endswith("\n"):
             sys.stdout.write("\n")
-    else:
-        from lamb_cli.output import print_json
-        print_json(content)
+        return
+
+    # --view original: download the binary source file or surface source URL.
+    try:
+        with get_client(timeout=300.0) as client:
+            resp = client._http.request(
+                "GET",
+                f"/creator/libraries/{library_id}/items/{item_id}/original",
+            )
+            if resp.status_code == 404:
+                # No binary original — try to surface the source URL.
+                try:
+                    body = resp.json()
+                except Exception:
+                    body = {}
+                detail = body.get("detail") if isinstance(body, dict) else None
+                source_url = None
+                if isinstance(detail, dict):
+                    source_url = detail.get("source_url")
+                if source_url:
+                    print_success(
+                        f"No binary original for this item ({detail.get('source_type') or 'remote'}). Source URL:"
+                    )
+                    sys.stdout.write(source_url + "\n")
+                    return
+                print_error(
+                    "Item has no original file and no source URL."
+                )
+                raise typer.Exit(2)
+            if not resp.is_success:
+                print_error(f"Fetch failed: HTTP {resp.status_code}")
+                raise typer.Exit(2)
+
+            # Determine destination filename: explicit --output-file wins;
+            # otherwise parse Content-Disposition; fall back to a generic name.
+            dest = output_file
+            if not dest:
+                cd = resp.headers.get("content-disposition", "")
+                # Look for filename="..." (quoted) or filename=... (bare).
+                import re
+                m = re.search(r'filename\*=UTF-8\'\'([^;]+)', cd)
+                if m:
+                    from urllib.parse import unquote
+                    dest = unquote(m.group(1))
+                else:
+                    m = re.search(r'filename="([^"]+)"', cd)
+                    if m:
+                        dest = m.group(1)
+                if not dest:
+                    dest = f"{item_id}.bin"
+            with open(dest, "wb") as fp:
+                fp.write(resp.content)
+            print_success(f"Saved original to {dest}")
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        print_error(f"Failed to download original: {exc}")
+        raise typer.Exit(2)
+
+
+@app.command("list-knowledge-stores")
+def list_knowledge_stores_for_library(
+    library_id: str = typer.Argument(..., help="Library ID."),
+    output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
+) -> None:
+    """List Knowledge Stores that reference any item from a library.
+
+    Inverse of ``lamb ks list-content`` — given a library, show which KSs
+    have ingested its items, with per-KS link counts.
+    """
+    fmt = output or get_output_format()
+    with get_client() as client:
+        resp = client.get(f"/creator/libraries/{library_id}/knowledge-stores")
+    stores = resp.get("knowledge_stores", []) if isinstance(resp, dict) else resp
+    format_output(stores, LIBRARY_KS_COLUMNS, fmt)
 
 
 @app.command("delete-item")

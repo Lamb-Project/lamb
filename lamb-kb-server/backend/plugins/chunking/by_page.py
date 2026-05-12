@@ -192,6 +192,10 @@ class ByPageChunking(ChunkingStrategy):
             return self._build_chunks(pages, pages_per_chunk, base_meta, permalink_pages)
 
         # --- Source 3: fall back to SimpleChunking ---
+        # Forward any caller-supplied simple-chunking params so a user who set
+        # chunk_size/chunk_overlap on the collection still gets that size when
+        # the by_page path silently degrades. Strategy-specific keys
+        # (pages_per_chunk) are filtered out here.
         logger.warning(
             "ByPageChunking: no page information found in '%s', falling back to SimpleChunking",
             document.source_item_id,
@@ -199,5 +203,6 @@ class ByPageChunking(ChunkingStrategy):
         from plugins.chunking.simple import SimpleChunking  # lazy import, avoid cycle
 
         fallback = SimpleChunking()
-        fallback_params = {"chunk_size": 1000, "chunk_overlap": 200}
+        fallback_allowed = {p.name for p in fallback.get_parameters()}
+        fallback_params = {k: v for k, v in (params or {}).items() if k in fallback_allowed}
         return fallback.chunk(document, fallback_params)

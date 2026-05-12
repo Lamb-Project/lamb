@@ -6,6 +6,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { base } from '$app/paths';
 	import axios from 'axios';
 	import {
 		getLibrary,
@@ -16,7 +17,9 @@
 		exportLibrary,
 		toggleSharing,
 		getItemContent,
-		getItemKbLinks
+		getItemOriginal,
+		getItemKbLinks,
+		getLibraryKnowledgeStores
 	} from '$lib/services/libraryService';
 	import { _ } from '$lib/i18n';
 	import {
@@ -57,6 +60,24 @@
 	let items = $state([]);
 	let totalItems = $state(0);
 	let loading = $state(true);
+	// Items load independently from the library metadata so the page chrome
+	// (title, description, actions, modals) renders as soon as the library
+	// shell is ready, instead of blocking on the items round-trip. When the
+	// items endpoint is slow (large library, slow LM) we now show an inline
+	// "Loading items..." indicator within the items section instead of a
+	// blank full-page skeleton.
+	let itemsLoading = $state(true);
+	// Distinguishes "fetch failed" from "library is genuinely empty" so the
+	// items section can render an error+retry panel instead of the misleading
+	// "No items yet" state when the Library Manager round-trip fails (timeout,
+	// 502/503 on cold start, transient network blip, etc.).
+	let itemsError = $state('');
+	// Set when /items returned empty but the library row says ``item_count > 0``
+	// after all retries — i.e. we have positive evidence that the response is
+	// wrong and the library is NOT actually empty. The UI uses this to render
+	// a calm "having trouble loading" panel instead of the alarming
+	// "No items yet" empty state, so users don't think their data is gone.
+	let itemsInconsistent = $state(false);
 	let error = $state('');
 	let successMessage = $state('');
 
@@ -83,6 +104,14 @@
 	/** @type {{ id: string, name: string, contentCount: number|null, removing: boolean }[]} */
 	let deleteItemBlockers = $state([]);
 	let deleteItemTarget = $state({ id: '', title: '' });
+
+	// Knowledge Stores that reference items from this library. Loaded in
+	// parallel with items; the panel is hidden when the list is empty so
+	// it doesn't take up vertical space on libraries that aren't yet wired
+	// into any KS.
+	/** @type {import('$lib/services/libraryService').LibraryKnowledgeStore[]} */
+	let libraryKnowledgeStores = $state([]);
+	let ksPanelLoading = $state(false);
 
 	// View item content modal
 	let showItemContentModal = $state(false);
@@ -120,38 +149,109 @@
 		if (successTimer) clearTimeout(successTimer);
 	});
 
+	// Guard against spurious effect re-runs: the parent's $page-driven
+	// effect re-evaluates props on every store emit, which made $effect
+	// re-fire many times per second. Each re-fire cleared the polling
+	// interval at the top of loadData(), so status polling never got to
+	// tick — the user had to manually reload to see pending → ready.
+	// Only call loadData() when libraryId actually changed.
+	let lastLoadedLibraryId = '';
 	$effect(() => {
-		// Re-load data whenever libraryId changes (including the initial value)
-		if (libraryId) {
+		const id = libraryId;
+		if (id && id !== lastLoadedLibraryId) {
+			lastLoadedLibraryId = id;
 			loadData();
 		}
 	});
 
 	/**
-	 * Refresh just the items list (no library metadata reload, no
-	 * ``loading`` flag toggle). Used after upload / import / delete so the
-	 * page doesn't flicker through any skeleton or even momentarily re-key
-	 * the metadata card.
+	 * Refresh just the items list. Fires through the same items-loading
+	 * indicator as the initial load so the user sees that something is
+	 * happening even after upload / import / delete actions.
 	 */
+	// Fetches /items with auto-retry on a suspect empty response.
+	//
+	// The Library Manager occasionally returns ``{items: [], total: 0}`` on
+	// the first request after a reload — likely a cold-start race in the
+	// LM's SQLite session. The race can also surface in the parallel
+	// ``item_count`` call from getLibrary, so we don't trust that value
+	// blindly. Strategy:
+	//
+	//   - If the FIRST response is empty, always do one verification retry
+	//     after a short delay. A truly-empty library pays ~250 ms of
+	//     latency; a raced one self-heals.
+	//   - On subsequent retries, only continue while ``library.item_count``
+	//     suggests there *should* be items (or is unknown). Once two
+	//     independent calls have both reported zero items, we trust it.
+	//   - Capped at ``maxRetries`` so neither path spins forever.
+	//
+	// @param {number} [maxRetries] Upper bound on retry attempts.
+	// @returns {Promise<{ items: any[], total: number } | null>}
+	async function fetchItemsWithRetry(maxRetries = 3) {
+		const backoffMs = [250, 500, 1000];
+		/** @type {{ items: any[], total: number } | null} */
+		let lastData = null;
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			const data = await getItems(libraryId, { limit: 100 });
+			lastData = data;
+			const count = Array.isArray(data?.items) ? data.items.length : 0;
+			if (count > 0 || attempt === maxRetries) return data;
+			// On the FIRST empty result, always retry once — even if the
+			// library row says zero — because the racy source returns zero
+			// for both calls. On subsequent attempts, give up if the library
+			// row also says zero (two independent confirmations of empty).
+			if (attempt >= 1 && library?.item_count === 0) return data;
+			console.warn(
+				`[LibraryDetail] /items returned empty (attempt ${attempt + 1}/${maxRetries + 1}); retrying.`
+			);
+			const delay = backoffMs[Math.min(attempt, backoffMs.length - 1)];
+			await new Promise((r) => setTimeout(r, delay));
+			if (!isMounted) return lastData;
+		}
+		return lastData;
+	}
+
 	async function refreshItems() {
+		itemsLoading = true;
+		itemsError = '';
+		itemsInconsistent = false;
 		try {
-			const itemsData = await getItems(libraryId, { limit: 100 });
+			const itemsData = await fetchItemsWithRetry();
 			if (!isMounted) return;
-			items = itemsData.items || [];
-			totalItems = itemsData.total || items.length;
+			items = itemsData?.items || [];
+			totalItems = itemsData?.total || items.length;
+			// If the response is empty but the library row tells us there
+			// should be items, surface a soft "trouble loading" panel instead
+			// of "No items yet" so the user isn't shown a misleading empty.
+			itemsInconsistent =
+				items.length === 0
+				&& typeof library?.item_count === 'number'
+				&& library.item_count > 0;
 			startPollingIfNeeded();
 		} catch (/** @type {unknown} */ err) {
 			console.error('refreshItems failed', err);
+			if (isMounted) {
+				itemsError = readableError(err, $_('libraries.items.loadError', {
+					default: 'Could not load items. The Library Manager may be temporarily unavailable.'
+				}));
+			}
+		} finally {
+			if (isMounted) itemsLoading = false;
 		}
 	}
 
 	/**
-	 * Load library + items.
+	 * Kick off library-metadata and items fetches **independently** so the
+	 * page chrome renders as soon as the (fast) library row arrives, even
+	 * if the items endpoint is slow (large library, slow LM, network
+	 * jitter). The two halves track their own loading flags:
+	 *   - ``loading`` covers the library row only
+	 *   - ``itemsLoading`` covers the items list
 	 * @param {{ silent?: boolean }} [opts] When ``silent`` is true, the
-	 *   ``loading`` flag is not toggled — used for in-place refreshes (e.g.
-	 *   after a file upload, polling tick, or item delete) so the page
-	 *   doesn't flash back to the blank "Loading library…" skeleton.
-	 *   Errors are still surfaced.
+	 *   ``loading`` flag is not toggled — used for in-place refreshes
+	 *   (e.g. after a file upload, polling tick, or item delete) so the
+	 *   page doesn't flash back to the loading skeleton. Errors are still
+	 *   surfaced.
 	 */
 	async function loadData(opts = {}) {
 		const silent = !!opts.silent;
@@ -164,26 +264,120 @@
 			clearInterval(pollInterval);
 			pollInterval = null;
 		}
-		if (!silent) loading = true;
+		// Only flash the full-page skeleton when we have nothing to show.
+		// Once `library` is populated, subsequent fetches refresh in place
+		// (the items section shows its own inline "Refreshing…" indicator
+		// instead). This prevents the flicker that happens when the effect
+		// re-runs for any reason after the first successful load.
+		if (!silent && !library) loading = true;
 		error = '';
+
+		// Library row — fast, blocks the page chrome only. Resolves the
+		// `libraryReady` promise so the items branch can consult
+		// `library.item_count` when deciding whether to retry on an empty
+		// response.
+		/** @type {(value?: unknown) => void} */
+		let resolveLibraryReady = () => {};
+		const libraryReady = new Promise((res) => { resolveLibraryReady = res; });
+		(async () => {
+			try {
+				const lib = await getLibrary(libraryId);
+				if (!isMounted || myLoadId !== currentLoadId) return;
+				library = lib;
+			} catch (/** @type {unknown} */ err) {
+				if (!isMounted || myLoadId !== currentLoadId) return;
+				if (err instanceof Error && err.message.startsWith('Session expired')) return;
+				console.error('Error loading library:', err);
+				error = err instanceof Error ? err.message : 'Failed to load library';
+			} finally {
+				resolveLibraryReady();
+				if (isMounted && myLoadId === currentLoadId && !silent) loading = false;
+			}
+		})();
+
+		// Items — fired in parallel. On a suspect empty response (LM cold-read
+		// race) we wait for the library row's `item_count` and retry until
+		// the two agree or we hit the retry cap; see fetchItemsWithRetry.
+		(async () => {
+			itemsLoading = true;
+			itemsError = '';
+			itemsInconsistent = false;
+			try {
+				// First attempt; if it comes back empty the retry helper will
+				// re-fire after a brief delay (always at least once, then
+				// gated by library.item_count once we can read it).
+				/** @type {{ items: any[], total: number } | null} */
+				let data = await getItems(libraryId, { limit: 100 });
+				if (!isMounted || myLoadId !== currentLoadId) return;
+
+				const looksEmpty = !Array.isArray(data?.items) || data.items.length === 0;
+				if (looksEmpty) {
+					// Wait briefly for the library fetch to land so the retry
+					// helper can consult library.item_count for the second
+					// and later attempts. Don't block forever — if the
+					// library fetch is slow, the helper will still do the
+					// unconditional first retry without it.
+					await Promise.race([
+						libraryReady,
+						new Promise((res) => setTimeout(res, 500))
+					]);
+					if (!isMounted || myLoadId !== currentLoadId) return;
+					data = await fetchItemsWithRetry(3);
+					if (!isMounted || myLoadId !== currentLoadId) return;
+				}
+
+				items = data?.items || [];
+				totalItems = data?.total || items.length;
+				// Final consistency check: if the row says there should be
+				// items but we got none, mark inconsistent so the UI shows
+				// the soft "trouble loading" panel instead of "No items yet".
+				itemsInconsistent =
+					items.length === 0
+					&& typeof library?.item_count === 'number'
+					&& library.item_count > 0;
+				startPollingIfNeeded();
+			} catch (/** @type {unknown} */ err) {
+				if (!isMounted || myLoadId !== currentLoadId) return;
+				if (err instanceof Error && err.message.startsWith('Session expired')) return;
+				// Don't surface items errors as full-page errors — keep the
+				// chrome and show the items section's own error state with a
+				// retry button. Without this the user sees the misleading
+				// "No items yet" empty state on a transient fetch failure.
+				console.error('Error loading items:', err);
+				itemsError = readableError(err, $_('libraries.items.loadError', {
+					default: 'Could not load items. The Library Manager may be temporarily unavailable.'
+				}));
+			} finally {
+				if (isMounted && myLoadId === currentLoadId) itemsLoading = false;
+			}
+		})();
+
+		// Knowledge Stores referencing this library — auxiliary panel.
+		// Errors stay silent (this is a discoverability surface, not a
+		// blocker for the page).
+		(async () => {
+			ksPanelLoading = true;
+			try {
+				const stores = await getLibraryKnowledgeStores(libraryId);
+				if (!isMounted || myLoadId !== currentLoadId) return;
+				libraryKnowledgeStores = stores;
+			} catch (/** @type {unknown} */ err) {
+				if (!isMounted || myLoadId !== currentLoadId) return;
+				console.warn('Error loading library KS panel:', err);
+			} finally {
+				if (isMounted && myLoadId === currentLoadId) ksPanelLoading = false;
+			}
+		})();
+	}
+
+	// Refresh the KS-references panel — called after ingestion/removal so
+	// the panel reflects the latest state without a full page reload.
+	async function refreshLibraryKnowledgeStores() {
 		try {
-			const [lib, itemsData] = await Promise.all([
-				getLibrary(libraryId),
-				getItems(libraryId, { limit: 100 })
-			]);
-			if (!isMounted || myLoadId !== currentLoadId) return;
-			library = lib;
-			items = itemsData.items || [];
-			totalItems = itemsData.total || items.length;
-			startPollingIfNeeded();
+			const stores = await getLibraryKnowledgeStores(libraryId);
+			if (isMounted) libraryKnowledgeStores = stores;
 		} catch (/** @type {unknown} */ err) {
-			if (!isMounted || myLoadId !== currentLoadId) return;
-			// Session-expired errors are already redirecting elsewhere.
-			if (err instanceof Error && err.message.startsWith('Session expired')) return;
-			console.error('Error loading library:', err);
-			error = err instanceof Error ? err.message : 'Failed to load library';
-		} finally {
-			if (isMounted && myLoadId === currentLoadId && !silent) loading = false;
+			console.warn('Error refreshing library KS panel:', err);
 		}
 	}
 
@@ -213,7 +407,17 @@
 					pendingItemIds = new SvelteSet(pendingItemIds);
 					const idx = items.findIndex((i) => i.id === itemId);
 					if (idx !== -1) {
-						items[idx] = { ...items[idx], status: status.status };
+						// Carry forward whatever the status endpoint reports — in
+						// particular `error_message`, which is needed by the
+						// "View error" modal. Previously only `status` was copied
+						// and the message was silently dropped, so failed rows
+						// showed the generic "No error message recorded" fallback
+						// even though the server had the full reason.
+						items[idx] = {
+							...items[idx],
+							status: status.status,
+							error_message: status.error_message ?? items[idx].error_message ?? ''
+						};
 						items = [...items];
 					}
 				}
@@ -300,12 +504,59 @@
 		}
 	}
 
-	// View item content
+	// View item content. For failed items the on-disk content is either
+	// missing or a stale placeholder; surface the import ``error_message``
+	// directly instead of attempting (and failing) to fetch the file.
 	async function requestViewItem(item) {
 		itemContentTarget = { id: item.id, title: item.title };
 		itemContent = '';
 		itemContentError = null;
 		showItemContentModal = true;
+
+		if (item.status === 'failed') {
+			// If the in-memory row already has the message, show it. Otherwise
+			// the row may be stale (e.g. the polling loop transitioned the
+			// item to "failed" before we started carrying error_message, or
+			// the page was opened directly without ever polling). Fetch the
+			// current status from the API as a backstop so the user always
+			// gets the actual reason instead of the "no message recorded"
+			// fallback.
+			if (item.error_message) {
+				isLoadingItemContent = false;
+				itemContentError = item.error_message;
+				return;
+			}
+			isLoadingItemContent = true;
+			try {
+				const status = await getItemStatus(libraryId, item.id);
+				if (status?.error_message) {
+					// Cache it on the in-memory row so subsequent clicks
+					// don't refetch.
+					const idx = items.findIndex((i) => i.id === item.id);
+					if (idx !== -1) {
+						items[idx] = { ...items[idx], error_message: status.error_message };
+						items = [...items];
+					}
+					itemContentError = status.error_message;
+				} else {
+					itemContentError = $_('libraries.itemContentModal.failedNoMessage', {
+						default:
+							'Import failed for this item. No error message was recorded — check the Library Manager logs.'
+					});
+				}
+			} catch (/** @type {unknown} */ err) {
+				itemContentError = err instanceof Error
+					? err.message
+					: $_('libraries.itemContentModal.failedNoMessage', {
+							default:
+								'Import failed for this item. No error message was recorded — check the Library Manager logs.'
+						});
+			} finally {
+				isLoadingItemContent = false;
+			}
+			return;
+		}
+
 		isLoadingItemContent = true;
 		try {
 			itemContent = await getItemContent(libraryId, item.id);
@@ -315,6 +566,90 @@
 				: $_('libraries.itemContentModal.loadError', { default: 'Failed to load content.' });
 		} finally {
 			isLoadingItemContent = false;
+		}
+	}
+
+	// View item original (source file). Two branches mirror the backend:
+	//  - binary original → render an HTML wrapper containing an embed in a
+	//    new tab so PDFs/images preview inline (direct blob-URL navigation
+	//    from `about:blank` is unreliable: Safari blocks it because the
+	//    placeholder has no origin, Chrome variants sometimes treat it as
+	//    a download; the embed wrapper sidesteps both).
+	//  - URL / YouTube import → backend returns the source URL via 404;
+	//    open it directly in a new tab without proxying.
+	// We must `window.open(...)` before the awaited fetch resolves, otherwise
+	// Safari treats the click as expired and blocks the popup. The trick:
+	// open a blank tab synchronously, then *write* into it once the blob
+	// is ready. If anything fails, close the placeholder tab.
+	async function requestViewItemOriginal(item) {
+		const placeholder = window.open('', '_blank');
+		let opened = false;
+		try {
+			const result = await getItemOriginal(libraryId, item.id);
+			if (result.type === 'url') {
+				if (placeholder) {
+					placeholder.location.href = result.url;
+					opened = true;
+				} else {
+					window.open(result.url, '_blank');
+					opened = true;
+				}
+				return;
+			}
+			// Binary: build a blob URL and write a tiny HTML wrapper into the
+			// placeholder. Using <embed> with an explicit MIME type forces
+			// the browser's native viewer (PDF/image/etc.) instead of the
+			// blob-URL navigation path. The objectUrl stays alive until the
+			// tab is closed — revoking earlier breaks the preview.
+			const objectUrl = URL.createObjectURL(result.blob);
+			const safeTitle = (result.filename || 'original')
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;');
+			const mime = result.contentType || 'application/octet-stream';
+			const safeMime = mime.replace(/"/g, '');
+			const wrapperHtml = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<title>${safeTitle}</title>
+<style>html,body{margin:0;padding:0;height:100%;background:#1f2937;}embed,iframe{display:block;width:100vw;height:100vh;border:0;background:#1f2937;}.bar{position:fixed;top:0;left:0;right:0;font:13px system-ui,sans-serif;background:rgba(0,0,0,.6);color:#fff;padding:6px 12px;z-index:10;display:flex;justify-content:space-between;align-items:center;}a{color:#93c5fd;text-decoration:none;}a:hover{text-decoration:underline;}</style>
+</head><body>
+<div class="bar"><span>${safeTitle}</span><a href="${objectUrl}" download="${safeTitle}">Download</a></div>
+<embed src="${objectUrl}" type="${safeMime}" />
+</body></html>`;
+			if (placeholder) {
+				try {
+					placeholder.document.open();
+					placeholder.document.write(wrapperHtml);
+					placeholder.document.close();
+					opened = true;
+				} catch (writeErr) {
+					// document.write may be blocked in some sandboxed
+					// contexts — fall back to a direct blob URL navigation.
+					console.warn('placeholder.document.write failed', writeErr);
+					placeholder.location.href = objectUrl;
+					opened = true;
+				}
+			} else {
+				const fallback = window.open(objectUrl, '_blank');
+				opened = !!fallback;
+				if (!fallback) {
+					// Popup blocked entirely — force a download as a last resort.
+					const a = document.createElement('a');
+					a.href = objectUrl;
+					a.download = result.filename;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+				}
+			}
+		} catch (/** @type {unknown} */ err) {
+			if (placeholder && !opened) placeholder.close();
+			error = readableError(err, $_('libraries.viewOriginalError', {
+				default: 'Failed to load original file.'
+			}));
+		} finally {
+			if (placeholder && !opened) placeholder.close();
 		}
 	}
 
@@ -625,15 +960,193 @@
 			</div>
 		{/if}
 
+		{#if libraryKnowledgeStores.length > 0 || ksPanelLoading}
+			<div class="overflow-hidden rounded-lg bg-white shadow">
+				<div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+					<h3 class="text-base font-semibold text-gray-900">
+						{$_('libraries.knowledgeStores.title', {
+							default: 'Knowledge Stores using this library'
+						})}
+						<span class="ml-1 text-sm font-normal text-gray-500">
+							({libraryKnowledgeStores.length})
+						</span>
+					</h3>
+					{#if ksPanelLoading}
+						<span class="inline-flex items-center text-xs text-gray-400">
+							<svg class="mr-1 h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
+								<path
+									d="M4 12a8 8 0 018-8"
+									stroke="currentColor"
+									stroke-width="4"
+									class="opacity-75"
+									fill="none"
+								/>
+							</svg>
+							{$_('common.loading', { default: 'Loading…' })}
+						</span>
+					{/if}
+				</div>
+				{#if libraryKnowledgeStores.length > 0}
+					<div class="overflow-x-auto">
+						<table class="min-w-full divide-y divide-gray-200">
+							<thead class="bg-gray-50">
+								<tr>
+									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+										{$_('libraries.knowledgeStores.name', { default: 'Name' })}
+									</th>
+									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+										{$_('libraries.knowledgeStores.embedding', { default: 'Embedding' })}
+									</th>
+									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+										{$_('libraries.knowledgeStores.items', { default: 'Items from this library' })}
+									</th>
+									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+										{$_('libraries.knowledgeStores.access', { default: 'Access' })}
+									</th>
+									<th class="px-4 py-2 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">
+										<span class="sr-only">{$_('common.actions', { default: 'Actions' })}</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-gray-200 bg-white">
+								{#each libraryKnowledgeStores as ks (ks.id)}
+									<tr class="hover:bg-gray-50">
+										<td class="px-4 py-3">
+											<div class="text-sm font-medium text-gray-900">{ks.name}</div>
+											{#if ks.description}
+												<div class="truncate text-xs text-gray-500" title={ks.description}>
+													{ks.description}
+												</div>
+											{/if}
+										</td>
+										<td class="px-4 py-3 text-sm text-gray-500">
+											{ks.embedding_vendor} / {ks.embedding_model}
+										</td>
+										<td class="px-4 py-3 text-sm text-gray-500">
+											<span class="font-medium text-gray-900">{ks.item_count}</span>
+											{#if ks.ready_count !== ks.item_count || ks.failed_count > 0}
+												<span class="ml-1 text-xs text-gray-400">
+													({ks.ready_count} {$_('libraries.knowledgeStores.ready', { default: 'ready' })}{#if ks.failed_count > 0}, {ks.failed_count} {$_('libraries.knowledgeStores.failed', { default: 'failed' })}{/if})
+												</span>
+											{/if}
+										</td>
+										<td class="px-4 py-3 text-sm text-gray-500 capitalize">
+											{ks.access}
+										</td>
+										<td class="px-4 py-3 text-right whitespace-nowrap">
+											<a
+												href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
+												class="text-sm text-blue-600 hover:text-blue-900"
+											>
+												{$_('libraries.knowledgeStores.view', { default: 'Open' })} →
+											</a>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<div class="overflow-hidden rounded-lg bg-white shadow">
 			<div class="border-b border-gray-200 px-6 py-4">
 				<h3 class="text-base font-semibold text-gray-900">
 					{$_('libraries.items.title', { default: 'Items' })}
 					<span class="ml-1 text-sm font-normal text-gray-500">({totalItems})</span>
+					{#if itemsLoading && items.length > 0}
+						<span class="ml-2 inline-flex items-center text-xs font-normal text-gray-400">
+							<svg class="mr-1 h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
+								<path
+									d="M4 12a8 8 0 018-8"
+									stroke="currentColor"
+									stroke-width="4"
+									class="opacity-75"
+									fill="none"
+								/>
+							</svg>
+							{$_('libraries.items.refreshing', { default: 'Refreshing…' })}
+						</span>
+					{/if}
 				</h3>
 			</div>
 
-			{#if items.length === 0}
+			{#if itemsLoading && items.length === 0}
+				<div class="p-6 text-center text-gray-400">
+					<div class="inline-flex items-center gap-2">
+						<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
+							<path
+								d="M4 12a8 8 0 018-8"
+								stroke="currentColor"
+								stroke-width="4"
+								class="opacity-75"
+								fill="none"
+							/>
+						</svg>
+						<span>{$_('libraries.items.loading', { default: 'Loading items…' })}</span>
+					</div>
+				</div>
+			{:else if itemsError}
+				<div class="p-6">
+					<div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+						<div class="font-medium">
+							{$_('libraries.items.loadErrorTitle', {
+								default: 'Could not load items'
+							})}
+						</div>
+						<p class="mt-1">{itemsError}</p>
+						<button
+							type="button"
+							onclick={refreshItems}
+							class="mt-3 inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50"
+						>
+							{$_('libraries.items.retry', { default: 'Retry' })}
+						</button>
+					</div>
+				</div>
+			{:else if itemsInconsistent}
+				<!-- Defensive state: library metadata says items exist, but the
+				     items endpoint returned an empty list after retries. Never
+				     show "No items yet" here — it makes users panic that their
+				     data is gone. Show a calm "having trouble loading" panel
+				     with a retry button and a hint about what the system
+				     thinks should be there. -->
+				<div class="p-6">
+					<div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+						<div class="font-medium">
+							{$_('libraries.items.inconsistentTitle', {
+								default: 'Having trouble loading items'
+							})}
+						</div>
+						<p class="mt-1">
+							{$_('libraries.items.inconsistentBody', {
+								default:
+									'Your items are safe — the library record shows they should be here, but we could not load the list this time. Please retry; if this keeps happening, refresh the page or try again in a moment.'
+							})}
+							{#if typeof library?.item_count === 'number' && library.item_count > 0}
+								<span class="block text-xs text-amber-700 mt-1">
+									{$_('libraries.items.inconsistentExpected', {
+										default: 'Library record reports'
+									})}: {library.item_count} {library.item_count === 1
+										? $_('libraries.items.itemSingular', { default: 'item' })
+										: $_('libraries.items.itemPlural', { default: 'items' })}.
+								</span>
+							{/if}
+						</p>
+						<button
+							type="button"
+							onclick={refreshItems}
+							class="mt-3 inline-flex items-center rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm hover:bg-amber-50"
+						>
+							{$_('libraries.items.retry', { default: 'Retry' })}
+						</button>
+					</div>
+				</div>
+			{:else if items.length === 0}
 				<div class="p-6 text-center text-gray-500">
 					{$_('libraries.items.empty', {
 						default: 'No items yet. Upload a file or import content to get started.'
@@ -690,9 +1203,31 @@
 											<button
 												type="button"
 												onclick={() => requestViewItem(item)}
-												class="mr-4 text-sm text-blue-600 hover:text-blue-900"
+												class="mr-3 text-sm text-blue-600 hover:text-blue-900"
+												title={$_('libraries.viewMarkdownHint', {
+													default: 'View extracted markdown content'
+												})}
 											>
-												{$_('libraries.viewContent', { default: 'View' })}
+												{$_('libraries.viewMarkdown', { default: 'View markdown' })}
+											</button>
+											<button
+												type="button"
+												onclick={() => requestViewItemOriginal(item)}
+												class="mr-4 text-sm text-blue-600 hover:text-blue-900"
+												title={$_('libraries.viewOriginalHint', {
+													default: 'Open the original source file or URL in a new tab'
+												})}
+											>
+												{$_('libraries.viewOriginal', { default: 'View original' })}
+											</button>
+										{:else if item.status === 'failed'}
+											<button
+												type="button"
+												onclick={() => requestViewItem(item)}
+												class="mr-4 text-sm text-red-600 hover:text-red-800"
+												title={item.error_message || ''}
+											>
+												{$_('libraries.viewError', { default: 'View error' })}
 											</button>
 										{/if}
 										{#if isOwner}
@@ -754,6 +1289,12 @@
 	title={itemContentTarget.title}
 	content={itemContent}
 	error={itemContentError}
+	canViewOriginal={!!itemContentTarget.id}
+	onviewOriginal={() => {
+		if (itemContentTarget.id) {
+			requestViewItemOriginal({ id: itemContentTarget.id, title: itemContentTarget.title });
+		}
+	}}
 	onclose={() => {
 		showItemContentModal = false;
 	}}

@@ -284,6 +284,119 @@ export async function getItemContent(libraryId, itemId) {
 }
 
 /**
+ * Result of {@link getItemOriginal}. One of:
+ * - ``{ type: 'blob', blob, filename, contentType }`` — binary original
+ *   resolved to a Blob (caller wraps with URL.createObjectURL to open).
+ * - ``{ type: 'url', url, sourceType }`` — item has no binary original
+ *   (URL / YouTube imports); caller should open ``url`` directly.
+ * @typedef {{ type: 'blob', blob: Blob, filename: string, contentType: string }
+ *           | { type: 'url', url: string, sourceType?: string }} ItemOriginal
+ */
+
+/**
+ * @typedef {Object} LibraryKnowledgeStore
+ * @property {string} id
+ * @property {string} name
+ * @property {string|null} [description]
+ * @property {string} chunking_strategy
+ * @property {string} embedding_vendor
+ * @property {string} embedding_model
+ * @property {string} vector_db_backend
+ * @property {boolean} is_shared
+ * @property {number} item_count
+ * @property {number} ready_count
+ * @property {number} failed_count
+ * @property {'owner'|'shared'} access
+ */
+
+/**
+ * List Knowledge Stores that reference any item from this library.
+ *
+ * Inverse of the per-KS content listing — useful for the LibraryDetail
+ * page to surface which KSs are populated from the current library.
+ * KSs the current user cannot access are filtered out server-side.
+ *
+ * @param {string} libraryId
+ * @returns {Promise<LibraryKnowledgeStore[]>}
+ */
+export async function getLibraryKnowledgeStores(libraryId) {
+    if (!browser) throw new Error('Browser only.');
+    const url = getApiUrl(`/libraries/${libraryId}/knowledge-stores`);
+    const response = await axios.get(url, { headers: authHeaders() });
+    return response.data?.knowledge_stores ?? [];
+}
+
+/**
+ * Resolve the original source for a library item.
+ *
+ * Binary imports stream the file with a Content-Disposition; URL / YouTube
+ * imports return ``{ type: 'url' }`` so the caller can simply open the
+ * source URL in a new tab without proxying.
+ *
+ * Throws when the item has neither a binary original nor a source URL, or
+ * when the request fails for any other reason.
+ *
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @returns {Promise<ItemOriginal>}
+ */
+export async function getItemOriginal(libraryId, itemId) {
+    if (!browser) throw new Error('Browser only.');
+    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/original`);
+    try {
+        const response = await axios.get(url, {
+            headers: authHeaders(),
+            responseType: 'blob',
+            timeout: 300_000
+        });
+        const blob = response.data;
+        // axios headers are typed as a union of string|number|object — coerce
+        // to a string so the consumer always sees a plain MIME / filename.
+        const contentType = String(response.headers['content-type'] || 'application/octet-stream');
+        // Extract filename from Content-Disposition: prefer RFC 5987 filename*,
+        // fall back to quoted filename. The backend sets both.
+        const cd = String(response.headers['content-disposition'] || '');
+        let filename = '';
+        const m5987 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+        if (m5987) {
+            try { filename = decodeURIComponent(m5987[1]); } catch { filename = m5987[1]; }
+        }
+        if (!filename) {
+            const mPlain = /filename="([^"]+)"/i.exec(cd);
+            if (mPlain) filename = mPlain[1];
+        }
+        if (!filename) filename = `${itemId}`;
+        return { type: 'blob', blob, filename, contentType };
+    } catch (error) {
+        // 404 with structured body means the item has no binary original;
+        // fall back to the source URL if the backend supplied one.
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+            // Body was fetched as blob; convert to JSON before reading.
+            let detail = null;
+            const data = error.response.data;
+            if (data instanceof Blob) {
+                try {
+                    const text = await data.text();
+                    const parsed = JSON.parse(text);
+                    detail = parsed?.detail;
+                } catch {
+                    detail = null;
+                }
+            } else if (data && typeof data === 'object') {
+                detail = /** @type {{ detail?: unknown }} */ (data).detail;
+            }
+            if (detail && typeof detail === 'object') {
+                const d = /** @type {{ source_url?: string, source_type?: string }} */ (detail);
+                if (d.source_url) {
+                    return { type: 'url', url: d.source_url, sourceType: d.source_type };
+                }
+            }
+        }
+        throw new Error(errorMessage(error, 'Failed to load original.'));
+    }
+}
+
+/**
  * Pre-check which Knowledge Stores reference an item — used before
  * showing the delete-confirm modal so we can route directly to the
  * blockers panel when the item is in use.

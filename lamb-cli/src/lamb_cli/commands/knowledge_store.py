@@ -266,13 +266,28 @@ def add_content(
 @app.command("list-content")
 def list_content(
     ks_id: str = typer.Argument(..., help="Knowledge Store ID."),
+    library: Optional[str] = typer.Option(
+        None, "--library", "-l",
+        help="Only show items from this library (matches library ID or name).",
+    ),
     output: str = typer.Option(None, "-o", "--output", help="Output format: table, json, plain."),
 ) -> None:
-    """List linked library items for a Knowledge Store."""
+    """List linked library items for a Knowledge Store.
+
+    Pass ``--library`` to restrict the result to a single library, answering
+    the intersection question "which items from library X are in KS Y?".
+    """
     fmt = output or get_output_format()
     with get_client() as client:
         resp = client.get(f"/creator/knowledge-stores/{ks_id}/content")
     links = resp.get("content", []) if isinstance(resp, dict) else resp
+    if library:
+        needle = library.strip()
+        links = [
+            l for l in links
+            if l.get("library_id") == needle
+            or (l.get("library_name") or "").strip() == needle
+        ]
     format_output(links, CONTENT_LINK_COLUMNS, fmt)
 
 

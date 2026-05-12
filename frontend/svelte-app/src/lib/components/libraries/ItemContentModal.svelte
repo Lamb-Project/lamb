@@ -2,6 +2,11 @@
   @component ItemContentModal
   Read-only viewer for a library item's rendered markdown. Sanitizes the
   body through renderMarkdownStrict before rendering it via `{@html}`.
+
+  Exposes a secondary "Open original" action when the parent supplies
+  ``onviewOriginal`` — this lets the modal surface both options
+  ("see original" / "only markdown") without the parent needing to
+  duplicate the action button in the row.
 -->
 <script>
 	import { _, locale } from '$lib/i18n';
@@ -13,6 +18,9 @@
 		title = '',
 		content = '',
 		error = null,
+		/** @type {(() => void) | null} */
+		onviewOriginal = null,
+		canViewOriginal = false,
 		onclose = () => {}
 	} = $props();
 
@@ -105,7 +113,22 @@
 				{/if}
 			</div>
 
-			<div class="flex justify-end border-t border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
+			<div class="flex items-center justify-between gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
+				<div>
+					{#if canViewOriginal && onviewOriginal}
+						<button
+							type="button"
+							class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-blue-50 focus:ring-2 focus:ring-offset-2 focus:outline-none"
+							onclick={() => onviewOriginal()}
+						>
+							{localeLoaded
+								? $_('libraries.itemContentModal.viewOriginal', {
+										default: 'Open original in new tab'
+									})
+								: 'Open original in new tab'}
+						</button>
+					{/if}
+				</div>
 				<button
 					type="button"
 					class="focus:ring-brand inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none"

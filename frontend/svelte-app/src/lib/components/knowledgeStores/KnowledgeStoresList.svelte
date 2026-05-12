@@ -14,6 +14,7 @@
 	import { user } from '$lib/stores/userStore';
 	import { processListData } from '$lib/utils/listHelpers';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+	import CreateKnowledgeStoreModal from '$lib/components/modals/CreateKnowledgeStoreModal.svelte';
 	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
 	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 
@@ -63,6 +64,12 @@
 
 	// Overflow menu state
 	let openMenuId = $state(/** @type {string|null} */ (null));
+
+	// Create modal handle — replaces the dispatch('createWithInitialState')
+	// flow that opened the full multi-step wizard, in favor of the simple
+	// CreateLibraryModal-style single-page form.
+	/** @type {any} */
+	let createModal;
 
 	// Column definitions for ResizableTable
 	const columns = [
@@ -484,6 +491,16 @@
 	function toggleMenu(id) {
 		openMenuId = openMenuId === id ? null : id;
 	}
+
+	/** @param {CustomEvent<{id: string, name: string}>} event */
+	async function handleCreated(event) {
+		showSuccess(
+			$_('knowledgeStores.createSuccess', {
+				default: `Knowledge Store "${event.detail.name}" created.`
+			})
+		);
+		await loadStores();
+	}
 </script>
 
 <!-- Close overflow menu on outside click -->
@@ -527,7 +544,7 @@
 		<div class="flex items-center gap-2">
 			<button
 				type="button"
-				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
+				onclick={() => createModal?.open()}
 				title={$_('knowledgeStores.createNewTitle', {
 					default: 'Create a Knowledge Store from existing library content'
 				})}
@@ -550,7 +567,7 @@
 		{#if !isFiltered}
 			<button
 				type="button"
-				onclick={() => dispatch('createWithInitialState', { libraryPath: 'new' })}
+				onclick={() => createModal?.open()}
 				title={$_('knowledgeStores.createNewTitle', {
 					default: 'Create a Knowledge Store from existing library content'
 				})}
@@ -725,6 +742,8 @@
 		</ResizableTable>
 	{/snippet}
 </EntityListShell>
+
+<CreateKnowledgeStoreModal bind:this={createModal} on:created={handleCreated} />
 
 <ConfirmationModal
 	bind:isOpen={showDeleteModal}

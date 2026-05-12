@@ -65,20 +65,13 @@ class YouTubeTranscriptImportPlugin(LibraryImportPlugin):
         self.report_progress(kwargs, 0, 3, f"Fetching transcript for {video_id}...")
 
         t0 = time.monotonic()
+        # On failure _fetch_transcript raises a RuntimeError with a
+        # user-facing reason; we deliberately do NOT swallow it. The
+        # worker catches the exception, marks the item as failed, and
+        # records the message — instead of producing a "ready" item with
+        # a placeholder body that pretends the import succeeded.
         pieces, subtitle_source = _fetch_transcript(video_id, language, proxy_url)
         fetch_duration_ms = int((time.monotonic() - t0) * 1000)
-
-        if not pieces:
-            return ImportResult(
-                full_text=f"*(No transcript available for video {video_id})*",
-                metadata={
-                    "video_id": video_id,
-                    "source_url": url,
-                    "language": language,
-                    "subtitle_source": "none",
-                },
-                source_ref=_build_source_ref(url, video_id, language),
-            )
 
         self.report_progress(kwargs, 1, 3, "Building Markdown...")
 
@@ -148,7 +141,11 @@ def _fetch_transcript(
 ) -> tuple[list[dict[str, Any]], str]:
     """Download subtitles for a YouTube video via yt-dlp.
 
-    Prefers manual subtitles, falls back to auto-captions.
+    Prefers manual subtitles, falls back to auto-captions. The actual
+    transcript file is downloaded via yt-dlp's own HTTP client (with
+    cookies / session context), not a bare ``requests.get`` — direct
+    fetches of ``/api/timedtext`` URLs are rate-limited by YouTube
+    (HTTP 429 with a "Sorry..." HTML page).
 
     Args:
         video_id: YouTube video ID (11 characters).
@@ -158,24 +155,27 @@ def _fetch_transcript(
     Returns:
         Tuple of (parsed subtitle pieces, subtitle source label).
     """
+    import os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
     import yt_dlp  # noqa: PLC0415
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    ydl_opts: dict[str, Any] = {
+    # Probe what subtitle tracks the video actually exposes so we can
+    # distinguish "manual" from "auto" in the returned source label.
+    probe_opts: dict[str, Any] = {
         "skip_download": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": [language],
-        "subtitlesformat": "srt",
         "quiet": True,
         "no_warnings": True,
     }
     if proxy_url:
-        ydl_opts["proxy"] = proxy_url
+        probe_opts["proxy"] = proxy_url
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(probe_opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
         logger.error("yt-dlp failed for %s: %s", video_id, exc)
@@ -183,29 +183,159 @@ def _fetch_transcript(
             f"Failed to fetch video info for {video_id}: {exc}"
         ) from exc
 
-    # Try manual subtitles first, then auto-captions.
-    for sub_key, source_label in [
-        ("subtitles", "manual"),
-        ("automatic_captions", "auto"),
-    ]:
-        subs = (info or {}).get(sub_key, {})
-        lang_subs = subs.get(language, [])
-        for sub_entry in lang_subs:
-            sub_url = sub_entry.get("url", "")
-            if not sub_url:
-                continue
-            try:
-                resp = requests.get(sub_url, timeout=30)
-                resp.raise_for_status()
-                pieces = _parse_srt_content(resp.text)
-                if pieces:
-                    return pieces, source_label
-            except Exception:
-                logger.warning("Failed to fetch subtitle from %s", sub_url[:80])
-                continue
+    manual = (info or {}).get("subtitles", {}) or {}
+    automatic = (info or {}).get("automatic_captions", {}) or {}
 
-    logger.warning("No subtitles found for %s in language '%s'", video_id, language)
-    return [], "none"
+    # YouTube doesn't always key subtitle tracks with a plain ISO code:
+    # locale-suffixed ("en-US"), region-suffixed ("en-GB"), and
+    # translation-chain variants ("en-nP7-2PuUl7o", "de-en-nP7-...") are
+    # all common. Resolve the user's requested code to whatever variant
+    # the video actually exposes, preferring exact matches.
+    manual_key = _resolve_language_key(manual, language)
+    auto_key = _resolve_language_key(automatic, language)
+
+    # Order of attempts: manual first (always higher quality), then auto.
+    attempts: list[tuple[str, str]] = []
+    if manual_key:
+        attempts.append((manual_key, "manual"))
+    if auto_key:
+        attempts.append((auto_key, "auto"))
+
+    if not attempts:
+        raise RuntimeError(
+            f"No subtitles available in language '{language}'."
+        )
+
+    # Track whether any attempt was rate-limited so we can give a more
+    # actionable message than a generic "download failed".
+    hit_rate_limit = False
+    for resolved_lang, source_label in attempts:
+        try:
+            pieces = _download_and_parse(
+                url=url,
+                language_key=resolved_lang,
+                source_label=source_label,
+                proxy_url=proxy_url,
+            )
+        except Exception as exc:
+            msg = str(exc)
+            if "429" in msg or "Too Many Requests" in msg:
+                hit_rate_limit = True
+            # Single-line operator detail in the logs; never appended to
+            # the user-facing error_message.
+            logger.warning(
+                "Subtitle download attempt failed (%s, lang=%s): %s",
+                source_label,
+                resolved_lang,
+                msg,
+            )
+            continue
+        if pieces:
+            return pieces, source_label
+
+    if hit_rate_limit:
+        raise RuntimeError(
+            "YouTube rate-limited the subtitle download. Try again later."
+        )
+    raise RuntimeError("Could not download subtitles for this video.")
+
+
+def _resolve_language_key(
+    subs_map: dict[str, list[dict[str, Any]]],
+    language: str,
+) -> str | None:
+    """Return the actual key in ``subs_map`` that matches ``language``.
+
+    Exact match wins; otherwise the first key whose part-before-the-first
+    ``-`` equals the requested language (handles ``en-US``, ``en-GB``,
+    ``en-nP7-2PuUl7o``, etc.).
+    """
+    if not subs_map:
+        return None
+    if language in subs_map:
+        return language
+    for key in subs_map.keys():
+        if key.split("-", 1)[0] == language:
+            return key
+    return None
+
+
+def _download_and_parse(
+    *,
+    url: str,
+    language_key: str,
+    source_label: str,
+    proxy_url: str | None,
+) -> list[dict[str, Any]]:
+    """Use yt-dlp to download the subtitle for ``language_key`` to a temp
+    directory, parse it, and return the pieces.
+
+    Asking yt-dlp to actually download routes the fetch through its own
+    HTTP client (cookies, retries, proper UA) — which is what avoids the
+    HTTP 429 we'd otherwise hit on direct ``timedtext`` URLs.
+    """
+    import os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    import yt_dlp  # noqa: PLC0415
+
+    only_auto = source_label == "auto"
+    only_manual = source_label == "manual"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        outtmpl = os.path.join(tmp, "%(id)s.%(ext)s")
+        opts: dict[str, Any] = {
+            "skip_download": True,  # we only want the subtitle, not the video
+            "writesubtitles": not only_auto,
+            "writeautomaticsub": not only_manual,
+            "subtitleslangs": [language_key],
+            "subtitlesformat": "srt/best",
+            "outtmpl": outtmpl,
+            "quiet": True,
+            "no_warnings": True,
+        }
+        if proxy_url:
+            opts["proxy"] = proxy_url
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as exc:
+            # Re-raise with the underlying yt-dlp message preserved.
+            # The caller will aggregate per-track errors into a single
+            # human-readable message for the item's ``error_message``.
+            msg = str(exc).strip() or exc.__class__.__name__
+            # Trim noise like yt-dlp's "ERROR: " prefix so the bubbled-up
+            # message reads cleanly in the UI.
+            if msg.startswith("ERROR:"):
+                msg = msg[len("ERROR:"):].strip()
+            raise RuntimeError(msg) from exc
+
+        # yt-dlp writes <id>.<lang>.srt (or .vtt). Read the first one we
+        # find that matches our language_key; fall back to any subtitle
+        # file in the temp dir.
+        try:
+            files = os.listdir(tmp)
+        except OSError:
+            return []
+        sub_files = [f for f in files if f.endswith((".srt", ".vtt"))]
+        if not sub_files:
+            return []
+        # Prefer files containing the language key in the filename.
+        preferred = [f for f in sub_files if f".{language_key}." in f]
+        chosen = preferred[0] if preferred else sub_files[0]
+        path = os.path.join(tmp, chosen)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                content = fh.read()
+        except OSError:
+            return []
+
+        # _parse_srt_content already handles SRT and VTT alike (VTT is a
+        # superset that lacks the integer index line — the parser falls
+        # back gracefully). If your environment proves otherwise, route
+        # by file extension here.
+        return _parse_srt_content(content)
 
 
 # ---------------------------------------------------------------------------

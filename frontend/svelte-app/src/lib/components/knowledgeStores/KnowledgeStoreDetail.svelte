@@ -9,6 +9,7 @@
 <script>
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
+	import { page } from '$app/stores';
 	import {
 		getKnowledgeStore,
 		updateKnowledgeStore,
@@ -19,7 +20,7 @@
 	} from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-	import CreateKnowledgeWizard from '$lib/components/knowledge/CreateKnowledgeWizard.svelte';
+	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
 
 	/** @type {{ ksId: string }} */
 	let { ksId } = $props();
@@ -52,8 +53,52 @@
 	// Polling
 	let pollTimer = null;
 
+	// Library filter: restricts the linked-content table to items from one
+	// library. ``''`` means "all libraries". The initial value is seeded from
+	// the URL (``?library=<id|name>``) so links from LibraryDetail land on
+	// the pre-filtered view.
+	let libraryFilter = $state('');
+
+	// Distinct library options derived from the current content list. Each
+	// entry carries the library_id when available (preferred for matching)
+	// plus the display name. We dedupe by id-or-name and keep names sorted.
+	let libraryOptions = $derived.by(() => {
+		const seen = new Map();
+		for (const link of content || []) {
+			const id = link.library_id || '';
+			const name = link.library_name || '';
+			if (!id && !name) continue;
+			const key = id || `name:${name}`;
+			if (!seen.has(key)) {
+				seen.set(key, { id, name: name || id });
+			}
+		}
+		return Array.from(seen.values()).sort((a, b) =>
+			a.name.localeCompare(b.name)
+		);
+	});
+
+	// Filtered content: kept as a derived view so polling-driven updates to
+	// individual rows propagate without re-applying the filter manually.
+	let filteredContent = $derived.by(() => {
+		if (!libraryFilter) return content;
+		return (content || []).filter((link) => {
+			if (link.library_id && link.library_id === libraryFilter) return true;
+			if ((link.library_name || '') === libraryFilter) return true;
+			return false;
+		});
+	});
+
 	$effect(() => {
 		if (ksId) {
+			// Seed the filter from the URL once per ksId so a deep link like
+			// /knowledge-stores/<ks>?library=<id> opens pre-filtered.
+			try {
+				const fromQuery = $page.url.searchParams.get('library');
+				if (fromQuery) libraryFilter = fromQuery;
+			} catch {
+				// $page may not be ready on first render — ignore.
+			}
 			loadAll();
 		}
 		return () => {
@@ -373,26 +418,66 @@
 
 	<!-- Linked content -->
 	<div class="mb-4 overflow-hidden rounded-lg bg-white shadow">
-		<div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+		<div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
 			<h3 class="text-base font-semibold text-gray-900">
 				{$_('knowledgeStores.linkedContent', { default: 'Linked Library Content' })}
-				<span class="ml-2 text-sm text-gray-400">({content.length})</span>
+				<span class="ml-2 text-sm text-gray-400">
+					{#if libraryFilter}
+						({filteredContent.length} / {content.length})
+					{:else}
+						({content.length})
+					{/if}
+				</span>
 			</h3>
-			{#if ks.is_owner}
-				<button
-					type="button"
-					onclick={() => (showAddContent = true)}
-					class="rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white hover:bg-[#195a91]"
-				>
-					+ {$_('knowledgeStores.addContent', { default: 'Add Content' })}
-				</button>
-			{/if}
+			<div class="flex items-center gap-3">
+				{#if libraryOptions.length > 1 || libraryFilter}
+					<label class="flex items-center gap-2 text-xs text-gray-600">
+						<span>{$_('knowledgeStores.filterLibrary', { default: 'Library' })}:</span>
+						<select
+							bind:value={libraryFilter}
+							class="rounded-md border border-gray-300 px-2 py-1 text-xs"
+						>
+							<option value="">
+								{$_('knowledgeStores.filterLibraryAll', { default: 'All libraries' })}
+							</option>
+							{#each libraryOptions as opt (opt.id || opt.name)}
+								<option value={opt.id || opt.name}>{opt.name}</option>
+							{/each}
+						</select>
+						{#if libraryFilter}
+							<button
+								type="button"
+								onclick={() => (libraryFilter = '')}
+								class="text-xs text-gray-500 hover:text-gray-800"
+								title={$_('knowledgeStores.filterLibraryClear', { default: 'Clear filter' })}
+							>
+								×
+							</button>
+						{/if}
+					</label>
+				{/if}
+				{#if ks.is_owner}
+					<button
+						type="button"
+						onclick={() => (showAddContent = true)}
+						class="rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white hover:bg-[#195a91]"
+					>
+						+ {$_('knowledgeStores.addContent', { default: 'Add Content' })}
+					</button>
+				{/if}
+			</div>
 		</div>
 
 		{#if content.length === 0}
 			<div class="p-6 text-center text-gray-500">
 				{$_('knowledgeStores.noContent', {
 					default: 'No library content linked yet. Add content to start indexing.'
+				})}
+			</div>
+		{:else if filteredContent.length === 0}
+			<div class="p-6 text-center text-sm text-gray-500">
+				{$_('knowledgeStores.noContentForLibrary', {
+					default: 'No items from the selected library are linked to this Knowledge Store.'
 				})}
 			</div>
 		{:else}
@@ -418,16 +503,39 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 bg-white">
-						{#each content as link (link.id)}
+						{#each filteredContent as link (link.id)}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-3 text-sm">
-									<div class="font-medium text-gray-900">
+									<!-- item_title is COALESCEd server-side: live title when the
+									     library_items row exists, otherwise the original filename
+									     / video_url / url from the library.upload audit row.
+									     item_deleted=true means the live row is gone. -->
+									<div
+										class="font-medium {link.item_deleted ? 'text-gray-500 italic' : 'text-gray-900'}"
+									>
 										{link.item_title || link.library_item_id}
+										{#if link.item_deleted}
+											<span class="ml-1 text-xs not-italic text-gray-400">
+												{$_('knowledgeStores.deletedSuffix', { default: '(deleted)' })}
+											</span>
+										{/if}
 									</div>
 									<div class="text-xs text-gray-400">{link.library_item_id}</div>
 								</td>
-								<td class="px-4 py-3 text-sm text-gray-700">
-									{link.library_name || '—'}
+								<td class="px-4 py-3 text-sm">
+									<!-- library_name follows the same COALESCE pattern; falls
+									     back to the historical name from the library.create
+									     audit row when the live library was deleted. -->
+									<div
+										class="{link.library_deleted ? 'text-gray-500 italic' : 'text-gray-700'}"
+									>
+										{link.library_name || '—'}
+										{#if link.library_deleted}
+											<span class="ml-1 text-xs not-italic text-gray-400">
+												{$_('knowledgeStores.deletedSuffix', { default: '(deleted)' })}
+											</span>
+										{/if}
+									</div>
 								</td>
 								<td class="px-4 py-3">
 									<span
@@ -587,13 +695,12 @@
 	</div>
 {/if}
 
-{#if showAddContent}
-	<CreateKnowledgeWizard
-		initialState={{ ksPath: 'existing', existingKsId: ksId, ksName: ks?.name || '' }}
-		onclose={() => (showAddContent = false)}
-		on:done={handleAddContentDone}
-	/>
-{/if}
+<AddContentToKSModal
+	bind:isOpen={showAddContent}
+	{ksId}
+	on:done={handleAddContentDone}
+	on:close={() => (showAddContent = false)}
+/>
 
 <ConfirmationModal
 	bind:isOpen={showRemoveModal}

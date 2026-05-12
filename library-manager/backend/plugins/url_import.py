@@ -65,6 +65,7 @@ class UrlImportPlugin(LibraryImportPlugin):
         max_depth = _safe_int(kwargs.get("max_discovery_depth"), 2)
         limit = _safe_int(kwargs.get("limit"), 100)
         crawl_domain = _safe_bool(kwargs.get("crawl_entire_domain"), True)
+        timeout_s = _safe_int(kwargs.get("timeout"), 300)
         self.report_progress(kwargs, 0, 3, f"Crawling {url}...")
 
         t0 = time.monotonic()
@@ -80,6 +81,7 @@ class UrlImportPlugin(LibraryImportPlugin):
                 allow_external_links=False,
                 scrape_options=ScrapeOptions(formats=["markdown"]),
                 poll_interval=5,
+                timeout=timeout_s,
             )
         except Exception as exc:
             raise RuntimeError(f"Firecrawl crawl failed for {url}: {exc}") from exc

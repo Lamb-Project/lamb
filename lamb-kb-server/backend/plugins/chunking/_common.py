@@ -19,29 +19,48 @@ if TYPE_CHECKING:
 
 
 def validate_chunking_params(strategy: "ChunkingStrategy", params: dict) -> None:
-    """Raise ``ValueError`` if *params* contains keys not declared by *strategy*.
+    """Reject unknown keys and out-of-range numeric values in *params*.
 
     Each chunking strategy reads only the keys it recognises; unknown keys are
-    silently ignored.  This helper catches the case early — before the params are
-    persisted or used — so callers receive a clear error instead of silent
-    misconfiguration (Bug #4).
+    silently ignored.  This helper catches both the unknown-key case and the
+    out-of-range-value case early — before the params are persisted or used —
+    so callers receive a clear error instead of silent misconfiguration.
 
     Args:
         strategy: An instantiated chunking strategy.
         params: The caller-supplied parameter dict to validate.
 
     Raises:
-        ValueError: When *params* contains at least one key not in the strategy's
-            ``get_parameters()`` allow-list.  The message names both the unknown
-            keys and the allowed set so the caller can fix the typo.
+        ValueError: When *params* contains at least one key not in the
+            strategy's ``get_parameters()`` allow-list, or when a value falls
+            outside a parameter's declared ``min_value``/``max_value`` range.
     """
-    allowed = {p.name for p in strategy.get_parameters()}
-    unknown = set(params) - allowed
+    declared = {p.name: p for p in strategy.get_parameters()}
+    unknown = set(params) - set(declared)
     if unknown:
         raise ValueError(
             f"Unknown chunking_params for strategy '{strategy.name}': "
-            f"{sorted(unknown)}. Allowed: {sorted(allowed)}."
+            f"{sorted(unknown)}. Allowed: {sorted(declared)}."
         )
+
+    for key, value in params.items():
+        spec = declared[key]
+        if spec.min_value is not None or spec.max_value is not None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(
+                    f"chunking_params['{key}'] for strategy '{strategy.name}' "
+                    f"must be numeric, got {type(value).__name__}: {value!r}."
+                )
+            if spec.min_value is not None and value < spec.min_value:
+                raise ValueError(
+                    f"chunking_params['{key}']={value} is below the declared "
+                    f"minimum {spec.min_value} for strategy '{strategy.name}'."
+                )
+            if spec.max_value is not None and value > spec.max_value:
+                raise ValueError(
+                    f"chunking_params['{key}']={value} is above the declared "
+                    f"maximum {spec.max_value} for strategy '{strategy.name}'."
+                )
 
 
 def build_base_metadata(

@@ -496,6 +496,9 @@ def _item_to_summary(item: ContentItem) -> dict:
         "file_size": item.file_size,
         "import_plugin": item.import_plugin,
         "status": item.status,
+        # Carried on the summary too so the list view can show *why* a
+        # row is in the ``failed`` state without a per-item detail fetch.
+        "error_message": item.error_message,
         "page_count": item.page_count,
         "image_count": item.image_count,
         "created_at": item.created_at,
@@ -511,7 +514,6 @@ def _item_to_detail(item: ContentItem) -> dict:
         "import_params": json.loads(item.import_params) if item.import_params else None,
         "metadata": json.loads(item.metadata_) if item.metadata_ else None,
         "processing_stats": json.loads(item.processing_stats) if item.processing_stats else None,
-        "error_message": item.error_message,
         "permalink_base": item.permalink_base,
     })
     return detail

@@ -218,20 +218,24 @@ def list_collections(
 def update_collection(
     db: Session, collection_id: str, req: UpdateCollectionRequest
 ) -> Collection:
-    """Update mutable fields (name, description) of a collection.
+    """Update mutable fields (name, description, chunking_params) of a collection.
 
-    The store setup (chunking, embedding, vector_db) is immutable (ADR-3).
+    Strategy, embedding vendor/model, and vector_db_backend remain immutable
+    (ADR-3) — changing those would require re-embedding every existing chunk.
+    ``chunking_params`` updates apply only to content ingested AFTER the
+    update; existing chunks keep their original parameters.
 
     Args:
         db: Database session.
         collection_id: Primary key.
-        req: Update request (only name/description).
+        req: Update request.
 
     Returns:
         Updated Collection row.
 
     Raises:
-        HTTPException: 404 if not found, 409 if name already taken in the org.
+        HTTPException: 404 if not found, 409 if name already taken in the org,
+            422 if chunking_params are out of range or contain unknown keys.
     """
     collection = get_collection(db, collection_id)
 
@@ -258,6 +262,22 @@ def update_collection(
 
     if req.description is not None:
         collection.description = req.description
+
+    if req.chunking_params is not None:
+        # Validate against the (immutable) chunking strategy's declared params
+        from plugins.chunking._common import validate_chunking_params  # noqa: PLC0415
+        from plugins.base import ChunkingRegistry  # noqa: PLC0415
+
+        strategy = ChunkingRegistry.get(collection.chunking_strategy)
+        try:
+            validate_chunking_params(strategy, req.chunking_params)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        import json  # noqa: PLC0415
+        collection.chunking_params = json.dumps(req.chunking_params)
 
     db.commit()
     db.refresh(collection)

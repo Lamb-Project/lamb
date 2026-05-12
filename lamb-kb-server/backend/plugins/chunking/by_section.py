@@ -200,7 +200,10 @@ class BySectionChunking(ChunkingStrategy):
             )
             from plugins.chunking.simple import SimpleChunking  # lazy import
 
-            return SimpleChunking().chunk(document, {"chunk_size": 1000, "chunk_overlap": 200})
+            fallback = SimpleChunking()
+            fallback_allowed = {p.name for p in fallback.get_parameters()}
+            fallback_params = {k: v for k, v in (params or {}).items() if k in fallback_allowed}
+            return fallback.chunk(document, fallback_params)
 
         # Group by parent path key — sections from different parents are never mixed
         groups: dict[str, list[dict[str, Any]]] = defaultdict(list)

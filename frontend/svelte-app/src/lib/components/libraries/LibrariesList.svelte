@@ -6,6 +6,7 @@
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
 	import { getLibraries, deleteLibrary, toggleSharing } from '$lib/services/libraryService';
+	import { removeContent as removeKsContent } from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import { user } from '$lib/stores/userStore';
 	import { processListData } from '$lib/utils/listHelpers';
@@ -57,6 +58,20 @@
 	let showDeleteModal = $state(false);
 	let isDeleting = $state(false);
 	let deleteTarget = $state({ id: '', name: '' });
+	// FR-10: when a library can't be deleted because its items are still in
+	// Knowledge Stores, we surface the blockers inside the delete modal
+	// instead of bubbling a page-level error.
+	let deleteError = $state('');
+	/**
+	 * @type {Array<{
+	 *   id: string,             // encoded as `${ksId}::${itemId}` for onRemoveBlocker
+	 *   name: string,           // "<item title> — in <KS name>"
+	 *   itemId: string,
+	 *   ksId: string,
+	 *   removing: boolean
+	 * }>}
+	 */
+	let deleteBlockers = $state([]);
 
 	// Overflow menu state (sharing toggle)
 	let openMenuId = $state(/** @type {string|null} */ (null));
@@ -66,7 +81,7 @@
 	let createModal;
 
 	// --- Filter predicates ---
-	let activePredicates = $derived(() => {
+	let activePredicates = $derived.by(() => {
 		/** @type {Array<(item: any) => boolean>} */
 		const preds = [];
 		if (sharingFilter === 'my') preds.push((l) => l.is_owner !== false);
@@ -107,7 +122,7 @@
 	});
 
 	// --- Active filter chips ---
-	let activeChips = $derived(() => {
+	let activeChips = $derived.by(() => {
 		/** @type {Array<{id: string, label: string, value: string, onClear: () => void}>} */
 		const chips = [];
 		if (sharingFilter !== 'all') {
@@ -246,7 +261,7 @@
 			search: searchTerm,
 			searchFields: ['name', 'description', 'id'],
 			filters: {},
-			predicates: activePredicates(),
+			predicates: activePredicates,
 			sortBy,
 			sortOrder,
 			page: currentPage,
@@ -341,22 +356,96 @@
 	/** @param {import('$lib/services/libraryService').Library} lib */
 	function requestDelete(lib) {
 		deleteTarget = { id: lib.id, name: lib.name };
+		deleteError = '';
+		deleteBlockers = [];
 		showDeleteModal = true;
 	}
 
 	async function handleDeleteConfirm() {
 		isDeleting = true;
+		deleteError = '';
 		try {
 			await deleteLibrary(deleteTarget.id);
 			showDeleteModal = false;
+			deleteBlockers = [];
 			showSuccess(
 				$_('libraries.deleteSuccess', { default: `Library "${deleteTarget.name}" deleted.` })
 			);
 			await loadLibraries();
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Delete failed';
+			// FR-10: backend returns 409 when items in the library are still
+			// referenced by Knowledge Stores. Render the blockers inside the
+			// modal so the user can remove them one by one and retry.
+			const isAxios = !!(err && typeof err === 'object' && /** @type {any} */ (err).isAxiosError);
+			const status = isAxios ? /** @type {any} */ (err).response?.status : null;
+			const detail = isAxios ? /** @type {any} */ (err).response?.data?.detail : null;
+			if (status === 409 && detail && typeof detail === 'object') {
+				deleteError =
+					typeof detail.message === 'string'
+						? detail.message
+						: $_('libraries.deleteModal.blockedMessage', {
+								default:
+									'This library cannot be deleted: some items are still referenced by Knowledge Stores. Remove them from each Knowledge Store first.'
+							});
+				const ksNameById = new Map();
+				const ksList = Array.isArray(detail.knowledge_stores) ? detail.knowledge_stores : [];
+				for (const k of ksList) {
+					if (k?.id) ksNameById.set(String(k.id), k?.name || k?.id);
+				}
+				const items = Array.isArray(detail.items) ? detail.items : [];
+				deleteBlockers = items.map((/** @type {any} */ it) => {
+					const itemId = String(it?.id || '');
+					const ksId = String(it?.knowledge_store_id || '');
+					const title = it?.title || itemId || 'Untitled item';
+					const ksName = ksNameById.get(ksId) || ksId || 'Knowledge Store';
+					return {
+						id: `${ksId}::${itemId}`,
+						name: `${title} — ${ksName}`,
+						itemId,
+						ksId,
+						removing: false
+					};
+				});
+			} else {
+				// Non-409 errors: surface in the modal too, not in the page
+				// background, so the modal stays the single source of truth.
+				deleteError = err instanceof Error ? err.message : 'Delete failed';
+			}
 		} finally {
 			isDeleting = false;
+		}
+	}
+
+	/**
+	 * Unlink a single (item, KS) blocker — the same operation the per-item
+	 * delete modal performs. On success, drop the row; when the list empties,
+	 * clear the error so the Confirm button reappears and the user can retry
+	 * the library delete without closing the modal.
+	 * @param {string} blockerId
+	 */
+	async function handleRemoveLibraryBlocker(blockerId) {
+		const blocker = deleteBlockers.find((b) => b.id === blockerId);
+		if (!blocker) return;
+		deleteBlockers = deleteBlockers.map((b) =>
+			b.id === blockerId ? { ...b, removing: true } : b
+		);
+		try {
+			await removeKsContent(blocker.ksId, blocker.itemId);
+			deleteBlockers = deleteBlockers.filter((b) => b.id !== blockerId);
+			if (deleteBlockers.length === 0) {
+				deleteError = '';
+			}
+		} catch (/** @type {unknown} */ e) {
+			console.error('removeKsContent failed', e);
+			deleteBlockers = deleteBlockers.map((b) =>
+				b.id === blockerId ? { ...b, removing: false } : b
+			);
+			deleteError =
+				e instanceof Error
+					? e.message
+					: $_('libraries.deleteModal.removeBlockerFailed', {
+							default: 'Failed to remove from Knowledge Store.'
+						});
 		}
 	}
 
@@ -413,7 +502,7 @@
 	{itemsPerPage}
 	filters={filterDefs}
 	{filterValues}
-	activeChips={activeChips()}
+	activeChips={activeChips}
 	searchValue={searchTerm}
 	searchPlaceholder={$_('list.searchPlaceholder', { default: 'Search libraries...' })}
 	sortOptions={[
@@ -631,9 +720,24 @@
 		default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.`
 	})}
 	confirmText={$_('libraries.deleteModal.confirm', { default: 'Delete' })}
+	cancelText={deleteBlockers.length > 0
+		? $_('common.close', { default: 'Close' })
+		: $_('common.cancel', { default: 'Cancel' })}
 	variant="danger"
+	error={deleteError}
+	blockers={deleteBlockers}
+	blockersTitle={$_('libraries.deleteModal.blockersTitle', {
+		default: 'Items blocking deletion'
+	})}
+	blockerRemoveLabel={$_('libraries.deleteModal.removeFromKs', {
+		default: 'Remove from KS'
+	})}
+	hideConfirm={deleteBlockers.length > 0}
+	onRemoveBlocker={handleRemoveLibraryBlocker}
 	onconfirm={handleDeleteConfirm}
 	oncancel={() => {
 		showDeleteModal = false;
+		deleteError = '';
+		deleteBlockers = [];
 	}}
 />

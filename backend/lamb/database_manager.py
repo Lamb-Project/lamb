@@ -7912,16 +7912,20 @@ class LambDatabaseManager:
 
     def update_knowledge_store(self, knowledge_store_id: str,
                                name: str = None,
-                               description: str = None) -> bool:
-        """Update knowledge store name and/or description.
+                               description: str = None,
+                               chunking_params: Optional[Dict[str, Any]] = None) -> bool:
+        """Update knowledge store name, description, and/or chunking_params.
 
-        Only ``name`` and ``description`` are mutable. Store setup (chunking,
-        embedding, vector DB) is locked at creation per ADR-3.
+        Strategy/embedding/vector-DB are still locked at creation per ADR-3 —
+        only their *parameters* are mutable. Updated ``chunking_params`` apply
+        only to content ingested AFTER the change; existing chunks keep their
+        original parameters.
 
         Args:
             knowledge_store_id: KS UUID.
             name: New name (or None to keep).
             description: New description (or None to keep).
+            chunking_params: New chunking parameters (or None to keep).
 
         Returns:
             True if updated.
@@ -7941,6 +7945,9 @@ class LambDatabaseManager:
                 if description is not None:
                     sets.append("description = ?")
                     params.append(description)
+                if chunking_params is not None:
+                    sets.append("chunking_params = ?")
+                    params.append(json.dumps(chunking_params))
                 params.append(knowledge_store_id)
                 cursor.execute(f"""
                     UPDATE {self.table_prefix}knowledge_stores
@@ -8124,11 +8131,18 @@ class LambDatabaseManager:
                                     ) -> List[Dict[str, Any]]:
         """List all content links for a knowledge store, joined with item info.
 
+        For orphan links (library or item rows already deleted), fall back to
+        the audit log to recover the original library name and a sensible
+        item label from ``library.create`` / ``library.upload`` events. The
+        ``library_deleted`` / ``item_deleted`` flags let the UI annotate
+        recovered names so the user knows the source is gone.
+
         Args:
             knowledge_store_id: KS UUID.
 
         Returns:
-            List of dicts with link + item + library fields.
+            List of dicts with link + item + library fields, plus
+            ``library_deleted`` and ``item_deleted`` booleans.
         """
         connection = self.get_connection()
         if not connection:
@@ -8138,12 +8152,34 @@ class LambDatabaseManager:
                 cursor = connection.cursor()
                 cursor.execute(f"""
                     SELECT kcl.*,
-                           li.title as item_title,
+                           COALESCE(
+                               li.title,
+                               (SELECT COALESCE(
+                                           json_extract(al.details, '$.filename'),
+                                           json_extract(al.details, '$.video_url'),
+                                           json_extract(al.details, '$.url')
+                                       )
+                                  FROM {self.table_prefix}audit_log al
+                                 WHERE al.target_type = 'library_item'
+                                   AND al.target_id = kcl.library_item_id
+                                   AND al.action = 'library.upload'
+                                 ORDER BY al.created_at DESC LIMIT 1)
+                           ) as item_title,
                            li.source_type as item_source_type,
                            li.original_filename as item_filename,
                            li.source_url as item_source_url,
                            li.status as item_status,
-                           lib.name as library_name
+                           COALESCE(
+                               lib.name,
+                               (SELECT json_extract(al.details, '$.name')
+                                  FROM {self.table_prefix}audit_log al
+                                 WHERE al.target_type = 'library'
+                                   AND al.target_id = kcl.library_id
+                                   AND al.action = 'library.create'
+                                 ORDER BY al.created_at DESC LIMIT 1)
+                           ) as library_name,
+                           (lib.id IS NULL) as library_deleted,
+                           (li.id IS NULL) as item_deleted
                     FROM {self.table_prefix}kb_content_links kcl
                     LEFT JOIN {self.table_prefix}library_items li ON kcl.library_item_id = li.id
                     LEFT JOIN {self.table_prefix}libraries lib ON kcl.library_id = lib.id
@@ -8151,7 +8187,13 @@ class LambDatabaseManager:
                     ORDER BY kcl.created_at DESC
                 """, (knowledge_store_id,))
                 columns = [desc[0] for desc in cursor.description]
-                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                # SQLite returns booleans as 0/1; normalize to Python bool
+                # so the JSON payload sent to the frontend is well-typed.
+                for r in rows:
+                    r["library_deleted"] = bool(r.get("library_deleted"))
+                    r["item_deleted"] = bool(r.get("item_deleted"))
+                return rows
         except sqlite3.Error as e:
             logger.error(f"Database error getting kb_content_links for KS: {e}")
             return []
@@ -8212,6 +8254,110 @@ class LambDatabaseManager:
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
         except sqlite3.Error as e:
             logger.error(f"Database error getting kb_content_links for item: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_kb_content_links_for_library(self, library_id: str
+                                         ) -> List[Dict[str, Any]]:
+        """List all knowledge stores referencing any item in a library.
+
+        Used by FR-10 enforcement at the library level: a library cannot be
+        deleted while any of its items is still actively linked to a
+        Knowledge Store. Mirrors :meth:`get_kb_content_links_for_item` but
+        scoped to a whole library, with item title attached so the API can
+        report which items are blocking.
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            List of link rows with KS name and item title attached.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT kcl.*,
+                           ks.name as knowledge_store_name,
+                           li.title as item_title
+                    FROM {self.table_prefix}kb_content_links kcl
+                    LEFT JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    LEFT JOIN {self.table_prefix}library_items li
+                        ON kcl.library_item_id = li.id
+                    WHERE kcl.library_id = ?
+                """, (library_id,))
+                columns = [desc[0] for desc in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting kb_content_links for library: {e}")
+            return []
+        finally:
+            connection.close()
+
+    def get_knowledge_stores_for_library(self, library_id: str
+                                         ) -> List[Dict[str, Any]]:
+        """List distinct Knowledge Stores that reference any item from a library.
+
+        Inverse of :meth:`get_kb_content_links_for_ks` — given a library, return
+        the KSs that hold at least one of its items, with per-KS counts of
+        ready / pending / failed links. The caller is expected to filter the
+        result by user visibility (owner / shared within the same org).
+
+        Args:
+            library_id: Library UUID.
+
+        Returns:
+            List of dicts shaped like the KS list rows used elsewhere
+            (``id``, ``name``, ``description``, ``chunking_strategy``,
+            ``embedding_vendor``, ``embedding_model``, ``vector_db_backend``,
+            ``is_shared``, ``organization_id``, ``owner_user_id``,
+            ``created_at``, ``updated_at``) plus three counts:
+            ``item_count`` (total links from this library), ``ready_count``
+            and ``failed_count``.
+        """
+        connection = self.get_connection()
+        if not connection:
+            return []
+        try:
+            with connection:
+                cursor = connection.cursor()
+                cursor.execute(f"""
+                    SELECT ks.id, ks.name, ks.description,
+                           ks.chunking_strategy, ks.embedding_vendor,
+                           ks.embedding_model, ks.vector_db_backend,
+                           ks.is_shared, ks.organization_id, ks.owner_user_id,
+                           ks.created_at, ks.updated_at,
+                           COUNT(kcl.library_item_id) as item_count,
+                           SUM(CASE WHEN kcl.status = 'ready' THEN 1 ELSE 0 END) as ready_count,
+                           SUM(CASE WHEN kcl.status = 'failed' THEN 1 ELSE 0 END) as failed_count
+                    FROM {self.table_prefix}kb_content_links kcl
+                    JOIN {self.table_prefix}knowledge_stores ks
+                        ON kcl.knowledge_store_id = ks.id
+                    WHERE kcl.library_id = ?
+                      AND ks.status = 'active'
+                    GROUP BY ks.id
+                    ORDER BY ks.updated_at DESC
+                """, (library_id,))
+                columns = [desc[0] for desc in cursor.description]
+                rows: List[Dict[str, Any]] = []
+                for raw in cursor.fetchall():
+                    d = dict(zip(columns, raw))
+                    if isinstance(d.get('is_shared'), int):
+                        d['is_shared'] = bool(d['is_shared'])
+                    for k in ('item_count', 'ready_count', 'failed_count'):
+                        if d.get(k) is None:
+                            d[k] = 0
+                        else:
+                            d[k] = int(d[k])
+                    rows.append(d)
+                return rows
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting knowledge stores for library: {e}")
             return []
         finally:
             connection.close()

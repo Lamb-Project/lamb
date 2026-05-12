@@ -54,6 +54,11 @@ class KnowledgeStoreCreate(BaseModel):
 class KnowledgeStoreUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    # Chunking strategy / embedding / vector DB stay locked at creation; only
+    # the strategy's PARAMETERS can be edited, and the change applies only to
+    # content ingested after the update (existing chunks keep their original
+    # parameters).
+    chunking_params: Optional[Dict[str, Any]] = None
 
 
 class KnowledgeStoreShareToggle(BaseModel):
@@ -266,9 +271,11 @@ async def update_knowledge_store(
     body: KnowledgeStoreUpdate,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Update name and/or description (the only mutable fields, ADR-KS-5)."""
+    """Update mutable fields. Strategy/embedding/vector-DB stay locked
+    (ADR-KS-5); chunking parameters CAN be edited but apply only to new
+    ingestions."""
     auth.require_knowledge_store_access(ks_id, level="owner")
-    if body.name is None and body.description is None:
+    if body.name is None and body.description is None and body.chunking_params is None:
         raise HTTPException(status_code=400, detail="Nothing to update.")
 
     try:
@@ -276,6 +283,7 @@ async def update_knowledge_store(
             knowledge_store_id=ks_id,
             name=body.name,
             description=body.description,
+            chunking_params=body.chunking_params,
             creator_user=auth.user,
         )
     except HTTPException as e:
@@ -284,7 +292,12 @@ async def update_knowledge_store(
         else:
             raise
 
-    success = _db.update_knowledge_store(ks_id, name=body.name, description=body.description)
+    success = _db.update_knowledge_store(
+        ks_id,
+        name=body.name,
+        description=body.description,
+        chunking_params=body.chunking_params,
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Knowledge Store not found")
 

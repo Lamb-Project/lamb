@@ -53,12 +53,23 @@ class CreateCollectionRequest(BaseModel):
 class UpdateCollectionRequest(BaseModel):
     """Body for ``PUT /collections/{collection_id}``.
 
-    Only ``name`` and ``description`` are mutable. Store setup is locked
-    at creation time (ADR-3).
+    Mutable fields: ``name``, ``description``, and ``chunking_params``.
+    Strategy, embedding vendor/model, and vector DB backend remain locked
+    at creation time (ADR-3) — changing them would require re-embedding
+    every existing chunk. ``chunking_params`` updates only affect content
+    ingested AFTER the update; existing chunks keep the parameters they
+    were originally chunked with.
     """
 
     name: str | None = Field(default=None, min_length=1)
     description: str | None = Field(default=None)
+    chunking_params: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "New chunking parameters. Applies only to content added after "
+            "the update — existing chunks are not re-chunked."
+        ),
+    )
 
 
 # --- Responses ---
