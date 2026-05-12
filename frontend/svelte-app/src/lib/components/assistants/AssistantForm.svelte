@@ -17,7 +17,7 @@
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
-import { extractModelsFromConnectorData, getAuthToken } from './assistantFormUtils.svelte.js';
+import { extractModelsFromConnectorData, getAuthToken, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
@@ -285,25 +285,12 @@ import FormActions from './FormActions.svelte';
 		selectedRagProcessor = defaultRag || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 		
 		// Load the placeholders from config
-		// Using a more robust approach to handle the property access
-		try {
-			// @ts-ignore - Property exists at runtime but not in type definition
-			ragPlaceholders = Array.isArray(defaults.rag_placeholders) ? defaults.rag_placeholders : ["{context}", "{user_input}"];
-		} catch (e) {
-			console.warn("Could not load rag_placeholders from config, using defaults:", e);
-			ragPlaceholders = ["{context}", "{user_input}"];
-		}
+		ragPlaceholders = loadRagPlaceholders(defaults);
 		
 		// Update available models based on selected connector
 		configPanel?.updateAvailableModels();
-		const availModels = configPanel?.getAvailableModels() || [];
 		// Set LLM with fallback to first available model if default not available
-		const defaultLlm = defaults.llm || '';
-		if (defaultLlm && availableModels.includes(defaultLlm)) {
-			selectedLlm = defaultLlm;
-		} else {
-			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
-		}
+		selectedLlm = createModelSelector(defaults.llm || '', availableModels);
 		
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
@@ -387,33 +374,15 @@ import FormActions from './FormActions.svelte';
 			
 			// Update available models based on the selected connector
 			configPanel?.updateAvailableModels();
-		const availModels = configPanel?.getAvailableModels() || [];
 			console.log('[populateFormFields] Updated availableModels:', availableModels);
 			
-			// Set LLM - ensure we check if the data.llm exists in availableModels
+			// Set LLM - use the shared selector
 			const targetLlm = data.llm || metadata.llm;
-			if (targetLlm && availableModels.includes(targetLlm)) {
-				selectedLlm = targetLlm;
-				console.log('[populateFormFields] Set selectedLlm to saved value:', selectedLlm);
-			} else if (targetLlm) {
-				// Model not available in current connector, fallback to first available
-				selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
-				console.warn(`[populateFormFields] LLM '${targetLlm}' not available for connector '${selectedConnector}'. Using fallback:`, selectedLlm);
-			} else {
-				// No LLM in data, use first available
-				selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
-				console.log('[populateFormFields] No LLM in data, using first available:', selectedLlm);
-			}
+			selectedLlm = createModelSelector(targetLlm, availableModels);
 
 			// Load placeholders from config for edit mode as well
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
-			try {
-				// @ts-ignore - Property exists at runtime but not in type definition
-				ragPlaceholders = Array.isArray(defaults.rag_placeholders) ? defaults.rag_placeholders : ["{context}", "{user_input}"];
-			} catch (e) {
-				console.warn("Could not load rag_placeholders from config in edit mode, using defaults:", e);
-				ragPlaceholders = ["{context}", "{user_input}"];
-			}
+			ragPlaceholders = loadRagPlaceholders(defaults);
 			
 			// FIX FOR ISSUE #96: Deferred Selection Pattern
 			// Store pending selections that will be applied when options are ready
@@ -727,7 +696,6 @@ import FormActions from './FormActions.svelte';
 			// Update available models based on the default connector
 			await tick();
 			configPanel?.updateAvailableModels();
-		const availModels = configPanel?.getAvailableModels() || [];
 			// Reset LLM if needed with the new models list
 			if (!availableModels.includes(selectedLlm)) {
 				selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
@@ -873,12 +841,8 @@ import FormActions from './FormActions.svelte';
 
 							// Update models based on connector, then set LLM
 							configPanel?.updateAvailableModels();
-		const availModels = configPanel?.getAvailableModels() || []; // Update the list first
-							await tick(); // Ensure DOM/state updates before setting LLM
-							if (availableModels.includes(callbackData.llm)) {
-								selectedLlm = callbackData.llm;
-							} else {
-								selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
+							selectedLlm = createModelSelector(callbackData.llm, availableModels);
+							if (callbackData.llm && !availableModels.includes(callbackData.llm)) {
 								validationLog.push(`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`);
 							}
 
