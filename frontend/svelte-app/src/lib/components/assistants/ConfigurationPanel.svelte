@@ -38,8 +38,11 @@
 		onchange
 	} = $props();
 
+	/** @type {any} */
 	let currentConnectorMetadata = $state(null);
+	/** @type {any[]} */
 	let currentModelsMetadata = $state([]);
+	/** @type {string[]} */
 	let availableModels = $state([]);
 
 	let currentModelMetadata = $derived(currentModelsMetadata.find((m) => m.id === selectedLlm) || null);
