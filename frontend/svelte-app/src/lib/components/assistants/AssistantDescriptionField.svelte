@@ -1,6 +1,7 @@
 <!-- src/lib/components/assistants/AssistantDescriptionField.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
+	import { getAuthToken } from './assistantFormUtils.svelte.js';
 
 	let {
 		value = $bindable(''),
@@ -10,14 +11,6 @@
 	} = $props();
 
 	let generatingDescription = $state(false);
-
-	function getAuthToken() {
-		if (typeof localStorage !== 'undefined') {
-			const token = localStorage.getItem('userToken');
-			if (token) return token;
-		}
-		return document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, '$1');
-	}
 
 	async function handleGenerateDescription() {
 		if (!generationContext.name?.trim()) {

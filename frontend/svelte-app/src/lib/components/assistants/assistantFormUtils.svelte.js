@@ -176,3 +176,16 @@ export function highlightPlaceholders(text, placeholders) {
 	}
 	return result;
 }
+
+/**
+ * Extract auth token from localStorage or cookie.
+ * Shared across components that need direct API access.
+ * @returns {string}
+ */
+export function getAuthToken() {
+	if (typeof localStorage !== 'undefined') {
+		const token = localStorage.getItem('userToken');
+		if (token) return token;
+	}
+	return document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, "$1");
+}
