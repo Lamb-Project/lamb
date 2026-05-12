@@ -1,6 +1,8 @@
 // importAssistantValidator.js — Pure validation for assistant import JSON
 // Extracted from AssistantForm.svelte handleFileSelect (Task Extra: SRP)
 
+import { isKbBasedRag, isSingleFileRag } from '$lib/utils/ragProcessorHelpers.js';
+
 /**
  * @typedef {Object} ImportValidationResult
  * @property {any} parsedData - The parsed JSON data (null on error)
@@ -86,7 +88,7 @@ export function validateImportedAssistant(jsonContent, capabilities, modelExtrac
             }
 
             // Specific checks based on rag_processor
-            if (callbackData.rag_processor === 'single_file_rag' && !callbackData.file_path) {
+            if (isSingleFileRag(callbackData.rag_processor) && !callbackData.file_path) {
                 validationLog.push('❌ Missing file_path in metadata for single_file_rag processor.');
             }
         } catch (callbackError) {
@@ -97,11 +99,7 @@ export function validateImportedAssistant(jsonContent, capabilities, modelExtrac
     }
 
     // Validate top-level RAG fields if processor requires them
-    const isKbBased =
-        callbackData?.rag_processor === 'simple_rag' ||
-        callbackData?.rag_processor === 'context_aware_rag' ||
-        callbackData?.rag_processor === 'hierarchical_rag';
-    if (isKbBased) {
+    if (isKbBasedRag(callbackData?.rag_processor)) {
         if (parsedData.RAG_Top_k === undefined || typeof parsedData.RAG_Top_k !== 'number') {
             validationLog.push(`⚠️ RAG_Top_k is missing or not a number (Required for ${callbackData.rag_processor}). Found: ${typeof parsedData.RAG_Top_k}`);
         }

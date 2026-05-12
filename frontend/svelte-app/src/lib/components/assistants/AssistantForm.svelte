@@ -18,7 +18,7 @@
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
 import { extractModelsFromConnectorData, getAuthToken } from './assistantFormUtils.svelte.js';
-import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
 import AssistantNameField from './AssistantNameField.svelte';
@@ -281,8 +281,7 @@ import FormActions from './FormActions.svelte';
 		RAG_Top_k = parseInt(defaults.RAG_Top_k || '3', 10) || 3;
 		selectedPromptProcessor = defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
 		selectedConnector = defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
-		let defaultRag = defaults.rag_processor?.trim().toLowerCase();
-		if (defaultRag === 'no rag') defaultRag = 'no_rag';
+		let defaultRag = normalizeRagProcessor(defaults.rag_processor);
 		selectedRagProcessor = defaultRag || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 		
 		// Load the placeholders from config
@@ -314,13 +313,13 @@ import FormActions from './FormActions.svelte';
 		// name = '';
 		// description = ''; 
 		console.log('Form reset to defaults for CREATE:', { selectedPromptProcessor, selectedConnector, selectedLlm, selectedRagProcessor, availableModels });
-		if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag') {
+		if (isKbBasedRag(selectedRagProcessor)) {
 			tick().then(fetchKnowledgeBases);
 		}
-		if (selectedRagProcessor === 'single_file_rag') {
+		if (isSingleFileRag(selectedRagProcessor)) {
 			tick().then(fetchUserFiles);
 		}
-		if (selectedRagProcessor === 'rubric_rag') {
+		if (isRubricRag(selectedRagProcessor)) {
 			tick().then(fetchRubricsList);
 		}
 	}
@@ -418,7 +417,7 @@ import FormActions from './FormActions.svelte';
 			
 			// FIX FOR ISSUE #96: Deferred Selection Pattern
 			// Store pending selections that will be applied when options are ready
-			if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag') {
+			if (isKbBasedRag(selectedRagProcessor)) {
 				// Store selections to be applied later
 				pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
 				console.log('Populate: Stored pending KB selections:', pendingKBSelections);
@@ -434,7 +433,7 @@ import FormActions from './FormActions.svelte';
 			}
 
 			// Handle rubric fields if rubric_rag is selected
-			if (selectedRagProcessor === 'rubric_rag') {
+			if (isRubricRag(selectedRagProcessor)) {
 				try {
 					selectedRubricId = metadata?.rubric_id || '';
 					rubricFormat = metadata?.rubric_format || 'markdown';
@@ -485,7 +484,7 @@ import FormActions from './FormActions.svelte';
 			return;
 		}
 		// Ensure we actually need KBs
-		if (selectedRagProcessor !== 'simple_rag' && selectedRagProcessor !== 'context_aware_rag' && selectedRagProcessor !== 'hierarchical_rag') {
+		if (!isKbBasedRag(selectedRagProcessor)) {
 			console.log('Skipping KB fetch (RAG processor is not simple_rag, context_aware_rag, or hierarchical_rag)');
 			return;
 		}
@@ -540,7 +539,7 @@ import FormActions from './FormActions.svelte';
 			return;
 		}
 		// Ensure we actually need rubrics
-		if (selectedRagProcessor !== 'rubric_rag') {
+		if (!isRubricRag(selectedRagProcessor)) {
 			console.log('Skipping rubrics fetch (RAG processor is not rubric_rag)');
 			return;
 		}
@@ -624,15 +623,15 @@ import FormActions from './FormActions.svelte';
 	}
 
 	// --- Reactive UI Logic (Mostly Unchanged) ---
-	const showRagOptions = $derived(selectedRagProcessor && selectedRagProcessor !== 'no_rag');
-	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag');
-	const showSingleFileSelector = $derived(selectedRagProcessor === 'single_file_rag');
-	const showRubricSelector = $derived(selectedRagProcessor === 'rubric_rag');
+	const showRagOptions = $derived(hasRagOptions(selectedRagProcessor));
+	const showKnowledgeBaseSelector = $derived(isKbBasedRag(selectedRagProcessor));
+	const showSingleFileSelector = $derived(isSingleFileRag(selectedRagProcessor));
+	const showRubricSelector = $derived(isRubricRag(selectedRagProcessor));
 	
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
 	$effect(() => {
 		console.log(`Effect: RAG processor changed to ${selectedRagProcessor}`);
-		if ((selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag') && configInitialized) {
+		if ((isKbBasedRag(selectedRagProcessor)) && configInitialized) {
 			// Trigger fetch only if we land on simple_rag, context_aware_rag, or hierarchical_rag and haven't attempted the fetch yet
 			console.log(`Effect: Checking KB fetch need (Attempted: ${kbFetchAttempted})`);
 			if (!kbFetchAttempted && !loadingKnowledgeBases) { // Check attempted flag, ignore error here
@@ -641,7 +640,7 @@ import FormActions from './FormActions.svelte';
 			} else {
 				console.log('Effect: Skipping KB fetch (already attempted or loading).');
 			}
-		} else if (selectedRagProcessor === 'single_file_rag' && configInitialized) {
+		} else if (isSingleFileRag(selectedRagProcessor) && configInitialized) {
 			// Fetch files when switching to single_file_rag
 			if (!filesFetchAttempted && !loadingFiles) {
 				console.log('Effect: Conditions met (single_file_rag, not attempted), calling fetchUserFiles()');
@@ -649,7 +648,7 @@ import FormActions from './FormActions.svelte';
 			} else {
 				console.log('Effect: Skipping files fetch (already attempted or loading).');
 			}
-		} else if (selectedRagProcessor === 'rubric_rag' && configInitialized) {
+		} else if (isRubricRag(selectedRagProcessor) && configInitialized) {
 			// Fetch rubrics when switching to rubric_rag
 			if (!rubricsFetchAttempted && !loadingRubrics) {
 				console.log('Effect: Conditions met (rubric_rag, not attempted), calling fetchRubricsList()');
@@ -669,13 +668,13 @@ import FormActions from './FormActions.svelte';
 			}
 			
 			// Reset file selection if we moved away from single_file_rag
-			if (selectedRagProcessor !== 'single_file_rag' && (selectedFilePath || userFiles.length > 0)) {
+			if (!isSingleFileRag(selectedRagProcessor) && (selectedFilePath || userFiles.length > 0)) {
 				selectedFilePath = '';
 				// Note: We don't clear userFiles or filesFetchAttempted to avoid refetching if user switches back
 			}
 
 			// Reset rubric selection if we moved away from rubric_rag
-			if (selectedRagProcessor !== 'rubric_rag' && (selectedRubricId || accessibleRubrics.length > 0)) {
+			if (!isRubricRag(selectedRagProcessor) && (selectedRubricId || accessibleRubrics.length > 0)) {
 				selectedRubricId = '';
 				rubricFormat = 'markdown'; // Reset to default
 				// Note: We don't clear accessibleRubrics or rubricsFetchAttempted to avoid refetching if user switches back
@@ -714,7 +713,7 @@ import FormActions from './FormActions.svelte';
 		}
 
 		// Validate rubric selection if rubric_rag is selected
-		if (selectedRagProcessor === 'rubric_rag' && !selectedRubricId) {
+		if (isRubricRag(selectedRagProcessor) && !selectedRubricId) {
 			formError = 'Please select a rubric when using Rubric RAG.';
 			formLoading = false;
 			return;
@@ -741,7 +740,7 @@ import FormActions from './FormActions.svelte';
 			connector: selectedConnector,
 			llm: selectedLlm,
 			rag_processor: selectedRagProcessor,
-			file_path: selectedRagProcessor === 'single_file_rag' ? selectedFilePath : '',
+			file_path: isSingleFileRag(selectedRagProcessor) ? selectedFilePath : '',
 			capabilities: {
 				vision: visionEnabled,
 				image_generation: imageGenerationEnabled
@@ -749,7 +748,7 @@ import FormActions from './FormActions.svelte';
 		};
 
 		// Add rubric fields if rubric_rag is selected
-		if (selectedRagProcessor === 'rubric_rag') {
+		if (isRubricRag(selectedRagProcessor)) {
 			metadataObj.rubric_id = selectedRubricId;
 			metadataObj.rubric_format = rubricFormat;
 		}
@@ -761,7 +760,7 @@ import FormActions from './FormActions.svelte';
 			system_prompt: system_prompt,
 			prompt_template: prompt_template,
 			RAG_Top_k: Number(RAG_Top_k) || 3,
-			RAG_collections: (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag') ? selectedKnowledgeBases.join(',') : '',
+			RAG_collections: (isKbBasedRag(selectedRagProcessor)) ? selectedKnowledgeBases.join(',') : '',
 			// Add metadata with the stringified JSON
 			metadata: JSON.stringify(metadataObj),
 			pre_retrieval_endpoint: '',
@@ -885,7 +884,7 @@ import FormActions from './FormActions.svelte';
 
 						// Populate RAG specific fields
 						// FIX FOR ISSUE #96: Apply Load-Then-Select pattern for imports too
-						if (selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag') {
+						if (isKbBasedRag(selectedRagProcessor)) {
 							selectedFilePath = ''; // Clear file path if switching to simple RAG, context_aware_rag, or hierarchical_rag
 							// Fetch KBs BEFORE setting selections
 							if (!kbFetchAttempted) {
@@ -895,7 +894,7 @@ import FormActions from './FormActions.svelte';
 							// NOW set selections when KB list is ready
 							selectedKnowledgeBases = parsedData.RAG_collections?.split(',').filter(Boolean) || [];
 							console.log('Import: KB selections set after fetch:', selectedKnowledgeBases);
-						} else if (selectedRagProcessor === 'single_file_rag') {
+						} else if (isSingleFileRag(selectedRagProcessor)) {
 							selectedKnowledgeBases = []; // Clear KBs if switching to single file RAG
 							// Fetch files BEFORE setting selection
 							if (!filesFetchAttempted) {
