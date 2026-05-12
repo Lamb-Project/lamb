@@ -57,6 +57,7 @@ Before touching any infrastructure, the agent MUST collect these from the user u
 | Enable signup? | `SIGNUP_ENABLED` | `true` |
 | Enable dev mode? | `DEV_MODE` | `true` for test, `false` for production |
 | Enable Ollama? | Adds `--profile ollama` to compose | `false` |
+| Existing data? | Is this server replacing an old LAMB installation with data to migrate? | `yes` or `no`. If yes, see Phase 4.6. |
 
 ---
 
@@ -331,6 +332,25 @@ echo "OK: Both domains resolve to $SERVER_IP"
 
 ---
 
+## Phase 4.6: Migrate Existing Data (GATE — Conditional)
+
+> **Only execute this phase if the user answered `yes` to "Existing data?" in Phase 0.4. If this is a fresh server with no prior data, skip to Phase 5.**
+
+If the server previously ran LAMB (old `docker-compose.yaml` stack), the old data lives at `/opt/lamb/lamb_v4.db`, `/opt/lamb/open-webui/backend/data/`, and `/opt/lamb/lamb-kb-server-stable/backend/data/`. The new stack uses named Docker volumes instead — the data must be copied across before launch.
+
+Follow the step-by-step guide in **`Documentation/slop-docs/migrating-to-lamb-next.md`**. The migration covers:
+
+1. Stopping the old stack
+2. Creating named volumes with `docker compose up --no-start`
+3. Copying the LAMB database into `lamb-data`
+4. Copying OpenWebUI data into `openwebui-data`
+5. Copying KB server data into `kb-data`
+6. Verifying the copied data
+
+> **Insight:** The `.env` file must already exist (Phase 4) before running the migration. The old project path is the same `/opt/lamb` — the migration copies data from the host filesystem into the new named volumes. Original files are not modified.
+
+---
+
 ## Phase 5: Launch the Stack
 
 ### 5.1 — Pull Images and Start (Production with TLS)
@@ -524,7 +544,7 @@ The agent should follow this sequence and check off each step:
 - [ ] **0.1** — Ask server type, location, name
 - [ ] **0.2** — Ask main domain, OWI domain, ACME email
 - [ ] **0.3** — Ask API keys, secrets, model names
-- [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama)
+- [ ] **0.4** — Ask feature toggles (signup, dev mode, Ollama), existing data
 - [ ] **1.1** — Check/register SSH key in Hetzner
 - [ ] **1.3** — Create server, capture IPv4
 - [ ] **2.1** — SSH as root, install Docker + Compose
@@ -532,6 +552,7 @@ The agent should follow this sequence and check off each step:
 - [ ] **3** — SSH as `lamb`, clone repo to `/opt/lamb`
 - [ ] **4** — Create `/opt/lamb/.env` with all collected variables
 - [ ] **4.5** — Verify DNS: both LAMB_PUBLIC_HOST and OWI_PUBLIC_HOST resolve to server IP (GATE — STOP if incorrect)
+- [ ] **4.6** — (If existing data) Migrate old data to named volumes following migration doc
 - [ ] **5** — Run `docker compose -f docker-compose.next.yaml -f docker-compose.next.prod.yaml up -d`
 - [ ] **6.1** — Verify all containers are Up and healthy
 - [ ] **6.2** — Check logs for startup errors
