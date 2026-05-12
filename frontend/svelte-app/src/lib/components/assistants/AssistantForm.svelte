@@ -19,6 +19,7 @@
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
 import AssistantFormHeader from './AssistantFormHeader.svelte';
+import AssistantNameField from './AssistantNameField.svelte';
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
@@ -1408,33 +1409,7 @@ import AssistantFormHeader from './AssistantFormHeader.svelte';
 			<div class="flex flex-col md:flex-row md:space-x-6">
 				<!-- Left Column: Main Fields -->
 				<div class="md:w-2/3 space-y-6">
-					<!-- Name -->
-					<div>
-						<label for="assistant-name" class="block text-sm font-medium text-gray-700">{$_('assistants.form.name.label')} <span class="text-red-600">*</span></label>
-						{#if formState === 'edit'}
-							<input type="text" id="assistant-name" name="name" bind:value={name} 
-							disabled={true}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm text-gray-900"
-							placeholder={$_('assistants.form.name.placeholder')}>
-						{:else}
-							<input type="text" id="assistant-name" name="name" bind:value={name} 
-							disabled={false}
-							class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
-							placeholder={$_('assistants.form.name.placeholder')}>
-							{#if showSanitizationPreview}
-								<div class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-									<p class="text-sm text-blue-800">
-										<span class="font-semibold">{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}</span>
-										<code class="ml-2 px-2 py-1 bg-blue-100 rounded text-blue-900 font-mono">{sanitizedNameInfo.sanitized}</code>
-									</p>
-								</div>
-							{:else if !name.trim()}
-								<p class="mt-1 text-xs text-gray-500">
-									{$_('assistants.form.name.hint', { default: 'Special characters and spaces will be converted to underscores' })}
-								</p>
-							{/if}
-						{/if}
-					</div>
+					<AssistantNameField bind:value={name} {formState} onchange={handleFieldChange} />
 
 					<!-- Description -->
 					<div>
