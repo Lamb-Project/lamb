@@ -20,6 +20,7 @@
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
 import AssistantFormHeader from './AssistantFormHeader.svelte';
 import AssistantNameField from './AssistantNameField.svelte';
+import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
@@ -137,7 +138,6 @@ import AssistantNameField from './AssistantNameField.svelte';
 	// Loading/error/success state
 	let formError = $state('');
 	let formLoading = $state(false); 
-	let generatingDescription = $state(false);
 	let configInitialized = $state(false); 
 	let successMessage = $state('');
 	
@@ -838,124 +838,6 @@ import AssistantNameField from './AssistantNameField.svelte';
 		}
 	}
 
-	/** Extract auth token from correct storage location */
-	function getAuthToken() {
-		// Get token from localStorage first (which is how other service calls are authenticating)
-		if (typeof localStorage !== 'undefined') {
-			const token = localStorage.getItem('userToken');
-			if (token) {
-				console.debug('Auth token found in localStorage');
-				return token;
-			}
-		}
-		
-		// Fallback to cookie if localStorage doesn't have the token
-		console.debug('Token not found in localStorage, checking cookie');
-		return document.cookie.replace(/(?:(?:^|.*;\\s*)token\\s*=\\s*([^;]*).*$)|^.*$/, "$1");
-	}
-
-	/**
-	 * Calls the lamb_helper_assistant API to generate a description for the assistant
-	 */
-	async function handleGenerateDescription() {
-		// Validation check - require name at minimum
-		if (!name.trim()) {
-			alert($_('assistants.form.description.nameRequired', { default: 'Please provide an assistant name first' }));
-			return;
-		}
-
-		// Check if auth token is available
-		const token = getAuthToken();
-		console.debug('Auth token found:', token ? 'Yes (length: ' + token.length + ')' : 'No');
-		
-		if (!token) {
-			console.error('Authentication token not found');
-			alert($_('assistants.form.description.authError', { default: 'Authentication error. Please try logging in again.' }));
-			return;
-		}
-
-		// Set loading state
-		generatingDescription = true;
-		let descriptionError = '';
-		
-		try {
-			// Get the lamb server URL from window.LAMB_CONFIG
-			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
-			if (!lambServerUrl) {
-				throw new Error('LAMB server URL not configured in window.LAMB_CONFIG.api.lambServer');
-			}
-
-			// Add a timeout for better UX
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-
-			// Construct the absolute URL for the new endpoint
-			const endpointPath = '/creator/assistant/generate_assistant_description';
-			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-			console.debug('Calling generate_assistant_description at URL:', apiUrl);
-
-			// Prepare the request body in the format expected by the new endpoint
-			const requestBody = {
-				name: name,
-				instructions: system_prompt || "",
-				prompt_template: prompt_template || "",
-				connector: selectedConnector || "",
-				llm: selectedLlm || "",
-				rag_processor: selectedRagProcessor || ""
-			};
-
-			// Call the description generation API
-			const response = await fetch(apiUrl, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
-				},
-				body: JSON.stringify(requestBody),
-				signal: controller.signal
-			});
-
-			clearTimeout(timeoutId); // Clear timeout if request completes
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				console.error('API error response:', errorText);
-				if (response.status === 403 || response.status === 401) {
-					throw new Error(`Authentication error (${response.status}): Please try logging in again.`);
-				}
-				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
-			}
-
-			const data = await response.json();
-			
-			if (data.description) {
-				// Process the response: trim, fix quotes, ensure reasonable length
-				let processedDescription = data.description.trim().replace(/^["']|["']$/g, '');
-				
-				// If too long, truncate to reasonable size
-				if (processedDescription.length > 500) {
-					processedDescription = processedDescription.substring(0, 497) + '...';
-				}
-				
-				description = processedDescription;
-				console.log('Description generated successfully');
-			} else {
-				throw new Error(data.error || 'Failed to generate description');
-			}
-		} catch (err) {
-			console.error('Error generating description:', err);
-			if (err instanceof Error && err.name === 'AbortError') {
-				descriptionError = $_('assistants.form.description.timeout', { default: 'Request timed out. Please try again.' });
-			} else {
-				descriptionError = err instanceof Error ? err.message : $_('assistants.form.description.error', { default: 'Failed to generate description' });
-			}
-			// Show error to user
-			alert(descriptionError);
-		} finally {
-			generatingDescription = false;
-		}
-	}
-
 	// --- Reactive UI Logic (Mostly Unchanged) ---
 	const showRagOptions = $derived(selectedRagProcessor && selectedRagProcessor !== 'no_rag');
 	const showKnowledgeBaseSelector = $derived(selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag');
@@ -1411,27 +1293,18 @@ import AssistantNameField from './AssistantNameField.svelte';
 				<div class="md:w-2/3 space-y-6">
 					<AssistantNameField bind:value={name} {formState} onchange={handleFieldChange} />
 
-					<!-- Description -->
-					<div>
-						<label for="assistant-description" class="block text-sm font-medium text-gray-700">{$_('assistants.form.description.label', { default: 'Description' })}</label>
-						<div class="mt-1 flex rounded-md shadow-sm">
-						<!-- Description is ALWAYS fully editable -->
-						<textarea 
-							id="assistant-description" 
-							name="description"
-							bind:value={description}
-							oninput={handleFieldChange}
-							rows="3"
-							disabled={false}
-							class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
-							placeholder={$_('assistants.form.description.placeholder', { default: 'A brief summary of the assistant' })}></textarea>
-							<button type="button" onclick={handleGenerateDescription} disabled={generatingDescription}
-								class="relative -ml-px inline-flex items-center space-x-2 rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed">
-								<span>{generatingDescription ? $_('assistants.form.description.generating', { default: 'Generating...' }) : $_('assistants.form.description.generateButton', { default: 'Generate' })}</span>
-							</button>
-						</div>
-						<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.description.help', { default: 'Click Generate after filling in name and prompts.' })}</p>
-					</div>
+					<AssistantDescriptionField
+						bind:value={description}
+						generationContext={{
+							name,
+							system_prompt,
+							prompt_template,
+							connector: selectedConnector,
+							llm: selectedLlm,
+							rag_processor: selectedRagProcessor
+						}}
+						onchange={handleFieldChange}
+					/>
 
 				<!-- System Prompt -->
 				<div>
