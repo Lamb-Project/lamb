@@ -207,7 +207,7 @@
 			disabled={formState === 'edit'}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
 			{#each ragProcessors as processor}
-				<option value={processor}>{processor.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase())}</option>
+				<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, (/** @type {string} */ l) => l.toUpperCase())}</option>
 			{/each}
 		</select>
 	</div>
