@@ -54,6 +54,10 @@ class LambDatabaseManager:
             # Always run migrations on initialization (handles existing databases)
             self.run_migrations()
 
+            # Initialize system organization AFTER migrations so that
+            # Creator_users columns (enabled, password_hash, role) exist
+            self.initialize_system_organization()
+
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
             raise
@@ -546,8 +550,8 @@ class LambDatabaseManager:
                 logger.info(
                     f"Table '{self.table_prefix}config' created successfully")
 
-            # Initialize system organization and admin user
-            self.initialize_system_organization()
+            # Note: initialize_system_organization() is now called from __init__
+            # AFTER run_migrations() to ensure all columns exist.
         except sqlite3.Error as e:
             logger.error(f"Database error occurred: {e}")
 
