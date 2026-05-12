@@ -10,7 +10,6 @@
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { goto } from '$app/navigation'; // Import for redirect
 	import { base } from '$app/paths'; // Import base path
-	import { createEventDispatcher } from 'svelte'; // Import event dispatcher
 	import { onMount, onDestroy } from 'svelte';
 	import { getSystemCapabilities } from '$lib/services/assistantService'; // Import service
 	import { apiFetch } from '$lib/services/apiClient';
@@ -18,6 +17,8 @@
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 	import { openTemplateSelectModal } from '$lib/stores/templateStore'; // Import template store function
 	import { sanitizeName } from '$lib/utils/nameSanitizer'; // Import sanitization utility
+import { extractModelsFromConnectorData } from './assistantFormUtils.svelte.js';
+import { isKbBasedRag } from '$lib/utils/ragProcessorHelpers.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
 import AssistantNameField from './AssistantNameField.svelte';
 import AssistantDescriptionField from './AssistantDescriptionField.svelte';
@@ -26,8 +27,6 @@ import RubricSelector from './RubricSelector.svelte';
 import ConfigurationPanel from './ConfigurationPanel.svelte';
 import FormActions from './FormActions.svelte';
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
-
-	const dispatch = createEventDispatcher(); // For dispatching success event
 
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. (#352, M13)
@@ -38,7 +37,9 @@ import FormActions from './FormActions.svelte';
 	// Use $props for Svelte 5 runes mode
 	let { 
 		assistant = null,
-		startInEdit = false // Add the new prop
+		startInEdit = false, // Add the new prop
+		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
+		onCancel = /** @type {() => void} */ (() => {})
 	} = $props(); 
 	console.log(`[AssistantForm] Received props: assistant=${!!assistant}, startInEdit=${startInEdit}`); // Log received props
 
@@ -54,8 +55,6 @@ import FormActions from './FormActions.svelte';
 	// --- Form Field State Variables ---
 	let name = $state('');
 	// Derived: Sanitized name preview
-	let sanitizedNameInfo = $derived(sanitizeName(name));
-	let showSanitizationPreview = $derived(formState === 'create' && sanitizedNameInfo.wasModified);
 	// Description must be fully editable even in edit mode
 	let description = $state('');
 
@@ -70,7 +69,6 @@ import FormActions from './FormActions.svelte';
 	/** @type {string[]} */
 	let connectorsList = $state([]); // List of connector names
 	/** @type {string[]} */
-	let availableModels = $state([]);
 	/** @type {string[]} */
 	let ragProcessors = $state([]);
 
@@ -87,18 +85,6 @@ import FormActions from './FormActions.svelte';
 	
 	// Connector and model metadata (for forced capabilities and descriptions)
 	/** @type {any} */
-	let currentConnectorMetadata = $state(null);
-	/** @type {any[]} */
-	let currentModelsMetadata = $state([]);
-	/** @type {any} */
-	let currentModelMetadata = $derived(
-		currentModelsMetadata.find(m => m.id === selectedLlm) || null
-	);
-	// Check if image generation is forced for current model
-	let imageGenerationForced = $derived(
-		currentModelMetadata?.forced_capabilities?.image_generation === true
-	);
-
 	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
 	let ownedKnowledgeBases = $state([]);
@@ -123,8 +109,6 @@ import FormActions from './FormActions.svelte';
 	let selectedFilePath = $state('');
 	let loadingFiles = $state(false);
 	let fileError = $state('');
-	let fileUploadLoading = $state(false);
-	let fileUploadError = $state('');
 	let filesFetchAttempted = $state(false);
 
 	// Rubric State
@@ -140,6 +124,7 @@ import FormActions from './FormActions.svelte';
 
 	/** @type {import('./ConfigurationPanel.svelte').default | null} */
 	let configPanel = $state(null);
+	let availableModels = $derived(configPanel?.getAvailableModels() || []);
 
 
 	// Loading/error/success state
@@ -359,8 +344,8 @@ import FormActions from './FormActions.svelte';
 		successMessage = '';
 		console.log('Switched back to VIEW mode');
 		
-		// Dispatch cancel event to parent to handle navigation
-		dispatch('cancel');
+		// Notify parent
+		onCancel();
 	}
 
 	// --- Helper Functions ---
@@ -489,97 +474,6 @@ import FormActions from './FormActions.svelte';
 			selectedLlm, 
 			selectedRagProcessor 
 		});
-	}
-
-	/** 
-	 * Extracts models from potentially varied connector data structures 
-	 * @param {any} connectorData - The connector data object (structure may vary)
-	 * @returns {string[]} List of model IDs
-	 */
-	function extractModelsFromConnectorData(connectorData) {
-		if (!connectorData) return [];
-		// First try extended format with models array containing metadata
-		if (Array.isArray(connectorData.models) && connectorData.models.length > 0) {
-			// Check if it's metadata format or simple string array
-			if (typeof connectorData.models[0] === 'object' && connectorData.models[0].id) {
-				return connectorData.models.map(m => m.id);
-			}
-			return connectorData.models;
-		}
-		if (Array.isArray(connectorData.available_llms)) return connectorData.available_llms;
-		if (typeof connectorData.models === 'object' && connectorData.models !== null) return Object.keys(connectorData.models);
-		return [];
-	}
-
-	/**
-	 * Extracts models metadata from connector data
-	 * @param {any} connectorData - The connector data object
-	 * @returns {any[]} Array of model metadata objects
-	 */
-	function extractModelsMetadata(connectorData) {
-		if (!connectorData) return [];
-		// Extended format: models is an array of metadata objects
-		if (Array.isArray(connectorData.models) && connectorData.models.length > 0) {
-			if (typeof connectorData.models[0] === 'object' && connectorData.models[0].id) {
-				return connectorData.models;
-			}
-		}
-		return [];
-	}
-
-	/** Updates the available LLMs based on the selected connector */
-	function updateAvailableModels() {
-		const state = get(assistantConfigStore); // Use get() to read store value non-reactively
-		if (!state || !state.systemCapabilities || !state.systemCapabilities.connectors) {
-			availableModels = [];
-			currentConnectorMetadata = null;
-			currentModelsMetadata = [];
-			return;
-		}
-		const connectorData = state.systemCapabilities.connectors[selectedConnector];
-		availableModels = extractModelsFromConnectorData(connectorData);
-		
-		// Extract extended metadata
-		currentConnectorMetadata = connectorData?.metadata || null;
-		currentModelsMetadata = extractModelsMetadata(connectorData);
-		
-		console.log('Connector metadata:', currentConnectorMetadata);
-		console.log('Models metadata:', currentModelsMetadata);
-	}
-
-	/** Handles connector dropdown change */
-	async function handleConnectorChange() {
-		console.log('Connector changed to:', selectedConnector);
-		configPanel?.updateAvailableModels();
-		const availModels = configPanel?.getAvailableModels() || [];
-		await tick();
-		if (!availableModels.includes(selectedLlm)) {
-			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
-			console.log('Resetting LLM to:', selectedLlm);
-		}
-
-		// Check connector capabilities from metadata
-		const connectorSupportsVision = currentConnectorMetadata?.capabilities?.vision_input === true;
-		const connectorSupportsImageGen = currentConnectorMetadata?.capabilities?.image_generation === true;
-
-		// Validate vision capability - available for OpenAI, banana_img, or connectors with vision_input capability
-		if (selectedConnector !== 'openai' && selectedConnector !== 'banana_img' && !connectorSupportsVision && visionEnabled) {
-			console.log('Disabling vision capability - not supported for connector:', selectedConnector);
-			visionEnabled = false;
-		}
-
-		// Validate image generation capability - only available for banana_img or connectors with image_generation capability
-		if (selectedConnector !== 'banana_img' && !connectorSupportsImageGen && imageGenerationEnabled) {
-			console.log('Disabling image generation capability - not supported for connector:', selectedConnector);
-			imageGenerationEnabled = false;
-		}
-		
-		// Auto-enable forced capabilities for this connector
-		if (connectorSupportsImageGen && currentConnectorMetadata?.capabilities?.image_generation) {
-			// For image generation connectors, auto-enable image generation
-			imageGenerationEnabled = true;
-			console.log('Auto-enabled image generation for connector:', selectedConnector);
-		}
 	}
 
 	/** Fetches accessible knowledge bases */
@@ -725,67 +619,6 @@ import FormActions from './FormActions.svelte';
 		} finally {
 			loadingFiles = false;
 			filesFetchAttempted = true;
-		}
-	}
-
-	/** Handles file upload to the server 
-	 * @param {Event} event - The change event
-	 */
-	async function handleFileUpload(event) {
-		// Extract the file from the input element
-		const input = event.target;
-		if (!input || !(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
-			return;
-		}
-
-		const file = input.files[0];
-		if (!file) {
-			return;
-		}
-
-		fileUploadLoading = true;
-		fileUploadError = '';
-
-		// Create FormData object
-		const formData = new FormData();
-		formData.append('file', file);
-
-		try {
-			// Route through apiFetch so an expired token triggers global session
-			// recovery, and so the response goes through one well-tested code path.
-			// (#352, H11 + M3)
-			const response = await apiFetch('/files/upload', {
-				method: 'POST',
-				body: formData,
-			});
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
-			}
-
-			const data = await response.json();
-			console.log('File uploaded successfully:', data);
-
-			// Refresh the file list
-			await fetchUserFiles();
-
-			// Auto-select the newly uploaded file
-			if (data.path) {
-				selectedFilePath = data.path;
-			}
-
-			// Clear the file input (both the selected file state and the DOM
-			// element) so re-selecting the same file fires onchange again.
-			input.value = '';
-		} catch (err) {
-			// 'Session expired' was thrown by apiFetch and a redirect is already
-			// in flight — don't paint a duplicate banner.
-			if (err instanceof Error && err.message.startsWith('Session expired')) return;
-			console.error('Error uploading file:', err);
-			fileUploadError = err instanceof Error ? err.message : 'Failed to upload file';
-		} finally {
-			fileUploadLoading = false;
 		}
 	}
 
@@ -954,7 +787,7 @@ import FormActions from './FormActions.svelte';
 					metadata: metadataObj // Use the parsed metadata object, not the stringified version
 				};
 				populateFormFields(initialAssistantData); // Update form with potentially modified response data
-				dispatch('formSuccess', { assistantId: initialAssistantData.id }); // Dispatch success for update
+				onFormSuccess({ assistantId: initialAssistantData.id });
 			} else if (formState === 'create') {
 				// Handle create case here
 				const createResponse = await createAssistant(assistantDataPayload);
@@ -965,7 +798,7 @@ import FormActions from './FormActions.svelte';
 				// Reset dirty state after successful create
 				formDirty = false;
 				console.log('[AssistantForm] Assistant created successfully, formDirty reset to false');
-				dispatch('formSuccess', { assistantId: createResponse.assistant_id });
+				onFormSuccess({ assistantId: createResponse.assistant_id });
 			} else {
 				throw new Error('Invalid form state for submission.');
 			}
