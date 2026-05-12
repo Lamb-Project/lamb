@@ -230,13 +230,20 @@ These MUST be set. The compose file uses `${VAR?error message}` syntax, so missi
 OPENAI_API_KEY=sk-...           # if using OpenAI
 OPENAI_MODELS=gpt-4o-mini,gpt-4o
 LAMB_KB_SERVER=http://kb:9090   # default, can omit
-LAMB_KB_SERVER_TOKEN=change-me  # should match KB's LAMB_API_KEY
+LAMB_KB_SERVER_TOKEN=change-me  # ⚠️ MUST match KB server's LAMB_API_KEY below!
+LAMB_API_KEY=change-me          # ⚠️ MUST match LAMB_KB_SERVER_TOKEN above!
 LTI_SECRET=change-me
 SIGNUP_ENABLED=true
 DEV_MODE=false                  # false for production
 GLOBAL_LOG_LEVEL=WARNING
 WEBUI_SECRET_KEY=change-me      # important for production sessions
 ```
+
+> **🔴 CRITICAL: `LAMB_KB_SERVER_TOKEN` and `LAMB_API_KEY` must be the SAME value.**  
+> `LAMB_KB_SERVER_TOKEN` is used by the LAMB backend to authenticate with the KB server.  
+> `LAMB_API_KEY` is used by the KB server to validate incoming requests.  
+> If they don't match, KB creation (and all write operations) will fail with a misleading 401 error that logs the user out. See Appendix C, Gotcha #10 for the full diagnosis.  
+> **In docker-compose.next.yaml, both default to `0p3n-w3bu!` — if you override one, you MUST override the other.**
 
 ### 4.5 — Write the File
 
@@ -258,6 +265,7 @@ ENVEOF
 - **`OPENAI_MODEL`** — if the user's existing `.env` has a non-standard model name (e.g., `gpt-5-mini`), use it. Don't second-guess; the user may have a custom endpoint.
 - **API key reuse** — The user may want the same key for both `OPENAI_API_KEY` (lamb service) and `EMBEDDINGS_APIKEY` (kb service), or different keys. Ask explicitly.
 - **`DEV_MODE`** — Set to `false` for real production, `true` for test/staging instances.
+- **`LAMB_KB_SERVER_TOKEN` and `LAMB_API_KEY` must match** — These are the same shared secret seen from two sides: LAMB uses it to talk to the KB server, the KB server uses it to validate requests. The compose file defaults both to `0p3n-w3bu!`. If you change one, change the other. A mismatch causes KB create/update/delete to return 401, which triggers the frontend's session-expiry handler and logs the user out — even though their session is perfectly valid. The KB server's `/health` endpoint does NOT require auth (so health checks pass even with mismatched tokens), but `/collections` POST/PATCH/DELETE and all ingestion endpoints DO.
 
 ---
 
@@ -491,7 +499,8 @@ EMBEDDINGS_ENDPOINT=https://api.openai.com/v1
 # --- Optional / Tweaks ---
 OPENAI_MODELS=gpt-4o-mini,gpt-4o
 LAMB_KB_SERVER=http://kb:9090
-LAMB_KB_SERVER_TOKEN=change-me
+LAMB_KB_SERVER_TOKEN=change-me      # ⚠️ MUST equal LAMB_API_KEY below
+LAMB_API_KEY=change-me              # ⚠️ MUST equal LAMB_KB_SERVER_TOKEN above
 LTI_SECRET=change-me
 SIGNUP_ENABLED=true
 DEV_MODE=false
@@ -537,6 +546,8 @@ WEBUI_SECRET_KEY=change-me
 
 9. **DNS is a hard prerequisite for TLS:** Caddy requires DNS to be correctly pointed at the server before it can obtain Let's Encrypt certificates. Launching the stack with incorrect DNS will result in TLS failures. Always verify DNS resolution (Phase 4.5) before starting the stack. If using the production overlay (`docker-compose.next.prod.yaml`), missing or incorrect DNS will cause Caddy to fail the ACME challenge and the site will be unreachable over HTTPS.
 
+10. **`LAMB_KB_SERVER_TOKEN` and `LAMB_API_KEY` must match:** These are the same shared secret seen from two sides: LAMB uses it to talk to the KB server, the KB server uses it to validate requests. The compose file defaults both to `0p3n-w3bu!`. If you override one, you MUST override the other. A mismatch causes KB create/update/delete to return 401, which triggers the frontend's session-expiry handler and logs the user out — even though their session is perfectly valid. The KB server's `/health` endpoint does NOT require auth (so health checks pass even with mismatched tokens), but `/collections` POST/PATCH/DELETE and all ingestion endpoints DO.
+
 ## Appendix D: Agent Workflow Checklist
 
 The agent should follow this sequence and check off each step:
@@ -557,3 +568,4 @@ The agent should follow this sequence and check off each step:
 - [ ] **6.1** — Verify all containers are Up and healthy
 - [ ] **6.2** — Check logs for startup errors
 - [ ] **6.3** — Report access URLs to user
+- [ ] **6.4** — Verify `LAMB_KB_SERVER_TOKEN` == `LAMB_API_KEY` across containers

@@ -178,3 +178,4 @@ docker-compose.yaml
 .playwright-mcp
 
 aac_logs/
+.env.old
