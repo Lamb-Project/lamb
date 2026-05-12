@@ -23,6 +23,8 @@ import AssistantNameField from './AssistantNameField.svelte';
 import AssistantDescriptionField from './AssistantDescriptionField.svelte';
 import AssistantPromptFields from './AssistantPromptFields.svelte';
 import RubricSelector from './RubricSelector.svelte';
+import ConfigurationPanel from './ConfigurationPanel.svelte';
+import FormActions from './FormActions.svelte';
 	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	const dispatch = createEventDispatcher(); // For dispatching success event
@@ -135,6 +137,9 @@ import RubricSelector from './RubricSelector.svelte';
 	let loadingRubrics = $state(false);
 	let rubricError = $state('');
 	let rubricsFetchAttempted = $state(false);
+
+	/** @type {import('./ConfigurationPanel.svelte').default | null} */
+	let configPanel = $state(null);
 
 
 	// Loading/error/success state
@@ -305,7 +310,8 @@ import RubricSelector from './RubricSelector.svelte';
 		}
 		
 		// Update available models based on selected connector
-		updateAvailableModels();
+		configPanel?.updateAvailableModels();
+		const availModels = configPanel?.getAvailableModels() || [];
 		// Set LLM with fallback to first available model if default not available
 		const defaultLlm = defaults.llm || '';
 		if (defaultLlm && availableModels.includes(defaultLlm)) {
@@ -395,7 +401,8 @@ import RubricSelector from './RubricSelector.svelte';
 			console.log('[populateFormFields] Set selectedRagProcessor:', selectedRagProcessor);
 			
 			// Update available models based on the selected connector
-			updateAvailableModels();
+			configPanel?.updateAvailableModels();
+		const availModels = configPanel?.getAvailableModels() || [];
 			console.log('[populateFormFields] Updated availableModels:', availableModels);
 			
 			// Set LLM - ensure we check if the data.llm exists in availableModels
@@ -543,7 +550,8 @@ import RubricSelector from './RubricSelector.svelte';
 	/** Handles connector dropdown change */
 	async function handleConnectorChange() {
 		console.log('Connector changed to:', selectedConnector);
-		updateAvailableModels();
+		configPanel?.updateAvailableModels();
+		const availModels = configPanel?.getAvailableModels() || [];
 		await tick();
 		if (!availableModels.includes(selectedLlm)) {
 			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
@@ -885,7 +893,8 @@ import RubricSelector from './RubricSelector.svelte';
 			selectedConnector = defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 			// Update available models based on the default connector
 			await tick();
-			updateAvailableModels();
+			configPanel?.updateAvailableModels();
+		const availModels = configPanel?.getAvailableModels() || [];
 			// Reset LLM if needed with the new models list
 			if (!availableModels.includes(selectedLlm)) {
 				selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
@@ -1110,7 +1119,8 @@ import RubricSelector from './RubricSelector.svelte';
 							selectedRagProcessor = callbackData.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 
 							// Update models based on connector, then set LLM
-							updateAvailableModels(); // Update the list first
+							configPanel?.updateAvailableModels();
+		const availModels = configPanel?.getAvailableModels() || []; // Update the list first
 							await tick(); // Ensure DOM/state updates before setting LLM
 							if (availableModels.includes(callbackData.llm)) {
 								selectedLlm = callbackData.llm;
@@ -1245,356 +1255,44 @@ import RubricSelector from './RubricSelector.svelte';
 			</div>
 
 			<!-- Right Column: Configuration -->
-				<div class="md:w-1/3">
-					<!-- Advanced Mode Toggle -->
-					{#if formState === 'create'}
-						<div class="mb-3">
-							<label class="inline-flex items-center cursor-pointer">
-								<input 
-									type="checkbox" 
-									bind:checked={isAdvancedMode} 
-									class="sr-only peer"
-								/>
-								<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-								<span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">
-									{$_('assistants.form.advancedMode') || 'Advanced Mode'}
-								</span>
-							</label>
-						</div>
-					{/if}
-
-					<!-- Configuration Dropdowns -->
-					<fieldset class="border p-4 rounded-md space-y-4 h-full">
-						<legend class="text-lg font-medium text-brand px-1">{$_('assistants.form.configSection.title', { default: 'Configuration' })}</legend>
-
-						<!-- Prompt Processor - Only show in advanced mode or edit mode -->
-						{#if isAdvancedMode || formState === 'edit'}
-							<div>
-								<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
-								<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} onchange={handleFieldChange}
-										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
-									{#each promptProcessors as processor}
-										<option value={processor}>{processor}</option>
-									{/each}
-								</select>
-							</div>
-						{/if}
-
-						<!-- Connector - Only show in advanced mode or edit mode -->
-						{#if isAdvancedMode || formState === 'edit'}
-							<div>
-								<label for="connector" class="block text-sm font-medium text-gray-700">{$_('assistants.form.connector.label', { default: 'Connector' })}</label>
-								<select id="connector" name="connector" bind:value={selectedConnector} onchange={(e) => { handleFieldChange(); handleConnectorChange(e); }}
-										disabled={false}
-										class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
-									{#each connectorsList as connectorName}
-										<option value={connectorName}>{connectorName}</option>
-									{/each}
-								</select>
-								<!-- Connector description -->
-								{#if currentConnectorMetadata?.description}
-									<p class="mt-1 text-xs text-gray-500 italic">
-										{currentConnectorMetadata.description}
-									</p>
-								{/if}
-							</div>
-						{/if}
-
-					<!-- LLM (Always visible) -->
-					<div>
-						<label for="llm" class="block text-sm font-medium text-gray-700">{$_('assistants.form.llm.label', { default: 'Language Model (LLM)' })}</label>
-						<select id="llm" name="llm" bind:value={selectedLlm} onchange={handleFieldChange}
-									  disabled={availableModels.length === 0}
-								  class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white">
-							{#if availableModels.length > 0}
-								{#each availableModels as model}
-									<option value={model}>{model}</option>
-								{/each}
-							{:else}
-								<option value="" disabled>{$_('assistants.form.llm.noneAvailable', { default: 'No models available for selected connector' })}</option>
-							{/if}
-						</select>
-					</div>
-
-					<!-- Vision Capability (Only for OpenAI connector) -->
-				{#if selectedConnector === 'openai' || selectedConnector === 'banana_img' || visionEnabled}
-				<div class="mb-3">
-					<label class="inline-flex items-start cursor-pointer">
-						<input
-							type="checkbox"
-							bind:checked={visionEnabled}
-							onchange={handleFieldChange}
-							class="sr-only peer"
-						/>
-						<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 shrink-0 mt-0.5"></div>
-						<div class="ms-3">
-							<span class="text-sm font-medium text-gray-900 dark:text-gray-300">
-								{$_('assistants.form.vision.label', { default: 'Enable Vision Capability' })}
-							</span>
-							<p class="text-xs text-gray-500 mt-1">
-								{#if selectedConnector === 'banana_img'}
-									Allow this assistant to accept images as input for image-to-image generation (editing, style transfer, etc.)
-								{:else}
-									{$_('assistants.form.vision.description', { default: 'Allow this assistant to process images alongside text messages' })}
-								{/if}
-							</p>
-						</div>
-					</label>
-				</div>
-				{/if}
-
-				<!-- Image Generation Capability (Only for banana_img connector or connectors with image_generation) -->
-				{#if selectedConnector === 'banana_img' || imageGenerationEnabled || currentConnectorMetadata?.capabilities?.image_generation}
-					<div class="mb-3">
-						<label class="inline-flex items-start {imageGenerationForced ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'}">
-							<input
-								type="checkbox"
-								bind:checked={imageGenerationEnabled}
-								onchange={handleFieldChange}
-								disabled={imageGenerationForced}
-								class="sr-only peer"
-							/>
-							<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 {imageGenerationForced ? 'peer-disabled:opacity-50' : ''} shrink-0 mt-0.5"></div>
-							<div class="ms-3">
-								<span class="text-sm font-medium text-gray-900 dark:text-gray-300 flex items-center gap-2">
-									Enable Image Generation
-									{#if imageGenerationForced}
-										<span class="inline-flex items-center text-xs text-amber-600" title="This capability is required for the selected model">
-											<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-												<path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
-											</svg>
-										</span>
-									{/if}
-								</span>
-								<p class="text-xs text-gray-500 mt-1">
-									{#if imageGenerationForced}
-										<span class="text-amber-600">Required for this model - </span>
-									{/if}
-									Allow this assistant to generate images using Google Gemini
-								</p>
-							</div>
-						</label>
-					</div>
-					{/if}
-
-					<!-- RAG Processor -->
-					<div>
-						<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
-						<select id="rag-processor" bind:value={selectedRagProcessor} onchange={handleFieldChange}
-								disabled={formState === 'edit'}
-								class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
-							{#each ragProcessors as processor}
-								<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
-							{/each}
-						</select>
-					</div>
-
-						<!-- RAG Options (Conditional) -->
-						{#if showRagOptions}
-							<div class="pt-4 border-t border-gray-200 space-y-4">
-								<h4 class="text-md font-medium text-gray-700">{$_('assistants.form.ragOptions.title', { default: 'RAG Options' })}</h4>
-								
-								<!-- Rubric RAG Info Message -->
-								{#if selectedRagProcessor === 'rubric_rag'}
-									<div class="p-3 bg-blue-50 border border-blue-200 rounded-md">
-										<p class="text-sm text-blue-800">
-											📋 {$_('assistants.form.rubric.configLocation', { default: 'See rubric options below the Prompt Template section' })}
-										</p>
-									</div>
-								{/if}
-								
-								<!-- RAG Top K (Only for simple_rag, context_aware_rag, and hierarchical_rag) -->
-								{#if selectedRagProcessor === 'simple_rag' || selectedRagProcessor === 'context_aware_rag' || selectedRagProcessor === 'hierarchical_rag'}
-									<div>
-										<label for="rag-top-k" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragTopK.label', { default: 'RAG Top K' })}</label>
-										<input type="number" id="rag-top-k" name="RAG_Top_k" bind:value={RAG_Top_k} min="1" max="10" 
-											   disabled={false}
-											   class="mt-1 block w-24 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed">
-										<p class="mt-1 text-xs text-gray-500">{$_('assistants.form.ragTopK.help', { default: 'Number of relevant documents to retrieve (1-10).' })}</p>
-									</div>
-								{/if}
-
-								<!-- Knowledge Base Selector (Conditional) -->
-								{#if showKnowledgeBaseSelector}
-									<div>
-										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.knowledgeBases.label', { default: 'Knowledge Bases' })}</h4>
-										{#if loadingKnowledgeBases}
-											<p class="text-sm text-gray-500">{$_('assistants.form.knowledgeBases.loading', { default: 'Loading knowledge bases...' })}</p>
-										{:else if knowledgeBaseError}
-											<p class="text-sm text-red-600">{$_('assistants.form.knowledgeBases.error', { default: 'Error loading knowledge bases:' })} {knowledgeBaseError}</p>
-										{:else if accessibleKnowledgeBases.length === 0}
-											<p class="text-sm text-gray-500">{$_('assistants.form.knowledgeBases.noneFound', { default: 'No accessible knowledge bases found.' })}</p>
-										{:else}
-											<div class="mt-2 space-y-4">
-												<!-- Owned Knowledge Bases Section -->
-												{#if ownedKnowledgeBases.length > 0}
-													<div>
-														<h5 class="text-sm font-semibold text-gray-700 mb-2">{$_('assistants.form.knowledgeBases.myKB', { default: 'My Knowledge Bases' })}</h5>
-														<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-owned-group-label">
-															<span id="kb-owned-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.myKB', { default: 'My Knowledge Bases' })}</span>
-															{#each ownedKnowledgeBases as kb (kb.id)}
-																<label class="flex items-center space-x-2 cursor-pointer">
-																	<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
-																		   disabled={false}
-																		   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
-																	<span class="text-sm text-gray-700">{kb.name}</span>
-																</label>
-															{/each}
-														</div>
-													</div>
-												{/if}
-												
-												<!-- Shared Knowledge Bases Section -->
-												{#if sharedKnowledgeBases.length > 0}
-													<div>
-														<h5 class="text-sm font-semibold text-gray-700 mb-2">{$_('assistants.form.knowledgeBases.sharedKB', { default: 'Shared Knowledge Bases' })}</h5>
-														<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group" aria-labelledby="kb-shared-group-label">
-															<span id="kb-shared-group-label" class="sr-only">{$_('assistants.form.knowledgeBases.sharedKB', { default: 'Shared Knowledge Bases' })}</span>
-															{#each sharedKnowledgeBases as kb (kb.id)}
-																<label class="flex items-center space-x-2 cursor-pointer">
-																	<input type="checkbox" bind:group={selectedKnowledgeBases} value={kb.id} 
-																		   disabled={false}
-																		   class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
-																	<span class="text-sm text-gray-700">
-																		{kb.name}
-																		<span class="ml-2 text-xs text-gray-500">
-																			({$_('assistants.form.knowledgeBases.shared', { values: { owner: kb.shared_by || 'Unknown' }, default: `Shared by ${kb.shared_by || 'Unknown'}` })})
-																		</span>
-																	</span>
-																</label>
-															{/each}
-														</div>
-													</div>
-												{/if}
-											</div>
-										{/if}
-									</div>
-								{/if}
-
-								<!-- Single File Selector (Conditional) -->
-								{#if showSingleFileSelector}
-									<div>
-										<h4 class="block text-sm font-medium text-gray-700 mb-1">{$_('assistants.form.singleFile.label', { default: 'Select File' })}</h4>
-										
-										<!-- File upload -->
-										<div class="mb-4">
-											<label for="file-upload" class="block text-sm text-gray-700">{$_('assistants.form.singleFile.upload', { default: 'Upload New File' })}</label>
-											<div class="mt-1 flex items-center">
-												<input 
-													id="file-upload"
-													type="file" 
-													accept=".txt,.json,.md,.pdf,.doc,.docx" 
-													class="block w-full text-sm text-gray-500
-														file:mr-4 file:py-2 file:px-4
-														file:rounded-md file:border-0
-														file:text-sm file:font-semibold
-														file:bg-gray-50 file:text-gray-700
-														hover:file:bg-gray-100 disabled:cursor-not-allowed"
-													onchange={handleFileUpload}
-													disabled={fileUploadLoading}
-												/>
-												{#if fileUploadLoading}
-													<span class="ml-2 text-sm text-gray-500">{$_('assistants.form.singleFile.uploading', { default: 'Uploading...' })}</span>
-												{/if}
-											</div>
-											{#if fileUploadError}
-												<p class="mt-1 text-sm text-red-600">{fileUploadError}</p>
-											{/if}
-										</div>
-										<!-- File selection -->
-										{#if loadingFiles}
-											<p class="text-sm text-gray-500">{$_('assistants.form.singleFile.loading', { default: 'Loading files...' })}</p>
-										{:else if fileError}
-											<p class="text-sm text-red-600">{$_('assistants.form.singleFile.error', { default: 'Error loading files:' })} {fileError}</p>
-										{:else if userFiles.length === 0}
-											<p class="text-sm text-gray-500">{$_('assistants.form.singleFile.noneFound', { default: 'No files found. Please upload a file.' })}</p>
-										{:else}
-											<div class="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded p-2">
-												{#each userFiles as file (file.path)}
-													<label class="flex items-center space-x-2 p-1 cursor-pointer {selectedFilePath === file.path ? 'bg-blue-50' : 'hover:bg-gray-50'}">
-														<input 
-															type="radio" 
-															name="file-selector" 
-															value={file.path} 
-															bind:group={selectedFilePath}
-															disabled={false}
-															class="h-4 w-4 text-brand rounded focus:ring-brand"
-														/>
-														<span class="text-sm text-gray-700">{file.name}</span>
-													</label>
-												{/each}
-											</div>
-											{#if !selectedFilePath && formState === 'edit'}
-												<p class="mt-1 text-xs text-red-500">{$_('assistants.form.singleFile.required', { default: 'Please select a file' })}</p>
-											{/if}
-										{/if}
-									</div>
-								{/if}
-
-
-							</div>
-						{/if}
-
-					</fieldset>
-				</div>
+			<div class="md:w-1/3">
+				<ConfigurationPanel
+					bind:this={configPanel}
+					{formState}
+					bind:isAdvancedMode
+					{promptProcessors}
+					{connectorsList}
+					{ragProcessors}
+					bind:selectedPromptProcessor
+					bind:selectedConnector
+					bind:selectedLlm
+					bind:selectedRagProcessor
+					bind:visionEnabled
+					bind:imageGenerationEnabled
+					bind:RAG_Top_k
+					{ownedKnowledgeBases}
+					{sharedKnowledgeBases}
+					bind:selectedKnowledgeBases
+					{loadingKnowledgeBases}
+					{knowledgeBaseError}
+					{userFiles}
+					bind:selectedFilePath
+					{loadingFiles}
+					{fileError}
+					onFilesChanged={fetchUserFiles}
+					onchange={handleFieldChange}
+				/>
+			</div>
 			</div> 
 			
-			<!-- Messages -->
-			{#if formError}
-				<p class="text-sm text-red-600 mt-4 p-2 border border-red-200 bg-red-50 rounded">Error: {formError}</p>
-			{/if}
-			{#if successMessage && formState !== 'edit'}
-				<p class="text-sm text-green-600 mt-4 p-2 border border-green-200 bg-green-50 rounded">{successMessage}</p>
-			{/if}
-
-			<!-- Bottom Action Button Area -->
-			<div class="pt-5">
-				<div class="flex justify-end space-x-3">
-					{#if formState === 'edit'}
-						<!-- Bottom Cancel Button (Edit Mode) -->
-						<button 
-							type="button" 
-							onclick={switchToViewMode}
-							disabled={formLoading}
-							class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-						>
-							{$_('common.cancel', { default: 'Cancel' })}
-						</button>
-					{/if}
-					
-					<!-- Sanitization Preview (above save button) -->
-					{#if showSanitizationPreview}
-						<div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-							<div class="flex items-center">
-								<svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-								</svg>
-								<div class="flex-1">
-									<p class="text-sm font-semibold text-blue-800">
-										{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}
-									</p>
-									<code class="inline-block mt-1 px-3 py-1 bg-blue-100 rounded text-blue-900 font-mono text-sm">{sanitizedNameInfo.sanitized}</code>
-								</div>
-							</div>
-						</div>
-					{/if}
-					
-					<!-- Bottom Save / Save Changes Button -->
-					<button 
-						type="submit" 
-						form="assistant-form-main" 
-						disabled={formLoading || (formState === 'create' && !$assistantConfigStore.systemCapabilities)} 
-						class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-					>
-						{#if formState === 'create'}
-							{formLoading ? $_('common.saving', { default: 'Saving...' }) : $_('common.save', { default: 'Save' })}
-						{:else} <!-- formState === 'edit' -->
-							{formLoading ? $_('common.saving', { default: 'Saving...' }) : $_('common.saveChanges', { default: 'Save Changes' })}
-						{/if}
-					</button>
-				</div>
-			</div>
+			<FormActions
+				{formState}
+				{formLoading}
+				{formError}
+				{successMessage}
+				{name}
+				oncancel={switchToViewMode}
+			/>
 
 		</form>
 	{/if} 
