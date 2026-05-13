@@ -1210,9 +1210,9 @@
 												<button
 													type="button"
 													onclick={() => requestViewItem(item)}
-													class="rounded p-1.5 transition-colors {item.status === 'failed' ? 'text-red-500 hover:bg-red-50 hover:text-red-700' : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600'}"
+													class="rounded p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
 													title={item.status === 'failed'
-														? (item.error_message || $_('libraries.viewError', { default: 'View error' }))
+														? $_('libraries.viewError', { default: 'View error details' })
 														: $_('libraries.viewItem', { default: 'View item' })}
 												>
 													<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

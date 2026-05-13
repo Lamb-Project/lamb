@@ -30,6 +30,22 @@
 	/** @type {'markdown' | 'original'} */
 	let activeTab = $state('markdown');
 
+	/**
+	 * Classify a YouTube-related error string into one of three buckets so
+	 * the UI can show a targeted recovery hint instead of the raw message.
+	 * @param {string|null} msg
+	 * @returns {'rate_limit' | 'no_subtitles' | 'generic'}
+	 */
+	function classifyError(msg) {
+		if (!msg) return 'generic';
+		const lower = msg.toLowerCase();
+		if (lower.includes('rate-limit') || lower.includes('rate limit') || lower.includes('429') || lower.includes('too many requests')) return 'rate_limit';
+		if (lower.includes('no subtitles') || lower.includes('subtitles available')) return 'no_subtitles';
+		return 'generic';
+	}
+
+	let errorKind = $derived(classifyError(error));
+
 	// Reset to markdown tab each time the modal opens.
 	$effect(() => {
 		if (isOpen) {
@@ -159,9 +175,29 @@
 							{localeLoaded ? $_('common.processing', { default: 'Loading...' }) : 'Loading...'}
 						</div>
 					{:else if error}
-						<div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-							{error}
-						</div>
+						{#if errorKind === 'rate_limit'}
+							<div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm">
+								<p class="font-medium text-amber-900">
+									{localeLoaded ? $_('libraries.itemContentModal.errorRateLimit', { default: 'YouTube rate-limited this request.' }) : 'YouTube rate-limited this request.'}
+								</p>
+								<p class="mt-1 text-amber-700">
+									{localeLoaded ? $_('libraries.itemContentModal.errorRateLimitHint', { default: 'Wait a few minutes, then delete this item and try importing it again.' }) : 'Wait a few minutes, then delete this item and try importing it again.'}
+								</p>
+							</div>
+						{:else if errorKind === 'no_subtitles'}
+							<div class="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm">
+								<p class="font-medium text-blue-900">
+									{localeLoaded ? $_('libraries.itemContentModal.errorNoSubtitles', { default: 'No subtitles found for the requested language.' }) : 'No subtitles found for the requested language.'}
+								</p>
+								<p class="mt-1 text-blue-700">
+									{localeLoaded ? $_('libraries.itemContentModal.errorNoSubtitlesHint', { default: 'Delete this item and try again with a different language code (e.g. "es", "fr", "auto").' }) : 'Delete this item and try again with a different language code (e.g. "es", "fr", "auto").'}
+								</p>
+							</div>
+						{:else}
+							<div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+								{error}
+							</div>
+						{/if}
 					{:else if content}
 						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 						<div class="prose prose-sm max-w-none">{@html renderedHtml}</div>
