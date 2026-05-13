@@ -906,6 +906,7 @@
 		"noResults": "Cap biblioteca coincideix amb la teva cerca.",
 		"name": "Nom",
 		"description": "Descripció",
+		"defaultName": "La meva biblioteca",
 		"namePlaceholder": "Nom de la biblioteca",
 		"descriptionPlaceholder": "Descripció opcional",
 		"createdAt": "Creada",

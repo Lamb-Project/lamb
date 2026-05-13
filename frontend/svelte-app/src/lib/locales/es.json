@@ -906,6 +906,7 @@
 		"noResults": "Ninguna biblioteca coincide con tu búsqueda.",
 		"name": "Nombre",
 		"description": "Descripción",
+		"defaultName": "Mi biblioteca",
 		"namePlaceholder": "Nombre de la biblioteca",
 		"descriptionPlaceholder": "Descripción opcional",
 		"createdAt": "Creada",

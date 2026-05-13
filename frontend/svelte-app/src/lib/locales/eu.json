@@ -906,6 +906,7 @@
 		"noResults": "Ez da liburutegirik aurkitu zure bilaketarekin.",
 		"name": "Izena",
 		"description": "Deskribapena",
+		"defaultName": "Nire liburutegia",
 		"namePlaceholder": "Liburutegiaren izena",
 		"descriptionPlaceholder": "Deskribapen aukerakoa",
 		"createdAt": "Sortua",

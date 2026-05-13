@@ -906,6 +906,7 @@
 		"noResults": "No libraries match your search.",
 		"name": "Name",
 		"description": "Description",
+		"defaultName": "My Library",
 		"namePlaceholder": "Enter library name",
 		"descriptionPlaceholder": "Optional description",
 		"createdAt": "Created",
