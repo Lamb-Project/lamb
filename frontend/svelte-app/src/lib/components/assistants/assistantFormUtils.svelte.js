@@ -1,71 +1,10 @@
 // src/lib/components/assistants/assistantFormUtils.svelte.js
 /**
- * Shared reactive utilities for the AssistantForm component tree.
+ * Shared pure utilities for the AssistantForm component tree.
  *
- * Factory Pattern: createAsyncResource produces a standard reactive
- * state group {data, loading, error, attempted, fetch, reset} from
- * any async fetcher function. This eliminates the 9 duplicated state
- * variable triads (loading/error/attempted) for KBs, files, and rubrics.
+ * Contains helper functions for model selection, placeholder handling,
+ * connector data extraction, and text highlighting.
  */
-
-/**
- * Factory that creates a reactive async resource with standard loading states.
- *
- * @template T
- * @param {() => Promise<T>} fetcher - Async function that returns the data
- * @param {T} [initialData] - Initial value for data (default: [])
- * @returns {{ data: T, loading: boolean, error: string, attempted: boolean, fetch: () => Promise<void>, reset: () => void }}
- */
-export function createAsyncResource(fetcher, initialData = /** @type {T} */ ([])) {
-	let data = $state(initialData);
-	let loading = $state(false);
-	let error = $state('');
-	let attempted = $state(false);
-
-	async function doFetch() {
-		if (loading || attempted) return;
-		loading = true;
-		error = '';
-		try {
-			const result = await fetcher();
-			data = result;
-		} catch (err) {
-			if (err instanceof Error && err.message.startsWith('Session expired')) return;
-			error = err instanceof Error ? err.message : 'An error occurred';
-			data = initialData;
-		} finally {
-			loading = false;
-			attempted = true;
-		}
-	}
-
-	function reset() {
-		data = initialData;
-		loading = false;
-		error = '';
-		attempted = false;
-	}
-
-	return {
-		get data() {
-			return data;
-		},
-		set data(v) {
-			data = v;
-		},
-		get loading() {
-			return loading;
-		},
-		get error() {
-			return error;
-		},
-		get attempted() {
-			return attempted;
-		},
-		fetch: doFetch,
-		reset
-	};
-}
 
 /**
  * Select the best LLM model: target if available, else first in list.
