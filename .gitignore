@@ -173,7 +173,7 @@ docker-compose.yaml
 backend/testing/
 backend/uploads/
 frontend/packages/
-
+.opencode
 
 
 ./clinerules
@@ -184,3 +184,6 @@ frontend/packages/
 
 aac_logs/
 .env.old
+
+# Worktrees
+.worktrees/
