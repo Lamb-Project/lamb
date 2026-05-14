@@ -1,6 +1,6 @@
 /**
  * Template Service
- * 
+ *
  * Handles API communication for prompt templates management.
  * All methods require authentication via JWT token.
  */
@@ -19,14 +19,14 @@ const TEMPLATES_BASE = `${API_BASE}/creator/prompt-templates`;
  * Get authorization headers with JWT token
  */
 function getAuthHeaders() {
-    const token = localStorage.getItem('userToken');
-    if (!token) {
-        throw new Error('No authentication token found');
-    }
-    return {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
+	const token = localStorage.getItem('userToken');
+	if (!token) {
+		throw new Error('No authentication token found');
+	}
+	return {
+		Authorization: `Bearer ${token}`,
+		'Content-Type': 'application/json'
+	};
 }
 
 /**
@@ -36,16 +36,16 @@ function getAuthHeaders() {
  * @returns {Promise<{templates: Array, total: number, page: number, limit: number}>}
  */
 export async function listUserTemplates(limit = 50, offset = 0) {
-    try {
-        const response = await axios.get(`${TEMPLATES_BASE}/list`, {
-            headers: getAuthHeaders(),
-            params: { limit, offset }
-        });
-        return response.data;
-    } catch (error) {
-        console.error('Error listing user templates:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.get(`${TEMPLATES_BASE}/list`, {
+			headers: getAuthHeaders(),
+			params: { limit, offset }
+		});
+		return response.data;
+	} catch (error) {
+		console.error('Error listing user templates:', error);
+		throw error;
+	}
 }
 
 /**
@@ -55,16 +55,16 @@ export async function listUserTemplates(limit = 50, offset = 0) {
  * @returns {Promise<{templates: Array, total: number, page: number, limit: number}>}
  */
 export async function listSharedTemplates(limit = 50, offset = 0) {
-    try {
-        const response = await axios.get(`${TEMPLATES_BASE}/shared`, {
-            headers: getAuthHeaders(),
-            params: { limit, offset }
-        });
-        return response.data;
-    } catch (error) {
-        console.error('Error listing shared templates:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.get(`${TEMPLATES_BASE}/shared`, {
+			headers: getAuthHeaders(),
+			params: { limit, offset }
+		});
+		return response.data;
+	} catch (error) {
+		console.error('Error listing shared templates:', error);
+		throw error;
+	}
 }
 
 /**
@@ -73,15 +73,15 @@ export async function listSharedTemplates(limit = 50, offset = 0) {
  * @returns {Promise<Object>} Template object
  */
 export async function getTemplate(templateId) {
-    try {
-        const response = await axios.get(`${TEMPLATES_BASE}/${templateId}`, {
-            headers: getAuthHeaders()
-        });
-        return response.data;
-    } catch (error) {
-        console.error('Error getting template:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.get(`${TEMPLATES_BASE}/${templateId}`, {
+			headers: getAuthHeaders()
+		});
+		return response.data;
+	} catch (error) {
+		console.error('Error getting template:', error);
+		throw error;
+	}
 }
 
 /**
@@ -95,15 +95,15 @@ export async function getTemplate(templateId) {
  * @returns {Promise<Object>} Created template
  */
 export async function createTemplate(templateData) {
-    try {
-        const response = await axios.post(`${TEMPLATES_BASE}/create`, templateData, {
-            headers: getAuthHeaders()
-        });
-        return response.data;
-    } catch (error) {
-        console.error('Error creating template:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.post(`${TEMPLATES_BASE}/create`, templateData, {
+			headers: getAuthHeaders()
+		});
+		return response.data;
+	} catch (error) {
+		console.error('Error creating template:', error);
+		throw error;
+	}
 }
 
 /**
@@ -113,15 +113,15 @@ export async function createTemplate(templateData) {
  * @returns {Promise<Object>} Updated template
  */
 export async function updateTemplate(templateId, updates) {
-    try {
-        const response = await axios.put(`${TEMPLATES_BASE}/${templateId}`, updates, {
-            headers: getAuthHeaders()
-        });
-        return response.data;
-    } catch (error) {
-        console.error('Error updating template:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.put(`${TEMPLATES_BASE}/${templateId}`, updates, {
+			headers: getAuthHeaders()
+		});
+		return response.data;
+	} catch (error) {
+		console.error('Error updating template:', error);
+		throw error;
+	}
 }
 
 /**
@@ -130,14 +130,14 @@ export async function updateTemplate(templateId, updates) {
  * @returns {Promise<void>}
  */
 export async function deleteTemplate(templateId) {
-    try {
-        await axios.delete(`${TEMPLATES_BASE}/${templateId}`, {
-            headers: getAuthHeaders()
-        });
-    } catch (error) {
-        console.error('Error deleting template:', error);
-        throw error;
-    }
+	try {
+		await axios.delete(`${TEMPLATES_BASE}/${templateId}`, {
+			headers: getAuthHeaders()
+		});
+	} catch (error) {
+		console.error('Error deleting template:', error);
+		throw error;
+	}
 }
 
 /**
@@ -147,17 +147,17 @@ export async function deleteTemplate(templateId) {
  * @returns {Promise<Object>} New template
  */
 export async function duplicateTemplate(templateId, newName = null) {
-    try {
-        const response = await axios.post(
-            `${TEMPLATES_BASE}/${templateId}/duplicate`,
-            { new_name: newName },
-            { headers: getAuthHeaders() }
-        );
-        return response.data;
-    } catch (error) {
-        console.error('Error duplicating template:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.post(
+			`${TEMPLATES_BASE}/${templateId}/duplicate`,
+			{ new_name: newName },
+			{ headers: getAuthHeaders() }
+		);
+		return response.data;
+	} catch (error) {
+		console.error('Error duplicating template:', error);
+		throw error;
+	}
 }
 
 /**
@@ -167,17 +167,17 @@ export async function duplicateTemplate(templateId, newName = null) {
  * @returns {Promise<Object>} Updated template
  */
 export async function toggleTemplateSharing(templateId, isShared) {
-    try {
-        const response = await axios.put(
-            `${TEMPLATES_BASE}/${templateId}/share`,
-            { is_shared: isShared },
-            { headers: getAuthHeaders() }
-        );
-        return response.data;
-    } catch (error) {
-        console.error('Error toggling template sharing:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.put(
+			`${TEMPLATES_BASE}/${templateId}/share`,
+			{ is_shared: isShared },
+			{ headers: getAuthHeaders() }
+		);
+		return response.data;
+	} catch (error) {
+		console.error('Error toggling template sharing:', error);
+		throw error;
+	}
 }
 
 /**
@@ -186,17 +186,17 @@ export async function toggleTemplateSharing(templateId, isShared) {
  * @returns {Promise<Object>} Export data with templates array
  */
 export async function exportTemplates(templateIds) {
-    try {
-        const response = await axios.post(
-            `${TEMPLATES_BASE}/export`,
-            { template_ids: templateIds },
-            { headers: getAuthHeaders() }
-        );
-        return response.data;
-    } catch (error) {
-        console.error('Error exporting templates:', error);
-        throw error;
-    }
+	try {
+		const response = await axios.post(
+			`${TEMPLATES_BASE}/export`,
+			{ template_ids: templateIds },
+			{ headers: getAuthHeaders() }
+		);
+		return response.data;
+	} catch (error) {
+		console.error('Error exporting templates:', error);
+		throw error;
+	}
 }
 
 /**
@@ -204,23 +204,25 @@ export async function exportTemplates(templateIds) {
  * @param {Array<number>} templateIds - Array of template IDs to export
  * @param {string} filename - Optional filename (default: prompt-templates-export.json)
  */
-export async function downloadTemplatesExport(templateIds, filename = 'prompt-templates-export.json') {
-    try {
-        const exportData = await exportTemplates(templateIds);
-        
-        // Create blob and download
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    } catch (error) {
-        console.error('Error downloading templates export:', error);
-        throw error;
-    }
-}
+export async function downloadTemplatesExport(
+	templateIds,
+	filename = 'prompt-templates-export.json'
+) {
+	try {
+		const exportData = await exportTemplates(templateIds);
 
+		// Create blob and download
+		const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	} catch (error) {
+		console.error('Error downloading templates export:', error);
+		throw error;
+	}
+}

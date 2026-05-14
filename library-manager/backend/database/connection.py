@@ -11,6 +11,7 @@ from config import DB_PATH
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from database.models import Base
 
@@ -59,9 +60,23 @@ def init_db() -> None:
             "Only one instance may run per data directory."
         ) from exc
 
+    # Use NullPool: every request opens its own SQLite connection, so we
+    # never reuse a connection that may still hold a stale read-snapshot
+    # from a previous transaction. SQLite is in-process and connection
+    # setup is microseconds, so the overhead is negligible — and it
+    # eliminates a class of intermittent "0 items returned" bugs that
+    # users saw on page reload, where the request happened to land on a
+    # pooled connection whose deferred-BEGIN snapshot predated recent
+    # commits from the import worker (which runs on its own sessions).
+    #
+    # We still enable WAL via the connect event so concurrent readers
+    # never block on the writer worker. ``check_same_thread=False`` is
+    # still required because FastAPI may dispatch a request on a thread
+    # different from the one that opened the connection (e.g., via
+    # ``run_in_executor``).
     _engine = create_engine(
         f"sqlite:///{DB_PATH}",
-        pool_pre_ping=True,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
     )
 

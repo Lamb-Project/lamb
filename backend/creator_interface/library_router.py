@@ -6,7 +6,7 @@ Manager -> update LAMB DB -> audit log -> return response.
 
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -166,12 +166,14 @@ async def list_libraries(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """List libraries accessible to the current user (owned + shared)."""
-    return {
-        "libraries": _db.get_accessible_libraries(
-            user_id=auth.user.get("id"),
-            organization_id=auth.organization.get("id"),
-        )
-    }
+    user_id = auth.user.get("id")
+    libraries = _db.get_accessible_libraries(
+        user_id=user_id,
+        organization_id=auth.organization.get("id"),
+    )
+    for entry in libraries:
+        entry["is_owner"] = entry.get("owner_user_id") == user_id
+    return {"libraries": libraries}
 
 
 @router.get("/{library_id}")
@@ -220,11 +222,52 @@ async def delete_library(
 ):
     """Delete a library and all its content.
 
+    FR-10: blocked with 409 if any item in this library is still actively
+    referenced by a Knowledge Store. Mirrors the per-item check in
+    :func:`delete_item` so deleting the parent library cannot bypass the
+    rule and orphan vectors in the KB Server.
+
     Deletes from Library Manager first, then from LAMB DB. If LM returns
     a server error (5xx), the LAMB row is preserved so the user can retry.
     A 404 from LM is tolerated (already gone on disk).
     """
     auth.require_library_access(library_id, level="owner")
+
+    referencing_links = _db.get_kb_content_links_for_library(library_id)
+    active_links = [
+        l for l in referencing_links
+        if l.get("status") != "failed"
+    ]
+    if active_links:
+        blocking_stores: Dict[str, Dict[str, Any]] = {}
+        for l in active_links:
+            ks_id = l.get("knowledge_store_id")
+            if ks_id and ks_id not in blocking_stores:
+                blocking_stores[ks_id] = {
+                    "id": ks_id,
+                    "name": l.get("knowledge_store_name"),
+                    "status": l.get("status"),
+                }
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    "Cannot delete library: one or more of its items are "
+                    "referenced by Knowledge Stores. Remove the content "
+                    "from each Knowledge Store first."
+                ),
+                "knowledge_stores": list(blocking_stores.values()),
+                "items": [
+                    {
+                        "id": l.get("library_item_id"),
+                        "title": l.get("item_title"),
+                        "knowledge_store_id": l.get("knowledge_store_id"),
+                        "status": l.get("status"),
+                    }
+                    for l in active_links
+                ],
+            },
+        )
 
     try:
         await _client.delete_library(library_id, creator_user=auth.user)
@@ -411,7 +454,7 @@ async def import_youtube(
 @router.get("/{library_id}/items")
 async def list_items(
     library_id: str,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: Optional[str] = Query(None),
     auth: AuthContext = Depends(get_auth_context),
@@ -460,14 +503,268 @@ async def get_item_status(
     return result
 
 
+MAX_CONTENT_BYTES = 5 * 1024 * 1024  # 5 MB inline-content cap
+
+
+@router.get("/{library_id}/items/{item_id}/content")
+async def get_item_content(
+    library_id: str,
+    item_id: str,
+    format: Literal["markdown", "text"] = "markdown",
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Return the full rendered content of an imported item.
+
+    HTML output is intentionally not exposed — Library Manager's
+    ``format=html`` uses an unsanitized server-side renderer. Clients
+    that need HTML must request markdown and sanitize on their side.
+    """
+    auth.require_library_access(library_id, level="any")
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath=f"content?format={format}",
+        creator_user=auth.user,
+    )
+    if len(response.content) > MAX_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB. "
+                "Download the original file instead."
+            ),
+        )
+    default_media = "text/markdown" if format == "markdown" else "text/plain"
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", default_media),
+    )
+
+
+def _content_disposition(filename: str) -> str:
+    """Build a safe Content-Disposition header value with RFC 5987 fallback.
+
+    Keeps a plain ASCII ``filename`` for legacy clients and a ``filename*``
+    UTF-8 encoded variant so non-ASCII names (Spanish/Catalan/Basque
+    accented characters in this codebase) survive the round trip.
+    """
+    from urllib.parse import quote
+    ascii_safe = "".join(c if c.isalnum() or c in " -_." else "_" for c in filename)
+    quoted = quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_safe}\"; filename*=UTF-8''{quoted}"
+
+
+@router.get("/{library_id}/items/{item_id}/original")
+async def get_item_original(
+    library_id: str,
+    item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Return the original (pre-extraction) source file for a library item.
+
+    Companion to ``/items/{item_id}/content`` (which returns extracted
+    markdown). Resolves the filename server-side from the item's metadata so
+    callers don't need to know it.
+
+    Behavior by source type:
+      - File / markitdown imports: streams the binary original with
+        ``Content-Disposition: attachment``.
+      - URL / YouTube imports (no binary): returns ``404`` with a body shaped
+        ``{"detail": {"message": ..., "source_url": ..., "source_type": ...}}``
+        so the client can fall back to opening the source URL.
+    """
+    auth.require_library_access(library_id, level="any")
+
+    item = await _client.get_item(library_id, item_id, creator_user=auth.user)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    filename = item.get("original_filename")
+    source_url = item.get("source_url")
+    source_type = item.get("source_type")
+
+    if not filename:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Item has no binary original file.",
+                "source_url": source_url,
+                "source_type": source_type,
+            },
+        )
+
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath=f"original/{filename}",
+        creator_user=auth.user,
+    )
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+        headers={"Content-Disposition": _content_disposition(filename)},
+    )
+
+
+@router.get("/{library_id}/kb-links")
+async def get_library_kb_links(
+    library_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List all active (item, KS) links for every item in this library.
+
+    Pre-check used by the UI before showing the delete-confirm modal so it
+    can surface blockers upfront without attempting a delete. Failed ingestions
+    are excluded (FR-10 only blocks on active links).
+
+    Returns:
+        dict: Same shape as the FR-10 409 detail body —
+            ``{"library_id": str, "items": [{id, title, knowledge_store_id}],
+               "knowledge_stores": [{id, name}]}``.
+    """
+    auth.require_library_access(library_id, level="any")
+    links = _db.get_kb_content_links_for_library(library_id)
+    active = [l for l in links if l.get("status") != "failed"]
+    ks_map = {}
+    for l in active:
+        ks_id = str(l.get("knowledge_store_id", ""))
+        if ks_id and ks_id not in ks_map:
+            ks_map[ks_id] = l.get("knowledge_store_name") or ks_id
+    return {
+        "library_id": library_id,
+        "items": [
+            {
+                "id": str(l.get("library_item_id", "")),
+                "title": l.get("item_title") or l.get("library_item_id", ""),
+                "knowledge_store_id": str(l.get("knowledge_store_id", "")),
+            }
+            for l in active
+        ],
+        "knowledge_stores": [{"id": k, "name": v} for k, v in ks_map.items()],
+    }
+
+
+@router.get("/{library_id}/items/{item_id}/kb-links")
+async def get_item_kb_links(
+    library_id: str,
+    item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List Knowledge Stores that actively reference this library item.
+
+    Pre-check used by the UI before showing the delete-confirm modal so it
+    can branch into "blocked" mode without round-tripping through a 409.
+    Failed ingestions are excluded (FR-10 doesn't block on them).
+
+    Returns:
+        dict: ``{"item_id": str, "knowledge_stores": [{id, name, status}, ...]}``
+        — same shape as ``detail.knowledge_stores`` in the FR-10 409 body.
+    """
+    auth.require_library_access(library_id, level="any")
+    referencing_links = _db.get_kb_content_links_for_item(item_id)
+    active_links = [
+        l for l in referencing_links
+        if l.get("status") != "failed"
+    ]
+    return {
+        "item_id": item_id,
+        "knowledge_stores": [
+            {
+                "id": l.get("knowledge_store_id"),
+                "name": l.get("knowledge_store_name"),
+                "status": l.get("status"),
+            }
+            for l in active_links
+        ],
+    }
+
+
+@router.get("/{library_id}/knowledge-stores")
+async def get_library_knowledge_stores(
+    library_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List Knowledge Stores that reference any item from this library.
+
+    Inverse of ``GET /creator/knowledge-stores/{ks_id}/content``. Useful for
+    answering "which KSs are populated from library X?" without scanning every
+    KS's content list client-side.
+
+    The caller must have at least read access to the library. The KS list is
+    filtered to those the caller can also access (owned or shared within the
+    same organization) — KSs from other users that happen to reference items
+    of a shared library are hidden.
+
+    Returns:
+        ``{"library_id": str, "knowledge_stores": [{id, name, description,
+        chunking_strategy, embedding_vendor, embedding_model,
+        vector_db_backend, is_shared, item_count, ready_count, failed_count,
+        access}]}``
+    """
+    auth.require_library_access(library_id, level="any")
+
+    referencing = _db.get_knowledge_stores_for_library(library_id)
+    visible = []
+    for ks in referencing:
+        access = auth.can_access_knowledge_store(ks["id"])
+        if access == "none":
+            continue
+        visible.append({
+            "id": ks["id"],
+            "name": ks.get("name"),
+            "description": ks.get("description"),
+            "chunking_strategy": ks.get("chunking_strategy"),
+            "embedding_vendor": ks.get("embedding_vendor"),
+            "embedding_model": ks.get("embedding_model"),
+            "vector_db_backend": ks.get("vector_db_backend"),
+            "is_shared": ks.get("is_shared", False),
+            "item_count": ks.get("item_count", 0),
+            "ready_count": ks.get("ready_count", 0),
+            "failed_count": ks.get("failed_count", 0),
+            "access": access,
+        })
+    return {"library_id": library_id, "knowledge_stores": visible}
+
+
 @router.delete("/{library_id}/items/{item_id}")
 async def delete_item(
     library_id: str,
     item_id: str,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Delete an imported item."""
+    """Delete an imported item.
+
+    FR-10: blocked with 409 if any active Knowledge Store still references
+    this item via ``kb_content_links``. Caller must remove the content from
+    every referencing KS first.
+    """
     auth.require_library_access(library_id, level="owner")
+
+    referencing_links = _db.get_kb_content_links_for_item(item_id)
+    active_links = [
+        l for l in referencing_links
+        if l.get("status") != "failed"
+    ]
+    if active_links:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    "Cannot delete library item: it is referenced by one or more "
+                    "Knowledge Stores. Remove the content from each Knowledge "
+                    "Store first."
+                ),
+                "knowledge_stores": [
+                    {
+                        "id": l.get("knowledge_store_id"),
+                        "name": l.get("knowledge_store_name"),
+                        "status": l.get("status"),
+                    }
+                    for l in active_links
+                ],
+            },
+        )
+
     await _client.delete_item(library_id, item_id, creator_user=auth.user)
     _db.delete_library_item(item_id)
     _audit(auth, "library.delete_item", "library_item", item_id)

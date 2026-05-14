@@ -1,5 +1,6 @@
 from .chats_router import router as chats_router
 from .library_router import router as library_router
+from .knowledge_store_router import router as knowledge_store_router
 from .analytics_router import router as analytics_router
 from .prompt_templates_router import router as prompt_templates_router
 from .evaluaitor_router import router as evaluaitor_router
@@ -140,6 +141,10 @@ router.include_router(aac_router)
 router.include_router(test_router)
 
 router.include_router(library_router, prefix="/libraries")
+
+# Include the Knowledge Store router (new KB Server, port 9092). Distinct
+# from the legacy /knowledgebases routes which serve the stable KB Server.
+router.include_router(knowledge_store_router, prefix="/knowledge-stores")
 
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 

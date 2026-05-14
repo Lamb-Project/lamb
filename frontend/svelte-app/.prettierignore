@@ -4,3 +4,7 @@ pnpm-lock.yaml
 yarn.lock
 bun.lock
 bun.lockb
+
+# Runtime-generated config (created from static/config.js.sample at
+# container start — its formatting follows the sample, not prettier).
+static/config.js

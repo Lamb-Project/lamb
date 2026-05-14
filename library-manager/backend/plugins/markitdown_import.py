@@ -2,7 +2,10 @@
 
 Uses the ``markitdown`` library to convert PDF, DOCX, PPTX, XLSX, and
 other formats into Markdown. No image extraction or LLM features — for
-those, use ``markitdown_plus_import``.
+those, use ``markitdown_plus_import``. Page boundaries that MarkItDown
+emits in its output (form-feeds for PDFs, etc.) are preserved into
+``content/pages/`` so that downstream consumers like the KB Server's
+``by_page`` chunking strategy can use them.
 """
 
 import logging
@@ -15,6 +18,7 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.markitdown_plus_import import _PAGE_AWARE_TYPES, _split_into_pages
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +84,16 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
 
         self.report_progress(kwargs, 1, 3, "Building metadata...")
 
+        ext = path.suffix.lower().lstrip(".")
+        pages = _split_into_pages(content, ext) if ext in _PAGE_AWARE_TYPES else []
+
         stat = path.stat()
         metadata = {
             "original_filename": path.name,
             "content_type": _guess_mime(path.suffix),
             "file_size": stat.st_size,
             "character_count": len(content),
+            "page_count": len(pages),
             "import_plugin": self.name,
         }
 
@@ -104,7 +112,7 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
 
         return ImportResult(
             full_text=content,
-            pages=[],
+            pages=pages,
             images=[],
             metadata=metadata,
             source_ref=source_ref,

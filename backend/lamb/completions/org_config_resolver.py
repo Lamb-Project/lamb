@@ -145,6 +145,86 @@ class OrganizationConfigResolver:
 
         return {}
 
+    def get_knowledge_store_config(self) -> Dict[str, Any]:
+        """Get the new KB Server (Knowledge Store) configuration.
+
+        Targets the redesigned server on port 9092 — distinct from the legacy
+        ``knowledge_base`` block which still routes the stable server on 9090.
+
+        Resolves from ``setups[setup_name].knowledge_store``. Falls back to
+        environment variables for the system org. Embedding API keys are NOT
+        stored here — those come from ``providers[vendor].api_key`` via
+        ``get_provider_api_key`` so a single org-wide provider key serves
+        chat completions, RAG, and Knowledge Store ingestion alike.
+
+        Returns:
+            Dict with ``server_url``, ``api_token``,
+            ``allowed_vector_db_backends``, ``allowed_chunking_strategies``,
+            ``allowed_embedding_vendors``, ``allowed_embedding_models``.
+        """
+        org_config = self.organization.get('config', {})
+        setups = org_config.get('setups', {})
+        setup = setups.get(self.setup_name, {})
+        ks_config = setup.get("knowledge_store", {})
+
+        if not ks_config and self.organization.get('is_system', False):
+            ks_config = {
+                "server_url": os.getenv('LAMB_KB_SERVER_V2', 'http://kb-server:9092'),
+                "api_token": os.getenv('LAMB_KB_SERVER_V2_TOKEN', ''),
+            }
+
+        if ks_config:
+            return {
+                "server_url": ks_config.get("server_url") or ks_config.get("url"),
+                "api_token": (
+                    ks_config.get("api_token")
+                    or ks_config.get("api_key")
+                    or ks_config.get("token")
+                ),
+                "allowed_vector_db_backends": ks_config.get("allowed_vector_db_backends", []),
+                "allowed_chunking_strategies": ks_config.get("allowed_chunking_strategies", []),
+                "allowed_embedding_vendors": ks_config.get("allowed_embedding_vendors", []),
+                "allowed_embedding_models": ks_config.get("allowed_embedding_models", {}),
+            }
+
+        return {}
+
+    def get_provider_api_key(self, vendor: str) -> str:
+        """Resolve the org-level API key for a given embedding/LLM provider.
+
+        Looks at ``setups[setup_name].providers[vendor].api_key``, the same
+        location used for chat completions / RAG. Falls back to env vars for
+        the system org via the existing provider-loaders.
+
+        Args:
+            vendor: Provider name (e.g. 'openai', 'ollama').
+
+        Returns:
+            The API key string, or empty string if not configured.
+        """
+        provider_config = self.get_provider_config(vendor)
+        return provider_config.get("api_key", "") if provider_config else ""
+
+    def get_provider_endpoint(self, vendor: str) -> str:
+        """Resolve the org-level base URL/endpoint for a provider.
+
+        Used by Knowledge Store create/add-content/query when the caller
+        didn't specify ``embedding_endpoint`` explicitly. Reads
+        ``setups[setup_name].providers[vendor]`` and returns the first of
+        ``endpoint``, ``base_url``, or ``api_endpoint`` that is set.
+
+        Returns empty string if none is configured (the KB Server's plugin
+        default kicks in then — typically ``localhost``).
+        """
+        provider_config = self.get_provider_config(vendor)
+        if not provider_config:
+            return ""
+        for key in ("endpoint", "base_url", "api_endpoint"):
+            value = provider_config.get(key)
+            if value:
+                return value
+        return ""
+
     def get_feature_flag(self, feature: str) -> bool:
         """Get feature flag value"""
         org_config = self.organization.get('config', {})

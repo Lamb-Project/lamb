@@ -114,7 +114,15 @@ Organizations are the tenant boundary. Each org isolates users, assistants, KBs,
 
 A separate microservice (FastAPI, port 9091) that serves as a **document repository**. It imports documents into a structured, permalinkable markdown format. It does NOT chunk, embed, or interact with vector databases — that is the KB Server's responsibility.
 
-**Terminology:** Libraries **IMPORT** content (document repository). Knowledge Bases **INGEST** content (chunking + embedding). These terms are used consistently throughout the codebase and must not be confused.
+**Terminology — three distinct concepts in this repo:**
+
+| Concept | Verb | Service | LAMB route | Storage |
+|---------|------|---------|-----------|---------|
+| **Libraries** | IMPORT | Library Manager (port 9091) | `/creator/libraries/*` | structured markdown on disk |
+| **Knowledge Bases** | INGEST (legacy) | `lamb-kb-server-stable/` (port 9090) | `/creator/knowledgebases/*` | ChromaDB only, file-upload model |
+| **Knowledge Stores** | INGEST (new) | `lamb-kb-server/` (port 9092) | `/creator/knowledge-stores/*` | pluggable vector DB, library-only ingestion |
+
+These terms are used consistently throughout the codebase and must not be confused. "Knowledge Bases" and "Knowledge Stores" are NOT synonyms — they refer to two parallel, coexisting integrations with different KB Server backends. New work should target Knowledge Stores; the Knowledge Base surface is preserved unchanged for backward compatibility.
 
 **Key decisions:**
 - LAMB is the only caller. Single bearer token auth, no user-level ACL (LAMB handles that).
@@ -126,6 +134,22 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 - 52 tests, 80% coverage. Full README at `library-manager/README.md`.
 
 **LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
+
+### Knowledge Stores — new KB Server (`lamb-kb-server/`)
+
+A separate microservice (FastAPI, port 9092) — pluggable redesign of the legacy KB Server. Pure compute service: chunks, embeds, and stores vectors. Receives JSON payloads from LAMB containing pre-extracted text + permalinks; **never calls the Library Manager directly**. Coexists with the legacy stable KB Server (port 9090) — both run simultaneously per #334 NFR-1.
+
+**Key decisions** (see `lamb-kb-server/Documentation/` for full ADRs):
+- LAMB owns ACL, multi-tenancy, and content delivery. KB Server is a single-bearer-token compute service.
+- Plugin architecture: 3 vector-DB backends (ChromaDB, Qdrant), 4 chunking strategies (simple, hierarchical/parent-child, by_page, by_section), 3 embedding vendors (openai, ollama, local).
+- **Library-only ingestion:** Knowledge Stores are populated exclusively by linking Library items. No direct file upload path.
+- **Locked store setup:** chunking strategy, embedding vendor/model, and vector DB backend are immutable after creation. Only `name` and `description` are mutable.
+- **Per-request embedding credentials:** sent on every `/add-content` and `/query`, held in memory only by the KB Server. LAMB resolves them from `setups.default.providers.{vendor}.api_key` (the same org-level key used by chat completions and RAG).
+- **Async ingestion:** SQLite-backed job queue with polling (no webhooks). LAMB queues `add-content`, gets a `job_id`, polls `/jobs/{job_id}` until ready/failed.
+- **Per-org filesystem isolation:** vectors live at `data/storage/{org_id}/{collection_id}/`.
+- **FR-10:** a Library item that is referenced by any active Knowledge Store cannot be deleted from its Library — LAMB enforces this in `DELETE /creator/libraries/{lib}/items/{item}` against the `kb_content_links` table.
+
+**LAMB integration:** Creator Interface endpoints (`/creator/knowledge-stores/...`) validate ACL and proxy to the new KB Server. Tables: `knowledge_stores` + `kb_content_links` in LAMB DB (separate from `kb_registry` which serves the legacy stable KBs). HTTP client at `backend/creator_interface/knowledge_store_client.py`. RAG processor at `backend/lamb/completions/rag/knowledge_store_rag.py` (sibling of `simple_rag.py` — assistants opt in via `rag_processor='knowledge_store_rag'`). The `lamb-cli` commands are `lamb ks ...` (alias `lamb knowledge-store ...`) in `lamb-cli/src/lamb_cli/commands/knowledge_store.py`. Svelte frontend integrated into the unified `/libraries` page (sub-tab "Knowledge Stores" + primary "Create Knowledge" wizard); components in `frontend/svelte-app/src/lib/components/knowledgeStores/` and the wizard in `frontend/svelte-app/src/lib/components/knowledge/`. Direct entry point at `/knowledge-stores` redirects to `/libraries?section=knowledge-stores`.
 
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
@@ -144,7 +168,8 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 ## Key Configuration
 
 - Backend env: `backend/.env` (copy from `backend/.env.example`)
-- KB Server env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
+- KB Server (legacy) env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
+- KB Server (new, Knowledge Stores) env: `lamb-kb-server/backend/.env` — requires `LAMB_API_TOKEN`. Backend reads it via `LAMB_KB_SERVER_V2` / `LAMB_KB_SERVER_V2_TOKEN`.
 - Library Manager env: `library-manager/backend/.env` (copy from `.env.example`) — requires `LAMB_API_TOKEN`
 - Playwright env: `testing/playwright/.env` (copy from `.env.sample`)
 - Frontend runtime config: `frontend/svelte-app/static/config.js` (copy from `config.js.sample`)
@@ -155,7 +180,7 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 
 `open-webui/` and `lamb-kb-server-stable/` are separate projects maintained in their own repositories. They are included here only as stable snapshots so Docker Compose can launch them alongside LAMB. **Do not edit code in these directories** — changes belong in their upstream repos. The `frontend/build/` directory is build output. All three are excluded from search via `.cursorignore`.
 
-Note: `library-manager/` is NOT vendored — it is developed in-tree as part of this repository. Edit freely.
+Note: `library-manager/` and `lamb-kb-server/` (the new KB Server backing Knowledge Stores) are NOT vendored — both are developed in-tree as part of this repository. Edit freely.
 
 ## Version Bumping
 
