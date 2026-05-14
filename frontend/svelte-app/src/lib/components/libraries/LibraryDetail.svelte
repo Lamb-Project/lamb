@@ -968,37 +968,25 @@
 				{#if libraryKnowledgeStores.length > 0}
 					<ul class="divide-y divide-gray-100">
 						{#each libraryKnowledgeStores as ks (ks.id)}
-							<li class="flex items-center justify-between gap-4 px-6 py-3 hover:bg-gray-50">
+							<li class="flex items-center gap-3 px-6 py-2.5 hover:bg-gray-50">
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm font-medium text-gray-900" title={ks.name}>{ks.name}</p>
-									<p class="mt-0.5 text-xs text-gray-400">
-										{ks.embedding_vendor} · {ks.embedding_model}
-									</p>
+									<span class="truncate text-sm font-medium text-gray-900" title={ks.name}>{ks.name}</span>
+									<span class="ml-2 text-xs text-gray-400">{ks.embedding_vendor} · {ks.embedding_model}</span>
 								</div>
-								<div class="flex shrink-0 items-center gap-3">
-									<span class="text-xs text-gray-500">
-										<span class="font-medium text-gray-700">{ks.item_count}</span>
-										{ks.item_count === 1
-											? $_('libraries.knowledgeStores.itemSingular', { default: 'item' })
-											: $_('libraries.knowledgeStores.itemPlural', { default: 'items' })}
-										{#if ks.failed_count > 0}
-											<span class="ml-1 text-red-500">· {ks.failed_count} {$_('libraries.knowledgeStores.failed', { default: 'failed' })}</span>
-										{:else if ks.ready_count < ks.item_count}
-											<span class="ml-1 text-amber-500">· {ks.ready_count} {$_('libraries.knowledgeStores.ready', { default: 'ready' })}</span>
-										{/if}
+								{#if ks.is_shared}
+									<span class="shrink-0 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+										{$_('libraries.knowledgeStores.shared', { default: 'Shared' })}
 									</span>
-									{#if ks.is_shared}
-										<span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-											{$_('libraries.knowledgeStores.shared', { default: 'Shared' })}
-										</span>
-									{/if}
-									<a
-										href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
-										class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800"
-									>
-										{$_('libraries.knowledgeStores.view', { default: 'Open' })} →
-									</a>
-								</div>
+								{/if}
+								<a
+									href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
+									title={$_('libraries.knowledgeStores.view', { default: 'Open Knowledge Store' })}
+									class="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+								>
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+									</svg>
+								</a>
 							</li>
 						{/each}
 					</ul>
