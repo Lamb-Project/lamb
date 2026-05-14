@@ -8,7 +8,7 @@
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { onDestroy } from 'svelte';
 import { extractModelsFromConnectorData, loadRagPlaceholders, selectModel } from './assistantFormUtils.svelte.js';
-import { apiFetch } from '$lib/services/apiClient';
+import { apiFetch, apiJson } from '$lib/services/apiClient';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
@@ -455,19 +455,18 @@ import FormActions from './FormActions.svelte';
 		}
 	}
 
-	/** Fetches the user's files from the server */
-	async function fetchUserFiles() {
-		if (loadingFiles || filesFetchAttempted) return;
+	/**
+	 * Fetches the user's files from the server.
+	 * @param {boolean} [force=false] - If true, bypasses the filesFetchAttempted guard
+	 *   (used after uploading a new file to refresh the list).
+	 */
+	async function fetchUserFiles(force = false) {
+		if (loadingFiles || (!force && filesFetchAttempted)) return;
 		loadingFiles = true;
 		fileError = '';
 
 		try {
-			const response = await apiFetch('/creator/files/list');
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
-			}
-			const data = await response.json();
+			const data = await apiJson('/files/list');
 			if (!isMounted) return;
 			userFiles = data;
 
@@ -872,7 +871,7 @@ import FormActions from './FormActions.svelte';
 					bind:selectedFilePath
 					{loadingFiles}
 					{fileError}
-					onFilesChanged={fetchUserFiles}
+					onFilesChanged={() => fetchUserFiles(true)}
 					onchange={handleFieldChange}
 				/>
 			</div>

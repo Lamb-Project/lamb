@@ -178,7 +178,14 @@ frontend/packages/
 
 ./clinerules
 
-
+Documentation/assistantform-refactoring-log.md
+Documentation/tfg-capitol-5-prototipado.md
+Documentation/tfg-structure-guide.md
+diagram-17-clean.md
+docs/
+frontend-architecture-diagrams.md
+opencode.json
+package-lock.json
 
 .playwright-mcp
 
