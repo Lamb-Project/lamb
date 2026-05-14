@@ -16,6 +16,7 @@
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import CreateKnowledgeStoreModal from '$lib/components/modals/CreateKnowledgeStoreModal.svelte';
 	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
+	import IngestionProgressModal from '$lib/components/knowledgeStores/IngestionProgressModal.svelte';
 	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
 	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 
@@ -65,6 +66,12 @@
 
 	let showAddContentModal = $state(false);
 	let addContentKsId = $state('');
+
+	let showProgressModal = $state(false);
+	let progressKsId = $state('');
+	let progressKsName = $state('');
+	/** @type {Array<{ id: string, title: string }>} */
+	let progressItems = $state([]);
 
 	// Overflow menu state
 	let openMenuId = $state(/** @type {string|null} */ (null));
@@ -778,8 +785,22 @@
 <AddContentToKSModal
 	bind:isOpen={showAddContentModal}
 	ksId={addContentKsId}
-	on:done={() => { showAddContentModal = false; loadStores(); }}
+	on:done={(e) => {
+		showAddContentModal = false;
+		progressKsId = e.detail.ksId;
+		progressKsName = stores.find((s) => s.id === e.detail.ksId)?.name ?? '';
+		progressItems = e.detail.items ?? [];
+		showProgressModal = true;
+	}}
 	on:close={() => { showAddContentModal = false; }}
+/>
+
+<IngestionProgressModal
+	bind:isOpen={showProgressModal}
+	ksId={progressKsId}
+	ksName={progressKsName}
+	items={progressItems}
+	onclose={loadStores}
 />
 
 <ConfirmationModal

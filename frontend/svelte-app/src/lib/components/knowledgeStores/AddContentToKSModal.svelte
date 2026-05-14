@@ -269,13 +269,17 @@
 		error = '';
 		try {
 			const count = selectedItemIds.size;
+			const addedItems = [...selectedItemIds].map((id) => {
+				const item = items.find((i) => i.id === id);
+				return { id, title: item?.title || id };
+			});
 			await addContent(ksId, {
 				libraryId: selectedLibraryId,
 				itemIds: [...selectedItemIds]
 			});
 			clearDraft(userId, draftKind);
 			isOpen = false;
-			dispatch('done', { count });
+			dispatch('done', { count, ksId, items: addedItems });
 			resetState();
 		} catch (/** @type {unknown} */ err) {
 			error = err instanceof Error ? err.message : 'Failed to add content';
