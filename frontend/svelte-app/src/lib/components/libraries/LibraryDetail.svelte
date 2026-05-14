@@ -112,6 +112,7 @@
 	/** @type {import('$lib/services/libraryService').LibraryKnowledgeStore[]} */
 	let libraryKnowledgeStores = $state([]);
 	let ksPanelLoading = $state(false);
+	let ksPanelExpanded = $state(false);
 
 	// View item content modal
 	let showItemContentModal = $state(false);
@@ -940,33 +941,30 @@
 
 		{#if libraryKnowledgeStores.length > 0 || ksPanelLoading}
 			<div class="overflow-hidden rounded-lg bg-white shadow">
-				<div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-					<h3 class="text-base font-semibold text-gray-900">
-						{$_('libraries.knowledgeStores.title', {
-							default: 'Knowledge Stores using this library'
-						})}
-						<span class="ml-1 text-sm font-normal text-gray-500">
-							({libraryKnowledgeStores.length})
-						</span>
-					</h3>
+				<button
+					type="button"
+					onclick={() => (ksPanelExpanded = !ksPanelExpanded)}
+					class="flex w-full items-center gap-2 px-6 py-3 text-left hover:bg-gray-50"
+				>
+					<svg
+						class="h-4 w-4 shrink-0 text-gray-400 transition-transform {ksPanelExpanded ? 'rotate-90' : ''}"
+						fill="none" stroke="currentColor" viewBox="0 0 24 24"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+					</svg>
+					<span class="text-sm font-medium text-gray-700">
+						{$_('libraries.knowledgeStores.title', { default: 'Knowledge Stores using this library' })}
+					</span>
+					<span class="ml-1 text-xs text-gray-400">({libraryKnowledgeStores.length})</span>
 					{#if ksPanelLoading}
-						<span class="inline-flex items-center text-xs text-gray-400">
-							<svg class="mr-1 h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
-								<path
-									d="M4 12a8 8 0 018-8"
-									stroke="currentColor"
-									stroke-width="4"
-									class="opacity-75"
-									fill="none"
-								/>
-							</svg>
-							{$_('common.loading', { default: 'Loading…' })}
-						</span>
+						<svg class="ml-auto h-3 w-3 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
+							<path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="4" class="opacity-75" fill="none" />
+						</svg>
 					{/if}
-				</div>
-				{#if libraryKnowledgeStores.length > 0}
-					<ul class="divide-y divide-gray-100">
+				</button>
+				{#if ksPanelExpanded && libraryKnowledgeStores.length > 0}
+					<ul class="divide-y divide-gray-100 border-t border-gray-100">
 						{#each libraryKnowledgeStores as ks (ks.id)}
 							<li class="flex items-center gap-3 px-6 py-2.5 hover:bg-gray-50">
 								<div class="min-w-0 flex-1">
