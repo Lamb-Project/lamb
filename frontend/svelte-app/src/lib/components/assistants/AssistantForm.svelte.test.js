@@ -82,7 +82,8 @@ vi.mock('$lib/services/rubricService', () => ({
 }));
 
 vi.mock('$lib/services/apiClient', () => ({
-	apiFetch: vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) })
+	apiFetch: vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }),
+	apiJson: vi.fn().mockResolvedValue([])
 }));
 
 vi.mock('$lib/stores/templateStore', async () => {

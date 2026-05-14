@@ -29,7 +29,7 @@
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), GENERATE_DESCRIPTION_TIMEOUT_MS);
 
-			const response = await apiFetch('/creator/assistant/generate_assistant_description', {
+			const response = await apiFetch('/assistant/generate_assistant_description', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
