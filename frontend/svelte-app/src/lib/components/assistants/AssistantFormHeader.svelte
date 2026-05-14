@@ -9,8 +9,10 @@
 	let fileInputRef = $state(null);
 
 	function triggerFileInput() {
-		fileInputRef.value = '';
-		fileInputRef?.click();
+		if (fileInputRef) {
+			fileInputRef.value = '';
+			fileInputRef.click();
+		}
 	}
 </script>
 

@@ -9,7 +9,8 @@
 		value = $bindable(''),
 		/** @type {{ name: string, system_prompt: string, prompt_template: string, connector: string, llm: string, rag_processor: string }} */
 		generationContext = {},
-		onchange
+		/** @type {(event: Event) => void} */
+		oninput
 	} = $props();
 
 	let generatingDescription = $state(false);
@@ -85,7 +86,7 @@
 			id="assistant-description"
 			name="description"
 			bind:value
-			oninput={onchange}
+			oninput={oninput}
 			rows="3"
 			disabled={false}
 			maxlength="500"
