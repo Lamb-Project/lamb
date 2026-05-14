@@ -16,8 +16,6 @@
 		onTemplateApplied
 	} = $props();
 
-	const promptPlaceholderText = 'e.g. Use the {context} to answer the question: {user_input}';
-
 	/** @type {HTMLTextAreaElement | null} */
 	let textareaRef = $state(null);
 
@@ -109,7 +107,7 @@
 		id="prompt_template"
 		rows="6"
 		class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
-		placeholder={promptPlaceholderText}
+		placeholder={$_('assistants.form.promptTemplate.placeholder', { default: 'e.g. Use the {context} to answer the question: {user_input}' })}
 	></textarea>
 	{#if promptTemplate}
 		<div class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
