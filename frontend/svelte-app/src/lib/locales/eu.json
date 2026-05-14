@@ -1018,7 +1018,7 @@
 		"embeddingModel": "Eredua",
 		"chunking": "Zatiketa",
 		"vectorDb": "Vector DB",
-		"contentCount": "Edukia",
+		"contentCount": "#",
 		"createdAt": "Sortua",
 		"updatedAt": "Eguneratua",
 		"created": "Sortua",

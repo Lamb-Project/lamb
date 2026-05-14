@@ -169,7 +169,7 @@
 	}
 </script>
 
-<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-7xl px-4 pt-6 pb-0 sm:px-6 lg:px-8">
 	<div class="border-b border-gray-200 pb-5">
 		{#if view === 'detail' && detailId}
 			<div class="flex items-center">

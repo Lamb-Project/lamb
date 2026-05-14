@@ -191,7 +191,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(page.getByRole("columnheader", { name: /^Name$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Embedding$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Chunking$/i })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: /^Content$/i })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /^#$/ })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Sharing$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Created$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Actions$/i })).toBeVisible();

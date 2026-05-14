@@ -204,15 +204,16 @@
 
 	// Column definitions for ResizableTable
 	const columns = [
-		{ key: 'name', label: $_('libraries.name', { default: 'Name' }), defaultWidth: 260 },
+		{ key: 'name', label: $_('libraries.name', { default: 'Name' }), defaultWidth: 0 },
 		{ key: 'items', label: $_('libraries.items.title', { default: 'Items' }), defaultWidth: 80 },
 		{
 			key: 'sharing',
 			label: $_('libraries.sharing.label', { default: 'Sharing' }),
-			defaultWidth: 120
+			defaultWidth: 80,
+			align: 'center'
 		},
-		{ key: 'created', label: $_('libraries.createdAt', { default: 'Created' }), defaultWidth: 120 },
-		{ key: 'actions', label: $_('libraries.actions', { default: 'Actions' }), defaultWidth: 100 }
+		{ key: 'created', label: $_('libraries.createdAt', { default: 'Created' }), defaultWidth: 145 },
+		{ key: 'actions', label: $_('libraries.actions', { default: 'Actions' }), defaultWidth: 100, align: 'right' }
 	];
 
 	let isFiltered = $derived(
@@ -448,7 +449,13 @@
 	function formatDate(ts) {
 		if (!ts) return '';
 		const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
-		return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+		return d.toLocaleString(undefined, {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
 	}
 
 	/** @param {string} id */
@@ -555,7 +562,7 @@
 						<!-- Items -->
 						<td class="px-4 py-2 text-sm text-gray-500">{lib.item_count ?? 0}</td>
 						<!-- Sharing badge -->
-						<td class="px-4 py-2">
+						<td class="px-4 py-2" style:text-align="center">
 							{#if lib.is_owner !== false}
 								<span
 									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {lib.is_shared

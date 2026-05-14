@@ -132,7 +132,7 @@
 	<!-- Filter controls -->
 	<div class={collapsible && !isExpanded ? 'hidden sm:block' : 'block'}>
 		<div class="p-4">
-			<div class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap">
+			<div class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap lg:items-center">
 				<!-- Search input -->
 				<div class="min-w-[18rem] flex-shrink-0 basis-72">
 					<div class="relative">
@@ -221,50 +221,36 @@
 									title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
 								>
 									{#if sortOrder === 'asc'}
-										<!-- Ascending icon (A→Z, 1→9) -->
 										<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
-											/>
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
 										</svg>
 									{:else}
-										<!-- Descending icon (Z→A, 9→1) -->
 										<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
-											/>
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
 										</svg>
 									{/if}
 								</button>
 							{/if}
 						</div>
 					{/if}
-
-					<!-- Clear filters button -->
-					{#if hasFilters}
-						<button
-							type="button"
-							onclick={handleClearFilters}
-							title="Clear filters ({filterCount})"
-							aria-label="Clear all filters"
-							class="focus:ring-brand relative rounded-md border border-gray-300 bg-white p-1.5 text-gray-500 hover:border-red-300 hover:bg-red-50 hover:text-red-500 focus:ring-2 focus:ring-offset-2 focus:outline-none"
-						>
-							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-							</svg>
-							<span class="bg-brand absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white leading-none">
-								{filterCount}
-							</span>
-						</button>
-					{/if}
 				</div>
 			</div>
+
+			<!-- Clear filters — own row, always fully visible -->
+			{#if hasFilters}
+				<div class="mt-2">
+					<button
+						type="button"
+						onclick={handleClearFilters}
+						class="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 py-0.5 pr-2 pl-2.5 text-xs font-medium text-red-700 hover:bg-red-100"
+					>
+						Clear filters
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>

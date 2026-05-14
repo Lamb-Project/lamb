@@ -84,36 +84,39 @@
 
 	// Column definitions for ResizableTable
 	const columns = [
-		{ key: 'name', label: $_('knowledgeStores.name', { default: 'Name' }), defaultWidth: 200 },
+		{ key: 'name', label: $_('knowledgeStores.name', { default: 'Name' }), defaultWidth: 0 },
 		{
 			key: 'embedding',
 			label: $_('knowledgeStores.embedding', { default: 'Embedding' }),
-			defaultWidth: 120
+			defaultWidth: 175
 		},
 		{
 			key: 'chunking',
 			label: $_('knowledgeStores.chunking', { default: 'Chunking' }),
-			defaultWidth: 120
+			defaultWidth: 100
 		},
 		{
 			key: 'content',
-			label: $_('knowledgeStores.contentCount', { default: 'Content' }),
-			defaultWidth: 80
+			label: $_('knowledgeStores.contentCount', { default: '#' }),
+			defaultWidth: 44,
+			align: 'center'
 		},
 		{
 			key: 'sharing',
 			label: $_('knowledgeStores.sharing.label', { default: 'Sharing' }),
-			defaultWidth: 100
+			defaultWidth: 75,
+			align: 'center'
 		},
 		{
 			key: 'created',
 			label: $_('knowledgeStores.createdAt', { default: 'Created' }),
-			defaultWidth: 100
+			defaultWidth: 128
 		},
 		{
 			key: 'actions',
 			label: $_('knowledgeStores.actions', { default: 'Actions' }),
-			defaultWidth: 80
+			defaultWidth: 120,
+			align: 'right'
 		}
 	];
 
@@ -497,10 +500,12 @@
 	function formatDate(ts) {
 		if (!ts) return '';
 		const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
-		return d.toLocaleDateString(undefined, {
+		return d.toLocaleString(undefined, {
 			year: 'numeric',
 			month: 'short',
-			day: 'numeric'
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
 		});
 	}
 
@@ -629,9 +634,9 @@
 						<!-- Chunking -->
 						<td class="truncate px-4 py-2 text-xs text-gray-600">{ks.chunking_strategy}</td>
 						<!-- Content count -->
-						<td class="px-4 py-2 text-sm text-gray-500">{ks.content_count ?? 0}</td>
+						<td class="px-4 py-2 text-sm text-gray-500" style:text-align="center">{ks.content_count ?? 0}</td>
 						<!-- Sharing badge -->
-						<td class="px-4 py-2">
+						<td class="px-4 py-2" style:text-align="center">
 							{#if ks.is_owner !== false}
 								<span
 									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {ks.is_shared

@@ -1018,7 +1018,7 @@
 		"embeddingModel": "Modelo",
 		"chunking": "Fragmentación",
 		"vectorDb": "Vector DB",
-		"contentCount": "Contenido",
+		"contentCount": "#",
 		"createdAt": "Creado",
 		"updatedAt": "Actualizado",
 		"created": "Creado",
