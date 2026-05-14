@@ -251,12 +251,14 @@
 						<button
 							type="button"
 							onclick={handleClearFilters}
-							class="focus:ring-brand rounded-md border border-gray-300 bg-white px-3 py-2 text-sm whitespace-nowrap text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none"
+							title="Clear filters ({filterCount})"
+							aria-label="Clear all filters"
+							class="focus:ring-brand relative rounded-md border border-gray-300 bg-white p-1.5 text-gray-500 hover:border-red-300 hover:bg-red-50 hover:text-red-500 focus:ring-2 focus:ring-offset-2 focus:outline-none"
 						>
-							Clear Filters
-							<span
-								class="bg-brand ml-1.5 inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs leading-none font-bold text-white"
-							>
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+							<span class="bg-brand absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white leading-none">
 								{filterCount}
 							</span>
 						</button>
