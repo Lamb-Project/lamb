@@ -72,6 +72,9 @@
     "connector": "Konektorea",
     "llm": "LLM",
     "ragProcessor": "RAG Prozesatzailea",
+    "loadingConfig": "Konfigurazioa kargatzen...",
+    "errorConfig": "Errorea konfigurazioa kargatzean:",
+    "initializingForm": "Formularioa hasieratzen...",
     "noDescription": "Deskripziorik gabe",
     "showing": "Erakusten",
     "to": "tik",
@@ -284,6 +287,37 @@
       "ragProcessor": {
         "label": "RAG Prozesatzailea"
       },
+      "rubric": {
+        "label": "Hautatu Errubrika",
+        "loading": "Errubrikak kargatzen...",
+        "error": "Errorea errubrikak kargatzean:",
+        "noneFound": "Ez dago errubrika erabilgarririk.",
+        "createLink": "Sortu errubrika bat",
+        "search": {
+          "label": "Bilatu errubrikak",
+          "placeholder": "Bilatu errubrikak izenburu edo deskribapenaren arabera..."
+        },
+        "selected": "Hautatuta:",
+        "view": "Ikusi",
+        "table": {
+          "select": "Hautatu",
+          "title": "Izenburua",
+          "description": "Deskribapena",
+          "type": "Mota",
+          "actions": "Ekintzak"
+        },
+        "noMatches": "Ez da errubrikarik aurkitu bilaketarekin.",
+        "mine": "Nirea",
+        "public": "Publikoa",
+        "required": "Mesedez hautatu errubrika bat",
+        "format": {
+          "label": "Errubrika Formatua LLMrako",
+          "markdown": "Markdown (taula formatua)",
+          "json": "JSON (datu egituratuak)",
+          "help": "Aukeratu zure hautatutako LLMarekin ondoen funtzionatzen duen formatua. Biak proba ditzakezu zeinek emaitza hobeak ematen dituen ikusteko."
+        },
+        "configLocation": "Ikusi errubrika aukerak Prompt Txantiloiaren atalaren azpian"
+      },
       "import": {
         "button": "JSON-etik inportatu",
         "error": "Inportazio Errorea",
@@ -305,7 +339,10 @@
         "label": "Ezagutza Baseak",
         "loading": "Ezagutza baseak kargatzen...",
         "error": "Errorea ezagutza baseak kargatzean:",
-        "noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza baserik."
+        "noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza baserik.",
+        "myKB": "Nire Ezagutza Baseak",
+        "sharedKB": "Partekatutako Ezagutza Baseak",
+        "shared": "{shared_by}(e)k partekatua"
       },
       "singleFile": {
         "label": "Fitxategia Hautatu",
@@ -333,6 +370,7 @@
     "success": "Arrakasta",
     "cancel": "Utzi",
     "save": "Gorde",
+    "saveChanges": "Aldaketak Gorde",
     "edit": "Editatu",
     "delete": "Ezabatu",
     "confirm": "Berretsi",
