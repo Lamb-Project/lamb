@@ -76,6 +76,9 @@
     "connector": "Conector",
     "llm": "LLM",
     "ragProcessor": "Procesador RAG",
+    "loadingConfig": "Cargando configuracion...",
+    "errorConfig": "Error al cargar configuracion:",
+    "initializingForm": "Inicializando formulario...",
     "form": {
       "advancedMode": "Modo Avanzado",
       "insert_placeholder": "Insertar marcador",
@@ -134,6 +137,37 @@
       "ragProcessor": {
         "label": "Procesador RAG"
       },
+      "rubric": {
+        "label": "Seleccionar Rubrica",
+        "loading": "Cargando rubricas...",
+        "error": "Error al cargar rubricas:",
+        "noneFound": "No hay rubricas disponibles.",
+        "createLink": "Crear una rubrica",
+        "search": {
+          "label": "Buscar rubricas",
+          "placeholder": "Buscar rubricas por titulo o descripcion..."
+        },
+        "selected": "Seleccionada:",
+        "view": "Ver",
+        "table": {
+          "select": "Seleccionar",
+          "title": "Titulo",
+          "description": "Descripcion",
+          "type": "Tipo",
+          "actions": "Acciones"
+        },
+        "noMatches": "Ninguna rubrica coincide con la busqueda.",
+        "mine": "Mia",
+        "public": "Publica",
+        "required": "Por favor selecciona una rubrica",
+        "format": {
+          "label": "Formato de Rubrica para LLM",
+          "markdown": "Markdown (formato tabla)",
+          "json": "JSON (datos estructurados)",
+          "help": "Elige el formato que mejor funcione con tu LLM seleccionado. Puedes probar ambos para ver cual produce mejores resultados."
+        },
+        "configLocation": "Ver opciones de rubrica debajo de la seccion de Plantilla de Prompt"
+      },
       "import": {
         "button": "Importar desde JSON",
         "error": "Error de Importación",
@@ -155,7 +189,10 @@
         "label": "Bases de Conocimiento",
         "loading": "Cargando bases de conocimiento...",
         "error": "Error al cargar bases de conocimiento:",
-        "noneFound": "No se encontraron bases de conocimiento accesibles."
+        "noneFound": "No se encontraron bases de conocimiento accesibles.",
+        "myKB": "Mis Bases de Conocimiento",
+        "sharedKB": "Bases de Conocimiento Compartidas",
+        "shared": "Compartida por {shared_by}"
       },
       "singleFile": {
         "label": "Seleccionar Archivo",
@@ -337,6 +374,7 @@
     "success": "Éxito",
     "cancel": "Cancelar",
     "save": "Guardar",
+    "saveChanges": "Guardar Cambios",
     "edit": "Editar",
     "delete": "Eliminar",
     "confirm": "Confirmar",

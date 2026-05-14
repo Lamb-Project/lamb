@@ -76,6 +76,9 @@
     "connector": "Connector",
     "llm": "LLM",
     "ragProcessor": "Processador RAG",
+    "loadingConfig": "Carregant configuracio...",
+    "errorConfig": "Error en carregar configuracio:",
+    "initializingForm": "Inicialitzant formulari...",
     "form": {
       "advancedMode": "Mode Avançat",
       "insert_placeholder": "Inserir marcador",
@@ -134,6 +137,37 @@
       "ragProcessor": {
         "label": "Processador RAG"
       },
+      "rubric": {
+        "label": "Seleccionar Rubrica",
+        "loading": "Carregant rubriques...",
+        "error": "Error en carregar rubriques:",
+        "noneFound": "No hi ha rubriques disponibles.",
+        "createLink": "Crear una rubrica",
+        "search": {
+          "label": "Cercar rubriques",
+          "placeholder": "Cercar rubriques per titol o descripcio..."
+        },
+        "selected": "Seleccionada:",
+        "view": "Veure",
+        "table": {
+          "select": "Seleccionar",
+          "title": "Titol",
+          "description": "Descripcio",
+          "type": "Tipus",
+          "actions": "Accions"
+        },
+        "noMatches": "Cap rubrica coincideix amb la cerca.",
+        "mine": "Meva",
+        "public": "Publica",
+        "required": "Si us plau selecciona una rubrica",
+        "format": {
+          "label": "Format de Rubrica per a LLM",
+          "markdown": "Markdown (format taula)",
+          "json": "JSON (dades estructurades)",
+          "help": "Tria el format que millor funcioni amb el teu LLM seleccionat. Pots provar tots dos per veure quin produeix millors resultats."
+        },
+        "configLocation": "Veure opcions de rubrica sota la seccio de Plantilla de Prompt"
+      },
       "import": {
         "button": "Importar des de JSON",
         "error": "Error d'Importació",
@@ -155,7 +189,10 @@
         "label": "Bases de Coneixement",
         "loading": "Carregant bases de coneixement...",
         "error": "Error en carregar bases de coneixement:",
-        "noneFound": "No s'han trobat bases de coneixement accessibles."
+        "noneFound": "No s'han trobat bases de coneixement accessibles.",
+        "myKB": "Les Meves Bases de Coneixement",
+        "sharedKB": "Bases de Coneixement Compartides",
+        "shared": "Compartida per {shared_by}"
       },
       "singleFile": {
         "label": "Seleccionar Arxiu",
@@ -326,6 +363,7 @@
     "success": "Èxit!",
     "cancel": "Cancel·lar",
     "save": "Desar",
+    "saveChanges": "Desar Canvis",
     "edit": "Editar",
     "delete": "Eliminar",
     "confirm": "Confirmar",
