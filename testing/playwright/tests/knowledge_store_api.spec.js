@@ -240,8 +240,8 @@ test.describe.serial("Knowledge Store API integration", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.data.content)).toBe(true);
-    expect(res.data.content.length).toBe(0);
+    expect(Array.isArray(res.data.items)).toBe(true);
+    expect(res.data.items.length).toBe(0);
   });
 
   test("get non-existent content link returns 404", async ({ page }) => {

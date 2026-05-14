@@ -16,7 +16,7 @@ import pytest
 
 # --- Test environment setup (MUST happen before importing the app) ---
 _TEST_DIR = tempfile.mkdtemp(prefix="kb-test-")
-os.environ.setdefault("LAMB_API_TOKEN", "test-token")
+os.environ["LAMB_API_TOKEN"] = "test-token"  # always override so tests are env-independent
 os.environ["DATA_DIR"] = _TEST_DIR
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ.setdefault("MAX_CONCURRENT_INGESTIONS", "2")

@@ -201,7 +201,7 @@ def test_update_ks_name_succeeds(client, ks_db, ks_client, async_return):
     assert response.status_code == 200
     assert response.json()["name"] == "New Name"
     ks_db.update_knowledge_store.assert_called_once_with(
-        "ks-1", name="New Name", description=None
+        "ks-1", name="New Name", description=None, chunking_params=None
     )
 
 

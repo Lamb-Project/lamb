@@ -233,34 +233,37 @@ def test_client_cache_different_paths(fake_embedding) -> None:
 
 
 def test_to_chroma_ef_native_path() -> None:
-    """When the plugin wraps a native ChromaEmbeddingFunction in ``_fn``, it is returned directly (line 70)."""
+    """_to_chroma_ef always wraps in an adapter — no short-circuit for native CEFs.
 
-    class _NativeCEF(ChromaEmbeddingFunction):
-        def __init__(self):
-            pass
-
-        def __call__(self, input):
-            return [[0.5, 0.5] for _ in input]
-
-        def name(self) -> str:
-            return "native-test"
+    Even when the plugin internally holds a native ChromaEmbeddingFunction, the
+    adapter layer is still created so our plugin's __call__ is used directly
+    (avoids depending on old SDK-specific wrappers).
+    """
+    called_with: list = []
 
     class _WrapperEmbedding(EmbeddingFunction):
         name = "wrapper"
         description = "wrapper"
 
         def __init__(self):
-            self._fn = _NativeCEF()
+            super().__init__(model="test-model")
 
         def __call__(self, input):
-            return self._fn(input)
+            called_with.append(input)
+            return [[0.5, 0.5] for _ in input]
 
     wrapper = _WrapperEmbedding()
     result = _to_chroma_ef(wrapper)
 
-    # The native CEF is returned as-is — no adapter layer.
-    assert result is wrapper._fn
+    # Always an adapter — never the raw plugin itself.
     assert isinstance(result, ChromaEmbeddingFunction)
+    assert result is not wrapper
+
+    # The adapter delegates to wrapper.__call__.
+    out = result(["hello", "world"])
+    assert called_with == [["hello", "world"]]
+    # Convert to plain lists in case chromadb wraps in numpy arrays.
+    assert [list(v) for v in out] == [[0.5, 0.5], [0.5, 0.5]]
 
 
 def test_to_chroma_ef_adapter_name(fake_embedding) -> None:

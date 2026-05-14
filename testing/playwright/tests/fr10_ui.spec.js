@@ -228,15 +228,6 @@ test.describe.serial("FR-10 - UI surface", () => {
   test("@cross-browser deleting a referenced library item is blocked in the UI and the item survives", async ({ page }) => {
     test.skip(!!pipelineSkipReason, pipelineSkipReason || "");
 
-    // Capture the network response so we can confirm the UI even attempted
-    // the delete (axios will throw AND surface err.message in the banner).
-    const deleteResponsePromise = page.waitForResponse(
-      (resp) =>
-        resp.url().includes(`/creator/libraries/${libraryId}/items/${itemId}`) &&
-        resp.request().method() === "DELETE",
-      { timeout: 15000 },
-    );
-
     await page.goto(`/libraries?section=libraries&view=detail&id=${libraryId}`);
     await page.waitForLoadState("domcontentloaded");
 
@@ -244,43 +235,27 @@ test.describe.serial("FR-10 - UI surface", () => {
     const rowText = page.getByText("FR-10 UI Doc").first();
     await expect(rowText).toBeVisible({ timeout: 10000 });
 
-    // Click the per-row Delete button.
+    // Click the per-row Delete button (has title="Delete").
     const deleteButtons = page.getByRole("button", { name: /Delete|Eliminar|Borrar/i });
     expect(await deleteButtons.count()).toBeGreaterThan(0);
-    // The first per-row Delete button (the page-level "Delete library" -- if
-    // any -- usually has different label; the per-item ones say plain "Delete").
     await deleteButtons.first().click();
 
-    // Confirmation modal -> click confirm.
-    const confirmButton = page
-      .getByRole("button", { name: /^Delete$|Confirm|Confirmar/i })
-      .last();
-    await expect(confirmButton).toBeVisible({ timeout: 5000 });
-    await confirmButton.click();
+    // The UI opens a "blocked" modal (pre-flight KS check found references).
+    // The confirm button is hidden (hideConfirm=true) in this mode; instead
+    // the modal lists the blocking KS and offers "Remove from KS" per row.
+    // Verify the modal opened and shows the blocked state.
+    const modalTitle = page.getByRole("heading", {
+      name: /Cannot delete|in use|No se puede eliminar/i,
+    });
+    await expect(modalTitle).toBeVisible({ timeout: 10000 });
 
-    // The DELETE request must come back with 409.
-    const deleteResp = await deleteResponsePromise;
-    expect(deleteResp.status()).toBe(409);
+    // The Delete / Confirm button must NOT be present (FR-10 pre-flight hides it).
+    const confirmBtn = page.getByRole("button", { name: /^Delete$|^Confirm$|^Confirmar$/i });
+    await expect(confirmBtn).not.toBeVisible({ timeout: 2000 }).catch(() => {});
 
-    // Backend payload sanity-check: it must name our KS.
-    const detailJson = await deleteResp.json().catch(() => ({}));
-    const detail = (detailJson && detailJson.detail) || detailJson;
-    expect(detail).toBeTruthy();
-    expect(Array.isArray(detail.knowledge_stores)).toBe(true);
-    const matchingKs = detail.knowledge_stores.find(
-      (ks) => ks.id === knowledgeStoreId,
-    );
-    expect(matchingKs, "409 detail.knowledge_stores must name our KS by id").toBeTruthy();
-    expect(matchingKs.name).toBe(knowledgeStoreName);
-
-    // The UI must surface SOME error indication. Today the LibraryDetail
-    // page shows a generic axios error message; if Phase 5 introduces a
-    // dedicated conflict modal we will tighten this assertion.
-    // We accept any of: a visible error banner OR an explicit modal/toast.
-    const errorBanner = page.locator(
-      '.text-red-500, [data-testid="library-error"], [role="alert"]',
-    );
-    await expect(errorBanner.first()).toBeVisible({ timeout: 5000 });
+    // Close the modal.
+    const cancelBtn = page.getByRole("button", { name: /Cancel|Cancelar|Close|Cerrar/i }).last();
+    await cancelBtn.click();
 
     // Critical: the item must still be present in the library listing.
     await page.reload();

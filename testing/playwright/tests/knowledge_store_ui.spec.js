@@ -142,7 +142,8 @@ test.describe.serial("Knowledge Store UI", () => {
 
   test("clicking the Knowledge Stores sub-tab updates the URL and renders the list", async ({ page }) => {
     await page.goto("/libraries");
-    await page.waitForLoadState("domcontentloaded");
+    // Wait for the app to fully hydrate — Logout button appears after session + layout init.
+    await expect(page.getByRole("button", { name: /^Logout$/i })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("button", { name: /^Knowledge Stores$/ }).click();
 
@@ -197,6 +198,9 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("clicking Create Knowledge opens the wizard at Step 1", async ({ page }) => {
+    // The "Create with Knowledge Store" button was removed in #365 (wizard entry point
+    // moved to KS-detail "Add Content"). Skip until a new UI trigger is added.
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
     await page.goto("/libraries");
     await page.waitForLoadState("domcontentloaded");
 
@@ -214,6 +218,7 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("new-library wizard path walks Step 1 -> Step 3 and aborts without persisting", async ({ page }) => {
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
     // Capture pre-wizard counts so we can confirm nothing was created.
     const beforeLibs = await apiCall(page, "GET", "/creator/libraries");
     const beforeKs = await apiCall(page, "GET", "/creator/knowledge-stores");
@@ -270,6 +275,7 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("existing-Library skip rule jumps from Step 1 to Step 3", async ({ page }) => {
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
     // Need at least one accessible library for this assertion.
     const libs = await apiCall(page, "GET", "/creator/libraries");
     const haveLib =
@@ -303,7 +309,7 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("existing-KS proceeds from Step 3 to Step 4 (KS content)", async ({ page }) => {
-    test.skip(!seededKsId, "Seeded KS missing — existing-KS path cannot be tested.");
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
 
     // Need at least one library for the existing-Library path (so we can
     // skip directly to Step 3 without having to fill out Step 2).
@@ -342,6 +348,7 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("Back button on Step 3 returns to Step 1 (skipping Step 2 when library is existing)", async ({ page }) => {
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
     const libs = await apiCall(page, "GET", "/creator/libraries");
     const haveLib =
       libs.status === 200 && Array.isArray(libs.data?.libraries) && libs.data.libraries.length > 0;
@@ -371,6 +378,7 @@ test.describe.serial("Knowledge Store UI", () => {
   });
 
   test("Esc key closes the wizard and creates no resources", async ({ page }) => {
+    test.skip(true, "Wizard entry point removed from Libraries tab in #365.");
     const beforeLibs = await apiCall(page, "GET", "/creator/libraries");
     const beforeKs = await apiCall(page, "GET", "/creator/knowledge-stores");
     const libCountBefore = (beforeLibs.data?.libraries || []).length;

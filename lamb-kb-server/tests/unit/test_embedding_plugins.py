@@ -13,6 +13,7 @@ model and are marked ``@pytest.mark.slow`` so they can be skipped with
 
 from __future__ import annotations
 
+import importlib.util
 import math
 import sys
 from unittest.mock import MagicMock, patch
@@ -62,98 +63,100 @@ class TestOpenAIEmbedding:
         params = {p.name: p for p in OpenAIEmbedding.class_parameters()}
         assert params["model"].default == "text-embedding-3-small"
 
+    def _make_fake_openai_client(self, embeddings=None):
+        """Return a fake OpenAI client whose embeddings.create returns ``embeddings``."""
+        if embeddings is None:
+            embeddings = [[0.1, 0.2], [0.3, 0.4]]
+        fake_data = [MagicMock(embedding=e) for e in embeddings]
+        fake_response = MagicMock()
+        fake_response.data = fake_data
+        fake_client = MagicMock()
+        fake_client.embeddings.create.return_value = fake_response
+        return fake_client
+
     def test_default_model_fallback_when_empty_string(self):
-        """``model=""`` falls back to ``text-embedding-3-small``."""
-        captured = {}
+        """``model=""`` falls back to ``text-embedding-3-small`` for the embeddings call."""
+        fake_client = self._make_fake_openai_client()
 
-        def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
-
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", return_value=fake_client):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="", api_key="k")
+            emb = OpenAIEmbedding(model="", api_key="k")
+            emb(["test"])
 
-        assert captured.get("model_name") == "text-embedding-3-small"
+        fake_client.embeddings.create.assert_called_once()
+        assert fake_client.embeddings.create.call_args.kwargs.get("model") == "text-embedding-3-small"
 
     def test_explicit_api_key_used(self):
-        """Explicit ``api_key`` kwarg is forwarded to the underlying constructor."""
-        captured = {}
+        """Explicit ``api_key`` is forwarded to the ``OpenAI`` client constructor."""
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="text-embedding-3-small", api_key="explicit-key-123")
+            emb = OpenAIEmbedding(model="text-embedding-3-small", api_key="explicit-key-123")
+            emb(["hello"])
 
-        assert captured.get("api_key") == "explicit-key-123"
+        assert ctor_kwargs.get("api_key") == "explicit-key-123"
 
     def test_api_key_from_env(self, monkeypatch):
         """When ``api_key`` is omitted the plugin reads ``EMBEDDINGS_APIKEY`` from env."""
         monkeypatch.setenv("EMBEDDINGS_APIKEY", "env-api-key-xyz")
-        captured = {}
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="text-embedding-3-small")
+            emb = OpenAIEmbedding(model="text-embedding-3-small")
+            emb(["hello"])
 
-        assert captured.get("api_key") == "env-api-key-xyz"
+        assert ctor_kwargs.get("api_key") == "env-api-key-xyz"
 
     def test_api_key_param_takes_priority_over_env(self, monkeypatch):
         """Explicit ``api_key`` takes priority over ``EMBEDDINGS_APIKEY`` env var."""
         monkeypatch.setenv("EMBEDDINGS_APIKEY", "env-key-should-be-ignored")
-        captured = {}
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="text-embedding-3-small", api_key="param-key")
+            emb = OpenAIEmbedding(model="text-embedding-3-small", api_key="param-key")
+            emb(["hello"])
 
-        assert captured.get("api_key") == "param-key"
+        assert ctor_kwargs.get("api_key") == "param-key"
 
     def test_no_api_key_env_empty(self, monkeypatch):
-        """When both param and env are absent, api_key defaults to empty string."""
+        """When both param and env are absent, ``api_key`` falls back to ``'no-key'``."""
         monkeypatch.delenv("EMBEDDINGS_APIKEY", raising=False)
-        captured = {}
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="text-embedding-3-small")
+            emb = OpenAIEmbedding(model="text-embedding-3-small")
+            emb(["hello"])
 
-        assert captured.get("api_key") == ""
+        assert ctor_kwargs.get("api_key") == "no-key"
 
     # ----- Endpoint suffix stripping -----
 
@@ -171,50 +174,52 @@ class TestOpenAIEmbedding:
         ],
     )
     def test_endpoint_suffix_stripping(self, input_url, expected_base):
-        """``/embeddings`` suffix (and trailing slashes) are stripped from the URL."""
-        captured = {}
+        """``/embeddings`` suffix (and trailing slashes) are stripped; ``base_url`` is used."""
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(
+            emb = OpenAIEmbedding(
                 model="text-embedding-3-small",
                 api_key="k",
                 api_endpoint=input_url,
             )
+            emb(["hello"])
 
-        assert captured.get("api_base") == expected_base, (
-            f"For input {input_url!r}: expected api_base={expected_base!r}, "
-            f"got {captured.get('api_base')!r}"
+        assert ctor_kwargs.get("base_url") == expected_base, (
+            f"For input {input_url!r}: expected base_url={expected_base!r}, "
+            f"got {ctor_kwargs.get('base_url')!r}"
         )
 
     def test_no_api_base_when_no_endpoint(self):
-        """When ``api_endpoint`` is empty, ``api_base`` is NOT passed to constructor."""
-        captured = {}
+        """When ``api_endpoint`` is empty, ``base_url`` is NOT passed to ``OpenAI``."""
+        ctor_kwargs = {}
+        fake_client = self._make_fake_openai_client()
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("openai.OpenAI", side_effect=fake_ctor):
             from plugins.embedding.openai import OpenAIEmbedding
 
-            OpenAIEmbedding(model="text-embedding-3-small", api_key="k")
+            emb = OpenAIEmbedding(model="text-embedding-3-small", api_key="k")
+            emb(["hello"])
 
-        assert "api_base" not in captured
+        assert "base_url" not in ctor_kwargs
 
     def test_instantiation_does_not_make_network_call(self):
-        """Constructing ``OpenAIEmbedding`` must not trigger any HTTP request."""
+        """Constructing ``OpenAIEmbedding`` must not trigger any HTTP request.
+
+        The openai SDK is imported lazily inside ``__call__``, so construction
+        is always network-free regardless of patching.
+        """
         import httpx
         import requests
 
@@ -227,10 +232,6 @@ class TestOpenAIEmbedding:
         with (
             patch.object(httpx, "Client", side_effect=boom),
             patch.object(requests, "Session", side_effect=boom),
-            patch(
-                "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-                return_value=MagicMock(),
-            ),
         ):
             from plugins.embedding.openai import OpenAIEmbedding
 
@@ -239,19 +240,16 @@ class TestOpenAIEmbedding:
         assert not http_called
 
     def test_call_delegates_to_underlying_fn(self):
-        """``__call__`` forwards the input list to the wrapped ChromaDB function."""
-        fake_inner = MagicMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
+        """``__call__`` fetches embeddings via the ``OpenAI`` client and returns them."""
+        fake_client = self._make_fake_openai_client([[0.1, 0.2], [0.3, 0.4]])
 
-        with patch(
-            "chromadb.utils.embedding_functions.OpenAIEmbeddingFunction",
-            return_value=fake_inner,
-        ):
+        with patch("openai.OpenAI", return_value=fake_client):
             from plugins.embedding.openai import OpenAIEmbedding
 
             emb = OpenAIEmbedding(model="text-embedding-3-small", api_key="k")
             result = emb(["hello", "world"])
 
-        fake_inner.assert_called_once_with(["hello", "world"])
+        fake_client.embeddings.create.assert_called_once()
         assert result == [[0.1, 0.2], [0.3, 0.4]]
 
 
@@ -279,73 +277,85 @@ class TestOllamaEmbedding:
         params = {p.name: p for p in OllamaEmbedding.class_parameters()}
         assert params["model"].default == "nomic-embed-text"
 
+    def _make_fake_ollama_client(self, embeddings=None):
+        """Return a fake ollama Client whose embed() returns ``embeddings``."""
+        if embeddings is None:
+            embeddings = [[0.5, 0.6]]
+        fake_client = MagicMock()
+        fake_client.embed.return_value = MagicMock(embeddings=embeddings)
+        return fake_client
+
     def test_class_parameters_endpoint_default(self):
-        """Default endpoint is the standard local Ollama URL."""
+        """Default endpoint is the Docker-internal Ollama URL."""
         from plugins.embedding.ollama import OllamaEmbedding
 
         params = {p.name: p for p in OllamaEmbedding.class_parameters()}
-        assert params["api_endpoint"].default == "http://localhost:11434/api/embeddings"
+        assert params["api_endpoint"].default == "http://host.docker.internal:11435/api/embeddings"
 
     def test_default_model_applied_when_empty(self):
-        """``model=""`` falls back to ``nomic-embed-text``."""
-        captured = {}
+        """``model=""`` falls back to ``nomic-embed-text`` on the ``embed`` call."""
+        fake_client = self._make_fake_ollama_client()
+        ctor_kwargs = {}
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OllamaEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("ollama.Client", side_effect=fake_ctor):
             from plugins.embedding.ollama import OllamaEmbedding
 
-            OllamaEmbedding(model="")
+            emb = OllamaEmbedding(model="")
+            emb(["test"])
 
-        assert captured.get("model_name") == "nomic-embed-text"
+        fake_client.embed.assert_called_once()
+        assert fake_client.embed.call_args.kwargs.get("model") == "nomic-embed-text"
 
     def test_default_endpoint_applied_when_empty(self):
-        """``api_endpoint=""`` falls back to the standard Ollama URL."""
-        captured = {}
+        """``api_endpoint=""`` falls back to the default URL (suffix stripped for host)."""
+        fake_client = self._make_fake_ollama_client()
+        ctor_kwargs = {}
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OllamaEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("ollama.Client", side_effect=fake_ctor):
             from plugins.embedding.ollama import OllamaEmbedding
 
-            OllamaEmbedding(api_endpoint="")
+            emb = OllamaEmbedding(api_endpoint="")
+            emb(["test"])
 
-        assert captured.get("url") == "http://localhost:11434/api/embeddings"
+        # The plugin strips /api/embeddings from the default endpoint.
+        assert ctor_kwargs.get("host") == "http://host.docker.internal:11435"
 
     def test_custom_model_and_endpoint(self):
-        """Custom ``model`` and ``api_endpoint`` values are forwarded verbatim."""
-        captured = {}
+        """Custom ``model`` and ``api_endpoint`` are forwarded to the ollama client."""
+        fake_client = self._make_fake_ollama_client()
+        ctor_kwargs = {}
 
         def fake_ctor(**kwargs):
-            captured.update(kwargs)
-            return MagicMock()
+            ctor_kwargs.update(kwargs)
+            return fake_client
 
-        with patch(
-            "chromadb.utils.embedding_functions.OllamaEmbeddingFunction",
-            side_effect=fake_ctor,
-        ):
+        with patch("ollama.Client", side_effect=fake_ctor):
             from plugins.embedding.ollama import OllamaEmbedding
 
-            OllamaEmbedding(
+            emb = OllamaEmbedding(
                 model="mxbai-embed-large",
                 api_endpoint="http://custom-host:11434/api/embeddings",
             )
+            emb(["test"])
 
-        assert captured.get("model_name") == "mxbai-embed-large"
-        assert captured.get("url") == "http://custom-host:11434/api/embeddings"
+        # Suffix is stripped before becoming the Client host.
+        assert ctor_kwargs.get("host") == "http://custom-host:11434"
+        assert fake_client.embed.call_args.kwargs.get("model") == "mxbai-embed-large"
 
     def test_instantiation_does_not_make_network_call(self):
-        """Constructing ``OllamaEmbedding`` must not trigger any HTTP request."""
+        """Constructing ``OllamaEmbedding`` must not trigger any HTTP request.
+
+        The ollama SDK is imported lazily inside ``__call__``, so construction
+        is always network-free.
+        """
         import httpx
         import requests
 
@@ -358,10 +368,6 @@ class TestOllamaEmbedding:
         with (
             patch.object(httpx, "Client", side_effect=boom),
             patch.object(requests, "Session", side_effect=boom),
-            patch(
-                "chromadb.utils.embedding_functions.OllamaEmbeddingFunction",
-                return_value=MagicMock(),
-            ),
         ):
             from plugins.embedding.ollama import OllamaEmbedding
 
@@ -370,19 +376,16 @@ class TestOllamaEmbedding:
         assert not http_called
 
     def test_call_delegates_to_underlying_fn(self):
-        """``__call__`` forwards the input list to the wrapped ChromaDB function."""
-        fake_inner = MagicMock(return_value=[[0.5, 0.6]])
+        """``__call__`` delegates to ``ollama.Client.embed`` and returns embeddings."""
+        fake_client = self._make_fake_ollama_client([[0.5, 0.6]])
 
-        with patch(
-            "chromadb.utils.embedding_functions.OllamaEmbeddingFunction",
-            return_value=fake_inner,
-        ):
+        with patch("ollama.Client", return_value=fake_client):
             from plugins.embedding.ollama import OllamaEmbedding
 
             emb = OllamaEmbedding(model="nomic-embed-text")
             result = emb(["test sentence"])
 
-        fake_inner.assert_called_once_with(["test sentence"])
+        fake_client.embed.assert_called_once()
         assert result == [[0.5, 0.6]]
 
 
@@ -397,9 +400,16 @@ class TestLocalEmbedding:
     All tests in this class are marked ``slow`` because they require loading
     the ``all-MiniLM-L6-v2`` model from disk (or downloading it once ~80MB).
     Skip the whole class with ``pytest -m "not slow"``.
+    Also skipped entirely when ``sentence-transformers`` is not installed.
     """
 
-    pytestmark = pytest.mark.slow
+    pytestmark = [
+        pytest.mark.slow,
+        pytest.mark.skipif(
+            importlib.util.find_spec("sentence_transformers") is None,
+            reason="sentence-transformers not installed",
+        ),
+    ]
 
     def test_class_parameters_schema(self):
         """``class_parameters()`` returns expected schema with a model parameter."""

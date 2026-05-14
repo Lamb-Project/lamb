@@ -275,7 +275,7 @@ class TestUpdateCollectionRequest:
         )
         dumped = req.model_dump()
         assert "chunking_strategy" not in dumped
-        assert dumped == {"name": "kb", "description": None}
+        assert dumped == {"name": "kb", "description": None, "chunking_params": None}
 
 
 class TestCollectionResponse:
