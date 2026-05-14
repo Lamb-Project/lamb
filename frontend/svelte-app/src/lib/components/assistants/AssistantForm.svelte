@@ -9,7 +9,8 @@
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { onDestroy } from 'svelte';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
-import { extractModelsFromConnectorData, getAuthToken, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
+import { extractModelsFromConnectorData, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
+import { apiFetch } from '$lib/services/apiClient';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
@@ -477,57 +478,34 @@ import FormActions from './FormActions.svelte';
 
 	/** Fetches the user's files from the server */
 	async function fetchUserFiles() {
-		if (loadingFiles) {
-
-			return;
-		}
-
+		if (loadingFiles || filesFetchAttempted) return;
 		loadingFiles = true;
 		fileError = '';
 
 		try {
-			const token = getAuthToken();
-			if (!token) {
-				throw new Error('Authentication token not found');
-			}
-
-			// Get the lamb server URL
-			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
-			if (!lambServerUrl) {
-				throw new Error('LAMB server URL not configured in window.LAMB_CONFIG.api.lambServer');
-			}
-
-			// Call the files/list endpoint
-			const endpointPath = '/creator/files/list';
-			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}${endpointPath}`;
-			
-			const response = await fetch(apiUrl, {
-				headers: {
-					'Authorization': `Bearer ${token}`
-				}
-			});
-
+			const response = await apiFetch('/creator/files/list');
 			if (!response.ok) {
 				const errorText = await response.text();
 				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
 			}
-
 			const data = await response.json();
-			userFiles = data; // API returns array of {name, path} objects
-			
-			// Set selected file if it exists in metadata.
+			if (!isMounted) return;
+			userFiles = data;
+
 			const callbackData = getAssistantMetadataObject(assistant);
 			if (callbackData.file_path && userFiles.some(file => file.path === callbackData.file_path)) {
 				selectedFilePath = callbackData.file_path;
 			}
-
 		} catch (err) {
-			console.error('Error fetching user files:', err);
+			if (!isMounted) return;
+			if (err instanceof Error && err.message.startsWith('Session expired')) return;
 			fileError = err instanceof Error ? err.message : 'Failed to load files';
-			userFiles = []; // Ensure list is empty on error
+			userFiles = [];
 		} finally {
-			loadingFiles = false;
-			filesFetchAttempted = true;
+			if (isMounted) {
+				loadingFiles = false;
+				filesFetchAttempted = true;
+			}
 		}
 	}
 
