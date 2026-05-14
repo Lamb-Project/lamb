@@ -1,7 +1,9 @@
 <!-- src/lib/components/assistants/AssistantDescriptionField.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
-	import { getAuthToken } from './assistantFormUtils.svelte.js';
+	import { apiFetch } from '$lib/services/apiClient';
+
+	const GENERATE_DESCRIPTION_TIMEOUT_MS = 15000;
 
 	let {
 		value = $bindable(''),
@@ -11,40 +13,24 @@
 	} = $props();
 
 	let generatingDescription = $state(false);
+	let descriptionError = $state('');
 
 	async function handleGenerateDescription() {
+		descriptionError = '';
 		if (!generationContext.name?.trim()) {
-			alert(
-				$_('assistants.form.description.nameRequired', {
-					default: 'Please provide an assistant name first'
-				})
-			);
-			return;
-		}
-		const token = getAuthToken();
-		if (!token) {
-			alert(
-				$_('assistants.form.description.authError', {
-					default: 'Authentication error. Please try logging in again.'
-				})
-			);
+			descriptionError = $_('assistants.form.description.nameRequired', {
+				default: 'Please provide an assistant name first'
+			});
 			return;
 		}
 		generatingDescription = true;
 		try {
-			const lambServerUrl = window.LAMB_CONFIG?.api?.lambServer;
-			if (!lambServerUrl) {
-				throw new Error('LAMB server URL not configured in window.LAMB_CONFIG.api.lambServer');
-			}
 			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), 15000);
-			const apiUrl = `${lambServerUrl.replace(/\/$/, '')}/creator/assistant/generate_assistant_description`;
-			const response = await fetch(apiUrl, {
+			const timeoutId = setTimeout(() => controller.abort(), GENERATE_DESCRIPTION_TIMEOUT_MS);
+
+			const response = await apiFetch('/creator/assistant/generate_assistant_description', {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${token}`
-				},
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					name: generationContext.name,
 					instructions: generationContext.system_prompt || '',
@@ -55,14 +41,10 @@
 				}),
 				signal: controller.signal
 			});
+
 			clearTimeout(timeoutId);
 			if (!response.ok) {
 				const errorText = await response.text();
-				if (response.status === 403 || response.status === 401) {
-					throw new Error(
-						`Authentication error (${response.status}): Please try logging in again.`
-					);
-				}
 				throw new Error(`API error: ${response.status} - ${errorText || 'Unknown error'}`);
 			}
 			const data = await response.json();
@@ -76,7 +58,6 @@
 				throw new Error(data.error || 'Failed to generate description');
 			}
 		} catch (err) {
-			let descriptionError;
 			if (err instanceof Error && err.name === 'AbortError') {
 				descriptionError = $_('assistants.form.description.timeout', {
 					default: 'Request timed out. Please try again.'
@@ -89,7 +70,6 @@
 								default: 'Failed to generate description'
 							});
 			}
-			alert(descriptionError);
 		} finally {
 			generatingDescription = false;
 		}
@@ -131,4 +111,7 @@
 			default: 'Click Generate after filling in name and prompts.'
 		})}
 	</p>
+	{#if descriptionError}
+		<p class="mt-1 text-sm text-red-600">{descriptionError}</p>
+	{/if}
 </div>
