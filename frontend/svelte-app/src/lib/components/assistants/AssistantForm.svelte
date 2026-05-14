@@ -809,7 +809,7 @@ import FormActions from './FormActions.svelte';
 			<div class="flex flex-col md:flex-row md:space-x-6">
 				<!-- Left Column: Main Fields -->
 				<div class="md:w-2/3 space-y-6">
-					<AssistantNameField bind:value={name} {formState} onchange={handleFieldChange} />
+					<AssistantNameField bind:value={name} {formState} oninput={handleFieldChange} />
 
 					<AssistantDescriptionField
 						bind:value={description}
@@ -821,7 +821,7 @@ import FormActions from './FormActions.svelte';
 							llm: selectedLlm,
 							rag_processor: selectedRagProcessor
 						}}
-						onchange={handleFieldChange}
+						oninput={handleFieldChange}
 					/>
 
 				<AssistantPromptFields
@@ -830,7 +830,7 @@ import FormActions from './FormActions.svelte';
 					{ragPlaceholders}
 					{selectedPromptProcessor}
 					{formState}
-					onchange={handleFieldChange}
+					oninput={handleFieldChange}
 					onTemplateApplied={() => {
 						formDirty = true;
 					}}
