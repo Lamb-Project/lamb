@@ -8249,6 +8249,7 @@ class LambDatabaseManager:
                     LEFT JOIN {self.table_prefix}knowledge_stores ks
                         ON kcl.knowledge_store_id = ks.id
                     WHERE kcl.library_item_id = ?
+                    ORDER BY ks.name ASC
                 """, (library_item_id,))
                 columns = [desc[0] for desc in cursor.description]
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -8341,7 +8342,7 @@ class LambDatabaseManager:
                     WHERE kcl.library_id = ?
                       AND ks.status = 'active'
                     GROUP BY ks.id
-                    ORDER BY ks.updated_at DESC
+                    ORDER BY ks.name ASC
                 """, (library_id,))
                 columns = [desc[0] for desc in cursor.description]
                 rows: List[Dict[str, Any]] = []

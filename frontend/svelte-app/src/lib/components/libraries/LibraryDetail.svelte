@@ -966,65 +966,42 @@
 					{/if}
 				</div>
 				{#if libraryKnowledgeStores.length > 0}
-					<div class="overflow-x-auto">
-						<table class="min-w-full divide-y divide-gray-200">
-							<thead class="bg-gray-50">
-								<tr>
-									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-										{$_('libraries.knowledgeStores.name', { default: 'Name' })}
-									</th>
-									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-										{$_('libraries.knowledgeStores.embedding', { default: 'Embedding' })}
-									</th>
-									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-										{$_('libraries.knowledgeStores.items', { default: 'Items from this library' })}
-									</th>
-									<th class="px-4 py-2 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
-										{$_('libraries.knowledgeStores.access', { default: 'Access' })}
-									</th>
-									<th class="px-4 py-2 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">
-										<span class="sr-only">{$_('common.actions', { default: 'Actions' })}</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody class="divide-y divide-gray-200 bg-white">
-								{#each libraryKnowledgeStores as ks (ks.id)}
-									<tr class="hover:bg-gray-50">
-										<td class="px-4 py-3">
-											<div class="text-sm font-medium text-gray-900">{ks.name}</div>
-											{#if ks.description}
-												<div class="truncate text-xs text-gray-500" title={ks.description}>
-													{ks.description}
-												</div>
-											{/if}
-										</td>
-										<td class="px-4 py-3 text-sm text-gray-500">
-											{ks.embedding_vendor} / {ks.embedding_model}
-										</td>
-										<td class="px-4 py-3 text-sm text-gray-500">
-											<span class="font-medium text-gray-900">{ks.item_count}</span>
-											{#if ks.ready_count !== ks.item_count || ks.failed_count > 0}
-												<span class="ml-1 text-xs text-gray-400">
-													({ks.ready_count} {$_('libraries.knowledgeStores.ready', { default: 'ready' })}{#if ks.failed_count > 0}, {ks.failed_count} {$_('libraries.knowledgeStores.failed', { default: 'failed' })}{/if})
-												</span>
-											{/if}
-										</td>
-										<td class="px-4 py-3 text-sm text-gray-500 capitalize">
-											{ks.access}
-										</td>
-										<td class="px-4 py-3 text-right whitespace-nowrap">
-											<a
-												href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
-												class="text-sm text-blue-600 hover:text-blue-900"
-											>
-												{$_('libraries.knowledgeStores.view', { default: 'Open' })} →
-											</a>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
+					<ul class="divide-y divide-gray-100">
+						{#each libraryKnowledgeStores as ks (ks.id)}
+							<li class="flex items-center justify-between gap-4 px-6 py-3 hover:bg-gray-50">
+								<div class="min-w-0 flex-1">
+									<p class="truncate text-sm font-medium text-gray-900" title={ks.name}>{ks.name}</p>
+									<p class="mt-0.5 text-xs text-gray-400">
+										{ks.embedding_vendor} · {ks.embedding_model}
+									</p>
+								</div>
+								<div class="flex shrink-0 items-center gap-3">
+									<span class="text-xs text-gray-500">
+										<span class="font-medium text-gray-700">{ks.item_count}</span>
+										{ks.item_count === 1
+											? $_('libraries.knowledgeStores.itemSingular', { default: 'item' })
+											: $_('libraries.knowledgeStores.itemPlural', { default: 'items' })}
+										{#if ks.failed_count > 0}
+											<span class="ml-1 text-red-500">· {ks.failed_count} {$_('libraries.knowledgeStores.failed', { default: 'failed' })}</span>
+										{:else if ks.ready_count < ks.item_count}
+											<span class="ml-1 text-amber-500">· {ks.ready_count} {$_('libraries.knowledgeStores.ready', { default: 'ready' })}</span>
+										{/if}
+									</span>
+									{#if ks.is_shared}
+										<span class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+											{$_('libraries.knowledgeStores.shared', { default: 'Shared' })}
+										</span>
+									{/if}
+									<a
+										href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
+										class="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800"
+									>
+										{$_('libraries.knowledgeStores.view', { default: 'Open' })} →
+									</a>
+								</div>
+							</li>
+						{/each}
+					</ul>
 				{/if}
 			</div>
 		{/if}
