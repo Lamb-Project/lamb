@@ -201,35 +201,31 @@ import FormActions from './FormActions.svelte';
 		}
 	});
 
-	// Effect for loading config and applying defaults
-	$effect.pre(() => {
+	// Trigger config load if not yet loaded
+	$effect(() => {
 		if (!configInitialized && !$assistantConfigStore.loading && !$assistantConfigStore.systemCapabilities) {
-
 			assistantConfigStore.loadConfig();
 		}
+	});
 
-		const unsubscribe = assistantConfigStore.subscribe(state => {
+	// React to config becoming available
+	$effect(() => {
+		const state = $assistantConfigStore;
+		if (!state.loading && state.systemCapabilities && state.configDefaults && !configInitialized) {
+			const capabilities = state.systemCapabilities;
 
-			if (!state.loading && state.systemCapabilities && state.configDefaults && !configInitialized) {
-				const capabilities = state.systemCapabilities;
+			promptProcessors = capabilities.prompt_processors || [];
+			connectorsList = Object.keys(capabilities.connectors || {});
+			ragProcessors = capabilities.rag_processors || [];
 
-				promptProcessors = capabilities.prompt_processors || [];
-				connectorsList = Object.keys(capabilities.connectors || {});
-				ragProcessors = capabilities.rag_processors || [];
+			configInitialized = true;
 
-				configInitialized = true; 
-
-				if (formState === 'create') {
-
-					resetFormFieldsToDefaults(); // Use helper
-				} else {
-
-					populateFormFields(initialAssistantData); 
-				}
+			if (formState === 'create') {
+				resetFormFieldsToDefaults();
+			} else {
+				populateFormFields(initialAssistantData);
 			}
-		});
-
-		return unsubscribe;
+		}
 	});
 
 	// FIX FOR ISSUE #96: Effect to apply pending KB selections when list becomes available
