@@ -7,7 +7,7 @@
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { onDestroy } from 'svelte';
-import { extractModelsFromConnectorData, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
+import { extractModelsFromConnectorData, loadRagPlaceholders, selectModel } from './assistantFormUtils.svelte.js';
 import { apiFetch } from '$lib/services/apiClient';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
@@ -243,7 +243,7 @@ import FormActions from './FormActions.svelte';
 		ragPlaceholders = loadRagPlaceholders(defaults);
 		
 		// Set LLM with fallback to first available model if default not available
-		selectedLlm = createModelSelector(defaults.llm || '', availableModels);
+		selectedLlm = selectModel(defaults.llm || '', availableModels);
 		
 		selectedKnowledgeBases = [];
 		selectedFilePath = '';
@@ -313,7 +313,7 @@ import FormActions from './FormActions.svelte';
 			selectedRagProcessor = data.rag_processor || metadata.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 
 			const targetLlm = data.llm || metadata.llm;
-			selectedLlm = createModelSelector(targetLlm, availableModels);
+			selectedLlm = selectModel(targetLlm, availableModels);
 
 			// Load placeholders from config for edit mode as well
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
@@ -717,7 +717,7 @@ import FormActions from './FormActions.svelte';
 							selectedRagProcessor = callbackData.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 
 							// Set LLM based on connector
-							selectedLlm = createModelSelector(callbackData.llm, availableModels);
+							selectedLlm = selectModel(callbackData.llm, availableModels);
 							if (callbackData.llm && !availableModels.includes(callbackData.llm)) {
 								validationLog.push(`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`);
 							}

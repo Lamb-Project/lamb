@@ -7,7 +7,7 @@ import { isKbBasedRag, isSingleFileRag } from '$lib/utils/ragProcessorHelpers.js
  * @typedef {Object} ImportValidationResult
  * @property {any} parsedData - The parsed JSON data (null on error)
  * @property {any} callbackData - Parsed metadata/fallback (null on error)
- * @property {string[]} validationLog - Ordered log of validation messages
+ * @property {string[]} validationLog - Ordered log of validation messages (consumed by caller in Console but not displayed in UI directly)
  * @property {boolean} hasErrors - True if any ❌ entries exist
  */
 

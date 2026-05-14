@@ -88,6 +88,7 @@
 			oninput={onchange}
 			rows="3"
 			disabled={false}
+			maxlength="500"
 			class="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 			placeholder={$_('assistants.form.description.placeholder', {
 				default: 'A brief summary of the assistant'

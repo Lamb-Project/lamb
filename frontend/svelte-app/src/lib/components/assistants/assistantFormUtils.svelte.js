@@ -75,7 +75,7 @@ export function createAsyncResource(fetcher, initialData = /** @type {T} */ ([])
  * @param {string[]} availableModels - List of available models
  * @returns {string}
  */
-export function createModelSelector(targetLlm, availableModels) {
+export function selectModel(targetLlm, availableModels) {
 	if (targetLlm && availableModels.includes(targetLlm)) {
 		return targetLlm;
 	}
@@ -147,7 +147,7 @@ export function extractModelsMetadata(connectorData) {
  * @param {string} text
  * @returns {string}
  */
-export function escapeHtml(text) {
+function escapeHtml(text) {
 	return text
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
