@@ -8,7 +8,6 @@
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
 	import { onDestroy } from 'svelte';
-	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte'; // Import template modal
 import { extractModelsFromConnectorData, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
 import { apiFetch } from '$lib/services/apiClient';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
@@ -921,7 +920,5 @@ import FormActions from './FormActions.svelte';
 		</form>
 	{/if} 
 
-	<!-- Template Selection Modal -->
-	<TemplateSelectModal />
 
-</div> 
+</div>
