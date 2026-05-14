@@ -1455,7 +1455,6 @@
                             // Switch back to properties view when user cancels
                             detailSubView = 'properties';
                         }}
-                        id="assistant-edit-form"
                     />
                 </div>
             </div>
