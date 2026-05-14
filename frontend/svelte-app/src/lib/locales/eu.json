@@ -233,7 +233,9 @@
       "titleViewEdit": "Laguntzailearen Xehetasunak",
       "name": {
         "label": "Laguntzailearen Izena",
-        "placeholder": "Sartu izen bakarra (gehienez 20 karaktere)"
+        "placeholder": "Sartu izen bakarra (gehienez 20 karaktere)",
+        "willBeSaved": "Honela gordeko da:",
+        "hint": "Karaktere bereziak eta zuriuneak azpimarra bilakatuko dira"
       },
       "description": {
         "label": "Deskribapena",
@@ -252,7 +254,8 @@
       },
       "promptTemplate": {
         "label": "Prompt Txantiloia",
-        "help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du."
+        "help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du.",
+        "placeholder": "adib. Erabili {context} galderari erantzuteko: {user_input}"
       },
       "configSection": {
         "title": "Konfigurazioa"
@@ -266,6 +269,17 @@
       "llm": {
         "label": "Hizkuntza Modeloa (LLM)",
         "noneAvailable": "Ez dago modelo erabilgarririk hautatutako konektorearentzat"
+      },
+      "vision": {
+        "label": "Ikusmen Gaitasuna Gaitu",
+        "description": "Baimendu laguntzaile honi irudiak testu mezuekin batera prozesatzea",
+        "imageToImageDescription": "Baimendu laguntzaile honi irudiak sarrera gisa onartzea iruditik-irudira sortzeko (edizioa, estilo transferentzia, etab.)"
+      },
+      "imageGeneration": {
+        "label": "Irudi Sorkuntza Gaitu",
+        "requiredForModel": "Gaitasun hau beharrezkoa da hautatutako modeloarentzat",
+        "requiredForModelPrefix": "Beharrezkoa modelo honentzat - ",
+        "geminiDescription": "Baimendu laguntzaile honi irudiak sortzea Google Gemini erabiliz"
       },
       "ragProcessor": {
         "label": "RAG Prozesatzailea"

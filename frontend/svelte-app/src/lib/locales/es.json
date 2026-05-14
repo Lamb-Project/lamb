@@ -83,7 +83,9 @@
       "titleViewEdit": "Detalles del Asistente",
       "name": {
         "label": "Nombre del Asistente",
-        "placeholder": "Introduce un nombre único (máx 20 cars)"
+        "placeholder": "Introduce un nombre único (máx 20 cars)",
+        "willBeSaved": "Se guardará como:",
+        "hint": "Los caracteres especiales y espacios se convertirán en guiones bajos"
       },
       "description": {
         "label": "Descripción",
@@ -102,7 +104,8 @@
       },
       "promptTemplate": {
         "label": "Plantilla de Prompt",
-        "help": "Este procesador requiere una plantilla de prompt válida."
+        "help": "Este procesador requiere una plantilla de prompt válida.",
+        "placeholder": "ej. Usa el {context} para responder la pregunta: {user_input}"
       },
       "configSection": {
         "title": "Configuración"
@@ -116,6 +119,17 @@
       "llm": {
         "label": "Modelo de Lenguaje (LLM)",
         "noneAvailable": "No hay modelos disponibles para el conector seleccionado"
+      },
+      "vision": {
+        "label": "Habilitar Capacidad de Visión",
+        "description": "Permitir que este asistente procese imágenes junto con mensajes de texto",
+        "imageToImageDescription": "Permitir que este asistente acepte imágenes como entrada para generación de imagen a imagen (edición, transferencia de estilo, etc.)"
+      },
+      "imageGeneration": {
+        "label": "Habilitar Generación de Imágenes",
+        "requiredForModel": "Esta capacidad es necesaria para el modelo seleccionado",
+        "requiredForModelPrefix": "Necesario para este modelo - ",
+        "geminiDescription": "Permitir que este asistente genere imágenes usando Google Gemini"
       },
       "ragProcessor": {
         "label": "Procesador RAG"
