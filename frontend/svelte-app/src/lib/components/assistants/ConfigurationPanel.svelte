@@ -6,14 +6,13 @@
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 	import {
-		extractModelsFromConnectorData,
-		extractModelsMetadata,
-		createModelSelector
+		extractModelsMetadata
 	} from './assistantFormUtils.svelte.js';
 	import RagOptionsPanel from './RagOptionsPanel.svelte';
 
 	let {
 		formState,
+		availableModels = [],
 		isAdvancedMode = $bindable(false),
 		promptProcessors = [],
 		connectorsList = [],
@@ -38,37 +37,23 @@
 		onchange
 	} = $props();
 
-	/** @type {any} */
-	let currentConnectorMetadata = $state(null);
-	/** @type {any[]} */
-	let currentModelsMetadata = $state([]);
-	/** @type {string[]} */
-	let availableModels = $state([]);
+	let currentConnectorMetadata = $derived.by(() => {
+		const state = get(assistantConfigStore);
+		const connectorData = state?.systemCapabilities?.connectors?.[selectedConnector];
+		return connectorData?.metadata || null;
+	});
+
+	let currentModelsMetadata = $derived.by(() => {
+		const state = get(assistantConfigStore);
+		const connectorData = state?.systemCapabilities?.connectors?.[selectedConnector];
+		return extractModelsMetadata(connectorData) || [];
+	});
 
 	let currentModelMetadata = $derived(currentModelsMetadata.find((m) => m.id === selectedLlm) || null);
 	let imageGenerationForced = $derived(currentModelMetadata?.forced_capabilities?.image_generation === true);
 	let showRagOptions = $derived(hasRagOptions(selectedRagProcessor));
 
-	export function updateAvailableModels() {
-		const state = get(assistantConfigStore);
-		if (!state?.systemCapabilities?.connectors) {
-			availableModels = [];
-			currentConnectorMetadata = null;
-			currentModelsMetadata = [];
-			return;
-		}
-		const connectorData = state.systemCapabilities.connectors[selectedConnector];
-		availableModels = extractModelsFromConnectorData(connectorData);
-		currentConnectorMetadata = connectorData?.metadata || null;
-		currentModelsMetadata = extractModelsMetadata(connectorData);
-	}
-
-	export function getAvailableModels() {
-		return availableModels;
-	}
-
 	async function handleConnectorChange() {
-		updateAvailableModels();
 		await tick();
 		if (!availableModels.includes(selectedLlm)) {
 			selectedLlm = availableModels.length > 0 ? availableModels[0] : '';
@@ -93,10 +78,6 @@
 		onchange?.();
 	}
 
-	$effect(() => {
-		selectedConnector;
-		updateAvailableModels();
-	});
 </script>
 
 {#if formState === 'create'}

@@ -110,10 +110,11 @@ import FormActions from './FormActions.svelte';
 	let rubricError = $state('');
 	let rubricsFetchAttempted = $state(false);
 
-	/** @type {import('./ConfigurationPanel.svelte').default | null} */
-	/** @type {any} */
-	let configPanel = $state(null);
-	let availableModels = $derived(configPanel?.getAvailableModels() || []);
+	let availableModels = $derived.by(() => {
+		const state = get(assistantConfigStore);
+		const data = state?.systemCapabilities?.connectors?.[selectedConnector];
+		return extractModelsFromConnectorData(data);
+	});
 
 	// Loading/error/success state
 	let formError = $state('');
@@ -254,8 +255,6 @@ import FormActions from './FormActions.svelte';
 		// Load the placeholders from config
 		ragPlaceholders = loadRagPlaceholders(defaults);
 		
-		// Update available models based on selected connector
-		configPanel?.updateAvailableModels();
 		// Set LLM with fallback to first available model if default not available
 		selectedLlm = createModelSelector(defaults.llm || '', availableModels);
 		
@@ -332,8 +331,6 @@ import FormActions from './FormActions.svelte';
 			selectedConnector = data.connector || metadata.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 
 			selectedRagProcessor = data.rag_processor || metadata.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
-
-			configPanel?.updateAvailableModels();
 
 			const targetLlm = data.llm || metadata.llm;
 			selectedLlm = createModelSelector(targetLlm, availableModels);
@@ -636,9 +633,7 @@ import FormActions from './FormActions.svelte';
 			const defaults = get(assistantConfigStore).configDefaults?.config || {};
 			selectedPromptProcessor = defaults.prompt_processor || (promptProcessors.length > 0 ? promptProcessors[0] : '');
 			selectedConnector = defaults.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
-			// Update available models based on the default connector
 			await tick();
-			configPanel?.updateAvailableModels();
 			// Reset LLM if needed with the new models list
 			if (!availableModels.includes(selectedLlm)) {
 				selectedLlm = defaults.llm || (availableModels.length > 0 ? availableModels[0] : '');
@@ -774,8 +769,7 @@ import FormActions from './FormActions.svelte';
 							selectedConnector = callbackData.connector || (connectorsList.length > 0 ? connectorsList[0] : '');
 							selectedRagProcessor = callbackData.rag_processor || (ragProcessors.length > 0 ? ragProcessors[0] : '');
 
-							// Update models based on connector, then set LLM
-							configPanel?.updateAvailableModels();
+							// Set LLM based on connector
 							selectedLlm = createModelSelector(callbackData.llm, availableModels);
 							if (callbackData.llm && !availableModels.includes(callbackData.llm)) {
 								validationLog.push(`⚠️ Imported LLM '${callbackData.llm}' not available for connector '${selectedConnector}'. Defaulting to '${selectedLlm}'.`);
@@ -909,8 +903,8 @@ import FormActions from './FormActions.svelte';
 			<!-- Right Column: Configuration -->
 			<div class="md:w-1/3">
 				<ConfigurationPanel
-					bind:this={configPanel}
 					{formState}
+					{availableModels}
 					bind:isAdvancedMode
 					{promptProcessors}
 					{connectorsList}
