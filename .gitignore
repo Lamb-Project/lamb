@@ -173,7 +173,7 @@ docker-compose.yaml
 backend/testing/
 backend/uploads/
 frontend/packages/
-
+.opencode
 
 
 ./clinerules
@@ -183,3 +183,6 @@ frontend/packages/
 .playwright-mcp
 
 aac_logs/
+
+# Worktrees
+.worktrees/
