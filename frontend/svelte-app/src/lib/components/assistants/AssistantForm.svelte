@@ -1,5 +1,4 @@
 <script>
-	// Placeholder for Assistant Creation Form
 	import { _ } from '$lib/i18n';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore'; // Import the store
 	import { tick } from 'svelte'; // Import tick for $effect timing
@@ -10,7 +9,7 @@
 	import { onDestroy } from 'svelte';
 import { extractModelsFromConnectorData, loadRagPlaceholders, createModelSelector } from './assistantFormUtils.svelte.js';
 import { apiFetch } from '$lib/services/apiClient';
-import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor, hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
 import { validateImportedAssistant } from './importAssistantValidator.js';
 import AssistantFormHeader from './AssistantFormHeader.svelte';
 import AssistantNameField from './AssistantNameField.svelte';
@@ -30,7 +29,6 @@ import FormActions from './FormActions.svelte';
 	// Use $props for Svelte 5 runes mode
 	let { 
 		assistant = null,
-		startInEdit = false, // Add the new prop
 		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
 		onCancel = /** @type {() => void} */ (() => {})
 	} = $props(); 
@@ -57,7 +55,6 @@ import FormActions from './FormActions.svelte';
 	/** @type {string[]} */
 	let connectorsList = $state([]); // List of connector names
 	/** @type {string[]} */
-	/** @type {string[]} */
 	let ragProcessors = $state([]);
 
 	// Selected values for dropdowns
@@ -70,9 +67,7 @@ import FormActions from './FormActions.svelte';
 	let visionEnabled = $state(false);
 	// Image generation capability
 	let imageGenerationEnabled = $state(false);
-	
-	// Connector and model metadata (for forced capabilities and descriptions)
-	/** @type {any} */
+
 	// Knowledge Base State - separate owned and shared
 	/** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
 	let ownedKnowledgeBases = $state([]);
@@ -138,17 +133,9 @@ import FormActions from './FormActions.svelte';
 	 * This prevents automatic repopulation from overwriting user edits
 	 */
 	function handleFieldChange() {
-		if (!formDirty) {
-
-		}
 		formDirty = true;
 	}
 
-	/**
-	 * Highlights placeholders in the prompt template text
-	 * @param {string} text - The text to process
-	 * @returns {string} HTML string with highlighted placeholders
-	 */
 	// --- Store Integration and Initialization ---
 	$effect(() => {
 
@@ -278,13 +265,6 @@ import FormActions from './FormActions.svelte';
 	}
 
 	// --- Mode Switching Functions ---
-	function switchToEditMode() {
-		formState = 'edit';
-		formError = '';
-		successMessage = '';
-
-	}
-
 	function switchToViewMode() {
 		// Revert fields to initial state
 		if (initialAssistantData) {
@@ -509,9 +489,6 @@ import FormActions from './FormActions.svelte';
 	}
 
 	// --- Reactive UI Logic (Mostly Unchanged) ---
-	const showRagOptions = $derived(hasRagOptions(selectedRagProcessor));
-	const showKnowledgeBaseSelector = $derived(isKbBasedRag(selectedRagProcessor));
-	const showSingleFileSelector = $derived(isSingleFileRag(selectedRagProcessor));
 	const showRubricSelector = $derived(isRubricRag(selectedRagProcessor));
 	
 	// Effect to fetch KBs/Files when RAG processor changes (Mostly Unchanged)
@@ -529,18 +506,11 @@ import FormActions from './FormActions.svelte';
 		} else if (isSingleFileRag(selectedRagProcessor) && configInitialized) {
 			// Fetch files when switching to single_file_rag
 			if (!filesFetchAttempted && !loadingFiles) {
-
 				fetchUserFiles();
-			} else {
-
 			}
 		} else if (isRubricRag(selectedRagProcessor) && configInitialized) {
-			// Fetch rubrics when switching to rubric_rag
 			if (!rubricsFetchAttempted && !loadingRubrics) {
-
 				tick().then(fetchRubricsList);
-			} else {
-
 			}
 		} else {
 			// Clear KB state AND reset attempted flag if RAG processor changes away
