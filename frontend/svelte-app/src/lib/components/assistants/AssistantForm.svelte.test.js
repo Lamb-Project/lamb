@@ -221,3 +221,144 @@ describe('AssistantForm.svelte — baseline contract tests', () => {
 		});
 	});
 });
+
+describe('AssistantForm.svelte — behavioral test coverage', () => {
+	describe('Edit mode', () => {
+		test('populates name field from assistant data', async () => {
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, {
+				props: {
+					assistant: {
+						id: 1,
+						name: '1_test_assistant',
+						description: 'Test',
+						system_prompt: 'You are helpful.',
+						prompt_template: 'Template',
+						RAG_Top_k: 5,
+						metadata: JSON.stringify({
+							prompt_processor: 'default_processor',
+							connector: 'openai',
+							llm: 'gpt-4',
+							rag_processor: 'simple_rag',
+							capabilities: { vision: false, image_generation: false }
+						})
+					}
+				}
+			});
+
+			await waitFor(() => {
+				const nameInput = document.getElementById('assistant-name');
+				expect(nameInput).toBeInTheDocument();
+				// populateFormFields strips the numeric prefix from names
+				expect(nameInput.value).toBe('test_assistant');
+			});
+		});
+
+		test('populates LLM selection from assistant metadata', async () => {
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, {
+				props: {
+					assistant: {
+						id: 1,
+						name: '1_test_assistant',
+						description: 'Test',
+						system_prompt: 'You are helpful.',
+						prompt_template: 'Template',
+						RAG_Top_k: 5,
+						metadata: JSON.stringify({
+							prompt_processor: 'default_processor',
+							connector: 'openai',
+							llm: 'gpt-4',
+							rag_processor: 'simple_rag',
+							capabilities: { vision: false, image_generation: false }
+						})
+					}
+				}
+			});
+
+			await waitFor(() => {
+				const llm = document.getElementById('llm');
+				expect(llm).toBeInTheDocument();
+				expect(llm.value).toBe('gpt-4');
+			});
+		});
+	});
+
+	describe('Form validation', () => {
+		test('shows error when submitting with empty name', async () => {
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, {
+				props: { assistant: null }
+			});
+
+			await waitFor(() => {
+				const form = document.getElementById('assistant-form-main');
+				expect(form).toBeInTheDocument();
+			});
+
+			const form = document.getElementById('assistant-form-main');
+			await fireEvent.submit(form);
+
+			await waitFor(() => {
+				// Find the error paragraph specifically (not the asterisk in the name label)
+				const errorEl = screen.getByText(/Error:/i);
+				expect(errorEl).toBeInTheDocument();
+				expect(errorEl.textContent).toMatch(/name/i);
+			});
+		});
+	});
+
+	describe('Form submission', () => {
+		test('submit payload contains the entered name', async () => {
+			const { createAssistant } = await import('$lib/services/assistantService');
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, { props: { assistant: null } });
+
+			await waitFor(() => {
+				const nameInput = document.getElementById('assistant-name');
+				expect(nameInput).toBeInTheDocument();
+			});
+
+			const nameInput = document.getElementById('assistant-name');
+			await fireEvent.input(nameInput, { target: { value: 'valid_name' } });
+
+			const form = document.getElementById('assistant-form-main');
+			await fireEvent.submit(form);
+
+			await waitFor(() => {
+				expect(createAssistant).toHaveBeenCalledWith(
+					expect.objectContaining({ name: 'valid_name' })
+				);
+			});
+		});
+	});
+
+	describe('RAG processor switching', () => {
+		test('no_rag processor hides KB-related UI elements', async () => {
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, { props: { assistant: null } });
+
+			await waitFor(() => {
+				const ragSelect = document.getElementById('rag-processor');
+				expect(ragSelect).toBeInTheDocument();
+				expect(ragSelect.value).toBe('no_rag');
+			});
+
+			// KB selector panel (RagOptionsPanel) should not be rendered when no_rag is selected
+			expect(screen.queryByText('RAG Options')).toBeNull();
+		});
+	});
+
+	describe('Connector change', () => {
+		test('LLM dropdown has options populated for the active connector', async () => {
+			const component = await import('./AssistantForm.svelte');
+			render(component.default, { props: { assistant: null } });
+
+			await waitFor(() => {
+				const llm = document.getElementById('llm');
+				expect(llm).toBeInTheDocument();
+				expect(llm.options.length).toBeGreaterThan(1);
+			});
+		});
+	});
+});
