@@ -2,11 +2,10 @@
 import { describe, test, expect, vi } from 'vitest';
 import {
 	createAsyncResource,
-	createModelSelector,
+	selectModel,
 	loadRagPlaceholders,
 	extractModelsFromConnectorData,
 	extractModelsMetadata,
-	escapeHtml,
 	highlightPlaceholders
 } from './assistantFormUtils.svelte.js';
 
@@ -57,17 +56,17 @@ describe('createAsyncResource', () => {
 	});
 });
 
-describe('createModelSelector', () => {
+describe('selectModel', () => {
 	test('selects target LLM when available', () => {
-		const result = createModelSelector('gpt-4', ['gpt-3.5-turbo', 'gpt-4']);
+		const result = selectModel('gpt-4', ['gpt-3.5-turbo', 'gpt-4']);
 		expect(result).toBe('gpt-4');
 	});
 	test('falls back to first model when target not available', () => {
-		const result = createModelSelector('nonexistent', ['gpt-3.5-turbo', 'gpt-4']);
+		const result = selectModel('nonexistent', ['gpt-3.5-turbo', 'gpt-4']);
 		expect(result).toBe('gpt-3.5-turbo');
 	});
 	test('returns empty string when no models available', () => {
-		const result = createModelSelector('gpt-4', []);
+		const result = selectModel('gpt-4', []);
 		expect(result).toBe('');
 	});
 });
@@ -103,17 +102,6 @@ describe('extractModelsFromConnectorData', () => {
 	});
 });
 
-describe('escapeHtml', () => {
-	test('escapes < and >', () => {
-		expect(escapeHtml('<div>')).toBe('&lt;div&gt;');
-	});
-	test('escapes &', () => {
-		expect(escapeHtml('a & b')).toBe('a &amp; b');
-	});
-	test('escapes quotes', () => {
-		expect(escapeHtml('"hello"')).toBe('&quot;hello&quot;');
-	});
-});
 
 describe('highlightPlaceholders', () => {
 	test('highlights placeholders in text', () => {
