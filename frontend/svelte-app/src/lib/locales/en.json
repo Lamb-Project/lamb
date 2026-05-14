@@ -222,7 +222,9 @@
       "titleViewEdit": "Assistant Details",
       "name": {
         "label": "Assistant Name",
-        "placeholder": "Enter a unique name (max 20 chars)"
+        "placeholder": "Enter a unique name (max 20 chars)",
+        "willBeSaved": "Will be saved as:",
+        "hint": "Special characters and spaces will be converted to underscores"
       },
       "description": {
         "label": "Description",
@@ -241,7 +243,8 @@
       },
       "promptTemplate": {
         "label": "Prompt Template",
-        "help": "This processor requires a valid prompt template."
+        "help": "This processor requires a valid prompt template.",
+        "placeholder": "e.g. Use the {context} to answer the question: {user_input}"
       },
       "configSection": {
         "title": "Configuration"
@@ -255,6 +258,17 @@
       "llm": {
         "label": "Language Model (LLM)",
         "noneAvailable": "No models available for selected connector"
+      },
+      "vision": {
+        "label": "Enable Vision Capability",
+        "description": "Allow this assistant to process images alongside text messages",
+        "imageToImageDescription": "Allow this assistant to accept images as input for image-to-image generation (editing, style transfer, etc.)"
+      },
+      "imageGeneration": {
+        "label": "Enable Image Generation",
+        "requiredForModel": "This capability is required for the selected model",
+        "requiredForModelPrefix": "Required for this model - ",
+        "geminiDescription": "Allow this assistant to generate images using Google Gemini"
       },
       "ragProcessor": {
         "label": "RAG Processor"
