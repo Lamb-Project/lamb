@@ -234,7 +234,7 @@ class RetryJobRequest(BaseModel):
 logger = get_logger(__name__, component="API")
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Import config module
 import config
@@ -411,7 +411,7 @@ async def get_user_knowledge_bases(request: Request):
         
         # Get owned knowledge bases from the KB server
         knowledge_bases = await kb_server_manager.get_user_knowledge_bases(creator_user)
-        
+
         # Return knowledge bases to the client
         logger.info(f"Returning {len(knowledge_bases)} owned knowledge bases to client")
         return {"knowledge_bases": knowledge_bases}
