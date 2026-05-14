@@ -1,7 +1,6 @@
 // src/lib/components/assistants/assistantFormUtils.svelte.test.js
 import { describe, test, expect, vi } from 'vitest';
 import {
-	createAsyncResource,
 	selectModel,
 	loadRagPlaceholders,
 	extractModelsFromConnectorData,
@@ -9,52 +8,7 @@ import {
 	highlightPlaceholders
 } from './assistantFormUtils.svelte.js';
 
-describe('createAsyncResource', () => {
-	test('initializes with correct default state', () => {
-		const resource = createAsyncResource(vi.fn());
-		expect(resource.data).toEqual([]);
-		expect(resource.loading).toBe(false);
-		expect(resource.error).toBe('');
-		expect(resource.attempted).toBe(false);
-	});
-	test('sets loading during fetch', async () => {
-		const fetcher = vi.fn(
-			() => new Promise((resolve) => setTimeout(() => resolve(['item1']), 10))
-		);
-		const resource = createAsyncResource(fetcher);
-		const fetchPromise = resource.fetch();
-		expect(resource.loading).toBe(true);
-		await fetchPromise;
-		expect(resource.loading).toBe(false);
-		expect(resource.data).toEqual(['item1']);
-		expect(resource.attempted).toBe(true);
-	});
-	test('sets error on fetch failure', async () => {
-		const fetcher = vi.fn(() => Promise.reject(new Error('Network error')));
-		const resource = createAsyncResource(fetcher);
-		await resource.fetch();
-		expect(resource.error).toBe('Network error');
-		expect(resource.attempted).toBe(true);
-		expect(resource.data).toEqual([]);
-	});
-	test('skips fetch if already attempted', async () => {
-		const fetcher = vi.fn(() => Promise.resolve(['data']));
-		const resource = createAsyncResource(fetcher);
-		await resource.fetch();
-		await resource.fetch();
-		expect(fetcher).toHaveBeenCalledTimes(1);
-	});
-	test('reset clears all state', async () => {
-		const fetcher = vi.fn(() => Promise.resolve(['data']));
-		const resource = createAsyncResource(fetcher);
-		await resource.fetch();
-		resource.reset();
-		expect(resource.data).toEqual([]);
-		expect(resource.loading).toBe(false);
-		expect(resource.error).toBe('');
-		expect(resource.attempted).toBe(false);
-	});
-});
+
 
 describe('selectModel', () => {
 	test('selects target LLM when available', () => {
