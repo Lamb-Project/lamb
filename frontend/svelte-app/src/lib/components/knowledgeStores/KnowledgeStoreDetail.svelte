@@ -222,6 +222,35 @@
 		}
 	}
 
+	/**
+	 * Open a permalink in a new tab. Internal /docs/ paths are fetched with
+	 * auth headers and opened via a blob URL; external URLs open directly.
+	 * @param {string} url
+	 */
+	async function openPermalink(url) {
+		if (!url) return;
+		if (url.startsWith('http://') || url.startsWith('https://')) {
+			window.open(url, '_blank', 'noopener,noreferrer');
+			return;
+		}
+		try {
+			const token = localStorage.getItem('userToken');
+			const res = await fetch(url, {
+				headers: token ? { Authorization: `Bearer ${token}` } : {}
+			});
+			if (!res.ok) {
+				queryError = `Could not load content (${res.status})`;
+				return;
+			}
+			const blob = await res.blob();
+			const blobUrl = URL.createObjectURL(blob);
+			const win = window.open(blobUrl, '_blank');
+			if (win) setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+		} catch (err) {
+			queryError = err instanceof Error ? err.message : 'Failed to open content';
+		}
+	}
+
 	async function runQuery() {
 		if (!queryText.trim()) return;
 		querying = true;
@@ -599,14 +628,16 @@
 						if (e.key === 'Enter' && !querying) runQuery();
 					}}
 				/>
-				<input
-					type="number"
-					bind:value={queryTopK}
-					min="1"
-					max="20"
-					class="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm"
-					title={$_('knowledgeStores.topK', { default: 'Top K' })}
-				/>
+				<label class="flex items-center gap-1 text-sm text-gray-600">
+					<span>{$_('knowledgeStores.results', { default: 'Results' })}</span>
+					<input
+						type="number"
+						bind:value={queryTopK}
+						min="1"
+						max="20"
+						class="w-16 rounded-md border border-gray-300 px-2 py-2 text-sm"
+					/>
+				</label>
 				<button
 					type="button"
 					onclick={runQuery}
@@ -639,39 +670,35 @@
 							{#if r.metadata?.permalink_markdown || r.metadata?.permalink_original || r.metadata?.permalink_page}
 								<div class="mt-2 flex gap-3 text-xs">
 									{#if r.metadata.permalink_original}
-										<!-- eslint-disable svelte/no-navigation-without-resolve -->
-										<a
-											href={r.metadata.permalink_original}
+										<button
+											type="button"
 											class="text-[#2271b3] hover:underline"
-											target="_blank"
-											rel="noopener noreferrer"
+											onclick={() => openPermalink(r.metadata.permalink_original)}
 										>
 											{$_('knowledgeStores.permalinks.original', {
 												default: 'Source'
 											})}
-										</a>
+										</button>
 									{/if}
 									{#if r.metadata.permalink_markdown}
-										<a
-											href={r.metadata.permalink_markdown}
+										<button
+											type="button"
 											class="text-[#2271b3] hover:underline"
-											target="_blank"
-											rel="noopener noreferrer"
+											onclick={() => openPermalink(r.metadata.permalink_markdown)}
 										>
 											{$_('knowledgeStores.permalinks.markdown', {
 												default: 'Markdown'
 											})}
-										</a>
+										</button>
 									{/if}
 									{#if r.metadata.permalink_page}
-										<a
-											href={r.metadata.permalink_page}
+										<button
+											type="button"
 											class="text-[#2271b3] hover:underline"
-											target="_blank"
-											rel="noopener noreferrer"
+											onclick={() => openPermalink(r.metadata.permalink_page)}
 										>
 											{$_('knowledgeStores.permalinks.page', { default: 'Page' })}
-										</a>
+										</button>
 									{/if}
 								</div>
 							{/if}
@@ -681,7 +708,6 @@
 			{/if}
 		</div>
 	</div>
-	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 	<!-- Footer metadata -->
 	<div class="text-right text-xs text-gray-400">

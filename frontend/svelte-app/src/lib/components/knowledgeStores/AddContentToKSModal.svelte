@@ -15,7 +15,7 @@
 	import { createEventDispatcher, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { getLibraries, getItems } from '$lib/services/libraryService';
-	import { addContent } from '$lib/services/knowledgeStoreService';
+	import { addContent, listContent } from '$lib/services/knowledgeStoreService';
 	import {
 		saveDraft,
 		clearDraft,
@@ -49,6 +49,8 @@
 	/** @type {any[]} */
 	let items = $state([]);
 	let selectedItemIds = $state(new SvelteSet(/** @type {string[]} */ ([])));
+	/** Set of library_item_ids already linked to this KS (any non-failed status). */
+	let alreadyLinkedIds = $state(new Set(/** @type {string[]} */ ([])));
 	let loadingItems = $state(false);
 	let itemsLibraryId = $state(''); // tracks which lib we last loaded items for
 
@@ -132,13 +134,27 @@
 		loadingItems = true;
 		items = [];
 		try {
-			const data = await getItems(selectedLibraryId, { limit: 200, status: 'ready' });
-			items = data?.items ?? [];
+			const [data, linked] = await Promise.all([
+				getItems(selectedLibraryId, { limit: 200 }),
+				listContent(ksId).catch(() => [])
+			]);
+			alreadyLinkedIds = new Set(
+				linked
+					.filter((/** @type {any} */ l) => l.status !== 'failed')
+					.map((/** @type {any} */ l) => l.library_item_id)
+			);
+			const all = data?.items ?? [];
+			items = [
+				...all.filter((/** @type {any} */ i) => i.status === 'ready' && !alreadyLinkedIds.has(i.id)),
+				...all.filter((/** @type {any} */ i) => i.status === 'ready' && alreadyLinkedIds.has(i.id)),
+				...all.filter((/** @type {any} */ i) => i.status !== 'ready')
+			];
 			itemsLibraryId = selectedLibraryId;
-			// Drop any draft-restored ids that no longer exist in this library.
-			const valid = new Set(items.map((/** @type {any} */ i) => i.id));
-			const filtered = [...selectedItemIds].filter((id) => valid.has(id));
-			selectedItemIds = new SvelteSet(filtered);
+			const selectableIds = new Set(
+				items.filter((/** @type {any} */ i) => i.status === 'ready' && !alreadyLinkedIds.has(i.id)).map((/** @type {any} */ i) => i.id)
+			);
+			const restoredFromDraft = [...selectedItemIds].filter((id) => selectableIds.has(id));
+			selectedItemIds = new SvelteSet(restoredFromDraft.length > 0 ? restoredFromDraft : selectableIds);
 		} catch (/** @type {unknown} */ err) {
 			error = err instanceof Error ? err.message : 'Failed to load items';
 		} finally {
@@ -197,10 +213,13 @@
 	}
 
 	function toggleAllItems() {
-		if (selectedItemIds.size === items.length) {
+		const selectableIds = items
+			.filter((i) => i.status === 'ready' && !alreadyLinkedIds.has(i.id))
+			.map((i) => i.id);
+		if (selectedItemIds.size === selectableIds.length) {
 			selectedItemIds = new SvelteSet();
 		} else {
-			selectedItemIds = new SvelteSet(items.map((i) => i.id));
+			selectedItemIds = new SvelteSet(selectableIds);
 		}
 		markInteracted();
 	}
@@ -269,6 +288,7 @@
 		step = 1;
 		selectedLibraryId = '';
 		selectedItemIds = new SvelteSet();
+		alreadyLinkedIds = new Set();
 		items = [];
 		itemsLibraryId = '';
 		error = '';
@@ -300,7 +320,7 @@
 
 {#if isOpen}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="add-content-title"
@@ -309,7 +329,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="mx-4 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl"
+			class="mx-4 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-2xl ring-1 ring-black/10"
 			onclick={(e) => e.stopPropagation()}
 		>
 			<!-- Header + stepper -->
@@ -476,7 +496,19 @@
 									'This library has no items ready to ingest. Go back and choose a different library, or import content into this one first.'
 							})}
 						</div>
+					{:else if items.filter((i) => i.status === 'ready').length === 0}
+						<div
+							class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+							role="note"
+						>
+							{$_('knowledgeStores.addContentModal.libraryAllFailedHint', {
+								default:
+									'All items in this library have failed to import. Go back and choose a different library.'
+							})}
+						</div>
 					{:else}
+						{@const selectableCount = items.filter((i) => i.status === 'ready' && !alreadyLinkedIds.has(i.id)).length}
+						{@const alreadyLinkedInThisLib = items.filter((i) => i.status === 'ready' && alreadyLinkedIds.has(i.id)).length}
 						<div class="flex items-center justify-between">
 							<span class="text-sm font-medium text-gray-700">
 								{$_('knowledgeStores.addContentModal.itemsLabel', {
@@ -488,36 +520,50 @@
 								onclick={toggleAllItems}
 								class="text-xs text-[#2271b3] hover:underline"
 							>
-								{selectedItemIds.size === items.length
+								{selectedItemIds.size === selectableCount
 									? $_('knowledgeStores.addContentModal.deselectAll', {
 											default: 'Deselect all'
 										})
 									: $_('knowledgeStores.addContentModal.selectAll', { default: 'Select all' })}
 							</button>
 						</div>
+						{#if alreadyLinkedInThisLib > 0}
+							<div
+								class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+								role="note"
+							>
+								{alreadyLinkedInThisLib === 1
+									? $_('knowledgeStores.addContentModal.duplicateWarning1', { default: '1 item is already in this Knowledge Store and will be skipped.' })
+									: $_('knowledgeStores.addContentModal.duplicateWarningN', { default: '{n} items are already in this Knowledge Store and will be skipped.', values: { n: alreadyLinkedInThisLib } })}
+							</div>
+						{/if}
 						<div class="max-h-72 overflow-y-auto rounded border border-gray-200">
 							{#each items as item (item.id)}
+								{@const isFailed = item.status !== 'ready'}
+								{@const isLinked = !isFailed && alreadyLinkedIds.has(item.id)}
+								{@const isDisabled = isFailed || isLinked}
 								<label
-									class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 hover:bg-gray-50"
+									class="flex items-center gap-3 border-b border-gray-100 px-3 py-2 {isDisabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-gray-50'}"
 								>
 									<input
 										type="checkbox"
-										checked={selectedItemIds.has(item.id)}
-										onchange={() => toggleItem(item.id)}
+										disabled={isDisabled}
+										checked={!isDisabled && selectedItemIds.has(item.id)}
+										onchange={() => !isDisabled && toggleItem(item.id)}
 									/>
 									<div class="min-w-0 flex-1">
-										<div class="truncate text-sm font-medium text-gray-900">
+										<div class="truncate text-sm font-medium {isDisabled ? 'text-gray-400' : 'text-gray-900'}">
 											{item.title}
 										</div>
 										<div class="truncate text-xs text-gray-400">
-											{item.source_type} · {item.id}
+											{item.source_type}{isFailed ? ` · failed` : isLinked ? ` · already added` : ''}
 										</div>
 									</div>
 								</label>
 							{/each}
 						</div>
 						<div class="text-xs text-gray-400">
-							{selectedItemIds.size} / {items.length}
+							{selectedItemIds.size} / {selectableCount}
 							{$_('knowledgeStores.addContentModal.selected', { default: 'selected' })}
 						</div>
 					{/if}

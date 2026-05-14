@@ -5,7 +5,7 @@
 -->
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
-	import { getLibraries, deleteLibrary, toggleSharing } from '$lib/services/libraryService';
+	import { getLibraries, deleteLibrary, toggleSharing, getLibraryKbLinks } from '$lib/services/libraryService';
 	import { removeContent as removeKsContent } from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import { user } from '$lib/stores/userStore';
@@ -57,6 +57,7 @@
 	// Delete modal
 	let showDeleteModal = $state(false);
 	let isDeleting = $state(false);
+	let isCheckingBlockers = $state(false);
 	let deleteTarget = $state({ id: '', name: '' });
 	// FR-10: when a library can't be deleted because its items are still in
 	// Knowledge Stores, we surface the blockers inside the delete modal
@@ -85,37 +86,27 @@
 		/** @type {Array<(item: any) => boolean>} */
 		const preds = [];
 		if (sharingFilter === 'my') preds.push((l) => l.is_owner !== false);
-		if (sharingFilter === 'shared') preds.push((l) => l.is_owner === false);
+		if (sharingFilter === 'shared') preds.push((l) => l.is_shared === true);
 		if (hasItemsFilter === 'with-items') preds.push((l) => (l.item_count ?? 0) > 0);
 		if (hasItemsFilter === 'empty') preds.push((l) => (l.item_count ?? 0) === 0);
 		if (createdFilter !== 'any') {
 			const now = Date.now();
 			const DAY = 86400000;
-			const todayStart = now - (now % DAY);
+			// Use local midnight so "Today" matches the user's timezone, not UTC.
+			const localMidnight = new Date();
+			localMidnight.setHours(0, 0, 0, 0);
+			const todayStart = localMidnight.getTime();
+			/** @param {any} l */
+			const ts = (l) =>
+				typeof l.created_at === 'number'
+					? l.created_at * 1000
+					: Date.parse(String(l.created_at));
 			if (createdFilter === 'today') {
-				preds.push((l) => {
-					const t =
-						typeof l.created_at === 'number'
-							? l.created_at * 1000
-							: Date.parse(String(l.created_at));
-					return t >= todayStart;
-				});
+				preds.push((l) => ts(l) >= todayStart);
 			} else if (createdFilter === 'this-week') {
-				preds.push((l) => {
-					const t =
-						typeof l.created_at === 'number'
-							? l.created_at * 1000
-							: Date.parse(String(l.created_at));
-					return now - t <= 7 * DAY;
-				});
+				preds.push((l) => now - ts(l) <= 7 * DAY);
 			} else if (createdFilter === 'this-month') {
-				preds.push((l) => {
-					const t =
-						typeof l.created_at === 'number'
-							? l.created_at * 1000
-							: Date.parse(String(l.created_at));
-					return now - t <= 30 * DAY;
-				});
+				preds.push((l) => now - ts(l) <= 30 * DAY);
 			}
 		}
 		return preds;
@@ -354,10 +345,30 @@
 	}
 
 	/** @param {import('$lib/services/libraryService').Library} lib */
-	function requestDelete(lib) {
+	async function requestDelete(lib) {
 		deleteTarget = { id: lib.id, name: lib.name };
 		deleteError = '';
 		deleteBlockers = [];
+		isCheckingBlockers = true;
+		try {
+			const data = await getLibraryKbLinks(lib.id);
+			const ksNameById = new Map((data.knowledge_stores ?? []).map((/** @type {any} */ k) => [String(k.id), k.name || k.id]));
+			deleteBlockers = (data.items ?? []).map((/** @type {any} */ it) => {
+				const itemId = String(it.id);
+				const ksId = String(it.knowledge_store_id);
+				return {
+					id: `${ksId}::${itemId}`,
+					name: `${it.title} — ${ksNameById.get(ksId) || ksId}`,
+					itemId,
+					ksId,
+					removing: false
+				};
+			});
+		} catch {
+			deleteBlockers = [];
+		} finally {
+			isCheckingBlockers = false;
+		}
 		showDeleteModal = true;
 	}
 
@@ -373,44 +384,7 @@
 			);
 			await loadLibraries();
 		} catch (/** @type {unknown} */ err) {
-			// FR-10: backend returns 409 when items in the library are still
-			// referenced by Knowledge Stores. Render the blockers inside the
-			// modal so the user can remove them one by one and retry.
-			const isAxios = !!(err && typeof err === 'object' && /** @type {any} */ (err).isAxiosError);
-			const status = isAxios ? /** @type {any} */ (err).response?.status : null;
-			const detail = isAxios ? /** @type {any} */ (err).response?.data?.detail : null;
-			if (status === 409 && detail && typeof detail === 'object') {
-				deleteError =
-					typeof detail.message === 'string'
-						? detail.message
-						: $_('libraries.deleteModal.blockedMessage', {
-								default:
-									'This library cannot be deleted: some items are still referenced by Knowledge Stores. Remove them from each Knowledge Store first.'
-							});
-				const ksNameById = new Map();
-				const ksList = Array.isArray(detail.knowledge_stores) ? detail.knowledge_stores : [];
-				for (const k of ksList) {
-					if (k?.id) ksNameById.set(String(k.id), k?.name || k?.id);
-				}
-				const items = Array.isArray(detail.items) ? detail.items : [];
-				deleteBlockers = items.map((/** @type {any} */ it) => {
-					const itemId = String(it?.id || '');
-					const ksId = String(it?.knowledge_store_id || '');
-					const title = it?.title || itemId || 'Untitled item';
-					const ksName = ksNameById.get(ksId) || ksId || 'Knowledge Store';
-					return {
-						id: `${ksId}::${itemId}`,
-						name: `${title} — ${ksName}`,
-						itemId,
-						ksId,
-						removing: false
-					};
-				});
-			} else {
-				// Non-409 errors: surface in the modal too, not in the page
-				// background, so the modal stays the single source of truth.
-				deleteError = err instanceof Error ? err.message : 'Delete failed';
-			}
+			deleteError = err instanceof Error ? err.message : 'Delete failed';
 		} finally {
 			isDeleting = false;
 		}
@@ -714,11 +688,15 @@
 
 <ConfirmationModal
 	bind:isOpen={showDeleteModal}
-	bind:isLoading={isDeleting}
+	isLoading={isDeleting || isCheckingBlockers}
 	title={$_('libraries.deleteModal.title', { default: 'Delete Library' })}
-	message={$_('libraries.deleteModal.message', {
-		default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.`
-	})}
+	message={deleteBlockers.length > 0
+		? $_('libraries.deleteModal.blockedMessage', {
+				default: 'These items are still linked to Knowledge Stores. Remove them first, then the library can be deleted.'
+			})
+		: $_('libraries.deleteModal.message', {
+				default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.`
+			})}
 	confirmText={$_('libraries.deleteModal.confirm', { default: 'Delete' })}
 	cancelText={deleteBlockers.length > 0
 		? $_('common.close', { default: 'Close' })
@@ -727,7 +705,7 @@
 	error={deleteError}
 	blockers={deleteBlockers}
 	blockersTitle={$_('libraries.deleteModal.blockersTitle', {
-		default: 'Items blocking deletion'
+		default: 'Items linked to Knowledge Stores'
 	})}
 	blockerRemoveLabel={$_('libraries.deleteModal.removeFromKs', {
 		default: 'Remove from KS'

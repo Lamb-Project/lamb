@@ -491,13 +491,12 @@ def _item_to_summary(item: ContentItem) -> dict:
         "id": item.id,
         "title": item.title,
         "source_type": item.source_type,
+        "source_url": item.source_url,
         "original_filename": item.original_filename,
         "content_type": item.content_type,
         "file_size": item.file_size,
         "import_plugin": item.import_plugin,
         "status": item.status,
-        # Carried on the summary too so the list view can show *why* a
-        # row is in the ``failed`` state without a per-item detail fetch.
         "error_message": item.error_message,
         "page_count": item.page_count,
         "image_count": item.image_count,

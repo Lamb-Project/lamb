@@ -150,8 +150,8 @@
 
 {#if show}
 	<!-- Modal Overlay -->
-	<div class="bg-opacity-75 fixed inset-0 z-50 flex items-center justify-center bg-gray-500 p-4">
-		<div class="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-xl">
+	<div class="bg-opacity-75 fixed inset-0 z-50 flex items-center justify-center bg-gray-500 p-4" onclick={handleClose}>
+		<div class="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-xl" role="presentation" onclick={(e) => e.stopPropagation()}>
 			{#if currentStep === 'input'}
 				<!-- Step 1: Prompt Input -->
 				<div class="p-6">

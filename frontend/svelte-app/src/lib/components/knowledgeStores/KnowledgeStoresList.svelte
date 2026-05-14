@@ -15,6 +15,7 @@
 	import { processListData } from '$lib/utils/listHelpers';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import CreateKnowledgeStoreModal from '$lib/components/modals/CreateKnowledgeStoreModal.svelte';
+	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
 	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
 	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 
@@ -61,6 +62,9 @@
 	let showDeleteModal = $state(false);
 	let isDeleting = $state(false);
 	let deleteTarget = $state({ id: '', name: '' });
+
+	let showAddContentModal = $state(false);
+	let addContentKsId = $state('');
 
 	// Overflow menu state
 	let openMenuId = $state(/** @type {string|null} */ (null));
@@ -110,8 +114,8 @@
 	let activePredicates = $derived(() => {
 		/** @type {Array<(item: any) => boolean>} */
 		const preds = [];
-		if (sharingFilter === 'my') preds.push((s) => s.is_owner !== false);
-		if (sharingFilter === 'shared') preds.push((s) => s.is_owner === false);
+		if (sharingFilter === 'my') preds.push((s) => s.is_owner !== false && !s.is_shared);
+		if (sharingFilter === 'shared') preds.push((s) => s.is_shared === true);
 		if (embeddingFilter !== 'any') {
 			preds.push((s) => (s.embedding_vendor || '').toLowerCase() === embeddingFilter);
 		}
@@ -428,6 +432,12 @@
 	}
 
 	/** @param {import('$lib/services/knowledgeStoreService').KnowledgeStore} ks */
+	function openAddContent(ks) {
+		addContentKsId = ks.id;
+		showAddContentModal = true;
+	}
+
+	/** @param {import('$lib/services/knowledgeStoreService').KnowledgeStore} ks */
 	function requestDelete(ks) {
 		deleteTarget = { id: ks.id, name: ks.name };
 		showDeleteModal = true;
@@ -658,6 +668,26 @@
 									</svg>
 								</button>
 
+								<!-- Add content -->
+								{#if ks.is_owner !== false}
+									<button
+										type="button"
+										onclick={() => openAddContent(ks)}
+										title={$_('knowledgeStores.addContent', { default: 'Add Content' })}
+										aria-label="{$_('knowledgeStores.addContent', { default: 'Add Content' })} to {ks.name}"
+										class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+									>
+										<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M12 4v16m8-8H4"
+											/>
+										</svg>
+									</button>
+								{/if}
+
 								<!-- Overflow menu -->
 								{#if ks.is_owner !== false}
 									<div class="relative" data-overflow-menu>
@@ -744,6 +774,13 @@
 </EntityListShell>
 
 <CreateKnowledgeStoreModal bind:this={createModal} on:created={handleCreated} />
+
+<AddContentToKSModal
+	bind:isOpen={showAddContentModal}
+	ksId={addContentKsId}
+	on:done={() => { showAddContentModal = false; loadStores(); }}
+	on:close={() => { showAddContentModal = false; }}
+/>
 
 <ConfirmationModal
 	bind:isOpen={showDeleteModal}

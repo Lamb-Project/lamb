@@ -88,6 +88,7 @@ class ContentItemSummary(BaseModel):
     id: str
     title: str
     source_type: str
+    source_url: str | None = None
     original_filename: str | None = None
     content_type: str | None = None
     file_size: int | None = None

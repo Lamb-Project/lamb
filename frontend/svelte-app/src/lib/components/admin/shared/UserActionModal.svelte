@@ -52,8 +52,9 @@
 		class="bg-opacity-50 fixed inset-0 z-50 flex h-full w-full items-center justify-center overflow-y-auto bg-gray-600"
 		role="dialog"
 		aria-modal="true"
+		onclick={onClose}
 	>
-		<div class="relative mx-auto w-full max-w-md rounded-md border bg-white p-5 shadow-lg">
+		<div class="relative mx-auto w-full max-w-md rounded-md border bg-white p-5 shadow-lg" role="presentation" onclick={(e) => e.stopPropagation()}>
 			<div class="mt-3">
 				<!-- Icon -->
 				<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full {iconBgColor}">

@@ -1,17 +1,10 @@
 """OpenAI embedding function plugin.
 
-Wraps ChromaDB's built-in ``OpenAIEmbeddingFunction`` so that the same object
-is accepted both by the ChromaDB collection API and by the Qdrant backend
-(which calls it directly).
+Uses the openai v1 SDK directly — not chromadb's built-in wrapper, which
+targets the old v0 API and raises APIRemovedInV1 with openai>=1.0.0.
 
-API keys are passed per-request and held in memory only (ADR-4).  If an
-``api_key`` is not provided at construction time the plugin falls back to the
-``EMBEDDINGS_APIKEY`` environment variable via :mod:`config`.
-
-The ``api_endpoint`` parameter accepts a full OpenAI-compatible base URL (e.g.
-``"https://api.openai.com/v1"`` or a self-hosted proxy).  If the URL ends with
-``"/embeddings"`` that suffix is stripped because
-``OpenAIEmbeddingFunction`` appends ``/embeddings`` itself.
+API keys are passed per-request (ADR-4). Falls back to the EMBEDDINGS_APIKEY
+env var if no key is provided at call time.
 """
 
 from __future__ import annotations
@@ -27,12 +20,7 @@ logger = logging.getLogger(__name__)
 
 @EmbeddingRegistry.register
 class OpenAIEmbedding(EmbeddingFunction):
-    """OpenAI (or OpenAI-compatible) embedding vendor.
-
-    Delegates to ``chromadb.utils.embedding_functions.OpenAIEmbeddingFunction``
-    so collections created with this function remain fully compatible with
-    ChromaDB's native query path.
-    """
+    """OpenAI (or OpenAI-compatible) embedding vendor using the v1 SDK."""
 
     name = "openai"
     description = "OpenAI embeddings"
@@ -45,28 +33,30 @@ class OpenAIEmbedding(EmbeddingFunction):
         api_endpoint: str = "",
     ) -> None:
         super().__init__(model=model, api_key=api_key, api_endpoint=api_endpoint)
-
-        from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction  # lazy
-
-        resolved_key = api_key or os.getenv("EMBEDDINGS_APIKEY", "")
-        resolved_model = model or "text-embedding-3-small"
-
-        kwargs: dict[str, Any] = {
-            "api_key": resolved_key,
-            "model_name": resolved_model,
-        }
-
-        if api_endpoint:
-            # OpenAIEmbeddingFunction appends /embeddings itself; strip it if
-            # the caller supplied the full embeddings URL by mistake.
-            base = api_endpoint.rstrip("/").removesuffix("/embeddings")
-            kwargs["api_base"] = base
-
-        self._fn = OpenAIEmbeddingFunction(**kwargs)
-        logger.debug("OpenAIEmbedding initialised with model=%s", resolved_model)
+        self._model = model or "text-embedding-3-small"
+        self._api_key = api_key
+        self._api_endpoint = api_endpoint
 
     def __call__(self, input: list[str]) -> list[list[float]]:
-        return self._fn(input)
+        from openai import APIConnectionError, OpenAI
+
+        resolved_key = self._api_key or os.getenv("EMBEDDINGS_APIKEY", "")
+        kwargs: dict[str, Any] = {"api_key": resolved_key or "no-key"}
+        endpoint = self._api_endpoint or "https://api.openai.com/v1"
+        if self._api_endpoint:
+            base = self._api_endpoint.rstrip("/").removesuffix("/embeddings")
+            kwargs["base_url"] = base
+
+        client = OpenAI(**kwargs)
+        try:
+            response = client.embeddings.create(model=self._model, input=input)
+        except APIConnectionError as exc:
+            raise RuntimeError(
+                f"OpenAI embedding: cannot connect to {endpoint} — "
+                "check that the endpoint is running and reachable"
+            ) from exc
+        logger.debug("OpenAIEmbedding: embedded %d texts with model=%s", len(input), self._model)
+        return [item.embedding for item in response.data]
 
     @classmethod
     def class_parameters(cls) -> list[PluginParameter]:

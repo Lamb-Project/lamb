@@ -52,23 +52,15 @@ def _get_client(storage_path: str) -> chromadb.PersistentClient:
 
 
 def _to_chroma_ef(ef: EmbeddingFunction) -> ChromaEmbeddingFunction:
-    """Return a ChromaDB-compatible embedding function.
+    """Return a ChromaDB-compatible adapter for our embedding function.
 
-    ChromaDB 1.5+ requires the embedding function to expose a ``name()``
-    method (not an attribute). Our plugin base uses ``name`` as a class
-    attribute because it doubles as the registry key, so we either:
+    Always wraps via the adapter so our plugin's __call__ is used directly —
+    never chromadb's built-in wrappers, which depend on old SDK versions.
 
-    * unwrap an underlying chromadb-native ``_fn`` if the plugin wraps one
-      (``OpenAIEmbedding``, ``OllamaEmbedding``), or
-    * build a thin adapter that forwards ``__call__`` to our plugin.
-
-    The adapter path is used for plugins that produce embeddings directly
-    (e.g. ``LocalEmbedding`` via sentence-transformers).
+    Exceptions are re-raised as RuntimeError so chromadb's internal
+    ``type(e)(msg)`` re-wrapping in CollectionCommon doesn't break on SDK
+    exception classes whose __init__ doesn't accept a positional message arg.
     """
-    native = getattr(ef, "_fn", None)
-    if isinstance(native, ChromaEmbeddingFunction):
-        return native
-
     plugin_name = getattr(ef.__class__, "name", "custom") or "custom"
 
     class _Adapter(ChromaEmbeddingFunction):  # type: ignore[misc]
@@ -77,7 +69,10 @@ def _to_chroma_ef(ef: EmbeddingFunction) -> ChromaEmbeddingFunction:
             return plugin_name
 
         def __call__(self, input):  # noqa: D401
-            return ef(input)
+            try:
+                return ef(input)
+            except Exception as exc:
+                raise RuntimeError(str(exc)) from exc
 
     return _Adapter()
 
@@ -144,7 +139,6 @@ class ChromaDBBackend(VectorDBBackend):
                 collection_id,
             )
 
-        # Evict the cached client before removing its directory
         _clients.pop(storage_path, None)
         shutil.rmtree(storage_path, ignore_errors=True)
         logger.debug("Removed storage directory: %s", storage_path)
@@ -177,14 +171,20 @@ class ChromaDBBackend(VectorDBBackend):
             embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
         )
 
+        import re as _re
+
         stored = 0
         for batch_start in range(0, len(chunks), _BATCH_SIZE):
             batch = chunks[batch_start : batch_start + _BATCH_SIZE]
-            collection.add(
-                ids=[uuid4().hex for _ in batch],
-                documents=[c.text for c in batch],
-                metadatas=[c.metadata for c in batch],
-            )
+            try:
+                collection.add(
+                    ids=[uuid4().hex for _ in batch],
+                    documents=[c.text for c in batch],
+                    metadatas=[c.metadata for c in batch],
+                )
+            except RuntimeError as exc:
+                msg = _re.sub(r"\s+in \w+\.$", "", str(exc))
+                raise RuntimeError(msg) from exc
             stored += len(batch)
 
         logger.debug(

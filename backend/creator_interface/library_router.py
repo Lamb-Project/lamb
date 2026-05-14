@@ -166,12 +166,14 @@ async def list_libraries(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """List libraries accessible to the current user (owned + shared)."""
-    return {
-        "libraries": _db.get_accessible_libraries(
-            user_id=auth.user.get("id"),
-            organization_id=auth.organization.get("id"),
-        )
-    }
+    user_id = auth.user.get("id")
+    libraries = _db.get_accessible_libraries(
+        user_id=user_id,
+        organization_id=auth.organization.get("id"),
+    )
+    for entry in libraries:
+        entry["is_owner"] = entry.get("owner_user_id") == user_id
+    return {"libraries": libraries}
 
 
 @router.get("/{library_id}")
@@ -602,6 +604,44 @@ async def get_item_original(
         media_type=response.headers.get("content-type", "application/octet-stream"),
         headers={"Content-Disposition": _content_disposition(filename)},
     )
+
+
+@router.get("/{library_id}/kb-links")
+async def get_library_kb_links(
+    library_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List all active (item, KS) links for every item in this library.
+
+    Pre-check used by the UI before showing the delete-confirm modal so it
+    can surface blockers upfront without attempting a delete. Failed ingestions
+    are excluded (FR-10 only blocks on active links).
+
+    Returns:
+        dict: Same shape as the FR-10 409 detail body —
+            ``{"library_id": str, "items": [{id, title, knowledge_store_id}],
+               "knowledge_stores": [{id, name}]}``.
+    """
+    auth.require_library_access(library_id, level="any")
+    links = _db.get_kb_content_links_for_library(library_id)
+    active = [l for l in links if l.get("status") != "failed"]
+    ks_map = {}
+    for l in active:
+        ks_id = str(l.get("knowledge_store_id", ""))
+        if ks_id and ks_id not in ks_map:
+            ks_map[ks_id] = l.get("knowledge_store_name") or ks_id
+    return {
+        "library_id": library_id,
+        "items": [
+            {
+                "id": str(l.get("library_item_id", "")),
+                "title": l.get("item_title") or l.get("library_item_id", ""),
+                "knowledge_store_id": str(l.get("knowledge_store_id", "")),
+            }
+            for l in active
+        ],
+        "knowledge_stores": [{"id": k, "name": v} for k, v in ks_map.items()],
+    }
 
 
 @router.get("/{library_id}/items/{item_id}/kb-links")

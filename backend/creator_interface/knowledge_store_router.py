@@ -94,17 +94,23 @@ def _audit(auth: AuthContext, action: str, target_type: str, target_id: str,
 
 
 def _build_permalinks(org_id: int, library_id: str, item_id: str,
-                      pages_count: int = 0) -> Dict[str, Any]:
+                      pages_count: int = 0,
+                      original_filename: str = None,
+                      source_url: str = None) -> Dict[str, Any]:
     """Build the permalink set sent to the KB Server for a library item.
 
-    All URLs point at LAMB's ``/docs`` permalink proxy (ACL-enforced) — never
-    at the Library Manager directly.
+    ``full_markdown`` always points at LAMB's /docs proxy (ACL-enforced).
+    ``original`` points at the proxied original file for file imports, or the
+    external source URL for web/YouTube imports.
     """
     base = f"/docs/{org_id}/{library_id}/{item_id}"
     permalinks: Dict[str, Any] = {
-        "original": f"{base}/content",
         "full_markdown": f"{base}/content",
     }
+    if original_filename:
+        permalinks["original"] = f"{base}/original/{original_filename}"
+    elif source_url:
+        permalinks["original"] = source_url
     if pages_count:
         permalinks["pages"] = [f"{base}/content/pages/{i + 1}" for i in range(pages_count)]
     return permalinks
@@ -360,6 +366,28 @@ async def toggle_sharing(
 # ======================================================================
 
 
+@router.get("/{ks_id}/content")
+async def list_ks_content(
+    ks_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Return a lightweight list of content links for a Knowledge Store.
+
+    Returns only ``library_item_id`` and ``status`` fields — no KB Server
+    call — so the frontend can quickly determine which items are already
+    linked before the user submits a new ingestion request.
+    """
+    auth.require_knowledge_store_access(ks_id, level="any")
+    links = _db.get_kb_content_links_for_ks(ks_id)
+    return {
+        "ks_id": ks_id,
+        "items": [
+            {"library_item_id": lnk["library_item_id"], "status": lnk["status"]}
+            for lnk in links
+        ],
+    }
+
+
 @router.post("/{ks_id}/content")
 async def add_content(
     ks_id: str,
@@ -461,7 +489,11 @@ async def add_content(
             "source_item_id": item_id,
             "title": title,
             "text": text,
-            "permalinks": _build_permalinks(org_id, body.library_id, item_id, pages_count),
+            "permalinks": _build_permalinks(
+                org_id, body.library_id, item_id, pages_count,
+                original_filename=item_meta.get("original_filename"),
+                source_url=item_meta.get("source_url"),
+            ),
             "pages": [],
             "extra_metadata": {
                 "library_id": body.library_id,

@@ -602,45 +602,17 @@
 				}
 				return;
 			}
-			// Binary: build a blob URL and write a tiny HTML wrapper into the
-			// placeholder. Using <embed> with an explicit MIME type forces
-			// the browser's native viewer (PDF/image/etc.) instead of the
-			// blob-URL navigation path. The objectUrl stays alive until the
-			// tab is closed — revoking earlier breaks the preview.
+			// Binary: navigate directly to the blob URL so the browser's native
+			// viewer handles it (PDF viewer, image viewer, etc.). The objectUrl
+			// stays alive until the tab is closed — revoking it early breaks the view.
 			const objectUrl = URL.createObjectURL(result.blob);
-			const safeTitle = (result.filename || 'original')
-				.replace(/&/g, '&amp;')
-				.replace(/</g, '&lt;')
-				.replace(/>/g, '&gt;')
-				.replace(/"/g, '&quot;');
-			const mime = result.contentType || 'application/octet-stream';
-			const safeMime = mime.replace(/"/g, '');
-			const wrapperHtml = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"/>
-<title>${safeTitle}</title>
-<style>html,body{margin:0;padding:0;height:100%;background:#1f2937;}embed,iframe{display:block;width:100vw;height:100vh;border:0;background:#1f2937;}.bar{position:fixed;top:0;left:0;right:0;font:13px system-ui,sans-serif;background:rgba(0,0,0,.6);color:#fff;padding:6px 12px;z-index:10;display:flex;justify-content:space-between;align-items:center;}a{color:#93c5fd;text-decoration:none;}a:hover{text-decoration:underline;}</style>
-</head><body>
-<div class="bar"><span>${safeTitle}</span><a href="${objectUrl}" download="${safeTitle}">Download</a></div>
-<embed src="${objectUrl}" type="${safeMime}" />
-</body></html>`;
 			if (placeholder) {
-				try {
-					placeholder.document.open();
-					placeholder.document.write(wrapperHtml);
-					placeholder.document.close();
-					opened = true;
-				} catch (writeErr) {
-					// document.write may be blocked in some sandboxed
-					// contexts — fall back to a direct blob URL navigation.
-					console.warn('placeholder.document.write failed', writeErr);
-					placeholder.location.href = objectUrl;
-					opened = true;
-				}
+				placeholder.location.href = objectUrl;
+				opened = true;
 			} else {
 				const fallback = window.open(objectUrl, '_blank');
 				opened = !!fallback;
 				if (!fallback) {
-					// Popup blocked entirely — force a download as a last resort.
 					const a = document.createElement('a');
 					a.href = objectUrl;
 					a.download = result.filename;
@@ -1169,13 +1141,13 @@
 								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
 									>{$_('libraries.items.source', { default: 'Source' })}</th
 								>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="w-24 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
 									>{$_('libraries.items.size', { default: 'Size' })}</th
 								>
 								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
 									>{$_('libraries.items.status', { default: 'Status' })}</th
 								>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="w-28 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
 									>{$_('libraries.items.created', { default: 'Created' })}</th
 								>
 								<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"
@@ -1193,7 +1165,7 @@
 										{/if}
 									</td>
 									<td class="px-4 py-3 text-sm text-gray-500">{item.source_type}</td>
-									<td class="px-4 py-3 text-sm text-gray-500">{formatSize(item.file_size)}</td>
+									<td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatSize(item.file_size)}</td>
 									<td class="px-4 py-3">
 										<span
 											class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {statusBadge(
@@ -1203,7 +1175,7 @@
 											{item.status}
 										</span>
 									</td>
-									<td class="px-4 py-3 text-sm text-gray-500">{formatDate(item.created_at)}</td>
+									<td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatDate(item.created_at)}</td>
 									<td class="px-4 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1">
 											{#if item.status === 'completed' || item.status === 'ready' || item.status === 'failed'}

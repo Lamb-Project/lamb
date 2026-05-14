@@ -216,15 +216,16 @@ export async function addContent(ksId, data) {
 }
 
 /**
- * List linked library items for a Knowledge Store.
+ * List linked library items for a Knowledge Store (lightweight — no KB Server call).
+ * Returns an array of {library_item_id, status} objects.
  * @param {string} ksId
- * @returns {Promise<KSContentLink[]>}
+ * @returns {Promise<Array<{library_item_id: string, status: string}>>}
  */
 export async function listContent(ksId) {
 	if (!browser) throw new Error('Browser only.');
 	const url = getApiUrl(`/knowledge-stores/${ksId}/content`);
 	const response = await axios.get(url, { headers: authHeaders() });
-	return response.data?.content ?? [];
+	return response.data?.items ?? [];
 }
 
 /**

@@ -1,11 +1,7 @@
 """Ollama embedding function plugin.
 
-Wraps ChromaDB's built-in ``OllamaEmbeddingFunction`` so that the same object
-is accepted both by the ChromaDB collection API and by the Qdrant backend
-(which calls it directly).
-
-Ollama must be running locally (or at the configured ``api_endpoint``) and the
-requested model must already be pulled.
+Uses the ollama SDK directly — not chromadb's built-in OllamaEmbeddingFunction,
+which has compatibility issues with newer ollama SDK versions.
 """
 
 from __future__ import annotations
@@ -17,17 +13,12 @@ from plugins.base import EmbeddingFunction, EmbeddingRegistry, PluginParameter
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "nomic-embed-text"
-_DEFAULT_ENDPOINT = "http://localhost:11434/api/embeddings"
+_DEFAULT_ENDPOINT = "http://host.docker.internal:11435/api/embeddings"
 
 
 @EmbeddingRegistry.register
 class OllamaEmbedding(EmbeddingFunction):
-    """Ollama local embedding vendor.
-
-    Delegates to ``chromadb.utils.embedding_functions.OllamaEmbeddingFunction``
-    so collections created with this function remain fully compatible with
-    ChromaDB's native query path.
-    """
+    """Ollama local embedding vendor."""
 
     name = "ollama"
     description = "Ollama local embeddings"
@@ -40,24 +31,33 @@ class OllamaEmbedding(EmbeddingFunction):
         api_endpoint: str = _DEFAULT_ENDPOINT,
     ) -> None:
         super().__init__(model=model, api_key=api_key, api_endpoint=api_endpoint)
-
-        from chromadb.utils.embedding_functions import OllamaEmbeddingFunction  # lazy
-
-        resolved_model = model or _DEFAULT_MODEL
-        resolved_endpoint = api_endpoint or _DEFAULT_ENDPOINT
-
-        self._fn = OllamaEmbeddingFunction(
-            url=resolved_endpoint,
-            model_name=resolved_model,
-        )
-        logger.debug(
-            "OllamaEmbedding initialised with model=%s endpoint=%s",
-            resolved_model,
-            resolved_endpoint,
-        )
+        self._model = model or _DEFAULT_MODEL
+        self._api_endpoint = api_endpoint or _DEFAULT_ENDPOINT
 
     def __call__(self, input: list[str]) -> list[list[float]]:
-        return self._fn(input)
+        import ollama
+
+        base_url = self._api_endpoint.rstrip("/")
+        for suffix in ("/api/embeddings", "/api/embed"):
+            if base_url.endswith(suffix):
+                base_url = base_url[: -len(suffix)]
+                break
+
+        client = ollama.Client(host=base_url)
+
+        try:
+            response = client.embed(model=self._model, input=input)
+            embeddings = response.embeddings
+        except AttributeError:
+            embeddings = [
+                client.embeddings(model=self._model, prompt=text)["embedding"]
+                for text in input
+            ]
+
+        logger.debug(
+            "OllamaEmbedding: embedded %d texts with model=%s", len(input), self._model
+        )
+        return embeddings
 
     @classmethod
     def class_parameters(cls) -> list[PluginParameter]:

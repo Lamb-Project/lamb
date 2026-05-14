@@ -25,6 +25,61 @@ logger = logging.getLogger(__name__)
 LAMB_KB_SERVER_V2 = os.getenv("LAMB_KB_SERVER_V2", "")
 LAMB_KB_SERVER_V2_TOKEN = os.getenv("LAMB_KB_SERVER_V2_TOKEN", "")
 
+# Fallback plugin data used when the KB Server is unreachable or not yet
+# configured.  Mirrors the built-in plugins registered in lamb-kb-server so
+# the creation wizard always has sensible defaults regardless of server state.
+_BUILTIN_BACKENDS: List[Dict[str, Any]] = [
+    {"name": "chromadb"},
+    {"name": "qdrant"},
+]
+
+_BUILTIN_STRATEGIES: List[Dict[str, Any]] = [
+    {
+        "name": "simple",
+        "description": "Recursive character text splitting",
+        "parameters": [
+            {"name": "chunk_size", "type": "int", "description": "Maximum characters per chunk", "default": 1000, "min_value": 50, "max_value": 8000},
+            {"name": "chunk_overlap", "type": "int", "description": "Characters of overlap between adjacent chunks", "default": 200, "min_value": 0, "max_value": 2000},
+        ],
+    },
+    {
+        "name": "hierarchical",
+        "description": "Parent-child header-based chunking",
+        "parameters": [
+            {"name": "parent_chunk_size", "type": "int", "description": "Max characters in a parent section before secondary splitting", "default": 2000, "min_value": 200, "max_value": 16000},
+            {"name": "child_chunk_size", "type": "int", "description": "Max characters in each child chunk (used for embedding)", "default": 400, "min_value": 50, "max_value": 4000},
+        ],
+    },
+    {"name": "by_page", "description": "One chunk per document page", "parameters": []},
+    {"name": "by_section", "description": "Chunk by document section headers", "parameters": []},
+]
+
+_BUILTIN_VENDORS: List[Dict[str, Any]] = [
+    {
+        "name": "openai",
+        "description": "OpenAI embeddings",
+        "parameters": [
+            {"name": "model", "type": "string", "description": "Embedding model name", "default": "text-embedding-3-small"},
+            {"name": "api_endpoint", "type": "string", "description": "Custom OpenAI-compatible base URL (leave empty for api.openai.com)", "default": ""},
+        ],
+    },
+    {
+        "name": "ollama",
+        "description": "Ollama local embeddings",
+        "parameters": [
+            {"name": "model", "type": "string", "description": "Model name", "default": "nomic-embed-text"},
+            {"name": "api_endpoint", "type": "string", "description": "Ollama API endpoint", "default": "http://host.docker.internal:11435/api/embeddings"},
+        ],
+    },
+    {
+        "name": "local",
+        "description": "Local sentence-transformers embeddings (no API key needed)",
+        "parameters": [
+            {"name": "model", "type": "string", "description": "Sentence-Transformers model name or local path", "default": "all-MiniLM-L6-v2"},
+        ],
+    },
+]
+
 
 class KnowledgeStoreClient:
     """Async HTTP client for the new KB Server (port 9092)."""
@@ -369,23 +424,40 @@ class KnowledgeStoreClient:
             Dict with ``vector_db_backends``, ``chunking_strategies``,
             ``embedding_vendors``, ``embedding_models``.
         """
-        config = self._get_ks_config(creator_user)
+        try:
+            config = self._get_ks_config(creator_user)
+        except Exception:
+            config = {
+                "allowed_vector_db_backends": [],
+                "allowed_chunking_strategies": [],
+                "allowed_embedding_vendors": [],
+                "allowed_embedding_models": {},
+            }
         try:
             backends = (await self.get_backends(creator_user)).get("backends", [])
-        except HTTPException:
+        except Exception:
             backends = []
         try:
             strategies = (await self.get_chunking_strategies(creator_user)).get(
                 "strategies", []
             )
-        except HTTPException:
+        except Exception:
             strategies = []
         try:
             vendors = (await self.get_embedding_vendors(creator_user)).get(
                 "vendors", []
             )
-        except HTTPException:
+        except Exception:
             vendors = []
+
+        # Fall back to built-in plugin data when the KB Server is unreachable
+        # or not configured — this ensures the creation wizard always renders.
+        if not backends:
+            backends = _BUILTIN_BACKENDS
+        if not strategies:
+            strategies = _BUILTIN_STRATEGIES
+        if not vendors:
+            vendors = _BUILTIN_VENDORS
 
         allowed_backends = config["allowed_vector_db_backends"]
         allowed_strategies = config["allowed_chunking_strategies"]
@@ -425,7 +497,11 @@ class KnowledgeStoreClient:
                         provider_cfg = resolver.get_provider_config(vendor_name) or {}
                     except Exception:
                         provider_cfg = {}
-                    vendor["api_key_configured"] = bool(provider_cfg) or vendor_name == "local"
+                    # ollama needs no API key (just a reachable base URL), so
+                    # treat it like "local" — always selectable.
+                    vendor["api_key_configured"] = (
+                        bool(provider_cfg) or vendor_name in ("local", "ollama")
+                    )
                     try:
                         org_endpoint = resolver.get_provider_endpoint(vendor_name) or ""
                     except ValueError:

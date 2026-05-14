@@ -18,8 +18,7 @@ dependencies = [
     # HTTP client (shared helper usage)
     "requests>=2.31.0",
 
-    # Default vector backend (ChromaDB) — always included.
-    "chromadb>=0.6.3",
+    "chromadb>=0.5.0,<0.6.0",
 
     # Chunking — aligned with lamb-kb-server-stable defaults.
     "langchain-text-splitters>=0.3.0,<0.4.0",

@@ -412,6 +412,17 @@ export async function getItemKbLinks(libraryId, itemId) {
 }
 
 /**
+ * @param {string} libraryId
+ * @returns {Promise<{ library_id: string, items: Array<{ id: string, title: string, knowledge_store_id: string }>, knowledge_stores: Array<{ id: string, name: string }> }>}
+ */
+export async function getLibraryKbLinks(libraryId) {
+    if (!browser) throw new Error('Browser only.');
+    const url = getApiUrl(`/libraries/${libraryId}/kb-links`);
+    const response = await axios.get(url, { headers: authHeaders() });
+    return response.data;
+}
+
+/**
  * Get the import status for an item.
  * @param {string} libraryId
  * @param {string} itemId
