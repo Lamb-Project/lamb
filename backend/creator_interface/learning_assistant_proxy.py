@@ -226,7 +226,19 @@ async def proxy_assistant_chat(
         logger.info(f"Processing {'streaming' if stream_mode else 'non-streaming'} "
                    f"completion for user {creator_user['email']} with assistant {assistant_id}")
         
-        # 9. Call internal completion system
+        # 9. Inject user identity into request body for Moodle tool resolution
+        # This mimics the __openwebui_headers__ that Open WebUI would normally send,
+        # so that tools like get_moodle_courses can resolve the Moodle user ID from email.
+        creator_email = creator_user.get('email', '')
+        creator_name = creator_user.get('name', '')
+        body['__openwebui_headers__'] = {
+            'x-openwebui-user-email': creator_email,
+            'x-openwebui-user-name': creator_name,
+            'x-openwebui-user-id': str(creator_user.get('id', '')),
+        }
+        logger.debug(f"Injected user identity into request body for Moodle tool resolution: email={creator_email}")
+
+        # 10. Call internal completion system
         response = await run_lamb_assistant(
             request=body,
             assistant=assistant_id,
@@ -236,7 +248,7 @@ async def proxy_assistant_chat(
         logger.info(f"Successfully processed completion for user {creator_user['email']} "
                    f"with assistant {assistant_id}")
         
-        # 10. Handle response based on streaming mode
+        # 11. Handle response based on streaming mode
         if stream_mode and isinstance(response, StreamingResponse):
             # Wrap streaming response to capture and save content
             if persist_chat and chat_id:
