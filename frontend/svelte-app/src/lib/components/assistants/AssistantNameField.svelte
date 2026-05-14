@@ -6,7 +6,8 @@
 	let {
 		value = $bindable(''),
 		formState,
-		onchange
+		/** @type {(event: Event) => void} */
+		oninput
 	} = $props();
 
 	let sanitizedNameInfo = $derived(sanitizeName(value));
@@ -34,7 +35,7 @@
 			name="name"
 			bind:value
 			disabled={false}
-			oninput={onchange}
+			oninput={oninput}
 			class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 			placeholder={$_('assistants.form.name.placeholder')}
 		/>

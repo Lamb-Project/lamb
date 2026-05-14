@@ -12,7 +12,8 @@
 		ragPlaceholders = [],
 		selectedPromptProcessor = '',
 		formState,
-		onchange,
+		/** @type {(event: Event) => void} */
+		oninput,
 		onTemplateApplied
 	} = $props();
 
@@ -72,7 +73,7 @@
 		id="system-prompt"
 		name="system_prompt"
 		bind:value={systemPrompt}
-		oninput={onchange}
+		oninput={oninput}
 		rows="4"
 		disabled={false}
 		class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
@@ -103,7 +104,7 @@
 	<textarea
 		bind:this={textareaRef}
 		bind:value={promptTemplate}
-		oninput={onchange}
+		oninput={oninput}
 		id="prompt_template"
 		rows="6"
 		class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
