@@ -193,3 +193,5 @@ aac_logs/
 
 # Worktrees
 .worktrees/
+.agents/
+skills-lock.json
