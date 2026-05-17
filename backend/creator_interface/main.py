@@ -148,7 +148,7 @@ router.include_router(library_router, prefix="/libraries")
 # Include the Knowledge Store router (new KB Server, port 9092). Distinct
 # from the legacy /knowledgebases routes which serve the stable KB Server.
 router.include_router(knowledge_store_router, prefix="/knowledge-stores")
-# Graph + benchmark proxy. Mounted on the same prefix so the frontend
+# KG-RAG graph proxy. Mounted on the same prefix so the frontend
 # can keep ``/creator/knowledge-stores/...`` as the only KB-related base.
 router.include_router(
     knowledge_store_graph_router, prefix="/knowledge-stores"

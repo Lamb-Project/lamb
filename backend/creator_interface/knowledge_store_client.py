@@ -254,6 +254,9 @@ class KnowledgeStoreClient:
         chunking_params: Dict[str, Any] = None,
         embedding_endpoint: str = "",
         graph_enabled: bool = False,
+        extraction_vendor: Optional[str] = None,
+        extraction_model: Optional[str] = None,
+        extraction_endpoint: Optional[str] = None,
         creator_user: Dict[str, Any] = None,
     ) -> Dict:
         """Create a collection on the KB Server.
@@ -277,7 +280,21 @@ class KnowledgeStoreClient:
             "vector_db_backend": vector_db_backend,
             "graph_enabled": bool(graph_enabled),
         }
+        # Extraction config is only persisted when graph is enabled.
+        if graph_enabled and (extraction_vendor or extraction_model):
+            payload["extraction"] = {
+                "vendor": extraction_vendor or None,
+                "model": extraction_model or None,
+                "api_endpoint": extraction_endpoint or None,
+            }
         return await self._request("POST", "/collections", config, json=payload)
+
+    async def get_llm_vendors(
+        self, creator_user: Dict[str, Any] = None
+    ) -> Dict:
+        """Fetch registered LLM extraction vendors from kb-v2."""
+        config = self._get_ks_config(creator_user)
+        return await self._request("GET", "/llm-vendors", config)
 
     async def get_collection(self, knowledge_store_id: str,
                              creator_user: Dict[str, Any] = None) -> Dict:
@@ -479,36 +496,6 @@ class KnowledgeStoreClient:
             config,
             params=params or {},
         )
-
-    async def run_benchmark(
-        self,
-        knowledge_store_id: str,
-        body: Dict[str, Any],
-        embedding_api_key: str = "",
-        embedding_api_endpoint: str = "",
-        creator_user: Dict[str, Any] = None,
-    ) -> Dict:
-        """Run a single benchmark dataset against a Knowledge Store."""
-        config = self._get_ks_config(creator_user)
-        payload = {
-            **body,
-            "embedding_credentials": {
-                "api_key": embedding_api_key or "",
-                "api_endpoint": embedding_api_endpoint or "",
-            },
-        }
-        return await self._request(
-            "POST",
-            f"/benchmarks/collections/{knowledge_store_id}/run",
-            config,
-            json=payload,
-        )
-
-    async def list_benchmark_datasets(
-        self, creator_user: Dict[str, Any] = None
-    ) -> Dict:
-        config = self._get_ks_config(creator_user)
-        return await self._request("GET", "/benchmarks/datasets", config)
 
     async def graph_concept_rename(
         self,

@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BenchmarkQuestion(BaseModel):
@@ -88,6 +88,17 @@ class EmbeddingCredentialsBody(BaseModel):
 
 
 class BenchmarkRunRequest(BaseModel):
+    """Body for a single benchmark run.
+
+    Extra fields are allowed so callers can pass plugin-specific
+    tuning knobs (``rrf_k``, ``graph_weight``, ``graph_limit_factor``)
+    without requiring a schema change. ``BenchmarkService.run``
+    forwards any recognised extra field to the KG-RAG plugin via
+    ``plugin_params``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
     dataset_id: Optional[str] = Field(
         "educational", description="Built-in dataset ID to use when questions are omitted"
     )

@@ -2255,7 +2255,11 @@ class GraphStore:
                 collection_id=collection_id,
                 org_id=org_id,
                 file_id=file_id,
-                filename=filename,
+                # Prefer the per-chunk filename from metadata so each
+                # chunk keeps the source document it came from. Falls
+                # back to the batch-level filename only if the chunk
+                # didn't carry its own (e.g. legacy ingestion paths).
+                filename=str(metadata.get("filename") or filename),
                 text=chunk.text,
                 parent_text=chunk.parent_text,
                 section_title=str(metadata.get("section_title") or "Document"),
@@ -2362,19 +2366,34 @@ class GraphStore:
                 warning="Neo4j is not configured or available; KG expansion skipped",
             )
 
+        # ``MAX_ENTRY_MENTIONS`` filters out highly-cited concepts: a
+        # concept that appears in N+ chunks (e.g. "World War II",
+        # "United States") behaves as a stop-word in the graph — it
+        # would expand to dozens of unrelated chunks that share only a
+        # generic theme. The threshold is conservative because the
+        # extractor caps each chunk at 12 entities, so a truly specific
+        # bridging concept rarely exceeds ~10 mentions in a
+        # benchmark-sized corpus.
+        MAX_ENTRY_MENTIONS = 20
+
         with self.driver.session() as session:
             entry_rows = session.run(
                 """
                 MATCH (chunk:Chunk {collection_id: $collection_id})-[:MENTIONS]->(concept:Concept {org_id: $org_id})
                 WHERE chunk.chunk_id IN $seed_chunk_ids
-                                    AND coalesce(concept.verification_state, '') <> 'rejected'
-                RETURN concept.name AS name, count(*) AS mentions
+                  AND concept.verification_state = 'verified'
+                WITH concept, count(*) AS local_mentions
+                OPTIONAL MATCH (concept)<-[:MENTIONS]-(global:Chunk {collection_id: $collection_id})
+                WITH concept, local_mentions, count(global) AS total_mentions
+                WHERE total_mentions <= $max_total_mentions
+                RETURN concept.name AS name, local_mentions AS mentions
                 ORDER BY mentions DESC, name ASC
                 LIMIT 8
                 """,
                 collection_id=collection_id,
                 org_id=org_id,
                 seed_chunk_ids=seed_chunk_ids,
+                max_total_mentions=MAX_ENTRY_MENTIONS,
             ).data()
             entry_concepts = [row["name"] for row in entry_rows]
 
@@ -2387,8 +2406,8 @@ class GraphStore:
                 MATCH path=(entry)-[:RELATES_TO*1..{depth}]-(related:Concept {{org_id: $org_id}})
                 WHERE related.name <> entry.name
                   AND all(rel IN relationships(path) WHERE rel.collection_id = $collection_id)
-                                    AND all(node IN nodes(path) WHERE coalesce(node.verification_state, '') <> 'rejected')
-                                    AND all(rel IN relationships(path) WHERE coalesce(rel.verification_state, '') <> 'rejected')
+                                    AND all(node IN nodes(path) WHERE node.verification_state = 'verified')
+                                    AND all(rel IN relationships(path) WHERE rel.verification_state = 'verified')
                 WITH entry, related, path,
                      length(path) AS hops,
                      reduce(score = 0.0, rel IN relationships(path) |
@@ -2417,7 +2436,7 @@ class GraphStore:
                 """
                 MATCH (concept:Concept {org_id: $org_id})<-[:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
                 WHERE concept.name IN $entry_concepts
-                                    AND coalesce(concept.verification_state, '') <> 'rejected'
+                                    AND concept.verification_state = 'verified'
                 RETURN chunk.chunk_id AS chunk_id,
                        count(*) AS mentions,
                        min(chunk.source_label) AS source_label
@@ -2473,6 +2492,124 @@ class GraphStore:
             "expanded_chunk_ids": chunk_ids[:limit],
             "traversed_edges": self._dedupe_edges(edges),
             "latest_changes": changes,
+            "graph_latency_ms": (time.perf_counter() - start) * 1000,
+        }
+
+    def expand_from_concept_names(
+        self,
+        collection_id: str,
+        org_id: str,
+        concept_names: List[str],
+        depth: int,
+        limit: int,
+    ) -> Dict[str, Any]:
+        """Local-search-style expansion seeded directly by concept names.
+
+        Unlike :meth:`expand_from_chunks`, which discovers entry concepts
+        via the seed chunks' MENTIONS edges, this method takes concept
+        names directly (after :func:`normalize_concept`) and returns the
+        chunks that mention any of them or any concept reachable via
+        ``RELATES_TO*1..depth``.
+
+        This is the entry point for question-entity seeding: the caller
+        extracts named-entity-like tokens from the question text and
+        passes them here so the graph can contribute results even when
+        the vector baseline missed every gold chunk.
+        """
+        depth = max(1, min(int(depth or 2), 4))
+        limit = max(1, int(limit or 10))
+        start = time.perf_counter()
+        normalized = sorted({normalize_concept(n) for n in concept_names if n})
+        normalized = [n for n in normalized if n]
+        if not normalized:
+            return self._empty_expansion(start)
+        if not self.ensure_schema():
+            return self._empty_expansion(
+                start,
+                warning="Neo4j is not configured or available; KG expansion skipped",
+            )
+
+        with self.driver.session() as session:
+            # Filter out highly-mentioned concepts: a question entity that
+            # is mentioned by N+ chunks in the collection is too generic
+            # to be a useful seed (e.g. "radar station" in a HotPotQA
+            # corpus of Wikipedia paragraphs). Specific named entities
+            # typically appear in ≤10 chunks.
+            MAX_MENTIONS_PER_CONCEPT = 25
+
+            matched_rows = session.run(
+                """
+                MATCH (concept:Concept {org_id: $org_id})
+                WHERE concept.name IN $names
+                  AND concept.verification_state = 'verified'
+                OPTIONAL MATCH (concept)<-[:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
+                WITH concept, count(chunk) AS mentions
+                WHERE mentions > 0 AND mentions <= $max_mentions
+                RETURN concept.name AS name, mentions
+                ORDER BY mentions ASC
+                """,
+                org_id=org_id,
+                names=normalized,
+                collection_id=collection_id,
+                max_mentions=MAX_MENTIONS_PER_CONCEPT,
+            ).data()
+            entry_concepts = [r["name"] for r in matched_rows]
+            if not entry_concepts:
+                return self._empty_expansion(start)
+
+            chunk_ids: List[str] = []
+            seen: Set[str] = set()
+
+            def _add(cid: str) -> None:
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    chunk_ids.append(cid)
+
+            direct = session.run(
+                """
+                MATCH (concept:Concept {org_id: $org_id})<-[:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
+                WHERE concept.name IN $entry
+                RETURN chunk.chunk_id AS chunk_id, count(*) AS mentions
+                ORDER BY mentions DESC
+                LIMIT $limit
+                """,
+                org_id=org_id,
+                collection_id=collection_id,
+                entry=entry_concepts,
+                limit=limit,
+            ).data()
+            for row in direct:
+                _add(row["chunk_id"])
+
+            related_query = f"""
+                MATCH (entry:Concept {{org_id: $org_id}})
+                WHERE entry.name IN $entry
+                MATCH path = (entry)-[:RELATES_TO*1..{depth}]-(related:Concept {{org_id: $org_id}})
+                WHERE related.name <> entry.name
+                  AND all(rel IN relationships(path) WHERE rel.collection_id = $collection_id)
+                  AND all(node IN nodes(path) WHERE node.verification_state = 'verified')
+                  AND all(rel IN relationships(path) WHERE rel.verification_state = 'verified')
+                WITH related, length(path) AS hops
+                ORDER BY hops ASC
+                LIMIT $limit
+                OPTIONAL MATCH (related)<-[:MENTIONS]-(chunk:Chunk {{collection_id: $collection_id}})
+                RETURN DISTINCT chunk.chunk_id AS chunk_id
+            """
+            related = session.run(
+                related_query,
+                org_id=org_id,
+                collection_id=collection_id,
+                entry=entry_concepts,
+                limit=limit,
+            ).data()
+            for row in related:
+                _add(row.get("chunk_id"))
+
+        return {
+            "entry_concepts": entry_concepts,
+            "expanded_chunk_ids": chunk_ids[:limit],
+            "traversed_edges": [],
+            "latest_changes": [],
             "graph_latency_ms": (time.perf_counter() - start) * 1000,
         }
 

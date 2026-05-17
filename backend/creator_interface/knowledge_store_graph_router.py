@@ -1,13 +1,15 @@
 """Creator-Interface proxy for KG-RAG / semantic-graph endpoints.
 
-Routes mount at ``/creator/knowledge-stores/{ks_id}/graph/...`` and
-``/creator/knowledge-stores/{ks_id}/benchmarks/...``. Each call resolves
-the per-org KB Server URL/token through ``KnowledgeStoreClient`` and
-proxies to the new KB Server's ``/graph`` and ``/benchmarks`` routers.
+Routes mount at ``/creator/knowledge-stores/{ks_id}/graph/...``. Each call
+resolves the per-org KB Server URL/token through ``KnowledgeStoreClient``
+and proxies to the new KB Server's ``/graph`` router.
 
-The KB Server only exposes those routers when ``KG_RAG_ENABLED=true``; if
-the flag is off the proxy will return 503 from the KB Server. The
-frontend uses ``/graph/status`` to gate its UI accordingly.
+Benchmark runs are no longer exposed through the UI — they live as
+standalone scripts that hit the KB Server's ``/benchmarks`` router
+directly (see ``memoria/run_*_bench.py``). The KB Server only exposes
+the graph router when ``KG_RAG_ENABLED=true``; if the flag is off the
+proxy will return 503. The frontend uses ``/graph/status`` to gate its
+UI accordingly.
 """
 
 from __future__ import annotations
@@ -117,7 +119,7 @@ async def get_graph_snapshot(
     chunk_id: Optional[str] = Query(default=None),
     filename: Optional[str] = Query(default=None),
     include_chunks: bool = Query(default=True),
-    limit: int = Query(default=60, ge=1, le=200),
+    limit: int = Query(default=60, ge=1, le=10000),
     auth: AuthContext = Depends(get_auth_context),
 ):
     _assert_ks_access(ks_id, auth)
@@ -282,52 +284,5 @@ async def curate_relationship(
     )
 
 
-# ----------------------------------------------------------------------
-# Benchmarks
-# ----------------------------------------------------------------------
 
 
-class BenchmarkRunBody(BaseModel):
-    dataset_id: Optional[str] = "educational"
-    top_k: Optional[int] = None
-    graph_depth: Optional[int] = None
-    threshold: float = 0.0
-
-
-@router.get("/benchmarks/datasets")
-async def list_benchmark_datasets(
-    auth: AuthContext = Depends(get_auth_context),
-):
-    return await _client.list_benchmark_datasets(creator_user=auth.user)
-
-
-@router.post("/{ks_id}/benchmarks/run")
-async def run_benchmark(
-    ks_id: str,
-    body: BenchmarkRunBody,
-    auth: AuthContext = Depends(get_auth_context),
-):
-    _assert_ks_access(ks_id, auth)
-    from lamb.completions.org_config_resolver import OrganizationConfigResolver
-    resolver = OrganizationConfigResolver(auth.user.get("email"))
-    # Resolve embedding key the same way ingestion does, so the benchmark
-    # baseline vector pass works without the caller threading creds.
-    ks = _db.get_knowledge_store(ks_id)
-    embedding_api_key = ""
-    embedding_api_endpoint = ""
-    try:
-        embedding_api_key = (
-            resolver.get_provider_api_key(ks.get("embedding_vendor")) or ""
-        )
-        embedding_api_endpoint = (
-            resolver.get_provider_endpoint(ks.get("embedding_vendor")) or ""
-        )
-    except Exception:  # noqa: BLE001
-        embedding_api_key = ""
-    return await _client.run_benchmark(
-        knowledge_store_id=ks_id,
-        body=body.model_dump(exclude_none=True),
-        embedding_api_key=embedding_api_key,
-        embedding_api_endpoint=embedding_api_endpoint,
-        creator_user=auth.user,
-    )

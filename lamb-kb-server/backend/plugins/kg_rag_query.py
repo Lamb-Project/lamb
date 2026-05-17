@@ -124,24 +124,74 @@ class KGRAGQueryPlugin:
             trace["graph_latency_ms"] = (time.perf_counter() - graph_start) * 1000
             return self._attach_trace(baseline_results, trace, include_trace)
 
+        # Question-entity seeding: extract named-entity-like tokens from
+        # the question itself and let the graph contribute chunks that
+        # MENTION them, even if vector retrieval missed those chunks.
+        # This is the ``local search'' pattern from Microsoft GraphRAG.
+        # The expansion is intentionally limited (a few chunks per
+        # entity, only specific entities with ≤25 mentions) to avoid
+        # flooding the candidate set with chunks that mention common
+        # nouns.
+        question_entities = self._extract_question_entities(query_text)
+        question_expansion: dict[str, Any] = {}
+        if question_entities:
+            try:
+                question_expansion = graph_store.expand_from_concept_names(
+                    collection_id=str(collection.id),
+                    org_id=str(collection.organization_id),
+                    concept_names=question_entities,
+                    depth=graph_depth,
+                    limit=max(top_k, 2 * top_k),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Question-entity expansion failed: %s", exc)
+
+        # Decide which expansion arms contribute. Chunk-seeded
+        # expansion can be useful when the question is short and
+        # ambiguous, but it tends to inflate noise on
+        # encyclopedic / Wikipedia-style corpora because shared
+        # high-frequency entities (``World War II``, ``United
+        # States``) connect unrelated chunks. Toggleable via
+        # ``params.use_chunk_expansion``.
+        use_chunk_expansion = self._as_bool(
+            params.get("use_chunk_expansion", False)
+        )
+
+        merged_entry_concepts = list(
+            dict.fromkeys(
+                question_expansion.get("entry_concepts", [])
+                + (expansion.get("entry_concepts", []) if use_chunk_expansion else [])
+            )
+        )
+        # Question-entity expansion ranks first: those chunks were
+        # reached via question-derived concepts, so their precision is
+        # higher than the chunk-seeded expansion which can drift via
+        # generic shared entities.
+        merged_expanded_ids = list(
+            dict.fromkeys(
+                question_expansion.get("expanded_chunk_ids", [])
+                + (expansion.get("expanded_chunk_ids", []) if use_chunk_expansion else [])
+            )
+        )
+
         trace.update(
             {
-                "graph_expanded": bool(expansion.get("expanded_chunk_ids")),
-                "entry_concepts": expansion.get("entry_concepts", []),
+                "graph_expanded": bool(merged_expanded_ids),
+                "entry_concepts": merged_entry_concepts,
                 "traversed_edges": expansion.get("traversed_edges", []),
-                "expanded_chunk_ids": expansion.get("expanded_chunk_ids", []),
+                "expanded_chunk_ids": merged_expanded_ids,
                 "latest_changes": expansion.get("latest_changes", []),
+                "question_entities": question_entities,
                 "graph_latency_ms": expansion.get(
                     "graph_latency_ms",
                     (time.perf_counter() - graph_start) * 1000,
-                ),
+                )
+                + question_expansion.get("graph_latency_ms", 0.0),
             }
         )
 
         expanded_ids = [
-            cid
-            for cid in expansion.get("expanded_chunk_ids", [])
-            if cid not in seed_chunk_ids
+            cid for cid in merged_expanded_ids if cid not in seed_chunk_ids
         ]
         expanded_results = self._fetch_expanded_results(
             backend=backend,
@@ -151,10 +201,113 @@ class KGRAGQueryPlugin:
             return_parent_context=return_parent_context,
         )
 
-        merged = self._merge_results(baseline_results + expanded_results, top_k=top_k)
+        merged = self._rrf_merge(
+            baseline_results=baseline_results,
+            expanded_results=expanded_results,
+            top_k=top_k,
+            rrf_k=int(params.get("rrf_k", 40) or 40),
+            graph_weight=float(params.get("graph_weight", 0.5) or 0.5),
+        )
         if not expanded_results and not trace["graph_expanded"]:
             trace["warnings"].append("Graph returned no additional chunks")
         return self._attach_trace(merged, trace, include_trace)
+
+    # ------------------------------------------------------------------
+    # Question-entity extraction (LLM-based)
+    # ------------------------------------------------------------------
+    #
+    # Pulling named entities from a free-text question is the exact kind
+    # of short, structured task small LLMs handle reliably. The previous
+    # regex-based heuristic missed lowercased multi-word entities
+    # (``unsupervised learning``, ``parent-child chunking``) and accepted
+    # any capitalized token as if it were a name. A single small-model
+    # call with a JSON-schema prompt is more accurate, costs cents per
+    # thousand queries on ``gpt-4o-mini``, and finishes in well under
+    # 500~ms, comparable to the embedding round-trip.
+    #
+    # The call is cached per-question text inside this process so
+    # benchmark re-runs and identical user queries don't pay the round
+    # trip twice. The cache is bounded by ``_QUESTION_CACHE_SIZE`` and
+    # uses simple FIFO eviction.
+
+    _QUESTION_CACHE_SIZE = 512
+    _question_cache: dict[str, list[str]] = {}
+
+    @classmethod
+    def _extract_question_entities(cls, question: str) -> list[str]:
+        """Use a small LLM to extract named entities from the question.
+
+        Returns an empty list if the OpenAI client isn't configured or
+        the call fails — the graph expansion silently degrades to the
+        baseline-seeded path in that case.
+        """
+        question = (question or "").strip()
+        if not question:
+            return []
+        if question in cls._question_cache:
+            return cls._question_cache[question]
+
+        try:
+            import openai  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            return []
+
+        import config as config_module  # noqa: PLC0415
+
+        kg = config_module.get_kg_rag_config()
+        api_key = (kg.get("openai_api_key") or "").strip()
+        if not api_key:
+            return []
+
+        # Use a small/fast model. ``KG_RAG_QUESTION_EXTRACTION_MODEL``
+        # overrides; otherwise fall back to the chat model already used
+        # by the extractor (typically gpt-4o-mini).
+        import os  # noqa: PLC0415
+
+        model = os.getenv("KG_RAG_QUESTION_EXTRACTION_MODEL") or (
+            kg.get("chat_model") or "gpt-4o-mini"
+        )
+
+        client = openai.OpenAI(api_key=api_key, timeout=15.0)
+        prompt = (
+            "Extract every named entity from the user question. "
+            "Return STRICT JSON of the form {\"entities\": [\"...\", \"...\"]}. "
+            "Keep multi-word names whole. Lowercase common nouns are fine if "
+            "they would plausibly identify a knowledge-graph concept (e.g. "
+            "'parent-child chunking', 'reciprocal rank fusion'). "
+            "Do not output entity types, descriptions or explanations — only "
+            "the surface strings."
+        )
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": question},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+            )
+            raw = resp.choices[0].message.content or "{}"
+            import json as _json  # noqa: PLC0415
+
+            data = _json.loads(raw)
+            entities = data.get("entities") or []
+            if not isinstance(entities, list):
+                entities = []
+            entities = [str(e).strip() for e in entities if str(e).strip()]
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Question-entity LLM extraction failed: %s", exc)
+            entities = []
+
+        # FIFO cache eviction
+        if len(cls._question_cache) >= cls._QUESTION_CACHE_SIZE:
+            try:
+                cls._question_cache.pop(next(iter(cls._question_cache)))
+            except StopIteration:
+                pass
+        cls._question_cache[question] = entities
+        return entities
 
     # ------------------------------------------------------------------
     # Internals
@@ -229,24 +382,64 @@ class KGRAGQueryPlugin:
             )
         return results
 
-    def _merge_results(
-        self, results: list[dict[str, Any]], top_k: int
+    def _rrf_merge(
+        self,
+        *,
+        baseline_results: list[dict[str, Any]],
+        expanded_results: list[dict[str, Any]],
+        top_k: int,
+        rrf_k: int = 60,
+        graph_weight: float = 0.6,
     ) -> list[dict[str, Any]]:
-        by_chunk_id: dict[str, dict[str, Any]] = {}
-        for result in results:
-            chunk_id = self._result_chunk_id(result) or str(result.get("data", ""))[:120]
-            existing = by_chunk_id.get(chunk_id)
-            if existing is None or float(result.get("similarity", 0.0)) > float(
-                existing.get("similarity", 0.0)
-            ):
-                by_chunk_id[chunk_id] = result
+        """Reciprocal Rank Fusion of the vector baseline and the graph expansion.
 
-        ordered = sorted(
-            by_chunk_id.values(),
-            key=lambda item: float(item.get("similarity", 0.0)),
-            reverse=True,
-        )
-        return ordered[: max(top_k, 1) + 3]
+        Standard RRF assigns each item a score of ``1/(rrf_k + rank)`` per
+        ranked list it appears in, and sums across lists. Items appearing
+        in *both* the vector list and the graph-expanded list get boosted
+        (the graph confirms the vector signal), which is exactly the
+        regime where KG-RAG should beat the baseline.
+
+        The graph list contributes with a smaller weight (``graph_weight``)
+        because chunks in the expanded list have no semantic similarity
+        score against the query --- they were reached via concept
+        traversal. The weight prevents pure-graph hits from displacing
+        the highest-rank vector hits when the vector signal is already
+        unambiguous.
+
+        Each result's ``similarity`` field is replaced with the fused
+        score so downstream merging / sorting remains consistent.
+        """
+        rankings: dict[str, dict[str, Any]] = {}
+
+        def _accumulate(items, weight, list_name):
+            for rank, item in enumerate(items, start=1):
+                chunk_id = self._result_chunk_id(item) or str(item.get("data", ""))[:120]
+                entry = rankings.setdefault(
+                    chunk_id,
+                    {
+                        "item": item,
+                        "score": 0.0,
+                        "lists": set(),
+                    },
+                )
+                entry["score"] += weight * (1.0 / (rrf_k + rank))
+                entry["lists"].add(list_name)
+                if list_name == "baseline" or "item" not in entry:
+                    entry["item"] = item
+
+        _accumulate(baseline_results, weight=1.0, list_name="baseline")
+        _accumulate(expanded_results, weight=graph_weight, list_name="graph")
+
+        ordered = sorted(rankings.values(), key=lambda e: e["score"], reverse=True)
+        merged: list[dict[str, Any]] = []
+        for entry in ordered[: max(top_k, 1) + 3]:
+            item = dict(entry["item"])
+            # Preserve the original similarity for trace transparency but
+            # surface the fused RRF score in a separate field.
+            item["rrf_score"] = entry["score"]
+            item["fusion_lists"] = sorted(entry["lists"])
+            merged.append(item)
+        return merged
 
     @staticmethod
     def _attach_trace(

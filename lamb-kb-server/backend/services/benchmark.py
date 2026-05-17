@@ -446,17 +446,32 @@ class BenchmarkService:
                 plugin_params={"top_k": top_k, "threshold": threshold},
                 embedding_credentials=creds,
             )
+            kg_params: Dict[str, Any] = {
+                "top_k": top_k,
+                "threshold": threshold,
+                "graph_depth": graph_depth,
+                "include_trace": True,
+            }
+            # Pass-through for optional tuning knobs (rrf_k, graph_weight,
+            # graph_limit_factor). These are set on the
+            # ``BenchmarkRunRequest`` via Pydantic ``model_extra`` (see
+            # ``BenchmarkRunRequest.model_config``); when absent the
+            # plugin falls back to its own defaults.
+            for extra in ("rrf_k", "graph_weight", "graph_limit_factor"):
+                if hasattr(request, extra):
+                    val = getattr(request, extra, None)
+                    if val is not None:
+                        kg_params[extra] = val
+                # also pull from the model's extra fields if any
+                extras = getattr(request, "model_extra", None) or {}
+                if extra in extras and extras[extra] is not None:
+                    kg_params[extra] = extras[extra]
             kg_response = query_with_plugin(
                 db=db,
                 collection_id=collection_id,
                 query_text=question.question,
                 plugin_name="kg_rag_query",
-                plugin_params={
-                    "top_k": top_k,
-                    "threshold": threshold,
-                    "graph_depth": graph_depth,
-                    "include_trace": True,
-                },
+                plugin_params=kg_params,
                 embedding_credentials=creds,
             )
 

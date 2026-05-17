@@ -103,6 +103,21 @@ def _run_lightweight_migrations(engine: Engine) -> None:
             "graph_enabled",
             "INTEGER NOT NULL DEFAULT 0",
         ),
+        (
+            "collections",
+            "extraction_vendor",
+            "TEXT",
+        ),
+        (
+            "collections",
+            "extraction_model",
+            "TEXT",
+        ),
+        (
+            "collections",
+            "extraction_endpoint",
+            "TEXT",
+        ),
     ]
     # Use a direct sqlite3 connection rather than the SQLAlchemy engine.
     # The engine's pool keeps the underlying connection around between

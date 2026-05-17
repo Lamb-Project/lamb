@@ -97,6 +97,19 @@ export async function getOptions() {
 	return response.data;
 }
 
+/**
+ * Fetch registered LLM extraction vendors (KG-RAG concept extraction)
+ * along with their parameter schemas so the create form can render a
+ * vendor + model picker.
+ * @returns {Promise<{ vendors: Array<{ name: string, description: string, parameters: Array<{ name: string, type: string, default: any, choices: any }> }> }>}
+ */
+export async function getLlmVendors() {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/knowledge-stores/llm-vendors');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
+}
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
@@ -136,6 +149,10 @@ export async function getKnowledgeStore(ksId) {
  *   embedding_model: string,
  *   embedding_endpoint?: string,
  *   vector_db_backend: string,
+ *   graph_enabled?: boolean,
+ *   extraction_vendor?: string,
+ *   extraction_model?: string,
+ *   extraction_endpoint?: string,
  * }} data
  * @returns {Promise<KnowledgeStore>}
  */

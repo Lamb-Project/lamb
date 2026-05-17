@@ -135,6 +135,9 @@ def _discover_plugins() -> None:
         "plugins.embedding.openai",
         "plugins.embedding.ollama",
         "plugins.embedding.local",
+        # LLM extraction backends (KG-RAG concept extraction)
+        "plugins.llm_extraction.openai",
+        "plugins.llm_extraction.ollama",
     ]
     import importlib  # noqa: PLC0415
 

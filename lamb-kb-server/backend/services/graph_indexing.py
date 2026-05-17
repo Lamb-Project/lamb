@@ -92,8 +92,19 @@ def index_chunks_for_collection(
     if not chunks:
         return {"indexed": False, "chunks": 0, "reason": "no_chunks"}
 
+    # Resolve the extraction vendor/model/endpoint from the collection
+    # (locked at creation), falling back to server-level env defaults for
+    # collections created before this surface existed.
+    coll_vendor = getattr(collection, "extraction_vendor", None)
+    coll_model = getattr(collection, "extraction_model", None)
+    coll_endpoint = getattr(collection, "extraction_endpoint", None)
+    resolved_vendor = coll_vendor or "openai"
+
+    # Per-request key handling depends on vendor: OpenAI requires a key
+    # (returned-key fallback handled by the plugin); Ollama doesn't unless
+    # the operator put it behind an auth proxy.
     api_key = (openai_api_key or kg_config.get("openai_api_key") or "").strip()
-    if not api_key:
+    if resolved_vendor == "openai" and not api_key:
         return {
             "indexed": False,
             "chunks": len(chunks),
@@ -106,7 +117,13 @@ def index_chunks_for_collection(
 
     extractor_config = dict(kg_config)
     extractor_config["openai_api_key"] = api_key
-    extractor = ConceptExtractor(kg_config=extractor_config)
+    extractor = ConceptExtractor(
+        kg_config=extractor_config,
+        vendor=resolved_vendor,
+        model=coll_model,
+        api_endpoint=coll_endpoint,
+        api_key=api_key if resolved_vendor == "openai" else "",
+    )
 
     extraction_start = time.perf_counter()
     try:

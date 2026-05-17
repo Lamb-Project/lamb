@@ -23,6 +23,30 @@ class EmbeddingConfig(BaseModel):
     )
 
 
+class ExtractionConfig(BaseModel):
+    """Describes the collection-level KG-RAG extraction setup.
+
+    Locked at creation, mirrors the embedding pattern: credentials are
+    request-scoped, the vendor + model + endpoint are persisted on the
+    collection. ``None`` everywhere means "fall back to server env
+    defaults" (backwards-compat for graph_enabled stores created before
+    this surface existed).
+    """
+
+    vendor: str | None = Field(
+        default=None,
+        description="LLM extraction vendor name (e.g. 'openai', 'ollama').",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Model identifier (e.g. 'gpt-4o-mini', 'llama3.1:8b').",
+    )
+    api_endpoint: str | None = Field(
+        default=None,
+        description="Optional override for the vendor's API base URL.",
+    )
+
+
 # --- Requests ---
 
 
@@ -54,6 +78,14 @@ class CreateCollectionRequest(BaseModel):
             "Opt this collection into KG-RAG: extracted concepts/relations "
             "are indexed into Neo4j alongside vector storage at ingestion "
             "time. Requires ``KG_RAG_ENABLED=true`` at the server level."
+        ),
+    )
+    extraction: ExtractionConfig | None = Field(
+        default=None,
+        description=(
+            "KG-RAG extraction vendor/model/endpoint. Only meaningful when "
+            "``graph_enabled=true``. If omitted, the server falls back to "
+            "the ``KG_RAG_EXTRACTION_MODEL`` env var (OpenAI by default)."
         ),
     )
 
@@ -97,6 +129,7 @@ class CollectionResponse(BaseModel):
     embedding: EmbeddingConfig
     vector_db_backend: str
     graph_enabled: bool = False
+    extraction: ExtractionConfig | None = None
     status: str
     document_count: int
     chunk_count: int
@@ -127,6 +160,16 @@ class CollectionResponse(BaseModel):
             ),
             vector_db_backend=row.vector_db_backend,
             graph_enabled=bool(getattr(row, "graph_enabled", False)),
+            extraction=(
+                ExtractionConfig(
+                    vendor=getattr(row, "extraction_vendor", None),
+                    model=getattr(row, "extraction_model", None),
+                    api_endpoint=getattr(row, "extraction_endpoint", None),
+                )
+                if getattr(row, "extraction_vendor", None)
+                or getattr(row, "extraction_model", None)
+                else None
+            ),
             status=row.status,
             document_count=row.document_count,
             chunk_count=row.chunk_count,

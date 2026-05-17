@@ -21,9 +21,13 @@ logger.setLevel(os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING
 
 # Get environment variables
 _raw_kb_server = os.getenv('LAMB_KB_SERVER', None)
-# In dev/test: if the configured URL is the Docker service name that isn't running, redirect to host
-_KB_REDIRECTS = {'http://kb:9090': 'http://172.18.0.1:9090'}
-LAMB_KB_SERVER = _KB_REDIRECTS.get(_raw_kb_server, _raw_kb_server) or 'http://172.17.0.1:9090'
+# Redirect table for dev environments where the configured URL is unreachable.
+# In the normal docker-compose topology, `kb` resolves correctly inside the
+# `lamb-*` bridge network, so the table is empty. The runtime fallback in
+# is_kb_server_available() still tries host.docker.internal as a backup when
+# the primary `http://kb:9090` is unreachable.
+_KB_REDIRECTS: dict[str, str] = {}
+LAMB_KB_SERVER = _KB_REDIRECTS.get(_raw_kb_server, _raw_kb_server)
 LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
 if not LAMB_KB_SERVER_TOKEN:
     raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")

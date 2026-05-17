@@ -78,6 +78,16 @@ class Collection(Base):
     # untouched.
     graph_enabled = Column(Boolean, nullable=False, default=False)
 
+    # Locked LLM extraction config (only meaningful when graph_enabled=true).
+    # Defaults to NULL on collections that pre-date the field; the extractor
+    # falls back to the server-level ``KG_RAG_EXTRACTION_MODEL`` env in that
+    # case. Like chunking/embedding/vector-DB these are immutable after
+    # creation: changing them mid-flight would produce a graph indexed with
+    # one vendor's notion of an entity and queried against another's.
+    extraction_vendor = Column(String, nullable=True)
+    extraction_model = Column(String, nullable=True)
+    extraction_endpoint = Column(String, nullable=True)
+
     # --- Status tracking ---
     status = Column(String, nullable=False, default="ready")
     # ready / error

@@ -383,12 +383,20 @@ class ChromaDBBackend(VectorDBBackend):
         )
 
         results: list[QueryResult] = []
+        ids = (raw.get("ids") or [[]])[0]
         documents = (raw.get("documents") or [[]])[0]
         metadatas = (raw.get("metadatas") or [[]])[0]
         distances = (raw.get("distances") or [[]])[0]
 
-        for doc, meta, dist in zip(documents, metadatas, distances):
+        for idx, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances)):
             meta_dict: dict[str, Any] = dict(meta) if meta else {}
+            # Propagate the backend's internal chunk ID so downstream
+            # consumers (KG-RAG plugin in particular) can look the chunk
+            # back up by ID. ChromaDB always returns ``ids`` alongside
+            # documents — we surface it as ``chunk_id`` for the plugin's
+            # seed-extraction step.
+            if idx < len(ids) and ids[idx]:
+                meta_dict.setdefault("chunk_id", ids[idx])
             # For hierarchical retrieval: return parent context if available
             text = meta_dict.pop("parent_text", None) or doc
             score = max(0.0, min(1.0, 1.0 - float(dist)))

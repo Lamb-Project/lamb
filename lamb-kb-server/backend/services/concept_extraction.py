@@ -11,11 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import config as config_module
-
-try:
-    from openai import OpenAI
-except Exception:  # pragma: no cover - exercised when optional dependency is absent
-    OpenAI = None
+from plugins.base import LLMExtractionFunction, LLMExtractionRegistry
 
 
 logger = logging.getLogger("lamb-kb")
@@ -115,24 +111,59 @@ class ConceptExtractor:
     def __init__(
         self,
         kg_config: Optional[Dict[str, Any]] = None,
-        client: Optional[Any] = None,
+        backend: Optional[LLMExtractionFunction] = None,
+        *,
+        vendor: Optional[str] = None,
+        model: Optional[str] = None,
+        api_endpoint: Optional[str] = None,
+        api_key: Optional[str] = None,
     ):
+        """Build an extractor.
+
+        Resolution order for the extraction backend:
+          1. An explicit ``backend`` argument (used by tests).
+          2. A per-collection ``vendor`` / ``model`` (passed from the
+             ingestion pipeline based on the collection's stored config).
+          3. The server-level KG_RAG_* env defaults via ``kg_config``.
+
+        ``api_key`` is request-scoped (ADR-4): when None, the chosen
+        backend falls back to its env-configured key.
+        """
         self.config = kg_config or config_module.get_kg_rag_config()
         self.chat_model = self.config.get("chat_model") or "gpt-4o-mini"
-        self.model = self.config.get("extraction_model") or self.chat_model
+        self.model = model or self.config.get("extraction_model") or self.chat_model
         configured_workers = int(self.config.get("extraction_max_workers") or 1)
         self.max_workers = max(1, min(16, configured_workers))
-        self.client = client
 
-        api_key = self.config.get("openai_api_key") or ""
-        if self.client is None and api_key and OpenAI is not None:
-            # Bound the OpenAI call so a slow / hung vendor can't pin an
-            # ingestion worker thread indefinitely. Configurable via env
-            # so operators can stretch it for big chunks if needed.
-            timeout_seconds = float(
-                self.config.get("openai_timeout_seconds") or 60.0
+        timeout_seconds = float(self.config.get("openai_timeout_seconds") or 60.0)
+
+        if backend is not None:
+            self.backend: Optional[LLMExtractionFunction] = backend
+        else:
+            # Default to OpenAI for back-compat with collections created
+            # before the vendor field existed.
+            resolved_vendor = vendor or "openai"
+            resolved_key = (
+                api_key
+                if api_key is not None
+                else (self.config.get("openai_api_key") or "")
             )
-            self.client = OpenAI(api_key=api_key, timeout=timeout_seconds)
+            resolved_endpoint = api_endpoint or ""
+            try:
+                self.backend = LLMExtractionRegistry.build(
+                    resolved_vendor,
+                    model=self.model,
+                    api_key=resolved_key,
+                    api_endpoint=resolved_endpoint,
+                    timeout_seconds=timeout_seconds,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "KG-RAG: extraction vendor '%s' is not registered: %s",
+                    resolved_vendor,
+                    exc,
+                )
+                self.backend = None
 
     def extract_for_chunks(self, chunks: List[TextChunk]) -> GraphExtraction:
         if not chunks:
@@ -141,7 +172,7 @@ class ConceptExtractor:
         extraction = GraphExtraction(
             concepts_by_chunk={chunk.chunk_id: [] for chunk in chunks}
         )
-        if self.client is None:
+        if self.backend is None:
             return extraction
 
         parent_groups: Dict[str, List[TextChunk]] = {}
@@ -227,50 +258,26 @@ class ConceptExtractor:
                     }
                 ],
             },
-            "limits": {"max_entities": 5, "max_relationships": 6},
+            # Doubled the per-chunk caps relative to the original
+            # legacy budget: small Wikipedia-style paragraphs routinely
+            # mention 10+ named entities, and the previous max=5 left
+            # bridging entities outside the graph. Cost stays bounded by
+            # the per-call ``max_tokens`` of the chat completion.
+            "limits": {"max_entities": 12, "max_relationships": 12},
             "text": text[:6000],
         }
-        try:
-            response = self._create_json_completion(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
-                ],
-            )
-            content = response.choices[0].message.content or "{}"
-            parsed = json.loads(content)
-        except Exception as exc:
-            logger.warning("KG-RAG concept extraction failed: %s", exc)
+        if self.backend is None:
             return {"entities": [], "relationships": []}
-        return (
-            parsed
-            if isinstance(parsed, dict)
-            else {"entities": [], "relationships": []}
+        fallback = self.chat_model if self.chat_model != self.model else None
+        parsed = self.backend.chat_json(
+            system=system,
+            user=json.dumps(user, ensure_ascii=False),
+            fallback_model=fallback,
         )
-
-    def _create_json_completion(
-        self, model: str, messages: List[Dict[str, str]]
-    ) -> Any:
-        if self.client is None:
-            raise RuntimeError("OpenAI client is not configured")
-        try:
-            return self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-        except Exception:
-            fallback_model = self.chat_model
-            if model == fallback_model:
-                raise
-            return self.client.chat.completions.create(
-                model=fallback_model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
+        return parsed if isinstance(parsed, dict) else {
+            "entities": [],
+            "relationships": [],
+        }
 
     def _parse_payload(self, payload: Dict[str, Any], chunk_id: str) -> GraphExtraction:
         entities: Dict[str, ExtractedEntity] = {}
@@ -278,7 +285,7 @@ class ConceptExtractor:
         if not isinstance(raw_entities, list):
             raw_entities = []
 
-        for item in raw_entities[:5]:
+        for item in raw_entities[:12]:
             if not isinstance(item, dict):
                 continue
             display_name = _clean_text(item.get("name"), limit=120)
@@ -299,7 +306,7 @@ class ConceptExtractor:
             raw_relationships = []
 
         related_names: Set[str] = set()
-        for item in raw_relationships[:6]:
+        for item in raw_relationships[:12]:
             if not isinstance(item, dict):
                 continue
             source = normalize_concept(_clean_text(item.get("source"), limit=120))

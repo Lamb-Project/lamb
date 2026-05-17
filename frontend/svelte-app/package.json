@@ -51,8 +51,11 @@
 		"dompurify": "^3.4.1",
 		"flowbite-svelte": "^0.48.6",
 		"flowbite-svelte-icons": "^2.1.1",
+		"graphology": "^0.26.0",
+		"graphology-layout-forceatlas2": "^0.10.1",
 		"marked": "^15.0.12",
 		"openai": "^4.53.3",
+		"sigma": "^3.0.3",
 		"svelte-i18n": "^4.0.1"
 	}
 }

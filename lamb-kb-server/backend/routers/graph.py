@@ -211,7 +211,7 @@ async def get_graph_snapshot(
     chunk_id: str | None = Query(None),
     filename: str | None = Query(None),
     include_chunks: bool = Query(True),
-    limit: int = Query(60, ge=1, le=200),
+    limit: int = Query(60, ge=1, le=10000),
     token: str = Depends(verify_token),
     db: Session = Depends(get_session),
 ):

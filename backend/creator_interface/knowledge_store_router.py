@@ -54,6 +54,13 @@ class KnowledgeStoreCreate(BaseModel):
     # ingestion-time concept extraction runs against it. Requires
     # ``KG_RAG_ENABLED=true`` on the KB server.
     graph_enabled: bool = False
+    # Locked-at-creation extraction config. Only meaningful when
+    # ``graph_enabled=true``. ``None`` everywhere means "fall back to the
+    # KB server's env defaults" (back-compat for the previous toggle-only
+    # surface).
+    extraction_vendor: Optional[str] = None
+    extraction_model: Optional[str] = None
+    extraction_endpoint: Optional[str] = None
 
 
 class KnowledgeStoreUpdate(BaseModel):
@@ -145,6 +152,14 @@ async def get_options(auth: AuthContext = Depends(get_auth_context)):
     return await _client.get_org_options(creator_user=auth.user)
 
 
+@router.get("/llm-vendors")
+async def get_llm_vendors(auth: AuthContext = Depends(get_auth_context)):
+    """Return registered LLM extraction vendors (for KG-RAG concept extraction)
+    along with their default-model lists so the create UI can render a picker.
+    """
+    return await _client.get_llm_vendors(creator_user=auth.user)
+
+
 # ======================================================================
 # Knowledge Store CRUD
 # ======================================================================
@@ -219,6 +234,9 @@ async def create_knowledge_store(
             chunking_params=body.chunking_params,
             embedding_endpoint=resolved_endpoint or "",
             graph_enabled=bool(body.graph_enabled),
+            extraction_vendor=body.extraction_vendor,
+            extraction_model=body.extraction_model,
+            extraction_endpoint=body.extraction_endpoint,
             creator_user=auth.user,
         )
     except Exception as e:
@@ -266,11 +284,15 @@ async def get_knowledge_store(
         entry["server_status"] = server_data.get("status")
         entry["document_count"] = server_data.get("document_count", 0)
         entry["chunk_count"] = server_data.get("chunk_count", 0)
+        entry["graph_enabled"] = bool(server_data.get("graph_enabled", False))
+        entry["extraction"] = server_data.get("extraction")
     except Exception as e:
         logger.warning(f"Could not fetch collection metadata from KB Server for {ks_id}: {e}")
         entry["server_status"] = None
         entry["document_count"] = None
         entry["chunk_count"] = None
+        entry["graph_enabled"] = False
+        entry["extraction"] = None
 
     entry["content"] = _db.get_kb_content_links_for_ks(ks_id)
     entry["is_owner"] = entry.get("owner_user_id") == auth.user.get("id")

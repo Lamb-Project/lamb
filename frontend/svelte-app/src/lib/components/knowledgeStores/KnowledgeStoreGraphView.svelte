@@ -17,58 +17,32 @@
 	import { onMount } from 'svelte';
 	import {
 		getGraphSnapshot,
-		listGraphChanges,
-		migrateToGraph,
 		renameConcept,
-		mergeConcepts,
 		curateConcept,
 		editRelationship,
 		curateRelationship,
 	} from '$lib/services/graphService';
-	import {
-		changeOperationLabel,
-		changeMetaLine,
-		changeDetail,
-	} from '$lib/utils/graphCuration';
+	import SigmaGraphModal from './SigmaGraphModal.svelte';
 	import { _ } from '$lib/i18n';
 
-	/** @type {{ ksId: string, graphEnabled: boolean, vectorDbBackend?: string }} */
-	let { ksId, graphEnabled, vectorDbBackend = '' } = $props();
-
-	// Graph migration currently only supports the chromadb backend
-	// (qdrant doesn't yet expose an iter-all-chunks surface). When the
-	// store uses a different backend we hide the migrate button entirely
-	// and explain why, rather than letting the user click and get a 400.
-	let migrationSupported = $derived(
-		!vectorDbBackend || vectorDbBackend === 'chromadb',
-	);
+	/** @type {{ ksId: string, graphEnabled: boolean }} */
+	let { ksId, graphEnabled } = $props();
 
 	let loading = $state(false);
 	let error = $state('');
-	let success = $state('');
 	let snapshot = $state(/** @type {any} */ (null));
-	let changes = $state(/** @type {any[]} */ ([]));
 	let filter = $state({ concept: '', filename: '', document_id: '' });
-	let migrating = $state(false);
-	let migrateApiKey = $state('');
-
-	// Curation modals
-	let curationTarget = $state(/** @type {any} */ (null));
+	let sigmaOpen = $state(false);
 
 	async function loadAll() {
 		loading = true;
 		error = '';
 		try {
-			const [snap, hist] = await Promise.all([
-				getGraphSnapshot(ksId, {
-					...stripEmpty(filter),
-					limit: 80,
-					include_chunks: 'true',
-				}),
-				listGraphChanges(ksId, { ...stripEmpty(filter), limit: 25 }),
-			]);
-			snapshot = snap;
-			changes = Array.isArray(hist) ? hist : [];
+			snapshot = await getGraphSnapshot(ksId, {
+				...stripEmpty(filter),
+				limit: 80,
+				include_chunks: 'true',
+			});
 		} catch (/** @type {*} */ err) {
 			error = err?.response?.data?.detail || err?.message || 'Failed to load graph';
 		} finally {
@@ -86,80 +60,230 @@
 		return out;
 	}
 
-	async function onMigrate() {
-		migrating = true;
-		error = '';
-		try {
-			const body = migrateApiKey ? { openai_api_key: migrateApiKey } : {};
-			const result = await migrateToGraph(ksId, body);
-			success = `Migrated: ${result.chunks_seen ?? result.chunks ?? 0} chunks processed`;
-			await loadAll();
-		} catch (/** @type {*} */ err) {
-			error =
-				err?.response?.data?.detail || err?.message || 'Migration failed';
-		} finally {
-			migrating = false;
-		}
-	}
+	let bulkBusy = $state(false);
+	let editingConcept = $state('');
+	let editConceptName = $state('');
+	let editingEdgeId = $state('');
+	let editEdgeRelation = $state('');
 
-	/** @param {string} name */
-	async function approveConcept(name) {
+	/**
+	 * Set a concept's verification_state. Used by per-item toggle and
+	 * by the bulk operations.
+	 * @param {string} name
+	 * @param {'verified'|'unverified'|'rejected'} state
+	 */
+	async function setConceptState(name, state) {
 		try {
 			await curateConcept(ksId, name, {
-				verification_state: 'verified',
-				reason: 'Approved via Knowledge Store UI',
+				verification_state: state,
+				reason: `Set to ${state} via Knowledge Store UI`,
 			});
-			await loadAll();
 		} catch (/** @type {*} */ err) {
-			error = err?.response?.data?.detail || err?.message || 'Approval failed';
+			error = err?.response?.data?.detail || err?.message || `Failed to ${state}`;
+			throw err;
 		}
 	}
 
-	/** @param {string} name */
-	async function rejectConcept(name) {
-		try {
-			await curateConcept(ksId, name, {
-				verification_state: 'rejected',
-				reason: 'Rejected via Knowledge Store UI',
-			});
-			await loadAll();
-		} catch (/** @type {*} */ err) {
-			error =
-				err?.response?.data?.detail || err?.message || 'Rejection failed';
-		}
-	}
-
-	/** @param {{ source: string, target: string, relation: string }} rel */
-	async function approveRelationship(rel) {
+	/**
+	 * Set a relationship's verification_state.
+	 * @param {{ source: string, target: string, relation: string }} rel
+	 * @param {'verified'|'unverified'|'rejected'} state
+	 */
+	async function setRelationshipState(rel, state) {
 		try {
 			await curateRelationship(ksId, {
 				source_concept: rel.source,
 				target_concept: rel.target,
 				relation: rel.relation,
-				verification_state: 'verified',
-				reason: 'Approved via Knowledge Store UI',
+				verification_state: state,
+				reason: `Set to ${state} via Knowledge Store UI`,
 			});
-			await loadAll();
 		} catch (/** @type {*} */ err) {
-			error = err?.response?.data?.detail || err?.message || 'Approval failed';
+			error = err?.response?.data?.detail || err?.message || `Failed to ${state}`;
+			throw err;
 		}
 	}
 
-	/** @param {{ source: string, target: string, relation: string }} rel */
-	async function rejectRelationship(rel) {
+	/** @param {any} node */
+	async function toggleConceptVerification(node) {
+		const name = displayName(node.data?.name || node.label);
+		const current = String(node.data?.verification_state || 'unverified');
+		const next = current === 'verified' ? 'unverified' : 'verified';
+		await setConceptState(name, next);
+		await loadAll();
+	}
+
+	/** @param {any} edge */
+	async function toggleRelationshipVerification(edge) {
+		const rel = edgeEndpoints(edge);
+		const current = String(edge.data?.verification_state || 'unverified');
+		const next = current === 'verified' ? 'unverified' : 'verified';
+		await setRelationshipState(rel, next);
+		await loadAll();
+	}
+
+	/** @param {'verified' | 'rejected'} state */
+	async function bulkConcepts(state) {
+		if (!snapshot?.nodes?.length) return;
+		const reason =
+			state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
+		if (
+			!confirm(
+				`${reason} of ALL concepts in this Knowledge Store. Continue?`,
+			)
+		)
+			return;
+		bulkBusy = true;
 		try {
-			await editRelationship(ksId, {
-				source_concept: rel.source,
-				target_concept: rel.target,
-				relation: rel.relation,
-				verification_state: 'rejected',
-				reason: 'Rejected via Knowledge Store UI',
+			const concepts = snapshot.nodes.filter(
+				(/** @type {any} */ n) => n.type === 'concept',
+			);
+			for (const node of concepts) {
+				const cur = String(node.data?.verification_state || 'unverified');
+				if (cur === state) continue;
+				const name = displayName(node.data?.name || node.label);
+				try {
+					await curateConcept(ksId, name, {
+						verification_state: state,
+						reason,
+					});
+				} catch (/** @type {*} */ err) {
+					console.warn('Bulk concept curate failed for', name, err);
+				}
+			}
+			await loadAll();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
+	/** @param {'verified' | 'rejected'} state */
+	async function bulkRelationships(state) {
+		if (!snapshot?.edges?.length) return;
+		const reason =
+			state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
+		if (
+			!confirm(
+				`${reason} of ALL relationships in this Knowledge Store. Continue?`,
+			)
+		)
+			return;
+		bulkBusy = true;
+		try {
+			const rels = snapshot.edges.filter(
+				(/** @type {any} */ e) => e.type === 'RELATES_TO',
+			);
+			for (const edge of rels) {
+				const cur = String(edge.data?.verification_state || 'unverified');
+				if (cur === state) continue;
+				const rel = edgeEndpoints(edge);
+				try {
+					await curateRelationship(ksId, {
+						source_concept: rel.source,
+						target_concept: rel.target,
+						relation: rel.relation,
+						verification_state: state,
+						reason,
+					});
+				} catch (/** @type {*} */ err) {
+					console.warn('Bulk relationship curate failed for', rel, err);
+				}
+			}
+			await loadAll();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
+	/** @param {any} node */
+	function startEditConcept(node) {
+		editingConcept = displayName(node.data?.name || node.label);
+		editConceptName = editingConcept;
+	}
+
+	function cancelEditConcept() {
+		editingConcept = '';
+		editConceptName = '';
+	}
+
+	async function commitEditConcept() {
+		const oldName = editingConcept;
+		const newName = editConceptName.trim();
+		if (!oldName || !newName || newName === oldName) {
+			cancelEditConcept();
+			return;
+		}
+		try {
+			await renameConcept(ksId, oldName, {
+				new_name: newName,
+				reason: 'Renamed via Knowledge Store UI',
 			});
+			cancelEditConcept();
 			await loadAll();
 		} catch (/** @type {*} */ err) {
-			error =
-				err?.response?.data?.detail || err?.message || 'Rejection failed';
+			error = err?.response?.data?.detail || err?.message || 'Rename failed';
 		}
+	}
+
+	/** @param {any} edge */
+	function startEditEdge(edge) {
+		editingEdgeId = edge.id;
+		editEdgeRelation = String(edge.data?.relation || edge.label || '');
+	}
+
+	function cancelEditEdge() {
+		editingEdgeId = '';
+		editEdgeRelation = '';
+	}
+
+	/** @param {any} edge */
+	async function commitEditEdge(edge) {
+		const newRelation = editEdgeRelation.trim();
+		const { source, target, relation: oldRelation } = edgeEndpoints(edge);
+		if (!newRelation || newRelation === oldRelation) {
+			cancelEditEdge();
+			return;
+		}
+		try {
+			await editRelationship(ksId, {
+				source_concept: source,
+				target_concept: target,
+				relation: oldRelation,
+				new_relation: newRelation,
+				reason: 'Edited via Knowledge Store UI',
+			});
+			cancelEditEdge();
+			await loadAll();
+		} catch (/** @type {*} */ err) {
+			error = err?.response?.data?.detail || err?.message || 'Edit failed';
+		}
+	}
+
+	/**
+	 * Strip the ``concept:`` node-ID prefix when no friendlier label is
+	 * available. Node IDs in Neo4j are stored as ``concept:<name>`` but
+	 * the user-facing surface should show just the entity name.
+	 * @param {string | undefined | null} value
+	 * @returns {string}
+	 */
+	function displayName(value) {
+		if (!value) return '';
+		return String(value).replace(/^concept:/i, '');
+	}
+
+	/**
+	 * Extract the clean (prefix-less) source and target concept names
+	 * from a snapshot edge. The snapshot returns ``edge.data.source`` and
+	 * ``edge.data.target`` as canonical names, but we fall back to
+	 * stripping the ``concept:`` prefix from the raw ID for robustness.
+	 * @param {any} edge
+	 */
+	function edgeEndpoints(edge) {
+		return {
+			source: String(edge.data?.source || displayName(edge.source)),
+			target: String(edge.data?.target || displayName(edge.target)),
+			relation: String(edge.data?.relation || edge.label || ''),
+		};
 	}
 
 	onMount(() => {
@@ -169,49 +293,33 @@
 
 <div class="space-y-4">
 	{#if !graphEnabled}
-		<div class="rounded border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+		<div class="rounded border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-700">
 			<p class="font-semibold">Graph RAG is not enabled on this Knowledge Store.</p>
-			{#if migrationSupported}
-				<p class="mt-2">
-					Run the migration below to extract concepts and relationships from
-					existing chunks. This calls the LLM extractor and writes results to
-					Neo4j; vector retrieval keeps working either way.
-				</p>
-				<div class="mt-3 flex flex-wrap items-center gap-2">
-					<input
-						type="password"
-						class="rounded border border-amber-300 bg-white px-2 py-1 text-sm"
-						placeholder="OpenAI API key (optional — falls back to org/server config)"
-						bind:value={migrateApiKey}
-					/>
-					<button
-						type="button"
-						class="rounded bg-amber-600 px-3 py-1 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-						onclick={onMigrate}
-						disabled={migrating}
-					>
-						{migrating ? 'Migrating…' : 'Migrate to Graph RAG'}
-					</button>
-				</div>
-			{:else}
-				<p class="mt-2">
-					Graph migration is not yet supported for the
-					<code class="rounded bg-amber-100 px-1 font-mono">{vectorDbBackend}</code>
-					vector backend. Migration currently requires
-					<code class="rounded bg-amber-100 px-1 font-mono">chromadb</code>.
-					Create a new Knowledge Store with chromadb to use Graph RAG.
-				</p>
-			{/if}
+			<p class="mt-2">
+				Graph RAG is locked at creation time alongside chunking, embedding, and
+				vector DB. To use Graph RAG, create a new Knowledge Store with the
+				<span class="font-medium">Enable Graph RAG</span> toggle.
+			</p>
 		</div>
 	{/if}
 
 	{#if error}
 		<div class="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
 	{/if}
-	{#if success}
-		<div class="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-700">{success}</div>
-	{/if}
 
+	{#if graphEnabled}
+		<div class="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+			<span class="font-semibold">Retrieval policy:</span>
+			only concepts and relationships you mark as
+			<span class="rounded bg-green-100 px-1 py-0.5 font-medium text-green-800">verified</span>
+			are used to enhance LLM retrieval. The LLM receives the
+			retrieved <span class="font-medium">chunks</span> as context — the graph drives
+			<em>which</em> chunks are returned (via question-entity expansion + RRF fusion
+			with the vector baseline) but the concept/relation triples themselves are not
+			added to the prompt. Approve the items you trust to make them
+			contribute to the retrieval.
+		</div>
+	{/if}
 	<div class="flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-white p-3">
 		<label class="flex flex-col text-xs text-gray-700">
 			Concept
@@ -245,6 +353,17 @@
 		>
 			{loading ? 'Loading…' : 'Refresh'}
 		</button>
+		<button
+			type="button"
+			class="ml-auto rounded bg-[#2271b3] px-3 py-1 text-sm font-semibold text-white hover:bg-[#1a5a90] disabled:opacity-50"
+			onclick={() => (sigmaOpen = true)}
+			disabled={!graphEnabled}
+			title={graphEnabled
+				? 'Open the full graph in an interactive view'
+				: 'Graph RAG is not enabled on this Knowledge Store'}
+		>
+			View full graph
+		</button>
 	</div>
 
 	{#if loading}
@@ -270,28 +389,89 @@
 		</div>
 
 		<section class="rounded border border-gray-200 bg-white p-3">
-			<h3 class="mb-2 text-sm font-semibold text-gray-900">Concepts</h3>
+			<div class="mb-2 flex items-center justify-between gap-2">
+				<h3 class="text-sm font-semibold text-gray-900">Concepts</h3>
+				<div class="flex gap-2">
+					<button
+						type="button"
+						class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
+						onclick={() => bulkConcepts('verified')}
+						disabled={bulkBusy || !snapshot?.nodes?.length}
+					>Approve all</button>
+					<button
+						type="button"
+						class="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+						onclick={() => bulkConcepts('rejected')}
+						disabled={bulkBusy || !snapshot?.nodes?.length}
+					>Reject all</button>
+				</div>
+			</div>
 			{#if !snapshot?.nodes?.length}
 				<p class="text-sm text-gray-500">No concept nodes yet.</p>
 			{:else}
 				<ul class="divide-y divide-gray-100">
 					{#each snapshot.nodes.filter((/** @type {any} */ n) => n.type === 'concept') as node (node.id)}
+						{@const conceptName = displayName(node.data?.name || node.label)}
+						{@const state = String(node.data?.verification_state || 'unverified')}
+						{@const isEditing = editingConcept === conceptName}
 						<li class="flex items-center justify-between gap-2 py-2 text-sm">
-							<div>
-								<div class="font-medium text-gray-900">{node.label}</div>
-								<div class="text-xs text-gray-500">{node.data?.verification_state || 'unverified'}</div>
+							<div class="flex-1 min-w-0">
+								{#if isEditing}
+									<input
+										type="text"
+										class="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+										bind:value={editConceptName}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') commitEditConcept();
+											if (e.key === 'Escape') cancelEditConcept();
+										}}
+										autofocus
+									/>
+								{:else}
+									<div class="font-medium text-gray-900 truncate">{displayName(node.label)}</div>
+									<div class="text-xs">
+										<span
+											class="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium {state === 'verified'
+												? 'bg-green-100 text-green-700'
+												: state === 'rejected'
+													? 'bg-red-100 text-red-700'
+													: 'bg-gray-100 text-gray-600'}"
+										>{state}</span>
+									</div>
+								{/if}
 							</div>
 							<div class="flex gap-2">
-								<button
-									type="button"
-									class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
-									onclick={() => approveConcept(node.data?.name || node.label)}
-								>Approve</button>
-								<button
-									type="button"
-									class="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-									onclick={() => rejectConcept(node.data?.name || node.label)}
-								>Reject</button>
+								{#if isEditing}
+									<button
+										type="button"
+										class="rounded bg-[#2271b3] px-2 py-1 text-xs text-white hover:bg-[#1a5a90]"
+										onclick={commitEditConcept}
+									>Save</button>
+									<button
+										type="button"
+										class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+										onclick={cancelEditConcept}
+									>Cancel</button>
+								{:else}
+									{#if state === 'verified'}
+										<button
+											type="button"
+											class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+											onclick={() => toggleConceptVerification(node)}
+										>Unverify</button>
+									{:else}
+										<button
+											type="button"
+											class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+											onclick={() => toggleConceptVerification(node)}
+										>Verify</button>
+									{/if}
+									<button
+										type="button"
+										class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+										onclick={() => startEditConcept(node)}
+									>Edit</button>
+								{/if}
 							</div>
 						</li>
 					{/each}
@@ -300,42 +480,95 @@
 		</section>
 
 		<section class="rounded border border-gray-200 bg-white p-3">
-			<h3 class="mb-2 text-sm font-semibold text-gray-900">Relationships</h3>
+			<div class="mb-2 flex items-center justify-between gap-2">
+				<h3 class="text-sm font-semibold text-gray-900">Relationships</h3>
+				<div class="flex gap-2">
+					<button
+						type="button"
+						class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
+						onclick={() => bulkRelationships('verified')}
+						disabled={bulkBusy || !snapshot?.edges?.length}
+					>Approve all</button>
+					<button
+						type="button"
+						class="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+						onclick={() => bulkRelationships('rejected')}
+						disabled={bulkBusy || !snapshot?.edges?.length}
+					>Reject all</button>
+				</div>
+			</div>
 			{#if !snapshot?.edges?.length}
 				<p class="text-sm text-gray-500">No relationships yet.</p>
 			{:else}
 				<ul class="divide-y divide-gray-100">
 					{#each snapshot.edges.filter((/** @type {any} */ e) => e.type === 'RELATES_TO') as edge (edge.id)}
+						{@const state = String(edge.data?.verification_state || 'unverified')}
+						{@const isEditing = editingEdgeId === edge.id}
 						<li class="flex items-center justify-between gap-2 py-2 text-sm">
-							<div>
-								<span class="font-medium text-gray-900">{edge.data?.source_label || edge.source}</span>
-								<span class="mx-2 text-gray-500">→</span>
-								<span class="font-medium text-gray-900">{edge.data?.target_label || edge.target}</span>
-								<span class="ml-2 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-									{edge.label || edge.data?.relation}
-								</span>
+							<div class="flex-1 min-w-0">
+								<div class="truncate">
+									<span class="font-medium text-gray-900">{displayName(edge.data?.source_label || edge.source)}</span>
+									<span class="mx-2 text-gray-500">→</span>
+									<span class="font-medium text-gray-900">{displayName(edge.data?.target_label || edge.target)}</span>
+								</div>
+								<div class="mt-1 flex items-center gap-2 text-xs">
+									{#if isEditing}
+										<input
+											type="text"
+											class="flex-1 rounded border border-gray-300 px-2 py-1 text-xs"
+											bind:value={editEdgeRelation}
+											onkeydown={(e) => {
+												if (e.key === 'Enter') commitEditEdge(edge);
+												if (e.key === 'Escape') cancelEditEdge();
+											}}
+											autofocus
+										/>
+									{:else}
+										<span class="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+											{edge.label || edge.data?.relation}
+										</span>
+										<span
+											class="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium {state === 'verified'
+												? 'bg-green-100 text-green-700'
+												: state === 'rejected'
+													? 'bg-red-100 text-red-700'
+													: 'bg-gray-100 text-gray-600'}"
+										>{state}</span>
+									{/if}
+								</div>
 							</div>
 							<div class="flex gap-2">
-								<button
-									type="button"
-									class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
-									onclick={() =>
-										approveRelationship({
-											source: edge.data?.source_name || edge.source,
-											target: edge.data?.target_name || edge.target,
-											relation: edge.data?.relation || edge.label,
-										})}
-								>Approve</button>
-								<button
-									type="button"
-									class="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-									onclick={() =>
-										rejectRelationship({
-											source: edge.data?.source_name || edge.source,
-											target: edge.data?.target_name || edge.target,
-											relation: edge.data?.relation || edge.label,
-										})}
-								>Reject</button>
+								{#if isEditing}
+									<button
+										type="button"
+										class="rounded bg-[#2271b3] px-2 py-1 text-xs text-white hover:bg-[#1a5a90]"
+										onclick={() => commitEditEdge(edge)}
+									>Save</button>
+									<button
+										type="button"
+										class="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+										onclick={cancelEditEdge}
+									>Cancel</button>
+								{:else}
+									{#if state === 'verified'}
+										<button
+											type="button"
+											class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+											onclick={() => toggleRelationshipVerification(edge)}
+										>Unverify</button>
+									{:else}
+										<button
+											type="button"
+											class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+											onclick={() => toggleRelationshipVerification(edge)}
+										>Verify</button>
+									{/if}
+									<button
+										type="button"
+										class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+										onclick={() => startEditEdge(edge)}
+									>Edit</button>
+								{/if}
 							</div>
 						</li>
 					{/each}
@@ -344,20 +577,6 @@
 		</section>
 	{/if}
 
-	<section class="rounded border border-gray-200 bg-white p-3">
-		<h3 class="mb-2 text-sm font-semibold text-gray-900">Recent changes</h3>
-		{#if !changes.length}
-			<p class="text-sm text-gray-500">No change events yet.</p>
-		{:else}
-			<ul class="divide-y divide-gray-100 text-sm">
-				{#each changes as change (change.event_id)}
-					<li class="py-2">
-						<div class="font-medium text-gray-900">{changeOperationLabel(change)}</div>
-						<div class="text-xs text-gray-500">{changeMetaLine(change)}</div>
-						<div class="text-xs text-gray-600">{changeDetail(change)}</div>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
 </div>
+
+<SigmaGraphModal {ksId} open={sigmaOpen} onclose={() => (sigmaOpen = false)} />

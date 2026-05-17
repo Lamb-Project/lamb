@@ -5,7 +5,12 @@ import logging
 from database.connection import get_session_direct
 from dependencies import verify_token
 from fastapi import APIRouter, Depends
-from plugins.base import ChunkingRegistry, EmbeddingRegistry, VectorDBRegistry
+from plugins.base import (
+    ChunkingRegistry,
+    EmbeddingRegistry,
+    LLMExtractionRegistry,
+    VectorDBRegistry,
+)
 from sqlalchemy import text
 from tasks.worker import is_worker_running
 
@@ -79,3 +84,14 @@ async def list_embedding_vendors() -> dict:
         Dict with ``vendors`` list.
     """
     return {"vendors": EmbeddingRegistry.list_plugins()}
+
+
+@router.get("/llm-vendors", dependencies=[Depends(verify_token)])
+async def list_llm_vendors() -> dict:
+    """List all registered LLM extraction vendors (KG-RAG concept extractor).
+
+    Returns:
+        Dict with ``vendors`` list. Each vendor entry includes ``name``,
+        ``description``, and a ``parameters`` schema (model, api_endpoint).
+    """
+    return {"vendors": LLMExtractionRegistry.list_plugins()}

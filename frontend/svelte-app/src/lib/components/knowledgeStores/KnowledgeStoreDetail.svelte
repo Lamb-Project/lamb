@@ -22,7 +22,6 @@
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
 	import KnowledgeStoreGraphView from '$lib/components/knowledgeStores/KnowledgeStoreGraphView.svelte';
-	import KnowledgeStoreBenchmarkView from '$lib/components/knowledgeStores/KnowledgeStoreBenchmarkView.svelte';
 	import { getGraphStatus } from '$lib/services/graphService';
 
 	/** @type {{ ksId: string }} */
@@ -448,27 +447,46 @@
 				<div class="font-semibold text-gray-500 uppercase">
 					{$_('knowledgeStores.vectorDb', { default: 'Vector DB' })}
 				</div>
-				<div class="mt-0.5 text-gray-800">{ks.vector_db_backend}</div>
+				<div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-gray-800">
+					<span>{ks.vector_db_backend}</span>
+					{#if ks.graph_enabled}
+						<span
+							class="rounded-full bg-[#2271b3]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#2271b3] uppercase"
+							title={$_('knowledgeStores.graphEnabledHint', {
+								default: 'Graph RAG was enabled at creation and is locked.'
+							})}
+						>
+							{$_('knowledgeStores.graphEnabledBadge', { default: 'Graph RAG' })}
+						</span>
+					{/if}
+				</div>
+				{#if ks.graph_enabled && (ks.extraction?.vendor || ks.extraction?.model)}
+					<div class="mt-0.5 text-[11px] text-gray-500">
+						{$_('knowledgeStores.extractionSummary', {
+							default: 'Extractor:'
+						})}
+						{ks.extraction?.vendor || '—'}
+						{#if ks.extraction?.model} · {ks.extraction.model}{/if}
+					</div>
+				{/if}
 			</div>
 		</div>
 		<div class="border-t border-yellow-100 bg-yellow-50 px-6 py-2 text-xs text-yellow-800">
 			{$_('knowledgeStores.lockedNotice', {
 				default:
-					'Chunking strategy, embedding vendor / model, and vector DB are locked at creation and cannot be changed.'
+					'Chunking strategy, embedding vendor / model, vector DB, and Graph RAG are locked at creation and cannot be changed.'
 			})}
 		</div>
 	</div>
 
 	<!--
-		Tabs: Content (default), Graph + Benchmark when this store has
-		graph_enabled=true (or, if the user hasn't migrated yet, when the
-		server-level flag AND the chromadb backend make migration possible).
-		Stores that can't use Graph RAG don't see the tabs at all — the
-		feature is opt-in and the rest of the UI shouldn't pretend otherwise.
+		Tabs: Content (default) + Graph only when this store was created
+		with graph_enabled=true. Graph RAG is locked at creation alongside
+		chunking/embedding/vector-DB; there is no retroactive migration
+		path from the UI. Benchmarks are run from standalone scripts —
+		see ``memoria/run_*_bench.py``.
 	-->
-	{@const canEnableGraph =
-		graphStatus?.enabled && ks?.vector_db_backend === 'chromadb'}
-	{@const showGraphTabs = !!ks?.graph_enabled || canEnableGraph}
+	{@const showGraphTabs = !!ks?.graph_enabled}
 	<div class="mb-4 border-b border-gray-200">
 		<nav class="flex gap-4 text-sm" aria-label="Tabs">
 			<button
@@ -490,15 +508,6 @@
 				>
 					{$_('knowledgeStores.tabGraph', { default: 'Graph' })}
 				</button>
-				<button
-					type="button"
-					class="border-b-2 px-1 pb-2 {activeTab === 'benchmark'
-						? 'border-[#2271b3] font-semibold text-[#2271b3]'
-						: 'border-transparent text-gray-500 hover:text-gray-700'}"
-					onclick={() => (activeTab = 'benchmark')}
-				>
-					{$_('knowledgeStores.tabBenchmark', { default: 'Benchmark' })}
-				</button>
 			{/if}
 		</nav>
 	</div>
@@ -507,10 +516,7 @@
 		<KnowledgeStoreGraphView
 			{ksId}
 			graphEnabled={!!ks?.graph_enabled}
-			vectorDbBackend={ks?.vector_db_backend || ''}
 		/>
-	{:else if activeTab === 'benchmark'}
-		<KnowledgeStoreBenchmarkView {ksId} graphEnabled={!!ks?.graph_enabled} />
 	{:else}
 	<!-- Linked content -->
 	<div class="mb-4 overflow-hidden rounded-lg bg-white shadow">
