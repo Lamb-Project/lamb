@@ -275,6 +275,105 @@ def execute_ingestion_job(
         total_chunks_added,
     )
 
+    _maybe_index_graph(
+        collection=collection,
+        docs_list=docs_list,
+        backend=backend,
+        embedding_function=embedding_function,
+        openai_api_key=credentials.get("kg_rag_openai_api_key", "")
+        or credentials.get("api_key", ""),
+    )
+
+
+def _maybe_index_graph(
+    *,
+    collection: Collection,
+    docs_list: list[dict],
+    backend: object,
+    embedding_function: object,
+    openai_api_key: str = "",
+) -> None:
+    """Run graph indexing for this batch if the collection opted in.
+
+    Failures here are logged and swallowed: vector ingestion already
+    committed, and we don't want a Neo4j hiccup to roll back successful
+    chunk insertions.
+    """
+    if not getattr(collection, "graph_enabled", False):
+        return
+
+    import config as config_module  # noqa: PLC0415
+
+    kg_config = config_module.get_kg_rag_config()
+    if not kg_config.get("enabled") or not kg_config.get("index_on_ingest", True):
+        return
+
+    # The chunks were already embedded and stored; pull them back from the
+    # vector backend so we have stable IDs and the exact text that's
+    # searchable.
+    try:
+        from plugins.vector_db import chromadb_backend as _chroma_mod  # noqa: PLC0415
+
+        if collection.vector_db_backend != "chromadb":
+            logger.warning(
+                "Graph indexing currently only supports chromadb backend; "
+                "skipping for collection %s (backend=%s).",
+                collection.id,
+                collection.vector_db_backend,
+            )
+            return
+
+        client = _chroma_mod._get_client(collection.storage_path)
+        from plugins.vector_db.chromadb_backend import _to_chroma_ef  # noqa: PLC0415
+
+        chroma_collection = client.get_collection(
+            name=collection.backend_collection_id or collection.id,
+            embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Graph indexing: could not open ChromaDB collection %s: %s",
+            collection.id,
+            exc,
+        )
+        return
+
+    source_ids = [doc["source_item_id"] for doc in docs_list]
+    try:
+        from services.graph_indexing import (  # noqa: PLC0415
+            index_chunks_for_collection,
+        )
+
+        for source_id in source_ids:
+            rows = chroma_collection.get(
+                where={"source_item_id": source_id},
+                include=["documents", "metadatas"],
+            )
+            ids = rows.get("ids") or []
+            texts = rows.get("documents") or []
+            metadatas = rows.get("metadatas") or []
+            if not ids:
+                continue
+            result = index_chunks_for_collection(
+                collection=collection,
+                ids=list(ids),
+                texts=list(texts),
+                metadatas=[dict(m or {}) for m in metadatas],
+                openai_api_key=openai_api_key,
+                filename=source_id,
+            )
+            if result.get("error"):
+                logger.warning(
+                    "Graph indexing for source %s in collection %s reported: %s",
+                    source_id,
+                    collection.id,
+                    result["error"],
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Graph indexing failed for collection %s: %s", collection.id, exc
+        )
+
 
 def delete_vectors(
     db: Session, collection_id: str, source_item_id: str

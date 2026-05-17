@@ -48,6 +48,14 @@ class CreateCollectionRequest(BaseModel):
         default="chromadb",
         description="Registered vector DB backend name.",
     )
+    graph_enabled: bool = Field(
+        default=False,
+        description=(
+            "Opt this collection into KG-RAG: extracted concepts/relations "
+            "are indexed into Neo4j alongside vector storage at ingestion "
+            "time. Requires ``KG_RAG_ENABLED=true`` at the server level."
+        ),
+    )
 
 
 class UpdateCollectionRequest(BaseModel):
@@ -88,6 +96,7 @@ class CollectionResponse(BaseModel):
     chunking_params: dict[str, Any]
     embedding: EmbeddingConfig
     vector_db_backend: str
+    graph_enabled: bool = False
     status: str
     document_count: int
     chunk_count: int
@@ -117,6 +126,7 @@ class CollectionResponse(BaseModel):
                 api_endpoint=row.embedding_endpoint or "",
             ),
             vector_db_backend=row.vector_db_backend,
+            graph_enabled=bool(getattr(row, "graph_enabled", False)),
             status=row.status,
             document_count=row.document_count,
             chunk_count=row.chunk_count,

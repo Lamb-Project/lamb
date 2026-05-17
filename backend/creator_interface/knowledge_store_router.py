@@ -49,6 +49,11 @@ class KnowledgeStoreCreate(BaseModel):
     embedding_model: str
     embedding_endpoint: Optional[str] = None
     vector_db_backend: str
+    # Optional semantic-graph / KG-RAG opt-in. Forwarded to the KB Server
+    # so the collection is created with ``graph_enabled=true`` and
+    # ingestion-time concept extraction runs against it. Requires
+    # ``KG_RAG_ENABLED=true`` on the KB server.
+    graph_enabled: bool = False
 
 
 class KnowledgeStoreUpdate(BaseModel):
@@ -213,6 +218,7 @@ async def create_knowledge_store(
             description=body.description,
             chunking_params=body.chunking_params,
             embedding_endpoint=resolved_endpoint or "",
+            graph_enabled=bool(body.graph_enabled),
             creator_user=auth.user,
         )
     except Exception as e:

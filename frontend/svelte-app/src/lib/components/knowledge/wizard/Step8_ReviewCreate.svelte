@@ -342,7 +342,8 @@
 					embedding_vendor: wizardState.ksConfig.embedding_vendor,
 					embedding_model: wizardState.ksConfig.embedding_model,
 					embedding_endpoint: wizardState.ksConfig.embedding_endpoint || undefined,
-					vector_db_backend: wizardState.ksConfig.vector_db_backend
+					vector_db_backend: wizardState.ksConfig.vector_db_backend,
+					graph_enabled: !!wizardState.ksConfig.graph_enabled
 				});
 				ksId = ks.id;
 				ksName = ks.name;

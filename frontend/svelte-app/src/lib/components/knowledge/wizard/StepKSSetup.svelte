@@ -101,6 +101,7 @@
 	let embeddingModel = $state(wizardState.ksConfig?.embedding_model || '');
 	let embeddingEndpoint = $state(wizardState.ksConfig?.embedding_endpoint || '');
 	let vectorDb = $state(wizardState.ksConfig?.vector_db_backend || '');
+	let graphEnabled = $state(!!wizardState.ksConfig?.graph_enabled);
 
 	// Param descriptors for the currently-selected strategy. Each entry has
 	// { name, type, description, default, min_value, max_value }.
@@ -326,7 +327,8 @@
 					embedding_vendor: embeddingVendor,
 					embedding_model: embeddingModel,
 					embedding_endpoint: embeddingEndpoint,
-					vector_db_backend: vectorDb
+					vector_db_backend: vectorDb,
+					graph_enabled: graphEnabled
 				}
 			});
 		});
@@ -701,6 +703,29 @@
 								placeholder="https://..."
 								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
 							/>
+						</div>
+
+						<div class="rounded border border-gray-200 bg-gray-50 p-3">
+							<label class="flex items-start gap-2 text-sm text-gray-800">
+								<input
+									type="checkbox"
+									class="mt-0.5 h-4 w-4"
+									bind:checked={graphEnabled}
+								/>
+								<span>
+									<span class="font-medium">
+										{$_('knowledge.wizard.step6.graphLabel', {
+											default: 'Enable semantic graph (Graph RAG)'
+										})}
+									</span>
+									<span class="block text-xs text-gray-600">
+										{$_('knowledge.wizard.step6.graphHint', {
+											default:
+												'Extracts concepts and relationships from ingested chunks and stores them in Neo4j. Requires KG_RAG_ENABLED=true on the KB server.'
+										})}
+									</span>
+								</span>
+							</label>
 						</div>
 					{/if}
 				</div>

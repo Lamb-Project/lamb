@@ -47,8 +47,14 @@ openai = [
     "openai>=1.0.0",
 ]
 
+# Optional KG-RAG: Neo4j graph store + OpenAI extractor.
+kg-rag = [
+    "neo4j>=5.0.0",
+    "openai>=1.0.0",
+]
+
 all = [
-    "lamb-kb-server[qdrant,local,openai]",
+    "lamb-kb-server[qdrant,local,openai,kg-rag]",
 ]
 
 dev = [

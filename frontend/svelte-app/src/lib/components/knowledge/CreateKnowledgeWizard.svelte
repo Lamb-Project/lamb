@@ -89,7 +89,8 @@
 			embedding_vendor: '',
 			embedding_model: '',
 			embedding_endpoint: '',
-			vector_db_backend: ''
+			vector_db_backend: '',
+			graph_enabled: false
 		},
 		selectedItemIds: [],
 		selectionInitialized: false,

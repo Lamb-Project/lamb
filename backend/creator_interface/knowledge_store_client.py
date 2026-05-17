@@ -253,6 +253,7 @@ class KnowledgeStoreClient:
         description: str = "",
         chunking_params: Dict[str, Any] = None,
         embedding_endpoint: str = "",
+        graph_enabled: bool = False,
         creator_user: Dict[str, Any] = None,
     ) -> Dict:
         """Create a collection on the KB Server.
@@ -274,6 +275,7 @@ class KnowledgeStoreClient:
                 "api_endpoint": embedding_endpoint or "",
             },
             "vector_db_backend": vector_db_backend,
+            "graph_enabled": bool(graph_enabled),
         }
         return await self._request("POST", "/collections", config, json=payload)
 
@@ -406,6 +408,179 @@ class KnowledgeStoreClient:
         """Poll an ingestion job's status."""
         config = self._get_ks_config(creator_user)
         return await self._request("GET", f"/jobs/{job_id}", config)
+
+    # ------------------------------------------------------------------
+    # KG-RAG / Semantic Graph proxy
+    # ------------------------------------------------------------------
+    # These endpoints exist on the KB Server only when ``KG_RAG_ENABLED=true``
+    # is set in its env. LAMB proxies through to keep the per-org token /
+    # URL resolution in one place.
+
+    async def get_graph_status(self, creator_user: Dict[str, Any] = None) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request("GET", "/graph/status", config)
+
+    async def migrate_collection_to_graph(
+        self,
+        knowledge_store_id: str,
+        openai_api_key: str = "",
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        extra_headers = (
+            {"X-OpenAI-Api-Key": openai_api_key} if openai_api_key else {}
+        )
+        headers = {**self._headers(config["token"]), **extra_headers}
+        url = (
+            f"{config['url'].rstrip('/')}"
+            f"/graph/collections/{knowledge_store_id}/migrate"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                response = await client.post(url, headers=headers)
+                if response.is_success:
+                    return response.json() if response.content else {}
+                detail = response.json().get("detail", response.text)
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Knowledge Store server error: {detail}",
+                )
+        except httpx.RequestError as exc:
+            logger.error("Knowledge Store connection error: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to connect to Knowledge Store server",
+            )
+
+    async def get_graph_snapshot(
+        self,
+        knowledge_store_id: str,
+        params: Dict[str, Any] = None,
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "GET",
+            f"/graph/collections/{knowledge_store_id}/snapshot",
+            config,
+            params=params or {},
+        )
+
+    async def list_graph_changes(
+        self,
+        knowledge_store_id: str,
+        params: Dict[str, Any] = None,
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "GET",
+            f"/graph/collections/{knowledge_store_id}/changes",
+            config,
+            params=params or {},
+        )
+
+    async def run_benchmark(
+        self,
+        knowledge_store_id: str,
+        body: Dict[str, Any],
+        embedding_api_key: str = "",
+        embedding_api_endpoint: str = "",
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        """Run a single benchmark dataset against a Knowledge Store."""
+        config = self._get_ks_config(creator_user)
+        payload = {
+            **body,
+            "embedding_credentials": {
+                "api_key": embedding_api_key or "",
+                "api_endpoint": embedding_api_endpoint or "",
+            },
+        }
+        return await self._request(
+            "POST",
+            f"/benchmarks/collections/{knowledge_store_id}/run",
+            config,
+            json=payload,
+        )
+
+    async def list_benchmark_datasets(
+        self, creator_user: Dict[str, Any] = None
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request("GET", "/benchmarks/datasets", config)
+
+    async def graph_concept_rename(
+        self,
+        knowledge_store_id: str,
+        concept: str,
+        body: Dict[str, Any],
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "PATCH",
+            f"/graph/collections/{knowledge_store_id}/concepts/{concept}/rename",
+            config,
+            json=body,
+        )
+
+    async def graph_concepts_merge(
+        self,
+        knowledge_store_id: str,
+        body: Dict[str, Any],
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "POST",
+            f"/graph/collections/{knowledge_store_id}/concepts/merge",
+            config,
+            json=body,
+        )
+
+    async def graph_concept_curation(
+        self,
+        knowledge_store_id: str,
+        concept: str,
+        body: Dict[str, Any],
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "PATCH",
+            f"/graph/collections/{knowledge_store_id}/concepts/{concept}/curation",
+            config,
+            json=body,
+        )
+
+    async def graph_relationship_edit(
+        self,
+        knowledge_store_id: str,
+        body: Dict[str, Any],
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "PATCH",
+            f"/graph/collections/{knowledge_store_id}/relationships",
+            config,
+            json=body,
+        )
+
+    async def graph_relationship_curation(
+        self,
+        knowledge_store_id: str,
+        body: Dict[str, Any],
+        creator_user: Dict[str, Any] = None,
+    ) -> Dict:
+        config = self._get_ks_config(creator_user)
+        return await self._request(
+            "PATCH",
+            f"/graph/collections/{knowledge_store_id}/relationships/curation",
+            config,
+            json=body,
+        )
 
     # ------------------------------------------------------------------
     # Org-level discovery (for the UI options endpoint)

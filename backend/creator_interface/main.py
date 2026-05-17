@@ -1,6 +1,9 @@
 from .chats_router import router as chats_router
 from .library_router import router as library_router
 from .knowledge_store_router import router as knowledge_store_router
+from .knowledge_store_graph_router import (
+    router as knowledge_store_graph_router,
+)
 from .analytics_router import router as analytics_router
 from .prompt_templates_router import router as prompt_templates_router
 from .evaluaitor_router import router as evaluaitor_router
@@ -145,6 +148,11 @@ router.include_router(library_router, prefix="/libraries")
 # Include the Knowledge Store router (new KB Server, port 9092). Distinct
 # from the legacy /knowledgebases routes which serve the stable KB Server.
 router.include_router(knowledge_store_router, prefix="/knowledge-stores")
+# Graph + benchmark proxy. Mounted on the same prefix so the frontend
+# can keep ``/creator/knowledge-stores/...`` as the only KB-related base.
+router.include_router(
+    knowledge_store_graph_router, prefix="/knowledge-stores"
+)
 
 # REMOVED: assistant_sharing_router - functionality moved to services, accessed via /creator/lamb/* proxy
 

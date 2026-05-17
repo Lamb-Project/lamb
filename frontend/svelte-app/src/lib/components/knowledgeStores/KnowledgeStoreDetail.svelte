@@ -21,6 +21,9 @@
 	import { _ } from '$lib/i18n';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
+	import KnowledgeStoreGraphView from '$lib/components/knowledgeStores/KnowledgeStoreGraphView.svelte';
+	import KnowledgeStoreBenchmarkView from '$lib/components/knowledgeStores/KnowledgeStoreBenchmarkView.svelte';
+	import { getGraphStatus } from '$lib/services/graphService';
 
 	/** @type {{ ksId: string }} */
 	let { ksId } = $props();
@@ -30,6 +33,10 @@
 	let loading = $state(true);
 	let error = $state('');
 	let successMessage = $state('');
+
+	// KG-RAG / semantic graph state. Loaded lazily after the KS itself.
+	let graphStatus = $state(/** @type {any} */ (null));
+	let activeTab = $state('content');
 
 	// Edit state
 	let editingMeta = $state(false);
@@ -115,6 +122,13 @@
 			editName = ks?.name ?? '';
 			editDescription = ks?.description ?? '';
 			schedulePollIfNeeded();
+			// Best-effort graph status — KG-RAG is optional, so a 5xx here
+			// shouldn't break the detail view.
+			try {
+				graphStatus = await getGraphStatus();
+			} catch (_) {
+				graphStatus = { enabled: false };
+			}
 		} catch (/** @type {unknown} */ err) {
 			console.error('Error loading Knowledge Store:', err);
 			error = err instanceof Error ? err.message : 'Failed to load Knowledge Store';
@@ -445,6 +459,46 @@
 		</div>
 	</div>
 
+	<!-- Tabs: Content (default), Graph + Benchmarks when KG-RAG is enabled. -->
+	<div class="mb-4 border-b border-gray-200">
+		<nav class="flex gap-4 text-sm" aria-label="Tabs">
+			<button
+				type="button"
+				class="border-b-2 px-1 pb-2 {activeTab === 'content'
+					? 'border-[#2271b3] font-semibold text-[#2271b3]'
+					: 'border-transparent text-gray-500 hover:text-gray-700'}"
+				onclick={() => (activeTab = 'content')}
+			>
+				{$_('knowledgeStores.tabContent', { default: 'Content' })}
+			</button>
+			{#if graphStatus?.enabled}
+				<button
+					type="button"
+					class="border-b-2 px-1 pb-2 {activeTab === 'graph'
+						? 'border-[#2271b3] font-semibold text-[#2271b3]'
+						: 'border-transparent text-gray-500 hover:text-gray-700'}"
+					onclick={() => (activeTab = 'graph')}
+				>
+					{$_('knowledgeStores.tabGraph', { default: 'Graph' })}
+				</button>
+				<button
+					type="button"
+					class="border-b-2 px-1 pb-2 {activeTab === 'benchmark'
+						? 'border-[#2271b3] font-semibold text-[#2271b3]'
+						: 'border-transparent text-gray-500 hover:text-gray-700'}"
+					onclick={() => (activeTab = 'benchmark')}
+				>
+					{$_('knowledgeStores.tabBenchmark', { default: 'Benchmark' })}
+				</button>
+			{/if}
+		</nav>
+	</div>
+
+	{#if activeTab === 'graph'}
+		<KnowledgeStoreGraphView {ksId} graphEnabled={!!ks?.graph_enabled} />
+	{:else if activeTab === 'benchmark'}
+		<KnowledgeStoreBenchmarkView {ksId} graphEnabled={!!ks?.graph_enabled} />
+	{:else}
 	<!-- Linked content -->
 	<div class="mb-4 overflow-hidden rounded-lg bg-white shadow">
 		<div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
@@ -708,6 +762,7 @@
 			{/if}
 		</div>
 	</div>
+	{/if}
 
 	<!-- Footer metadata -->
 	<div class="text-right text-xs text-gray-400">

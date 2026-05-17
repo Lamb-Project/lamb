@@ -16,6 +16,7 @@ under ``DATA_DIR/storage/{org_id}/{collection_id}/``.
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Index,
@@ -69,6 +70,13 @@ class Collection(Base):
 
     # Relative path (under STORAGE_DIR) for this collection's persistent data.
     storage_path = Column(String, nullable=False)
+
+    # --- Optional KG-RAG graph augmentation ---
+    # Per-collection opt-in: when True and ``KG_RAG_ENABLED`` is set at the
+    # server level, ingestion also indexes extracted concepts/relations into
+    # Neo4j (services/graph_store.py). Default False keeps existing flows
+    # untouched.
+    graph_enabled = Column(Boolean, nullable=False, default=False)
 
     # --- Status tracking ---
     status = Column(String, nullable=False, default="ready")

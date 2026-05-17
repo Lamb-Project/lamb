@@ -143,6 +143,7 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
             vector_db_backend=req.vector_db_backend,
             backend_collection_id=backend_collection_id,
             storage_path=storage_path,
+            graph_enabled=bool(getattr(req, "graph_enabled", False)),
             status="ready",
             document_count=0,
             chunk_count=0,
