@@ -19,7 +19,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from lamb.auth_context import AuthContext, get_auth_context
-from lamb.completions.org_config_resolver import OrganizationConfigResolver
 from lamb.database_manager import LambDatabaseManager
 
 from .knowledge_store_client import KnowledgeStoreClient
@@ -91,6 +90,7 @@ async def migrate_knowledge_store_to_graph(
 
     api_key = (body.openai_api_key or "").strip()
     if not api_key:
+        from lamb.completions.org_config_resolver import OrganizationConfigResolver
         resolver = OrganizationConfigResolver(auth.user.get("email"))
         try:
             api_key = resolver.get_provider_api_key("openai") or ""
@@ -308,6 +308,7 @@ async def run_benchmark(
     auth: AuthContext = Depends(get_auth_context),
 ):
     _assert_ks_access(ks_id, auth)
+    from lamb.completions.org_config_resolver import OrganizationConfigResolver
     resolver = OrganizationConfigResolver(auth.user.get("email"))
     # Resolve embedding key the same way ingestion does, so the benchmark
     # baseline vector pass works without the caller threading creds.

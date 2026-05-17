@@ -72,6 +72,21 @@ class BenchmarkComparison(BaseModel):
     expected_behavior: str
 
 
+class EmbeddingCredentialsBody(BaseModel):
+    """Embedded request-scoped embedding credentials.
+
+    Mirrors :class:`schemas.content.EmbeddingCredentials` but lives on the
+    benchmark request models so the LAMB proxy can send a single flat body
+    instead of having to wrap fields under ``request`` (which FastAPI
+    requires when multiple ``Body`` parameters coexist on one route).
+    """
+
+    api_key: str = Field(default="", description="Vendor API key.")
+    api_endpoint: str = Field(
+        default="", description="Optional API base URL override."
+    )
+
+
 class BenchmarkRunRequest(BaseModel):
     dataset_id: Optional[str] = Field(
         "educational", description="Built-in dataset ID to use when questions are omitted"
@@ -82,6 +97,14 @@ class BenchmarkRunRequest(BaseModel):
     top_k: Optional[int] = Field(None, ge=1, le=50)
     graph_depth: Optional[int] = Field(None, ge=1, le=4)
     threshold: float = Field(0.0, ge=0.0, le=1.0)
+    embedding_credentials: EmbeddingCredentialsBody = Field(
+        default_factory=EmbeddingCredentialsBody,
+        description=(
+            "Per-request embedding credentials. LAMB resolves these from "
+            "``setups.default.providers.{vendor}.api_key``; the field is "
+            "optional so direct callers can omit it."
+        ),
+    )
 
 
 class BenchmarkRunResponse(BaseModel):
@@ -101,6 +124,10 @@ class BenchmarkRunAllRequest(BaseModel):
         default_factory=lambda: ["educational", "control", "paper", "extreme"]
     )
     threshold: float = Field(0.0, ge=0.0, le=1.0)
+    embedding_credentials: EmbeddingCredentialsBody = Field(
+        default_factory=EmbeddingCredentialsBody,
+        description="Per-request embedding credentials (same semantics as BenchmarkRunRequest).",
+    )
 
 
 class BenchmarkRunAllResponse(BaseModel):

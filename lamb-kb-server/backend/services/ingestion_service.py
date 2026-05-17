@@ -289,8 +289,8 @@ def _maybe_index_graph(
     *,
     collection: Collection,
     docs_list: list[dict],
-    backend: object,
-    embedding_function: object,
+    backend,
+    embedding_function,
     openai_api_key: str = "",
 ) -> None:
     """Run graph indexing for this batch if the collection opted in.
@@ -298,6 +298,12 @@ def _maybe_index_graph(
     Failures here are logged and swallowed: vector ingestion already
     committed, and we don't want a Neo4j hiccup to roll back successful
     chunk insertions.
+
+    Pulls chunks back from the vector backend (via the public
+    ``get_chunks_by_source`` surface) so the graph indexer has stable
+    chunk IDs that match what's searchable. Backends that don't
+    implement that method silently return empty lists, which we treat as
+    "no chunks to index" and log a one-line warning.
     """
     if not getattr(collection, "graph_enabled", False):
         return
@@ -308,71 +314,57 @@ def _maybe_index_graph(
     if not kg_config.get("enabled") or not kg_config.get("index_on_ingest", True):
         return
 
-    # The chunks were already embedded and stored; pull them back from the
-    # vector backend so we have stable IDs and the exact text that's
-    # searchable.
-    try:
-        from plugins.vector_db import chromadb_backend as _chroma_mod  # noqa: PLC0415
-
-        if collection.vector_db_backend != "chromadb":
-            logger.warning(
-                "Graph indexing currently only supports chromadb backend; "
-                "skipping for collection %s (backend=%s).",
-                collection.id,
-                collection.vector_db_backend,
-            )
-            return
-
-        client = _chroma_mod._get_client(collection.storage_path)
-        from plugins.vector_db.chromadb_backend import _to_chroma_ef  # noqa: PLC0415
-
-        chroma_collection = client.get_collection(
-            name=collection.backend_collection_id or collection.id,
-            embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Graph indexing: could not open ChromaDB collection %s: %s",
-            collection.id,
-            exc,
-        )
-        return
+    from services.graph_indexing import (  # noqa: PLC0415
+        index_chunks_for_collection,
+    )
 
     source_ids = [doc["source_item_id"] for doc in docs_list]
-    try:
-        from services.graph_indexing import (  # noqa: PLC0415
-            index_chunks_for_collection,
-        )
+    backend_collection_id = collection.backend_collection_id or collection.id
+    for source_id in source_ids:
+        try:
+            fetched = backend.get_chunks_by_source(
+                collection_id=backend_collection_id,
+                storage_path=collection.storage_path,
+                source_item_id=source_id,
+                embedding_function=embedding_function,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Graph indexing: backend %s failed to fetch source %s: %s",
+                collection.vector_db_backend,
+                source_id,
+                exc,
+            )
+            continue
 
-        for source_id in source_ids:
-            rows = chroma_collection.get(
-                where={"source_item_id": source_id},
-                include=["documents", "metadatas"],
+        if not fetched:
+            logger.debug(
+                "Graph indexing: no chunks returned for source %s on backend %s; "
+                "skipping. (Most likely the backend does not support "
+                "get_chunks_by_source.)",
+                source_id,
+                collection.vector_db_backend,
             )
-            ids = rows.get("ids") or []
-            texts = rows.get("documents") or []
-            metadatas = rows.get("metadatas") or []
-            if not ids:
-                continue
-            result = index_chunks_for_collection(
-                collection=collection,
-                ids=list(ids),
-                texts=list(texts),
-                metadatas=[dict(m or {}) for m in metadatas],
-                openai_api_key=openai_api_key,
-                filename=source_id,
-            )
-            if result.get("error"):
-                logger.warning(
-                    "Graph indexing for source %s in collection %s reported: %s",
-                    source_id,
-                    collection.id,
-                    result["error"],
-                )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Graph indexing failed for collection %s: %s", collection.id, exc
+            continue
+
+        result = index_chunks_for_collection(
+            collection=collection,
+            ids=[
+                str(item.metadata.get("chunk_id") or item.metadata.get("document_id") or "")
+                for item in fetched
+            ],
+            texts=[item.text for item in fetched],
+            metadatas=[dict(item.metadata or {}) for item in fetched],
+            openai_api_key=openai_api_key,
+            filename=source_id,
         )
+        if result.get("error"):
+            logger.warning(
+                "Graph indexing for source %s in collection %s reported: %s",
+                source_id,
+                collection.id,
+                result["error"],
+            )
 
 
 def delete_vectors(

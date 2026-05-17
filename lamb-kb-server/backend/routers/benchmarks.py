@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from database.connection import get_session
 from dependencies import verify_token
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Depends
 from schemas.benchmark import (
     BenchmarkDataset,
     BenchmarkDatasetSummary,
@@ -13,7 +13,6 @@ from schemas.benchmark import (
     BenchmarkRunRequest,
     BenchmarkRunResponse,
 )
-from schemas.content import EmbeddingCredentials
 from services.benchmark import BenchmarkService
 from sqlalchemy.orm import Session
 
@@ -49,20 +48,23 @@ async def get_benchmark_dataset(dataset_id: str) -> BenchmarkDataset:
 )
 async def run_collection_benchmark(
     collection_id: str,
-    request: BenchmarkRunRequest,
-    embedding_credentials: EmbeddingCredentials = Body(
-        default_factory=EmbeddingCredentials,
-        embed=True,
-    ),
+    body: BenchmarkRunRequest,
     db: Session = Depends(get_session),
 ) -> BenchmarkRunResponse:
+    """Run one benchmark dataset.
+
+    Single body parameter so FastAPI doesn't force the LAMB proxy to wrap
+    fields under ``request``. Embedded ``embedding_credentials`` carry the
+    per-request key for the baseline vector pass.
+    """
+    creds = body.embedding_credentials
     return BenchmarkService.run(
         db=db,
         collection_id=collection_id,
-        request=request,
+        request=body,
         embedding_credentials={
-            "api_key": embedding_credentials.api_key,
-            "api_endpoint": embedding_credentials.api_endpoint,
+            "api_key": creds.api_key,
+            "api_endpoint": creds.api_endpoint,
         },
     )
 
@@ -74,20 +76,17 @@ async def run_collection_benchmark(
 )
 async def run_all_collection_benchmarks(
     collection_id: str,
-    request: BenchmarkRunAllRequest,
-    embedding_credentials: EmbeddingCredentials = Body(
-        default_factory=EmbeddingCredentials,
-        embed=True,
-    ),
+    body: BenchmarkRunAllRequest,
     db: Session = Depends(get_session),
 ) -> BenchmarkRunAllResponse:
+    creds = body.embedding_credentials
     return BenchmarkService.run_all(
         db=db,
         collection_id=collection_id,
-        dataset_ids=request.dataset_ids,
-        threshold=request.threshold,
+        dataset_ids=body.dataset_ids,
+        threshold=body.threshold,
         embedding_credentials={
-            "api_key": embedding_credentials.api_key,
-            "api_endpoint": embedding_credentials.api_endpoint,
+            "api_key": creds.api_key,
+            "api_endpoint": creds.api_endpoint,
         },
     )

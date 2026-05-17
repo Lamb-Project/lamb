@@ -229,6 +229,127 @@ class ChromaDBBackend(VectorDBBackend):
 
         return count
 
+    def get_chunks_by_id(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        chunk_ids: list[str],
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Return chunks for ``chunk_ids`` in the order they were requested.
+
+        Used by KG-RAG to materialize chunks discovered through graph
+        traversal. Score is set to a constant 0.72 sentinel so callers can
+        tell graph-sourced results apart from real similarity hits without
+        having to inspect metadata.
+        """
+        if not chunk_ids:
+            return []
+        client = _get_client(storage_path)
+        try:
+            collection = client.get_collection(
+                name=collection_id,
+                embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+            )
+            rows = collection.get(
+                ids=chunk_ids,
+                include=["documents", "metadatas"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ChromaDB get_chunks_by_id failed: %s", exc)
+            return []
+
+        ids = rows.get("ids") or chunk_ids
+        documents = rows.get("documents") or []
+        metadatas = rows.get("metadatas") or []
+        results: list[QueryResult] = []
+        for index, chunk_id in enumerate(ids):
+            document = documents[index] if index < len(documents) else ""
+            metadata: dict[str, Any] = (
+                dict(metadatas[index] or {}) if index < len(metadatas) else {}
+            )
+            metadata.setdefault("document_id", chunk_id)
+            text = metadata.pop("parent_text", None) or document
+            results.append(QueryResult(text=text, score=0.72, metadata=metadata))
+        return results
+
+    def get_chunks_by_source(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        source_item_id: str,
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Return every chunk whose ``source_item_id`` matches.
+
+        Score is the 0.72 sentinel (these are exact lookups, not
+        similarity results). Empty list when no chunks are found.
+        """
+        client = _get_client(storage_path)
+        try:
+            collection = client.get_collection(
+                name=collection_id,
+                embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+            )
+            rows = collection.get(
+                where={"source_item_id": source_item_id},
+                include=["documents", "metadatas"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ChromaDB get_chunks_by_source failed: %s", exc)
+            return []
+
+        ids = rows.get("ids") or []
+        documents = rows.get("documents") or []
+        metadatas = rows.get("metadatas") or []
+        results: list[QueryResult] = []
+        for index, chunk_id in enumerate(ids):
+            document = documents[index] if index < len(documents) else ""
+            metadata: dict[str, Any] = (
+                dict(metadatas[index] or {}) if index < len(metadatas) else {}
+            )
+            metadata.setdefault("chunk_id", chunk_id)
+            results.append(QueryResult(text=document, score=0.72, metadata=metadata))
+        return results
+
+    def iter_all_chunks(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        embedding_function: EmbeddingFunction,
+        batch_size: int = 500,
+    ):
+        """Yield ``(ids, texts, metadatas)`` tuples until the collection is drained.
+
+        Wraps ChromaDB's ``get(limit, offset)`` paginator so the graph
+        migration route can iterate without each caller re-implementing
+        the offset bookkeeping.
+        """
+        client = _get_client(storage_path)
+        chroma_collection = client.get_collection(
+            name=collection_id,
+            embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
+        )
+        offset = 0
+        while True:
+            result = chroma_collection.get(
+                include=["documents", "metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+            ids = result.get("ids") or []
+            if not ids:
+                return
+            yield (
+                list(ids),
+                list(result.get("documents") or []),
+                [dict(m or {}) for m in (result.get("metadatas") or [])],
+            )
+            offset += len(ids)
+
     def query(
         self,
         *,

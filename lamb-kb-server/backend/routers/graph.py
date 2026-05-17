@@ -78,17 +78,6 @@ def _graph_status_payload() -> dict[str, Any]:
     }
 
 
-def _collection_dict(collection: Collection) -> dict[str, Any]:
-    """Adapt a new Collection ORM row to the legacy ``{id, owner, ...}``
-    dict shape that graph_store internals still expect."""
-    return {
-        "id": collection.id,
-        "name": collection.name,
-        "organization_id": collection.organization_id,
-        "owner": collection.organization_id,
-    }
-
-
 @router.get("/status", summary="Get Graph RAG feature availability")
 async def get_graph_status(token: str = Depends(verify_token)):
     return _graph_status_payload()
@@ -117,63 +106,64 @@ async def migrate_collection_to_graph(
     collection = _get_collection_or_404(db, collection_id)
     _graph_store_or_503()
 
-    # Pull chunks from ChromaDB (the only backend with a stable get-by-id
-    # path right now). Qdrant migration is a TODO.
-    if collection.vector_db_backend != "chromadb":
+    from plugins.base import EmbeddingRegistry, VectorDBRegistry  # noqa: PLC0415
+
+    backend = VectorDBRegistry.get(collection.vector_db_backend)
+    if backend is None:
         raise HTTPException(
-            status_code=400,
+            status_code=503,
             detail=(
-                "Graph migration currently only supports the chromadb vector "
-                f"backend (collection uses '{collection.vector_db_backend}')."
+                f"Vector DB backend '{collection.vector_db_backend}' is not "
+                "available."
             ),
         )
 
-    from plugins.vector_db import chromadb_backend as _chroma_mod
-
-    client = _chroma_mod._get_client(collection.storage_path)
-    try:
-        chroma_collection = client.get_collection(
-            name=collection.backend_collection_id or collection.id
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"ChromaDB collection for {collection.id} not found",
-        ) from exc
+    # We need an embedding function to open the collection on backends that
+    # require it; no credentials are needed for a read-only scan.
+    embedding_function = EmbeddingRegistry.build(
+        collection.embedding_vendor,
+        model=collection.embedding_model,
+        api_key="",
+        api_endpoint=collection.embedding_endpoint or "",
+    )
 
     ids: list[str] = []
     texts: list[str] = []
     metadatas: list[dict[str, Any]] = []
-    offset = 0
-    batch_size = 500
 
-    while True:
-        result = chroma_collection.get(
-            include=["documents", "metadatas"],
-            limit=batch_size,
-            offset=offset,
-        )
-        result_ids = result.get("ids") or []
-        documents = result.get("documents") or []
-        result_metadatas = result.get("metadatas") or []
-        if not result_ids:
-            break
-
-        for i, chunk_id in enumerate(result_ids):
-            text = documents[i] if i < len(documents) else None
-            if not text:
-                continue
-            metadata = (
-                result_metadatas[i]
-                if i < len(result_metadatas)
-                and isinstance(result_metadatas[i], dict)
-                else {}
-            )
-            ids.append(chunk_id)
-            texts.append(text)
-            metadatas.append(metadata)
-
-        offset += len(result_ids)
+    try:
+        for batch_ids, batch_texts, batch_metas in backend.iter_all_chunks(
+            collection_id=collection.backend_collection_id or collection.id,
+            storage_path=collection.storage_path,
+            embedding_function=embedding_function,
+        ):
+            for i, chunk_id in enumerate(batch_ids):
+                text = batch_texts[i] if i < len(batch_texts) else None
+                if not text:
+                    continue
+                metadata = (
+                    batch_metas[i]
+                    if i < len(batch_metas) and isinstance(batch_metas[i], dict)
+                    else {}
+                )
+                ids.append(chunk_id)
+                texts.append(text)
+                metadatas.append(metadata)
+    except NotImplementedError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Graph migration is not supported for the "
+                f"'{collection.vector_db_backend}' backend yet. Migration "
+                "requires a backend that exposes iter_all_chunks() — "
+                "currently chromadb."
+            ),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=404,
+            detail=f"Vector backend collection for {collection.id} not found",
+        ) from exc
 
     if not ids:
         collection.graph_enabled = True

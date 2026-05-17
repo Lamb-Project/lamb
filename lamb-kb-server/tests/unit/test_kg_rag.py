@@ -19,18 +19,8 @@ exercised by integration / e2e suites that are gated on the optional
 from __future__ import annotations
 
 import importlib
-from collections.abc import Iterator
 
 import pytest
-
-
-@pytest.fixture()
-def reload_config(monkeypatch) -> Iterator[None]:
-    """Local copy of the reload_config fixture from test_config.py."""
-    import config  # noqa: PLC0415
-
-    yield
-    importlib.reload(config)
 
 
 # ---------------------------------------------------------------------------
@@ -185,3 +175,135 @@ def test_plugin_returns_baseline_when_no_seed_ids(monkeypatch):
     )
     trace = out[0]["metadata"]["kg_rag"]
     assert any("No vector seed chunks" in w for w in trace["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# Benchmark route body shape — regression test for the FastAPI Body(embed=True)
+# bug. The LAMB proxy sends a flat JSON body; the route must accept it without
+# wrapping fields under ``request``.
+# ---------------------------------------------------------------------------
+
+
+def test_benchmark_run_request_validates_flat_proxy_body():
+    """The exact JSON shape sent by ``KnowledgeStoreClient.run_benchmark``
+    must validate as a ``BenchmarkRunRequest`` — including the embedded
+    ``embedding_credentials`` sub-object."""
+    from schemas.benchmark import BenchmarkRunRequest
+
+    proxy_body = {
+        "dataset_id": "educational",
+        "top_k": 5,
+        "graph_depth": 2,
+        "threshold": 0.0,
+        "embedding_credentials": {
+            "api_key": "sk-test",
+            "api_endpoint": "",
+        },
+    }
+    parsed = BenchmarkRunRequest.model_validate(proxy_body)
+    assert parsed.dataset_id == "educational"
+    assert parsed.top_k == 5
+    assert parsed.embedding_credentials.api_key == "sk-test"
+
+
+def test_benchmark_run_request_credentials_optional():
+    """Direct API callers may omit ``embedding_credentials`` entirely."""
+    from schemas.benchmark import BenchmarkRunRequest
+
+    parsed = BenchmarkRunRequest.model_validate(
+        {"dataset_id": "educational", "top_k": 5}
+    )
+    # Default factory produces an empty-string credentials object.
+    assert parsed.embedding_credentials.api_key == ""
+    assert parsed.embedding_credentials.api_endpoint == ""
+
+
+# ---------------------------------------------------------------------------
+# Schema migration: graph_enabled column auto-added on init_db
+# ---------------------------------------------------------------------------
+
+
+def test_init_db_adds_graph_enabled_to_legacy_collections_table(
+    tmp_path, monkeypatch
+):
+    """A DB that was created before this branch (no graph_enabled column)
+    should get the column added by init_db without losing existing rows.
+
+    The bug we're guarding: ``Base.metadata.create_all`` is a no-op on an
+    existing table, so without _run_lightweight_migrations any query
+    against ``collections`` would raise ``no such column``.
+
+    We call the lightweight-migrations helper directly here rather than
+    spinning up a second init_db — that keeps this test from clobbering
+    the session-wide ``_engine`` / ``_SessionLocal`` that the rest of the
+    suite depends on.
+    """
+    import sqlite3
+
+    from sqlalchemy import create_engine
+
+    db_path = tmp_path / "legacy.db"
+
+    # Hand-roll the legacy schema (pre-branch) and seed a row.
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE collections (
+            id TEXT PRIMARY KEY,
+            organization_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            chunking_strategy TEXT NOT NULL,
+            chunking_params TEXT,
+            embedding_vendor TEXT NOT NULL,
+            embedding_model TEXT NOT NULL,
+            embedding_endpoint TEXT,
+            vector_db_backend TEXT NOT NULL,
+            backend_collection_id TEXT,
+            storage_path TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ready',
+            error_message TEXT,
+            document_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO collections (
+            id, organization_id, name, chunking_strategy, embedding_vendor,
+            embedding_model, vector_db_backend, storage_path
+        ) VALUES (
+            'legacy-1', 'org-1', 'legacy', 'simple', 'fake',
+            'fake-model', 'chromadb', '/tmp/legacy'
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    legacy_engine = create_engine(f"sqlite:///{db_path}")
+    from database.connection import _run_lightweight_migrations
+
+    _run_lightweight_migrations(legacy_engine)
+    legacy_engine.dispose()
+
+    # After the migration runs, the legacy row should still be present AND
+    # the new column must exist with the documented default.
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.execute("PRAGMA table_info(collections)")
+    columns = {row[1] for row in cur.fetchall()}
+    assert "graph_enabled" in columns
+
+    row = conn.execute(
+        "SELECT graph_enabled FROM collections WHERE id = 'legacy-1'"
+    ).fetchone()
+    assert row == (0,)  # NOT NULL default 0
+
+    # The migration must be idempotent — running it again is a no-op.
+    legacy_engine = create_engine(f"sqlite:///{db_path}")
+    _run_lightweight_migrations(legacy_engine)
+    legacy_engine.dispose()
+    cur = conn.execute("PRAGMA table_info(collections)")
+    assert (
+        sum(1 for row in cur.fetchall() if row[1] == "graph_enabled") == 1
+    )
+    conn.close()

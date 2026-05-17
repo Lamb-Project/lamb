@@ -459,7 +459,16 @@
 		</div>
 	</div>
 
-	<!-- Tabs: Content (default), Graph + Benchmarks when KG-RAG is enabled. -->
+	<!--
+		Tabs: Content (default), Graph + Benchmark when this store has
+		graph_enabled=true (or, if the user hasn't migrated yet, when the
+		server-level flag AND the chromadb backend make migration possible).
+		Stores that can't use Graph RAG don't see the tabs at all — the
+		feature is opt-in and the rest of the UI shouldn't pretend otherwise.
+	-->
+	{@const canEnableGraph =
+		graphStatus?.enabled && ks?.vector_db_backend === 'chromadb'}
+	{@const showGraphTabs = !!ks?.graph_enabled || canEnableGraph}
 	<div class="mb-4 border-b border-gray-200">
 		<nav class="flex gap-4 text-sm" aria-label="Tabs">
 			<button
@@ -471,7 +480,7 @@
 			>
 				{$_('knowledgeStores.tabContent', { default: 'Content' })}
 			</button>
-			{#if graphStatus?.enabled}
+			{#if showGraphTabs}
 				<button
 					type="button"
 					class="border-b-2 px-1 pb-2 {activeTab === 'graph'
@@ -495,7 +504,11 @@
 	</div>
 
 	{#if activeTab === 'graph'}
-		<KnowledgeStoreGraphView {ksId} graphEnabled={!!ks?.graph_enabled} />
+		<KnowledgeStoreGraphView
+			{ksId}
+			graphEnabled={!!ks?.graph_enabled}
+			vectorDbBackend={ks?.vector_db_backend || ''}
+		/>
 	{:else if activeTab === 'benchmark'}
 		<KnowledgeStoreBenchmarkView {ksId} graphEnabled={!!ks?.graph_enabled} />
 	{:else}

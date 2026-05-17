@@ -178,6 +178,57 @@ class VectorDBBackend(abc.ABC):
     ) -> list[QueryResult]:
         """Embed ``query_text`` and return the top ``top_k`` similar chunks."""
 
+    def get_chunks_by_id(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        chunk_ids: list[str],
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Fetch chunks by their backend-side ID without similarity scoring.
+
+        Used by KG-RAG to materialize chunks discovered through graph
+        traversal. The default implementation returns an empty list — a
+        backend that supports ID lookup (ChromaDB) overrides this.
+        Callers must treat an empty return as "lookup not supported" and
+        degrade gracefully.
+        """
+        return []
+
+    def get_chunks_by_source(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        source_item_id: str,
+        embedding_function: EmbeddingFunction,
+    ) -> list[QueryResult]:
+        """Fetch every chunk produced from one source item.
+
+        Used by the ingestion-time graph indexer to grab the chunks it
+        just inserted (so it can run extraction with stable IDs). Default
+        returns an empty list — a backend that supports metadata-where
+        filters (ChromaDB) overrides this.
+        """
+        return []
+
+    def iter_all_chunks(
+        self,
+        *,
+        collection_id: str,
+        storage_path: str,
+        embedding_function: EmbeddingFunction,
+        batch_size: int = 500,
+    ):
+        """Yield every stored chunk in batches, for migration / re-indexing.
+
+        Default raises ``NotImplementedError`` — a backend that supports
+        cursor-style scrolling (ChromaDB's ``get`` with offset) overrides
+        this. The graph-migration route checks for support before calling.
+        """
+        raise NotImplementedError
+
     def get_parameters(self) -> list[PluginParameter]:
         """Return the backend-specific configuration schema (usually empty)."""
         return []

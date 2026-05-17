@@ -193,53 +193,37 @@ class KGRAGQueryPlugin:
         expanded_ids: list[str],
         return_parent_context: bool,
     ) -> list[dict[str, Any]]:
-        """Look up additional chunks discovered by graph expansion.
+        """Look up chunks discovered by graph expansion via the public backend API.
 
-        The new vector backend abstraction (``VectorDBBackend``) exposes
-        ``query`` / ``add_chunks`` / ``delete_by_source`` but not a direct
-        ``get_by_id``. ChromaDB collections opened through the backend's
-        client cache support ``get`` natively, so we reach into that cache
-        for the ChromaDB backend. Other backends fall back to an empty
-        result, which the trace surfaces as a warning.
+        Uses :meth:`VectorDBBackend.get_chunks_by_id` so each backend can
+        implement ID lookup in its own way. A backend that doesn't
+        support it returns ``[]``, and KG-RAG degrades to "graph found
+        related chunks but we can't pull their text" — the trace surfaces
+        this as a warning.
         """
         if not expanded_ids:
             return []
 
-        # ChromaDB backend has a module-level client cache we can reuse.
-        # Other backends do not have a stable lookup-by-id surface yet, so
-        # we return [] and let the trace warn.
         try:
-            from plugins.vector_db import chromadb_backend as _chroma_mod
-
-            client = _chroma_mod._get_client(collection.storage_path)
-            from plugins.vector_db.chromadb_backend import _to_chroma_ef
-
-            chroma_collection = client.get_collection(
-                name=collection.backend_collection_id or str(collection.id),
-                embedding_function=_to_chroma_ef(embedding_function),
-            )
-            rows = chroma_collection.get(
-                ids=expanded_ids,
-                include=["documents", "metadatas"],
+            fetched = backend.get_chunks_by_id(
+                collection_id=collection.backend_collection_id or str(collection.id),
+                storage_path=collection.storage_path,
+                chunk_ids=expanded_ids,
+                embedding_function=embedding_function,
             )
         except Exception as exc:  # noqa: BLE001
             logger.debug("Could not fetch expanded chunks: %s", exc)
             return []
 
-        ids = rows.get("ids") or expanded_ids
-        documents = rows.get("documents") or []
-        metadatas = rows.get("metadatas") or []
         results: list[dict[str, Any]] = []
-        for index, chunk_id in enumerate(ids):
-            document = documents[index] if index < len(documents) else ""
-            metadata = dict(metadatas[index] or {}) if index < len(metadatas) else {}
-            metadata.setdefault("document_id", chunk_id)
+        for item in fetched:
+            metadata = dict(item.metadata or {})
             metadata["kg_rag_origin"] = "graph_expansion"
-            data = metadata.get("parent_text") if return_parent_context else None
+            data = metadata.pop("parent_text", None) if return_parent_context else None
             results.append(
                 {
-                    "similarity": 0.72,
-                    "data": data or document,
+                    "similarity": item.score or 0.72,
+                    "data": data or item.text,
                     "metadata": metadata,
                 }
             )

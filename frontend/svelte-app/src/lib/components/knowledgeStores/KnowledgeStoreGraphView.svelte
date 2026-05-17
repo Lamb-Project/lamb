@@ -32,8 +32,16 @@
 	} from '$lib/utils/graphCuration';
 	import { _ } from '$lib/i18n';
 
-	/** @type {{ ksId: string, graphEnabled: boolean }} */
-	let { ksId, graphEnabled } = $props();
+	/** @type {{ ksId: string, graphEnabled: boolean, vectorDbBackend?: string }} */
+	let { ksId, graphEnabled, vectorDbBackend = '' } = $props();
+
+	// Graph migration currently only supports the chromadb backend
+	// (qdrant doesn't yet expose an iter-all-chunks surface). When the
+	// store uses a different backend we hide the migrate button entirely
+	// and explain why, rather than letting the user click and get a 400.
+	let migrationSupported = $derived(
+		!vectorDbBackend || vectorDbBackend === 'chromadb',
+	);
 
 	let loading = $state(false);
 	let error = $state('');
@@ -163,27 +171,37 @@
 	{#if !graphEnabled}
 		<div class="rounded border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
 			<p class="font-semibold">Graph RAG is not enabled on this Knowledge Store.</p>
-			<p class="mt-2">
-				Run the migration below to extract concepts and relationships from
-				existing chunks. This calls the LLM extractor and writes results to
-				Neo4j; vector retrieval keeps working either way.
-			</p>
-			<div class="mt-3 flex flex-wrap items-center gap-2">
-				<input
-					type="password"
-					class="rounded border border-amber-300 bg-white px-2 py-1 text-sm"
-					placeholder="OpenAI API key (optional — falls back to org/server config)"
-					bind:value={migrateApiKey}
-				/>
-				<button
-					type="button"
-					class="rounded bg-amber-600 px-3 py-1 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-					onclick={onMigrate}
-					disabled={migrating}
-				>
-					{migrating ? 'Migrating…' : 'Migrate to Graph RAG'}
-				</button>
-			</div>
+			{#if migrationSupported}
+				<p class="mt-2">
+					Run the migration below to extract concepts and relationships from
+					existing chunks. This calls the LLM extractor and writes results to
+					Neo4j; vector retrieval keeps working either way.
+				</p>
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					<input
+						type="password"
+						class="rounded border border-amber-300 bg-white px-2 py-1 text-sm"
+						placeholder="OpenAI API key (optional — falls back to org/server config)"
+						bind:value={migrateApiKey}
+					/>
+					<button
+						type="button"
+						class="rounded bg-amber-600 px-3 py-1 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+						onclick={onMigrate}
+						disabled={migrating}
+					>
+						{migrating ? 'Migrating…' : 'Migrate to Graph RAG'}
+					</button>
+				</div>
+			{:else}
+				<p class="mt-2">
+					Graph migration is not yet supported for the
+					<code class="rounded bg-amber-100 px-1 font-mono">{vectorDbBackend}</code>
+					vector backend. Migration currently requires
+					<code class="rounded bg-amber-100 px-1 font-mono">chromadb</code>.
+					Create a new Knowledge Store with chromadb to use Graph RAG.
+				</p>
+			{/if}
 		</div>
 	{/if}
 

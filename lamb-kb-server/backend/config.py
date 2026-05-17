@@ -125,6 +125,12 @@ def get_kg_rag_config() -> dict[str, Any]:
         "extraction_max_workers": _env_int(
             "KG_RAG_EXTRACTION_MAX_WORKERS", 4, 1, 16
         ),
+        # Per-request OpenAI timeout. Default 60s is generous for the
+        # extraction prompt; raise it for very large chunks, lower it if
+        # you want ingestion to fail fast.
+        "openai_timeout_seconds": _env_int(
+            "KG_RAG_OPENAI_TIMEOUT_SECONDS", 60, 5, 600
+        ),
     }
 
 

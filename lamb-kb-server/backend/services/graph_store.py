@@ -477,6 +477,9 @@ class GraphStore:
                            chunk.filename AS filename,
                            doc.document_id AS document_id,
                            left(coalesce(chunk.text, ''), 240) AS text_preview,
+                           coalesce(chunk.permalink_original, '') AS permalink_original,
+                           coalesce(chunk.permalink_full_markdown, '') AS permalink_full_markdown,
+                           coalesce(chunk.permalink_page, '') AS permalink_page,
                            concepts AS concepts
                     ORDER BY filename ASC, source_label ASC
                     LIMIT $chunk_limit
@@ -572,6 +575,12 @@ class GraphStore:
                         "filename": row.get("filename") or "",
                         "document_id": row.get("document_id") or "",
                         "text_preview": row.get("text_preview") or "",
+                        "permalink_original": row.get("permalink_original") or "",
+                        "permalink_full_markdown": row.get(
+                            "permalink_full_markdown"
+                        )
+                        or "",
+                        "permalink_page": row.get("permalink_page") or "",
                         "concepts": row.get("concepts") or [],
                     },
                 }
@@ -2208,6 +2217,21 @@ class GraphStore:
 
         for chunk in chunks:
             metadata = chunk.metadata or {}
+            # Carry permalinks from the chunk metadata onto the Chunk node so
+            # graph-driven citations can link back to source content. The
+            # ingestion path puts these under top-level metadata keys
+            # (``permalink_original``, ``permalink_full_markdown``,
+            # ``permalink_page``) via the chunking strategies. Anything
+            # missing becomes empty string so Neo4j stays typed.
+            permalink_original = str(
+                metadata.get("permalink_original")
+                or metadata.get("permalink")
+                or ""
+            )
+            permalink_full_markdown = str(
+                metadata.get("permalink_full_markdown") or ""
+            )
+            permalink_page = str(metadata.get("permalink_page") or "")
             tx.run(
                 """
                 MATCH (doc:Document {document_id: $document_id})
@@ -2220,7 +2244,10 @@ class GraphStore:
                     chunk.text = $text,
                     chunk.parent_text = $parent_text,
                     chunk.section_title = $section_title,
-                    chunk.source_label = $source_label
+                    chunk.source_label = $source_label,
+                    chunk.permalink_original = $permalink_original,
+                    chunk.permalink_full_markdown = $permalink_full_markdown,
+                    chunk.permalink_page = $permalink_page
                 MERGE (doc)-[:CONTAINS]->(chunk)
                 """,
                 document_id=document_id,
@@ -2233,6 +2260,9 @@ class GraphStore:
                 parent_text=chunk.parent_text,
                 section_title=str(metadata.get("section_title") or "Document"),
                 source_label=str(metadata.get("source_label") or chunk.chunk_id),
+                permalink_original=permalink_original,
+                permalink_full_markdown=permalink_full_markdown,
+                permalink_page=permalink_page,
                 timestamp=timestamp,
             )
             for concept in concepts_by_chunk.get(chunk.chunk_id, []):

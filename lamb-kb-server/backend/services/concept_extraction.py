@@ -126,7 +126,13 @@ class ConceptExtractor:
 
         api_key = self.config.get("openai_api_key") or ""
         if self.client is None and api_key and OpenAI is not None:
-            self.client = OpenAI(api_key=api_key)
+            # Bound the OpenAI call so a slow / hung vendor can't pin an
+            # ingestion worker thread indefinitely. Configurable via env
+            # so operators can stretch it for big chunks if needed.
+            timeout_seconds = float(
+                self.config.get("openai_timeout_seconds") or 60.0
+            )
+            self.client = OpenAI(api_key=api_key, timeout=timeout_seconds)
 
     def extract_for_chunks(self, chunks: List[TextChunk]) -> GraphExtraction:
         if not chunks:
