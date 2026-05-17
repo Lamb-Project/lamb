@@ -5,8 +5,14 @@
 -->
 <script>
 	import axios from 'axios';
-	import { createEventDispatcher, tick } from 'svelte';
-	import { importUrl, importYouTube, importLibrary } from '$lib/services/libraryService';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
+	import {
+		importUrl,
+		importYouTube,
+		importLibrary,
+		getPlugins
+	} from '$lib/services/libraryService';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
 
 	const MAX_ZIP_SIZE = 500 * 1024 * 1024;
@@ -22,10 +28,64 @@
 	let importType = $state('url');
 	let url = $state('');
 	let videoUrl = $state('');
-	let language = $state('en');
 	let title = $state('');
 	/** @type {File|null} */
 	let zipFile = $state(null);
+	// Plugin params dict — filled by PluginParamFields from the matched
+	// plugin's schema. Resets when the user switches tabs or closes the
+	// modal. The renderer initialises any missing key from
+	// ``PluginParameter.default``, so a brand-new plugin works without
+	// any modal change.
+	let params = $state(/** @type {Record<string, unknown>} */ ({}));
+	let paramErrors = $state(/** @type {Record<string, string>} */ ({}));
+
+	// Plugin metadata fetched once on mount. The first plugin whose
+	// ``supported_source_types`` includes the active import type wins —
+	// keeps the frontend free of hardcoded plugin names while still
+	// auto-selecting the obvious choice when only one plugin exists for
+	// a given source type.
+	/** @type {any[]} */
+	let plugins = $state([]);
+
+	onMount(async () => {
+		try {
+			plugins = await getPlugins();
+		} catch (err) {
+			console.warn('ImportModal: failed to load plugins', err);
+		}
+	});
+
+	/**
+	 * Pick the first plugin that handles a given source type. Returns
+	 * ``null`` when no plugin is registered for that type so the caller can
+	 * surface a clear error rather than POST with a missing plugin name.
+	 * @param {string} sourceType
+	 * @returns {any|null}
+	 */
+	function pluginForSourceType(sourceType) {
+		const match = plugins.find(
+			(p) =>
+				Array.isArray(p?.supported_source_types) && p.supported_source_types.includes(sourceType)
+		);
+		return match ?? null;
+	}
+
+	// The plugin matching the active tab's source type. Drives the param
+	// renderer below the form fields.
+	let activePlugin = $derived.by(() => {
+		if (importType === 'url') return pluginForSourceType('url');
+		if (importType === 'youtube') return pluginForSourceType('youtube');
+		return null;
+	});
+	let activePluginParameters = $derived(activePlugin?.parameters ?? []);
+
+	// Reset params whenever the user switches tabs so a stale param dict
+	// from a different plugin doesn't leak across.
+	$effect(() => {
+		const _type = importType;
+		void _type;
+		params = {};
+	});
 
 	/**
 	 * Open the modal for a specific library.
@@ -59,11 +119,11 @@
 		importType = 'url';
 		url = '';
 		videoUrl = '';
-		language = 'en';
 		title = '';
 		zipFile = null;
 		error = '';
 		isSubmitting = false;
+		params = {};
 	}
 
 	function isValidHttpUrl(value) {
@@ -81,6 +141,13 @@
 		error = '';
 
 		try {
+			if (Object.keys(paramErrors).length > 0) {
+				error = $_('plugins.params.fixErrors', {
+					default: 'Fix the plugin parameter errors before importing.'
+				});
+				isSubmitting = false;
+				return;
+			}
 			if (importType === 'url') {
 				if (!url.trim() || !isValidHttpUrl(url.trim())) {
 					error = $_('libraries.importModal.invalidUrl', {
@@ -89,9 +156,19 @@
 					isSubmitting = false;
 					return;
 				}
+				const urlPlugin = pluginForSourceType('url');
+				if (!urlPlugin) {
+					error = $_('libraries.importModal.noUrlPlugin', {
+						default: 'No URL import plugin is enabled on this server.'
+					});
+					isSubmitting = false;
+					return;
+				}
 				const result = await importUrl(libraryId, {
 					url: url.trim(),
-					title: title.trim() || undefined
+					pluginName: urlPlugin.name,
+					title: title.trim() || undefined,
+					params
 				});
 				isOpen = false;
 				dispatch('imported', { type: 'url', itemId: result.item_id });
@@ -103,10 +180,19 @@
 					isSubmitting = false;
 					return;
 				}
+				const ytPlugin = pluginForSourceType('youtube');
+				if (!ytPlugin) {
+					error = $_('libraries.importModal.noYoutubePlugin', {
+						default: 'No YouTube import plugin is enabled on this server.'
+					});
+					isSubmitting = false;
+					return;
+				}
 				const result = await importYouTube(libraryId, {
 					videoUrl: videoUrl.trim(),
-					language,
-					title: title.trim() || undefined
+					pluginName: ytPlugin.name,
+					title: title.trim() || undefined,
+					params
 				});
 				isOpen = false;
 				dispatch('imported', { type: 'youtube', itemId: result.item_id });
@@ -256,19 +342,6 @@
 						/>
 					</div>
 					<div>
-						<label for="import-yt-lang" class="block text-sm font-medium text-gray-700">
-							{$_('libraries.importModal.language', { default: 'Transcript language' })}
-						</label>
-						<input
-							type="text"
-							id="import-yt-lang"
-							bind:value={language}
-							class="mt-1 block w-32 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
-							placeholder="en"
-							disabled={isSubmitting}
-						/>
-					</div>
-					<div>
 						<label for="import-yt-title" class="block text-sm font-medium text-gray-700">
 							{$_('libraries.importModal.titleLabel', { default: 'Title (optional)' })}
 						</label>
@@ -300,6 +373,24 @@
 							})}
 						</p>
 					</div>
+				{/if}
+
+				{#if importType !== 'zip' && activePluginParameters.length > 0}
+					<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+						<legend class="px-1 text-xs font-medium text-gray-700">
+							{$_('libraries.importModal.pluginParamsLabel', {
+								values: { plugin: activePlugin?.human_label || activePlugin?.name },
+								default: 'Plugin parameters'
+							})}
+						</legend>
+						<PluginParamFields
+							parameters={activePluginParameters}
+							bind:values={params}
+							bind:errors={paramErrors}
+							idPrefix="import-modal-param"
+							mode={activePlugin?.mode === 'ADVANCED' ? 'advanced' : 'simplified'}
+						/>
+					</fieldset>
 				{/if}
 
 				<div class="flex justify-end gap-3 pt-2">

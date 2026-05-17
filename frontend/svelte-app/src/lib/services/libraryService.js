@@ -178,9 +178,15 @@ export async function toggleSharing(libraryId, isShared) {
 
 /**
  * Upload a file for import into a library.
+ *
+ * The ``params`` field carries plugin-specific options declared by the
+ * import plugin's ``get_parameters()`` schema. Empty or missing → backend
+ * applies each parameter's schema default. The renderer at
+ * ``components/plugins/PluginParamFields.svelte`` produces this dict.
+ *
  * @param {string} libraryId
  * @param {File} file
- * @param {{ pluginName?: string, title?: string }} [options]
+ * @param {{ pluginName?: string, title?: string, params?: Record<string, unknown> }} [options]
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
  */
 export async function uploadFile(libraryId, file, options = {}) {
@@ -190,23 +196,39 @@ export async function uploadFile(libraryId, file, options = {}) {
 	form.append('file', file);
 	if (options.title) form.append('title', options.title);
 	if (options.pluginName) form.append('plugin_name', options.pluginName);
+	if (options.params && Object.keys(options.params).length > 0) {
+		form.append('plugin_params', JSON.stringify(options.params));
+	}
 	const response = await axios.post(url, form, { headers: authHeaders(), timeout: 120_000 });
 	return response.data;
 }
 
 /**
  * Import content from a URL.
+ *
+ * Callers MUST pass ``pluginName`` — the appropriate plugin is discovered
+ * via {@link getPlugins} (filter by ``source_type === 'url'``). The service
+ * does not pick a default plugin so that adding a new URL plugin doesn't
+ * silently route around the caller's choice.
+ *
  * @param {string} libraryId
- * @param {{ url: string, pluginName?: string, title?: string }} data
+ * @param {{ url: string, pluginName: string, title?: string, params?: Record<string, unknown> }} data
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
+ * @throws {Error} If ``pluginName`` is missing.
  */
 export async function importUrl(libraryId, data) {
 	if (!browser) throw new Error('Browser only.');
+	if (!data?.pluginName) {
+		throw new Error(
+			'importUrl: pluginName is required. Pass an explicit plugin name from /libraries/plugins.'
+		);
+	}
 	const url = getApiUrl(`/libraries/${libraryId}/import-url`);
 	const body = {
 		url: data.url,
-		plugin_name: data.pluginName || 'url_import',
-		title: data.title || data.url
+		plugin_name: data.pluginName,
+		title: data.title || data.url,
+		plugin_params: data.params || {}
 	};
 	const response = await axios.post(url, body, {
 		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
@@ -216,18 +238,38 @@ export async function importUrl(libraryId, data) {
 
 /**
  * Import a YouTube video transcript.
+ *
+ * Like {@link importUrl}, callers MUST pass ``pluginName`` (discovered via
+ * {@link getPlugins} filtered by ``source_type === 'youtube'``). No silent
+ * default — the plugin name comes from the registry, not the frontend.
+ *
+ * Plugin-specific options (``language``, ``proxy_url``, anything a future
+ * YouTube plugin declares) live in ``params``. The legacy top-level
+ * ``language`` is still accepted but folded into ``plugin_params`` for the
+ * router so a single transport carries everything.
+ *
  * @param {string} libraryId
- * @param {{ videoUrl: string, language?: string, title?: string }} data
+ * @param {{ videoUrl: string, pluginName: string, language?: string, title?: string, params?: Record<string, unknown> }} data
  * @returns {Promise<{ item_id: string, job_id: string, status: string }>}
+ * @throws {Error} If ``pluginName`` is missing.
  */
 export async function importYouTube(libraryId, data) {
 	if (!browser) throw new Error('Browser only.');
+	if (!data?.pluginName) {
+		throw new Error(
+			'importYouTube: pluginName is required. Pass an explicit plugin name from /libraries/plugins.'
+		);
+	}
 	const url = getApiUrl(`/libraries/${libraryId}/import-youtube`);
+	const params = { ...(data.params || {}) };
+	if (data.language && !('language' in params)) {
+		params.language = data.language;
+	}
 	const body = {
 		video_url: data.videoUrl,
-		language: data.language || 'en',
 		title: data.title || data.videoUrl,
-		plugin_name: 'youtube_transcript_import'
+		plugin_name: data.pluginName,
+		plugin_params: params
 	};
 	const response = await axios.post(url, body, {
 		headers: { ...authHeaders(), 'Content-Type': 'application/json' }
@@ -272,15 +314,15 @@ export async function getItem(libraryId, itemId) {
  * @returns {Promise<string>} Raw markdown
  */
 export async function getItemContent(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/content`);
-    const response = await axios.get(url, {
-        headers: authHeaders(),
-        params: { format: 'markdown' },
-        responseType: 'text',
-        transformResponse: (v) => v
-    });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/content`);
+	const response = await axios.get(url, {
+		headers: authHeaders(),
+		params: { format: 'markdown' },
+		responseType: 'text',
+		transformResponse: (v) => v
+	});
+	return response.data;
 }
 
 /**
@@ -320,10 +362,10 @@ export async function getItemContent(libraryId, itemId) {
  * @returns {Promise<LibraryKnowledgeStore[]>}
  */
 export async function getLibraryKnowledgeStores(libraryId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/knowledge-stores`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data?.knowledge_stores ?? [];
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/knowledge-stores`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.knowledge_stores ?? [];
 }
 
 /**
@@ -341,59 +383,63 @@ export async function getLibraryKnowledgeStores(libraryId) {
  * @returns {Promise<ItemOriginal>}
  */
 export async function getItemOriginal(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/original`);
-    try {
-        const response = await axios.get(url, {
-            headers: authHeaders(),
-            responseType: 'blob',
-            timeout: 300_000
-        });
-        const blob = response.data;
-        // axios headers are typed as a union of string|number|object — coerce
-        // to a string so the consumer always sees a plain MIME / filename.
-        const contentType = String(response.headers['content-type'] || 'application/octet-stream');
-        // Extract filename from Content-Disposition: prefer RFC 5987 filename*,
-        // fall back to quoted filename. The backend sets both.
-        const cd = String(response.headers['content-disposition'] || '');
-        let filename = '';
-        const m5987 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-        if (m5987) {
-            try { filename = decodeURIComponent(m5987[1]); } catch { filename = m5987[1]; }
-        }
-        if (!filename) {
-            const mPlain = /filename="([^"]+)"/i.exec(cd);
-            if (mPlain) filename = mPlain[1];
-        }
-        if (!filename) filename = `${itemId}`;
-        return { type: 'blob', blob, filename, contentType };
-    } catch (error) {
-        // 404 with structured body means the item has no binary original;
-        // fall back to the source URL if the backend supplied one.
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-            // Body was fetched as blob; convert to JSON before reading.
-            let detail = null;
-            const data = error.response.data;
-            if (data instanceof Blob) {
-                try {
-                    const text = await data.text();
-                    const parsed = JSON.parse(text);
-                    detail = parsed?.detail;
-                } catch {
-                    detail = null;
-                }
-            } else if (data && typeof data === 'object') {
-                detail = /** @type {{ detail?: unknown }} */ (data).detail;
-            }
-            if (detail && typeof detail === 'object') {
-                const d = /** @type {{ source_url?: string, source_type?: string }} */ (detail);
-                if (d.source_url) {
-                    return { type: 'url', url: d.source_url, sourceType: d.source_type };
-                }
-            }
-        }
-        throw new Error(errorMessage(error, 'Failed to load original.'));
-    }
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/original`);
+	try {
+		const response = await axios.get(url, {
+			headers: authHeaders(),
+			responseType: 'blob',
+			timeout: 300_000
+		});
+		const blob = response.data;
+		// axios headers are typed as a union of string|number|object — coerce
+		// to a string so the consumer always sees a plain MIME / filename.
+		const contentType = String(response.headers['content-type'] || 'application/octet-stream');
+		// Extract filename from Content-Disposition: prefer RFC 5987 filename*,
+		// fall back to quoted filename. The backend sets both.
+		const cd = String(response.headers['content-disposition'] || '');
+		let filename = '';
+		const m5987 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+		if (m5987) {
+			try {
+				filename = decodeURIComponent(m5987[1]);
+			} catch {
+				filename = m5987[1];
+			}
+		}
+		if (!filename) {
+			const mPlain = /filename="([^"]+)"/i.exec(cd);
+			if (mPlain) filename = mPlain[1];
+		}
+		if (!filename) filename = `${itemId}`;
+		return { type: 'blob', blob, filename, contentType };
+	} catch (error) {
+		// 404 with structured body means the item has no binary original;
+		// fall back to the source URL if the backend supplied one.
+		if (axios.isAxiosError(error) && error.response?.status === 404) {
+			// Body was fetched as blob; convert to JSON before reading.
+			let detail = null;
+			const data = error.response.data;
+			if (data instanceof Blob) {
+				try {
+					const text = await data.text();
+					const parsed = JSON.parse(text);
+					detail = parsed?.detail;
+				} catch {
+					detail = null;
+				}
+			} else if (data && typeof data === 'object') {
+				detail = /** @type {{ detail?: unknown }} */ (data).detail;
+			}
+			if (detail && typeof detail === 'object') {
+				const d = /** @type {{ source_url?: string, source_type?: string }} */ (detail);
+				if (d.source_url) {
+					return { type: 'url', url: d.source_url, sourceType: d.source_type };
+				}
+			}
+		}
+		throw new Error(errorMessage(error, 'Failed to load original.'));
+	}
 }
 
 /**
@@ -405,10 +451,10 @@ export async function getItemOriginal(libraryId, itemId) {
  * @returns {Promise<{ item_id: string, knowledge_stores: Array<{ id: string, name: string, status: string }> }>}
  */
 export async function getItemKbLinks(libraryId, itemId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/kb-links`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/kb-links`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -416,10 +462,10 @@ export async function getItemKbLinks(libraryId, itemId) {
  * @returns {Promise<{ library_id: string, items: Array<{ id: string, title: string, knowledge_store_id: string }>, knowledge_stores: Array<{ id: string, name: string }> }>}
  */
 export async function getLibraryKbLinks(libraryId) {
-    if (!browser) throw new Error('Browser only.');
-    const url = getApiUrl(`/libraries/${libraryId}/kb-links`);
-    const response = await axios.get(url, { headers: authHeaders() });
-    return response.data;
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/kb-links`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data;
 }
 
 /**
@@ -504,4 +550,96 @@ export async function importLibrary(file) {
 	form.append('file', file);
 	const response = await axios.post(url, form, { headers: authHeaders(), timeout: 300_000 });
 	return response.data;
+}
+
+// ---------------------------------------------------------------------------
+// Capabilities (content viewer)
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {Object} CapabilityMeta
+ * @property {string} capability
+ * @property {string} description
+ */
+
+/**
+ * List all capability handlers registered on the Library Manager.
+ * @returns {Promise<CapabilityMeta[]>}
+ */
+export async function getCapabilities() {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl('/libraries/capabilities');
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.capabilities ?? [];
+}
+
+/**
+ * List the capabilities a specific library item exposes.
+ *
+ * Returns the per-item capability list written to ``metadata.json`` during
+ * import. Legacy items default to ``["text"]`` on the backend.
+ *
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @returns {Promise<string[]>}
+ */
+export async function getItemCapabilities(libraryId, itemId) {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/capabilities`);
+	const response = await axios.get(url, { headers: authHeaders() });
+	return response.data?.capabilities ?? [];
+}
+
+/**
+ * Fetch a capability's payload for a single item.
+ *
+ * For ``text`` the response is markdown; for ``pages`` and ``images`` the
+ * response is JSON (a page list or image gallery, respectively). The caller
+ * is responsible for routing the payload to the correct renderer — see
+ * ``components/libraries/capabilities/``.
+ *
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @param {string} capability
+ * @returns {Promise<{ mime: string, body: unknown }>}
+ */
+export async function getItemContentByCapability(libraryId, itemId, capability) {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(`/libraries/${libraryId}/items/${itemId}/content/${capability}`);
+	const response = await axios.get(url, {
+		headers: authHeaders(),
+		// Read as text first so we can dispatch on content-type. JSON
+		// responses are parsed below; text responses (markdown) pass through.
+		responseType: 'text',
+		transformResponse: (v) => v
+	});
+	const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+	let body;
+	if (contentType.includes('application/json')) {
+		try {
+			body = JSON.parse(response.data);
+		} catch {
+			body = response.data;
+		}
+	} else {
+		body = response.data;
+	}
+	return { mime: contentType || 'text/plain', body };
+}
+
+/**
+ * Build the absolute URL for the raw bytes of an image extracted by an
+ * import plugin. The capability viewer's images renderer uses this to
+ * point ``<img>`` tags at the backend without proxying the bytes through
+ * JS.
+ *
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @param {string} filename
+ * @returns {string}
+ */
+export function getCapabilityImageUrl(libraryId, itemId, filename) {
+	return getApiUrl(
+		`/libraries/${libraryId}/items/${itemId}/content/images/file/${encodeURIComponent(filename)}`
+	);
 }

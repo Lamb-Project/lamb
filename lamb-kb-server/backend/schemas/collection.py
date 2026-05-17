@@ -44,9 +44,24 @@ class CreateCollectionRequest(BaseModel):
         description="Strategy-specific parameters (chunk_size, overlap, ...).",
     )
     embedding: EmbeddingConfig = Field(..., description="Embedding vendor and model configuration.")
+    # Extra schema-declared knobs for the embedding vendor beyond
+    # ``model``/``api_endpoint``/``api_key``. Empty for today's openai /
+    # ollama / local vendors (they only declare those two). Accepted here
+    # so a future vendor plugin that declares additional knobs can wire
+    # them up without changing the server's request schema. Validation
+    # against the plugin's declared parameter list is a follow-up; today
+    # the dict is accepted opaquely and stored alongside the collection.
+    embedding_params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Schema-declared embedding-vendor extras (beyond model/endpoint).",
+    )
     vector_db_backend: str = Field(
         default="chromadb",
         description="Registered vector DB backend name.",
+    )
+    vector_db_params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Schema-declared vector-DB backend extras (backend-specific knobs).",
     )
 
 

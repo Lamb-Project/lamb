@@ -1264,5 +1264,26 @@
 				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embeddings, base de datos vectorial"
 			}
 		}
+	},
+	"capability": {
+		"text": "Texto",
+		"pages": "Páginas",
+		"images": "Imágenes",
+		"audio": "Audio",
+		"transcript": "Transcripción"
+	},
+	"sourceType": {
+		"file": "Archivo",
+		"url": "URL",
+		"youtube": "YouTube"
+	},
+	"plugins": {
+		"params": {
+			"advancedLabel": "Parámetros avanzados",
+			"required": "Obligatorio",
+			"tooSmall": "Debe ser ≥ {min}",
+			"tooLarge": "Debe ser ≤ {max}",
+			"fixErrors": "Corrige los errores de parámetros del plugin antes de continuar."
+		}
 	}
 }

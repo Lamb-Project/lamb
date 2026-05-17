@@ -18,12 +18,13 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.database_manager import LambDatabaseManager
 
-from .knowledge_store_client import KnowledgeStoreClient
+from .knowledge_store_client import KnowledgeStoreClient, KnowledgeStoreUnavailable
 from .library_manager_client import LibraryManagerClient
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,15 @@ class KnowledgeStoreCreate(BaseModel):
     embedding_vendor: str
     embedding_model: str
     embedding_endpoint: Optional[str] = None
+    # Extra knobs declared by the embedding vendor's plugin schema beyond
+    # ``model``/``api_endpoint``/``api_key`` (those have bespoke widgets).
+    # Empty for today's openai/ollama/local vendors; future vendors that
+    # declare extras pick them up automatically via PluginParamFields.
+    embedding_params: Optional[Dict[str, Any]] = None
     vector_db_backend: str
+    # Extra knobs declared by the vector-DB backend's plugin schema.
+    # Empty for today's chromadb/qdrant backends.
+    vector_db_params: Optional[Dict[str, Any]] = None
 
 
 class KnowledgeStoreUpdate(BaseModel):
@@ -136,8 +145,26 @@ def _flatten_pages(pages_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 @router.get("/options")
 async def get_options(auth: AuthContext = Depends(get_auth_context)):
     """Return the org's allowed chunking strategies, embedding vendors / models,
-    and vector DB backends so the UI can render the create form."""
-    return await _client.get_org_options(creator_user=auth.user)
+    and vector DB backends so the UI can render the create form.
+
+    If the KB Server is unreachable or not configured, returns a structured
+    503 ``{"error": "knowledge_store_unavailable", "detail": "..."}`` so the
+    frontend can render an actionable retry state. There is no hardcoded
+    fallback catalogue — the zero-touch plugin thesis (issue #334) requires
+    that the live registries on the KB Server are the single source of
+    truth for available plugins.
+    """
+    try:
+        return await _client.get_org_options(creator_user=auth.user)
+    except KnowledgeStoreUnavailable as exc:
+        logger.warning(f"Knowledge Store unavailable when serving /options: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "knowledge_store_unavailable",
+                "detail": str(exc),
+            },
+        )
 
 
 # ======================================================================
@@ -213,6 +240,8 @@ async def create_knowledge_store(
             description=body.description,
             chunking_params=body.chunking_params,
             embedding_endpoint=resolved_endpoint or "",
+            embedding_params=body.embedding_params,
+            vector_db_params=body.vector_db_params,
             creator_user=auth.user,
         )
     except Exception as e:

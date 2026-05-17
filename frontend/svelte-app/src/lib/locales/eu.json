@@ -1264,5 +1264,26 @@
 				"advancedLabel": "Aurreratua: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala"
 			}
 		}
+	},
+	"capability": {
+		"text": "Testua",
+		"pages": "Orriak",
+		"images": "Irudiak",
+		"audio": "Audioa",
+		"transcript": "Transkripzioa"
+	},
+	"sourceType": {
+		"file": "Fitxategia",
+		"url": "URL",
+		"youtube": "YouTube"
+	},
+	"plugins": {
+		"params": {
+			"advancedLabel": "Parametro aurreratuak",
+			"required": "Beharrezkoa",
+			"tooSmall": "≥ {min} izan behar du",
+			"tooLarge": "≤ {max} izan behar du",
+			"fixErrors": "Konpondu pluginaren parametro-erroreak jarraitu aurretik."
+		}
 	}
 }

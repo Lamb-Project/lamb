@@ -234,17 +234,26 @@ class LibraryManagerClient:
                              plugin_params: Dict = None,
                              api_keys: Dict[str, str] = None,
                              creator_user: Dict[str, Any] = None) -> Dict:
-        """Import a YouTube video transcript into a library."""
+        """Import a YouTube video transcript into a library.
+
+        ``language`` is the legacy top-level field. If ``plugin_params``
+        already carries a ``language`` key (the new schema-driven path),
+        we keep it — the top-level kwarg only fills in the gap so old
+        API clients keep working.
+        """
         config = self._get_library_config(creator_user)
-        params = plugin_params or {}
-        params["language"] = language
+        params = dict(plugin_params or {})
+        params.setdefault("language", language)
+        # Resolve the canonical language value to forward as the top-level
+        # field too (Library Manager router still reads it for now).
+        resolved_language = params.get("language", language)
         return await self._request("POST", f"/libraries/{library_id}/import/youtube", config, json={
             "video_url": video_url,
             "plugin_name": plugin_name,
             "title": title,
             "plugin_params": params,
             "api_keys": api_keys,
-            "language": language,
+            "language": resolved_language,
         })
 
     # ------------------------------------------------------------------
@@ -289,6 +298,40 @@ class LibraryManagerClient:
             result["plugins"] = [p for p in result.get("plugins", [])
                                  if p["name"] in allowed]
         return result
+
+    # ------------------------------------------------------------------
+    # Capabilities
+    # ------------------------------------------------------------------
+
+    async def get_capabilities(self, creator_user: Dict[str, Any] = None) -> Dict:
+        """List capability handlers registered on the Library Manager."""
+        config = self._get_library_config(creator_user)
+        return await self._request("GET", "/capabilities", config)
+
+    async def get_item_capabilities(self, library_id: str, item_id: str,
+                                    creator_user: Dict[str, Any] = None) -> Dict:
+        """Return the capabilities exposed by a specific item."""
+        config = self._get_library_config(creator_user)
+        return await self._request(
+            "GET",
+            f"/libraries/{library_id}/items/{item_id}/capabilities",
+            config,
+        )
+
+    async def get_item_content(self, library_id: str, item_id: str,
+                               capability: str,
+                               creator_user: Dict[str, Any] = None) -> httpx.Response:
+        """Fetch the payload for a specific capability on an item.
+
+        The payload is returned as a raw ``httpx.Response`` so the proxy
+        endpoint can forward the original media type and body verbatim.
+        """
+        config = self._get_library_config(creator_user)
+        return await self._fetch_bytes(
+            "GET",
+            f"/libraries/{library_id}/items/{item_id}/content/{capability}",
+            config,
+        )
 
     async def get_import_config(self, library_id: str,
                                 creator_user: Dict[str, Any] = None) -> Dict:

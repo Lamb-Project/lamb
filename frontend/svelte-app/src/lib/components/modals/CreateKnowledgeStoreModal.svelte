@@ -17,8 +17,10 @@
 	import {
 		getOptions,
 		createKnowledgeStore,
-		toggleSharing
+		toggleSharing,
+		KnowledgeStoreUnavailableError
 	} from '$lib/services/knowledgeStoreService';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
 
 	const dispatch = createEventDispatcher();
@@ -44,20 +46,37 @@
 	let loadingOptions = $state(false);
 	let optionsLoaded = $state(false);
 	let optionsError = $state('');
+	let optionsUnavailable = $state(false);
 
 	let chunkingStrategy = $state('');
-	let chunkingParams = $state(/** @type {Record<string, number>} */ ({}));
+	let chunkingParams = $state(/** @type {Record<string, unknown>} */ ({}));
 	let chunkingParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 	let embeddingVendor = $state('');
 	let embeddingModel = $state('');
 	let embeddingEndpoint = $state('');
+	let embeddingParams = $state(/** @type {Record<string, unknown>} */ ({}));
+	let embeddingParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 	let vectorDb = $state('');
+	let vectorDbParams = $state(/** @type {Record<string, unknown>} */ ({}));
+	let vectorDbParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 
 	let currentStrategyParams = $derived.by(() => {
 		const s = (options.chunking_strategies ?? []).find(
 			(/** @type {any} */ s) => s.name === chunkingStrategy
 		);
 		return s?.parameters ?? [];
+	});
+	let currentVendorParams = $derived.by(() => {
+		const v = (options.embedding_vendors ?? []).find(
+			(/** @type {any} */ v) => v.name === embeddingVendor
+		);
+		return v?.parameters ?? [];
+	});
+	let currentBackendParams = $derived.by(() => {
+		const b = (options.vector_db_backends ?? []).find(
+			(/** @type {any} */ b) => b.name === vectorDb
+		);
+		return b?.parameters ?? [];
 	});
 
 	let enabledVendors = $derived.by(() =>
@@ -73,49 +92,30 @@
 		return options.embedding_models?.[embeddingVendor] ?? [];
 	});
 
-	// When the user switches strategy, fill any missing param keys with the
-	// declared defaults — preserves user edits, fills blanks. Uses Svelte 5
-	// dependencies on `currentStrategyParams` only; reading chunkingParams
-	// inside is fine because we only write when the resulting object differs.
+	// Reset plugin-param dicts when the user picks a different
+	// strategy / vendor / backend so stale keys from a different plugin
+	// don't carry over. The renderer re-initialises from the new schema's
+	// defaults on next mount.
+	let lastChunkingStrategy = $state(chunkingStrategy);
 	$effect(() => {
-		const params = currentStrategyParams;
-		if (!params.length) return;
-		const next = /** @type {Record<string, number>} */ ({});
-		let changed = Object.keys(chunkingParams).length !== params.length;
-		for (const p of params) {
-			const existing = chunkingParams[p.name];
-			const value = typeof existing === 'number' ? existing : Number(p.default);
-			next[p.name] = value;
-			if (existing !== value) changed = true;
+		if (chunkingStrategy !== lastChunkingStrategy) {
+			chunkingParams = {};
+			lastChunkingStrategy = chunkingStrategy;
 		}
-		if (changed) chunkingParams = next;
 	});
-
-	// Validate numeric params against their min/max declarations.
+	let lastEmbeddingVendor = $state(embeddingVendor);
 	$effect(() => {
-		const params = currentStrategyParams;
-		const errs = /** @type {Record<string, string>} */ ({});
-		for (const p of params) {
-			const v = chunkingParams[p.name];
-			if (v === undefined || v === null || Number.isNaN(v)) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramRequired', { default: 'Required' });
-				continue;
-			}
-			if (typeof p.min_value === 'number' && v < p.min_value) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooSmall', {
-					values: { min: p.min_value },
-					default: `Must be ≥ ${p.min_value}`
-				});
-				continue;
-			}
-			if (typeof p.max_value === 'number' && v > p.max_value) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooLarge', {
-					values: { max: p.max_value },
-					default: `Must be ≤ ${p.max_value}`
-				});
-			}
+		if (embeddingVendor !== lastEmbeddingVendor) {
+			embeddingParams = {};
+			lastEmbeddingVendor = embeddingVendor;
 		}
-		chunkingParamErrors = errs;
+	});
+	let lastVectorDb = $state(vectorDb);
+	$effect(() => {
+		if (vectorDb !== lastVectorDb) {
+			vectorDbParams = {};
+			lastVectorDb = vectorDb;
+		}
 	});
 
 	// When the vendor changes, snap the model selection to one the new vendor
@@ -148,6 +148,7 @@
 	async function loadOptions() {
 		loadingOptions = true;
 		optionsError = '';
+		optionsUnavailable = false;
 		try {
 			options = await getOptions();
 			if (!chunkingStrategy && options.chunking_strategies?.length) {
@@ -162,13 +163,31 @@
 			if (!vectorDb && options.vector_db_backends?.length) {
 				vectorDb = options.vector_db_backends[0].name;
 			}
+			optionsLoaded = true;
 		} catch (/** @type {unknown} */ err) {
-			optionsError = readableError(err, 'Failed to load options');
+			if (err instanceof KnowledgeStoreUnavailableError) {
+				optionsUnavailable = true;
+				optionsError =
+					err.detail ||
+					$_('knowledgeStores.options.unavailableBody', {
+						default:
+							'Knowledge Store server unavailable. Please ensure lamb-kb-server is running and retry.'
+					});
+				// Allow retry — do NOT mark optionsLoaded so the next open()
+				// will refetch automatically too.
+				optionsLoaded = false;
+			} else {
+				optionsError = readableError(err, 'Failed to load options');
+				optionsLoaded = true;
+			}
 			console.error('loadOptions failed', err);
 		} finally {
 			loadingOptions = false;
-			optionsLoaded = true;
 		}
+	}
+
+	async function retryLoadOptions() {
+		await loadOptions();
 	}
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
@@ -226,9 +245,13 @@
 			advancedOpen = true;
 			return false;
 		}
-		if (Object.keys(chunkingParamErrors).length > 0) {
+		const paramsValid =
+			Object.keys(chunkingParamErrors).length === 0 &&
+			Object.keys(embeddingParamErrors).length === 0 &&
+			Object.keys(vectorDbParamErrors).length === 0;
+		if (!paramsValid) {
 			error = $_('knowledgeStores.createModal.invalidParams', {
-				default: 'Some chunking parameters are out of range.'
+				default: 'Some plugin parameters are invalid.'
 			});
 			advancedOpen = true;
 			return false;
@@ -253,7 +276,9 @@
 				embedding_vendor: embeddingVendor,
 				embedding_model: embeddingModel,
 				embedding_endpoint: embeddingEndpoint.trim() || undefined,
-				vector_db_backend: vectorDb
+				embedding_params: { ...embeddingParams },
+				vector_db_backend: vectorDb,
+				vector_db_params: { ...vectorDbParams }
 			});
 			if (isShared) {
 				// Sharing is a separate endpoint; failure here shouldn't
@@ -400,6 +425,25 @@
 							<div class="text-sm text-gray-500">
 								{$_('common.loading', { default: 'Loading...' })}
 							</div>
+						{:else if optionsUnavailable}
+							<div
+								class="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+								role="alert"
+							>
+								<p class="font-medium">
+									{$_('knowledgeStores.options.unavailableTitle', {
+										default: 'Knowledge Store server unavailable'
+									})}
+								</p>
+								<p class="text-xs">{optionsError}</p>
+								<button
+									type="button"
+									onclick={retryLoadOptions}
+									class="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+								>
+									{$_('common.retry', { default: 'Retry' })}
+								</button>
+							</div>
 						{:else if optionsError}
 							<div
 								class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700"
@@ -432,46 +476,12 @@
 											default: `${chunkingStrategy} parameters`
 										})}
 									</legend>
-									{#each currentStrategyParams as p (p.name)}
-										<div class="flex items-center gap-2">
-											<label
-												for="ks-param-{p.name}"
-												class="w-1/2 text-xs text-gray-700"
-												title={p.description}
-											>
-												{p.name}
-												{#if typeof p.min_value === 'number' || typeof p.max_value === 'number'}
-													<span class="font-normal text-gray-400">
-														({p.min_value ?? '−∞'}–{p.max_value ?? '∞'})
-													</span>
-												{/if}
-											</label>
-											<input
-												id="ks-param-{p.name}"
-												type="number"
-												min={p.min_value ?? undefined}
-												max={p.max_value ?? undefined}
-												step="1"
-												value={chunkingParams[p.name]}
-												oninput={(/** @type {Event} */ e) => {
-													const raw = /** @type {HTMLInputElement} */ (e.currentTarget).value;
-													const v = raw === '' ? Number.NaN : Number(raw);
-													chunkingParams = { ...chunkingParams, [p.name]: v };
-												}}
-												class="w-32 rounded-md border px-2 py-1 text-sm {chunkingParamErrors[
-													p.name
-												]
-													? 'border-red-500'
-													: 'border-gray-300'}"
-												disabled={isSubmitting}
-											/>
-										</div>
-										{#if chunkingParamErrors[p.name]}
-											<p class="pl-[50%] text-xs text-red-600" role="alert">
-												{chunkingParamErrors[p.name]}
-											</p>
-										{/if}
-									{/each}
+									<PluginParamFields
+										parameters={currentStrategyParams}
+										bind:values={chunkingParams}
+										bind:errors={chunkingParamErrors}
+										idPrefix="ks-modal-chunking-param"
+									/>
 								</fieldset>
 							{/if}
 
@@ -531,6 +541,40 @@
 							</div>
 
 							<div>
+								<label for="ks-endpoint" class="block text-xs font-medium text-gray-700">
+									{$_('knowledge.wizard.step6.endpointLabel', {
+										default: 'Embedding endpoint (optional)'
+									})}
+								</label>
+								<input
+									type="text"
+									id="ks-endpoint"
+									bind:value={embeddingEndpoint}
+									placeholder="https://..."
+									class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+									disabled={isSubmitting}
+								/>
+							</div>
+
+							{#if currentVendorParams.filter((/** @type {any} */ p) => !['model', 'api_endpoint', 'api_key'].includes(p.name)).length > 0}
+								<fieldset class="space-y-2 rounded-md border border-gray-200 bg-white p-2">
+									<legend class="px-1 text-xs font-medium text-gray-700">
+										{$_('knowledge.wizard.ksStep.embeddingParamsLabel', {
+											values: { vendor: embeddingVendor },
+											default: `${embeddingVendor} parameters`
+										})}
+									</legend>
+									<PluginParamFields
+										parameters={currentVendorParams}
+										bind:values={embeddingParams}
+										bind:errors={embeddingParamErrors}
+										idPrefix="ks-modal-embedding-param"
+										exclude={['model', 'api_endpoint', 'api_key']}
+									/>
+								</fieldset>
+							{/if}
+
+							<div>
 								<label for="ks-vectordb" class="block text-xs font-medium text-gray-700">
 									{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
 								</label>
@@ -546,21 +590,22 @@
 								</select>
 							</div>
 
-							<div>
-								<label for="ks-endpoint" class="block text-xs font-medium text-gray-700">
-									{$_('knowledge.wizard.step6.endpointLabel', {
-										default: 'Embedding endpoint (optional)'
-									})}
-								</label>
-								<input
-									type="text"
-									id="ks-endpoint"
-									bind:value={embeddingEndpoint}
-									placeholder="https://..."
-									class="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-									disabled={isSubmitting}
-								/>
-							</div>
+							{#if currentBackendParams.length > 0}
+								<fieldset class="space-y-2 rounded-md border border-gray-200 bg-white p-2">
+									<legend class="px-1 text-xs font-medium text-gray-700">
+										{$_('knowledge.wizard.ksStep.vectorDbParamsLabel', {
+											values: { backend: vectorDb },
+											default: `${vectorDb} parameters`
+										})}
+									</legend>
+									<PluginParamFields
+										parameters={currentBackendParams}
+										bind:values={vectorDbParams}
+										bind:errors={vectorDbParamErrors}
+										idPrefix="ks-modal-vectordb-param"
+									/>
+								</fieldset>
+							{/if}
 						{/if}
 					</div>
 				</details>

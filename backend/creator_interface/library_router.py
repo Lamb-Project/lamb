@@ -42,9 +42,14 @@ class URLImportRequest(BaseModel):
 
 class YouTubeImportRequest(BaseModel):
     video_url: str
+    # Deprecated: prefer ``plugin_params["language"]`` so all plugin knobs
+    # travel through the same dict. Kept for API clients that still send
+    # ``language`` as a top-level field — the proxy folds it into
+    # ``plugin_params`` only when ``plugin_params["language"]`` is missing.
     language: str = "en"
     title: Optional[str] = None
     plugin_name: str = "youtube_transcript_import"
+    plugin_params: Optional[Dict[str, Any]] = None
 
 
 router = APIRouter()
@@ -88,6 +93,14 @@ async def list_plugins(
 ):
     """List available import plugins (filtered by org config)."""
     return await _client.get_plugins(creator_user=auth.user)
+
+
+@router.get("/capabilities")
+async def list_capabilities(
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List capability handlers registered on the Library Manager."""
+    return await _client.get_capabilities(creator_user=auth.user)
 
 
 @router.post("/import")
@@ -422,6 +435,7 @@ async def import_youtube(
         plugin_name=body.plugin_name,
         title=body.title or body.video_url,
         language=body.language,
+        plugin_params=body.plugin_params,
         api_keys=api_keys,
         creator_user=auth.user,
     )
@@ -438,9 +452,13 @@ async def import_youtube(
             uploader_user_id=auth.user.get("id"),
             source_url=body.video_url,
         )
+        # Resolve language from plugin_params first (the new schema-driven
+        # path), then the legacy top-level field — both flows audit the
+        # same value.
+        audit_language = (body.plugin_params or {}).get("language", body.language)
         _audit(auth, "library.upload", "library_item", item_id, {
             "video_url": body.video_url,
-            "language": body.language,
+            "language": audit_language,
         })
 
     return result
@@ -552,6 +570,53 @@ def _content_disposition(filename: str) -> str:
     ascii_safe = "".join(c if c.isalnum() or c in " -_." else "_" for c in filename)
     quoted = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_safe}\"; filename*=UTF-8''{quoted}"
+
+
+@router.get("/{library_id}/items/{item_id}/capabilities")
+async def get_item_capabilities(
+    library_id: str,
+    item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List capabilities exposed by a specific library item.
+
+    Reads the item's ``metadata.json`` ``capabilities`` field on the
+    Library Manager side. Legacy items default to ``["text"]``.
+    """
+    auth.require_library_access(library_id, level="any")
+    return await _client.get_item_capabilities(
+        library_id, item_id, creator_user=auth.user,
+    )
+
+
+@router.get("/{library_id}/items/{item_id}/content/{capability}")
+async def get_item_capability_content(
+    library_id: str,
+    item_id: str,
+    capability: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Dispatch to the capability handler for an item and forward the payload.
+
+    The ``capability`` path segment must match a registered
+    :class:`Capability` enum value (e.g. ``text``, ``pages``, ``images``).
+    The 5 MB inline-content cap from ``get_item_content`` also applies here.
+    """
+    auth.require_library_access(library_id, level="any")
+    response = await _client.get_item_content(
+        library_id, item_id, capability, creator_user=auth.user,
+    )
+    if len(response.content) > MAX_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB."
+            ),
+        )
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+    )
 
 
 @router.get("/{library_id}/items/{item_id}/original")

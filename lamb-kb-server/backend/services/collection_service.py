@@ -78,6 +78,29 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
     """
     _validate_plugins(req)
 
+    # ``embedding_params`` / ``vector_db_params`` are accepted from the
+    # request but currently not persisted or forwarded to the plugin
+    # constructors. None of the registered vendors/backends today declare
+    # extras beyond model/api_endpoint, so the dicts are always empty in
+    # practice. Wiring them through to ``EmbeddingRegistry.build`` and
+    # ``VectorDBBackend.create_collection`` is gated on adding ORM columns
+    # for the values (so they survive across restart for use at query
+    # time) — tracked as a follow-up to issue #334.
+    if req.embedding_params:
+        logger.info(
+            "embedding_params received for vendor '%s' but not yet wired "
+            "to plugin constructors: %r",
+            req.embedding.vendor,
+            req.embedding_params,
+        )
+    if req.vector_db_params:
+        logger.info(
+            "vector_db_params received for backend '%s' but not yet wired "
+            "to plugin constructors: %r",
+            req.vector_db_backend,
+            req.vector_db_params,
+        )
+
     # Uniqueness check: (organization_id, name)
     existing = (
         db.query(Collection)

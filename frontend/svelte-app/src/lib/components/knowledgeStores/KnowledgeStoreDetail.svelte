@@ -16,11 +16,13 @@
 		toggleSharing,
 		removeContent,
 		queryKnowledgeStore,
-		getContentLinkStatus
+		getContentLinkStatus,
+		getOptions
 	} from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import AddContentToKSModal from '$lib/components/knowledgeStores/AddContentToKSModal.svelte';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 
 	/** @type {{ ksId: string }} */
 	let { ksId } = $props();
@@ -36,6 +38,85 @@
 	let editName = $state('');
 	let editDescription = $state('');
 	let savingMeta = $state(false);
+
+	// Chunking-params editor. Strategy is immutable but parameters can be
+	// edited; updates apply only to content ingested AFTER the edit (the
+	// backend doesn't re-chunk existing content). The schema for the
+	// active strategy is fetched once on demand from /knowledge-stores/options
+	// so the editor renders the same min/max validation the wizard uses.
+	let editingParams = $state(false);
+	let editParams = $state(/** @type {Record<string, unknown>} */ ({}));
+	let editParamErrors = $state(/** @type {Record<string, string>} */ ({}));
+	let savingParams = $state(false);
+	let paramsError = $state('');
+	let chunkingSchema = $state(/** @type {Array<any>} */ ([]));
+	let schemaLoaded = $state(false);
+
+	async function openParamsEditor() {
+		paramsError = '';
+		editParams = { ...(ks?.chunking_params || {}) };
+		editingParams = true;
+		if (!schemaLoaded) {
+			try {
+				const opts = await getOptions();
+				const strategy = (opts?.chunking_strategies || []).find(
+					(/** @type {any} */ s) => s.name === ks?.chunking_strategy
+				);
+				chunkingSchema = strategy?.parameters || [];
+				schemaLoaded = true;
+			} catch (err) {
+				console.warn('Failed to load chunking schema for editor', err);
+				// Empty schema → renderer shows no fields; user sees the
+				// error banner and can fall back to closing the editor.
+				paramsError = $_('knowledgeStores.params.schemaFailed', {
+					default: 'Could not load chunking parameter schema. Try again later.'
+				});
+			}
+		}
+	}
+
+	function cancelParamsEdit() {
+		editingParams = false;
+		editParams = {};
+		editParamErrors = {};
+		paramsError = '';
+	}
+
+	async function saveParams() {
+		if (Object.keys(editParamErrors).length > 0) {
+			paramsError = $_('plugins.params.fixErrors', {
+				default: 'Fix the plugin parameter errors first.'
+			});
+			return;
+		}
+		savingParams = true;
+		paramsError = '';
+		try {
+			await updateKnowledgeStore(ksId, {
+				chunking_params: { ...editParams }
+			});
+			editingParams = false;
+			// Reload via the GET endpoint so ``is_owner`` and ``content``
+			// (added by the GET-only proxy enrichment) stay populated.
+			// Replacing ``ks`` with the bare PUT response would drop them
+			// and hide owner-only affordances like the Add Content button.
+			await loadAll();
+			successMessage = $_('knowledgeStores.params.saved', {
+				default: 'Chunking parameters updated. Applies to new ingestions only.'
+			});
+			setTimeout(() => (successMessage = ''), 4000);
+		} catch (err) {
+			console.error('updateKnowledgeStore chunking_params failed', err);
+			paramsError =
+				err?.response?.data?.detail ||
+				err?.message ||
+				$_('knowledgeStores.params.saveFailed', {
+					default: 'Failed to update chunking parameters.'
+				});
+		} finally {
+			savingParams = false;
+		}
+	}
 
 	// Query test
 	let queryText = $state('');
@@ -437,6 +518,100 @@
 				<div class="mt-0.5 text-gray-800">{ks.vector_db_backend}</div>
 			</div>
 		</div>
+
+		<!-- Chunking parameters. Surfaced as a separate row because the dict
+		     is open-ended (plugin-defined) and would crowd the 4-column grid
+		     above. Editable for owners — strategy stays locked but values
+		     can change; updates apply only to future ingestions. -->
+		{#if (ks.chunking_params && Object.keys(ks.chunking_params).length > 0) || ks.is_owner}
+			<div class="border-t border-gray-200 bg-gray-50 px-6 py-3 text-xs">
+				<div class="mb-1.5 flex items-center justify-between gap-2">
+					<div class="font-semibold text-gray-500 uppercase">
+						{$_('knowledgeStores.chunkingParams', { default: 'Chunking parameters' })}
+					</div>
+					{#if ks.is_owner && !editingParams}
+						<button
+							type="button"
+							onclick={openParamsEditor}
+							class="text-[#2271b3] hover:underline"
+						>
+							{$_('knowledgeStores.params.editButton', { default: 'Edit' })}
+						</button>
+					{/if}
+				</div>
+
+				{#if !editingParams}
+					{#if ks.chunking_params && Object.keys(ks.chunking_params).length > 0}
+						<dl class="flex flex-wrap gap-x-6 gap-y-1.5">
+							{#each Object.entries(ks.chunking_params) as [paramName, paramValue] (paramName)}
+								<div class="flex items-baseline gap-1.5">
+									<dt class="font-medium text-gray-600">{paramName}</dt>
+									<dd class="font-mono text-gray-900">{paramValue}</dd>
+								</div>
+							{/each}
+						</dl>
+					{:else}
+						<p class="text-gray-500">
+							{$_('knowledgeStores.params.usingDefaults', {
+								default: 'Using the strategy defaults.'
+							})}
+						</p>
+					{/if}
+				{:else}
+					<div class="space-y-3 rounded-md border border-gray-200 bg-white p-3 text-xs">
+						<p class="text-amber-800">
+							{$_('knowledgeStores.params.editNotice', {
+								default:
+									'Changes apply only to content ingested after saving — existing chunks keep the parameters they were created with.'
+							})}
+						</p>
+						{#if chunkingSchema.length > 0}
+							<PluginParamFields
+								parameters={chunkingSchema}
+								bind:values={editParams}
+								bind:errors={editParamErrors}
+								idPrefix="ks-detail-chunking-edit"
+							/>
+						{:else if schemaLoaded}
+							<p class="text-gray-500">
+								{$_('knowledgeStores.params.noParams', {
+									default: 'This strategy has no editable parameters.'
+								})}
+							</p>
+						{:else}
+							<p class="text-gray-500">{$_('common.loading', { default: 'Loading...' })}</p>
+						{/if}
+
+						{#if paramsError}
+							<div class="rounded-md bg-red-50 p-2 text-red-700" role="alert">
+								{paramsError}
+							</div>
+						{/if}
+
+						<div class="flex justify-end gap-2">
+							<button
+								type="button"
+								onclick={cancelParamsEdit}
+								disabled={savingParams}
+								class="rounded-md border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+							>
+								{$_('common.cancel', { default: 'Cancel' })}
+							</button>
+							<button
+								type="button"
+								onclick={saveParams}
+								disabled={savingParams || Object.keys(editParamErrors).length > 0}
+								class="rounded-md bg-[#2271b3] px-3 py-1.5 font-medium text-white hover:bg-[#195a91] disabled:opacity-50"
+							>
+								{savingParams
+									? $_('common.saving', { default: 'Saving...' })
+									: $_('common.save', { default: 'Save' })}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
 		<div class="border-t border-yellow-100 bg-yellow-50 px-6 py-2 text-xs text-yellow-800">
 			{$_('knowledgeStores.lockedNotice', {
 				default:

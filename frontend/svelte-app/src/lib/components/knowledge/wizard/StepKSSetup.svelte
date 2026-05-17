@@ -15,7 +15,12 @@
 <script>
 	import { createEventDispatcher, tick, untrack } from 'svelte';
 	import axios from 'axios';
-	import { getKnowledgeStores, getOptions } from '$lib/services/knowledgeStoreService';
+	import {
+		getKnowledgeStores,
+		getOptions,
+		KnowledgeStoreUnavailableError
+	} from '$lib/services/knowledgeStoreService';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
@@ -91,80 +96,81 @@
 	let loadingOptions = $state(false);
 	let optionsLoaded = $state(false);
 	let optionsError = $state('');
+	let optionsUnavailable = $state(false);
 
 	let chunkingStrategy = $state(wizardState.ksConfig?.chunking_strategy || '');
 	let chunkingParams = $state(
-		/** @type {Record<string, number>} */ (wizardState.ksConfig?.chunking_params || {})
+		/** @type {Record<string, unknown>} */ (wizardState.ksConfig?.chunking_params || {})
 	);
 	let chunkingParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 	let embeddingVendor = $state(wizardState.ksConfig?.embedding_vendor || '');
 	let embeddingModel = $state(wizardState.ksConfig?.embedding_model || '');
 	let embeddingEndpoint = $state(wizardState.ksConfig?.embedding_endpoint || '');
+	// Extra embedding-vendor params (anything the schema declares beyond
+	// model/api_endpoint/api_key, which are surfaced with bespoke widgets
+	// below). Empty for openai/ollama today; populated when a vendor plugin
+	// declares additional knobs.
+	let embeddingParams = $state(
+		/** @type {Record<string, unknown>} */ (wizardState.ksConfig?.embedding_params || {})
+	);
+	let embeddingParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 	let vectorDb = $state(wizardState.ksConfig?.vector_db_backend || '');
+	let vectorDbParams = $state(
+		/** @type {Record<string, unknown>} */ (wizardState.ksConfig?.vector_db_params || {})
+	);
+	let vectorDbParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 
-	// Param descriptors for the currently-selected strategy. Each entry has
-	// { name, type, description, default, min_value, max_value }.
+	// Param descriptors for the currently-selected strategy / vendor / backend.
 	let currentStrategyParams = $derived.by(() => {
 		const s = (options.chunking_strategies ?? []).find(
 			(/** @type {any} */ s) => s.name === chunkingStrategy
 		);
 		return s?.parameters ?? [];
 	});
-
-	// When the user switches chunking strategy, reset chunking_params to the
-	// new strategy's defaults — but only fill in keys the user hasn't already
-	// set. This means a draft with custom values survives a re-mount, while a
-	// fresh strategy pick gets sensible defaults so "Next" works immediately.
-	//
-	// The read of `chunkingParams` here is wrapped in `untrack()` because the
-	// effect is meant to fire only when the chunking strategy changes — NOT
-	// every time the user edits one of the per-strategy inputs. Without
-	// untrack, the write at the bottom would re-trigger this effect on the
-	// same write it just produced, looping forever.
-	$effect(() => {
-		const params = currentStrategyParams;
-		if (!params.length) return;
-		untrack(() => {
-			const next = /** @type {Record<string, number>} */ ({});
-			let changed = Object.keys(chunkingParams).length !== params.length;
-			for (const p of params) {
-				const existing = chunkingParams[p.name];
-				const value = typeof existing === 'number' ? existing : Number(p.default);
-				next[p.name] = value;
-				if (existing !== value) changed = true;
-			}
-			if (changed) chunkingParams = next;
-		});
+	let currentVendorParams = $derived.by(() => {
+		const v = (options.embedding_vendors ?? []).find(
+			(/** @type {any} */ v) => v.name === embeddingVendor
+		);
+		return v?.parameters ?? [];
+	});
+	let currentBackendParams = $derived.by(() => {
+		const b = (options.vector_db_backends ?? []).find(
+			(/** @type {any} */ b) => b.name === vectorDb
+		);
+		return b?.parameters ?? [];
 	});
 
-	// Validate each numeric param against its declared min/max. Empty error
-	// map means the form is valid w.r.t. chunking params.
+	// Reset chunking params when the strategy changes so a stale dict from
+	// a different strategy doesn't carry irrelevant keys. The renderer
+	// re-initialises from the new strategy's defaults on next mount.
+	let lastChunkingStrategy = $state(chunkingStrategy);
 	$effect(() => {
-		const params = currentStrategyParams;
-		const errs = /** @type {Record<string, string>} */ ({});
-		for (const p of params) {
-			const v = chunkingParams[p.name];
-			if (v === undefined || v === null || Number.isNaN(v)) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramRequired', {
-					default: 'Required'
-				});
-				continue;
-			}
-			if (typeof p.min_value === 'number' && v < p.min_value) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooSmall', {
-					values: { min: p.min_value },
-					default: `Must be ≥ ${p.min_value}`
-				});
-				continue;
-			}
-			if (typeof p.max_value === 'number' && v > p.max_value) {
-				errs[p.name] = $_('knowledge.wizard.ksStep.paramTooLarge', {
-					values: { max: p.max_value },
-					default: `Must be ≤ ${p.max_value}`
-				});
-			}
+		if (chunkingStrategy !== lastChunkingStrategy) {
+			untrack(() => {
+				chunkingParams = {};
+				lastChunkingStrategy = chunkingStrategy;
+			});
 		}
-		chunkingParamErrors = errs;
+	});
+
+	let lastEmbeddingVendor = $state(embeddingVendor);
+	$effect(() => {
+		if (embeddingVendor !== lastEmbeddingVendor) {
+			untrack(() => {
+				embeddingParams = {};
+				lastEmbeddingVendor = embeddingVendor;
+			});
+		}
+	});
+
+	let lastVectorDb = $state(vectorDb);
+	$effect(() => {
+		if (vectorDb !== lastVectorDb) {
+			untrack(() => {
+				vectorDbParams = {};
+				lastVectorDb = vectorDb;
+			});
+		}
 	});
 
 	$effect(() => {
@@ -176,6 +182,7 @@
 	async function loadOptions() {
 		loadingOptions = true;
 		optionsError = '';
+		optionsUnavailable = false;
 		try {
 			options = await getOptions();
 			if (!chunkingStrategy && options.chunking_strategies?.length) {
@@ -197,13 +204,31 @@
 			if (!vectorDb && options.vector_db_backends?.length) {
 				vectorDb = options.vector_db_backends[0].name;
 			}
+			optionsLoaded = true;
 		} catch (/** @type {unknown} */ err) {
-			optionsError = readableError(err, 'Failed to load options');
+			if (err instanceof KnowledgeStoreUnavailableError) {
+				optionsUnavailable = true;
+				optionsError =
+					err.detail ||
+					$_('knowledgeStores.options.unavailableBody', {
+						default:
+							'Knowledge Store server unavailable. Please ensure lamb-kb-server is running and retry.'
+					});
+				// Leave optionsLoaded=false so a future $effect re-run can
+				// retry automatically once the server comes back.
+				optionsLoaded = false;
+			} else {
+				optionsError = readableError(err, 'Failed to load options');
+				optionsLoaded = true;
+			}
 			console.error('loadOptions failed', err);
 		} finally {
 			loadingOptions = false;
-			optionsLoaded = true;
 		}
+	}
+
+	async function retryLoadOptions() {
+		await loadOptions();
 	}
 
 	let enabledVendors = $derived.by(() =>
@@ -250,7 +275,11 @@
 		const _vendor = embeddingVendor;
 		const _model = embeddingModel;
 		const _endpoint = embeddingEndpoint;
+		const _embParams = embeddingParams;
+		const _embErrors = embeddingParamErrors;
 		const _vectorDb = vectorDb;
+		const _vdbParams = vectorDbParams;
+		const _vdbErrors = vectorDbParamErrors;
 		void _path;
 		void _selectedId;
 		void _name;
@@ -262,12 +291,20 @@
 		void _vendor;
 		void _model;
 		void _endpoint;
+		void _embParams;
+		void _embErrors;
 		void _vectorDb;
-		// Touch each chunking-param value so the effect re-runs on edits
+		void _vdbParams;
+		void _vdbErrors;
+		// Touch each plugin-param value so the effect re-runs on edits
 		// (Svelte 5 tracks reads, and a shallow ref-equality check on the
 		// dict isn't enough when only a property changes).
 		for (const k of Object.keys(_params || {})) void _params[k];
 		for (const k of Object.keys(_paramErrors || {})) void _paramErrors[k];
+		for (const k of Object.keys(_embParams || {})) void _embParams[k];
+		for (const k of Object.keys(_embErrors || {})) void _embErrors[k];
+		for (const k of Object.keys(_vdbParams || {})) void _vdbParams[k];
+		for (const k of Object.keys(_vdbErrors || {})) void _vdbErrors[k];
 
 		untrack(() => {
 			// Persist the radio choice immediately so the draft retains the
@@ -306,7 +343,10 @@
 				return;
 			}
 			const configValid = !!chunkingStrategy && !!embeddingVendor && !!embeddingModel && !!vectorDb;
-			const paramsValid = Object.keys(chunkingParamErrors).length === 0;
+			const paramsValid =
+				Object.keys(chunkingParamErrors).length === 0 &&
+				Object.keys(embeddingParamErrors).length === 0 &&
+				Object.keys(vectorDbParamErrors).length === 0;
 			if (!configValid || !paramsValid) {
 				nameError = '';
 				dispatch('validity', { valid: false });
@@ -326,7 +366,9 @@
 					embedding_vendor: embeddingVendor,
 					embedding_model: embeddingModel,
 					embedding_endpoint: embeddingEndpoint,
-					vector_db_backend: vectorDb
+					embedding_params: { ...embeddingParams },
+					vector_db_backend: vectorDb,
+					vector_db_params: { ...vectorDbParams }
 				}
 			});
 		});
@@ -516,6 +558,25 @@
 						<div class="text-sm text-gray-500">
 							{$_('common.loading', { default: 'Loading...' })}
 						</div>
+					{:else if optionsUnavailable}
+						<div
+							class="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+							role="alert"
+						>
+							<p class="font-medium">
+								{$_('knowledgeStores.options.unavailableTitle', {
+									default: 'Knowledge Store server unavailable'
+								})}
+							</p>
+							<p class="text-xs">{optionsError}</p>
+							<button
+								type="button"
+								onclick={retryLoadOptions}
+								class="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+							>
+								{$_('common.retry', { default: 'Retry' })}
+							</button>
+						</div>
 					{:else if optionsError}
 						<div
 							class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700"
@@ -556,48 +617,12 @@
 											'Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content ingested after the edit.'
 									})}
 								</p>
-								{#each currentStrategyParams as p (p.name)}
-									<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-										<label
-											for="wizard-ks-param-{p.name}"
-											class="block w-full text-xs font-medium text-gray-700 sm:w-1/3"
-											title={p.description}
-										>
-											{p.name}
-											{#if typeof p.min_value === 'number' || typeof p.max_value === 'number'}
-												<span class="font-normal text-gray-400">
-													({p.min_value ?? '−∞'}–{p.max_value ?? '∞'})
-												</span>
-											{/if}
-										</label>
-										<input
-											id="wizard-ks-param-{p.name}"
-											type="number"
-											min={p.min_value ?? undefined}
-											max={p.max_value ?? undefined}
-											step="1"
-											value={chunkingParams[p.name]}
-											oninput={(/** @type {Event} */ e) => {
-												const raw = /** @type {HTMLInputElement} */ (e.currentTarget).value;
-												const v = raw === '' ? Number.NaN : Number(raw);
-												chunkingParams = { ...chunkingParams, [p.name]: v };
-											}}
-											class="block w-full rounded-md border px-2 py-1 text-sm sm:w-32 {chunkingParamErrors[
-												p.name
-											]
-												? 'border-red-500'
-												: 'border-gray-300'}"
-										/>
-										<span class="grow text-xs text-gray-500 sm:text-right">
-											{p.description}
-										</span>
-									</div>
-									{#if chunkingParamErrors[p.name]}
-										<p class="text-xs text-red-600 sm:pl-[33%]" role="alert">
-											{chunkingParamErrors[p.name]}
-										</p>
-									{/if}
-								{/each}
+								<PluginParamFields
+									parameters={currentStrategyParams}
+									bind:values={chunkingParams}
+									bind:errors={chunkingParamErrors}
+									idPrefix="wizard-ks-chunking-param"
+								/>
 							</fieldset>
 						{/if}
 
@@ -671,6 +696,39 @@
 						</div>
 
 						<div>
+							<label for="wizard-ks-endpoint" class="block text-sm font-medium text-gray-700">
+								{$_('knowledge.wizard.step6.endpointLabel', {
+									default: 'Embedding endpoint (optional)'
+								})}
+							</label>
+							<input
+								type="text"
+								id="wizard-ks-endpoint"
+								bind:value={embeddingEndpoint}
+								placeholder="https://..."
+								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+							/>
+						</div>
+
+						{#if currentVendorParams.filter((/** @type {any} */ p) => !['model', 'api_endpoint', 'api_key'].includes(p.name)).length > 0}
+							<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+								<legend class="px-1 text-xs font-medium text-gray-700">
+									{$_('knowledge.wizard.ksStep.embeddingParamsLabel', {
+										values: { vendor: embeddingVendor },
+										default: `${embeddingVendor} parameters`
+									})}
+								</legend>
+								<PluginParamFields
+									parameters={currentVendorParams}
+									bind:values={embeddingParams}
+									bind:errors={embeddingParamErrors}
+									idPrefix="wizard-ks-embedding-param"
+									exclude={['model', 'api_endpoint', 'api_key']}
+								/>
+							</fieldset>
+						{/if}
+
+						<div>
 							<label for="wizard-ks-vectordb" class="block text-sm font-medium text-gray-700">
 								{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
 								<span class="text-red-500">*</span>
@@ -688,20 +746,22 @@
 							</select>
 						</div>
 
-						<div>
-							<label for="wizard-ks-endpoint" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.endpointLabel', {
-									default: 'Embedding endpoint (optional)'
-								})}
-							</label>
-							<input
-								type="text"
-								id="wizard-ks-endpoint"
-								bind:value={embeddingEndpoint}
-								placeholder="https://..."
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-							/>
-						</div>
+						{#if currentBackendParams.length > 0}
+							<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+								<legend class="px-1 text-xs font-medium text-gray-700">
+									{$_('knowledge.wizard.ksStep.vectorDbParamsLabel', {
+										values: { backend: vectorDb },
+										default: `${vectorDb} parameters`
+									})}
+								</legend>
+								<PluginParamFields
+									parameters={currentBackendParams}
+									bind:values={vectorDbParams}
+									bind:errors={vectorDbParamErrors}
+									idPrefix="wizard-ks-vectordb-param"
+								/>
+							</fieldset>
+						{/if}
 					{/if}
 				</div>
 			</details>

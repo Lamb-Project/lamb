@@ -25,7 +25,7 @@
     - created: { libraryId, libraryName, ksId, ksName }
 -->
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 	import axios from 'axios';
 	import {
 		createLibrary,
@@ -34,26 +34,94 @@
 		uploadFile,
 		importUrl,
 		importYouTube,
-		getItemStatus
+		getItemStatus,
+		getPlugins
 	} from '$lib/services/libraryService';
+	import { matchPluginsForFile } from '$lib/services/pluginMatcher';
 	import {
 		createKnowledgeStore,
 		getKnowledgeStores,
 		toggleSharing as toggleKSSharing,
 		addContent
 	} from '$lib/services/knowledgeStoreService';
+	import PluginPickerModal from '$lib/components/libraries/PluginPickerModal.svelte';
 	import { _ } from '$lib/i18n';
 
-	// Same auto-routing rule the Library Detail page uses for inline file
-	// uploads: only the simple-import plugin is right for plain-text
-	// extensions; everything else (PDF, DOCX, XLSX, ...) needs markitdown.
-	// Without this routing the wizard always sent ``simple_import``,
-	// which rejects PDF with a 400 before the file ever reaches disk.
-	const SIMPLE_IMPORT_EXTENSIONS = new Set(['txt', 'md', 'html', 'htm']);
-	/** @param {File} file */
-	function pluginForFile(file) {
-		const ext = file.name.split('.').pop()?.toLowerCase() || '';
-		return SIMPLE_IMPORT_EXTENSIONS.has(ext) ? 'simple_import' : 'markitdown_import';
+	// Plugin catalogue fetched once on mount. The wizard uses it to:
+	//   * route file uploads (multi-match files → picker modal)
+	//   * resolve which plugin handles ``url`` / ``youtube`` source types,
+	//     so libraryService gets an explicit plugin name (no hardcoded
+	//     defaults on either side any more).
+	// Typed loosely to match the matcher's PluginMeta-style consumption.
+	/** @type {any[]} */
+	let plugins = $state([]);
+
+	onMount(async () => {
+		try {
+			plugins = await getPlugins();
+		} catch (err) {
+			console.warn('Step8_ReviewCreate: failed to load plugins', err);
+		}
+	});
+
+	/**
+	 * Pick the first plugin registered for a source type. Used to route
+	 * URL and YouTube imports without hardcoding plugin names.
+	 * @param {string} sourceType
+	 * @returns {string|null}
+	 */
+	function pluginForSourceType(sourceType) {
+		const match = plugins.find(
+			(p) =>
+				Array.isArray(p?.supported_source_types) && p.supported_source_types.includes(sourceType)
+		);
+		return match?.name ?? null;
+	}
+
+	// Picker modal state for the multi-match tie-break.
+	let showPluginPicker = $state(false);
+	/** @type {any[]} */
+	let pluginMatches = $state([]);
+	/** @type {File|null} */
+	let pickerFile = $state(null);
+	/** @type {((pluginName: string|null) => void) | null} */
+	let pickerResolver = null;
+
+	/**
+	 * Resolve a plugin name for a file. If exactly one plugin matches the
+	 * extension, return it directly. If more than one matches, open the
+	 * picker modal and return a Promise that resolves once the user picks.
+	 * If no plugin matches, return ``null``.
+	 *
+	 * @param {File} file
+	 * @returns {Promise<string|null>}
+	 */
+	async function resolvePluginForFile(file) {
+		const matches = matchPluginsForFile(file, plugins);
+		if (matches.length === 0) return null;
+		if (matches.length === 1) return matches[0].name;
+		pluginMatches = matches;
+		pickerFile = file;
+		showPluginPicker = true;
+		await tick();
+		return new Promise((resolve) => {
+			pickerResolver = resolve;
+		});
+	}
+
+	/** @param {{ name: string }} plugin */
+	function handlePluginPicked(plugin) {
+		showPluginPicker = false;
+		const resolver = pickerResolver;
+		pickerResolver = null;
+		if (resolver) resolver(plugin.name);
+	}
+
+	function handlePluginPickerCancel() {
+		showPluginPicker = false;
+		const resolver = pickerResolver;
+		pickerResolver = null;
+		if (resolver) resolver(null);
 	}
 
 	/**
@@ -258,8 +326,21 @@
 						})
 					);
 					try {
+						const pluginName = await resolvePluginForFile(f);
+						if (!pluginName) {
+							const ext = f.name.split('.').pop()?.toLowerCase() || '';
+							console.warn(`No plugin can handle .${ext} for ${f.name}`);
+							finishStep('failed');
+							continue;
+						}
+						// Per-file params dict captured in Step 2. Empty when the
+						// user didn't open the per-file Advanced panel — the
+						// backend then applies each schema parameter's default.
+						const fileParams =
+							(wizardState.pendingFileParams ?? [])[i] ?? {};
 						const result = await uploadFile(libraryId, f, {
-							pluginName: pluginForFile(f)
+							pluginName,
+							params: fileParams
 						});
 						const itemId = result.item_id;
 						finishStep('done');
@@ -295,16 +376,36 @@
 					);
 					try {
 						let result;
+						// Plugin params captured in Step 2 (per-source). All
+						// plugin-specific knobs (YouTube language, URL crawl
+						// depth, future plugin fields) travel through this
+						// dict — the renderer is the only thing that writes it.
+						const srcParams = src.params || {};
 						if (src.type === 'youtube') {
+							const ytPlugin = pluginForSourceType('youtube');
+							if (!ytPlugin) {
+								console.warn('No YouTube plugin enabled');
+								finishStep('failed');
+								continue;
+							}
 							result = await importYouTube(libraryId, {
 								videoUrl: src.url,
-								language: src.language || 'en',
-								title: src.title || undefined
+								pluginName: ytPlugin,
+								title: src.title || undefined,
+								params: srcParams
 							});
 						} else {
+							const urlPlugin = pluginForSourceType('url');
+							if (!urlPlugin) {
+								console.warn('No URL plugin enabled');
+								finishStep('failed');
+								continue;
+							}
 							result = await importUrl(libraryId, {
 								url: src.url,
-								title: src.title || undefined
+								pluginName: urlPlugin,
+								title: src.title || undefined,
+								params: srcParams
 							});
 						}
 						const itemId = result.item_id;
@@ -342,7 +443,9 @@
 					embedding_vendor: wizardState.ksConfig.embedding_vendor,
 					embedding_model: wizardState.ksConfig.embedding_model,
 					embedding_endpoint: wizardState.ksConfig.embedding_endpoint || undefined,
-					vector_db_backend: wizardState.ksConfig.vector_db_backend
+					embedding_params: wizardState.ksConfig.embedding_params || {},
+					vector_db_backend: wizardState.ksConfig.vector_db_backend,
+					vector_db_params: wizardState.ksConfig.vector_db_params || {}
 				});
 				ksId = ks.id;
 				ksName = ks.name;
@@ -424,14 +527,12 @@
 				!!err &&
 				typeof err === 'object' &&
 				/** @type {any} */ (err).isAxiosError === true &&
-				!/** @type {any} */ (err).response;
+				!(/** @type {any} */ (err).response);
 			if (isNoResponseAxios && wizardState.ksPath === 'new' && wizardState.ksName) {
 				try {
 					const stores = await getKnowledgeStores();
 					const proposed = wizardState.ksName.trim().toLowerCase();
-					const dup = (stores || []).some(
-						(s) => (s?.name || '').trim().toLowerCase() === proposed
-					);
+					const dup = (stores || []).some((s) => (s?.name || '').trim().toLowerCase() === proposed);
 					if (dup) {
 						error = $_('knowledge.wizard.step8.ksNameTaken', {
 							default: 'A Knowledge Store named "{name}" already exists.',
@@ -553,7 +654,8 @@
 						{$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
 					</dt>
 					<dd class="text-gray-900">
-						{wizardState.libraryImportConfig?.pluginName || 'simple_import'}
+						{wizardState.libraryImportConfig?.pluginName ||
+							$_('knowledge.wizard.step8.pluginAuto', { default: 'Auto-selected' })}
 					</dd>
 
 					<dt class="font-medium text-gray-500">
@@ -702,3 +804,11 @@
 	     it doesn't push the dialog content into a scroll. The wizard calls
 	     this component's exported submit() when the user clicks it. -->
 </div>
+
+<PluginPickerModal
+	bind:isOpen={showPluginPicker}
+	matches={pluginMatches}
+	file={pickerFile}
+	onselect={handlePluginPicked}
+	oncancel={handlePluginPickerCancel}
+/>

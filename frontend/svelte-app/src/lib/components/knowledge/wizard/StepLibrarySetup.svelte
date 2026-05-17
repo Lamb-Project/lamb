@@ -32,6 +32,7 @@
 		return fallback;
 	}
 	import { getLibraries, getPlugins } from '$lib/services/libraryService';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
 
 	/** @type {{ wizardState: any }} */
@@ -79,10 +80,28 @@
 	let nameError = $state('');
 
 	// ── Plugin config (advanced) ─────────────────────────────────────────────
+	// The default plugin is resolved from the registry — never hardcoded.
+	// We prefer the first plugin whose ``source_type === 'file'`` (the
+	// canonical "drop a document" import path) and fall back to the first
+	// registered plugin if no file plugin is enabled.
 	let plugins = $state(/** @type {any[]} */ ([]));
-	let pluginName = $state(wizardState.libraryImportConfig?.pluginName || 'simple_import');
+	let pluginName = $state(wizardState.libraryImportConfig?.pluginName || '');
 	let loadingPlugins = $state(false);
 	let pluginError = $state('');
+
+	// Per-plugin parameter dict. Keyed by plugin name so switching plugins
+	// preserves each plugin's edits — and the renderer always sees a values
+	// object owned by the active plugin. The renderer initialises any
+	// missing key from the schema's ``default``.
+	let pluginParamsByName = $state(
+		/** @type {Record<string, Record<string, unknown>>} */ (
+			wizardState.libraryImportConfig?.pluginName &&
+				wizardState.libraryImportConfig?.params
+				? { [wizardState.libraryImportConfig.pluginName]: { ...wizardState.libraryImportConfig.params } }
+				: {}
+		)
+	);
+	let pluginParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 
 	$effect(() => {
 		if (path === 'new' && plugins.length === 0 && !loadingPlugins) {
@@ -96,8 +115,8 @@
 		try {
 			plugins = await getPlugins();
 			if (plugins.length > 0 && !plugins.find((p) => p.name === pluginName)) {
-				const simple = plugins.find((p) => p.name === 'simple_import');
-				pluginName = simple?.name || plugins[0].name;
+				const fileDefault = plugins.find((p) => p.source_type === 'file');
+				pluginName = fileDefault?.name || plugins[0].name;
 			}
 		} catch (/** @type {unknown} */ err) {
 			pluginError = readableError(err, 'Failed to load plugins');
@@ -108,6 +127,17 @@
 	}
 
 	let selectedPlugin = $derived(plugins.find((p) => p.name === pluginName));
+	let selectedPluginParameters = $derived(selectedPlugin?.parameters ?? []);
+
+	// Bind the renderer to the active plugin's slot. Initialise the slot
+	// lazily so we don't churn the state object on every plugin select.
+	$effect(() => {
+		if (!pluginName) return;
+		if (!(pluginName in pluginParamsByName)) {
+			pluginParamsByName = { ...pluginParamsByName, [pluginName]: {} };
+		}
+	});
+	let activePluginParams = $derived(pluginParamsByName[pluginName] ?? {});
 
 	// ── Validity + dispatch ──────────────────────────────────────────────────
 	$effect(() => {
@@ -117,12 +147,20 @@
 		const _description = description;
 		const _isShared = isShared;
 		const _pluginName = pluginName;
+		const _params = pluginParamsByName[pluginName];
+		const _paramErrors = pluginParamErrors;
 		void _path;
 		void _selectedId;
 		void _name;
 		void _description;
 		void _isShared;
 		void _pluginName;
+		void _params;
+		void _paramErrors;
+		// Touch each param key so this effect re-runs when individual
+		// values change (Svelte 5 reactivity is read-tracked).
+		for (const k of Object.keys(_params || {})) void (/** @type {any} */ (_params)[k]);
+		for (const k of Object.keys(_paramErrors || {})) void _paramErrors[k];
 
 		untrack(() => {
 			// Persist the radio choice immediately so the draft retains the
@@ -163,14 +201,18 @@
 				return;
 			}
 			nameError = '';
-			dispatch('validity', { valid: true });
+			const paramsValid = Object.keys(pluginParamErrors).length === 0;
+			dispatch('validity', { valid: paramsValid });
 			dispatch('update', {
 				libraryPath: 'new',
 				existingLibraryId: '',
 				libraryName: trimmed,
 				libraryDescription: description,
 				libraryIsShared: isShared,
-				libraryImportConfig: { pluginName, params: {} }
+				libraryImportConfig: {
+					pluginName,
+					params: { ...(pluginParamsByName[pluginName] || {}) }
+				}
 			});
 		});
 	});
@@ -369,12 +411,30 @@
 								<p class="mt-1 text-xs text-gray-500">{selectedPlugin.description}</p>
 							{/if}
 						</div>
-						<p class="text-xs text-gray-500">
-							{$_('knowledge.wizard.libraryStep.pluginNote', {
-								default:
-									'Per-plugin parameters can be customized later from the library detail view.'
-							})}
-						</p>
+
+						{#if selectedPluginParameters.length > 0}
+							<fieldset class="mt-1 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+								<legend class="px-1 text-xs font-medium text-gray-700">
+									{$_('knowledge.wizard.libraryStep.pluginParamsLabel', {
+										values: { plugin: selectedPlugin?.human_label || pluginName },
+										default: 'Plugin parameters'
+									})}
+								</legend>
+								<p class="text-xs text-gray-500">
+									{$_('knowledge.wizard.libraryStep.pluginParamsHint', {
+										default:
+											'Defaults come from the plugin and work for most documents — override only if needed.'
+									})}
+								</p>
+								<PluginParamFields
+									parameters={selectedPluginParameters}
+									bind:values={pluginParamsByName[pluginName]}
+									bind:errors={pluginParamErrors}
+									idPrefix="wizard-library-plugin-param"
+									mode={selectedPlugin?.mode === 'ADVANCED' ? 'advanced' : 'simplified'}
+								/>
+							</fieldset>
+						{/if}
 					{/if}
 				</div>
 			</details>

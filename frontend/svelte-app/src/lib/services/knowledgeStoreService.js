@@ -80,6 +80,23 @@ function authHeaders() {
 	return { Authorization: `Bearer ${token}` };
 }
 
+/**
+ * Raised by {@link getOptions} when the backend returns the structured
+ * ``503 {error: "knowledge_store_unavailable"}`` body that signals the KB
+ * Server is unreachable. The UI should render an actionable retry state
+ * instead of treating this as a generic network error — there is no
+ * hardcoded fallback catalogue of plugins by design.
+ */
+export class KnowledgeStoreUnavailableError extends Error {
+	/** @param {string} detail */
+	constructor(detail) {
+		super(detail || 'Knowledge Store server unavailable');
+		this.name = 'KnowledgeStoreUnavailableError';
+		this.code = 'knowledge_store_unavailable';
+		this.detail = detail || '';
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Discovery
 // ---------------------------------------------------------------------------
@@ -88,13 +105,27 @@ function authHeaders() {
  * Fetch the org's allow-lists (chunking strategies, embedding vendors / models,
  * vector DB backends). Used by the create-KS form / wizard to render the
  * locked-setup picker.
+ *
+ * Throws {@link KnowledgeStoreUnavailableError} when the backend returns
+ * ``503 {error: "knowledge_store_unavailable", detail: "..."}``. Callers
+ * should catch this specifically and render a retry state.
  * @returns {Promise<KSOptions>}
  */
 export async function getOptions() {
 	if (!browser) throw new Error('Browser only.');
 	const url = getApiUrl('/knowledge-stores/options');
-	const response = await axios.get(url, { headers: authHeaders() });
-	return response.data;
+	try {
+		const response = await axios.get(url, { headers: authHeaders() });
+		return response.data;
+	} catch (/** @type {unknown} */ err) {
+		if (axios.isAxiosError(err) && err.response?.status === 503) {
+			const data = err.response.data;
+			if (data && data.error === 'knowledge_store_unavailable') {
+				throw new KnowledgeStoreUnavailableError(data.detail || '');
+			}
+		}
+		throw err;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +158,11 @@ export async function getKnowledgeStore(ksId) {
 /**
  * Create a new Knowledge Store. Store setup (chunking, embedding, vector DB)
  * is locked at creation time per ADR-3 of issue #334.
+ * ``embedding_params`` carries any additional knobs declared by the
+ * embedding vendor's schema beyond ``model``/``api_endpoint``/``api_key``
+ * (those are already top-level fields). ``vector_db_params`` does the
+ * same for the vector-DB backend. Both default to ``{}`` — empty for
+ * today's vendors because none of them declare extras yet.
  * @param {{
  *   name: string,
  *   description?: string,
@@ -135,7 +171,9 @@ export async function getKnowledgeStore(ksId) {
  *   embedding_vendor: string,
  *   embedding_model: string,
  *   embedding_endpoint?: string,
+ *   embedding_params?: Object,
  *   vector_db_backend: string,
+ *   vector_db_params?: Object,
  * }} data
  * @returns {Promise<KnowledgeStore>}
  */
@@ -149,9 +187,15 @@ export async function createKnowledgeStore(data) {
 }
 
 /**
- * Update a Knowledge Store's name and/or description (the only mutable fields).
+ * Update mutable fields on a Knowledge Store.
+ *
+ * Strategy, embedding vendor/model, and vector DB are locked at creation
+ * (ADR-KS-5) — those cannot be edited here. ``chunking_params`` CAN be
+ * edited, but the new values only apply to **future** ingestions; chunks
+ * already in the store keep the parameters they were chunked with.
+ *
  * @param {string} ksId
- * @param {{ name?: string, description?: string }} data
+ * @param {{ name?: string, description?: string, chunking_params?: Record<string, unknown> }} data
  * @returns {Promise<KnowledgeStore>}
  */
 export async function updateKnowledgeStore(ksId, data) {

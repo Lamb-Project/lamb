@@ -1264,5 +1264,26 @@
 				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embeddings, base de dades vectorial"
 			}
 		}
+	},
+	"capability": {
+		"text": "Text",
+		"pages": "Pàgines",
+		"images": "Imatges",
+		"audio": "Àudio",
+		"transcript": "Transcripció"
+	},
+	"sourceType": {
+		"file": "Fitxer",
+		"url": "URL",
+		"youtube": "YouTube"
+	},
+	"plugins": {
+		"params": {
+			"advancedLabel": "Paràmetres avançats",
+			"required": "Obligatori",
+			"tooSmall": "Ha de ser ≥ {min}",
+			"tooLarge": "Ha de ser ≤ {max}",
+			"fixErrors": "Corregeix els errors de paràmetres del plugin abans de continuar."
+		}
 	}
 }

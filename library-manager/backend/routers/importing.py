@@ -100,15 +100,16 @@ async def import_file(
         raise HTTPException(
             status_code=400,
             detail=f"Plugin '{plugin_name}' does not support file uploads. "
-                   f"Supported sources: {', '.join(sorted(plugin.supported_source_types))}",
+            f"Supported sources: {', '.join(sorted(plugin.supported_source_types))}",
         )
 
     ext = Path(file.filename or "").suffix.lower().lstrip(".")
-    if plugin.supported_file_types and ext not in plugin.supported_file_types:
+    accepted = {e.lower().lstrip(".") for e in getattr(plugin, "file_extensions", [])}
+    if accepted and ext not in accepted:
         raise HTTPException(
             status_code=400,
             detail=f"Plugin '{plugin_name}' does not support .{ext} files. "
-                   f"Supported: {', '.join(sorted(plugin.supported_file_types))}",
+            f"Supported: {', '.join(sorted(accepted))}",
         )
 
     try:
@@ -138,7 +139,7 @@ async def import_file(
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail=f"File exceeds maximum upload size "
-                               f"({MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB).",
+                        f"({MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB).",
                     )
                 f.write(chunk)
     finally:
@@ -265,9 +266,13 @@ async def import_youtube(
             detail=f"Plugin '{body.plugin_name}' does not support YouTube imports.",
         )
 
-    # Merge language into plugin_params.
-    params = body.plugin_params or {}
-    params["language"] = body.language
+    # Prefer plugin_params["language"] when the caller sent it via the
+    # schema-driven path. Fall back to the deprecated top-level ``language``
+    # only when plugin_params doesn't carry one. Once all known callers
+    # send language inside plugin_params, the top-level field can be
+    # dropped from YoutubeImportRequest.
+    params = dict(body.plugin_params or {})
+    params.setdefault("language", body.language)
 
     item_id, job_id = import_service.queue_youtube_import(
         db=db,

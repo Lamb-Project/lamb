@@ -25,60 +25,18 @@ logger = logging.getLogger(__name__)
 LAMB_KB_SERVER_V2 = os.getenv("LAMB_KB_SERVER_V2", "")
 LAMB_KB_SERVER_V2_TOKEN = os.getenv("LAMB_KB_SERVER_V2_TOKEN", "")
 
-# Fallback plugin data used when the KB Server is unreachable or not yet
-# configured.  Mirrors the built-in plugins registered in lamb-kb-server so
-# the creation wizard always has sensible defaults regardless of server state.
-_BUILTIN_BACKENDS: List[Dict[str, Any]] = [
-    {"name": "chromadb"},
-    {"name": "qdrant"},
-]
 
-_BUILTIN_STRATEGIES: List[Dict[str, Any]] = [
-    {
-        "name": "simple",
-        "description": "Recursive character text splitting",
-        "parameters": [
-            {"name": "chunk_size", "type": "int", "description": "Maximum characters per chunk", "default": 1000, "min_value": 50, "max_value": 8000},
-            {"name": "chunk_overlap", "type": "int", "description": "Characters of overlap between adjacent chunks", "default": 200, "min_value": 0, "max_value": 2000},
-        ],
-    },
-    {
-        "name": "hierarchical",
-        "description": "Parent-child header-based chunking",
-        "parameters": [
-            {"name": "parent_chunk_size", "type": "int", "description": "Max characters in a parent section before secondary splitting", "default": 2000, "min_value": 200, "max_value": 16000},
-            {"name": "child_chunk_size", "type": "int", "description": "Max characters in each child chunk (used for embedding)", "default": 400, "min_value": 50, "max_value": 4000},
-        ],
-    },
-    {"name": "by_page", "description": "One chunk per document page", "parameters": []},
-    {"name": "by_section", "description": "Chunk by document section headers", "parameters": []},
-]
+class KnowledgeStoreUnavailable(RuntimeError):
+    """Raised when the Knowledge Store (KB Server v2) cannot be reached
+    or is not configured.
 
-_BUILTIN_VENDORS: List[Dict[str, Any]] = [
-    {
-        "name": "openai",
-        "description": "OpenAI embeddings",
-        "parameters": [
-            {"name": "model", "type": "string", "description": "Embedding model name", "default": "text-embedding-3-small"},
-            {"name": "api_endpoint", "type": "string", "description": "Custom OpenAI-compatible base URL (leave empty for api.openai.com)", "default": ""},
-        ],
-    },
-    {
-        "name": "ollama",
-        "description": "Ollama local embeddings",
-        "parameters": [
-            {"name": "model", "type": "string", "description": "Model name", "default": "nomic-embed-text"},
-            {"name": "api_endpoint", "type": "string", "description": "Ollama API endpoint", "default": "http://host.docker.internal:11435/api/embeddings"},
-        ],
-    },
-    {
-        "name": "local",
-        "description": "Local sentence-transformers embeddings (no API key needed)",
-        "parameters": [
-            {"name": "model", "type": "string", "description": "Sentence-Transformers model name or local path", "default": "all-MiniLM-L6-v2"},
-        ],
-    },
-]
+    The zero-touch plugin thesis requires that plugin lists (backends,
+    chunking strategies, embedding vendors) always reflect the live
+    registries on the KB Server — there is no hardcoded fallback. When
+    the server is unreachable the caller must surface a structured error
+    so the UI can render an actionable retry state instead of silently
+    serving a stale plugin catalogue.
+    """
 
 
 class KnowledgeStoreClient:
@@ -128,7 +86,7 @@ class KnowledgeStoreClient:
                 logger.warning(f"Error resolving KS config for {user_email}: {e}")
 
         if not self.global_server_url:
-            raise ValueError(
+            raise KnowledgeStoreUnavailable(
                 "Knowledge Store server not configured (set LAMB_KB_SERVER_V2)"
             )
         return {
@@ -191,7 +149,12 @@ class KnowledgeStoreClient:
             Parsed JSON response, or ``{}`` for 204.
 
         Raises:
-            HTTPException: On non-2xx responses or connection errors.
+            HTTPException: On non-2xx responses or connection errors. Status
+                ``503`` is used for both network failures and unreachable
+                servers; the discovery methods (``get_backends`` etc.)
+                translate this case to the typed
+                :class:`KnowledgeStoreUnavailable` so the options endpoint
+                can surface a structured error to the UI.
         """
         url = f"{config['url'].rstrip('/')}{path}"
         headers = self._headers(config["token"])
@@ -222,20 +185,67 @@ class KnowledgeStoreClient:
     # System / discovery
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _wrap_discovery_error(exc: HTTPException) -> "KnowledgeStoreUnavailable":
+        """Translate a 5xx / connection HTTPException into ``KnowledgeStoreUnavailable``.
+
+        Used by the discovery endpoints so the ``/creator/knowledge-stores/options``
+        route can surface a structured 503 to the UI when the live registries
+        on the KB Server can't be read. Non-5xx responses are re-raised
+        unchanged (the server reached us — it just rejected the request).
+        """
+        if exc.status_code >= 500:
+            return KnowledgeStoreUnavailable(str(exc.detail))
+        return None  # type: ignore[return-value]
+
     async def get_backends(self, creator_user: Dict[str, Any] = None) -> Dict:
-        """List vector DB backends registered on the KB Server."""
+        """List vector DB backends registered on the KB Server.
+
+        Raises:
+            KnowledgeStoreUnavailable: If the server is unreachable or
+                returns a 5xx — the live registries are the only source
+                of truth (no hardcoded fallback).
+        """
         config = self._get_ks_config(creator_user)
-        return await self._request("GET", "/backends", config)
+        try:
+            return await self._request("GET", "/backends", config)
+        except HTTPException as exc:
+            wrapped = self._wrap_discovery_error(exc)
+            if wrapped is not None:
+                raise wrapped from exc
+            raise
 
     async def get_chunking_strategies(self, creator_user: Dict[str, Any] = None) -> Dict:
-        """List chunking strategies registered on the KB Server."""
+        """List chunking strategies registered on the KB Server.
+
+        Raises:
+            KnowledgeStoreUnavailable: If the server is unreachable or
+                returns a 5xx.
+        """
         config = self._get_ks_config(creator_user)
-        return await self._request("GET", "/chunking-strategies", config)
+        try:
+            return await self._request("GET", "/chunking-strategies", config)
+        except HTTPException as exc:
+            wrapped = self._wrap_discovery_error(exc)
+            if wrapped is not None:
+                raise wrapped from exc
+            raise
 
     async def get_embedding_vendors(self, creator_user: Dict[str, Any] = None) -> Dict:
-        """List embedding vendors registered on the KB Server."""
+        """List embedding vendors registered on the KB Server.
+
+        Raises:
+            KnowledgeStoreUnavailable: If the server is unreachable or
+                returns a 5xx.
+        """
         config = self._get_ks_config(creator_user)
-        return await self._request("GET", "/embedding-vendors", config)
+        try:
+            return await self._request("GET", "/embedding-vendors", config)
+        except HTTPException as exc:
+            wrapped = self._wrap_discovery_error(exc)
+            if wrapped is not None:
+                raise wrapped from exc
+            raise
 
     # ------------------------------------------------------------------
     # Collection CRUD
@@ -253,12 +263,20 @@ class KnowledgeStoreClient:
         description: str = "",
         chunking_params: Dict[str, Any] = None,
         embedding_endpoint: str = "",
+        embedding_params: Dict[str, Any] = None,
+        vector_db_params: Dict[str, Any] = None,
         creator_user: Dict[str, Any] = None,
     ) -> Dict:
         """Create a collection on the KB Server.
 
         Mirrors LAMB's ``knowledge_stores.id`` to the server's collection ID
         so the two records stay in lockstep.
+
+        ``embedding_params`` and ``vector_db_params`` carry plugin-schema
+        extras declared beyond the bespoke fields (model, api_endpoint, …).
+        They default to ``{}`` — empty for today's vendors. Forwarded
+        verbatim so a future plugin that declares additional knobs picks
+        them up without changes here.
         """
         config = self._get_ks_config(creator_user)
         payload = {
@@ -273,7 +291,9 @@ class KnowledgeStoreClient:
                 "model": embedding_model,
                 "api_endpoint": embedding_endpoint or "",
             },
+            "embedding_params": embedding_params or {},
             "vector_db_backend": vector_db_backend,
+            "vector_db_params": vector_db_params or {},
         }
         return await self._request("POST", "/collections", config, json=payload)
 
@@ -423,41 +443,21 @@ class KnowledgeStoreClient:
         Returns:
             Dict with ``vector_db_backends``, ``chunking_strategies``,
             ``embedding_vendors``, ``embedding_models``.
-        """
-        try:
-            config = self._get_ks_config(creator_user)
-        except Exception:
-            config = {
-                "allowed_vector_db_backends": [],
-                "allowed_chunking_strategies": [],
-                "allowed_embedding_vendors": [],
-                "allowed_embedding_models": {},
-            }
-        try:
-            backends = (await self.get_backends(creator_user)).get("backends", [])
-        except Exception:
-            backends = []
-        try:
-            strategies = (await self.get_chunking_strategies(creator_user)).get(
-                "strategies", []
-            )
-        except Exception:
-            strategies = []
-        try:
-            vendors = (await self.get_embedding_vendors(creator_user)).get(
-                "vendors", []
-            )
-        except Exception:
-            vendors = []
 
-        # Fall back to built-in plugin data when the KB Server is unreachable
-        # or not configured — this ensures the creation wizard always renders.
-        if not backends:
-            backends = _BUILTIN_BACKENDS
-        if not strategies:
-            strategies = _BUILTIN_STRATEGIES
-        if not vendors:
-            vendors = _BUILTIN_VENDORS
+        Raises:
+            KnowledgeStoreUnavailable: When the KB Server is unreachable
+                or not configured. Caller should surface a structured
+                503 to the client so the UI can render an actionable
+                retry state — there is no hardcoded fallback catalogue.
+        """
+        config = self._get_ks_config(creator_user)
+        backends = (await self.get_backends(creator_user)).get("backends", [])
+        strategies = (await self.get_chunking_strategies(creator_user)).get(
+            "strategies", []
+        )
+        vendors = (await self.get_embedding_vendors(creator_user)).get(
+            "vendors", []
+        )
 
         allowed_backends = config["allowed_vector_db_backends"]
         allowed_strategies = config["allowed_chunking_strategies"]

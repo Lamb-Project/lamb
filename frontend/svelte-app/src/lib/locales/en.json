@@ -1264,5 +1264,26 @@
 				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB"
 			}
 		}
+	},
+	"capability": {
+		"text": "Text",
+		"pages": "Pages",
+		"images": "Images",
+		"audio": "Audio",
+		"transcript": "Transcript"
+	},
+	"sourceType": {
+		"file": "File",
+		"url": "URL",
+		"youtube": "YouTube"
+	},
+	"plugins": {
+		"params": {
+			"advancedLabel": "Advanced parameters",
+			"required": "Required",
+			"tooSmall": "Must be ≥ {min}",
+			"tooLarge": "Must be ≤ {max}",
+			"fixErrors": "Fix the plugin parameter errors first."
+		}
 	}
 }
