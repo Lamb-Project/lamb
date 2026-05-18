@@ -132,7 +132,7 @@ class KGRAGQueryPlugin:
         # entity, only specific entities with ≤25 mentions) to avoid
         # flooding the candidate set with chunks that mention common
         # nouns.
-        question_entities = self._extract_question_entities(query_text)
+        question_entities = self._extract_question_entities(query_text, collection)
         question_expansion: dict[str, Any] = {}
         if question_entities:
             try:
@@ -234,42 +234,71 @@ class KGRAGQueryPlugin:
     _question_cache: dict[str, list[str]] = {}
 
     @classmethod
-    def _extract_question_entities(cls, question: str) -> list[str]:
-        """Use a small LLM to extract named entities from the question.
+    def _extract_question_entities(
+        cls, question: str, collection: Collection
+    ) -> list[str]:
+        """Use an LLM to extract named entities from the question.
 
-        Returns an empty list if the OpenAI client isn't configured or
-        the call fails — the graph expansion silently degrades to the
+        Uses the same vendor / model / endpoint configured for the
+        collection's build-time extraction (``extraction_vendor`` /
+        ``extraction_model`` / ``extraction_endpoint``). Keeping the
+        question extractor in lockstep with the build extractor means
+        the entity names produced at query time match the canonical
+        form stored in the graph — different models can normalize
+        entity names differently, and a mismatch silently zeroes the
+        question-entity seeding path.
+
+        Falls back to the server-level KG-RAG defaults (then OpenAI
+        gpt-4o-mini) when the collection has no per-collection
+        extraction config — preserves back-compat for collections
+        created before the picker existed.
+
+        Returns an empty list if the backend isn't available or the
+        call fails — the graph expansion silently degrades to the
         baseline-seeded path in that case.
         """
         question = (question or "").strip()
         if not question:
             return []
-        if question in cls._question_cache:
-            return cls._question_cache[question]
-
-        try:
-            import openai  # noqa: PLC0415
-        except Exception:  # noqa: BLE001
-            return []
 
         import config as config_module  # noqa: PLC0415
 
         kg = config_module.get_kg_rag_config()
-        api_key = (kg.get("openai_api_key") or "").strip()
-        if not api_key:
+        coll_vendor = getattr(collection, "extraction_vendor", None)
+        coll_model = getattr(collection, "extraction_model", None)
+        coll_endpoint = getattr(collection, "extraction_endpoint", None)
+        vendor = coll_vendor or "openai"
+        model = coll_model or kg.get("chat_model") or "gpt-4o-mini"
+        endpoint = coll_endpoint or ""
+
+        # Cache keyed by (vendor, model, question) so different
+        # collections sharing the same question text don't poison each
+        # other when they use different models.
+        cache_key = f"{vendor}::{model}::{question}"
+        if cache_key in cls._question_cache:
+            return cls._question_cache[cache_key]
+
+        api_key = ""
+        if vendor == "openai":
+            api_key = (kg.get("openai_api_key") or "").strip()
+            if not api_key:
+                return []
+
+        from plugins.base import LLMExtractionRegistry  # noqa: PLC0415
+
+        try:
+            backend = LLMExtractionRegistry.build(
+                vendor,
+                model=model,
+                api_key=api_key,
+                api_endpoint=endpoint,
+                timeout_seconds=15.0,
+            )
+        except ValueError as exc:
+            logger.debug("Question-entity backend %s unavailable: %s", vendor, exc)
             return []
 
-        # Use a small/fast model. ``KG_RAG_QUESTION_EXTRACTION_MODEL``
-        # overrides; otherwise fall back to the chat model already used
-        # by the extractor (typically gpt-4o-mini).
-        import os  # noqa: PLC0415
-
-        model = os.getenv("KG_RAG_QUESTION_EXTRACTION_MODEL") or (
-            kg.get("chat_model") or "gpt-4o-mini"
-        )
-
-        client = openai.OpenAI(api_key=api_key, timeout=15.0)
-        prompt = (
+        system = (
             "Extract every named entity from the user question. "
             "Return STRICT JSON of the form {\"entities\": [\"...\", \"...\"]}. "
             "Keep multi-word names whole. Lowercase common nouns are fine if "
@@ -278,27 +307,12 @@ class KGRAGQueryPlugin:
             "Do not output entity types, descriptions or explanations — only "
             "the surface strings."
         )
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": question},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            raw = resp.choices[0].message.content or "{}"
-            import json as _json  # noqa: PLC0415
 
-            data = _json.loads(raw)
-            entities = data.get("entities") or []
-            if not isinstance(entities, list):
-                entities = []
-            entities = [str(e).strip() for e in entities if str(e).strip()]
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Question-entity LLM extraction failed: %s", exc)
-            entities = []
+        parsed = backend.chat_json(system=system, user=question)
+        entities_raw = parsed.get("entities") if isinstance(parsed, dict) else None
+        if not isinstance(entities_raw, list):
+            entities_raw = []
+        entities = [str(e).strip() for e in entities_raw if str(e).strip()]
 
         # FIFO cache eviction
         if len(cls._question_cache) >= cls._QUESTION_CACHE_SIZE:
@@ -306,7 +320,7 @@ class KGRAGQueryPlugin:
                 cls._question_cache.pop(next(iter(cls._question_cache)))
             except StopIteration:
                 pass
-        cls._question_cache[question] = entities
+        cls._question_cache[cache_key] = entities
         return entities
 
     # ------------------------------------------------------------------
