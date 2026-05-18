@@ -294,7 +294,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {#each sharedUsers as share}
+                            {#each sharedUsers as share (share.user_id)}
                                 <tr>
                                     <td>{share.user_name}</td>
                                     <td>{share.user_email}</td>
@@ -329,7 +329,7 @@
                 <p class="text-gray-500 text-sm">{$_('no_users_to_share') || 'No other users in your organization'}</p>
             {:else}
                 <div class="bg-base-200 p-4 rounded-lg max-h-96 overflow-y-auto">
-                    {#each organizationUsers as user}
+                    {#each organizationUsers as user (user.id)}
                         {@const isAlreadyShared = sharedUsers.some(s => s.user_id === user.id)}
                         <div class="form-control">
                             <label class="label cursor-pointer justify-start gap-3">
@@ -404,7 +404,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {#each ltiUsers as ltiUser}
+                                        {#each ltiUsers as ltiUser (ltiUser.user_email)}
                                             <tr>
                                                 <td>{ltiUser.user_display_name}</td>
                                                 <td>{ltiUser.user_email}</td>

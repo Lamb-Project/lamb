@@ -97,7 +97,7 @@
 			<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
 			<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} onchange={onchange}
 				class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
-				{#each promptProcessors as processor}
+				{#each promptProcessors as processor (processor)}
 					<option value={processor}>{processor}</option>
 				{/each}
 			</select>
@@ -110,7 +110,7 @@
 			<select id="connector" name="connector" bind:value={selectedConnector}
 				onchange={() => { onchange?.(); handleConnectorChange(); }}
 				class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
-				{#each connectorsList as connectorName}
+				{#each connectorsList as connectorName (connectorName)}
 					<option value={connectorName}>{connectorName}</option>
 				{/each}
 			</select>
@@ -126,7 +126,7 @@
 			disabled={availableModels.length === 0}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white">
 			{#if availableModels.length > 0}
-				{#each availableModels as model}
+				{#each availableModels as model (model)}
 					<option value={model}>{model}</option>
 				{/each}
 			{:else}
@@ -187,7 +187,7 @@
 		<select id="rag-processor" bind:value={selectedRagProcessor} onchange={onchange}
 			disabled={formState === 'edit'}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
-			{#each ragProcessors as processor}
+			{#each ragProcessors as processor (processor)}
 				<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, (/** @type {string} */ l) => l.toUpperCase())}</option>
 			{/each}
 		</select>
