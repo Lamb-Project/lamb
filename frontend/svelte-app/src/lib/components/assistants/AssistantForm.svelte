@@ -81,7 +81,7 @@
 				// Reset dirty state when loading a different assistant
 				form.formDirty = false;
 
-				populateFormFields(form, assistant, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList);
+				populateFormFields(form, assistant, () => availableModels);
 				form.formError = '';
 				form.successMessage = '';
 			} else {
@@ -90,7 +90,7 @@
 				form.previousAssistantId = null;
 				form.formDirty = false;
 				if (form.configInitialized) {
-					resetFormFieldsToDefaults(form, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList);
+					resetFormFieldsToDefaults(form, () => availableModels);
 				}
 			}
 		} else {
@@ -127,9 +127,9 @@
 			form.configInitialized = true;
 
 			if (form.formState === 'create') {
-				resetFormFieldsToDefaults(form, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList);
+				resetFormFieldsToDefaults(form, () => availableModels);
 			} else {
-				populateFormFields(form, form.initialAssistantData, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList);
+				populateFormFields(form, form.initialAssistantData, () => availableModels);
 			}
 		}
 	});
@@ -171,7 +171,7 @@
 	// --- Mode Switching Functions ---
 	function switchToViewMode() {
 		// Revert fields to initial state
-		revertToInitial(form, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList);
+		revertToInitial(form, () => availableModels);
 		onCancel();
 	}
 
@@ -273,7 +273,7 @@
 					...assistantDataPayload,
 					metadata: metadataObj // Use the parsed metadata object, not the stringified version
 				};
-				populateFormFields(form, form.initialAssistantData, () => availableModels, doFetchKnowledgeBases, doFetchUserFiles, doFetchRubricsList); // Update form with potentially modified response data
+				populateFormFields(form, form.initialAssistantData, () => availableModels); // Update form with potentially modified response data
 				onFormSuccess({ assistantId: form.initialAssistantData.id });
 			} else if (form.formState === 'create') {
 				// Handle create case here

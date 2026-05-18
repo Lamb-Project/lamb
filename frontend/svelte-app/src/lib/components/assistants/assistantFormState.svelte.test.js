@@ -138,7 +138,7 @@ describe('resetFormFieldsToDefaults', () => {
 		form.name = 'existing'; // should NOT be reset
 		form.description = 'existing'; // should NOT be reset
 
-		resetFormFieldsToDefaults(form, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		resetFormFieldsToDefaults(form, getAvailableModels);
 
 		expect(form.system_prompt).toBe('Default system prompt');
 		expect(form.prompt_template).toBe('Default template');
@@ -180,7 +180,7 @@ describe('populateFormFields', () => {
 			})
 		};
 
-		populateFormFields(form, assistantData, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		populateFormFields(form, assistantData, getAvailableModels);
 
 		expect(form.name).toBe('test_assistant'); // prefix stripped
 		expect(form.description).toBe('Test description');
@@ -215,7 +215,7 @@ describe('populateFormFields', () => {
 			})
 		};
 
-		populateFormFields(form, assistantData, getAvailableModels, vi.fn(), vi.fn(), vi.fn(), true);
+		populateFormFields(form, assistantData, getAvailableModels, true);
 
 		expect(form.description).toBe('User edited');
 	});
@@ -224,7 +224,7 @@ describe('populateFormFields', () => {
 		const form = createAssistantFormState();
 		form.name = 'existing';
 
-		populateFormFields(form, null, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		populateFormFields(form, null, getAvailableModels);
 
 		expect(form.name).toBe('existing');
 	});
@@ -252,7 +252,7 @@ describe('populateFormFields', () => {
 			})
 		};
 
-		populateFormFields(form, assistantData, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		populateFormFields(form, assistantData, getAvailableModels);
 
 		expect(form.pendingKBSelections).toEqual(['kb1', 'kb2']);
 	});
@@ -279,7 +279,7 @@ describe('populateFormFields', () => {
 			})
 		};
 
-		populateFormFields(form, assistantData, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		populateFormFields(form, assistantData, getAvailableModels);
 
 		expect(form.pendingKBSelections).toBe(null);
 	});
@@ -315,7 +315,7 @@ describe('revertToInitial', () => {
 		form.name = 'edited_name';
 		form.description = 'edited desc';
 
-		revertToInitial(form, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		revertToInitial(form, getAvailableModels);
 
 		expect(form.name).toBe('original'); // prefix stripped
 		expect(form.description).toBe('Original desc');
@@ -328,7 +328,7 @@ describe('revertToInitial', () => {
 		const form = createAssistantFormState();
 		form.name = 'existing';
 
-		revertToInitial(form, getAvailableModels, vi.fn(), vi.fn(), vi.fn());
+		revertToInitial(form, getAvailableModels);
 
 		expect(form.name).toBe('existing');
 	});
