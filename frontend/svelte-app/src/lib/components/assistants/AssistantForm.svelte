@@ -1,16 +1,15 @@
+<!-- src/lib/components/assistants/AssistantForm.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
-	import { assistantConfigStore } from '$lib/stores/assistantConfigStore'; // Import the store
-	import { tick } from 'svelte'; // Import tick for $effect timing
-	import { get } from 'svelte/store'; // Import get
-	import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
-	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
-	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
+	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
+	import { tick } from 'svelte';
+	import { get } from 'svelte/store';
+	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
 	import { extractModelsFromConnectorData, selectModel } from './assistantFormUtils.svelte.js';
-	import { apiJson } from '$lib/services/apiClient';
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './assistantFormState.svelte.js';
+	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './assistantFormFetchers.js';
 	import AssistantFormHeader from './AssistantFormHeader.svelte';
 	import AssistantNameField from './AssistantNameField.svelte';
 	import AssistantDescriptionField from './AssistantDescriptionField.svelte';
@@ -18,7 +17,6 @@
 	import RubricSelector from './RubricSelector.svelte';
 	import ConfigurationPanel from './ConfigurationPanel.svelte';
 	import FormActions from './FormActions.svelte';
-	import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. (#352, M13)
@@ -50,17 +48,17 @@
 	// --- Fetcher wrappers (bind state + isMounted guard) ---
 	async function doFetchKnowledgeBases() {
 		if (!isMounted) return;
-		await fetchKnowledgeBases();
+		await fetchKnowledgeBases(form);
 	}
 
 	async function doFetchUserFiles(force = false) {
 		if (!isMounted) return;
-		await fetchUserFiles(force);
+		await fetchUserFiles(form, { force, assistant });
 	}
 
 	async function doFetchRubricsList() {
 		if (!isMounted) return;
-		await fetchRubricsList();
+		await fetchRubricsList(form);
 	}
 
 	// --- Store Integration and Initialization ---
@@ -169,117 +167,6 @@
 			clearRagDependentState(form);
 		}
 	});
-
-	// --- Fetch Functions (stay in component — move to fetchers module in phase 2) ---
-
-	/** Fetches accessible knowledge bases */
-	async function fetchKnowledgeBases() {
-		// Prevent fetch if already loading OR if already attempted for this selection
-		if (form.loadingKnowledgeBases || form.kbFetchAttempted) {
-			return;
-		}
-		// Ensure we actually need KBs
-		if (!isKbBasedRag(form.selectedRagProcessor)) {
-			return;
-		}
-
-		form.loadingKnowledgeBases = true;
-		form.knowledgeBaseError = '';
-
-		try {
-			// Fetch owned and shared KBs separately
-			const [owned, shared] = await Promise.all([
-				getUserKnowledgeBases().catch(err => {
-					console.warn('Error fetching owned KBs:', err);
-					return [];
-				}),
-				getSharedKnowledgeBases().catch(err => {
-					console.warn('Error fetching shared KBs:', err);
-					return [];
-				})
-			]);
-
-			if (!isMounted) return; // user navigated away while fetching (#352, M13)
-
-			// Sort each separately
-			owned.sort((a, b) => a.name.localeCompare(b.name));
-			shared.sort((a, b) => a.name.localeCompare(b.name));
-
-			form.ownedKnowledgeBases = owned;
-			form.sharedKnowledgeBases = shared;
-		} catch (err) {
-			if (!isMounted) return;
-			if (err instanceof Error && err.message.startsWith('Session expired')) return;
-			console.error('Error fetching knowledge bases:', err);
-			form.knowledgeBaseError = err instanceof Error ? err.message : 'Failed to load knowledge bases';
-			form.ownedKnowledgeBases = [];
-			form.sharedKnowledgeBases = [];
-		} finally {
-			if (isMounted) {
-				form.loadingKnowledgeBases = false;
-				form.kbFetchAttempted = true;
-			}
-		}
-	}
-
-	async function fetchRubricsList() {
-		// Prevent fetch if already loading OR if already attempted for this selection
-		if (form.loadingRubrics || form.rubricsFetchAttempted) {
-			return;
-		}
-		// Ensure we actually need rubrics
-		if (!isRubricRag(form.selectedRagProcessor)) {
-			return;
-		}
-
-		form.loadingRubrics = true;
-		form.rubricError = '';
-
-		try {
-			const response = await fetchAccessibleRubrics();
-			const rubrics = response.rubrics || [];
-			form.accessibleRubrics = rubrics;
-		} catch (err) {
-			console.error('Error fetching accessible rubrics:', err);
-			form.rubricError = err instanceof Error ? err.message : 'Failed to load rubrics';
-			form.accessibleRubrics = []; // Ensure list is empty on error
-		} finally {
-			form.loadingRubrics = false;
-			form.rubricsFetchAttempted = true; // Mark fetch as attempted
-		}
-	}
-
-	/**
-	 * Fetches the user's files from the server.
-	 * @param {boolean} [force=false] - If true, bypasses the filesFetchAttempted guard
-	 *   (used after uploading a new file to refresh the list).
-	 */
-	async function fetchUserFiles(force = false) {
-		if (form.loadingFiles || (!force && form.filesFetchAttempted)) return;
-		form.loadingFiles = true;
-		form.fileError = '';
-
-		try {
-			const data = await apiJson('/files/list');
-			if (!isMounted) return;
-			form.userFiles = data;
-
-			const callbackData = getAssistantMetadataObject(assistant);
-			if (callbackData.file_path && form.userFiles.some(file => file.path === callbackData.file_path)) {
-				form.selectedFilePath = callbackData.file_path;
-			}
-		} catch (err) {
-			if (!isMounted) return;
-			if (err instanceof Error && err.message.startsWith('Session expired')) return;
-			form.fileError = err instanceof Error ? err.message : 'Failed to load files';
-			form.userFiles = [];
-		} finally {
-			if (isMounted) {
-				form.loadingFiles = false;
-				form.filesFetchAttempted = true;
-			}
-		}
-	}
 
 	// --- Mode Switching Functions ---
 	function switchToViewMode() {
