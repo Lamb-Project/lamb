@@ -6,7 +6,6 @@
 	import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService'; // Import KB service
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService'; // Import create service and update service
 	import { fetchAccessibleRubrics } from '$lib/services/rubricService'; // Import rubric service
-	import { onDestroy } from 'svelte';
 	import { extractModelsFromConnectorData, selectModel } from './assistantFormUtils.svelte.js';
 	import { apiJson } from '$lib/services/apiClient';
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
@@ -24,7 +23,9 @@
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. (#352, M13)
 	let isMounted = true;
-	onDestroy(() => { isMounted = false; });
+	$effect(() => {
+		return () => { isMounted = false; };
+	});
 
 	// --- Props ---
 	// Use $props for Svelte 5 runes mode
