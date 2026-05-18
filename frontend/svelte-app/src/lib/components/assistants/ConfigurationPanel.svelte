@@ -2,7 +2,6 @@
 <script>
 	import { _ } from '$lib/i18n';
 	import { tick } from 'svelte';
-	import { get } from 'svelte/store';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 	import { hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 	import {
@@ -38,14 +37,12 @@
 	} = $props();
 
 	let currentConnectorMetadata = $derived.by(() => {
-		const state = get(assistantConfigStore);
-		const connectorData = state?.systemCapabilities?.connectors?.[selectedConnector];
+		const connectorData = $assistantConfigStore?.systemCapabilities?.connectors?.[selectedConnector];
 		return connectorData?.metadata || null;
 	});
 
 	let currentModelsMetadata = $derived.by(() => {
-		const state = get(assistantConfigStore);
-		const connectorData = state?.systemCapabilities?.connectors?.[selectedConnector];
+		const connectorData = $assistantConfigStore?.systemCapabilities?.connectors?.[selectedConnector];
 		return extractModelsMetadata(connectorData) || [];
 	});
 
