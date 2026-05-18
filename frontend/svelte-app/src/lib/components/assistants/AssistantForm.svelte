@@ -39,8 +39,7 @@
 
 	// --- Derived values (component-level, depend on store) ---
 	let availableModels = $derived.by(() => {
-		const state = get(assistantConfigStore);
-		const data = state?.systemCapabilities?.connectors?.[form.selectedConnector];
+		const data = $assistantConfigStore?.systemCapabilities?.connectors?.[form.selectedConnector];
 		return extractModelsFromConnectorData(data);
 	});
 
