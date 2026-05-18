@@ -1,7 +1,7 @@
 <script>
     import AssistantsList from '$lib/components/AssistantsList.svelte';
     import AssistantForm from '$lib/components/assistants/AssistantForm.svelte'; 
-    import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
+    import AssistantSharingModal from '$lib/components/assistants/components/AssistantSharingModal.svelte';
     import ChatInterface from '$lib/components/ChatInterface.svelte';
     import ChatAnalytics from '$lib/components/analytics/ChatAnalytics.svelte';
     import { _, locale } from '$lib/i18n';

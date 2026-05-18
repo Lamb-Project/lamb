@@ -1,7 +1,7 @@
 // importAssistantValidator.spec.js — TDD for import validation logic
 import { describe, test, expect } from 'vitest';
-import { validateImportedAssistant } from './importAssistantValidator.js';
-import { extractModelsFromConnectorData } from './assistantFormUtils.svelte.js';
+import { validateImportedAssistant } from './logic/importAssistantValidator.js';
+import { extractModelsFromConnectorData } from './logic/assistantFormUtils.svelte.js';
 
 const BASE_CAPABILITIES = {
     prompt_processors: ['default_processor', 'custom_processor'],

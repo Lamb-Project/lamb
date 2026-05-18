@@ -4,7 +4,7 @@
 	import { tick } from 'svelte';
 	import { openTemplateSelectModal } from '$lib/stores/templateStore';
 	import TemplateSelectModal from '$lib/components/modals/TemplateSelectModal.svelte';
-	import { highlightPlaceholders } from './assistantFormUtils.svelte.js';
+	import { highlightPlaceholders } from '../logic/assistantFormUtils.svelte.js';
 
 	let {
 		systemPrompt = $bindable(''),

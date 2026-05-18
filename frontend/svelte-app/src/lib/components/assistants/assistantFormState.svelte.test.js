@@ -42,7 +42,7 @@ vi.mock('$lib/utils/assistantData', () => ({
 	}
 }));
 
-import { createAssistantFormState, handleFieldChange, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState } from './assistantFormState.svelte.js';
+import { createAssistantFormState, handleFieldChange, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState } from './logic/assistantFormState.svelte.js';
 
 const getAvailableModels = () => ['gpt-4', 'gpt-3.5-turbo'];
 

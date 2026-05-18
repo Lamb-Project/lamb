@@ -5,19 +5,19 @@
 	import { tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
-	import { extractModelsFromConnectorData, selectModel } from './assistantFormUtils.svelte.js';
+	import { extractModelsFromConnectorData, selectModel } from './logic/assistantFormUtils.svelte.js';
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
-	import { validateImportedAssistant } from './importAssistantValidator.js';
-	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './assistantFormState.svelte.js';
-	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './assistantFormFetchers.js';
-	import { validateSubmission, buildAssistantPayload } from './assistantFormSubmit.js';
-	import AssistantFormHeader from './AssistantFormHeader.svelte';
-	import AssistantNameField from './AssistantNameField.svelte';
-	import AssistantDescriptionField from './AssistantDescriptionField.svelte';
-	import AssistantPromptFields from './AssistantPromptFields.svelte';
-	import RubricSelector from './RubricSelector.svelte';
-	import ConfigurationPanel from './ConfigurationPanel.svelte';
-	import FormActions from './FormActions.svelte';
+	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
+	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './logic/assistantFormState.svelte.js';
+	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './logic/assistantFormFetchers.js';
+	import { validateSubmission, buildAssistantPayload } from './logic/assistantFormSubmit.js';
+	import AssistantFormHeader from './components/AssistantFormHeader.svelte';
+	import AssistantNameField from './components/AssistantNameField.svelte';
+	import AssistantDescriptionField from './components/AssistantDescriptionField.svelte';
+	import AssistantPromptFields from './components/AssistantPromptFields.svelte';
+	import RubricSelector from './components/RubricSelector.svelte';
+	import ConfigurationPanel from './components/ConfigurationPanel.svelte';
+	import FormActions from './components/FormActions.svelte';
 
 	// Track mount status so async fetches that resolve after the user
 	// navigates away don't write state to a destroyed component. (#352, M13)
