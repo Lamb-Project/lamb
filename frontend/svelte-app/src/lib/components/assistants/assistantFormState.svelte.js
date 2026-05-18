@@ -14,7 +14,6 @@
  * Methods are pure functions that receive `form` as the first parameter.
  */
 
-import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
 import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
@@ -117,11 +116,8 @@ export function handleFieldChange(form) {
  * Reset form fields to defaults (create mode).
  * @param {ReturnType<typeof createAssistantFormState>} form
  * @param {() => string[]} getAvailableModels - getter function (evaluated after connector is set)
- * @param {() => void} fetchKBs - callback to trigger KB fetch
- * @param {() => void} fetchFiles - callback to trigger file fetch
- * @param {() => void} fetchRubrics - callback to trigger rubric fetch
  */
-export function resetFormFieldsToDefaults(form, getAvailableModels, fetchKBs, fetchFiles, fetchRubrics) {
+export function resetFormFieldsToDefaults(form, getAvailableModels) {
 	const defaults = get(assistantConfigStore).configDefaults?.config || {};
 	form.system_prompt = defaults.system_prompt || '';
 	form.prompt_template = defaults.prompt_template || '';
@@ -138,16 +134,6 @@ export function resetFormFieldsToDefaults(form, getAvailableModels, fetchKBs, fe
 	form.selectedFilePath = '';
 	form.visionEnabled = false;
 	form.imageGenerationEnabled = false;
-
-	if (isKbBasedRag(form.selectedRagProcessor)) {
-		tick().then(fetchKBs);
-	}
-	if (isSingleFileRag(form.selectedRagProcessor)) {
-		tick().then(fetchFiles);
-	}
-	if (isRubricRag(form.selectedRagProcessor)) {
-		tick().then(fetchRubrics);
-	}
 }
 
 /**
@@ -155,12 +141,9 @@ export function resetFormFieldsToDefaults(form, getAvailableModels, fetchKBs, fe
  * @param {ReturnType<typeof createAssistantFormState>} form
  * @param {any} data
  * @param {() => string[]} getAvailableModels - getter function (evaluated after connector is set)
- * @param {() => void} fetchKBs
- * @param {() => void} fetchFiles
- * @param {() => void} fetchRubrics
  * @param {boolean} [preserveDescription]
  */
-export function populateFormFields(form, data, getAvailableModels, fetchKBs, fetchFiles, fetchRubrics, preserveDescription = false) {
+export function populateFormFields(form, data, getAvailableModels, preserveDescription = false) {
 	if (!data) return;
 
 	const metadata = getAssistantMetadataObject(data);
@@ -188,9 +171,6 @@ export function populateFormFields(form, data, getAvailableModels, fetchKBs, fet
 		// Deferred selection for KBs
 		if (isKbBasedRag(form.selectedRagProcessor)) {
 			form.pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
-			if (!form.kbFetchAttempted && !form.loadingKnowledgeBases) {
-				tick().then(fetchKBs);
-			}
 		} else {
 			form.pendingKBSelections = null;
 		}
@@ -200,9 +180,6 @@ export function populateFormFields(form, data, getAvailableModels, fetchKBs, fet
 			try {
 				form.selectedRubricId = metadata?.rubric_id || '';
 				form.rubricFormat = metadata?.rubric_format || 'markdown';
-				if (!form.rubricsFetchAttempted && !form.loadingRubrics) {
-					tick().then(fetchRubrics);
-				}
 			} catch (e) {
 				console.warn('Failed to parse rubric metadata:', e);
 				form.selectedRubricId = '';
@@ -227,13 +204,10 @@ export function populateFormFields(form, data, getAvailableModels, fetchKBs, fet
  * Revert form fields to initial assistant data (cancel edits).
  * @param {ReturnType<typeof createAssistantFormState>} form
  * @param {() => string[]} getAvailableModels
- * @param {() => void} fetchKBs
- * @param {() => void} fetchFiles
- * @param {() => void} fetchRubrics
  */
-export function revertToInitial(form, getAvailableModels, fetchKBs, fetchFiles, fetchRubrics) {
+export function revertToInitial(form, getAvailableModels) {
 	if (form.initialAssistantData) {
-		populateFormFields(form, form.initialAssistantData, getAvailableModels, fetchKBs, fetchFiles, fetchRubrics, false);
+		populateFormFields(form, form.initialAssistantData, getAvailableModels, false);
 	}
 	form.formDirty = false;
 	form.formError = '';
