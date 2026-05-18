@@ -91,7 +91,7 @@
 		<span class="text-xs text-gray-600 dark:text-gray-400"
 			>{$_('insert_placeholder') || 'Insert placeholder:'}:</span
 		>
-		{#each ragPlaceholders as placeholder}
+		{#each ragPlaceholders as placeholder (placeholder)}
 			<button
 				type="button"
 				class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand"
