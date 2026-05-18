@@ -623,7 +623,6 @@
 				formLoading={form.formLoading}
 				formError={form.formError}
 				successMessage={form.successMessage}
-				name={form.name}
 				oncancel={switchToViewMode}
 			/>
 

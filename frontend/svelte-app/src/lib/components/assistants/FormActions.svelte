@@ -2,19 +2,14 @@
 <script>
 	import { _ } from '$lib/i18n';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-	import { sanitizeName } from '$lib/utils/nameSanitizer';
 
 	let {
 		formState,
 		formLoading = false,
 		formError = '',
 		successMessage = '',
-		name = '',
 		oncancel
 	} = $props();
-
-	let sanitizedNameInfo = $derived(sanitizeName(name));
-	let showSanitizationPreview = $derived(formState === 'create' && sanitizedNameInfo.wasModified);
 </script>
 
 {#if formError}
@@ -35,21 +30,6 @@
 			>
 				{$_('common.cancel', { default: 'Cancel' })}
 			</button>
-		{/if}
-		{#if showSanitizationPreview}
-			<div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-				<div class="flex items-center">
-					<svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-					</svg>
-					<div class="flex-1">
-						<p class="text-sm font-semibold text-blue-800">
-							{$_('assistants.form.name.willBeSaved', { default: 'Will be saved as:' })}
-						</p>
-						<code class="inline-block mt-1 px-3 py-1 bg-blue-100 rounded text-blue-900 font-mono text-sm">{sanitizedNameInfo.sanitized}</code>
-					</div>
-				</div>
-			</div>
 		{/if}
 		<button
 			type="submit"
