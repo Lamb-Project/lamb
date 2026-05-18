@@ -10,6 +10,7 @@
 	import { validateImportedAssistant } from './importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './assistantFormState.svelte.js';
 	import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './assistantFormFetchers.js';
+	import { validateSubmission, buildAssistantPayload } from './assistantFormSubmit.js';
 	import AssistantFormHeader from './AssistantFormHeader.svelte';
 	import AssistantNameField from './AssistantNameField.svelte';
 	import AssistantDescriptionField from './AssistantDescriptionField.svelte';
@@ -199,15 +200,9 @@
 		form.successMessage = '';
 		form.formLoading = true;
 
-		if (!form.name?.trim()) {
-			form.formError = 'Assistant Name is required.';
-			form.formLoading = false;
-			return;
-		}
-
-		// Validate rubric selection if rubric_rag is selected
-		if (isRubricRag(form.selectedRagProcessor) && !form.selectedRubricId) {
-			form.formError = 'Please select a rubric when using Rubric RAG.';
+		const validationError = validateSubmission(form);
+		if (validationError) {
+			form.formError = validationError;
 			form.formLoading = false;
 			return;
 		}
@@ -224,65 +219,27 @@
 			}
 		}
 
-		// Construct the data for the metadata field
-		/** @type {Record<string, any>} */
-		const metadataObj = {
-			prompt_processor: form.selectedPromptProcessor,
-			connector: form.selectedConnector,
-			llm: form.selectedLlm,
-			rag_processor: form.selectedRagProcessor,
-			file_path: isSingleFileRag(form.selectedRagProcessor) ? form.selectedFilePath : '',
-			capabilities: {
-				vision: form.visionEnabled,
-				image_generation: form.imageGenerationEnabled
-			}
-		};
-
-		// Add rubric fields if rubric_rag is selected
-		if (isRubricRag(form.selectedRagProcessor)) {
-			metadataObj.rubric_id = form.selectedRubricId;
-			metadataObj.rubric_format = form.rubricFormat;
-		}
-
-		// Construct payload according to the expected API structure
-		const assistantDataPayload = {
-			name: form.name.trim(),
-			description: form.description,
-			system_prompt: form.system_prompt,
-			prompt_template: form.prompt_template,
-			RAG_Top_k: Number(form.RAG_Top_k) || 3,
-			RAG_collections: (isKbBasedRag(form.selectedRagProcessor)) ? form.selectedKnowledgeBases.join(',') : '',
-			// Add metadata with the stringified JSON
-			metadata: JSON.stringify(metadataObj),
-			pre_retrieval_endpoint: '',
-			post_retrieval_endpoint: '',
-			RAG_endpoint: ''
-		};
+		const assistantDataPayload = buildAssistantPayload(form);
 
 		try {
-			if (form.formState === 'edit' && form.initialAssistantData?.id) { // Check formState and ID from initial data
-				await updateAssistant(form.initialAssistantData.id.toString(), assistantDataPayload); // Ensure ID is string
+			if (form.formState === 'edit' && form.initialAssistantData?.id) {
+				await updateAssistant(form.initialAssistantData.id.toString(), assistantDataPayload);
 				form.successMessage = 'Assistant updated successfully!';
-				// Reset dirty state after successful save
 				form.formDirty = false;
 
-				// and stay in edit mode. The parent page handles list refresh via the event.
-				// Preserve the original metadata structure (object) instead of using the payload's stringified version
 				form.initialAssistantData = {
 					...form.initialAssistantData,
 					...assistantDataPayload,
-					metadata: metadataObj // Use the parsed metadata object, not the stringified version
+					metadata: JSON.parse(assistantDataPayload.metadata)
 				};
-				populateFormFields(form, form.initialAssistantData, () => availableModels); // Update form with potentially modified response data
+				populateFormFields(form, form.initialAssistantData, () => availableModels);
 				onFormSuccess({ assistantId: form.initialAssistantData.id });
 			} else if (form.formState === 'create') {
-				// Handle create case here
 				const createResponse = await createAssistant(assistantDataPayload);
 				if (!createResponse?.assistant_id) {
 					throw new Error('Create assistant response did not include an assistant_id.');
 				}
 				form.successMessage = 'Assistant created successfully!';
-				// Reset dirty state after successful create
 				form.formDirty = false;
 
 				onFormSuccess({ assistantId: createResponse.assistant_id });
@@ -292,7 +249,7 @@
 		} catch (error) {
 			console.error(`Error ${form.formState === 'edit' ? 'updating' : 'creating'} assistant:`, error);
 			form.formError = error instanceof Error ? error.message : `Failed to ${form.formState === 'edit' ? 'update' : 'create'} assistant`;
-			form.successMessage = ''; // Clear success on error
+			form.successMessage = '';
 		} finally {
 			form.formLoading = false;
 		}
