@@ -6,7 +6,7 @@ import {
 	extractModelsFromConnectorData,
 	extractModelsMetadata,
 	highlightPlaceholders
-} from './assistantFormUtils.svelte.js';
+} from './logic/assistantFormUtils.svelte.js';
 
 
 

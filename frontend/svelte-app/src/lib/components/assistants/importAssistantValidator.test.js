@@ -1,7 +1,7 @@
 // importAssistantValidator.test.js — Edge-case tests for modelExtractor and validation
 import { describe, test, expect } from 'vitest';
-import { validateImportedAssistant } from './importAssistantValidator.js';
-import { extractModelsFromConnectorData } from './assistantFormUtils.svelte.js';
+import { validateImportedAssistant } from './logic/importAssistantValidator.js';
+import { extractModelsFromConnectorData } from './logic/assistantFormUtils.svelte.js';
 
 describe('modelExtractor edge cases', () => {
 	const capabilities = {

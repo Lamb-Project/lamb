@@ -6,7 +6,7 @@ vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 	isRubricRag: (p) => p === 'rubric_rag'
 }));
 
-import { validateSubmission, buildAssistantPayload } from './assistantFormSubmit.js';
+import { validateSubmission, buildAssistantPayload } from './logic/assistantFormSubmit.js';
 
 describe('validateSubmission', () => {
 	test('returns error when name is empty', () => {

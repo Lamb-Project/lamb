@@ -29,7 +29,7 @@ vi.mock('$lib/utils/assistantData', () => ({
 	}
 }));
 
-import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './assistantFormFetchers.js';
+import { fetchKnowledgeBases, fetchRubricsList, fetchUserFiles } from './logic/assistantFormFetchers.js';
 import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService';
 import { fetchAccessibleRubrics } from '$lib/services/rubricService';
 import { apiJson } from '$lib/services/apiClient';

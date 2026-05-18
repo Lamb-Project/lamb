@@ -6,7 +6,7 @@
 	import { hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
 	import {
 		extractModelsMetadata
-	} from './assistantFormUtils.svelte.js';
+	} from '../logic/assistantFormUtils.svelte.js';
 	import RagOptionsPanel from './RagOptionsPanel.svelte';
 
 	let {

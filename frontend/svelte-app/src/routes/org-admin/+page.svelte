@@ -10,7 +10,7 @@
     import { isAxiosError } from 'axios';
     axios.isAxiosError = isAxiosError;
     import { user } from '$lib/stores/userStore';
-    import AssistantSharingModal from '$lib/components/assistants/AssistantSharingModal.svelte';
+    import AssistantSharingModal from '$lib/components/assistants/components/AssistantSharingModal.svelte';
     import Pagination from '$lib/components/common/Pagination.svelte';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     // BulkUserImport component not yet implemented
