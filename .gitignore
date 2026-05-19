@@ -190,6 +190,7 @@ package-lock.json
 .playwright-mcp
 
 aac_logs/
+.env.old
 
 # Worktrees
 .worktrees/

@@ -168,13 +168,6 @@
         currentPage = result.currentPage;
     }
     
-    // Watch for tab changes
-    $effect(() => {
-        currentTab; // Trigger on tab change
-        currentPage = 1;
-        applyFiltersAndPagination();
-    });
-    
     // Handle tab switch
     function handleTabSwitch(tab) {
         currentTab = tab;
@@ -601,7 +594,7 @@
         </div>
         
         <!-- Pagination -->
-        {#if totalPages > 1}
+        {#if totalItems > 0}
             <Pagination
                 {currentPage}
                 {totalPages}
