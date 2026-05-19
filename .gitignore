@@ -183,3 +183,4 @@ frontend/packages/
 .playwright-mcp
 
 aac_logs/
+.env.old
