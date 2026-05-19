@@ -72,6 +72,9 @@
     "connector": "Connector",
     "llm": "LLM",
     "ragProcessor": "RAG Processor",
+    "loadingConfig": "Loading configuration...",
+    "errorConfig": "Error loading configuration:",
+    "initializingForm": "Initializing form...",
     "noDescription": "No description provided",
     "showing": "Showing",
     "to": "to",
@@ -222,7 +225,9 @@
       "titleViewEdit": "Assistant Details",
       "name": {
         "label": "Assistant Name",
-        "placeholder": "Enter a unique name (max 20 chars)"
+        "placeholder": "Enter a unique name (max 20 chars)",
+        "willBeSaved": "Will be saved as:",
+        "hint": "Special characters and spaces will be converted to underscores"
       },
       "description": {
         "label": "Description",
@@ -241,7 +246,8 @@
       },
       "promptTemplate": {
         "label": "Prompt Template",
-        "help": "This processor requires a valid prompt template."
+        "help": "This processor requires a valid prompt template.",
+        "placeholder": "e.g. Use the {context} to answer the question: {user_input}"
       },
       "configSection": {
         "title": "Configuration"
@@ -256,8 +262,50 @@
         "label": "Language Model (LLM)",
         "noneAvailable": "No models available for selected connector"
       },
+      "vision": {
+        "label": "Enable Vision Capability",
+        "description": "Allow this assistant to process images alongside text messages",
+        "imageToImageDescription": "Allow this assistant to accept images as input for image-to-image generation (editing, style transfer, etc.)"
+      },
+      "imageGeneration": {
+        "label": "Enable Image Generation",
+        "requiredForModel": "This capability is required for the selected model",
+        "requiredForModelPrefix": "Required for this model - ",
+        "geminiDescription": "Allow this assistant to generate images using Google Gemini"
+      },
       "ragProcessor": {
         "label": "RAG Processor"
+      },
+      "rubric": {
+        "label": "Select Rubric",
+        "loading": "Loading rubrics...",
+        "error": "Error loading rubrics:",
+        "noneFound": "No rubrics available.",
+        "createLink": "Create a rubric",
+        "search": {
+          "label": "Search rubrics",
+          "placeholder": "Search rubrics by title or description..."
+        },
+        "selected": "Selected:",
+        "view": "View",
+        "table": {
+          "select": "Select",
+          "title": "Title",
+          "description": "Description",
+          "type": "Type",
+          "actions": "Actions"
+        },
+        "noMatches": "No rubrics match your search.",
+        "mine": "Mine",
+        "public": "Public",
+        "required": "Please select a rubric",
+        "format": {
+          "label": "Rubric Format for LLM",
+          "markdown": "Markdown (table format)",
+          "json": "JSON (structured data)",
+          "help": "Choose the format that works best with your selected LLM. You can test both to see which produces better results."
+        },
+        "configLocation": "See rubric options below the Prompt Template section"
       },
       "import": {
         "button": "Import from JSON",
@@ -280,7 +328,10 @@
         "label": "Knowledge Bases",
         "loading": "Loading knowledge bases...",
         "error": "Error loading knowledge bases:",
-        "noneFound": "No accessible knowledge bases found."
+        "noneFound": "No accessible knowledge bases found.",
+        "myKB": "My Knowledge Bases",
+        "sharedKB": "Shared Knowledge Bases",
+        "shared": "Shared by {shared_by}"
       },
       "singleFile": {
         "label": "Select File",
@@ -308,6 +359,7 @@
     "success": "Success!",
     "cancel": "Cancel",
     "save": "Save",
+    "saveChanges": "Save Changes",
     "edit": "Edit",
     "delete": "Delete",
     "confirm": "Confirm",

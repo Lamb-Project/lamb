@@ -169,13 +169,30 @@ testing/package-lock.json
 testing/playwright/test-results/.last-run.json
 backend/static/cache
 docker-compose.yaml
+.pnpm-store/
+backend/testing/
+backend/uploads/
+frontend/packages/
+.opencode
 
 
 ./clinerules
 
-
+Documentation/assistantform-refactoring-log.md
+Documentation/tfg-capitol-5-prototipado.md
+Documentation/tfg-structure-guide.md
+diagram-17-clean.md
+docs/
+frontend-architecture-diagrams.md
+opencode.json
+package-lock.json
 
 .playwright-mcp
 
 aac_logs/
 .env.old
+
+# Worktrees
+.worktrees/
+.agents/
+skills-lock.json
