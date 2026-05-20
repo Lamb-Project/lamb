@@ -1,7 +1,0 @@
----
-description: 
-globs: 
-alwaysApply: false
----
-The frontend workings is described in [frontend-guidelines.md](mdc:Documentation/frontend-guidelines.md) 
-Remember that the backend api location is defined in [config.json](mdc:config.json) 
