@@ -1201,7 +1201,7 @@
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
-                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[20rem]">
                                                     {$_('knowledgeBases.detail.fileNameColumn', { default: 'File Name' })}
                                                 </th>
                                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1223,21 +1223,22 @@
                                                 {@const job = getJobForFile(file.filename)}
                                                 {@const statusColors = job ? getStatusColors(job.status) : getStatusColors('unknown')}
                                                 <tr>
-                                                    <td class="px-6 py-4 whitespace-nowrap">
+                                                    <td class="px-6 py-4 max-w-[20rem]">
                                                         <div class="flex items-center">
-                                                            <div class="text-sm font-medium text-gray-900">
+                                                            <div class="text-sm font-medium text-gray-900 truncate" title={file.filename}>
                                                                 {#if file.file_url}
                                                                     <a 
                                                                         href={file.file_url} 
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer"
-                                                                        class="text-[#2271b3] hover:text-[#195a91] hover:underline"
+                                                                        class="text-[#2271b3] hover:text-[#195a91] hover:underline truncate block"
                                                                         style="color: #2271b3;"
+                                                                        title={file.filename}
                                                                     >
                                                                         {file.filename}
                                                                     </a>
                                                                 {:else}
-                                                                    <span>{file.filename}</span>
+                                                                    <span class="truncate block">{file.filename}</span>
                                                                 {/if}
                                                             </div>
                                                         </div>
