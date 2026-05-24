@@ -63,6 +63,54 @@ def query_collection(
         embedding_function=embedding_function,
     )
 
+    # Auto-route through the KG-RAG plugin when the collection was built
+    # with a graph. This makes the regular /query endpoint (used by the
+    # "Test Query" affordance and by ``knowledge_store_rag.py`` at chat
+    # time) actually exercise question-entity extraction + graph
+    # expansion — without any caller-side opt-in. The plugin gracefully
+    # degrades to the vector baseline when Neo4j isn't reachable or the
+    # graph returns nothing, so this is safe to always-on for
+    # graph-enabled collections.
+    if getattr(collection, "graph_enabled", False):
+        import config as config_module  # noqa: PLC0415
+
+        if config_module.KG_RAG_ENABLED:
+            from plugins.kg_rag_query import KGRAGQueryPlugin  # noqa: PLC0415
+
+            baseline_dicts = [
+                {
+                    "similarity": r.score,
+                    "data": r.text,
+                    "metadata": dict(r.metadata or {}),
+                }
+                for r in results
+            ]
+            try:
+                augmented = KGRAGQueryPlugin().augment(
+                    db=db,
+                    collection=collection,
+                    backend=backend,
+                    embedding_function=embedding_function,
+                    query_text=req.query_text,
+                    baseline_results=baseline_dicts,
+                    params={"top_k": req.top_k, "include_trace": True},
+                )
+                results = [
+                    QueryResult(
+                        text=item.get("data", "") or "",
+                        score=float(item.get("similarity") or 0.0),
+                        metadata=dict(item.get("metadata") or {}),
+                    )
+                    for item in augmented
+                ]
+            except Exception as exc:  # noqa: BLE001 — degrade to baseline on any failure
+                logger.warning(
+                    "KG-RAG augmentation failed for collection %s, "
+                    "returning vector baseline: %s",
+                    collection_id,
+                    exc,
+                )
+
     logger.debug(
         "Query on collection %s returned %d results for '%s'",
         collection_id,

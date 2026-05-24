@@ -49,6 +49,8 @@
 	let querying = $state(false);
 	let queryResults = $state([]);
 	let queryError = $state('');
+	/** @type {string[] | null} */
+	let queryEntities = $state(null);
 
 	// Modals
 	let showAddContent = $state(false);
@@ -269,12 +271,16 @@
 		querying = true;
 		queryError = '';
 		queryResults = [];
+		queryEntities = null;
 		try {
 			const data = await queryKnowledgeStore(ksId, {
 				queryText,
 				topK: queryTopK
 			});
 			queryResults = data?.results ?? [];
+			// Present only when the KS has graph_enabled and the backend
+			// routed through the KG-RAG plugin.
+			queryEntities = Array.isArray(data?.entities) ? data.entities : null;
 		} catch (/** @type {unknown} */ err) {
 			queryError = err instanceof Error ? err.message : 'Query failed';
 		} finally {
@@ -725,6 +731,33 @@
 
 			{#if queryError}
 				<div class="text-sm text-red-500" role="alert">{queryError}</div>
+			{/if}
+
+			{#if queryEntities}
+				<div class="rounded border border-purple-200 bg-purple-50 p-3">
+					<div class="mb-2 text-xs font-semibold text-purple-900">
+						{$_('knowledgeStores.extractedEntities', {
+							default: 'Extracted entities (KG-RAG)'
+						})}
+					</div>
+					{#if queryEntities.length === 0}
+						<div class="text-xs text-purple-700">
+							{$_('knowledgeStores.extractedEntitiesEmpty', {
+								default: 'No named entities found in the question.'
+							})}
+						</div>
+					{:else}
+						<div class="flex flex-wrap gap-1.5">
+							{#each queryEntities as entity (entity)}
+								<span
+									class="rounded-full border border-purple-300 bg-white px-2 py-0.5 text-xs text-purple-800"
+								>
+									{entity}
+								</span>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			{/if}
 
 			{#if queryResults.length > 0}

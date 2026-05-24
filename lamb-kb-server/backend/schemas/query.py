@@ -40,3 +40,11 @@ class QueryResponse(BaseModel):
     results: list[QueryResultItem]
     query: str
     top_k: int
+    entities: list[str] | None = Field(
+        default=None,
+        description=(
+            "Named entities extracted from the question when the query was "
+            "routed through KG-RAG (collections with ``graph_enabled=true``). "
+            "``null`` for plain vector queries."
+        ),
+    )

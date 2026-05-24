@@ -281,7 +281,7 @@ export async function removeContent(ksId, libraryItemId) {
  * builder's "test query" affordance and by the KS detail panel.
  * @param {string} ksId
  * @param {{ queryText: string, topK?: number }} data
- * @returns {Promise<{ results: KSQueryResult[], query: string, top_k: number }>}
+ * @returns {Promise<{ results: KSQueryResult[], query: string, top_k: number, entities?: string[] | null }>}
  */
 export async function queryKnowledgeStore(ksId, data) {
 	if (!browser) throw new Error('Browser only.');
