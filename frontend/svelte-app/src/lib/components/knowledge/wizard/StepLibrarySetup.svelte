@@ -34,6 +34,7 @@
 	import { getLibraries, getPlugins } from '$lib/services/libraryService';
 	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
+	import { FormField, Collapsible, Banner, Checkbox } from '$lib/components/ui';
 
 	/** @type {{ wizardState: any }} */
 	let { wizardState } = $props();
@@ -80,24 +81,19 @@
 	let nameError = $state('');
 
 	// ── Plugin config (advanced) ─────────────────────────────────────────────
-	// The default plugin is resolved from the registry — never hardcoded.
-	// We prefer the first plugin whose ``source_type === 'file'`` (the
-	// canonical "drop a document" import path) and fall back to the first
-	// registered plugin if no file plugin is enabled.
 	let plugins = $state(/** @type {any[]} */ ([]));
 	let pluginName = $state(wizardState.libraryImportConfig?.pluginName || '');
 	let loadingPlugins = $state(false);
 	let pluginError = $state('');
 
-	// Per-plugin parameter dict. Keyed by plugin name so switching plugins
-	// preserves each plugin's edits — and the renderer always sees a values
-	// object owned by the active plugin. The renderer initialises any
-	// missing key from the schema's ``default``.
 	let pluginParamsByName = $state(
 		/** @type {Record<string, Record<string, unknown>>} */ (
-			wizardState.libraryImportConfig?.pluginName &&
-				wizardState.libraryImportConfig?.params
-				? { [wizardState.libraryImportConfig.pluginName]: { ...wizardState.libraryImportConfig.params } }
+			wizardState.libraryImportConfig?.pluginName && wizardState.libraryImportConfig?.params
+				? {
+						[wizardState.libraryImportConfig.pluginName]: {
+							...wizardState.libraryImportConfig.params
+						}
+					}
 				: {}
 		)
 	);
@@ -129,15 +125,12 @@
 	let selectedPlugin = $derived(plugins.find((p) => p.name === pluginName));
 	let selectedPluginParameters = $derived(selectedPlugin?.parameters ?? []);
 
-	// Bind the renderer to the active plugin's slot. Initialise the slot
-	// lazily so we don't churn the state object on every plugin select.
 	$effect(() => {
 		if (!pluginName) return;
 		if (!(pluginName in pluginParamsByName)) {
 			pluginParamsByName = { ...pluginParamsByName, [pluginName]: {} };
 		}
 	});
-	let activePluginParams = $derived(pluginParamsByName[pluginName] ?? {});
 
 	// ── Validity + dispatch ──────────────────────────────────────────────────
 	$effect(() => {
@@ -157,15 +150,10 @@
 		void _pluginName;
 		void _params;
 		void _paramErrors;
-		// Touch each param key so this effect re-runs when individual
-		// values change (Svelte 5 reactivity is read-tracked).
 		for (const k of Object.keys(_params || {})) void (/** @type {any} */ (_params)[k]);
 		for (const k of Object.keys(_paramErrors || {})) void _paramErrors[k];
 
 		untrack(() => {
-			// Persist the radio choice immediately so the draft retains the
-			// last-clicked path even when the rest of the form is still
-			// incomplete (e.g. name empty → early-return below).
 			dispatch('update', { libraryPath: path });
 
 			if (path === 'existing') {
@@ -184,7 +172,6 @@
 				return;
 			}
 
-			// path === 'new'
 			const trimmed = name.trim();
 			if (!trimmed) {
 				nameError = $_('knowledge.wizard.libraryStep.nameRequired', {
@@ -225,37 +212,56 @@
 			})();
 		}
 	});
+
+	/** @param {string} v */
+	function validateName(v) {
+		const trimmed = (v || '').trim();
+		if (!trimmed) {
+			return $_('knowledge.wizard.libraryStep.nameRequired', { default: 'Name is required' });
+		}
+		if (trimmed.length > 100) {
+			return $_('knowledge.wizard.libraryStep.nameTooLong', {
+				default: 'Name must be less than 100 characters'
+			});
+		}
+		return undefined;
+	}
 </script>
 
 <div class="space-y-4">
-	<h3 class="text-base font-semibold text-gray-900">
+	<h3 class="type-section-title">
 		{$_('knowledge.wizard.libraryStep.heading', { default: 'Library' })}
 	</h3>
-	<p class="text-sm text-gray-600">
+	<p class="type-body-muted">
 		{$_('knowledge.wizard.libraryStep.description', {
 			default:
 				'Pick an existing Library or create a new one. A Knowledge Store is always populated from a Library.'
 		})}
 	</p>
 
-	<!-- Path radio -->
+	<!-- Path radio (radio-as-card pattern) -->
 	<fieldset class="space-y-3">
 		<legend class="sr-only">
 			{$_('knowledge.wizard.libraryStep.legend', { default: 'Library path' })}
 		</legend>
 
 		<label
-			class="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-gray-50 {path ===
+			class="hover:bg-surface-sunken flex cursor-pointer items-start gap-3 rounded-md border p-3 {path ===
 			'new'
-				? 'border-[#2271b3] bg-blue-50'
-				: 'border-gray-200'}"
+				? 'border-brand bg-brand-subtle'
+				: 'border-border'}"
 		>
-			<input type="radio" bind:group={path} value="new" class="mt-1" />
+			<input
+				type="radio"
+				bind:group={path}
+				value="new"
+				class="border-border-strong text-brand focus:ring-brand mt-1"
+			/>
 			<div>
-				<div class="text-sm font-medium text-gray-900">
+				<div class="text-text text-sm font-medium">
 					{$_('knowledge.wizard.createNew', { default: 'Create new' })}
 				</div>
-				<div class="text-xs text-gray-500">
+				<div class="type-caption">
 					{$_('knowledge.wizard.libraryStep.createNewHint', {
 						default: 'Start a fresh Library and import documents.'
 					})}
@@ -264,17 +270,22 @@
 		</label>
 
 		<label
-			class="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-gray-50 {path ===
+			class="hover:bg-surface-sunken flex cursor-pointer items-start gap-3 rounded-md border p-3 {path ===
 			'existing'
-				? 'border-[#2271b3] bg-blue-50'
-				: 'border-gray-200'}"
+				? 'border-brand bg-brand-subtle'
+				: 'border-border'}"
 		>
-			<input type="radio" bind:group={path} value="existing" class="mt-1" />
+			<input
+				type="radio"
+				bind:group={path}
+				value="existing"
+				class="border-border-strong text-brand focus:ring-brand mt-1"
+			/>
 			<div class="flex-1">
-				<div class="text-sm font-medium text-gray-900">
+				<div class="text-text text-sm font-medium">
 					{$_('knowledge.wizard.useExisting', { default: 'Use existing' })}
 				</div>
-				<div class="text-xs text-gray-500">
+				<div class="type-caption">
 					{$_('knowledge.wizard.libraryStep.useExistingHint', {
 						default: 'Pick a Library you already have and skip ahead to the Knowledge Store steps.'
 					})}
@@ -283,33 +294,26 @@
 				{#if path === 'existing'}
 					<div class="mt-3">
 						{#if loadingLibraries}
-							<div class="text-sm text-gray-500">
-								{$_('common.loading', { default: 'Loading...' })}
-							</div>
+							<p class="type-body-muted">{$_('common.loading', { default: 'Loading...' })}</p>
 						{:else if libraryError}
-							<div class="text-sm text-red-600" role="alert">{libraryError}</div>
+							<Banner variant="danger" size="sm" description={libraryError} />
 						{:else if libraries.length === 0}
-							<div class="text-sm text-gray-500">
+							<p class="type-body-muted">
 								{$_('knowledge.wizard.libraryStep.noLibraries', {
 									default: 'No libraries available. Choose "Create new" instead.'
 								})}
-							</div>
+							</p>
 						{:else}
-							<label
-								for="wizard-library-select"
-								class="mb-1 block text-xs font-medium text-gray-700"
-							>
-								{$_('knowledge.wizard.libraryStep.selectLabel', { default: 'Library' })}
-							</label>
-							<select
+							<FormField
 								id="wizard-library-select"
+								label={$_('knowledge.wizard.libraryStep.selectLabel', { default: 'Library' })}
+								type="select"
 								bind:value={selectedId}
-								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-							>
-								{#each libraries as lib (lib.id)}
-									<option value={lib.id}>{lib.name} ({lib.item_count ?? 0} items)</option>
-								{/each}
-							</select>
+								options={libraries.map((/** @type {any} */ lib) => ({
+									value: lib.id,
+									label: `${lib.name} (${lib.item_count ?? 0} items)`
+								}))}
+							/>
 						{/if}
 					</div>
 				{/if}
@@ -319,108 +323,79 @@
 
 	<!-- New library fields -->
 	{#if path === 'new'}
-		<div class="space-y-4 rounded-md border border-gray-100 bg-gray-50 p-4">
-			<div>
-				<label for="wizard-library-name" class="block text-sm font-medium text-gray-700">
-					{$_('libraries.name', { default: 'Name' })} <span class="text-red-500">*</span>
-				</label>
-				<input
-					type="text"
-					id="wizard-library-name"
-					bind:value={name}
-					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3] {nameError
-						? 'border-red-500'
-						: ''}"
-				/>
-				{#if nameError}
-					<p class="mt-1 text-sm text-red-600" role="alert">{nameError}</p>
-				{/if}
-			</div>
+		<div class="border-border bg-surface-muted space-y-4 rounded-md border p-4">
+			<FormField
+				id="wizard-library-name"
+				label={$_('libraries.name', { default: 'Name' })}
+				type="text"
+				bind:value={name}
+				required
+				error={nameError}
+				validateOnBlur={validateName}
+				maxlength={200}
+				helper={`${(name || '').length}/200`}
+			/>
 
-			<div>
-				<label for="wizard-library-description" class="block text-sm font-medium text-gray-700">
-					{$_('libraries.description', { default: 'Description' })}
-				</label>
-				<textarea
-					id="wizard-library-description"
-					bind:value={description}
-					rows="2"
-					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
-					placeholder={$_('libraries.descriptionPlaceholder', { default: 'Optional description' })}
-				></textarea>
-			</div>
+			<FormField
+				id="wizard-library-description"
+				label={$_('libraries.description', { default: 'Description' })}
+				type="textarea"
+				rows={2}
+				bind:value={description}
+				placeholder={$_('libraries.descriptionPlaceholder', { default: 'Optional description' })}
+				maxlength={500}
+				helper={`${(description || '').length}/500`}
+			/>
 
-			<label class="flex items-start gap-3">
-				<input type="checkbox" bind:checked={isShared} class="mt-1" />
-				<span>
-					<span class="block text-sm font-medium text-gray-700">
-						{$_('knowledge.wizard.libraryStep.shareLabel', {
-							default: 'Share with my organization'
-						})}
-					</span>
-					<span class="block text-xs text-gray-500">
-						{$_('knowledge.wizard.libraryStep.shareHint', {
-							default: 'You can change this later from the Library detail view.'
-						})}
-					</span>
-				</span>
-			</label>
+			<Checkbox
+				bind:checked={isShared}
+				label={$_('knowledge.wizard.libraryStep.shareLabel', {
+					default: 'Share with my organization'
+				})}
+				description={$_('knowledge.wizard.libraryStep.shareHint', {
+					default: 'You can change this later from the Library detail view.'
+				})}
+			/>
 
 			<!-- Advanced: import plugin -->
-			<details class="rounded-md border border-gray-200 bg-white">
-				<summary
-					class="cursor-pointer px-3 py-2 text-sm font-medium text-[#2271b3] select-none hover:underline"
-				>
-					{$_('knowledge.wizard.libraryStep.advancedLabel', {
-						default: 'Advanced: import plugin & params'
-					})}
-				</summary>
-				<div class="space-y-3 p-3">
+			<Collapsible
+				label={$_('knowledge.wizard.libraryStep.advancedLabel', {
+					default: 'Advanced: import plugin & params'
+				})}
+			>
+				<div class="space-y-3">
 					{#if loadingPlugins}
-						<div class="text-sm text-gray-500">
-							{$_('common.loading', { default: 'Loading...' })}
-						</div>
+						<p class="type-body-muted">{$_('common.loading', { default: 'Loading...' })}</p>
 					{:else if pluginError}
-						<div
-							class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700"
-							role="alert"
-						>
-							{pluginError}
-						</div>
+						<Banner variant="danger" size="sm" description={pluginError} />
 					{:else if plugins.length === 0}
-						<div class="text-sm text-gray-500">
+						<p class="type-body-muted">
 							{$_('knowledge.wizard.libraryStep.noPlugins', {
 								default: 'No import plugins available.'
 							})}
-						</div>
+						</p>
 					{:else}
-						<div>
-							<label for="wizard-library-plugin" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
-							</label>
-							<select
-								id="wizard-library-plugin"
-								bind:value={pluginName}
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-							>
-								{#each plugins as p (p.name)}
-									<option value={p.name}>{p.name}</option>
-								{/each}
-							</select>
-							{#if selectedPlugin?.description}
-								<p class="mt-1 text-xs text-gray-500">{selectedPlugin.description}</p>
-							{/if}
-						</div>
+						<FormField
+							id="wizard-library-plugin"
+							label={$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
+							type="select"
+							bind:value={pluginName}
+							options={plugins.map((/** @type {any} */ p) => ({
+								value: p.name,
+								label: p.name
+							}))}
+							helper={selectedPlugin?.description}
+						/>
 
 						{#if selectedPluginParameters.length > 0}
-							<fieldset class="mt-1 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
-								<legend class="px-1 text-xs font-medium text-gray-700">
+							<fieldset class="border-border bg-surface space-y-2 rounded-md border p-3">
+								<legend class="type-label px-1">
 									{$_('knowledge.wizard.libraryStep.pluginParamsLabel', {
 										values: { plugin: selectedPlugin?.human_label || pluginName },
 										default: 'Plugin parameters'
 									})}
 								</legend>
-								<p class="text-xs text-gray-500">
+								<p class="type-caption">
 									{$_('knowledge.wizard.libraryStep.pluginParamsHint', {
 										default:
 											'Defaults come from the plugin and work for most documents — override only if needed.'
@@ -437,7 +412,7 @@
 						{/if}
 					{/if}
 				</div>
-			</details>
+			</Collapsible>
 		</div>
 	{/if}
 </div>

@@ -123,6 +123,28 @@ def test_options_falls_back_to_plugin_default(client, ks_client, async_return):
     assert api_endpoint["default"] == "http://localhost:11434/api/embeddings"
 
 
+def test_options_returns_503_when_kb_server_unavailable(
+    client, ks_client, async_raise
+):
+    """When the KB Server v2 is unreachable, ``/creator/knowledge-stores/options``
+    must return a structured 503 with body
+    ``{"error": "knowledge_store_unavailable", "detail": "..."}`` so the UI
+    can render an actionable retry state. The hardcoded ``_BUILTIN_*``
+    fallback catalog was removed (issue #334 §5)."""
+    from creator_interface.knowledge_store_client import KnowledgeStoreUnavailable
+
+    ks_client.get_org_options = async_raise(
+        KnowledgeStoreUnavailable("Unable to connect to Knowledge Store server")
+    )
+
+    response = client.get("/creator/knowledge-stores/options")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["error"] == "knowledge_store_unavailable"
+    assert "Knowledge Store" in body["detail"]
+
+
 # ---------------------------------------------------------------------------
 # POST /creator/knowledge-stores
 # ---------------------------------------------------------------------------

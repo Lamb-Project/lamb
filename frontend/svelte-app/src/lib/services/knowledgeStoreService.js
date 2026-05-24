@@ -322,6 +322,32 @@ export async function queryKnowledgeStore(ksId, data) {
 }
 
 /**
+ * Retry a failed ingestion for a single content link.
+ *
+ * NOTE: the backend does not yet expose a dedicated retry endpoint —
+ * this stub currently throws a `not_implemented` error. The
+ * IngestionProgressModal surfaces a `toast.info("Coming soon.")` when
+ * this rejects with that code, keeping the affordance discoverable
+ * without blocking the user. When the backend endpoint lands, replace
+ * the body of this function with the corresponding axios call.
+ *
+ * @param {string} ksId
+ * @param {string} libraryItemId
+ * @returns {Promise<{ message: string }>}
+ */
+export async function retryIngestion(ksId, libraryItemId) {
+	if (!browser) throw new Error('Browser only.');
+	// Touch the params so lint stays happy until the backend wires up.
+	void ksId;
+	void libraryItemId;
+	const err = /** @type {Error & { code?: string }} */ (
+		new Error('Retry ingestion is not yet supported by the backend.')
+	);
+	err.code = 'not_implemented';
+	throw err;
+}
+
+/**
  * Poll a job's aggregate status (used when one batch ingested multiple items).
  * @param {string} ksId
  * @param {string} jobId

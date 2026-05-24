@@ -314,7 +314,9 @@
 		"publicate": "Publicar",
 		"export": "Exportar",
 		"exporting": "Exportant...",
-		"retry": "Tornar a intentar"
+		"retry": "Tornar a intentar",
+		"remove": "Treure",
+		"cannotBeUndone": "Aquesta acció no es pot desfer."
 	},
 	"list": {
 		"searchPlaceholder": "Cerca...",
@@ -892,6 +894,65 @@
 		}
 	},
 	"libraries": {
+		"editDescription": "Edita la descripció",
+		"addDescription": "Afegeix una descripció",
+		"fileTree": {
+			"openTitle": "Obrir l'arbre de fitxers",
+			"detailButton": "Veure l'arbre de fitxers",
+			"modalTitle": "{libraryName} — Arbre de fitxers",
+			"treeAriaLabel": "Fitxers a {libraryName}",
+			"searchPlaceholder": "Cerca pel nom…",
+			"empty": "Aquesta biblioteca és buida.",
+			"emptyHint": "Afegeix contingut des de la pàgina de la biblioteca i després organitza'l aquí.",
+			"emptyCreateFolder": "Crea una carpeta",
+			"uploadHereLabel": "Pujar a:",
+			"uploadHereRoot": "Arrel",
+			"uploadBtn": "Puja",
+			"createFolderBtn": "Nova carpeta",
+			"newFolderPlaceholder": "Nom de la carpeta nova",
+			"selectionCount": "{count} seleccionat(s)",
+			"multiSelected": "{count} elements seleccionats",
+			"moveToBtn": "Mou a…",
+			"deleteBtn": "Suprimeix",
+			"placeholder": "Selecciona un element per previsualitzar",
+			"noSelectionTitle": "Res seleccionat",
+			"noSelectionDesc": "Tria una carpeta o element de l'arbre per previsualitzar-lo aquí.",
+			"multiSelectedHint": "Utilitza Mou a… o arrossega la selecció a una carpeta.",
+			"folderLabel": "Carpeta",
+			"headerItemSingular": "element",
+			"headerItemPlural": "elements",
+			"headerFolderSingular": "carpeta de nivell superior",
+			"headerFolderPlural": "carpetes de nivell superior",
+			"searchClear": "Neteja la cerca",
+			"rootDropZone": "Deixa anar aquí per moure a l'arrel",
+			"expandFolder": "Desplega la carpeta",
+			"collapseFolder": "Replega la carpeta",
+			"stats": {
+				"items": "Elements",
+				"subfolders": "Subcarpetes"
+			},
+			"folders": {
+				"create": "Crea una subcarpeta",
+				"rename": "Reanomena",
+				"delete": "Suprimeix la carpeta",
+				"moveTo": "Mou a…",
+				"deleteConfirmTitle": "Suprimeix la carpeta",
+				"deleteConfirmMsg": "Suprimir \"{name}\"? Els elements de dins es mouran a la carpeta superior. Aquesta acció no es pot desfer."
+			},
+			"moveToPicker": {
+				"title": "Mou a una carpeta",
+				"rootOption": "Arrel de la biblioteca"
+			},
+			"errors": {
+				"cycleNotAllowed": "Una carpeta no es pot moure dins seu o dins d'una de les seves subcarpetes.",
+				"deleteBlockedByKS": "Aquest element està referenciat per un o més magatzems de coneixement. Elimina'l de cadascun abans de suprimir.",
+				"loadFailed": "No s'ha pogut carregar l'arbre de fitxers.",
+				"moveFailed": "No s'ha pogut moure la selecció.",
+				"uploadFailed": "Error en pujar.",
+				"importFailed": "La importació d'aquest element ha fallat. No hi ha contingut disponible.",
+				"notReady": "Aquest element encara s'està processant. Torna-ho a provar en un moment."
+			}
+		},
 		"title": "Biblioteques",
 		"pageTitle": "Biblioteques",
 		"pageDescription": "Gestiona les teves biblioteques de documents.",
@@ -962,15 +1023,25 @@
 			"nameRequired": "El nom és obligatori",
 			"nameTooLong": "El nom ha de tenir menys de 100 caràcters"
 		},
+		"empty": {
+			"title": "Encara no hi ha biblioteques",
+			"description": "Crea'n una per començar a importar contingut."
+		},
+		"addContent": {
+			"title": "Afegir contingut"
+		},
+		"capabilities": {
+			"imageLoadFailed": "No s'ha pogut carregar aquesta imatge. Potser s'ha eliminat."
+		},
 		"deleteModal": {
 			"title": "Eliminar Biblioteca",
-			"message": "N'estàs segur? Tot el contingut s'eliminarà permanentment.",
+			"message": "Eliminar la biblioteca \"{name}\"? Aquesta acció no es pot desfer. Tots els elements del seu interior s'eliminaran permanentment.",
 			"confirm": "Eliminar"
 		},
 		"deleteItemModal": {
 			"title": "Eliminar Element",
 			"blockedTitle": "No es pot eliminar — en ús",
-			"message": "Estàs segur que vols eliminar aquest element?",
+			"message": "Eliminar \"{title}\"? Aquesta acció no es pot desfer.",
 			"confirm": "Eliminar",
 			"blockedMessage": "Aquest element està referenciat per una o més bases de coneixement. Elimina'l de cadascuna abans d'esborrar-lo."
 		},
@@ -1064,8 +1135,19 @@
 		},
 		"deleteModal": {
 			"title": "Eliminar Magatzem de Coneixement",
-			"message": "Estàs segur que vols eliminar aquest Magatzem de Coneixement? Tots els vectors s'eliminaran permanentment. Els elements de la biblioteca no es veuran afectats.",
+			"message": "Eliminar el Magatzem de Coneixement \"{name}\"? Aquesta acció no es pot desfer. Tots els vectors s'eliminaran permanentment. Els elements de biblioteca vinculats no es veuran afectats.",
 			"confirm": "Eliminar"
+		},
+		"empty": {
+			"title": "Encara no hi ha Magatzems de Coneixement",
+			"description": "Crea'n un per començar a indexar contingut de biblioteques.",
+			"badge": "Buit"
+		},
+		"ingestionProgress": {
+			"itemsIngested": "elements ingerits",
+			"runInBackground": "Continuar en segon pla",
+			"retry": "Tornar a intentar la ingestió",
+			"backgroundToast": "La ingestió continua en segon pla. Pots seguir el progrés a la pàgina del Magatzem de Coneixement."
 		},
 		"removeModal": {
 			"title": "Treure del Magatzem de Coneixement",
@@ -1101,6 +1183,13 @@
 			"abort": "Avortar",
 			"useExisting": "Utilitzar un d'existent",
 			"createNew": "Crear-ne un de nou",
+			"advancedLabel": "Configuració avançada",
+			"editStep": "Edita aquest pas",
+			"lockedAfterCreation": "Bloquejat després de la creació",
+			"ksContent": {
+				"fromLibrary": "D'aquesta biblioteca",
+				"newUploads": "Noves pujades en aquest assistent"
+			},
 			"lockedConfigNotice": {
 				"title": "Aquests ajustos no es poden canviar més tard.",
 				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge."
@@ -1195,7 +1284,8 @@
 				"description": "La teva Biblioteca i el Magatzem de Coneixement estan a punt. La ingesta s'executa en segon pla — pots veure el progrés a la pàgina del Magatzem de Coneixement.",
 				"openKs": "Obrir Magatzem de Coneixement",
 				"openLibrary": "Obrir Biblioteca",
-				"createAnother": "Crear-ne un altre"
+				"createAnother": "Crear-ne un altre",
+				"toast": "Magatzem de Coneixement creat."
 			},
 			"stepProgress": "Pas {n} de {total}",
 			"creating": "Creant...",

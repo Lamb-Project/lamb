@@ -77,19 +77,34 @@ def _process_job_sync(job_id: str) -> None:
         2. Pop credentials from the in-memory store.
         3. Load the owning collection record.
         4. Delegate to ``ingestion_service.execute_ingestion_job``.
-        5. Update job + collection counters on success/failure.
+        5. Update job + collection counters on success/failure/cancellation.
+
+    A cooperative cancellation (``POST /jobs/{id}/cancel`` followed by the
+    ingestion loop's per-document status check raising ``JobCancelledError``)
+    is treated as a clean exit: the row stays in ``cancelled`` rather than
+    being flipped to ``failed``.
 
     Args:
         job_id: Primary key of the ``ingestion_jobs`` row.
     """
     # Local import to avoid a circular dependency at module load time.
-    from services.ingestion_service import execute_ingestion_job  # noqa: PLC0415
+    from services.ingestion_service import (  # noqa: PLC0415
+        JobCancelledError,
+        execute_ingestion_job,
+    )
 
     db = _get_db()
     try:
         job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
         if job is None:
             logger.error("Job %s not found in database", job_id)
+            return
+
+        # The job may have been cancelled before the worker picked it up;
+        # respect that and return without flipping back to processing.
+        if job.status == "cancelled":
+            logger.info("Job %s was cancelled before pickup — skipping", job_id)
+            _job_credentials.pop(job_id, None)
             return
 
         credentials = _job_credentials.pop(job_id, {})
@@ -121,7 +136,14 @@ def _process_job_sync(job_id: str) -> None:
             job.attempts,
         )
 
-        execute_ingestion_job(db, job, collection, credentials)
+        try:
+            execute_ingestion_job(db, job, collection, credentials)
+        except JobCancelledError as exc:
+            # Status was already set to 'cancelled' by the canceller; the loop
+            # noticed and bailed out. Leave the row alone so the cancellation
+            # timestamp / status survive.
+            logger.info("Job %s cancelled cooperatively: %s", job_id, exc)
+            return
 
         job.status = "completed"
         job.completed_at = datetime.now(UTC)
@@ -139,7 +161,10 @@ def _process_job_sync(job_id: str) -> None:
         try:
             error_msg = f"Ingestion failed: {type(exc).__name__}: {str(exc)[:500]}"
             job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
-            if job:
+            # Never override a cancellation with a generic failure — the user
+            # explicitly stopped this job and we should not surface a false
+            # error in its place.
+            if job and job.status != "cancelled":
                 job.status = "failed"
                 job.error_message = error_msg
                 job.completed_at = datetime.now(UTC)

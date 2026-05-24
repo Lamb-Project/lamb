@@ -11,14 +11,13 @@ import time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-import requests
-
 from plugins.base import (
     ImportResult,
     LibraryImportPlugin,
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,12 @@ class YouTubeTranscriptImportPlugin(LibraryImportPlugin):
     name = "youtube_transcript_import"
     description = "Download YouTube transcripts via yt-dlp and convert to Markdown."
     supported_source_types = {"youtube"}
-    supported_file_types: set[str] = set()  # YouTube plugin works with URLs, not local files
     required_keys: list[str] = []
+    # Transcript is written as the full markdown text only.
+    produces_capabilities = [Capability.TEXT]
+    # YouTube plugin handles URLs only; never matches a local file extension.
+    file_extensions: list[str] = []
+    human_label = "Import a YouTube video transcript"
 
     def import_content(
         self,
@@ -155,8 +158,6 @@ def _fetch_transcript(
     Returns:
         Tuple of (parsed subtitle pieces, subtitle source label).
     """
-    import os  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
 
     import yt_dlp  # noqa: PLC0415
 
@@ -179,9 +180,7 @@ def _fetch_transcript(
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
         logger.error("yt-dlp failed for %s: %s", video_id, exc)
-        raise RuntimeError(
-            f"Failed to fetch video info for {video_id}: {exc}"
-        ) from exc
+        raise RuntimeError(f"Failed to fetch video info for {video_id}: {exc}") from exc
 
     manual = (info or {}).get("subtitles", {}) or {}
     automatic = (info or {}).get("automatic_captions", {}) or {}
@@ -202,9 +201,7 @@ def _fetch_transcript(
         attempts.append((auto_key, "auto"))
 
     if not attempts:
-        raise RuntimeError(
-            f"No subtitles available in language '{language}'."
-        )
+        raise RuntimeError(f"No subtitles available in language '{language}'.")
 
     # Track whether any attempt was rate-limited so we can give a more
     # actionable message than a generic "download failed".
@@ -234,9 +231,7 @@ def _fetch_transcript(
             return pieces, source_label
 
     if hit_rate_limit:
-        raise RuntimeError(
-            "YouTube rate-limited the subtitle download. Try again later."
-        )
+        raise RuntimeError("YouTube rate-limited the subtitle download. Try again later.")
     raise RuntimeError("Could not download subtitles for this video.")
 
 
@@ -254,7 +249,7 @@ def _resolve_language_key(
         return None
     if language in subs_map:
         return language
-    for key in subs_map.keys():
+    for key in subs_map:
         if key.split("-", 1)[0] == language:
             return key
     return None
@@ -308,7 +303,7 @@ def _download_and_parse(
             # Trim noise like yt-dlp's "ERROR: " prefix so the bubbled-up
             # message reads cleanly in the UI.
             if msg.startswith("ERROR:"):
-                msg = msg[len("ERROR:"):].strip()
+                msg = msg[len("ERROR:") :].strip()
             raise RuntimeError(msg) from exc
 
         # yt-dlp writes <id>.<lang>.srt (or .vtt). Read the first one we
@@ -372,12 +367,8 @@ def _parse_srt_content(srt_text: str) -> list[dict[str, Any]]:
             continue
 
         g = match.groups()
-        start = (
-            int(g[0]) * 3600 + int(g[1]) * 60 + int(g[2]) + int(g[3]) / 1000
-        )
-        end = (
-            int(g[4]) * 3600 + int(g[5]) * 60 + int(g[6]) + int(g[7]) / 1000
-        )
+        start = int(g[0]) * 3600 + int(g[1]) * 60 + int(g[2]) + int(g[3]) / 1000
+        end = int(g[4]) * 3600 + int(g[5]) * 60 + int(g[6]) + int(g[7]) / 1000
 
         # Text is everything after the timestamp line.
         ts_line_idx = next(
@@ -386,16 +377,18 @@ def _parse_srt_content(srt_text: str) -> list[dict[str, Any]]:
         )
         if ts_line_idx is None:
             continue
-        text_lines = lines[ts_line_idx + 1:]
+        text_lines = lines[ts_line_idx + 1 :]
         raw_text = " ".join(ln.strip() for ln in text_lines if ln.strip())
         cleaned = _NOISE_RE.sub("", raw_text).strip()
 
         if cleaned:
-            pieces.append({
-                "text": cleaned,
-                "start": start,
-                "duration": max(end - start, 0),
-            })
+            pieces.append(
+                {
+                    "text": cleaned,
+                    "start": start,
+                    "duration": max(end - start, 0),
+                }
+            )
 
     return pieces
 

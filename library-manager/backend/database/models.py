@@ -60,6 +60,45 @@ class Library(Base):
     )
 
 
+class ContentFolder(Base):
+    """A user-organized folder grouping items within a library.
+
+    Folders are pure metadata: items remain physically at
+    ``{org}/{lib}/{item_uuid}/`` on disk. Folder hierarchy is unlimited.
+    Cycle prevention is enforced in the service layer on every move.
+    """
+
+    __tablename__ = "content_folders"
+    __table_args__ = (
+        UniqueConstraint(
+            "library_id",
+            "parent_folder_id",
+            "name",
+            name="uq_folder_sibling_name",
+        ),
+    )
+
+    id = Column(String, primary_key=True)
+    library_id = Column(
+        String, ForeignKey("libraries.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_folder_id = Column(
+        String, ForeignKey("content_folders.id", ondelete="CASCADE"), nullable=True
+    )
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=_utcnow)
+    updated_at = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    library = relationship("Library")
+    parent = relationship("ContentFolder", remote_side=[id], back_populates="children")
+    children = relationship(
+        "ContentFolder",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+        single_parent=True,
+    )
+
+
 class ContentItem(Base):
     """A single imported document stored in the structured repository."""
 
@@ -69,6 +108,9 @@ class ContentItem(Base):
     library_id = Column(String, ForeignKey("libraries.id", ondelete="CASCADE"), nullable=False)
     organization_id = Column(
         String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    folder_id = Column(
+        String, ForeignKey("content_folders.id", ondelete="SET NULL"), nullable=True
     )
     title = Column(String, nullable=False)
     source_type = Column(String, nullable=False)  # 'file', 'url', 'youtube'
@@ -172,6 +214,9 @@ class ImportJob(Base):
 Index("idx_content_items_library", ContentItem.library_id)
 Index("idx_content_items_org", ContentItem.organization_id)
 Index("idx_content_items_status", ContentItem.status)
+Index("idx_content_items_folder", ContentItem.folder_id)
+Index("idx_content_folders_library", ContentFolder.library_id)
+Index("idx_content_folders_parent", ContentFolder.parent_folder_id)
 Index("idx_content_images_item", ContentImage.content_item_id)
 Index("idx_import_jobs_status", ImportJob.status)
 Index("idx_import_jobs_status_created", ImportJob.status, ImportJob.created_at)

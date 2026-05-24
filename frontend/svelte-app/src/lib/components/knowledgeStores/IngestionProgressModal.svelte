@@ -3,12 +3,29 @@
   Shows live ingestion status for items just added to a Knowledge Store.
   Fetches all statuses immediately on open, then polls every 4 s for
   anything still in-flight — same interval as KSDetail.
+
+  Phase C consistency contract:
+    * Canonical `<Modal size="md">`.
+    * Top progress strip showing "{completedCount} of {total} items
+      ingested" + ETA (heuristic until ≥1 completes, then derived).
+    * Status badges via shared `statusBadgeProps`.
+    * Failed items expose a `<IconButton icon={RefreshCw}>` retry — the
+      backend endpoint is not implemented yet, so the stub surfaces a
+      `toast.info("Coming soon.")`.
+    * Footer: ghost "Close" or "Run in background" + primary "View
+      Knowledge Store". "Run in background" fires a `toast.info`.
+    * Polling continues after close so the parent list can show a
+      "ingesting" hint badge next to the row.
 -->
 <script>
 	import { onDestroy } from 'svelte';
 	import { base } from '$app/paths';
-	import { getContentLinkStatus } from '$lib/services/knowledgeStoreService';
+	import { getContentLinkStatus, retryIngestion } from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
+	import { toast } from '$lib/stores/toast.js';
+	import { statusBadgeProps } from '$lib/utils/statusBadge.js';
+	import { Modal, Banner, Button, IconButton, Badge } from '$lib/components/ui';
+	import { ArrowRight, RefreshCw, FileText } from 'lucide-svelte';
 
 	/**
 	 * @type {{
@@ -16,27 +33,42 @@
 	 *   ksId: string,
 	 *   ksName: string,
 	 *   items: Array<{ id: string, title: string }>,
-	 *   onclose?: () => void
+	 *   onclose?: () => void,
+	 *   onprogress?: (progress: { ingesting: number, completed: number, total: number }) => void
 	 * }}
 	 */
-	let { isOpen = $bindable(false), ksId, ksName, items = [], onclose } = $props();
+	let { isOpen = $bindable(false), ksId, ksName, items = [], onclose, onprogress } = $props();
 
 	/** @type {Record<string, { status: string, chunks?: number, error?: string }>} */
 	let statuses = $state({});
+	/** @type {ReturnType<typeof setTimeout>|null} */
 	let pollTimer = null;
+	/** Monotonic clock value at first poll start — used to derive ETA. */
+	let startedAt = $state(0);
 
 	$effect(() => {
 		if (isOpen && items.length) {
+			// Seed first poll with cached statuses so the modal isn't blank
+			// for the first 4 seconds. AddContentToKSModal passes items
+			// already queued, so 'processing' is a fair default — the real
+			// status arrives within the first fetchAll().
 			statuses = Object.fromEntries(items.map((i) => [i.id, { status: 'processing' }]));
+			startedAt = Date.now();
 			fetchAll();
 		}
 		return () => {
-			if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+			if (pollTimer) {
+				clearTimeout(pollTimer);
+				pollTimer = null;
+			}
 		};
 	});
 
 	async function fetchAll() {
-		if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+		if (pollTimer) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 		await Promise.all(
 			items.map(async (item) => {
 				try {
@@ -51,11 +83,15 @@
 				}
 			})
 		);
+		notifyProgress();
 		schedulePoll();
 	}
 
 	function schedulePoll() {
-		if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+		if (pollTimer) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 		const inFlight = items.filter(
 			(i) => statuses[i.id]?.status === 'pending' || statuses[i.id]?.status === 'processing'
 		);
@@ -75,109 +111,213 @@
 					}
 				})
 			);
+			notifyProgress();
 			schedulePoll();
 		}, 4000);
 	}
 
-	let allDone = $derived(
-		items.length > 0 &&
-		items.every((i) => {
-			const s = statuses[i.id]?.status;
-			return s === 'ready' || s === 'failed';
-		})
-	);
-
-	/** @param {string} status */
-	function badgeClass(status) {
-		switch (status) {
-			case 'ready':      return 'bg-green-100 text-green-800';
-			case 'failed':     return 'bg-red-100 text-red-800';
-			case 'processing': return 'bg-blue-100 text-blue-800';
-			default:           return 'bg-gray-100 text-gray-700';
-		}
+	function notifyProgress() {
+		if (typeof onprogress !== 'function') return;
+		onprogress({
+			ingesting: items.filter(
+				(i) => statuses[i.id]?.status === 'pending' || statuses[i.id]?.status === 'processing'
+			).length,
+			completed: completedCount,
+			total: items.length
+		});
 	}
 
+	let completedCount = $derived(
+		items.filter((i) => {
+			const s = statuses[i.id]?.status;
+			return s === 'ready' || s === 'failed';
+		}).length
+	);
+
+	let allDone = $derived(items.length > 0 && completedCount === items.length);
+
+	let progressPct = $derived(
+		items.length === 0 ? 0 : Math.round((completedCount / items.length) * 100)
+	);
+
+	// ETA heuristic: until at least one item completes, show "~1–2 min per
+	// item"; after that, derive from the average elapsed time per completion.
+	let etaLabel = $derived.by(() => {
+		if (allDone) return '';
+		const total = items.length;
+		const remaining = total - completedCount;
+		if (remaining <= 0) return '';
+		if (completedCount === 0) {
+			return $_('knowledgeStores.ingestionProgress.etaHeuristic', {
+				default: '~1–2 min per item'
+			});
+		}
+		const elapsed = Date.now() - startedAt;
+		const avgPerItem = elapsed / Math.max(completedCount, 1);
+		const estimatedMs = avgPerItem * remaining;
+		const seconds = Math.round(estimatedMs / 1000);
+		if (seconds < 60) {
+			return $_('knowledgeStores.ingestionProgress.etaSeconds', {
+				default: '~{n}s remaining',
+				values: { n: seconds }
+			});
+		}
+		const minutes = Math.round(seconds / 60);
+		return $_('knowledgeStores.ingestionProgress.etaMinutes', {
+			default: '~{n} min remaining',
+			values: { n: minutes }
+		});
+	});
+
 	function close() {
-		if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+		// Stop polling locally — the parent list will refresh once when the
+		// modal closes (via onclose). We don't want a background poll loop
+		// after the user dismisses the modal.
+		if (pollTimer) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 		isOpen = false;
 		onclose?.();
 	}
 
+	function closeRunInBackground() {
+		toast.info(
+			$_('knowledgeStores.ingestionProgress.backgroundToast', {
+				default:
+					'Ingestion continues in the background. Track progress on the Knowledge Store page.'
+			})
+		);
+		close();
+	}
+
+	/** @param {string} itemId */
+	async function handleRetry(itemId) {
+		try {
+			await retryIngestion(ksId, itemId);
+			// Optimistic: flip back to processing so the spinner returns.
+			statuses[itemId] = { ...statuses[itemId], status: 'processing' };
+			schedulePoll();
+			toast.success(
+				$_('knowledgeStores.ingestionProgress.retryQueued', {
+					default: 'Retry queued.'
+				})
+			);
+		} catch (/** @type {any} */ err) {
+			if (err?.code === 'not_implemented') {
+				toast.info(
+					$_('knowledgeStores.ingestionProgress.retryComingSoon', {
+						default: 'Retry feature coming soon.'
+					})
+				);
+				return;
+			}
+			toast.error(err?.message || 'Retry failed.');
+		}
+	}
+
 	onDestroy(() => {
-		if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+		if (pollTimer) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 	});
 </script>
 
-{#if isOpen}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="ingestion-progress-title">
-		<!-- Backdrop — no click-to-close; use the Close button -->
-		<div class="absolute inset-0 bg-black/30"></div>
+<Modal
+	open={isOpen}
+	onclose={close}
+	size="md"
+	title={allDone
+		? $_('knowledgeStores.ingestionProgress.done', { default: 'Ingestion complete' })
+		: $_('knowledgeStores.ingestionProgress.processing', { default: 'Processing content…' })}
+	closeAriaLabel={$_('common.close', { default: 'Close' })}
+>
+	<!-- eslint-disable-next-line svelte/no-useless-children-snippet -->
+	{#snippet children()}
+		<p class="type-caption mb-3">{ksName}</p>
 
-		<!-- Panel — sits above the backdrop, does not close on click -->
-		<div
-			class="relative mx-4 w-full max-w-lg rounded-lg bg-white shadow-2xl ring-1 ring-black/10"
-		>
-			<!-- Header -->
-			<div class="border-b border-gray-200 px-6 py-4">
-				<h2 id="ingestion-progress-title" class="flex items-center gap-2 text-base font-semibold text-gray-900">
-					{#if allDone}
-						<svg class="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-						</svg>
-						{$_('knowledgeStores.ingestionProgress.done', { default: 'Ingestion complete' })}
-					{:else}
-						<svg class="h-4 w-4 animate-spin text-[#2271b3]" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-						</svg>
-						{$_('knowledgeStores.ingestionProgress.processing', { default: 'Processing content…' })}
-					{/if}
-				</h2>
-				<p class="mt-0.5 text-xs text-gray-500">{ksName}</p>
+		<!-- Top progress strip. Stays visible while polling so the user can
+		     always see "N of M" + ETA. -->
+		<div class="border-border bg-surface-muted -mx-6 mb-4 border-y px-6 py-3">
+			<div class="text-text-muted mb-1 flex items-center justify-between text-xs">
+				<span>
+					{completedCount}
+					{$_('knowledgeStores.ingestionProgress.ofConnector', { default: 'of' })}
+					{items.length}
+					{$_('knowledgeStores.ingestionProgress.itemsIngested', { default: 'items ingested' })}
+				</span>
+				<span>{etaLabel}</span>
 			</div>
-
-			<!-- Item list -->
-			<ul class="max-h-64 divide-y divide-gray-100 overflow-y-auto px-6 py-2">
-				{#each items as item (item.id)}
-					{@const st = statuses[item.id] ?? { status: 'processing' }}
-					<li class="py-2.5 text-sm">
-						<div class="flex items-center justify-between gap-3">
-							<span class="min-w-0 truncate text-gray-800">{item.title}</span>
-							<div class="flex shrink-0 items-center gap-2">
-								{#if st.chunks != null && st.status === 'ready'}
-									<span class="text-xs text-gray-400">{st.chunks} chunks</span>
-								{/if}
-								<span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium {badgeClass(st.status)}">
-									{st.status}
-								</span>
-							</div>
-						</div>
-						{#if st.error}
-							<p class="mt-0.5 text-xs text-red-500">{st.error}</p>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-
-			<!-- Footer -->
-			<div class="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
-				<button
-					type="button"
-					onclick={close}
-					class="rounded-md px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
-				>
-					{$_('common.close', { default: 'Close' })}
-				</button>
-				<a
-					href="{base}/libraries?section=knowledge-stores&view=detail&id={ksId}"
-					onclick={close}
-					class="rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white hover:bg-[#195a91]"
-				>
-					{$_('knowledgeStores.ingestionProgress.viewKs', { default: 'View Knowledge Store' })}
-				</a>
+			<div
+				class="rounded-pill bg-surface-sunken h-2 w-full overflow-hidden"
+				role="progressbar"
+				aria-valuenow={progressPct}
+				aria-valuemin="0"
+				aria-valuemax="100"
+			>
+				<div class="bg-brand h-full transition-all" style="width: {progressPct}%"></div>
 			</div>
 		</div>
-	</div>
-{/if}
+
+		<ul class="divide-border max-h-72 divide-y overflow-y-auto">
+			{#each items as item (item.id)}
+				{@const st = statuses[item.id] ?? { status: 'processing' }}
+				{@const badge = statusBadgeProps(st.status)}
+				<li class="py-2.5 text-sm">
+					<div class="flex items-center justify-between gap-3">
+						<div class="flex min-w-0 items-center gap-2">
+							<FileText size={14} class="text-text-muted shrink-0" aria-hidden="true" />
+							<span class="text-text min-w-0 truncate" title={item.title}>{item.title}</span>
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							{#if st.chunks != null && st.status === 'ready'}
+								<span class="text-text-muted text-xs">{st.chunks} chunks</span>
+							{/if}
+							<Badge variant={badge.variant} icon={badge.icon} spin={badge.spin}>
+								{badge.label}
+							</Badge>
+							{#if st.status === 'failed'}
+								<IconButton
+									icon={RefreshCw}
+									ariaLabel={$_('knowledgeStores.ingestionProgress.retry', {
+										default: 'Retry ingestion'
+									})}
+									tooltip={$_('knowledgeStores.ingestionProgress.retry', {
+										default: 'Retry ingestion'
+									})}
+									variant="ghost"
+									size="sm"
+									inModal
+									onclick={() => handleRetry(item.id)}
+								/>
+							{/if}
+						</div>
+					</div>
+					{#if st.error}
+						<Banner variant="danger" size="sm" class="mt-1" description={st.error} />
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/snippet}
+
+	{#snippet footer()}
+		<!-- footer is flex-row-reverse — primary first lands on the right. -->
+		<Button
+			variant="primary"
+			iconRightComponent={ArrowRight}
+			href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ksId}`}
+			onclick={close}
+		>
+			{$_('knowledgeStores.ingestionProgress.viewKs', { default: 'View Knowledge Store' })}
+		</Button>
+		<Button variant="ghost" onclick={allDone ? close : closeRunInBackground}>
+			{allDone
+				? $_('common.close', { default: 'Close' })
+				: $_('knowledgeStores.ingestionProgress.runInBackground', {
+						default: 'Run in background'
+					})}
+		</Button>
+	{/snippet}
+</Modal>

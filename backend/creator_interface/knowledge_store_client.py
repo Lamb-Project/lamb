@@ -427,6 +427,18 @@ class KnowledgeStoreClient:
         config = self._get_ks_config(creator_user)
         return await self._request("GET", f"/jobs/{job_id}", config)
 
+    async def cancel_job(self, job_id: str,
+                         creator_user: Dict[str, Any] = None) -> Dict:
+        """Request cancellation of a pending or in-flight ingestion job.
+
+        Idempotent: cancelling a job that is already in a terminal state is a
+        no-op and returns the current row. Called by ``remove_content`` before
+        deleting a link whose ingestion has not yet finished so the worker
+        stops embedding documents the user has just discarded.
+        """
+        config = self._get_ks_config(creator_user)
+        return await self._request("POST", f"/jobs/{job_id}/cancel", config)
+
     # ------------------------------------------------------------------
     # Org-level discovery (for the UI options endpoint)
     # ------------------------------------------------------------------

@@ -65,6 +65,7 @@ async def import_file(
     title: str = Form(...),
     plugin_params: str = Form("{}"),
     api_keys: str = Form("{}"),
+    folder_id: str | None = Form(None),
     db: Session = Depends(get_session),
 ) -> dict:
     """Upload a file and queue it for import.
@@ -170,7 +171,11 @@ async def import_file(
             file_size=file_size,
             plugin_params=parsed_params,
             api_keys=parsed_keys,
+            folder_id=folder_id,
         )
+    except ValueError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
@@ -215,16 +220,20 @@ async def import_url(
             detail=f"Plugin '{body.plugin_name}' does not support URL imports.",
         )
 
-    item_id, job_id = import_service.queue_url_import(
-        db=db,
-        library_id=lib_id,
-        organization_id=lib.organization_id,
-        title=body.title,
-        plugin_name=body.plugin_name,
-        url=body.url,
-        plugin_params=body.plugin_params,
-        api_keys=body.api_keys,
-    )
+    try:
+        item_id, job_id = import_service.queue_url_import(
+            db=db,
+            library_id=lib_id,
+            organization_id=lib.organization_id,
+            title=body.title,
+            plugin_name=body.plugin_name,
+            url=body.url,
+            plugin_params=body.plugin_params,
+            api_keys=body.api_keys,
+            folder_id=body.folder_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"item_id": item_id, "job_id": job_id, "status": "processing"}
 
@@ -274,15 +283,19 @@ async def import_youtube(
     params = dict(body.plugin_params or {})
     params.setdefault("language", body.language)
 
-    item_id, job_id = import_service.queue_youtube_import(
-        db=db,
-        library_id=lib_id,
-        organization_id=lib.organization_id,
-        title=body.title,
-        plugin_name=body.plugin_name,
-        video_url=body.video_url,
-        plugin_params=params,
-        api_keys=body.api_keys,
-    )
+    try:
+        item_id, job_id = import_service.queue_youtube_import(
+            db=db,
+            library_id=lib_id,
+            organization_id=lib.organization_id,
+            title=body.title,
+            plugin_name=body.plugin_name,
+            video_url=body.video_url,
+            plugin_params=params,
+            api_keys=body.api_keys,
+            folder_id=body.folder_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return {"item_id": item_id, "job_id": job_id, "status": "processing"}

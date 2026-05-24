@@ -114,7 +114,7 @@ class IngestionJob(Base):
 
     # --- Status ---
     status = Column(String, nullable=False, default="pending")
-    # pending / processing / completed / failed
+    # pending / processing / completed / failed / cancelled
     error_message = Column(Text, nullable=True)
     attempts = Column(Integer, nullable=False, default=0)
 

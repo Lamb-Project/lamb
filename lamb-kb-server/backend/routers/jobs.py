@@ -1,6 +1,7 @@
 """Ingestion job status routes."""
 
 import logging
+from datetime import UTC, datetime
 
 from database.connection import get_session
 from database.models import IngestionJob
@@ -41,4 +42,36 @@ async def get_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{job_id}' not found.",
         )
+    return JobStatusResponse.model_validate(job)
+
+
+@router.post("/{job_id}/cancel", response_model=JobStatusResponse)
+async def cancel_job(
+    job_id: str,
+    db: Session = Depends(get_session),
+) -> JobStatusResponse:
+    """Cancel a pending or in-flight ingestion job.
+
+    Flips the job's status to ``cancelled``. The worker checks this between
+    documents and bails out cleanly. Chunks already written for earlier
+    documents in the job are NOT rolled back — callers should follow up with
+    ``DELETE /collections/{id}/content/{source_item_id}`` to remove them.
+
+    Idempotent: cancelling a job that is already in a terminal state
+    (``completed`` / ``failed`` / ``cancelled``) is a no-op and the current
+    row is returned unchanged.
+    """
+    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{job_id}' not found.",
+        )
+    if job.status in ("pending", "processing"):
+        prior_status = job.status
+        job.status = "cancelled"
+        job.completed_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(job)
+        logger.info("Job %s cancelled (was %s)", job_id, prior_status)
     return JobStatusResponse.model_validate(job)

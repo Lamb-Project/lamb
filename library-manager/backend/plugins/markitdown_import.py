@@ -18,6 +18,7 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
 from plugins.markitdown_plus_import import _PAGE_AWARE_TYPES, _split_into_pages
 
 logger = logging.getLogger(__name__)
@@ -28,17 +29,29 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
     """Convert document files to Markdown via MarkItDown."""
 
     name = "markitdown_import"
-    description = (
-        "Convert documents (PDF, DOCX, PPTX, XLSX, etc.) to Markdown "
-        "using MarkItDown."
-    )
+    description = "Convert documents (PDF, DOCX, PPTX, XLSX, etc.) to Markdown using MarkItDown."
     supported_source_types = {"file"}
-    supported_file_types = {
-        "pdf", "pptx", "docx", "xlsx", "xls",
-        "mp3", "wav", "html", "csv", "json",
-        "xml", "zip", "epub", "txt", "md",
-    }
     required_keys: list[str] = []
+    # Emits full markdown plus per-page splits for paginated formats.
+    produces_capabilities = [Capability.TEXT, Capability.PAGES]
+    file_extensions = [
+        "pdf",
+        "pptx",
+        "docx",
+        "xlsx",
+        "xls",
+        "mp3",
+        "wav",
+        "html",
+        "csv",
+        "json",
+        "xml",
+        "zip",
+        "epub",
+        "txt",
+        "md",
+    ]
+    human_label = "Document import (Markitdown converter)"
 
     def import_content(
         self,
@@ -74,9 +87,12 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
             result = md.convert(str(path))
             content = result.text_content
         except Exception as exc:
-            raise RuntimeError(
-                f"MarkItDown conversion failed for {path.name}: {exc}"
-            ) from exc
+            # Translate to a short, user-facing message; full chain in the
+            # worker log.
+            from plugins._markitdown_errors import humanize_markitdown_error  # noqa: PLC0415
+
+            logger.exception("MarkItDown conversion failed for %s", path.name)
+            raise RuntimeError(humanize_markitdown_error(exc, path.name)) from exc
 
         if not content or not content.strip():
             logger.warning("MarkItDown produced empty content for %s", path.name)

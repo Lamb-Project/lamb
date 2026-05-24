@@ -7,6 +7,7 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
+	import Toast from '$lib/components/ui/Toast.svelte';
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
 
 	let { children } = $props();
@@ -62,6 +63,8 @@
 		return unsubscribe;
 	});
 </script>
+
+<Toast />
 
 <div class="flex min-h-screen flex-col bg-gray-50 text-gray-900">
 	<Nav />

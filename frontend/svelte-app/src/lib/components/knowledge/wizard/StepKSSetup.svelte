@@ -3,10 +3,18 @@
   Combined Step 3 of the 5-step wizard.
   Radio: "Create new KS" / "Use existing KS".
 
-  When "Use existing": shows KS dropdown (from former Step4).
-  When "Create new": shows name + description + sharing + collapsible
-    "Advanced: chunking, embedding, vector DB" with the locked-after-create
-    notice (from former Step6).
+  When "Use existing": shows KS dropdown.
+  When "Create new": shows name + description + sharing + a Collapsible
+    "Advanced" section split into Chunking / Embedding / Storage
+    sub-sections (each preceded by a `type-label` heading).
+
+  Phase C consistency contract:
+    * `<details>` is replaced by `<Collapsible>`.
+    * 10+ field wall split into three labeled sub-sections.
+    * Locked notice rendered via `<Banner variant="warning">`.
+    * Each immutable field gets a trailing `<Lock>` icon with tooltip
+      "Locked after creation".
+    * All inputs are `<FormField>` instances.
 
   Emits:
     - update: partial WizardState patch
@@ -22,6 +30,8 @@
 	} from '$lib/services/knowledgeStoreService';
 	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
+	import { FormField, Collapsible, Banner, Button, Checkbox, Tooltip } from '$lib/components/ui';
+	import { Lock } from 'lucide-svelte';
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
 	function readableError(err, fallback) {
@@ -106,10 +116,6 @@
 	let embeddingVendor = $state(wizardState.ksConfig?.embedding_vendor || '');
 	let embeddingModel = $state(wizardState.ksConfig?.embedding_model || '');
 	let embeddingEndpoint = $state(wizardState.ksConfig?.embedding_endpoint || '');
-	// Extra embedding-vendor params (anything the schema declares beyond
-	// model/api_endpoint/api_key, which are surfaced with bespoke widgets
-	// below). Empty for openai/ollama today; populated when a vendor plugin
-	// declares additional knobs.
 	let embeddingParams = $state(
 		/** @type {Record<string, unknown>} */ (wizardState.ksConfig?.embedding_params || {})
 	);
@@ -120,7 +126,6 @@
 	);
 	let vectorDbParamErrors = $state(/** @type {Record<string, string>} */ ({}));
 
-	// Param descriptors for the currently-selected strategy / vendor / backend.
 	let currentStrategyParams = $derived.by(() => {
 		const s = (options.chunking_strategies ?? []).find(
 			(/** @type {any} */ s) => s.name === chunkingStrategy
@@ -140,9 +145,6 @@
 		return b?.parameters ?? [];
 	});
 
-	// Reset chunking params when the strategy changes so a stale dict from
-	// a different strategy doesn't carry irrelevant keys. The renderer
-	// re-initialises from the new strategy's defaults on next mount.
 	let lastChunkingStrategy = $state(chunkingStrategy);
 	$effect(() => {
 		if (chunkingStrategy !== lastChunkingStrategy) {
@@ -188,10 +190,6 @@
 			if (!chunkingStrategy && options.chunking_strategies?.length) {
 				chunkingStrategy = options.chunking_strategies[0].name;
 			}
-			// Default to a vendor the org has actually configured. The backend
-			// tags each vendor with `api_key_configured`; vendors without a key
-			// are kept in the list (so the UI can explain the gap) but are not
-			// chosen as the default and the option is shown as disabled below.
 			const enabledVendors = (options.embedding_vendors || []).filter(
 				(/** @type {any} */ v) => v.api_key_configured !== false
 			);
@@ -214,8 +212,6 @@
 						default:
 							'Knowledge Store server unavailable. Please ensure lamb-kb-server is running and retry.'
 					});
-				// Leave optionsLoaded=false so a future $effect re-run can
-				// retry automatically once the server comes back.
 				optionsLoaded = false;
 			} else {
 				optionsError = readableError(err, 'Failed to load options');
@@ -252,9 +248,6 @@
 		}
 	});
 
-	// Auto-expand the Advanced section so users can see (and fill) any
-	// required field that the API didn't auto-populate — otherwise Next
-	// stays disabled with no visible reason why.
 	let advancedOpen = $state(false);
 	$effect(() => {
 		if (path !== 'new' || !optionsLoaded) return;
@@ -296,9 +289,6 @@
 		void _vectorDb;
 		void _vdbParams;
 		void _vdbErrors;
-		// Touch each plugin-param value so the effect re-runs on edits
-		// (Svelte 5 tracks reads, and a shallow ref-equality check on the
-		// dict isn't enough when only a property changes).
 		for (const k of Object.keys(_params || {})) void _params[k];
 		for (const k of Object.keys(_paramErrors || {})) void _paramErrors[k];
 		for (const k of Object.keys(_embParams || {})) void _embParams[k];
@@ -307,9 +297,6 @@
 		for (const k of Object.keys(_vdbErrors || {})) void _vdbErrors[k];
 
 		untrack(() => {
-			// Persist the radio choice immediately so the draft retains the
-			// last-clicked path even when the rest of the form is still
-			// incomplete (e.g. name empty → early-return below).
 			dispatch('update', { ksPath: path });
 
 			if (path === 'existing') {
@@ -328,7 +315,6 @@
 				return;
 			}
 
-			// path === 'new'
 			const trimmed = name.trim();
 			if (!trimmed) {
 				nameError = $_('knowledge.wizard.ksStep.nameRequired', { default: 'Name is required' });
@@ -382,37 +368,56 @@
 			})();
 		}
 	});
+
+	/** @param {string} v */
+	function validateName(v) {
+		const trimmed = (v || '').trim();
+		if (!trimmed) {
+			return $_('knowledge.wizard.ksStep.nameRequired', { default: 'Name is required' });
+		}
+		if (trimmed.length > 100) {
+			return $_('knowledge.wizard.ksStep.nameTooLong', {
+				default: 'Name must be less than 100 characters'
+			});
+		}
+		return undefined;
+	}
 </script>
 
 <div class="space-y-4">
-	<h3 class="text-base font-semibold text-gray-900">
+	<h3 class="type-section-title">
 		{$_('knowledge.wizard.ksStep.heading', { default: 'Knowledge Store' })}
 	</h3>
-	<p class="text-sm text-gray-600">
+	<p class="type-body-muted">
 		{$_('knowledge.wizard.ksStep.description', {
 			default:
 				'Pick an existing Knowledge Store or create a new one. Existing stores keep their original chunking and embedding settings.'
 		})}
 	</p>
 
-	<!-- Path radio -->
+	<!-- Path radio (radio-as-card) -->
 	<fieldset class="space-y-3">
 		<legend class="sr-only">
 			{$_('knowledge.wizard.ksStep.legend', { default: 'Knowledge Store path' })}
 		</legend>
 
 		<label
-			class="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-gray-50 {path ===
+			class="hover:bg-surface-sunken flex cursor-pointer items-start gap-3 rounded-md border p-3 {path ===
 			'new'
-				? 'border-[#2271b3] bg-blue-50'
-				: 'border-gray-200'}"
+				? 'border-brand bg-brand-subtle'
+				: 'border-border'}"
 		>
-			<input type="radio" bind:group={path} value="new" class="mt-1" />
+			<input
+				type="radio"
+				bind:group={path}
+				value="new"
+				class="border-border-strong text-brand focus:ring-brand mt-1"
+			/>
 			<div>
-				<div class="text-sm font-medium text-gray-900">
+				<div class="text-text text-sm font-medium">
 					{$_('knowledge.wizard.createNew', { default: 'Create new' })}
 				</div>
-				<div class="text-xs text-gray-500">
+				<div class="type-caption">
 					{$_('knowledge.wizard.ksStep.createNewHint', {
 						default: 'Configure a new Knowledge Store with chunking and embedding settings.'
 					})}
@@ -421,17 +426,22 @@
 		</label>
 
 		<label
-			class="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-gray-50 {path ===
+			class="hover:bg-surface-sunken flex cursor-pointer items-start gap-3 rounded-md border p-3 {path ===
 			'existing'
-				? 'border-[#2271b3] bg-blue-50'
-				: 'border-gray-200'}"
+				? 'border-brand bg-brand-subtle'
+				: 'border-border'}"
 		>
-			<input type="radio" bind:group={path} value="existing" class="mt-1" />
+			<input
+				type="radio"
+				bind:group={path}
+				value="existing"
+				class="border-border-strong text-brand focus:ring-brand mt-1"
+			/>
 			<div class="flex-1">
-				<div class="text-sm font-medium text-gray-900">
+				<div class="text-text text-sm font-medium">
 					{$_('knowledge.wizard.useExisting', { default: 'Use existing' })}
 				</div>
-				<div class="text-xs text-gray-500">
+				<div class="type-caption">
 					{$_('knowledge.wizard.ksStep.useExistingHint', {
 						default: 'Pick a Knowledge Store you already created and ingest more content into it.'
 					})}
@@ -440,30 +450,26 @@
 				{#if path === 'existing'}
 					<div class="mt-3">
 						{#if loadingStores}
-							<div class="text-sm text-gray-500">
-								{$_('common.loading', { default: 'Loading...' })}
-							</div>
+							<p class="type-body-muted">{$_('common.loading', { default: 'Loading...' })}</p>
 						{:else if storeError}
-							<div class="text-sm text-red-600" role="alert">{storeError}</div>
+							<Banner variant="danger" size="sm" description={storeError} />
 						{:else if stores.length === 0}
-							<div class="text-sm text-gray-500">
+							<p class="type-body-muted">
 								{$_('knowledge.wizard.ksStep.noStores', {
 									default: 'No knowledge stores available. Choose "Create new" instead.'
 								})}
-							</div>
+							</p>
 						{:else}
-							<label for="wizard-ks-select" class="mb-1 block text-xs font-medium text-gray-700">
-								{$_('knowledge.wizard.ksStep.selectLabel', { default: 'Knowledge Store' })}
-							</label>
-							<select
+							<FormField
 								id="wizard-ks-select"
+								label={$_('knowledge.wizard.ksStep.selectLabel', { default: 'Knowledge Store' })}
+								type="select"
 								bind:value={selectedId}
-								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-							>
-								{#each stores as s (s.id)}
-									<option value={s.id}>{s.name} ({s.embedding_vendor}/{s.embedding_model})</option>
-								{/each}
-							</select>
+								options={stores.map((/** @type {any} */ s) => ({
+									value: s.id,
+									label: `${s.name} (${s.embedding_vendor}/${s.embedding_model})`
+								}))}
+							/>
 						{/if}
 					</div>
 				{/if}
@@ -473,298 +479,306 @@
 
 	<!-- New KS fields -->
 	{#if path === 'new'}
-		<div class="space-y-4 rounded-md border border-gray-100 bg-gray-50 p-4">
-			<div>
-				<label for="wizard-ks-name" class="block text-sm font-medium text-gray-700">
-					{$_('libraries.name', { default: 'Name' })} <span class="text-red-500">*</span>
-				</label>
-				<input
-					type="text"
-					id="wizard-ks-name"
-					bind:value={name}
-					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3] {nameError
-						? 'border-red-500'
-						: ''}"
-				/>
-				{#if nameError}
-					<p class="mt-1 text-sm text-red-600" role="alert">{nameError}</p>
-				{/if}
-			</div>
+		<div class="border-border bg-surface-muted space-y-4 rounded-md border p-4">
+			<FormField
+				id="wizard-ks-name"
+				label={$_('libraries.name', { default: 'Name' })}
+				type="text"
+				bind:value={name}
+				required
+				error={nameError}
+				validateOnBlur={validateName}
+				maxlength={200}
+				helper={`${(name || '').length}/200`}
+			/>
 
-			<div>
-				<label for="wizard-ks-description" class="block text-sm font-medium text-gray-700">
-					{$_('libraries.description', { default: 'Description' })}
-				</label>
-				<textarea
-					id="wizard-ks-description"
-					bind:value={description}
-					rows="2"
-					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
-					placeholder={$_('libraries.descriptionPlaceholder', { default: 'Optional description' })}
-				></textarea>
-			</div>
+			<FormField
+				id="wizard-ks-description"
+				label={$_('libraries.description', { default: 'Description' })}
+				type="textarea"
+				rows={2}
+				bind:value={description}
+				placeholder={$_('libraries.descriptionPlaceholder', { default: 'Optional description' })}
+				maxlength={500}
+				helper={`${(description || '').length}/500`}
+			/>
 
-			<label class="flex items-start gap-3">
-				<input type="checkbox" bind:checked={isShared} class="mt-1" />
-				<span>
-					<span class="block text-sm font-medium text-gray-700">
-						{$_('knowledge.wizard.ksStep.shareLabel', {
-							default: 'Share with my organization'
+			<Checkbox
+				bind:checked={isShared}
+				label={$_('knowledge.wizard.ksStep.shareLabel', {
+					default: 'Share with my organization'
+				})}
+				description={$_('knowledge.wizard.ksStep.shareHint', {
+					default: 'You can change this later from the Knowledge Store detail view.'
+				})}
+			/>
+
+			<Collapsible
+				bind:open={advancedOpen}
+				label={$_('knowledge.wizard.advancedLabel', { default: 'Advanced settings' })}
+				description={$_('knowledge.wizard.ksStep.advancedLabel', {
+					default: 'Advanced: chunking, embedding vendor/model, vector DB'
+				})}
+			>
+				<div class="space-y-5">
+					<Banner
+						variant="warning"
+						title={$_('knowledge.wizard.lockedConfigNotice.title', {
+							default: 'Some of these settings cannot be changed later.'
 						})}
-					</span>
-					<span class="block text-xs text-gray-500">
-						{$_('knowledge.wizard.ksStep.shareHint', {
-							default: 'You can change this later from the Knowledge Store detail view.'
-						})}
-					</span>
-				</span>
-			</label>
-
-			<!-- Advanced: locked config -->
-			<details bind:open={advancedOpen} class="rounded-md border border-gray-200 bg-white">
-				<summary
-					class="cursor-pointer px-3 py-2 text-sm font-medium text-[#2271b3] select-none hover:underline"
-				>
-					{$_('knowledge.wizard.ksStep.advancedLabel', {
-						default: 'Advanced: chunking, embedding vendor/model, vector DB'
-					})}
-				</summary>
-				<div class="space-y-3 p-3">
-					<!-- Locked notice (preserved from Step6) -->
-					<div
-						class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
-						role="note"
 					>
-						<strong class="font-semibold">
-							{$_('knowledge.wizard.lockedConfigNotice.title', {
-								default: 'Some of these settings cannot be changed later.'
-							})}
-						</strong>
-						<p class="mt-1 text-xs">
+						<p>
 							{$_('knowledge.wizard.lockedConfigNotice.body', {
 								default:
 									'Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created — to change them, create a new Knowledge Store.'
 							})}
 						</p>
-						<p class="mt-1 text-xs">
+						<p class="mt-1">
 							{$_('knowledge.wizard.lockedConfigNotice.paramsBody', {
 								default:
 									'Chunking parameters can be edited later, but changes only apply to newly ingested content — existing chunks keep the parameters they were originally created with.'
 							})}
 						</p>
-					</div>
+					</Banner>
 
 					{#if loadingOptions}
-						<div class="text-sm text-gray-500">
-							{$_('common.loading', { default: 'Loading...' })}
-						</div>
+						<p class="type-body-muted">{$_('common.loading', { default: 'Loading...' })}</p>
 					{:else if optionsUnavailable}
-						<div
-							class="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
-							role="alert"
+						<Banner
+							variant="warning"
+							title={$_('knowledgeStores.options.unavailableTitle', {
+								default: 'Knowledge Store server unavailable'
+							})}
+							description={optionsError}
 						>
-							<p class="font-medium">
-								{$_('knowledgeStores.options.unavailableTitle', {
-									default: 'Knowledge Store server unavailable'
-								})}
-							</p>
-							<p class="text-xs">{optionsError}</p>
-							<button
-								type="button"
-								onclick={retryLoadOptions}
-								class="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
-							>
-								{$_('common.retry', { default: 'Retry' })}
-							</button>
-						</div>
+							{#snippet actions()}
+								<Button variant="secondary" size="sm" onclick={retryLoadOptions}>
+									{$_('common.retry', { default: 'Retry' })}
+								</Button>
+							{/snippet}
+						</Banner>
 					{:else if optionsError}
-						<div
-							class="rounded border border-red-100 bg-red-50 p-3 text-sm text-red-700"
-							role="alert"
-						>
-							{optionsError}
-						</div>
+						<Banner variant="danger" size="sm" description={optionsError} />
 					{:else}
-						<div>
-							<label for="wizard-ks-chunking" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}
-								<span class="text-red-500">*</span>
-							</label>
-							<select
-								id="wizard-ks-chunking"
-								bind:value={chunkingStrategy}
-								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {chunkingStrategy
-									? 'border-gray-300'
-									: 'border-red-500'}"
-							>
-								{#each options.chunking_strategies ?? [] as s (s.name)}
-									<option value={s.name}>{s.name}</option>
-								{/each}
-							</select>
-						</div>
-
-						{#if currentStrategyParams.length > 0}
-							<fieldset class="mt-1 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
-								<legend class="px-1 text-xs font-medium text-gray-700">
-									{$_('knowledge.wizard.ksStep.chunkingParamsLabel', {
-										values: { strategy: chunkingStrategy },
-										default: `${chunkingStrategy} parameters`
+						<!-- ── Chunking sub-section ─────────────────────────────── -->
+						<section class="space-y-3">
+							<h4 class="type-label">
+								{$_('knowledge.wizard.ksStep.chunkingHeading', { default: 'Chunking' })}
+							</h4>
+							<div class="flex items-end gap-2">
+								<div class="flex-1">
+									<FormField
+										id="wizard-ks-chunking"
+										label={$_('knowledge.wizard.step6.chunkingLabel', {
+											default: 'Chunking strategy'
+										})}
+										type="select"
+										bind:value={chunkingStrategy}
+										required
+										options={(options.chunking_strategies ?? []).map((/** @type {any} */ s) => ({
+											value: s.name,
+											label: s.name
+										}))}
+									/>
+								</div>
+								<Tooltip
+									text={$_('knowledge.wizard.lockedAfterCreation', {
+										default: 'Locked after creation'
 									})}
-								</legend>
-								<p class="text-xs text-gray-500">
-									{$_('knowledge.wizard.ksStep.chunkingParamsHint', {
-										default:
-											'Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content ingested after the edit.'
-									})}
-								</p>
-								<PluginParamFields
-									parameters={currentStrategyParams}
-									bind:values={chunkingParams}
-									bind:errors={chunkingParamErrors}
-									idPrefix="wizard-ks-chunking-param"
-								/>
-							</fieldset>
-						{/if}
-
-						<div>
-							<label for="wizard-ks-vendor" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}
-								<span class="text-red-500">*</span>
-							</label>
-							<select
-								id="wizard-ks-vendor"
-								bind:value={embeddingVendor}
-								disabled={hasNoConfiguredVendor}
-								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 {embeddingVendor
-									? 'border-gray-300'
-									: 'border-red-500'}"
-							>
-								{#each options.embedding_vendors ?? [] as v (v.name)}
-									<option value={v.name} disabled={v.api_key_configured === false}>
-										{v.name}{v.api_key_configured === false ? ' — not configured' : ''}
-									</option>
-								{/each}
-							</select>
-							{#if hasNoConfiguredVendor}
-								<p
-									class="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900"
 								>
-									{$_('knowledge.wizard.step6.noVendorConfigured', {
+									<Lock size={14} class="text-text-subtle mb-3" aria-hidden="true" />
+								</Tooltip>
+							</div>
+
+							{#if currentStrategyParams.length > 0}
+								<fieldset class="border-border bg-surface space-y-2 rounded-md border p-3">
+									<legend class="type-label px-1">
+										{$_('knowledge.wizard.ksStep.chunkingParamsLabel', {
+											values: { strategy: chunkingStrategy },
+											default: `${chunkingStrategy} parameters`
+										})}
+									</legend>
+									<p class="type-caption">
+										{$_('knowledge.wizard.ksStep.chunkingParamsHint', {
+											default:
+												'Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content ingested after the edit.'
+										})}
+									</p>
+									<PluginParamFields
+										parameters={currentStrategyParams}
+										bind:values={chunkingParams}
+										bind:errors={chunkingParamErrors}
+										idPrefix="wizard-ks-chunking-param"
+									/>
+								</fieldset>
+							{/if}
+						</section>
+
+						<!-- ── Embedding sub-section ────────────────────────────── -->
+						<section class="space-y-3">
+							<h4 class="type-label">
+								{$_('knowledge.wizard.ksStep.embeddingHeading', { default: 'Embedding' })}
+							</h4>
+							<div class="flex items-end gap-2">
+								<div class="flex-1">
+									<FormField
+										id="wizard-ks-vendor"
+										label={$_('knowledge.wizard.step6.vendorLabel', {
+											default: 'Embedding vendor'
+										})}
+										type="select"
+										bind:value={embeddingVendor}
+										required
+										disabled={hasNoConfiguredVendor}
+										options={(options.embedding_vendors ?? []).map((/** @type {any} */ v) => ({
+											value: v.name,
+											label: `${v.name}${v.api_key_configured === false ? ' — not configured' : ''}`,
+											disabled: v.api_key_configured === false
+										}))}
+									/>
+								</div>
+								<Tooltip
+									text={$_('knowledge.wizard.lockedAfterCreation', {
+										default: 'Locked after creation'
+									})}
+								>
+									<Lock size={14} class="text-text-subtle mb-3" aria-hidden="true" />
+								</Tooltip>
+							</div>
+							{#if hasNoConfiguredVendor}
+								<Banner
+									variant="warning"
+									size="sm"
+									description={$_('knowledge.wizard.step6.noVendorConfigured', {
 										default:
 											'Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.'
 									})}
-								</p>
-							{/if}
-						</div>
-
-						<div>
-							<label for="wizard-ks-model" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}
-								<span class="text-red-500">*</span>
-							</label>
-							{#if availableModels.length > 0}
-								<select
-									id="wizard-ks-model"
-									bind:value={embeddingModel}
-									class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {embeddingModel
-										? 'border-gray-300'
-										: 'border-red-500'}"
-								>
-									{#each availableModels as m (m)}
-										<option value={m}>{m}</option>
-									{/each}
-								</select>
-							{:else}
-								<input
-									type="text"
-									id="wizard-ks-model"
-									bind:value={embeddingModel}
-									placeholder="e.g. text-embedding-3-small"
-									class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {embeddingModel
-										? 'border-gray-300'
-										: 'border-red-500'}"
 								/>
-								{#if !embeddingModel}
-									<p class="mt-1 text-xs text-red-600" role="alert">
-										{$_('knowledge.wizard.step6.modelRequired', {
-											default:
-												'No models returned by the API for this vendor — type a model name to continue.'
-										})}
-									</p>
-								{/if}
 							{/if}
-						</div>
 
-						<div>
-							<label for="wizard-ks-endpoint" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.endpointLabel', {
+							<div class="flex items-end gap-2">
+								<div class="flex-1">
+									{#if availableModels.length > 0}
+										<FormField
+											id="wizard-ks-model"
+											label={$_('knowledge.wizard.step6.modelLabel', {
+												default: 'Embedding model'
+											})}
+											type="select"
+											bind:value={embeddingModel}
+											required
+											options={availableModels.map((/** @type {string} */ m) => ({
+												value: m,
+												label: m
+											}))}
+										/>
+									{:else}
+										<FormField
+											id="wizard-ks-model"
+											label={$_('knowledge.wizard.step6.modelLabel', {
+												default: 'Embedding model'
+											})}
+											type="text"
+											bind:value={embeddingModel}
+											required
+											placeholder="e.g. text-embedding-3-small"
+											error={!embeddingModel
+												? $_('knowledge.wizard.step6.modelRequired', {
+														default:
+															'No models returned by the API for this vendor — type a model name to continue.'
+													})
+												: ''}
+										/>
+									{/if}
+								</div>
+								<Tooltip
+									text={$_('knowledge.wizard.lockedAfterCreation', {
+										default: 'Locked after creation'
+									})}
+								>
+									<Lock size={14} class="text-text-subtle mb-3" aria-hidden="true" />
+								</Tooltip>
+							</div>
+
+							<FormField
+								id="wizard-ks-endpoint"
+								label={$_('knowledge.wizard.step6.endpointLabel', {
 									default: 'Embedding endpoint (optional)'
 								})}
-							</label>
-							<input
 								type="text"
-								id="wizard-ks-endpoint"
 								bind:value={embeddingEndpoint}
 								placeholder="https://..."
-								class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
 							/>
-						</div>
 
-						{#if currentVendorParams.filter((/** @type {any} */ p) => !['model', 'api_endpoint', 'api_key'].includes(p.name)).length > 0}
-							<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
-								<legend class="px-1 text-xs font-medium text-gray-700">
-									{$_('knowledge.wizard.ksStep.embeddingParamsLabel', {
-										values: { vendor: embeddingVendor },
-										default: `${embeddingVendor} parameters`
+							{#if currentVendorParams.filter((/** @type {any} */ p) => !['model', 'api_endpoint', 'api_key'].includes(p.name)).length > 0}
+								<fieldset class="border-border bg-surface space-y-2 rounded-md border p-3">
+									<legend class="type-label px-1">
+										{$_('knowledge.wizard.ksStep.embeddingParamsLabel', {
+											values: { vendor: embeddingVendor },
+											default: `${embeddingVendor} parameters`
+										})}
+									</legend>
+									<PluginParamFields
+										parameters={currentVendorParams}
+										bind:values={embeddingParams}
+										bind:errors={embeddingParamErrors}
+										idPrefix="wizard-ks-embedding-param"
+										exclude={['model', 'api_endpoint', 'api_key']}
+									/>
+								</fieldset>
+							{/if}
+						</section>
+
+						<!-- ── Storage sub-section ──────────────────────────────── -->
+						<section class="space-y-3">
+							<h4 class="type-label">
+								{$_('knowledge.wizard.ksStep.storageHeading', { default: 'Storage' })}
+							</h4>
+							<div class="flex items-end gap-2">
+								<div class="flex-1">
+									<FormField
+										id="wizard-ks-vectordb"
+										label={$_('knowledge.wizard.step6.vectorDbLabel', {
+											default: 'Vector DB'
+										})}
+										type="select"
+										bind:value={vectorDb}
+										required
+										options={(options.vector_db_backends ?? []).map((/** @type {any} */ b) => ({
+											value: b.name,
+											label: b.name
+										}))}
+									/>
+								</div>
+								<Tooltip
+									text={$_('knowledge.wizard.lockedAfterCreation', {
+										default: 'Locked after creation'
 									})}
-								</legend>
-								<PluginParamFields
-									parameters={currentVendorParams}
-									bind:values={embeddingParams}
-									bind:errors={embeddingParamErrors}
-									idPrefix="wizard-ks-embedding-param"
-									exclude={['model', 'api_endpoint', 'api_key']}
-								/>
-							</fieldset>
-						{/if}
+								>
+									<Lock size={14} class="text-text-subtle mb-3" aria-hidden="true" />
+								</Tooltip>
+							</div>
 
-						<div>
-							<label for="wizard-ks-vectordb" class="block text-sm font-medium text-gray-700">
-								{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
-								<span class="text-red-500">*</span>
-							</label>
-							<select
-								id="wizard-ks-vectordb"
-								bind:value={vectorDb}
-								class="mt-1 block w-full rounded-md border px-3 py-2 text-sm {vectorDb
-									? 'border-gray-300'
-									: 'border-red-500'}"
-							>
-								{#each options.vector_db_backends ?? [] as b (b.name)}
-									<option value={b.name}>{b.name}</option>
-								{/each}
-							</select>
-						</div>
-
-						{#if currentBackendParams.length > 0}
-							<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
-								<legend class="px-1 text-xs font-medium text-gray-700">
-									{$_('knowledge.wizard.ksStep.vectorDbParamsLabel', {
-										values: { backend: vectorDb },
-										default: `${vectorDb} parameters`
-									})}
-								</legend>
-								<PluginParamFields
-									parameters={currentBackendParams}
-									bind:values={vectorDbParams}
-									bind:errors={vectorDbParamErrors}
-									idPrefix="wizard-ks-vectordb-param"
-								/>
-							</fieldset>
-						{/if}
+							{#if currentBackendParams.length > 0}
+								<fieldset class="border-border bg-surface space-y-2 rounded-md border p-3">
+									<legend class="type-label px-1">
+										{$_('knowledge.wizard.ksStep.vectorDbParamsLabel', {
+											values: { backend: vectorDb },
+											default: `${vectorDb} parameters`
+										})}
+									</legend>
+									<PluginParamFields
+										parameters={currentBackendParams}
+										bind:values={vectorDbParams}
+										bind:errors={vectorDbParamErrors}
+										idPrefix="wizard-ks-vectordb-param"
+									/>
+								</fieldset>
+							{/if}
+						</section>
 					{/if}
 				</div>
-			</details>
+			</Collapsible>
 		</div>
 	{/if}
 </div>

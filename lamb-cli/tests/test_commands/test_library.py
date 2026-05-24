@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
 
 from lamb_cli.main import app
@@ -143,9 +141,7 @@ class TestLibraryList:
 class TestLibraryCreate:
     def test_create_with_description(self, httpx_mock, mock_token):
         httpx_mock.add_response(json={"id": "lib-new", "name": "New Lib", "description": "desc"})
-        result = runner.invoke(
-            app, ["library", "create", "New Lib", "--description", "desc"]
-        )
+        result = runner.invoke(app, ["library", "create", "New Lib", "--description", "desc"])
         assert result.exit_code == 0
         req = httpx_mock.get_request()
         body = json.loads(req.content)
@@ -227,7 +223,7 @@ class TestLibraryShare:
 
 
 # ---------------------------------------------------------------------------
-# upload / import-url / import-youtube
+# upload / import-url / import-youtube (deprecation shim)
 # ---------------------------------------------------------------------------
 
 
@@ -262,9 +258,7 @@ class TestLibraryUpload:
         # 2) first poll: processing
         httpx_mock.add_response(json={"status": "processing"})
         # 3) second poll: ready
-        httpx_mock.add_response(
-            json={"status": "ready", "page_count": 1}
-        )
+        httpx_mock.add_response(json={"status": "ready", "page_count": 1})
         with patch("lamb_cli.commands.library.time.sleep", return_value=None):
             result = runner.invoke(
                 app,
@@ -282,9 +276,7 @@ class TestLibraryUpload:
         # we expect exactly 3 requests (upload + 2 polls)
         assert len(httpx_mock.get_requests()) == 3
 
-    def test_upload_plugin_mismatch_passes_through(
-        self, httpx_mock, mock_token, tmp_path
-    ):
+    def test_upload_plugin_mismatch_passes_through(self, httpx_mock, mock_token, tmp_path):
         """Plugin name `simple` (vs `simple_import`) — the CLI passes whatever
         name is given; the server returns 400. Verify CLI surfaces the error."""
         f = tmp_path / "x.txt"
@@ -307,9 +299,7 @@ class TestLibraryUpload:
         assert result.exit_code != 0
 
     def test_upload_file_not_found(self, mock_token):
-        result = runner.invoke(
-            app, ["library", "upload", "lib-1", "/nonexistent/file.pdf"]
-        )
+        result = runner.invoke(app, ["library", "upload", "lib-1", "/nonexistent/file.pdf"])
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
 
@@ -336,9 +326,7 @@ class TestLibraryImportUrl:
         assert "/creator/libraries/lib-1/import-url" in str(req.url)
 
     def test_import_url_invalid_url_returns_400(self, httpx_mock, mock_token):
-        httpx_mock.add_response(
-            status_code=400, json={"detail": "Invalid URL"}
-        )
+        httpx_mock.add_response(status_code=400, json={"detail": "Invalid URL"})
         result = runner.invoke(
             app,
             ["library", "import-url", "lib-1", "--url", "not-a-url"],
@@ -366,9 +354,40 @@ class TestLibraryImportUrl:
         assert len(httpx_mock.get_requests()) == 2
 
 
-class TestLibraryImportYoutube:
-    def test_import_youtube_success(self, httpx_mock, mock_token):
-        httpx_mock.add_response(json={"item_id": "item-yt-1"})
+class TestLibraryImportYoutubeDeprecated:
+    """The dedicated ``import-youtube`` subcommand has been removed in favor
+    of the generic ``lamb library import-url --plugin <name> --url <url>``
+    flow. A thin shim remains so existing users get a clear pointer instead
+    of a bare 'no such command' error; it must exit with code 2 and must
+    never reach plugin-specific logic (no HTTP requests issued).
+    """
+
+    # Rich may wrap long lines when output goes through a terminal; collapse
+    # whitespace before substring checks so the assertion survives wrapping.
+    EXPECTED_FRAGMENTS = (
+        "The 'import-youtube' subcommand has been removed.",
+        "Use: lamb library import-url <library-id> --plugin youtube_transcript_import --url <youtube-url>",
+        "Discover available plugins with: lamb library plugins",
+    )
+
+    def _assert_shim_output(self, result) -> None:
+        import re
+
+        assert result.exit_code == 2
+        combined = (result.output or "") + (result.stderr or "")
+        normalized = re.sub(r"\s+", " ", combined)
+        for fragment in self.EXPECTED_FRAGMENTS:
+            assert fragment in normalized, (
+                f"missing fragment: {fragment!r}\nnormalized: {normalized!r}"
+            )
+
+    def test_import_youtube_shim_no_args(self, mock_token):
+        result = runner.invoke(app, ["library", "import-youtube"])
+        self._assert_shim_output(result)
+
+    def test_import_youtube_shim_with_legacy_args_issues_no_request(self, httpx_mock, mock_token):
+        # The shim must not touch the network even when called with the
+        # legacy arg shape — otherwise httpx_mock would record a request.
         result = runner.invoke(
             app,
             [
@@ -376,34 +395,12 @@ class TestLibraryImportYoutube:
                 "import-youtube",
                 "lib-1",
                 "--url",
-                "https://youtube.com/watch?v=abc",
+                "https://youtu.be/abc",
+                "--wait",
             ],
         )
-        assert result.exit_code == 0
-        req = httpx_mock.get_request()
-        body = json.loads(req.content)
-        assert body["video_url"] == "https://youtube.com/watch?v=abc"
-        assert body["plugin_name"] == "youtube_transcript_import"
-        assert body["language"] == "en"
-
-    def test_import_youtube_with_wait(self, httpx_mock, mock_token):
-        httpx_mock.add_response(json={"item_id": "item-yt-2"})
-        httpx_mock.add_response(json={"status": "ready", "page_count": 1})
-        with patch("lamb_cli.commands.library.time.sleep", return_value=None):
-            result = runner.invoke(
-                app,
-                [
-                    "library",
-                    "import-youtube",
-                    "lib-1",
-                    "--url",
-                    "https://youtube.com/watch?v=xyz",
-                    "--wait",
-                    "--max-wait",
-                    "5",
-                ],
-            )
-        assert result.exit_code == 0
+        self._assert_shim_output(result)
+        assert httpx_mock.get_requests() == []
 
 
 # ---------------------------------------------------------------------------
@@ -436,9 +433,7 @@ class TestLibraryItems:
 
     def test_items_with_offset(self, httpx_mock, mock_token):
         httpx_mock.add_response(json={"items": []})
-        result = runner.invoke(
-            app, ["library", "items", "lib-1", "--offset", "20"]
-        )
+        result = runner.invoke(app, ["library", "items", "lib-1", "--offset", "20"])
         assert result.exit_code == 0
         req = httpx_mock.get_request()
         assert "offset=20" in str(req.url)
@@ -453,9 +448,7 @@ class TestLibraryItem:
 
     def test_item_json(self, httpx_mock, mock_token):
         httpx_mock.add_response(json=SAMPLE_ITEM_DETAIL)
-        result = runner.invoke(
-            app, ["library", "item", "lib-1", "item-1", "-o", "json"]
-        )
+        result = runner.invoke(app, ["library", "item", "lib-1", "item-1", "-o", "json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["id"] == "item-1"
@@ -469,18 +462,14 @@ class TestLibraryItem:
 class TestLibraryDeleteItem:
     def test_delete_item_with_confirm(self, httpx_mock, mock_token):
         httpx_mock.add_response(json={"message": "Item deleted."})
-        result = runner.invoke(
-            app, ["library", "delete-item", "lib-1", "item-1", "-y"]
-        )
+        result = runner.invoke(app, ["library", "delete-item", "lib-1", "item-1", "-y"])
         assert result.exit_code == 0
         req = httpx_mock.get_request()
         assert req.method == "DELETE"
         assert "/creator/libraries/lib-1/items/item-1" in str(req.url)
 
     def test_delete_item_rejected(self, mock_token):
-        result = runner.invoke(
-            app, ["library", "delete-item", "lib-1", "item-1"], input="n\n"
-        )
+        result = runner.invoke(app, ["library", "delete-item", "lib-1", "item-1"], input="n\n")
         assert result.exit_code != 0
 
 
@@ -512,9 +501,7 @@ class TestLibraryImportConfig:
     def test_show_import_config(self, httpx_mock, mock_token):
         cfg = {"image_descriptions": "basic", "max_discovery_depth": 2}
         httpx_mock.add_response(json=cfg)
-        result = runner.invoke(
-            app, ["library", "import-config", "lib-1", "-o", "json"]
-        )
+        result = runner.invoke(app, ["library", "import-config", "lib-1", "-o", "json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["image_descriptions"] == "basic"
@@ -548,9 +535,7 @@ class TestLibraryImportConfig:
         assert body["max_discovery_depth"] == 3
 
     def test_set_import_config_no_options_errors(self, mock_token):
-        result = runner.invoke(
-            app, ["library", "set-import-config", "lib-1"]
-        )
+        result = runner.invoke(app, ["library", "set-import-config", "lib-1"])
         assert result.exit_code == 1
 
 
@@ -613,9 +598,7 @@ class TestLibraryFR10:
     (FR-10). The CLI must surface the blocking KS list, not a bare
     'API error (409)' that hides which KS is holding the item."""
 
-    def test_delete_item_returns_409_lists_blocking_kses(
-        self, httpx_mock, mock_token
-    ):
+    def test_delete_item_returns_409_lists_blocking_kses(self, httpx_mock, mock_token):
         httpx_mock.add_response(
             status_code=409,
             json={
@@ -626,9 +609,7 @@ class TestLibraryFR10:
                 ],
             },
         )
-        result = runner.invoke(
-            app, ["library", "delete-item", "lib-1", "item-1", "-y"]
-        )
+        result = runner.invoke(app, ["library", "delete-item", "lib-1", "item-1", "-y"])
         from lamb_cli.errors import ApiError
 
         assert result.exit_code != 0
@@ -641,9 +622,7 @@ class TestLibraryFR10:
         # Hint at the recovery path
         assert "remove-content" in out
 
-    def test_delete_library_returns_409_when_items_linked(
-        self, httpx_mock, mock_token
-    ):
+    def test_delete_library_returns_409_when_items_linked(self, httpx_mock, mock_token):
         httpx_mock.add_response(
             status_code=409,
             json={
@@ -658,17 +637,11 @@ class TestLibraryFR10:
         assert "ks-3" in result.output
         assert "Big KS" in result.output
 
-    def test_delete_item_without_blocking_list_still_errors(
-        self, httpx_mock, mock_token
-    ):
+    def test_delete_item_without_blocking_list_still_errors(self, httpx_mock, mock_token):
         """Tolerate older-format 409s that don't include the structured field
         — fall back to the generic error path without crashing."""
-        httpx_mock.add_response(
-            status_code=409, json={"detail": "Conflict"}
-        )
-        result = runner.invoke(
-            app, ["library", "delete-item", "lib-1", "item-1", "-y"]
-        )
+        httpx_mock.add_response(status_code=409, json={"detail": "Conflict"})
+        result = runner.invoke(app, ["library", "delete-item", "lib-1", "item-1", "-y"])
         assert result.exit_code != 0
 
 
@@ -676,12 +649,8 @@ class TestLibraryBackendErrors:
     """Backend status codes must propagate as non-zero exits, never as
     Python tracebacks."""
 
-    def test_upload_returns_413_payload_too_large(
-        self, httpx_mock, mock_token, tmp_path
-    ):
-        httpx_mock.add_response(
-            status_code=413, json={"detail": "File exceeds 50MB limit"}
-        )
+    def test_upload_returns_413_payload_too_large(self, httpx_mock, mock_token, tmp_path):
+        httpx_mock.add_response(status_code=413, json={"detail": "File exceeds 50MB limit"})
         f = tmp_path / "big.bin"
         f.write_bytes(b"x" * 100)
         result = runner.invoke(
@@ -689,9 +658,7 @@ class TestLibraryBackendErrors:
         )
         assert result.exit_code != 0
 
-    def test_upload_returns_415_unsupported_filetype(
-        self, httpx_mock, mock_token, tmp_path
-    ):
+    def test_upload_returns_415_unsupported_filetype(self, httpx_mock, mock_token, tmp_path):
         httpx_mock.add_response(
             status_code=415,
             json={"detail": "Plugin simple_import does not support .exe"},
@@ -703,12 +670,8 @@ class TestLibraryBackendErrors:
         )
         assert result.exit_code != 0
 
-    def test_import_url_returns_502_for_unreachable_target(
-        self, httpx_mock, mock_token
-    ):
-        httpx_mock.add_response(
-            status_code=502, json={"detail": "Bad gateway: target unreachable"}
-        )
+    def test_import_url_returns_502_for_unreachable_target(self, httpx_mock, mock_token):
+        httpx_mock.add_response(status_code=502, json={"detail": "Bad gateway: target unreachable"})
         result = runner.invoke(
             app,
             [
@@ -721,13 +684,10 @@ class TestLibraryBackendErrors:
         )
         assert result.exit_code != 0
 
-    def test_import_youtube_returns_404_no_captions(
-        self, httpx_mock, mock_token
-    ):
-        httpx_mock.add_response(
-            status_code=404,
-            json={"detail": "No captions available for this video"},
-        )
+    def test_import_youtube_subcommand_is_removed(self, httpx_mock, mock_token):
+        # The error paths formerly covered by import-youtube (e.g. 404 "no
+        # captions") now live behind the generic import flow. Here we only
+        # assert the shim refuses to issue any backend call.
         result = runner.invoke(
             app,
             [
@@ -738,14 +698,10 @@ class TestLibraryBackendErrors:
                 "https://youtu.be/no-captions",
             ],
         )
-        from lamb_cli.errors import NotFoundError
+        assert result.exit_code == 2
+        assert httpx_mock.get_requests() == []
 
-        assert result.exit_code != 0
-        assert isinstance(result.exception, NotFoundError)
-
-    def test_items_handles_missing_optional_fields(
-        self, httpx_mock, mock_token
-    ):
+    def test_items_handles_missing_optional_fields(self, httpx_mock, mock_token):
         """An item with no page_count/image_count must not break table render."""
         httpx_mock.add_response(
             json={
@@ -770,9 +726,7 @@ class TestLibraryPolling:
     """Symmetric to TestKsPollingBackoff — same hardcoded schedule lives in
     library.py at lines ~42 and ~61. This locks it down."""
 
-    def test_upload_wait_uses_documented_backoff(
-        self, httpx_mock, mock_token, tmp_path
-    ):
+    def test_upload_wait_uses_documented_backoff(self, httpx_mock, mock_token, tmp_path):
         f = tmp_path / "doc.md"
         f.write_text("# Hello")
         # 1 upload + 5 in_progress + 1 ready
@@ -801,9 +755,7 @@ class TestLibraryPolling:
         assert result.exit_code == 0
         assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0]
 
-    def test_upload_wait_caps_at_16_seconds(
-        self, httpx_mock, mock_token, tmp_path
-    ):
+    def test_upload_wait_caps_at_16_seconds(self, httpx_mock, mock_token, tmp_path):
         f = tmp_path / "doc.md"
         f.write_text("# Hello")
         httpx_mock.add_response(json={"item_id": "item-1"})
@@ -836,9 +788,7 @@ class TestLibraryPolling:
 
 
 class TestLibraryResilience:
-    def test_upload_path_does_not_exist_no_http_call(
-        self, httpx_mock, mock_token
-    ):
+    def test_upload_path_does_not_exist_no_http_call(self, httpx_mock, mock_token):
         """Filesystem check must run BEFORE any network call."""
         result = runner.invoke(
             app,
@@ -855,14 +805,10 @@ class TestLibraryResilience:
         # No HTTP call must have happened — pre-flight check rejected it.
         assert len(httpx_mock.get_requests()) == 0
 
-    def test_command_with_expired_token_errors_clearly(
-        self, httpx_mock, mock_token
-    ):
+    def test_command_with_expired_token_errors_clearly(self, httpx_mock, mock_token):
         """401 from backend must come back as AuthenticationError so the
         global handler points users at 'lamb login'."""
-        httpx_mock.add_response(
-            status_code=401, json={"detail": "Token expired"}
-        )
+        httpx_mock.add_response(status_code=401, json={"detail": "Token expired"})
         result = runner.invoke(app, ["library", "list"])
         from lamb_cli.errors import AuthenticationError
 
@@ -885,9 +831,7 @@ class TestLibraryResilience:
         assert result.exit_code != 0
         assert isinstance(result.exception, NetworkError)
 
-    def test_create_with_unicode_description_round_trips(
-        self, httpx_mock, mock_token
-    ):
+    def test_create_with_unicode_description_round_trips(self, httpx_mock, mock_token):
         """Library names/descriptions with non-ASCII must survive the request
         body — guards against future ascii-escape regressions."""
         httpx_mock.add_response(
@@ -912,9 +856,7 @@ class TestLibraryResilience:
         assert body["name"] == "Curso de Cálculo — Δ"
         assert body["description"] == "Material original"
 
-    def test_items_pagination_offset_passes_through(
-        self, httpx_mock, mock_token
-    ):
+    def test_items_pagination_offset_passes_through(self, httpx_mock, mock_token):
         """--offset and --limit must reach the backend as query params."""
         httpx_mock.add_response(json={"items": []})
         result = runner.invoke(
@@ -953,17 +895,13 @@ class TestItemContent:
             headers={"content-type": "text/plain"},
         )
 
-        result = runner.invoke(
-            app, ["library", "item-content", "L1", "I1", "--format", "text"]
-        )
+        result = runner.invoke(app, ["library", "item-content", "L1", "I1", "--format", "text"])
 
         assert result.exit_code == 0
         assert "plain text body" in result.output
 
     def test_invalid_format_exits_with_2(self, mock_token, mock_server_url):
-        result = runner.invoke(
-            app, ["library", "item-content", "L1", "I1", "--format", "html"]
-        )
+        result = runner.invoke(app, ["library", "item-content", "L1", "I1", "--format", "html"])
 
         assert result.exit_code == 2
         assert "Invalid format" in result.output

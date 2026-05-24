@@ -101,46 +101,56 @@ app.include_router(jobs.router)
 
 
 # --- Plugin discovery ---
-def _discover_plugins() -> None:
-    """Import all plugin modules so they self-register.
+def _discover_plugins(package: str = "plugins") -> None:
+    """Auto-discover and import every plugin module under ``package``.
 
-    Each plugin module is imported inside a try/except so a missing optional
+    Recursively walks the package's filesystem path with ``pkgutil.iter_modules``
+    so plugins organised into category subpackages
+    (``plugins/vector_db/``, ``plugins/chunking/``, ``plugins/embedding/``,
+    and any future categories) are loaded with zero code changes here — drop
+    a new ``.py`` file in any of these folders and it is picked up at startup.
+
+    Each module is imported inside its own try/except: a missing optional
     dependency (e.g. ``qdrant-client``, ``sentence-transformers``) only
-    disables that particular plugin instead of preventing startup.
+    disables that single plugin instead of blocking startup. Plugins whose
+    category+name env var is set to ``DISABLE`` are skipped at registration
+    time by the registry decorator regardless of import success.
 
-    Plugins whose category+name env var is set to ``DISABLE`` are skipped
-    at registration time regardless of whether their deps are importable.
+    Skipped names:
+      - ``base`` — abstract base module, not a plugin.
+      - Anything starting with ``_`` — private helpers (e.g. ``_common``).
     """
-    _plugin_modules = [
-        # Vector DB backends
-        "plugins.vector_db.chromadb_backend",
-        "plugins.vector_db.qdrant_backend",
-        # Chunking strategies
-        "plugins.chunking.simple",
-        "plugins.chunking.hierarchical",
-        "plugins.chunking.by_page",
-        "plugins.chunking.by_section",
-        # Embedding vendors
-        "plugins.embedding.openai",
-        "plugins.embedding.ollama",
-        "plugins.embedding.local",
-    ]
     import importlib  # noqa: PLC0415
+    import pkgutil  # noqa: PLC0415
 
-    loaded: list[str] = []
+    try:
+        pkg = importlib.import_module(package)
+    except Exception:
+        logger.exception("Plugin package '%s' could not be imported.", package)
+        return
+
     failed: list[tuple[str, str]] = []
 
-    for module_name in _plugin_modules:
+    for _finder, name, is_pkg in pkgutil.iter_modules(pkg.__path__, pkg.__name__ + "."):
+        short_name = name.rsplit(".", 1)[-1]
+        if short_name.startswith("_") or short_name == "base":
+            continue
+        if is_pkg:
+            _discover_plugins(name)
+            continue
         try:
-            importlib.import_module(module_name)
-            loaded.append(module_name)
+            importlib.import_module(name)
         except Exception as exc:  # noqa: BLE001 — best-effort plugin discovery
-            failed.append((module_name, f"{type(exc).__name__}: {exc}"))
+            failed.append((name, f"{type(exc).__name__}: {exc}"))
             logger.warning(
                 "Failed to load plugin module '%s' — skipping.",
-                module_name,
+                name,
                 exc_info=True,
             )
+
+    # Only emit the load summary at the top-level call site.
+    if package != "plugins":
+        return
 
     from plugins.base import (  # noqa: PLC0415
         ChunkingRegistry,

@@ -314,7 +314,9 @@
 		"publicate": "Publish",
 		"export": "Export",
 		"exporting": "Exporting...",
-		"retry": "Retry"
+		"retry": "Retry",
+		"remove": "Remove",
+		"cannotBeUndone": "This action cannot be undone."
 	},
 	"list": {
 		"searchPlaceholder": "Search...",
@@ -892,6 +894,65 @@
 		}
 	},
 	"libraries": {
+		"editDescription": "Edit description",
+		"addDescription": "Add description",
+		"fileTree": {
+			"openTitle": "Open file tree",
+			"detailButton": "View file tree",
+			"modalTitle": "{libraryName} — File tree",
+			"treeAriaLabel": "Files in {libraryName}",
+			"searchPlaceholder": "Search by name…",
+			"empty": "This library is empty.",
+			"emptyHint": "Add content from the library page, then organize it here.",
+			"emptyCreateFolder": "Create folder",
+			"uploadHereLabel": "Upload to:",
+			"uploadHereRoot": "Root",
+			"uploadBtn": "Upload",
+			"createFolderBtn": "New folder",
+			"newFolderPlaceholder": "New folder name",
+			"selectionCount": "{count} selected",
+			"multiSelected": "{count} items selected",
+			"moveToBtn": "Move to…",
+			"deleteBtn": "Delete",
+			"placeholder": "Select an item to preview",
+			"noSelectionTitle": "Nothing selected",
+			"noSelectionDesc": "Pick a folder or item from the tree to preview it here.",
+			"multiSelectedHint": "Use Move to… or drag the selection into a folder.",
+			"folderLabel": "Folder",
+			"headerItemSingular": "item",
+			"headerItemPlural": "items",
+			"headerFolderSingular": "top-level folder",
+			"headerFolderPlural": "top-level folders",
+			"searchClear": "Clear search",
+			"rootDropZone": "Drop here to move to root",
+			"expandFolder": "Expand folder",
+			"collapseFolder": "Collapse folder",
+			"stats": {
+				"items": "Items",
+				"subfolders": "Subfolders"
+			},
+			"folders": {
+				"create": "Create subfolder",
+				"rename": "Rename",
+				"delete": "Delete folder",
+				"moveTo": "Move to…",
+				"deleteConfirmTitle": "Delete folder",
+				"deleteConfirmMsg": "Delete \"{name}\"? Items inside will move to the parent folder. This cannot be undone."
+			},
+			"moveToPicker": {
+				"title": "Move to folder",
+				"rootOption": "Library root"
+			},
+			"errors": {
+				"cycleNotAllowed": "A folder cannot be moved into itself or one of its subfolders.",
+				"deleteBlockedByKS": "This item is referenced by one or more Knowledge Stores. Remove it from each before deleting.",
+				"loadFailed": "Failed to load the file tree.",
+				"moveFailed": "Could not move the selection.",
+				"uploadFailed": "Upload failed.",
+				"importFailed": "Import failed for this item. No content is available.",
+				"notReady": "This item is still being processed. Try again in a moment."
+			}
+		},
 		"title": "Libraries",
 		"pageTitle": "Libraries",
 		"pageDescription": "Manage your document libraries.",
@@ -962,15 +1023,25 @@
 			"nameRequired": "Name is required",
 			"nameTooLong": "Name must be less than 100 characters"
 		},
+		"empty": {
+			"title": "No libraries yet",
+			"description": "Create one to start importing content."
+		},
+		"addContent": {
+			"title": "Add content"
+		},
+		"capabilities": {
+			"imageLoadFailed": "Couldn't load this image. It may have been removed."
+		},
 		"deleteModal": {
 			"title": "Delete Library",
-			"message": "Are you sure? All content will be permanently removed.",
+			"message": "Delete library \"{name}\"? This action cannot be undone. All items inside will be permanently removed.",
 			"confirm": "Delete"
 		},
 		"deleteItemModal": {
 			"title": "Delete Item",
 			"blockedTitle": "Cannot delete — in use",
-			"message": "Are you sure you want to delete this item?",
+			"message": "Delete \"{title}\"? This action cannot be undone.",
 			"confirm": "Delete",
 			"blockedMessage": "This item is referenced by one or more Knowledge Stores. Remove it from each before deleting."
 		},
@@ -1064,8 +1135,19 @@
 		},
 		"deleteModal": {
 			"title": "Delete Knowledge Store",
-			"message": "Are you sure you want to delete this Knowledge Store? All vectors will be permanently removed. The library items will not be affected.",
+			"message": "Delete Knowledge Store \"{name}\"? This action cannot be undone. All vectors will be permanently removed. The library items linked to it will not be affected.",
 			"confirm": "Delete"
+		},
+		"empty": {
+			"title": "No Knowledge Stores yet",
+			"description": "Create one to start indexing library content.",
+			"badge": "Empty"
+		},
+		"ingestionProgress": {
+			"itemsIngested": "items ingested",
+			"runInBackground": "Run in background",
+			"retry": "Retry ingestion",
+			"backgroundToast": "Ingestion continues in the background. Track progress on the Knowledge Store page."
 		},
 		"removeModal": {
 			"title": "Remove from Knowledge Store",
@@ -1101,6 +1183,13 @@
 			"abort": "Abort",
 			"useExisting": "Use an existing",
 			"createNew": "Create new",
+			"advancedLabel": "Advanced settings",
+			"editStep": "Edit this step",
+			"lockedAfterCreation": "Locked after creation",
+			"ksContent": {
+				"fromLibrary": "From this library",
+				"newUploads": "New uploads in this wizard"
+			},
 			"lockedConfigNotice": {
 				"title": "These settings cannot be changed later.",
 				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store."
@@ -1195,7 +1284,8 @@
 				"description": "Your Library and Knowledge Store are ready. Ingestion runs in the background — you can check progress on the Knowledge Store page.",
 				"openKs": "Open Knowledge Store",
 				"openLibrary": "Open Library",
-				"createAnother": "Create another"
+				"createAnother": "Create another",
+				"toast": "Knowledge Store created."
 			},
 			"stepProgress": "Step {n} of {total}",
 			"creating": "Creating...",

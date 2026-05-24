@@ -17,6 +17,7 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,13 @@ class UrlImportPlugin(LibraryImportPlugin):
     name = "url_import"
     description = "Import web pages as Markdown (Firecrawl if configured, direct fetch otherwise)."
     supported_source_types = {"url"}
-    supported_file_types: set[str] = set()
     required_keys: list[str] = []  # Firecrawl is optional; direct fetch is the fallback.
+    # Firecrawl/markitdown produce markdown text only; no per-page or image
+    # files are written by either backend.
+    produces_capabilities = [Capability.TEXT]
+    # URL-based plugin — no local file extension match.
+    file_extensions: list[str] = []
+    human_label = "Import a webpage URL"
 
     def import_content(
         self,
@@ -92,6 +98,7 @@ class UrlImportPlugin(LibraryImportPlugin):
         t0 = time.monotonic()
         try:
             from firecrawl.v2.types import ScrapeOptions  # noqa: PLC0415
+
             app = FirecrawlApp(api_key=api_key, api_url=api_url)
             crawl_result = app.crawl(
                 url,
@@ -133,11 +140,7 @@ class UrlImportPlugin(LibraryImportPlugin):
                 page_md = doc.markdown or ""
                 meta = getattr(doc, "metadata", None)
                 if meta is not None and not isinstance(meta, dict):
-                    page_url = (
-                        getattr(meta, "url", "")
-                        or getattr(meta, "source_url", "")
-                        or ""
-                    )
+                    page_url = getattr(meta, "url", "") or getattr(meta, "source_url", "") or ""
                     page_title = getattr(meta, "title", "") or ""
                 elif isinstance(meta, dict):
                     page_url = meta.get("sourceURL", "") or meta.get("source_url", "")
@@ -181,7 +184,9 @@ class UrlImportPlugin(LibraryImportPlugin):
         }
 
         self.report_progress(kwargs, 3, 3, "Import complete.")
-        return ImportResult(full_text=full_text, pages=[], images=[], metadata=metadata, source_ref=source_ref)
+        return ImportResult(
+            full_text=full_text, pages=[], images=[], metadata=metadata, source_ref=source_ref
+        )
 
     # ------------------------------------------------------------------
     # Direct fetch path (single-page, no external service)
@@ -231,7 +236,9 @@ class UrlImportPlugin(LibraryImportPlugin):
         }
 
         self.report_progress(kwargs, 2, 2, "Import complete.")
-        return ImportResult(full_text=full_text, pages=[], images=[], metadata=metadata, source_ref=source_ref)
+        return ImportResult(
+            full_text=full_text, pages=[], images=[], metadata=metadata, source_ref=source_ref
+        )
 
     def get_parameters(self) -> list[PluginParameter]:
         """Return configurable parameters for URL crawling.

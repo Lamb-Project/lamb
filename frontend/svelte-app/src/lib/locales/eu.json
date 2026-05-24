@@ -314,7 +314,9 @@
 		"publicate": "Argitaratu",
 		"export": "Esportatu",
 		"exporting": "Esportatzen...",
-		"retry": "Berriro saiatu"
+		"retry": "Berriro saiatu",
+		"remove": "Kendu",
+		"cannotBeUndone": "Ekintza hau ezin da desegin."
 	},
 	"list": {
 		"searchPlaceholder": "Bilatu...",
@@ -892,6 +894,65 @@
 		}
 	},
 	"libraries": {
+		"editDescription": "Editatu deskribapena",
+		"addDescription": "Gehitu deskribapena",
+		"fileTree": {
+			"openTitle": "Ireki fitxategi-zuhaitza",
+			"detailButton": "Ikusi fitxategi-zuhaitza",
+			"modalTitle": "{libraryName} — Fitxategi-zuhaitza",
+			"treeAriaLabel": "Fitxategiak: {libraryName}",
+			"searchPlaceholder": "Bilatu izenez…",
+			"empty": "Liburutegi hau hutsik dago.",
+			"emptyHint": "Gehitu edukia liburutegiaren orritik eta antolatu hemen ondoren.",
+			"emptyCreateFolder": "Sortu karpeta",
+			"uploadHereLabel": "Igo hona:",
+			"uploadHereRoot": "Erroa",
+			"uploadBtn": "Igo",
+			"createFolderBtn": "Karpeta berria",
+			"newFolderPlaceholder": "Karpeta berriaren izena",
+			"selectionCount": "{count} hautatuta",
+			"multiSelected": "{count} elementu hautatuta",
+			"moveToBtn": "Mugitu hona…",
+			"deleteBtn": "Ezabatu",
+			"placeholder": "Hautatu elementu bat aurrebista ikusteko",
+			"noSelectionTitle": "Ezer ez dago hautatuta",
+			"noSelectionDesc": "Hautatu zuhaitzeko karpeta edo elementu bat hemen aurrebista ikusteko.",
+			"multiSelectedHint": "Erabili Mugitu hona… edo arrastatu hautapena karpeta batera.",
+			"folderLabel": "Karpeta",
+			"headerItemSingular": "elementu",
+			"headerItemPlural": "elementu",
+			"headerFolderSingular": "goi-mailako karpeta",
+			"headerFolderPlural": "goi-mailako karpeta",
+			"searchClear": "Garbitu bilaketa",
+			"rootDropZone": "Jaregin hemen erroa mugitzeko",
+			"expandFolder": "Zabaldu karpeta",
+			"collapseFolder": "Tolestu karpeta",
+			"stats": {
+				"items": "Elementuak",
+				"subfolders": "Azpikarpetak"
+			},
+			"folders": {
+				"create": "Sortu azpikarpeta",
+				"rename": "Berrizendatu",
+				"delete": "Ezabatu karpeta",
+				"moveTo": "Mugitu hona…",
+				"deleteConfirmTitle": "Ezabatu karpeta",
+				"deleteConfirmMsg": "Ezabatu \"{name}\"? Barneko elementuak guraso-karpetara joango dira. Ezin da desegin."
+			},
+			"moveToPicker": {
+				"title": "Mugitu karpeta batera",
+				"rootOption": "Liburutegiaren erroa"
+			},
+			"errors": {
+				"cycleNotAllowed": "Karpeta bat ezin da bere baitan edo bere azpikarpetan mugitu.",
+				"deleteBlockedByKS": "Elementu hau Ezagutza Biltegi batek edo gehiagok aipatzen du. Kendu bakoitzetik aurretik.",
+				"loadFailed": "Ezin izan da fitxategi-zuhaitza kargatu.",
+				"moveFailed": "Ezin izan da hautapena mugitu.",
+				"uploadFailed": "Igotzeak huts egin du.",
+				"importFailed": "Inportazioak huts egin du elementu honetan. Ez dago edukirik eskuragarri.",
+				"notReady": "Elementu hau oraindik prozesatzen ari da. Saiatu berriro une batean."
+			}
+		},
 		"title": "Liburutegiak",
 		"pageTitle": "Liburutegiak",
 		"pageDescription": "Kudeatu zure dokumentu liburutegiak.",
@@ -962,15 +1023,25 @@
 			"nameRequired": "Izena beharrezkoa da",
 			"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu"
 		},
+		"empty": {
+			"title": "Oraindik ez dago liburutegirik",
+			"description": "Sortu bat edukia inportatzen hasteko."
+		},
+		"addContent": {
+			"title": "Gehitu edukia"
+		},
+		"capabilities": {
+			"imageLoadFailed": "Ezin izan da irudi hau kargatu. Beharbada kendu egin da."
+		},
 		"deleteModal": {
 			"title": "Liburutegia Ezabatu",
-			"message": "Ziur zaude? Eduki guztia betirako ezabatuko da.",
+			"message": "Ezabatu \"{name}\" liburutegia? Ekintza hau ezin da desegin. Barruko elementu guztiak betiko kenduko dira.",
 			"confirm": "Ezabatu"
 		},
 		"deleteItemModal": {
 			"title": "Elementua Ezabatu",
 			"blockedTitle": "Ezin da ezabatu — erabiltzen ari da",
-			"message": "Ziur zaude elementu hau ezabatu nahi duzula?",
+			"message": "Ezabatu \"{title}\"? Ekintza hau ezin da desegin.",
 			"confirm": "Ezabatu",
 			"blockedMessage": "Elementu hau ezagutza-base batek baino gehiagok erreferentziatzen dute. Ezabatu aurretik kendu denetatik."
 		},
@@ -1064,8 +1135,19 @@
 		},
 		"deleteModal": {
 			"title": "Ezagutza-biltegia Ezabatu",
-			"message": "Ziur zaude Ezagutza-biltegi hau ezabatu nahi duzula? Bektore guztiak betirako ezabatuko dira. Liburutegiko elementuek ez dute eraginik izango.",
+			"message": "\"{name}\" Ezagutza-biltegia ezabatu? Ekintza hau ezin da desegin. Bektore guztiak betirako ezabatuko dira. Lotutako liburutegiko elementuek ez dute eraginik izango.",
 			"confirm": "Ezabatu"
+		},
+		"empty": {
+			"title": "Oraindik ez dago Ezagutza-biltegirik",
+			"description": "Sortu bat liburutegiko edukia indexatzen hasteko.",
+			"badge": "Hutsik"
+		},
+		"ingestionProgress": {
+			"itemsIngested": "elementu sartu dira",
+			"runInBackground": "Bigarren mailan jarraitu",
+			"retry": "Sartzea berriz saiatu",
+			"backgroundToast": "Sartzea bigarren mailan jarraitzen du. Aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu."
 		},
 		"removeModal": {
 			"title": "Ezagutza-biltegitik Kendu",
@@ -1101,6 +1183,13 @@
 			"abort": "Bertan behera utzi",
 			"useExisting": "Erabili lehendik dagoen bat",
 			"createNew": "Sortu berri bat",
+			"advancedLabel": "Ezarpen aurreratuak",
+			"editStep": "Editatu urrats hau",
+			"lockedAfterCreation": "Sortu ondoren blokeatuta",
+			"ksContent": {
+				"fromLibrary": "Liburutegi honetatik",
+				"newUploads": "Morroi honetan kargatu berriak"
+			},
 			"lockedConfigNotice": {
 				"title": "Ezarpen hauek ezin dira geroago aldatu.",
 				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat."
@@ -1195,7 +1284,8 @@
 				"description": "Zure Liburutegia eta Ezagutza-biltegia prest daude. Ingestioa atzeko planoan exekutatzen da — aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
 				"openKs": "Ezagutza-biltegia ireki",
 				"openLibrary": "Liburutegia ireki",
-				"createAnother": "Beste bat sortu"
+				"createAnother": "Beste bat sortu",
+				"toast": "Ezagutza-biltegia sortuta."
 			},
 			"stepProgress": "{n}. urratsa {total}etik",
 			"creating": "Sortzen...",

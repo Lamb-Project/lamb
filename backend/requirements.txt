@@ -7,7 +7,14 @@ grpcio==1.64.1
 
 passlib==1.7.4
 passlib[bcrypt]==1.7.4
-bcrypt==4.2.0
+# Pinned to 4.0.1 (last version exposing _bcrypt.__about__). passlib 1.7.4's
+# version probe reads __about__.__version__; bcrypt 4.1+ removed that and
+# passlib falls back to a "wrap bug" test that hashes a > 72-byte password.
+# bcrypt 4.1+ rejects any > 72-byte password with ValueError, which breaks
+# ALL bcrypt verification — including short passwords like "admin" — because
+# backend initialization fails on the very first call. Bumping bcrypt past
+# 4.0.1 requires migrating off the unmaintained passlib.
+bcrypt==4.0.1
 
 PyJWT[crypto]
 

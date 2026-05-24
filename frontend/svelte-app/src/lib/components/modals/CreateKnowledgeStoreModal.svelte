@@ -354,6 +354,7 @@
 						type="text"
 						id="ks-name"
 						bind:value={name}
+						maxlength={200}
 						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3] {nameError
 							? 'border-red-500'
 							: ''}"
@@ -362,6 +363,7 @@
 						})}
 						disabled={isSubmitting}
 					/>
+					<p class="mt-1 text-xs text-gray-500">{(name || '').length}/200</p>
 					{#if nameError}
 						<p class="mt-1 text-sm text-red-600" role="alert">{nameError}</p>
 					{/if}
@@ -375,12 +377,14 @@
 						id="ks-description"
 						bind:value={description}
 						rows="3"
+						maxlength={500}
 						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
 						placeholder={$_('libraries.descriptionPlaceholder', {
 							default: 'Optional description'
 						})}
 						disabled={isSubmitting}
 					></textarea>
+					<p class="mt-1 text-xs text-gray-500">{(description || '').length}/500</p>
 				</div>
 
 				<label class="flex items-start gap-3">

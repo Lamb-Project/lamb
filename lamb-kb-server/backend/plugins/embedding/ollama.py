@@ -7,13 +7,16 @@ which has compatibility issues with newer ollama SDK versions.
 from __future__ import annotations
 
 import logging
+import os
 
 from plugins.base import EmbeddingFunction, EmbeddingRegistry, PluginParameter
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "nomic-embed-text"
-_DEFAULT_ENDPOINT = "http://host.docker.internal:11435/api/embeddings"
+_DEFAULT_ENDPOINT = os.environ.get(
+    "OLLAMA_DEFAULT_ENDPOINT", "http://localhost:11434/api/embeddings"
+)
 
 
 @EmbeddingRegistry.register

@@ -49,8 +49,7 @@
 		"ai": "^4.3.7",
 		"axios": "^1.8.1",
 		"dompurify": "^3.4.1",
-		"flowbite-svelte": "^0.48.6",
-		"flowbite-svelte-icons": "^2.1.1",
+		"lucide-svelte": "^0.460.0",
 		"marked": "^15.0.12",
 		"openai": "^4.53.3",
 		"svelte-i18n": "^4.0.1"

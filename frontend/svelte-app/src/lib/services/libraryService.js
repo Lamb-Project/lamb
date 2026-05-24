@@ -199,6 +199,7 @@ export async function uploadFile(libraryId, file, options = {}) {
 	if (options.params && Object.keys(options.params).length > 0) {
 		form.append('plugin_params', JSON.stringify(options.params));
 	}
+	if (options.folderId) form.append('folder_id', options.folderId);
 	const response = await axios.post(url, form, { headers: authHeaders(), timeout: 120_000 });
 	return response.data;
 }
@@ -642,4 +643,127 @@ export function getCapabilityImageUrl(libraryId, itemId, filename) {
 	return getApiUrl(
 		`/libraries/${libraryId}/items/${itemId}/content/images/file/${encodeURIComponent(filename)}`
 	);
+}
+
+/**
+ * Fetch the raw bytes for an extracted image and return them as a
+ * browser-local blob URL suitable for ``<img src>``.
+ *
+ * The HTML ``<img>`` element doesn't carry our Bearer token, so a naked
+ * ``src=getCapabilityImageUrl(...)`` 403s. Routing the fetch through axios
+ * (which sets ``Authorization`` from ``authHeaders()``) and wrapping the
+ * resulting blob in an object URL gives us an unauthenticated, browser-
+ * local URL the ``<img>`` tag can resolve.
+ *
+ * Callers MUST revoke the URL with ``URL.revokeObjectURL`` when the image
+ * is no longer needed (typically on component teardown), or they leak the
+ * underlying blob.
+ *
+ * @param {string} libraryId
+ * @param {string} itemId
+ * @param {string} filename
+ * @returns {Promise<string>} blob: URL
+ */
+export async function getCapabilityImageBlobUrl(libraryId, itemId, filename) {
+	if (!browser) throw new Error('Browser only.');
+	const url = getApiUrl(
+		`/libraries/${libraryId}/items/${itemId}/content/images/file/${encodeURIComponent(filename)}`
+	);
+	const response = await axios.get(url, {
+		headers: authHeaders(),
+		responseType: 'blob',
+		timeout: 120_000
+	});
+	return URL.createObjectURL(response.data);
+}
+
+// ---------------------------------------------------------------------------
+// Folders & tree
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the full library tree (flat folder + item lists). The frontend
+ * builds the nested structure from these via ``treeOps.buildTree``.
+ *
+ * @param {string} libraryId
+ * @returns {Promise<{ library_id: string, folders: Array<object>, items: Array<object> }>}
+ */
+export async function getLibraryTree(libraryId) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.get(getApiUrl(`/libraries/${libraryId}/tree`), {
+		headers: authHeaders()
+	});
+	return response.data;
+}
+
+/**
+ * Create a folder under ``parent_folder_id`` (or at the library root).
+ *
+ * @param {string} libraryId
+ * @param {{ name: string, parent_folder_id?: string|null }} data
+ */
+export async function createFolder(libraryId, data) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.post(
+		getApiUrl(`/libraries/${libraryId}/folders`),
+		{ name: data.name, parent_folder_id: data.parent_folder_id ?? null },
+		{ headers: authHeaders() }
+	);
+	return response.data;
+}
+
+/** Rename a folder. */
+export async function renameFolder(libraryId, folderId, name) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.put(
+		getApiUrl(`/libraries/${libraryId}/folders/${folderId}`),
+		{ name },
+		{ headers: authHeaders() }
+	);
+	return response.data;
+}
+
+/** Move a folder under a new parent (null = library root). */
+export async function moveFolder(libraryId, folderId, parentFolderId) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.put(
+		getApiUrl(`/libraries/${libraryId}/folders/${folderId}/move`),
+		{ parent_folder_id: parentFolderId },
+		{ headers: authHeaders() }
+	);
+	return response.data;
+}
+
+/**
+ * Delete a folder. Server-side, the folder's items and subfolders are
+ * reparented up to the deleted folder's parent — never cascade-deleted.
+ */
+export async function deleteFolder(libraryId, folderId) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.delete(getApiUrl(`/libraries/${libraryId}/folders/${folderId}`), {
+		headers: authHeaders()
+	});
+	return response.data;
+}
+
+/**
+ * Move a batch of items to a folder (or to root). The backend enforces
+ * cross-library FK rejection and caps the array at 500.
+ *
+ * @param {string} libraryId
+ * @param {{ item_ids: string[], folder_id: string|null }} data
+ */
+export async function moveItems(libraryId, data) {
+	if (!browser) throw new Error('Browser only.');
+	const response = await axios.post(
+		getApiUrl(`/libraries/${libraryId}/items/move`),
+		{ item_ids: data.item_ids, folder_id: data.folder_id ?? null },
+		{ headers: authHeaders() }
+	);
+	return response.data;
+}
+
+/** Convenience wrapper for moving a single item. */
+export async function moveItem(libraryId, itemId, folderId) {
+	return moveItems(libraryId, { item_ids: [itemId], folder_id: folderId ?? null });
 }

@@ -15,6 +15,7 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,10 @@ class SimpleImportPlugin(LibraryImportPlugin):
     name = "simple_import"
     description = "Import plain text files (.txt, .md, .html) as-is."
     supported_source_types = {"file"}
-    supported_file_types = {"txt", "md", "html"}
     required_keys: list[str] = []
+    produces_capabilities = [Capability.TEXT]
+    file_extensions = ["txt", "md", "html", "htm"]
+    human_label = "Plain-text or markdown import (no conversion)"
 
     def import_content(
         self,
@@ -59,9 +62,7 @@ class SimpleImportPlugin(LibraryImportPlugin):
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
-            raise ValueError(
-                f"File is not valid UTF-8: {path.name}"
-            ) from exc
+            raise ValueError(f"File is not valid UTF-8: {path.name}") from exc
 
         self.report_progress(kwargs, 1, 2, "Building metadata...")
 

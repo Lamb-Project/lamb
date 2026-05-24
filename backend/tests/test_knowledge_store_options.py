@@ -9,11 +9,16 @@ the kb-server-v2 container.
 Regression test for defect D1 (lifecycle 2026-05-03).
 """
 
+from pathlib import Path
 from unittest.mock import patch, AsyncMock
 
+import httpx
 import pytest
 
-from creator_interface.knowledge_store_client import KnowledgeStoreClient
+from creator_interface.knowledge_store_client import (
+    KnowledgeStoreClient,
+    KnowledgeStoreUnavailable,
+)
 
 
 def _ollama_vendors_payload(default_endpoint="http://localhost:11434/api/embeddings"):
@@ -169,3 +174,111 @@ async def test_get_org_options_resolver_failure_does_not_break_options():
         api_endpoint_param["default"]
         == "http://localhost:11434/api/embeddings"
     )
+
+
+# ---------------------------------------------------------------------------
+# Unavailable-KB-Server behavior (Agent E refactor — issue #334 §5).
+#
+# The hardcoded ``_BUILTIN_BACKENDS`` / ``_BUILTIN_STRATEGIES`` /
+# ``_BUILTIN_VENDORS`` fallbacks were removed: when the KB Server is
+# unreachable, the discovery methods must raise ``KnowledgeStoreUnavailable``
+# instead of silently returning stale plugin data.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_org_options_raises_when_kb_server_unreachable():
+    """When the live registries can't be read, ``get_org_options`` must
+    raise the typed ``KnowledgeStoreUnavailable`` exception so the router
+    can return a structured 503 to the UI (no hardcoded fallback)."""
+    client = KnowledgeStoreClient()
+
+    async def _boom(*args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    with patch.object(
+        client, "_get_ks_config", return_value=_make_ks_config()
+    ), patch(
+        "creator_interface.knowledge_store_client.httpx.AsyncClient.request",
+        new=_boom,
+    ):
+        with pytest.raises(KnowledgeStoreUnavailable):
+            await client.get_org_options(_make_creator_user())
+
+
+@pytest.mark.asyncio
+async def test_get_org_options_raises_when_kb_server_not_configured():
+    """If ``LAMB_KB_SERVER_V2`` is not set, ``get_org_options`` must raise
+    ``KnowledgeStoreUnavailable`` rather than fall back to a static catalog."""
+    client = KnowledgeStoreClient()
+    client.global_server_url = ""
+    client.global_token = ""
+
+    with patch(
+        "creator_interface.knowledge_store_client.OrganizationConfigResolver",
+        side_effect=RuntimeError("no org config"),
+    ):
+        with pytest.raises(KnowledgeStoreUnavailable):
+            await client.get_org_options(_make_creator_user())
+
+
+@pytest.mark.asyncio
+async def test_get_backends_translates_500_to_unavailable():
+    """A 5xx from the KB Server must be mapped to ``KnowledgeStoreUnavailable``
+    so the options endpoint can surface a structured error to the UI."""
+    client = KnowledgeStoreClient()
+
+    class _FakeResp:
+        is_success = False
+        status_code = 500
+        text = "internal error"
+        content = b"internal error"
+
+        def json(self):
+            return {"detail": "internal error"}
+
+    async def _fake_request(self, method, url, **kwargs):  # noqa: ARG001
+        return _FakeResp()
+
+    with patch.object(
+        client, "_get_ks_config", return_value=_make_ks_config()
+    ), patch(
+        "creator_interface.knowledge_store_client.httpx.AsyncClient.request",
+        new=_fake_request,
+    ):
+        with pytest.raises(KnowledgeStoreUnavailable):
+            await client.get_backends(_make_creator_user())
+
+
+# ---------------------------------------------------------------------------
+# Invariant: the hardcoded fallback constants must NOT come back.
+# This is a cheap grep-style regression check at the source level so a
+# future refactor can't quietly re-introduce ``_BUILTIN_BACKENDS`` /
+# ``_BUILTIN_STRATEGIES`` / ``_BUILTIN_VENDORS`` and silently hide new
+# plugins behind a stale catalog whenever the KB Server is briefly down.
+# ---------------------------------------------------------------------------
+
+
+def test_knowledge_store_client_has_no_builtin_fallback_constants():
+    """Source-level check: the three ``_BUILTIN_*`` constants must remain
+    deleted. Comment / docstring mentions are tolerated; what we forbid is
+    a Python assignment that resurrects the literal list."""
+    source = (
+        Path(__file__).parent.parent
+        / "creator_interface"
+        / "knowledge_store_client.py"
+    ).read_text()
+    for forbidden in (
+        "_BUILTIN_BACKENDS: List",
+        "_BUILTIN_STRATEGIES: List",
+        "_BUILTIN_VENDORS: List",
+        "_BUILTIN_BACKENDS = [",
+        "_BUILTIN_STRATEGIES = [",
+        "_BUILTIN_VENDORS = [",
+    ):
+        assert forbidden not in source, (
+            f"Forbidden hardcoded fallback constant resurfaced: {forbidden!r}. "
+            "The KB Server registries are the single source of truth — when "
+            "unreachable, raise KnowledgeStoreUnavailable instead of falling "
+            "back to a stale catalog."
+        )

@@ -314,7 +314,9 @@
 		"publicate": "Publicar",
 		"export": "Exportar",
 		"exporting": "Exportando...",
-		"retry": "Reintentar"
+		"retry": "Reintentar",
+		"remove": "Quitar",
+		"cannotBeUndone": "Esta acción no se puede deshacer."
 	},
 	"list": {
 		"searchPlaceholder": "Buscar...",
@@ -892,6 +894,65 @@
 		}
 	},
 	"libraries": {
+		"editDescription": "Editar descripción",
+		"addDescription": "Añadir descripción",
+		"fileTree": {
+			"openTitle": "Abrir árbol de archivos",
+			"detailButton": "Ver árbol de archivos",
+			"modalTitle": "{libraryName} — Árbol de archivos",
+			"treeAriaLabel": "Archivos en {libraryName}",
+			"searchPlaceholder": "Buscar por nombre…",
+			"empty": "Esta biblioteca está vacía.",
+			"emptyHint": "Añade contenido desde la página de la biblioteca y luego organízalo aquí.",
+			"emptyCreateFolder": "Crear carpeta",
+			"uploadHereLabel": "Subir a:",
+			"uploadHereRoot": "Raíz",
+			"uploadBtn": "Subir",
+			"createFolderBtn": "Nueva carpeta",
+			"newFolderPlaceholder": "Nombre de la nueva carpeta",
+			"selectionCount": "{count} seleccionado(s)",
+			"multiSelected": "{count} elementos seleccionados",
+			"moveToBtn": "Mover a…",
+			"deleteBtn": "Eliminar",
+			"placeholder": "Selecciona un elemento para previsualizar",
+			"noSelectionTitle": "Nada seleccionado",
+			"noSelectionDesc": "Elige una carpeta o elemento del árbol para previsualizarlo aquí.",
+			"multiSelectedHint": "Usa Mover a… o arrastra la selección a una carpeta.",
+			"folderLabel": "Carpeta",
+			"headerItemSingular": "elemento",
+			"headerItemPlural": "elementos",
+			"headerFolderSingular": "carpeta de nivel superior",
+			"headerFolderPlural": "carpetas de nivel superior",
+			"searchClear": "Limpiar búsqueda",
+			"rootDropZone": "Suelta aquí para mover a la raíz",
+			"expandFolder": "Expandir carpeta",
+			"collapseFolder": "Contraer carpeta",
+			"stats": {
+				"items": "Elementos",
+				"subfolders": "Subcarpetas"
+			},
+			"folders": {
+				"create": "Crear subcarpeta",
+				"rename": "Renombrar",
+				"delete": "Eliminar carpeta",
+				"moveTo": "Mover a…",
+				"deleteConfirmTitle": "Eliminar carpeta",
+				"deleteConfirmMsg": "¿Eliminar \"{name}\"? Los elementos del interior se moverán a la carpeta principal. Esta acción no se puede deshacer."
+			},
+			"moveToPicker": {
+				"title": "Mover a carpeta",
+				"rootOption": "Raíz de la biblioteca"
+			},
+			"errors": {
+				"cycleNotAllowed": "Una carpeta no se puede mover dentro de sí misma o de una de sus subcarpetas.",
+				"deleteBlockedByKS": "Este elemento está referenciado por uno o más Almacenes de Conocimiento. Elimínalo de cada uno antes de borrar.",
+				"loadFailed": "No se pudo cargar el árbol de archivos.",
+				"moveFailed": "No se pudo mover la selección.",
+				"uploadFailed": "Error al subir.",
+				"importFailed": "La importación de este elemento falló. No hay contenido disponible.",
+				"notReady": "Este elemento aún se está procesando. Inténtalo de nuevo en unos instantes."
+			}
+		},
 		"title": "Bibliotecas",
 		"pageTitle": "Bibliotecas",
 		"pageDescription": "Gestiona tus bibliotecas de documentos.",
@@ -962,15 +1023,25 @@
 			"nameRequired": "El nombre es obligatorio",
 			"nameTooLong": "El nombre debe tener menos de 100 caracteres"
 		},
+		"empty": {
+			"title": "Aún no hay bibliotecas",
+			"description": "Crea una para empezar a importar contenido."
+		},
+		"addContent": {
+			"title": "Añadir contenido"
+		},
+		"capabilities": {
+			"imageLoadFailed": "No se pudo cargar esta imagen. Es posible que se haya eliminado."
+		},
 		"deleteModal": {
 			"title": "Eliminar Biblioteca",
-			"message": "¿Estás seguro? Todo el contenido se eliminará permanentemente.",
+			"message": "¿Eliminar la biblioteca \"{name}\"? Esta acción no se puede deshacer. Todos los elementos del interior se eliminarán permanentemente.",
 			"confirm": "Eliminar"
 		},
 		"deleteItemModal": {
 			"title": "Eliminar Elemento",
 			"blockedTitle": "No se puede eliminar — en uso",
-			"message": "¿Estás seguro de que quieres eliminar este elemento?",
+			"message": "¿Eliminar \"{title}\"? Esta acción no se puede deshacer.",
 			"confirm": "Eliminar",
 			"blockedMessage": "Este elemento está referenciado por una o más bases de conocimiento. Elimínalo de cada una antes de borrarlo."
 		},
@@ -1064,8 +1135,19 @@
 		},
 		"deleteModal": {
 			"title": "Eliminar Almacén de Conocimiento",
-			"message": "¿Seguro que quieres eliminar este Almacén de Conocimiento? Todos los vectores se eliminarán permanentemente. Los elementos de la biblioteca no se verán afectados.",
+			"message": "¿Eliminar Almacén de Conocimiento \"{name}\"? Esta acción no se puede deshacer. Todos los vectores se eliminarán permanentemente. Los elementos de la biblioteca vinculados no se verán afectados.",
 			"confirm": "Eliminar"
+		},
+		"empty": {
+			"title": "Aún no hay Almacenes de Conocimiento",
+			"description": "Crea uno para empezar a indexar contenido de bibliotecas.",
+			"badge": "Vacío"
+		},
+		"ingestionProgress": {
+			"itemsIngested": "elementos ingeridos",
+			"runInBackground": "Continuar en segundo plano",
+			"retry": "Reintentar ingestión",
+			"backgroundToast": "La ingestión continúa en segundo plano. Sigue el progreso en la página del Almacén de Conocimiento."
 		},
 		"removeModal": {
 			"title": "Quitar del Almacén de Conocimiento",
@@ -1101,6 +1183,13 @@
 			"abort": "Abortar",
 			"useExisting": "Usar uno existente",
 			"createNew": "Crear nuevo",
+			"advancedLabel": "Configuración avanzada",
+			"editStep": "Editar este paso",
+			"lockedAfterCreation": "Bloqueado tras la creación",
+			"ksContent": {
+				"fromLibrary": "De esta biblioteca",
+				"newUploads": "Nuevas subidas en este asistente"
+			},
 			"lockedConfigNotice": {
 				"title": "Estos ajustes no se pueden cambiar después.",
 				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén."
@@ -1195,7 +1284,8 @@
 				"description": "Tu Biblioteca y Almacén de Conocimiento están listos. La ingesta se ejecuta en segundo plano — puedes ver el progreso en la página del Almacén de Conocimiento.",
 				"openKs": "Abrir Almacén de Conocimiento",
 				"openLibrary": "Abrir Biblioteca",
-				"createAnother": "Crear otro"
+				"createAnother": "Crear otro",
+				"toast": "Almacén de Conocimiento creado."
 			},
 			"stepProgress": "Paso {n} de {total}",
 			"creating": "Creando...",
