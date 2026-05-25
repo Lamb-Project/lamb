@@ -113,7 +113,6 @@ Comprehensive documentation is available in the `/Documentation` directory:
 - [Frontend Development Guide](Documentation/small-context/frontend_architecture.md)
 - [Knowledge Base Integration](Documentation/attic/kb-server-integration.md)
 - [Multi-Organization Setup](Documentation/attic/multi_org.md)
-- [Database Schema](Documentation/LAMB_DATABASE_SCHEMA.md)
 - [Final Setup Guide](Documentation/slop-docs/final-setup.md)
 
 ## 🗂️ Project Structure
