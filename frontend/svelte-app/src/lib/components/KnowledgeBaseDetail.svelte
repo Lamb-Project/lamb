@@ -711,6 +711,23 @@
     }
     
     /**
+     * Resets plugin parameters to their default values
+     */
+    function resetPluginParams() {
+        if (selectedPlugin && selectedPlugin.parameters) {
+            /** @type {Record<string, any>} */
+            const newParams = {};
+            for (const paramName in selectedPlugin.parameters) {
+                if (paramName.startsWith('_')) continue; // Skip info-only params
+                newParams[paramName] = selectedPlugin.parameters[paramName].default;
+            }
+            pluginParams = newParams;
+        } else {
+            pluginParams = {};
+        }
+    }
+
+    /**
      * Selects a plugin and initializes its parameters
      * @param {number} index - The index of the plugin to select
      */
@@ -720,14 +737,7 @@
             selectedPlugin = plugins[index];
             advancedMode = false;
             
-            pluginParams = {};
-            if (selectedPlugin && selectedPlugin.parameters) {
-                // Iterate over the parameters object
-                for (const paramName in selectedPlugin.parameters) {
-                    if (paramName.startsWith('_')) continue; // Skip info-only params
-                    pluginParams[paramName] = selectedPlugin.parameters[paramName].default;
-                }
-            }
+            resetPluginParams();
             console.log('Selected plugin:', selectedPlugin?.name, 'with params:', pluginParams);
         }
     }
@@ -885,6 +895,7 @@
             uploadSuccess = true;
             selectedFile = null;
             resetFileInput();
+            resetPluginParams();
             // Reload the KB details to show the new file in the list
             await loadKnowledgeBase(kbId);
             // Optionally hide the ingestion box after success
@@ -919,6 +930,7 @@
             const result = await runBaseIngestionPlugin(kbId, selectedPlugin.name, pluginParams);
             console.log('Base ingestion result:', result);
             uploadSuccess = true;
+            resetPluginParams();
             await loadKnowledgeBase(kbId);
         } catch (err) {
             console.error('Error running base ingestion:', err);
