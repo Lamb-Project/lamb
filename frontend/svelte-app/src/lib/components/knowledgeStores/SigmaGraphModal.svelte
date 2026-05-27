@@ -34,6 +34,12 @@
 	let selectedNodeAttrs = $state(/** @type {any} */ (null));
 	let hoveredNodeId = $state('');
 
+	// Drag state (not reactive — updated imperatively in event handlers)
+	let isDragging = false;
+	let draggedNode = /** @type {string | null} */ (null);
+	// Camera ratio tracked for zoom-adaptive label density
+	let cameraRatio = 1;
+
 	const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 	const HIGHLIGHT_COLOR = '#1d4ed8';
 	const DIM_COLOR = '#e2e8f0';
@@ -186,7 +192,7 @@
 					size: sizeForNode(n),
 					color: colorForNode(n),
 					nodeType: n.type,
-					forceLabel: n.type === 'concept',
+					forceLabel: false,
 					zIndex: n.type === 'concept' ? 3 : n.type === 'document' ? 2 : 1,
 				});
 			}
@@ -245,9 +251,9 @@
 				renderEdgeLabels: true,
 				enableEdgeClickEvents: true,
 				enableEdgeHoverEvents: true,
-				labelDensity: 0.45,
-				labelGridCellSize: 96,
-				labelRenderedSizeThreshold: 9,
+				labelDensity: 0.6,
+				labelGridCellSize: 80,
+				labelRenderedSizeThreshold: 10,
 				labelFont: 'Inter, ui-sans-serif, system-ui, sans-serif',
 				labelSize: 12,
 				labelWeight: '600',
@@ -255,11 +261,20 @@
 				edgeLabelWeight: '600',
 				defaultEdgeColor: '#94a3b8',
 				defaultNodeColor: '#2271b3',
-				minCameraRatio: 0.05,
+				minCameraRatio: 0.02,
 				maxCameraRatio: 10,
 			});
 			graphInstance = g;
+
+			// Track camera ratio for zoom-adaptive label density. The reducer
+			// reads cameraRatio as a closure variable — it always gets the
+			// current value, so no extra setSetting call is needed here.
+			renderer.getCamera().on('updated', () => {
+				cameraRatio = renderer.getCamera().ratio;
+			});
+
 			attachEvents();
+			attachDrag();
 			applyReducers();
 		} catch (/** @type {*} */ err) {
 			console.error(err);
@@ -272,27 +287,66 @@
 	function attachEvents() {
 		if (!renderer) return;
 		renderer.on('enterNode', ({ node }) => {
+			if (isDragging) return;
 			hoveredNodeId = String(node);
+			if (container) container.style.cursor = 'grab';
 			applyReducers();
 		});
 		renderer.on('leaveNode', () => {
+			if (isDragging) return;
 			hoveredNodeId = '';
+			if (container) container.style.cursor = '';
 			applyReducers();
 		});
 		renderer.on('clickNode', ({ node }) => {
+			if (isDragging) return;
 			selectedNodeId = String(node);
 			selectedNodeAttrs = nodeLookup.get(selectedNodeId) || null;
 			applyReducers();
 		});
 		renderer.on('clickStage', () => {
+			if (isDragging) return;
 			selectedNodeId = '';
 			selectedNodeAttrs = null;
 			applyReducers();
 		});
 	}
 
+	function attachDrag() {
+		if (!renderer || !graphInstance) return;
+
+		renderer.on('downNode', ({ node }) => {
+			isDragging = true;
+			draggedNode = String(node);
+			if (container) container.style.cursor = 'grabbing';
+		});
+
+		renderer.getMouseCaptor().on('mousemovebody', (/** @type {any} */ e) => {
+			if (!isDragging || !draggedNode) return;
+			// Prevent sigma from treating the move as a camera pan
+			e.preventSigmaDefault?.();
+			e.original?.preventDefault?.();
+			e.original?.stopPropagation?.();
+			const pos = renderer.viewportToGraph({ x: e.x, y: e.y });
+			graphInstance.setNodeAttribute(draggedNode, 'x', pos.x);
+			graphInstance.setNodeAttribute(draggedNode, 'y', pos.y);
+		});
+
+		renderer.getMouseCaptor().on('mouseup', () => {
+			if (isDragging && draggedNode) {
+				// Snap cursor back based on whether still hovering over a node
+				if (container) container.style.cursor = hoveredNodeId ? 'grab' : '';
+			}
+			isDragging = false;
+			draggedNode = null;
+		});
+	}
+
 	// Highlight focused-node + 1-hop neighbors, dim the rest. Called on
 	// hover, click, and after the initial render.
+	// cameraRatio is read from the outer-scope variable at reducer call time
+	// (closure captures the binding, not the value) so zoom-adaptive labels
+	// stay correct without re-registering the reducer on every camera move.
 	function applyReducers() {
 		if (!renderer) return;
 		const focusId = hoveredNodeId || selectedNodeId || '';
@@ -301,7 +355,9 @@
 		renderer.setSetting(
 			'nodeReducer',
 			(/** @type {string} */ key, /** @type {any} */ data) => {
-				if (!focus) return data;
+				// Show all labels when sufficiently zoomed in
+				const zoomedIn = cameraRatio < 0.35;
+				if (!focus) return { ...data, forceLabel: zoomedIn };
 				if (focus.has(key)) {
 					return {
 						...data,
@@ -311,7 +367,7 @@
 						forceLabel: true,
 					};
 				}
-				return { ...data, color: DIM_COLOR, label: '', zIndex: 0 };
+				return { ...data, color: DIM_COLOR, label: '', zIndex: 0, forceLabel: false };
 			},
 		);
 

@@ -427,6 +427,8 @@ def delete_vectors(
         )
     db.commit()
 
+    _maybe_delete_graph_document(collection, source_item_id)
+
     logger.info(
         "Deleted %d vectors for source_item_id '%s' from collection %s",
         deleted_count,
@@ -434,3 +436,32 @@ def delete_vectors(
         collection_id,
     )
     return deleted_count
+
+
+def _maybe_delete_graph_document(collection: Collection, source_item_id: str) -> None:
+    """Remove graph data for a deleted source item if the collection has graph_enabled."""
+    if not getattr(collection, "graph_enabled", False):
+        return
+
+    import config as config_module  # noqa: PLC0415
+
+    if not config_module.get_kg_rag_config().get("enabled"):
+        return
+
+    from services.graph_store import get_graph_store  # noqa: PLC0415
+
+    org_id = str(collection.organization_id or "")
+    try:
+        get_graph_store().delete_document(collection.id, org_id, source_item_id)
+        logger.info(
+            "Graph data removed for source_item_id '%s' in collection %s",
+            source_item_id,
+            collection.id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Graph cleanup for source '%s' in collection %s failed: %s",
+            source_item_id,
+            collection.id,
+            exc,
+        )

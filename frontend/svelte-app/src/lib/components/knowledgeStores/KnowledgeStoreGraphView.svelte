@@ -34,13 +34,95 @@
 	let filter = $state({ concept: '', filename: '', document_id: '' });
 	let sigmaOpen = $state(false);
 
+	// Status filters (client-side, applied to already-loaded snapshot)
+	let conceptStatusFilter = $state('all');
+	let relStatusFilter = $state('all');
+
+	// Pagination
+	const PAGE_SIZE = 20;
+	let conceptPage = $state(1);
+	let relPage = $state(1);
+
+	// --- Derived lists ---
+
+	let allConcepts = $derived(
+		(snapshot?.nodes || []).filter((/** @type {any} */ n) => n.type === 'concept'),
+	);
+	let allRels = $derived(
+		(snapshot?.edges || []).filter((/** @type {any} */ e) => e.type === 'RELATES_TO'),
+	);
+
+	let filteredConcepts = $derived(
+		conceptStatusFilter === 'all'
+			? allConcepts
+			: allConcepts.filter(
+					(/** @type {any} */ n) =>
+						(n.data?.verification_state || 'unverified') === conceptStatusFilter,
+				),
+	);
+	let filteredRels = $derived(
+		relStatusFilter === 'all'
+			? allRels
+			: allRels.filter(
+					(/** @type {any} */ e) =>
+						(e.data?.verification_state || 'unverified') === relStatusFilter,
+				),
+	);
+
+	let conceptTotalPages = $derived(Math.max(1, Math.ceil(filteredConcepts.length / PAGE_SIZE)));
+	let relTotalPages = $derived(Math.max(1, Math.ceil(filteredRels.length / PAGE_SIZE)));
+
+	let pagedConcepts = $derived(
+		filteredConcepts.slice((conceptPage - 1) * PAGE_SIZE, conceptPage * PAGE_SIZE),
+	);
+	let pagedRels = $derived(
+		filteredRels.slice((relPage - 1) * PAGE_SIZE, relPage * PAGE_SIZE),
+	);
+
+	// --- Stats ---
+
+	let conceptVerifiedCount = $derived(
+		allConcepts.filter(
+			(/** @type {any} */ n) => (n.data?.verification_state || 'unverified') === 'verified',
+		).length,
+	);
+	let relVerifiedCount = $derived(
+		allRels.filter(
+			(/** @type {any} */ e) => (e.data?.verification_state || 'unverified') === 'verified',
+		).length,
+	);
+
+	/** @param {number} num @param {number} den */
+	function pct(num, den) {
+		if (!den) return '—';
+		return Math.round((num / den) * 100) + '%';
+	}
+
+	// Reset pages to 1 when filter or snapshot changes
+	$effect(() => {
+		// eslint-disable-next-line no-unused-expressions
+		conceptStatusFilter;
+		conceptPage = 1;
+	});
+	$effect(() => {
+		// eslint-disable-next-line no-unused-expressions
+		relStatusFilter;
+		relPage = 1;
+	});
+	$effect(() => {
+		// eslint-disable-next-line no-unused-expressions
+		snapshot;
+		conceptPage = 1;
+		relPage = 1;
+	});
+
 	async function loadAll() {
 		loading = true;
 		error = '';
 		try {
 			snapshot = await getGraphSnapshot(ksId, {
 				...stripEmpty(filter),
-				limit: 80,
+				limit: 200,
 				include_chunks: 'true',
 			});
 		} catch (/** @type {*} */ err) {
@@ -110,7 +192,9 @@
 		const current = String(node.data?.verification_state || 'unverified');
 		const next = current === 'verified' ? 'unverified' : 'verified';
 		await setConceptState(name, next);
-		await loadAll();
+		// Mutate in place — avoids a full re-fetch and the resulting flicker.
+		// $state deep-proxy picks up the change immediately.
+		node.data.verification_state = next;
 	}
 
 	/** @param {any} edge */
@@ -119,34 +203,23 @@
 		const current = String(edge.data?.verification_state || 'unverified');
 		const next = current === 'verified' ? 'unverified' : 'verified';
 		await setRelationshipState(rel, next);
-		await loadAll();
+		edge.data.verification_state = next;
 	}
 
 	/** @param {'verified' | 'rejected'} state */
 	async function bulkConcepts(state) {
 		if (!snapshot?.nodes?.length) return;
-		const reason =
-			state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
-		if (
-			!confirm(
-				`${reason} of ALL concepts in this Knowledge Store. Continue?`,
-			)
-		)
-			return;
+		const reason = state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
+		if (!confirm(`${reason} of ALL concepts in this Knowledge Store. Continue?`)) return;
 		bulkBusy = true;
 		try {
-			const concepts = snapshot.nodes.filter(
-				(/** @type {any} */ n) => n.type === 'concept',
-			);
+			const concepts = snapshot.nodes.filter((/** @type {any} */ n) => n.type === 'concept');
 			for (const node of concepts) {
 				const cur = String(node.data?.verification_state || 'unverified');
 				if (cur === state) continue;
 				const name = displayName(node.data?.name || node.label);
 				try {
-					await curateConcept(ksId, name, {
-						verification_state: state,
-						reason,
-					});
+					await curateConcept(ksId, name, { verification_state: state, reason });
 				} catch (/** @type {*} */ err) {
 					console.warn('Bulk concept curate failed for', name, err);
 				}
@@ -160,19 +233,11 @@
 	/** @param {'verified' | 'rejected'} state */
 	async function bulkRelationships(state) {
 		if (!snapshot?.edges?.length) return;
-		const reason =
-			state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
-		if (
-			!confirm(
-				`${reason} of ALL relationships in this Knowledge Store. Continue?`,
-			)
-		)
-			return;
+		const reason = state === 'verified' ? 'Bulk approval' : 'Bulk rejection';
+		if (!confirm(`${reason} of ALL relationships in this Knowledge Store. Continue?`)) return;
 		bulkBusy = true;
 		try {
-			const rels = snapshot.edges.filter(
-				(/** @type {any} */ e) => e.type === 'RELATES_TO',
-			);
+			const rels = snapshot.edges.filter((/** @type {any} */ e) => e.type === 'RELATES_TO');
 			for (const edge of rels) {
 				const cur = String(edge.data?.verification_state || 'unverified');
 				if (cur === state) continue;
@@ -320,6 +385,7 @@
 			contribute to the retrieval.
 		</div>
 	{/if}
+
 	<div class="flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-white p-3">
 		<label class="flex flex-col text-xs text-gray-700">
 			Concept
@@ -369,10 +435,14 @@
 	{#if loading}
 		<p class="text-sm text-gray-500">Loading graph…</p>
 	{:else if snapshot}
+		<!-- Stats -->
 		<div class="grid grid-cols-2 gap-3 text-xs text-gray-700 sm:grid-cols-4">
 			<div class="rounded border border-gray-200 bg-white p-2">
 				<div class="text-gray-500">Concepts</div>
 				<div class="text-base font-semibold">{snapshot?.counts?.concepts ?? 0}</div>
+				<div class="mt-0.5 text-[11px] text-green-700">
+					{conceptVerifiedCount} verified · {pct(conceptVerifiedCount, allConcepts.length)}
+				</div>
 			</div>
 			<div class="rounded border border-gray-200 bg-white p-2">
 				<div class="text-gray-500">Documents</div>
@@ -385,13 +455,29 @@
 			<div class="rounded border border-gray-200 bg-white p-2">
 				<div class="text-gray-500">Edges</div>
 				<div class="text-base font-semibold">{snapshot?.counts?.edges ?? 0}</div>
+				<div class="mt-0.5 text-[11px] text-green-700">
+					{relVerifiedCount} verified · {pct(relVerifiedCount, allRels.length)}
+				</div>
 			</div>
 		</div>
 
+		<!-- Concepts section -->
 		<section class="rounded border border-gray-200 bg-white p-3">
-			<div class="mb-2 flex items-center justify-between gap-2">
-				<h3 class="text-sm font-semibold text-gray-900">Concepts</h3>
-				<div class="flex gap-2">
+			<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<h3 class="text-sm font-semibold text-gray-900">Concepts</h3>
+					<span class="text-xs text-gray-400">{conceptVerifiedCount}/{allConcepts.length} verified</span>
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					<select
+						class="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+						bind:value={conceptStatusFilter}
+					>
+						<option value="all">All</option>
+						<option value="unverified">Unverified</option>
+						<option value="verified">Verified</option>
+						<option value="rejected">Rejected</option>
+					</select>
 					<button
 						type="button"
 						class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
@@ -406,16 +492,19 @@
 					>Reject all</button>
 				</div>
 			</div>
-			{#if !snapshot?.nodes?.length}
+
+			{#if !allConcepts.length}
 				<p class="text-sm text-gray-500">No concept nodes yet.</p>
+			{:else if !filteredConcepts.length}
+				<p class="text-sm text-gray-500">No concepts match the selected filter.</p>
 			{:else}
 				<ul class="divide-y divide-gray-100">
-					{#each snapshot.nodes.filter((/** @type {any} */ n) => n.type === 'concept') as node (node.id)}
+					{#each pagedConcepts as node (node.id)}
 						{@const conceptName = displayName(node.data?.name || node.label)}
 						{@const state = String(node.data?.verification_state || 'unverified')}
 						{@const isEditing = editingConcept === conceptName}
 						<li class="flex items-center justify-between gap-2 py-2 text-sm">
-							<div class="flex-1 min-w-0">
+							<div class="min-w-0 flex-1">
 								{#if isEditing}
 									<input
 										type="text"
@@ -428,7 +517,7 @@
 										autofocus
 									/>
 								{:else}
-									<div class="font-medium text-gray-900 truncate">{displayName(node.label)}</div>
+									<div class="truncate font-medium text-gray-900">{displayName(node.label)}</div>
 									<div class="text-xs">
 										<span
 											class="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium {state === 'verified'
@@ -476,13 +565,44 @@
 						</li>
 					{/each}
 				</ul>
+
+				{#if conceptTotalPages > 1}
+					<div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-2 text-xs text-gray-600">
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50 disabled:opacity-40"
+							onclick={() => conceptPage--}
+							disabled={conceptPage <= 1}
+						>← Prev</button>
+						<span>Page {conceptPage} of {conceptTotalPages} · {filteredConcepts.length} items</span>
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50 disabled:opacity-40"
+							onclick={() => conceptPage++}
+							disabled={conceptPage >= conceptTotalPages}
+						>Next →</button>
+					</div>
+				{/if}
 			{/if}
 		</section>
 
+		<!-- Relationships section -->
 		<section class="rounded border border-gray-200 bg-white p-3">
-			<div class="mb-2 flex items-center justify-between gap-2">
-				<h3 class="text-sm font-semibold text-gray-900">Relationships</h3>
-				<div class="flex gap-2">
+			<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<h3 class="text-sm font-semibold text-gray-900">Relationships</h3>
+					<span class="text-xs text-gray-400">{relVerifiedCount}/{allRels.length} verified</span>
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					<select
+						class="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+						bind:value={relStatusFilter}
+					>
+						<option value="all">All</option>
+						<option value="unverified">Unverified</option>
+						<option value="verified">Verified</option>
+						<option value="rejected">Rejected</option>
+					</select>
 					<button
 						type="button"
 						class="rounded border border-green-300 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50"
@@ -497,15 +617,18 @@
 					>Reject all</button>
 				</div>
 			</div>
-			{#if !snapshot?.edges?.length}
+
+			{#if !allRels.length}
 				<p class="text-sm text-gray-500">No relationships yet.</p>
+			{:else if !filteredRels.length}
+				<p class="text-sm text-gray-500">No relationships match the selected filter.</p>
 			{:else}
 				<ul class="divide-y divide-gray-100">
-					{#each snapshot.edges.filter((/** @type {any} */ e) => e.type === 'RELATES_TO') as edge (edge.id)}
+					{#each pagedRels as edge (edge.id)}
 						{@const state = String(edge.data?.verification_state || 'unverified')}
 						{@const isEditing = editingEdgeId === edge.id}
 						<li class="flex items-center justify-between gap-2 py-2 text-sm">
-							<div class="flex-1 min-w-0">
+							<div class="min-w-0 flex-1">
 								<div class="truncate">
 									<span class="font-medium text-gray-900">{displayName(edge.data?.source_label || edge.source)}</span>
 									<span class="mx-2 text-gray-500">→</span>
@@ -573,10 +696,27 @@
 						</li>
 					{/each}
 				</ul>
+
+				{#if relTotalPages > 1}
+					<div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-2 text-xs text-gray-600">
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50 disabled:opacity-40"
+							onclick={() => relPage--}
+							disabled={relPage <= 1}
+						>← Prev</button>
+						<span>Page {relPage} of {relTotalPages} · {filteredRels.length} items</span>
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50 disabled:opacity-40"
+							onclick={() => relPage++}
+							disabled={relPage >= relTotalPages}
+						>Next →</button>
+					</div>
+				{/if}
 			{/if}
 		</section>
 	{/if}
-
 </div>
 
 <SigmaGraphModal {ksId} open={sigmaOpen} onclose={() => (sigmaOpen = false)} />

@@ -131,6 +131,47 @@ class GraphStore:
                 DETACH DELETE concept
                 """)
 
+    def delete_document(
+        self, collection_id: str, org_id: str, source_item_id: str
+    ) -> None:
+        """Remove one document's graph data when its vectors are deleted.
+
+        Deletes the Document node, all its Chunk nodes (and their MENTIONS /
+        CONTAINS edges via DETACH DELETE), and any Concept nodes that become
+        fully orphaned afterwards (no remaining MENTIONS edges in any
+        collection for this org).
+        """
+        if not self.is_configured():
+            return
+        if not self.ensure_schema():
+            return
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (doc:Document {collection_id: $collection_id, filename: $filename})
+                      -[:CONTAINS]->(chunk:Chunk)
+                DETACH DELETE chunk
+                """,
+                collection_id=collection_id,
+                filename=source_item_id,
+            )
+            session.run(
+                """
+                MATCH (doc:Document {collection_id: $collection_id, filename: $filename})
+                DETACH DELETE doc
+                """,
+                collection_id=collection_id,
+                filename=source_item_id,
+            )
+            session.run(
+                """
+                MATCH (concept:Concept {org_id: $org_id})
+                WHERE NOT EXISTS { MATCH (:Chunk)-[:MENTIONS]->(concept) }
+                DETACH DELETE concept
+                """,
+                org_id=org_id,
+            )
+
     def list_changes(
         self,
         collection_id: str,
@@ -337,7 +378,6 @@ class GraphStore:
                     EXISTS { MATCH (:Chunk {collection_id: $collection_id})-[:MENTIONS]->(concept) }
                     OR EXISTS { MATCH (concept)-[rel:RELATES_TO]-(:Concept) WHERE rel.collection_id = $collection_id }
                 )
-                                    AND coalesce(concept.verification_state, '') <> 'rejected'
                   AND (
                     $concept_filter IS NULL
                     OR concept.name CONTAINS $concept_filter
@@ -371,7 +411,6 @@ class GraphStore:
                        concept.confidence AS confidence,
                        concept.notes AS notes,
                        coalesce(concept.tags, []) AS tags,
-                       concept.verification_state AS verification_state,
                        count(DISTINCT chunk) AS chunk_count
                 ORDER BY chunk_count DESC, display_name ASC
                 LIMIT $limit
@@ -401,6 +440,26 @@ class GraphStore:
                     },
                     "counts": {"concepts": 0, "documents": 0, "chunks": 0, "edges": 0},
                 }
+
+            # Per-collection verification: read from MENTIONS relationships
+            # (scoped to this collection) rather than the org-level Concept node.
+            # This ensures a fresh KS starts with all concepts unverified even if
+            # the same concepts were approved in a different KS.
+            coll_vs_rows = session.run(
+                """
+                MATCH (:Chunk {collection_id: $collection_id})-[m:MENTIONS]->(concept:Concept {org_id: $org_id})
+                WHERE concept.name IN $concept_names
+                WITH concept.name AS name, collect(m.verification_state)[0] AS vs
+                RETURN name, vs
+                """,
+                collection_id=collection_id,
+                org_id=org_id,
+                concept_names=concept_names,
+            ).data()
+            coll_vs: Dict[str, Optional[str]] = {row["name"]: row["vs"] for row in coll_vs_rows}
+            # Filter out concepts rejected in this collection
+            concept_rows = [r for r in concept_rows if coll_vs.get(r["name"]) != "rejected"]
+            concept_names = [r["name"] for r in concept_rows]
 
             document_rows = session.run(
                 """
@@ -509,8 +568,7 @@ class GraphStore:
                         "confidence": row.get("confidence"),
                         "notes": row.get("notes") or "",
                         "tags": row.get("tags") or [],
-                        "verification_state": row.get("verification_state")
-                        or "unverified",
+                        "verification_state": coll_vs.get(row["name"]) or "unverified",
                         "chunk_count": int(row.get("chunk_count") or 0),
                     },
                 }
@@ -1930,6 +1988,28 @@ class GraphStore:
         if not concept_row:
             return {"ok": False, "reason": "concept_not_found"}
 
+        # Change-detection for verification_state must use the per-collection
+        # MENTIONS.verification_state, not the org-level concept.verification_state.
+        # The org-level value may be 'verified' from another KS; for this KS it may
+        # still be null (unverified). Fetch the collection-scoped value and override
+        # the comparison baseline so the write is not incorrectly skipped.
+        if verification_state is not None:
+            mentions_row = tx.run(
+                """
+                MATCH (:Chunk {collection_id: $collection_id})-[m:MENTIONS]->
+                      (:Concept {org_id: $org_id, name: $concept})
+                RETURN m.verification_state AS vs
+                LIMIT 1
+                """,
+                collection_id=collection_id,
+                org_id=org_id,
+                concept=concept,
+            ).single()
+            concept_row = dict(concept_row)
+            concept_row["old_verification_state"] = (
+                mentions_row.get("vs") if mentions_row else None
+            )
+
         if verification_state == "rejected":
             chunk_rows = tx.run(
                 """
@@ -2034,19 +2114,46 @@ class GraphStore:
                 "details": {"concept": concept, "changed": False},
             }
 
+        # Write per-collection verification state onto the MENTIONS relationships
+        # (scoped to this collection) so each KS tracks its own approval independently
+        # of the org-level Concept node.
+        if verification_state is not None:
+            mentions_vs = None if verification_state == "unverified" else verification_state
+            tx.run(
+                """
+                MATCH (:Chunk {collection_id: $collection_id})-[m:MENTIONS]->(:Concept {org_id: $org_id, name: $concept})
+                SET m.verification_state = $vs
+                """,
+                collection_id=collection_id,
+                org_id=org_id,
+                concept=concept,
+                vs=mentions_vs,
+            )
+            # Also promote to the org-level Concept node when verifying so that
+            # RELATES_TO path traversal (which uses concept.verification_state)
+            # can cross this concept. Deliberately NOT cleared on unverify —
+            # another KS in the same org might still have it approved.
+            if verification_state == "verified":
+                tx.run(
+                    """
+                    MATCH (concept:Concept {org_id: $org_id, name: $concept})
+                    SET concept.verification_state = 'verified'
+                    """,
+                    org_id=org_id,
+                    concept=concept,
+                )
+
         tx.run(
             """
             MATCH (concept:Concept {org_id: $org_id, name: $concept})
             SET concept.updated_at = $timestamp,
                 concept.notes = CASE WHEN $notes IS NULL THEN concept.notes ELSE $notes END,
-                concept.tags = CASE WHEN $tags IS NULL THEN concept.tags ELSE $tags END,
-                concept.verification_state = CASE WHEN $verification_state IS NULL THEN concept.verification_state ELSE $verification_state END
+                concept.tags = CASE WHEN $tags IS NULL THEN concept.tags ELSE $tags END
             """,
             org_id=org_id,
             concept=concept,
             notes=notes,
             tags=tags,
-            verification_state=verification_state,
             timestamp=timestamp,
         )
 
@@ -2379,9 +2486,9 @@ class GraphStore:
         with self.driver.session() as session:
             entry_rows = session.run(
                 """
-                MATCH (chunk:Chunk {collection_id: $collection_id})-[:MENTIONS]->(concept:Concept {org_id: $org_id})
+                MATCH (chunk:Chunk {collection_id: $collection_id})-[m:MENTIONS]->(concept:Concept {org_id: $org_id})
                 WHERE chunk.chunk_id IN $seed_chunk_ids
-                  AND concept.verification_state = 'verified'
+                  AND m.verification_state = 'verified'
                 WITH concept, count(*) AS local_mentions
                 OPTIONAL MATCH (concept)<-[:MENTIONS]-(global:Chunk {collection_id: $collection_id})
                 WITH concept, local_mentions, count(global) AS total_mentions
@@ -2539,12 +2646,11 @@ class GraphStore:
 
             matched_rows = session.run(
                 """
-                MATCH (concept:Concept {org_id: $org_id})
+                MATCH (concept:Concept {org_id: $org_id})<-[m:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
                 WHERE concept.name IN $names
-                  AND concept.verification_state = 'verified'
-                OPTIONAL MATCH (concept)<-[:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
+                  AND m.verification_state = 'verified'
                 WITH concept, count(chunk) AS mentions
-                WHERE mentions > 0 AND mentions <= $max_mentions
+                WHERE mentions <= $max_mentions
                 RETURN concept.name AS name, mentions
                 ORDER BY mentions ASC
                 """,
