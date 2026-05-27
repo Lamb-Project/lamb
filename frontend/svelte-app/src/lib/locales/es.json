@@ -989,7 +989,9 @@
 		"fileTooLarge": "El archivo supera el límite de 500 MB.",
 		"importContent": "Importar URL / YouTube",
 		"importSuccess": "Importación iniciada.",
-		"addContent": "Añadir Contenido",
+		"addContent": {
+			"title": "Añadir contenido"
+		},
 		"export": "Exportar",
 		"itemDeleteSuccess": "Elemento eliminado.",
 		"viewContent": "Ver",
@@ -1026,9 +1028,6 @@
 		"empty": {
 			"title": "Aún no hay bibliotecas",
 			"description": "Crea una para empezar a importar contenido."
-		},
-		"addContent": {
-			"title": "Añadir contenido"
 		},
 		"capabilities": {
 			"imageLoadFailed": "No se pudo cargar esta imagen. Es posible que se haya eliminado."
@@ -1167,7 +1166,23 @@
 			"noItems2": "Esta biblioteca no tiene elementos listos para ingerir.",
 			"submit": "Añadir al Almacén de Conocimiento",
 			"submitting": "Añadiendo..."
-		}
+		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: LLM de extracción de conceptos",
+			"extractionHint": "El modelo que se usa durante la ingesta para extraer entidades y relaciones tipadas de cada fragmento. Bloqueado al crear, igual que el embedding.",
+			"extractionVendor": "Proveedor de extracción",
+			"extractionModel": "Modelo de extracción",
+			"extractionEndpoint": "Endpoint de extracción (opcional)",
+			"graphLabel": "Activar Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requiere el backend vectorial chromadb (selecciónalo en Avanzado).",
+			"graphHint": "Crea un grafo de conocimiento junto al índice vectorial. Los documentos se indexan con un extractor LLM durante la ingesta; la recuperación combina la similitud vectorial con el recorrido del grafo. No se puede cambiar tras la creación."
+		},
+		"graphSection": "Grafo de conocimiento",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG se activó al crear y está bloqueado.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Entidades extraídas (KG-RAG)",
+		"extractedEntitiesEmpty": "No se encontraron entidades con nombre en la pregunta."
 	},
 	"knowledge": {
 		"title": "Fuentes de conocimiento",
@@ -1248,7 +1263,9 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización."
+				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización.",
+				"graphLabel": "Activar grafo semántico (Graph RAG)",
+				"graphHint": "Extrae conceptos y relaciones de los fragmentos ingeridos y los almacena en Neo4j. Requiere KG_RAG_ENABLED=true en el servidor de KB."
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
@@ -1351,7 +1368,8 @@
 				"nameTooLong": "El nombre debe tener menos de 100 caracteres",
 				"shareLabel": "Compartir con mi organización",
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle del Almacén de Conocimiento.",
-				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embeddings, base de datos vectorial"
+				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embeddings, base de datos vectorial",
+				"graphHeading": "Graph RAG"
 			}
 		}
 	},

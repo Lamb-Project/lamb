@@ -989,7 +989,9 @@
 		"fileTooLarge": "Fitxategiak 500 MB-ko muga gainditzen du.",
 		"importContent": "Inportatu URL / YouTube",
 		"importSuccess": "Inportazioa hasita.",
-		"addContent": "Edukia Gehitu",
+		"addContent": {
+			"title": "Gehitu edukia"
+		},
 		"export": "Esportatu",
 		"itemDeleteSuccess": "Elementua ezabatua.",
 		"viewContent": "Ikusi",
@@ -1026,9 +1028,6 @@
 		"empty": {
 			"title": "Oraindik ez dago liburutegirik",
 			"description": "Sortu bat edukia inportatzen hasteko."
-		},
-		"addContent": {
-			"title": "Gehitu edukia"
 		},
 		"capabilities": {
 			"imageLoadFailed": "Ezin izan da irudi hau kargatu. Beharbada kendu egin da."
@@ -1167,7 +1166,23 @@
 			"noItems2": "Liburutegi honek ez du ingeritzeko prest dagoen elementurik.",
 			"submit": "Ezagutza-biltegira Gehitu",
 			"submitting": "Gehitzen..."
-		}
+		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: kontzeptuak erauzteko LLMa",
+			"extractionHint": "Irensteko unean zati bakoitzetik entitateak eta mota duten erlazioak erauzteko erabiltzen den eredua. Sortzean blokeatuta, embeddinga bezala.",
+			"extractionVendor": "Erauzketa-hornitzailea",
+			"extractionModel": "Erauzketa-eredua",
+			"extractionEndpoint": "Erauzketa-endpointa (aukerakoa)",
+			"graphLabel": "Gaitu Graph RAG",
+			"graphRequiresChromadb": "Graph RAGek chromadb backend bektoriala behar du (hautatu ezazu Aurreratuan).",
+			"graphHint": "Ezagutza-grafo bat eraikitzen du indize bektorialarekin batera. Dokumentuak LLM erauzle batekin indexatzen dira irensteko unean; kontsulta-garaian, antzekotasun bektoriala eta grafoaren zeharkatzea konbinatzen ditu. Ezin da aldatu sortu ondoren."
+		},
+		"graphSection": "Ezagutza-grafoa",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG sortzean gaitu zen eta blokeatuta dago.",
+		"extractionSummary": "Erauzlea:",
+		"extractedEntities": "Erauzitako entitateak (KG-RAG)",
+		"extractedEntitiesEmpty": "Ez da izendun entitaterik aurkitu galderan."
 	},
 	"knowledge": {
 		"title": "Ezagutza-iturriak",
@@ -1248,7 +1263,9 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan."
+				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan.",
+				"graphLabel": "Gaitu grafo semantikoa (Graph RAG)",
+				"graphHint": "Irentsitako zatietatik kontzeptuak eta erlazioak erauzten ditu eta Neo4j-n gordetzen. KG_RAG_ENABLED=true behar du KB zerbitzarian."
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
@@ -1351,7 +1368,8 @@
 				"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu",
 				"shareLabel": "Partekatu nire erakundearekin",
 				"shareHint": "Geroago alda dezakezu Knowledge Store xehetasun ikuspegitik.",
-				"advancedLabel": "Aurreratua: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala"
+				"advancedLabel": "Aurreratua: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala",
+				"graphHeading": "Graph RAG"
 			}
 		}
 	},

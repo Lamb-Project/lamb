@@ -989,7 +989,9 @@
 		"fileTooLarge": "El fitxer supera el límit de 500 MB.",
 		"importContent": "Importar URL / YouTube",
 		"importSuccess": "Importació iniciada.",
-		"addContent": "Afegir Contingut",
+		"addContent": {
+			"title": "Afegir contingut"
+		},
 		"export": "Exportar",
 		"itemDeleteSuccess": "Element eliminat.",
 		"viewContent": "Veure",
@@ -1026,9 +1028,6 @@
 		"empty": {
 			"title": "Encara no hi ha biblioteques",
 			"description": "Crea'n una per començar a importar contingut."
-		},
-		"addContent": {
-			"title": "Afegir contingut"
 		},
 		"capabilities": {
 			"imageLoadFailed": "No s'ha pogut carregar aquesta imatge. Potser s'ha eliminat."
@@ -1167,7 +1166,23 @@
 			"noItems2": "Aquesta biblioteca no té elements a punt per ingerir.",
 			"submit": "Afegir al Magatzem de Coneixement",
 			"submitting": "Afegint..."
-		}
+		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: LLM d'extracció de conceptes",
+			"extractionHint": "El model que s'utilitza durant la ingesta per extreure entitats i relacions tipades de cada fragment. Bloquejat en crear-lo, igual que l'embedding.",
+			"extractionVendor": "Proveïdor d'extracció",
+			"extractionModel": "Model d'extracció",
+			"extractionEndpoint": "Endpoint d'extracció (opcional)",
+			"graphLabel": "Activa Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requereix el backend vectorial chromadb (selecciona'l a Avançat).",
+			"graphHint": "Crea un graf de coneixement juntament amb l'índex vectorial. Els documents s'indexen amb un extractor LLM durant la ingesta; la recuperació combina la similitud vectorial amb el recorregut del graf. No es pot canviar després de la creació."
+		},
+		"graphSection": "Graf de coneixement",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG es va activar en crear-lo i està bloquejat.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Entitats extretes (KG-RAG)",
+		"extractedEntitiesEmpty": "No s'han trobat entitats amb nom a la pregunta."
 	},
 	"knowledge": {
 		"title": "Fonts de coneixement",
@@ -1248,7 +1263,9 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització."
+				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització.",
+				"graphLabel": "Activa el graf semàntic (Graph RAG)",
+				"graphHint": "Extreu conceptes i relacions dels fragments ingerits i els emmagatzema a Neo4j. Requereix KG_RAG_ENABLED=true al servidor de KB."
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
@@ -1351,7 +1368,8 @@
 				"nameTooLong": "El nom ha de tenir menys de 100 caràcters",
 				"shareLabel": "Compartir amb la meva organització",
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de l'Emmagatzematge de Coneixement.",
-				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embeddings, base de dades vectorial"
+				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embeddings, base de dades vectorial",
+				"graphHeading": "Graph RAG"
 			}
 		}
 	},

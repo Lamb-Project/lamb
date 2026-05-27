@@ -989,7 +989,9 @@
 		"fileTooLarge": "File exceeds 500 MB limit.",
 		"importContent": "Import URL / YouTube",
 		"importSuccess": "Import started.",
-		"addContent": "Add Content",
+		"addContent": {
+			"title": "Add content"
+		},
 		"export": "Export",
 		"itemDeleteSuccess": "Item deleted.",
 		"viewContent": "View",
@@ -1026,9 +1028,6 @@
 		"empty": {
 			"title": "No libraries yet",
 			"description": "Create one to start importing content."
-		},
-		"addContent": {
-			"title": "Add content"
 		},
 		"capabilities": {
 			"imageLoadFailed": "Couldn't load this image. It may have been removed."
@@ -1167,7 +1166,23 @@
 			"noItems2": "This library has no ready items to ingest.",
 			"submit": "Add to Knowledge Store",
 			"submitting": "Adding..."
-		}
+		},
+		"createModal": {
+			"extractionTitle": "Graph RAG: concept extraction LLM",
+			"extractionHint": "The model used at ingest time to extract entities and typed relationships from each chunk. Locked at creation, like embedding.",
+			"extractionVendor": "Extraction vendor",
+			"extractionModel": "Extraction model",
+			"extractionEndpoint": "Extraction endpoint (optional)",
+			"graphLabel": "Enable Graph RAG",
+			"graphRequiresChromadb": "Graph RAG requires the chromadb vector backend (select it in Advanced).",
+			"graphHint": "Builds a knowledge graph alongside the vector index. Documents are indexed with an LLM extractor at ingest time; query-time retrieval combines vector similarity with graph traversal. Cannot be changed after creation."
+		},
+		"graphSection": "Knowledge Graph",
+		"graphEnabledBadge": "Graph RAG",
+		"graphEnabledHint": "Graph RAG was enabled at creation and is locked.",
+		"extractionSummary": "Extractor:",
+		"extractedEntities": "Extracted entities (KG-RAG)",
+		"extractedEntitiesEmpty": "No named entities found in the question."
 	},
 	"knowledge": {
 		"title": "Sources of Knowledge",
@@ -1248,7 +1263,9 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings."
+				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.",
+				"graphLabel": "Enable semantic graph (Graph RAG)",
+				"graphHint": "Extracts concepts and relationships from ingested chunks and stores them in Neo4j. Requires KG_RAG_ENABLED=true on the KB server."
 			},
 			"step7": {
 				"title": "Pick items to ingest",
@@ -1351,7 +1368,8 @@
 				"nameTooLong": "Name must be less than 100 characters",
 				"shareLabel": "Share with my organization",
 				"shareHint": "You can change this later from the Knowledge Store detail view.",
-				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB"
+				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB",
+				"graphHeading": "Graph RAG"
 			}
 		}
 	},
