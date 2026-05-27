@@ -2,6 +2,7 @@
     import { writable } from 'svelte/store';
     import { onMount, onDestroy } from 'svelte';
     import { marked } from 'marked';
+    import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     import { apiFetch } from '$lib/services/apiClient';
 
@@ -766,7 +767,7 @@
                                     </div>
                                 {:else}
                                     {#if renderMarkdown}
-                                        <div class="prose prose-sm {message.role === 'user' ? 'prose-invert' : ''}">{@html marked(message.content)}</div>
+                                        <div class="prose prose-sm {message.role === 'user' ? 'prose-invert' : ''}">{@html renderMarkdownWithMath(message.content)}</div>
                                     {:else}
                                         <p class="whitespace-pre-wrap">{message.content}</p>
                                     {/if}

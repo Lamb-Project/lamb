@@ -51,8 +51,16 @@
 		"dompurify": "^3.4.1",
 		"flowbite-svelte": "^0.48.6",
 		"flowbite-svelte-icons": "^2.1.1",
+		"katex": "^0.17.0",
 		"marked": "^15.0.12",
 		"openai": "^4.53.3",
-		"svelte-i18n": "^4.0.1"
+		"rehype-katex": "^7.0.1",
+		"rehype-stringify": "^10.0.1",
+		"remark-gfm": "^4.0.1",
+		"remark-math": "^6.0.0",
+		"remark-parse": "^11.0.0",
+		"remark-rehype": "^11.1.2",
+		"svelte-i18n": "^4.0.1",
+		"unified": "^11.0.5"
 	}
 }
