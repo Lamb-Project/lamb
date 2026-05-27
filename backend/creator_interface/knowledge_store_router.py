@@ -18,12 +18,13 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from lamb.auth_context import AuthContext, get_auth_context
 from lamb.database_manager import LambDatabaseManager
 
-from .knowledge_store_client import KnowledgeStoreClient
+from .knowledge_store_client import KnowledgeStoreClient, KnowledgeStoreUnavailable
 from .library_manager_client import LibraryManagerClient
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,15 @@ class KnowledgeStoreCreate(BaseModel):
     embedding_vendor: str
     embedding_model: str
     embedding_endpoint: Optional[str] = None
+    # Extra knobs declared by the embedding vendor's plugin schema beyond
+    # ``model``/``api_endpoint``/``api_key`` (those have bespoke widgets).
+    # Empty for today's openai/ollama/local vendors; future vendors that
+    # declare extras pick them up automatically via PluginParamFields.
+    embedding_params: Optional[Dict[str, Any]] = None
     vector_db_backend: str
+    # Extra knobs declared by the vector-DB backend's plugin schema.
+    # Empty for today's chromadb/qdrant backends.
+    vector_db_params: Optional[Dict[str, Any]] = None
     # Optional semantic-graph / KG-RAG opt-in. Forwarded to the KB Server
     # so the collection is created with ``graph_enabled=true`` and
     # ingestion-time concept extraction runs against it. Requires
@@ -148,8 +157,26 @@ def _flatten_pages(pages_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 @router.get("/options")
 async def get_options(auth: AuthContext = Depends(get_auth_context)):
     """Return the org's allowed chunking strategies, embedding vendors / models,
-    and vector DB backends so the UI can render the create form."""
-    return await _client.get_org_options(creator_user=auth.user)
+    and vector DB backends so the UI can render the create form.
+
+    If the KB Server is unreachable or not configured, returns a structured
+    503 ``{"error": "knowledge_store_unavailable", "detail": "..."}`` so the
+    frontend can render an actionable retry state. There is no hardcoded
+    fallback catalogue — the zero-touch plugin thesis (issue #334) requires
+    that the live registries on the KB Server are the single source of
+    truth for available plugins.
+    """
+    try:
+        return await _client.get_org_options(creator_user=auth.user)
+    except KnowledgeStoreUnavailable as exc:
+        logger.warning(f"Knowledge Store unavailable when serving /options: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "knowledge_store_unavailable",
+                "detail": str(exc),
+            },
+        )
 
 
 @router.get("/llm-vendors")
@@ -233,6 +260,8 @@ async def create_knowledge_store(
             description=body.description,
             chunking_params=body.chunking_params,
             embedding_endpoint=resolved_endpoint or "",
+            embedding_params=body.embedding_params,
+            vector_db_params=body.vector_db_params,
             graph_enabled=bool(body.graph_enabled),
             extraction_vendor=body.extraction_vendor,
             extraction_model=body.extraction_model,
@@ -498,18 +527,14 @@ async def add_content(
                 detail=f"Library item {item_id} has empty content.",
             )
 
-        pages_count = 0
+        # Page count comes from the item's own metadata (already fetched).
+        # The legacy ``/content/pages`` filename-list endpoint is shadowed
+        # by the capability handler (which returns an array of
+        # ``{page, markdown}`` rows), so don't re-fetch — read the count
+        # the importer stored on the item record.
         try:
-            pages_payload = await _library_client.proxy_content(
-                library_id=body.library_id,
-                item_id=item_id,
-                subpath="content/pages",
-                creator_user=auth.user,
-            )
-            import json as _json
-            pages_data = _json.loads(pages_payload.content) if pages_payload.content else {}
-            pages_count = pages_data.get("count", 0)
-        except Exception:
+            pages_count = int(item_meta.get("page_count") or 0)
+        except (TypeError, ValueError):
             pages_count = 0
 
         title = item_meta.get("title") or item_meta.get("original_filename") or item_id
@@ -640,11 +665,32 @@ async def remove_content(
     """Remove a library item's vectors from a Knowledge Store.
 
     Does not affect the library item itself — only its presence in this KS.
+
+    If the link is still ``pending`` / ``processing``, the in-flight
+    ingestion job is cancelled first so the worker stops embedding documents
+    the user is discarding. The vector-delete and job-cancel calls are
+    best-effort: the LAMB-side link row is the source of truth from the
+    user's perspective, so we always tear it down and return success even
+    if the downstream KB Server is unreachable or the source had not yet
+    produced any vectors. Without this, deleting a still-processing item
+    would 502 because ``delete_by_source`` can race with the worker's
+    writes and the user would be stuck with a ghost item.
     """
     auth.require_knowledge_store_access(ks_id, level="owner")
     link = _db.get_kb_content_link(ks_id, library_item_id)
     if not link:
         raise HTTPException(status_code=404, detail="Content link not found")
+
+    in_flight = link.get("status") in ("pending", "processing")
+    job_id = link.get("kb_job_id")
+    if in_flight and job_id:
+        try:
+            await _client.cancel_job(job_id, creator_user=auth.user)
+        except Exception as exc:
+            logger.warning(
+                f"Could not cancel KB job {job_id} for content link "
+                f"{library_item_id}: {exc}"
+            )
 
     try:
         await _client.delete_content_by_source(
@@ -653,12 +699,11 @@ async def remove_content(
             creator_user=auth.user,
         )
     except HTTPException as e:
-        if e.status_code == 404:
-            pass
-        elif e.status_code >= 500:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Knowledge Store server error during content delete: {e.detail}",
+        if e.status_code == 404 or e.status_code >= 500:
+            logger.warning(
+                f"Best-effort delete of vectors for {library_item_id} in "
+                f"{ks_id} returned {e.status_code}; tearing the link down "
+                f"anyway: {e.detail}"
             )
         else:
             raise
@@ -666,6 +711,7 @@ async def remove_content(
     _db.delete_kb_content_link(ks_id, library_item_id)
     _audit(auth, "knowledge_store.remove_content", "knowledge_store", ks_id, {
         "library_item_id": library_item_id,
+        "cancelled_job_id": job_id if in_flight else None,
     })
     return {"message": "Content removed from Knowledge Store."}
 

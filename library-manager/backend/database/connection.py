@@ -83,10 +83,26 @@ def init_db() -> None:
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
     Base.metadata.create_all(bind=_engine)
+    _apply_lightweight_migrations(_engine)
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info("Database initialized at %s", DB_PATH)
+
+
+def _apply_lightweight_migrations(engine: Engine) -> None:
+    """Idempotently add additive schema deltas not handled by ``create_all``.
+
+    ``Base.metadata.create_all`` creates missing tables but never adds new
+    columns to existing ones. Every new column we ship lives here, gated by
+    a ``PRAGMA table_info`` check so re-running is a no-op. This runs on
+    every startup, matching the project's existing on-boot schema setup.
+    """
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(content_items)")}
+        if "folder_id" not in cols:
+            conn.exec_driver_sql("ALTER TABLE content_items ADD COLUMN folder_id TEXT")
+            logger.info("Schema migration: added content_items.folder_id")
 
 
 def get_session() -> Generator[Session, None, None]:

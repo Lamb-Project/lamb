@@ -2,9 +2,17 @@
   @component LibraryDetail
   Shows library metadata, item list, file upload, and import actions.
   Receives libraryId as a prop from the page.
+
+  Perceived performance:
+    - Header card paints instantly from the row cache when the user
+      navigated here from the libraries list.
+    - The Knowledge Stores panel is collapsed by default and only fetches
+      when first expanded.
 -->
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { slide } from 'svelte/transition';
+	import { cubicInOut } from 'svelte/easing';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { base } from '$app/paths';
 	import axios from 'axios';
@@ -16,19 +24,104 @@
 		getItemStatus,
 		exportLibrary,
 		toggleSharing,
+		updateLibrary,
 		getItemContent,
 		getItemOriginal,
 		getItemKbLinks,
-		getLibraryKnowledgeStores
+		getLibraryKnowledgeStores,
+		getPlugins
 	} from '$lib/services/libraryService';
+	import { matchPluginsForFile } from '$lib/services/pluginMatcher';
 	import { _ } from '$lib/i18n';
 	import {
 		getKnowledgeStores,
 		removeContent as removeKsContent
 	} from '$lib/services/knowledgeStoreService';
+	import { user } from '$lib/stores/userStore';
+	import { toast } from '$lib/stores/toast.js';
+	import { findLibraryInCache, patchLibraryInCache } from '$lib/stores/librariesCache.js';
+	import { statusBadgeProps } from '$lib/utils/statusBadge.js';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import ImportModal from '$lib/components/modals/ImportModal.svelte';
 	import ItemContentModal from '$lib/components/libraries/ItemContentModal.svelte';
+	import PluginPickerModal from '$lib/components/libraries/PluginPickerModal.svelte';
+	import FileTreeModal from '$lib/components/libraries/fileTree/FileTreeModal.svelte';
+	import {
+		Button,
+		IconButton,
+		Card,
+		Badge,
+		Banner,
+		EmptyState,
+		Collapsible,
+		FormField,
+		SkeletonCard,
+		OverflowMenu
+	} from '$lib/components/ui';
+	import {
+		Users,
+		Lock,
+		Download,
+		Trash2,
+		Pencil,
+		Plus,
+		Eye,
+		FileText,
+		FolderTree,
+		ExternalLink,
+		RefreshCw,
+		Loader2
+	} from 'lucide-svelte';
+
+	let treeModalOpen = $state(false);
+
+	// Description inline edit state. The library's ``name`` is intentionally
+	// read-only here; only the description is editable.
+	let editingDescription = $state(false);
+	let descriptionDraft = $state('');
+	let savingDescription = $state(false);
+	let descriptionError = $state('');
+
+	function beginEditDescription() {
+		descriptionDraft = library?.description || '';
+		descriptionError = '';
+		editingDescription = true;
+	}
+
+	function cancelEditDescription() {
+		editingDescription = false;
+		descriptionDraft = '';
+		descriptionError = '';
+	}
+
+	async function saveDescription() {
+		if (!library) return;
+		const trimmed = descriptionDraft.trim();
+		// No-op if unchanged
+		if (trimmed === (library.description || '').trim()) {
+			cancelEditDescription();
+			return;
+		}
+		// Optimistic write: flip immediately, rollback on failure.
+		const previous = library.description;
+		library = { ...library, description: trimmed };
+		editingDescription = false;
+		savingDescription = true;
+		descriptionError = '';
+		try {
+			await updateLibrary(libraryId, { description: trimmed });
+			patchLibraryInCache(orgId, libraryId, { description: trimmed });
+			toast.success($_('libraries.descriptionSavedSuccess', { default: 'Description updated.' }));
+		} catch (/** @type {unknown} */ err) {
+			// Rollback
+			library = { ...library, description: previous };
+			editingDescription = true;
+			descriptionDraft = trimmed;
+			descriptionError = readableError(err, 'Could not save description.');
+		} finally {
+			savingDescription = false;
+		}
+	}
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
 	function readableError(err, fallback) {
@@ -55,10 +148,16 @@
 
 	let { libraryId = '' } = $props();
 
-	// Library data
-	let library = $state(null);
+	let orgId = $derived(/** @type {any} */ ($user)?.organization_id || '');
+
+	// Library data — seed from the librariesCache row (if we navigated from
+	// the list) so the header card paints instantly without a fetch.
+	let library = $state(/** @type {any} */ (null));
 	let items = $state([]);
 	let totalItems = $state(0);
+	// Loading flag is only true when we have NO library data yet (no cache
+	// hit and the fetch hasn't returned). With a cache hit we skip the full
+	// page skeleton entirely.
 	let loading = $state(true);
 	// Items load independently from the library metadata so the page chrome
 	// (title, description, actions, modals) renders as soon as the library
@@ -79,13 +178,25 @@
 	// "No items yet" empty state, so users don't think their data is gone.
 	let itemsInconsistent = $state(false);
 	let error = $state('');
-	let successMessage = $state('');
 
 	// Upload state
 	/** @type {File|null} */
 	let selectedFile = $state(null);
 	let fileTitle = $state('');
 	let uploading = $state(false);
+
+	// Plugin catalogue fetched once on mount. Used by the upload flow to
+	// route a file to the right plugin (or prompt with the picker modal
+	// when more than one plugin matches the extension). Typed loosely
+	// because the backend response includes more fields than the strict
+	// ImportPlugin alias documents, and the picker only consumes a subset.
+	/** @type {any[]} */
+	let plugins = $state([]);
+
+	// Plugin picker modal state for the multi-match tie-break case.
+	let showPluginPicker = $state(false);
+	/** @type {any[]} */
+	let pluginMatches = $state([]);
 
 	// Polling
 	// $state wrap is required because we reassign (`pendingItemIds = new
@@ -105,19 +216,24 @@
 	let deleteItemBlockers = $state([]);
 	let deleteItemTarget = $state({ id: '', title: '' });
 
-	// Knowledge Stores that reference items from this library. Loaded in
-	// parallel with items; the panel is hidden when the list is empty so
-	// it doesn't take up vertical space on libraries that aren't yet wired
-	// into any KS.
+	// Knowledge Stores that reference items from this library. Loaded
+	// LAZILY when the user expands the panel (perceived-performance rule).
 	/** @type {import('$lib/services/libraryService').LibraryKnowledgeStore[]} */
 	let libraryKnowledgeStores = $state([]);
 	let ksPanelLoading = $state(false);
 	let ksPanelExpanded = $state(false);
+	let ksPanelFetched = $state(false);
 
 	// View item content modal
 	let showItemContentModal = $state(false);
 	let isLoadingItemContent = $state(false);
-	let itemContentTarget = $state({ id: '', title: '', sourceType: '', sourceUrl: '', originalFilename: '' });
+	let itemContentTarget = $state({
+		id: '',
+		title: '',
+		sourceType: '',
+		sourceUrl: '',
+		originalFilename: ''
+	});
 	let itemContent = $state('');
 	/** @type {string|null} */
 	let itemContentError = $state(null);
@@ -128,18 +244,28 @@
 	let isOwner = $derived(library?.is_owner ?? false);
 
 	// --- Resilience plumbing (#352, M4-M7) ---
-	// - isMounted prevents setState writes after the user navigates away
-	// - currentLoadId tags every loadData() invocation so a stale fetch that
-	//   resolves AFTER a newer one cannot overwrite current state
-	// - successTimer is tracked so we can clear it on unmount
 	let isMounted = true;
 	let currentLoadId = 0;
-	/** @type {ReturnType<typeof setTimeout>|null} */
-	let successTimer = null;
 
 	onMount(() => {
+		// Seed the header card from cache so it paints before the fetch resolves.
+		const cached = findLibraryInCache(orgId, libraryId);
+		if (cached) {
+			library = cached;
+			loading = false;
+		}
+		// Fetch plugin catalogue in parallel with the rest of the page —
+		// the upload UI doesn't block on it, but it must arrive before the
+		// user clicks Upload. If the fetch fails, the upload handler shows
+		// a clear error rather than silently routing to a hardcoded plugin.
+		(async () => {
+			try {
+				plugins = await getPlugins();
+			} catch (err) {
+				console.warn('LibraryDetail: failed to load plugins', err);
+			}
+		})();
 		return () => {
-			// Legacy return-from-onMount cleanup; full cleanup is in onDestroy.
 			if (pollInterval) clearInterval(pollInterval);
 		};
 	});
@@ -147,15 +273,9 @@
 	onDestroy(() => {
 		isMounted = false;
 		if (pollInterval) clearInterval(pollInterval);
-		if (successTimer) clearTimeout(successTimer);
 	});
 
-	// Guard against spurious effect re-runs: the parent's $page-driven
-	// effect re-evaluates props on every store emit, which made $effect
-	// re-fire many times per second. Each re-fire cleared the polling
-	// interval at the top of loadData(), so status polling never got to
-	// tick — the user had to manually reload to see pending → ready.
-	// Only call loadData() when libraryId actually changed.
+	// Guard against spurious effect re-runs.
 	let lastLoadedLibraryId = '';
 	$effect(() => {
 		const id = libraryId;
@@ -165,29 +285,7 @@
 		}
 	});
 
-	/**
-	 * Refresh just the items list. Fires through the same items-loading
-	 * indicator as the initial load so the user sees that something is
-	 * happening even after upload / import / delete actions.
-	 */
 	// Fetches /items with auto-retry on a suspect empty response.
-	//
-	// The Library Manager occasionally returns ``{items: [], total: 0}`` on
-	// the first request after a reload — likely a cold-start race in the
-	// LM's SQLite session. The race can also surface in the parallel
-	// ``item_count`` call from getLibrary, so we don't trust that value
-	// blindly. Strategy:
-	//
-	//   - If the FIRST response is empty, always do one verification retry
-	//     after a short delay. A truly-empty library pays ~250 ms of
-	//     latency; a raced one self-heals.
-	//   - On subsequent retries, only continue while ``library.item_count``
-	//     suggests there *should* be items (or is unknown). Once two
-	//     independent calls have both reported zero items, we trust it.
-	//   - Capped at ``maxRetries`` so neither path spins forever.
-	//
-	// @param {number} [maxRetries] Upper bound on retry attempts.
-	// @returns {Promise<{ items: any[], total: number } | null>}
 	async function fetchItemsWithRetry(maxRetries = 3) {
 		const backoffMs = [250, 500, 1000];
 		/** @type {{ items: any[], total: number } | null} */
@@ -197,10 +295,6 @@
 			lastData = data;
 			const count = Array.isArray(data?.items) ? data.items.length : 0;
 			if (count > 0 || attempt === maxRetries) return data;
-			// On the FIRST empty result, always retry once — even if the
-			// library row says zero — because the racy source returns zero
-			// for both calls. On subsequent attempts, give up if the library
-			// row also says zero (two independent confirmations of empty).
 			if (attempt >= 1 && library?.item_count === 0) return data;
 			console.warn(
 				`[LibraryDetail] /items returned empty (attempt ${attempt + 1}/${maxRetries + 1}); retrying.`
@@ -221,44 +315,26 @@
 			if (!isMounted) return;
 			items = itemsData?.items || [];
 			totalItems = itemsData?.total || items.length;
-			// If the response is empty but the library row tells us there
-			// should be items, surface a soft "trouble loading" panel instead
-			// of "No items yet" so the user isn't shown a misleading empty.
 			itemsInconsistent =
-				items.length === 0
-				&& typeof library?.item_count === 'number'
-				&& library.item_count > 0;
+				items.length === 0 && typeof library?.item_count === 'number' && library.item_count > 0;
 			startPollingIfNeeded();
 		} catch (/** @type {unknown} */ err) {
 			console.error('refreshItems failed', err);
 			if (isMounted) {
-				itemsError = readableError(err, $_('libraries.items.loadError', {
-					default: 'Could not load items. The Library Manager may be temporarily unavailable.'
-				}));
+				itemsError = readableError(
+					err,
+					$_('libraries.items.loadError', {
+						default: 'Could not load items. The Library Manager may be temporarily unavailable.'
+					})
+				);
 			}
 		} finally {
 			if (isMounted) itemsLoading = false;
 		}
 	}
 
-	/**
-	 * Kick off library-metadata and items fetches **independently** so the
-	 * page chrome renders as soon as the (fast) library row arrives, even
-	 * if the items endpoint is slow (large library, slow LM, network
-	 * jitter). The two halves track their own loading flags:
-	 *   - ``loading`` covers the library row only
-	 *   - ``itemsLoading`` covers the items list
-	 * @param {{ silent?: boolean }} [opts] When ``silent`` is true, the
-	 *   ``loading`` flag is not toggled — used for in-place refreshes
-	 *   (e.g. after a file upload, polling tick, or item delete) so the
-	 *   page doesn't flash back to the loading skeleton. Errors are still
-	 *   surfaced.
-	 */
 	async function loadData(opts = {}) {
 		const silent = !!opts.silent;
-		// Tag this run; if a newer call starts before we finish, our writes
-		// are dropped on resolution to prevent stale data from clobbering
-		// the current view (#352, M4).
 		const myLoadId = ++currentLoadId;
 
 		if (pollInterval) {
@@ -266,25 +342,20 @@
 			pollInterval = null;
 		}
 		// Only flash the full-page skeleton when we have nothing to show.
-		// Once `library` is populated, subsequent fetches refresh in place
-		// (the items section shows its own inline "Refreshing…" indicator
-		// instead). This prevents the flicker that happens when the effect
-		// re-runs for any reason after the first successful load.
 		if (!silent && !library) loading = true;
 		error = '';
 
-		// Library row — fast, blocks the page chrome only. Resolves the
-		// `libraryReady` promise so the items branch can consult
-		// `library.item_count` when deciding whether to retry on an empty
-		// response.
 		/** @type {(value?: unknown) => void} */
 		let resolveLibraryReady = () => {};
-		const libraryReady = new Promise((res) => { resolveLibraryReady = res; });
+		const libraryReady = new Promise((res) => {
+			resolveLibraryReady = res;
+		});
 		(async () => {
 			try {
 				const lib = await getLibrary(libraryId);
 				if (!isMounted || myLoadId !== currentLoadId) return;
 				library = lib;
+				patchLibraryInCache(orgId, libraryId, lib);
 			} catch (/** @type {unknown} */ err) {
 				if (!isMounted || myLoadId !== currentLoadId) return;
 				if (err instanceof Error && err.message.startsWith('Session expired')) return;
@@ -296,32 +367,18 @@
 			}
 		})();
 
-		// Items — fired in parallel. On a suspect empty response (LM cold-read
-		// race) we wait for the library row's `item_count` and retry until
-		// the two agree or we hit the retry cap; see fetchItemsWithRetry.
 		(async () => {
 			itemsLoading = true;
 			itemsError = '';
 			itemsInconsistent = false;
 			try {
-				// First attempt; if it comes back empty the retry helper will
-				// re-fire after a brief delay (always at least once, then
-				// gated by library.item_count once we can read it).
 				/** @type {{ items: any[], total: number } | null} */
-				let data = await getItems(libraryId, { limit: 100 });
+				let data = await getItems(libraryId, { limit: 20 });
 				if (!isMounted || myLoadId !== currentLoadId) return;
 
 				const looksEmpty = !Array.isArray(data?.items) || data.items.length === 0;
 				if (looksEmpty) {
-					// Wait briefly for the library fetch to land so the retry
-					// helper can consult library.item_count for the second
-					// and later attempts. Don't block forever — if the
-					// library fetch is slow, the helper will still do the
-					// unconditional first retry without it.
-					await Promise.race([
-						libraryReady,
-						new Promise((res) => setTimeout(res, 500))
-					]);
+					await Promise.race([libraryReady, new Promise((res) => setTimeout(res, 500))]);
 					if (!isMounted || myLoadId !== currentLoadId) return;
 					data = await fetchItemsWithRetry(3);
 					if (!isMounted || myLoadId !== currentLoadId) return;
@@ -329,57 +386,61 @@
 
 				items = data?.items || [];
 				totalItems = data?.total || items.length;
-				// Final consistency check: if the row says there should be
-				// items but we got none, mark inconsistent so the UI shows
-				// the soft "trouble loading" panel instead of "No items yet".
 				itemsInconsistent =
-					items.length === 0
-					&& typeof library?.item_count === 'number'
-					&& library.item_count > 0;
+					items.length === 0 && typeof library?.item_count === 'number' && library.item_count > 0;
 				startPollingIfNeeded();
+
+				// Background-fetch the rest if `total > 20`.
+				if (data && typeof data.total === 'number' && data.total > items.length) {
+					(async () => {
+						try {
+							const more = await getItems(libraryId, { limit: 100, offset: items.length });
+							if (!isMounted || myLoadId !== currentLoadId) return;
+							if (Array.isArray(more?.items) && more.items.length > 0) {
+								items = [...items, ...more.items];
+							}
+						} catch (e) {
+							console.warn('Background-fetch of remaining items failed', e);
+						}
+					})();
+				}
 			} catch (/** @type {unknown} */ err) {
 				if (!isMounted || myLoadId !== currentLoadId) return;
 				if (err instanceof Error && err.message.startsWith('Session expired')) return;
-				// Don't surface items errors as full-page errors — keep the
-				// chrome and show the items section's own error state with a
-				// retry button. Without this the user sees the misleading
-				// "No items yet" empty state on a transient fetch failure.
 				console.error('Error loading items:', err);
-				itemsError = readableError(err, $_('libraries.items.loadError', {
-					default: 'Could not load items. The Library Manager may be temporarily unavailable.'
-				}));
+				itemsError = readableError(
+					err,
+					$_('libraries.items.loadError', {
+						default: 'Could not load items. The Library Manager may be temporarily unavailable.'
+					})
+				);
 			} finally {
 				if (isMounted && myLoadId === currentLoadId) itemsLoading = false;
 			}
 		})();
 
-		// Knowledge Stores referencing this library — auxiliary panel.
-		// Errors stay silent (this is a discoverability surface, not a
-		// blocker for the page).
-		(async () => {
-			ksPanelLoading = true;
-			try {
-				const stores = await getLibraryKnowledgeStores(libraryId);
-				if (!isMounted || myLoadId !== currentLoadId) return;
-				libraryKnowledgeStores = stores;
-			} catch (/** @type {unknown} */ err) {
-				if (!isMounted || myLoadId !== currentLoadId) return;
-				console.warn('Error loading library KS panel:', err);
-			} finally {
-				if (isMounted && myLoadId === currentLoadId) ksPanelLoading = false;
-			}
-		})();
+		// NOTE: ksPanel data fetch is DEFERRED — it triggers on first expand.
 	}
 
-	// Refresh the KS-references panel — called after ingestion/removal so
-	// the panel reflects the latest state without a full page reload.
-	async function refreshLibraryKnowledgeStores() {
+	// Lazy-fetch the KS panel data on first expand.
+	async function ensureKsPanelLoaded() {
+		if (ksPanelFetched) return;
+		ksPanelLoading = true;
 		try {
 			const stores = await getLibraryKnowledgeStores(libraryId);
 			if (isMounted) libraryKnowledgeStores = stores;
+			ksPanelFetched = true;
 		} catch (/** @type {unknown} */ err) {
-			console.warn('Error refreshing library KS panel:', err);
+			if (isMounted) console.warn('Error loading library KS panel:', err);
+		} finally {
+			if (isMounted) ksPanelLoading = false;
 		}
+	}
+
+	/** @param {boolean} open */
+	function handleKsPanelToggle(open) {
+		ksPanelExpanded = open;
+		if (open) ensureKsPanelLoaded();
 	}
 
 	function startPollingIfNeeded() {
@@ -408,12 +469,6 @@
 					pendingItemIds = new SvelteSet(pendingItemIds);
 					const idx = items.findIndex((i) => i.id === itemId);
 					if (idx !== -1) {
-						// Carry forward whatever the status endpoint reports — in
-						// particular `error_message`, which is needed by the
-						// "View error" modal. Previously only `status` was copied
-						// and the message was silently dropped, so failed rows
-						// showed the generic "No error message recorded" fallback
-						// even though the server had the full reason.
 						items[idx] = {
 							...items[idx],
 							status: status.status,
@@ -423,8 +478,6 @@
 					}
 				}
 			} catch (e) {
-				// Session-expired aborts the whole poll loop — stop polling so
-				// we don't keep hammering after the redirect kicks in.
 				if (e instanceof Error && e.message.startsWith('Session expired')) {
 					clearInterval(pollInterval);
 					pollInterval = null;
@@ -434,9 +487,6 @@
 			}
 		}
 		if (sawError) {
-			// After 5 consecutive cycles where every probe errored, stop and
-			// surface a banner. Previously errors were silently swallowed and
-			// items appeared "processing" forever (#352, M5).
 			pollFailures += 1;
 			if (pollFailures >= 5) {
 				clearInterval(pollInterval);
@@ -453,24 +503,6 @@
 		}
 	}
 
-	function showSuccess(msg) {
-		successMessage = msg;
-		// Clear any previous pending timer so rapid successes don't accumulate
-		// and so unmount doesn't fire setState on a destroyed component (#352, M6).
-		if (successTimer) clearTimeout(successTimer);
-		successTimer = setTimeout(() => {
-			if (isMounted) successMessage = '';
-			successTimer = null;
-		}, 4000);
-	}
-
-	const SIMPLE_IMPORT_EXTENSIONS = new Set(['txt', 'md', 'html', 'htm']);
-
-	function pluginForFile(file) {
-		const ext = file.name.split('.').pop()?.toLowerCase() || '';
-		return SIMPLE_IMPORT_EXTENSIONS.has(ext) ? 'simple_import' : 'markitdown_import';
-	}
-
 	function handleFileSelect(event) {
 		const files = event.target?.files;
 		selectedFile = files?.[0] || null;
@@ -479,35 +511,59 @@
 		}
 	}
 
-	async function handleUpload() {
+	/** @param {string} pluginName */
+	async function uploadWithPlugin(pluginName) {
 		if (!selectedFile) return;
 		const MAX_FILE_SIZE = 500 * 1024 * 1024;
 		if (selectedFile.size > MAX_FILE_SIZE) {
-			error = $_('libraries.fileTooLarge', { default: 'File exceeds 500 MB limit.' });
+			toast.error($_('libraries.fileTooLarge', { default: 'File exceeds 500 MB limit.' }));
 			return;
 		}
 		uploading = true;
-		error = '';
 		try {
 			await uploadFile(libraryId, selectedFile, {
 				title: fileTitle.trim() || selectedFile.name,
-				pluginName: pluginForFile(selectedFile)
+				pluginName
 			});
 			selectedFile = null;
 			fileTitle = '';
-			showSuccess($_('libraries.uploadSuccess', { default: 'File uploaded. Processing...' }));
+			toast.success($_('libraries.uploadSuccess', { default: 'File uploaded. Processing...' }));
 			await refreshItems();
 		} catch (/** @type {unknown} */ err) {
-			error = readableError(err, 'Upload failed');
+			toast.error(readableError(err, 'Upload failed'));
 			console.error('uploadFile failed', err);
 		} finally {
 			uploading = false;
 		}
 	}
 
-	// View item content. For failed items the on-disk content is either
-	// missing or a stale placeholder; surface the import ``error_message``
-	// directly instead of attempting (and failing) to fetch the file.
+	async function handleUpload() {
+		if (!selectedFile) return;
+		const matches = matchPluginsForFile(selectedFile, plugins);
+		if (matches.length === 0) {
+			const ext = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+			toast.error(
+				$_('libraries.noPluginForExtension', {
+					default: 'No plugin can handle .{ext} files.',
+					values: { ext: ext || '?' }
+				})
+			);
+			return;
+		}
+		if (matches.length === 1) {
+			await uploadWithPlugin(matches[0].name);
+			return;
+		}
+		pluginMatches = matches;
+		showPluginPicker = true;
+	}
+
+	/** @param {{ name: string }} plugin */
+	async function handlePluginPicked(plugin) {
+		showPluginPicker = false;
+		await uploadWithPlugin(plugin.name);
+	}
+
 	async function requestViewItem(item) {
 		itemContentTarget = {
 			id: item.id,
@@ -521,13 +577,6 @@
 		showItemContentModal = true;
 
 		if (item.status === 'failed') {
-			// If the in-memory row already has the message, show it. Otherwise
-			// the row may be stale (e.g. the polling loop transitioned the
-			// item to "failed" before we started carrying error_message, or
-			// the page was opened directly without ever polling). Fetch the
-			// current status from the API as a backstop so the user always
-			// gets the actual reason instead of the "no message recorded"
-			// fallback.
 			if (item.error_message) {
 				isLoadingItemContent = false;
 				itemContentError = item.error_message;
@@ -537,8 +586,6 @@
 			try {
 				const status = await getItemStatus(libraryId, item.id);
 				if (status?.error_message) {
-					// Cache it on the in-memory row so subsequent clicks
-					// don't refetch.
 					const idx = items.findIndex((i) => i.id === item.id);
 					if (idx !== -1) {
 						items[idx] = { ...items[idx], error_message: status.error_message };
@@ -552,12 +599,13 @@
 					});
 				}
 			} catch (/** @type {unknown} */ err) {
-				itemContentError = err instanceof Error
-					? err.message
-					: $_('libraries.itemContentModal.failedNoMessage', {
-							default:
-								'Import failed for this item. No error message was recorded — check the Library Manager logs.'
-						});
+				itemContentError =
+					err instanceof Error
+						? err.message
+						: $_('libraries.itemContentModal.failedNoMessage', {
+								default:
+									'Import failed for this item. No error message was recorded — check the Library Manager logs.'
+							});
 			} finally {
 				isLoadingItemContent = false;
 			}
@@ -568,26 +616,15 @@
 		try {
 			itemContent = await getItemContent(libraryId, item.id);
 		} catch (/** @type {unknown} */ err) {
-			itemContentError = err instanceof Error
-				? err.message
-				: $_('libraries.itemContentModal.loadError', { default: 'Failed to load content.' });
+			itemContentError =
+				err instanceof Error
+					? err.message
+					: $_('libraries.itemContentModal.loadError', { default: 'Failed to load content.' });
 		} finally {
 			isLoadingItemContent = false;
 		}
 	}
 
-	// View item original (source file). Two branches mirror the backend:
-	//  - binary original → render an HTML wrapper containing an embed in a
-	//    new tab so PDFs/images preview inline (direct blob-URL navigation
-	//    from `about:blank` is unreliable: Safari blocks it because the
-	//    placeholder has no origin, Chrome variants sometimes treat it as
-	//    a download; the embed wrapper sidesteps both).
-	//  - URL / YouTube import → backend returns the source URL via 404;
-	//    open it directly in a new tab without proxying.
-	// We must `window.open(...)` before the awaited fetch resolves, otherwise
-	// Safari treats the click as expired and blocks the popup. The trick:
-	// open a blank tab synchronously, then *write* into it once the blob
-	// is ready. If anything fails, close the placeholder tab.
 	async function requestViewItemOriginal(item) {
 		const placeholder = window.open('', '_blank');
 		let opened = false;
@@ -603,9 +640,6 @@
 				}
 				return;
 			}
-			// Binary: navigate directly to the blob URL so the browser's native
-			// viewer handles it (PDF viewer, image viewer, etc.). The objectUrl
-			// stays alive until the tab is closed — revoking it early breaks the view.
 			const objectUrl = URL.createObjectURL(result.blob);
 			if (placeholder) {
 				placeholder.location.href = objectUrl;
@@ -624,27 +658,23 @@
 			}
 		} catch (/** @type {unknown} */ err) {
 			if (placeholder && !opened) placeholder.close();
-			error = readableError(err, $_('libraries.viewOriginalError', {
-				default: 'Failed to load original file.'
-			}));
+			toast.error(
+				readableError(
+					err,
+					$_('libraries.viewOriginalError', { default: 'Failed to load original file.' })
+				)
+			);
 		} finally {
 			if (placeholder && !opened) placeholder.close();
 		}
 	}
 
-	// Import callback
 	async function handleImported() {
-		showSuccess($_('libraries.importSuccess', { default: 'Import started.' }));
+		toast.success($_('libraries.importSuccess', { default: 'Import started.' }));
 		await refreshItems();
 	}
 
-	/**
-	 * Open the delete modal in either "blocked" (KS references found) or
-	 * "confirm" mode based on a pre-flight kb-links lookup. Falls through to
-	 * confirm mode if the pre-check itself fails — the delete handler still
-	 * enforces FR-10 with the 409 fallback below.
-	 * @param {{ id: string, title: string }} item
-	 */
+	/** @param {{ id: string, title: string }} item */
 	async function requestDeleteItem(item) {
 		deleteItemTarget = { id: item.id, title: item.title };
 		deleteItemError = '';
@@ -671,7 +701,6 @@
 		showDeleteItemModal = true;
 	}
 
-	/** Add `content_count` to each blocker row from the KS list, best-effort. */
 	async function enrichBlockersWithCounts() {
 		try {
 			const allKs = await getKnowledgeStores();
@@ -695,11 +724,9 @@
 			await deleteItem(libraryId, deleteItemTarget.id);
 			showDeleteItemModal = false;
 			deleteItemBlockers = [];
-			showSuccess($_('libraries.itemDeleteSuccess', { default: 'Item deleted.' }));
+			toast.success($_('libraries.itemDeleteSuccess', { default: 'Item deleted.' }));
 			await refreshItems();
 		} catch (/** @type {unknown} */ err) {
-			// FR-10 fallback: if the pre-check missed (e.g. raced with a new
-			// link), the 409 from DELETE carries the same blockers shape.
 			console.error('deleteItem failed', err);
 			const isAxios = !!(err && typeof err === 'object' && /** @type {any} */ (err).isAxiosError);
 			const status = isAxios ? /** @type {any} */ (err).response?.status : null;
@@ -722,9 +749,7 @@
 		}
 	}
 
-	/** Remove the current item's link from a single Knowledge Store. */
 	async function handleRemoveBlocker(/** @type {string} */ ksId) {
-		// Mark just the targeted row as removing.
 		deleteItemBlockers = deleteItemBlockers.map((b) =>
 			b.id === ksId ? { ...b, removing: true } : b
 		);
@@ -732,8 +757,6 @@
 			await removeKsContent(ksId, deleteItemTarget.id);
 			deleteItemBlockers = deleteItemBlockers.filter((b) => b.id !== ksId);
 			if (deleteItemBlockers.length === 0) {
-				// All references cleared — clear the error so the Confirm
-				// button reads as actionable again.
 				deleteItemError = '';
 			}
 		} catch (/** @type {unknown} */ e) {
@@ -745,29 +768,34 @@
 		}
 	}
 
-	// Export
 	async function handleExport() {
 		try {
 			await exportLibrary(libraryId, `${library?.name || 'library'}.zip`);
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Export failed';
+			toast.error(err instanceof Error ? err.message : 'Export failed');
 		}
 	}
 
-	// Sharing
 	async function handleToggleSharing() {
 		if (!library) return;
+		// Optimistic flip + rollback on failure.
+		const newState = !library.is_shared;
+		const previous = library.is_shared;
+		library.is_shared = newState;
+		library = { ...library };
+		patchLibraryInCache(orgId, libraryId, { is_shared: newState });
 		try {
-			await toggleSharing(libraryId, !library.is_shared);
-			library.is_shared = !library.is_shared;
-			library = { ...library };
-			showSuccess(
-				library.is_shared
+			await toggleSharing(libraryId, newState);
+			toast.success(
+				newState
 					? $_('libraries.shareSuccess', { default: 'Library shared.' })
 					: $_('libraries.unshareSuccess', { default: 'Library is now private.' })
 			);
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Failed to toggle sharing';
+			library.is_shared = previous;
+			library = { ...library };
+			patchLibraryInCache(orgId, libraryId, { is_shared: previous });
+			toast.error(err instanceof Error ? err.message : 'Failed to toggle sharing');
 		}
 	}
 
@@ -784,393 +812,427 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	function statusBadge(status) {
-		switch (status) {
-			case 'ready':
-				return 'bg-green-100 text-green-800';
-			case 'processing':
-			case 'pending':
-				return 'bg-yellow-100 text-yellow-800';
-			case 'failed':
-				return 'bg-red-100 text-red-800';
-			default:
-				return 'bg-gray-100 text-gray-800';
+	/** Build the per-row OverflowMenu items for the items table. */
+	function buildItemMenuItems(item) {
+		/** @type {Array<{label?: string, onClick?: () => void, icon?: any, danger?: boolean, divider?: boolean, disabled?: boolean}>} */
+		const items = [];
+		if (isOwner) {
+			items.push({
+				label: $_('libraries.delete', { default: 'Delete' }),
+				icon: Trash2,
+				danger: true,
+				onClick: () => requestDeleteItem(item)
+			});
 		}
+		return items;
 	}
 </script>
 
 {#if loading}
-	<div class="p-6 text-center">
-		<div class="animate-pulse text-gray-500">
-			{$_('libraries.loading', { default: 'Loading...' })}
-		</div>
+	<div class="space-y-6">
+		<SkeletonCard lines={3} />
+		<SkeletonCard lines={5} />
 	</div>
 {:else if error && !library}
-	<div class="p-6 text-center" role="alert">
-		<p class="text-red-500">{error}</p>
-	</div>
+	<Banner variant="danger" description={error}>
+		{#snippet actions()}
+			<Button
+				variant="secondary"
+				size="sm"
+				iconLeftComponent={RefreshCw}
+				onclick={() => loadData()}
+			>
+				{$_('common.retry', { default: 'Retry' })}
+			</Button>
+		{/snippet}
+	</Banner>
 {:else if library}
 	<div class="space-y-6">
-		<!-- Success banner -->
-		{#if successMessage}
-			<div
-				class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700"
-				role="status"
-			>
-				{successMessage}
-			</div>
-		{/if}
+		<!-- Page-level error (non-fatal: library shown but a refresh failed) -->
 		{#if error}
-			<div class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
-				{error}
-			</div>
+			<Banner variant="danger" description={error} />
 		{/if}
 
 		<!-- Metadata card -->
-		<div class="rounded-lg bg-white p-6 shadow">
-			<div class="flex items-start justify-between">
-				<div>
-					<h2 class="text-xl leading-8 font-semibold break-words text-gray-900">
-						{library.name}
-					</h2>
-					{#if library.description}
-						<p
-							class="mt-1 line-clamp-3 text-sm break-words text-gray-500"
-							title={library.description}
-						>
-							{library.description}
-						</p>
-					{/if}
-				</div>
-				<div class="flex gap-2">
+		<Card divided={false}>
+			<div class="flex items-start justify-between gap-4">
+				<h2 class="text-text type-section-title min-w-0 flex-1 break-words">
+					{library.name}
+				</h2>
+				<div class="flex shrink-0 flex-wrap items-center gap-2">
 					{#if isOwner}
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="sm"
+							iconLeftComponent={library.is_shared ? Users : Lock}
 							onclick={handleToggleSharing}
-							class="rounded border px-3 py-1.5 text-xs {library.is_shared
-								? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
-								: 'border-gray-300 bg-gray-50 text-gray-600 hover:bg-gray-100'}"
+							class={library.is_shared ? 'text-success' : 'text-text-muted'}
 						>
 							{library.is_shared
 								? $_('libraries.sharing.shared', { default: 'Shared' })
 								: $_('libraries.sharing.private', { default: 'Private' })}
-						</button>
+						</Button>
 					{/if}
-					<button
-						type="button"
-						onclick={handleExport}
-						class="rounded border border-gray-300 bg-gray-50 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100"
-					>
+					<Button variant="secondary" size="sm" iconLeftComponent={Download} onclick={handleExport}>
 						{$_('libraries.export', { default: 'Export' })}
-					</button>
+					</Button>
 				</div>
 			</div>
+
+			<!-- Description: inline editable by the owner. -->
+			{#if editingDescription}
+				<div
+					class="mt-3 space-y-2"
+					transition:slide={{ duration: 280, easing: cubicInOut, axis: 'y' }}
+				>
+					<FormField
+						type="textarea"
+						rows={3}
+						bind:value={descriptionDraft}
+						placeholder={$_('libraries.descriptionPlaceholder', {
+							default: 'Optional description'
+						})}
+						disabled={savingDescription}
+						error={descriptionError}
+						maxlength={500}
+						helper={`${(descriptionDraft || '').length}/500`}
+					/>
+					<div class="flex items-center justify-end gap-2">
+						<Button
+							variant="ghost"
+							size="sm"
+							onclick={cancelEditDescription}
+							disabled={savingDescription}
+						>
+							{$_('common.cancel', { default: 'Cancel' })}
+						</Button>
+						<Button
+							variant="primary"
+							size="sm"
+							onclick={saveDescription}
+							loading={savingDescription}
+						>
+							{$_('common.save', { default: 'Save' })}
+						</Button>
+					</div>
+				</div>
+			{:else if library.description}
+				<div
+					class="mt-2 flex items-start gap-2"
+					transition:slide={{ duration: 280, easing: cubicInOut, axis: 'y' }}
+				>
+					<p class="text-text-muted min-w-0 flex-1 text-sm break-words whitespace-pre-wrap">
+						{library.description}
+					</p>
+					{#if isOwner}
+						<IconButton
+							icon={Pencil}
+							ariaLabel={$_('libraries.editDescription', { default: 'Edit description' })}
+							tooltip={$_('libraries.editDescription', { default: 'Edit description' })}
+							variant="ghost"
+							size="sm"
+							onclick={beginEditDescription}
+						/>
+					{/if}
+				</div>
+			{:else if isOwner}
+				<div transition:slide={{ duration: 280, easing: cubicInOut, axis: 'y' }}>
+					<Button
+						variant="ghost"
+						size="sm"
+						iconLeftComponent={Plus}
+						class="mt-2"
+						onclick={beginEditDescription}
+					>
+						{$_('libraries.addDescription', { default: 'Add description' })}
+					</Button>
+				</div>
+			{/if}
+
 			<dl class="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
 				<div>
-					<dt class="text-gray-500">{$_('libraries.items.title', { default: 'Items' })}</dt>
-					<dd class="font-medium text-gray-900">{totalItems}</dd>
+					<dt class="type-label">{$_('libraries.items.title', { default: 'Items' })}</dt>
+					<dd class="text-text font-medium">{totalItems}</dd>
 				</div>
 				<div>
-					<dt class="text-gray-500">{$_('libraries.owner', { default: 'Owner' })}</dt>
-					<dd class="font-medium text-gray-900">
+					<dt class="type-label">{$_('libraries.owner', { default: 'Owner' })}</dt>
+					<dd class="text-text font-medium">
 						{library.owner_name || library.owner_email || '-'}
 					</dd>
 				</div>
 				<div>
-					<dt class="text-gray-500">{$_('libraries.createdAt', { default: 'Created' })}</dt>
-					<dd class="font-medium text-gray-900">{formatDate(library.created_at)}</dd>
+					<dt class="type-label">{$_('libraries.createdAt', { default: 'Created' })}</dt>
+					<dd class="text-text font-medium">{formatDate(library.created_at)}</dd>
 				</div>
 				<div>
-					<dt class="text-gray-500">ID</dt>
-					<dd class="truncate font-mono text-xs text-gray-500" title={library.id}>{library.id}</dd>
+					<dt class="type-label">ID</dt>
+					<dd class="text-text-muted truncate font-mono text-xs" title={library.id}>
+						{library.id}
+					</dd>
 				</div>
 			</dl>
-		</div>
+		</Card>
 
 		{#if isOwner || library.is_shared}
-			<div class="rounded-lg bg-white p-6 shadow">
-				<h3 class="mb-4 text-base font-semibold text-gray-900">
-					{$_('libraries.addContent', { default: 'Add Content' })}
-				</h3>
+			<Card title={$_('libraries.addContent.title', { default: 'Add content' })} divided>
 				<div class="flex flex-wrap items-end gap-4">
 					<div class="min-w-[200px] flex-1">
-						<label for="upload-file" class="mb-1 block text-sm font-medium text-gray-700">
+						<label for="upload-file" class="text-text mb-1 block text-sm font-medium">
 							{$_('libraries.uploadFile', { default: 'Upload file' })}
 						</label>
 						<input
 							id="upload-file"
 							type="file"
 							onchange={handleFileSelect}
-							class="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-[#2271b3] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#195a91]"
+							class="text-text-muted file:bg-brand hover:file:bg-brand-hover file:text-brand-fg block w-full text-sm file:mr-4 file:rounded-md file:border-0 file:px-4 file:py-2 file:text-sm file:font-semibold"
 							disabled={uploading}
 						/>
 					</div>
 					<div class="w-48">
-						<label for="upload-title" class="mb-1 block text-sm font-medium text-gray-700">
-							{$_('libraries.titleOptional', { default: 'Title' })}
-						</label>
-						<input
-							id="upload-title"
+						<FormField
 							type="text"
+							id="upload-title"
+							label={$_('libraries.titleOptional', { default: 'Title' })}
 							bind:value={fileTitle}
-							maxlength="200"
-							class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
+							maxlength={200}
 							disabled={uploading}
 						/>
 					</div>
-					<button
-						type="button"
-						onclick={handleUpload}
+					<Button
+						variant="primary"
+						loading={uploading}
 						disabled={!selectedFile || uploading}
-						class="rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91] disabled:opacity-50"
+						onclick={handleUpload}
 					>
-						{uploading
-							? $_('libraries.uploading', { default: 'Uploading...' })
-							: $_('libraries.upload', { default: 'Upload' })}
-					</button>
-					<button
-						type="button"
-						onclick={() => importModal.open(libraryId)}
-						class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-					>
+						{$_('libraries.upload', { default: 'Upload' })}
+					</Button>
+					<Button variant="secondary" onclick={() => importModal.open(libraryId)}>
 						{$_('libraries.importContent', { default: 'Import URL / YouTube' })}
-					</button>
+					</Button>
 				</div>
-			</div>
+			</Card>
 		{/if}
 
-		{#if libraryKnowledgeStores.length > 0 || ksPanelLoading}
-			<div class="overflow-hidden rounded-lg bg-white shadow">
-				<button
-					type="button"
-					onclick={() => (ksPanelExpanded = !ksPanelExpanded)}
-					class="flex w-full items-center gap-2 px-6 py-3 text-left hover:bg-gray-50"
-				>
-					<svg
-						class="h-4 w-4 shrink-0 text-gray-400 transition-transform {ksPanelExpanded ? 'rotate-90' : ''}"
-						fill="none" stroke="currentColor" viewBox="0 0 24 24"
-					>
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-					</svg>
-					<span class="text-sm font-medium text-gray-700">
-						{$_('libraries.knowledgeStores.title', { default: 'Knowledge Stores using this library' })}
-					</span>
-					<span class="ml-1 text-xs text-gray-400">({libraryKnowledgeStores.length})</span>
-					{#if ksPanelLoading}
-						<svg class="ml-auto h-3 w-3 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
-							<path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="4" class="opacity-75" fill="none" />
-						</svg>
-					{/if}
-				</button>
-				{#if ksPanelExpanded && libraryKnowledgeStores.length > 0}
-					<ul class="divide-y divide-gray-100 border-t border-gray-100">
+		<!-- KS panel: collapsed by default; data fetched lazily on first expand. -->
+		<div class="border-border bg-surface shadow-card overflow-hidden rounded-lg border">
+			<Collapsible
+				label={$_('libraries.knowledgeStores.title', {
+					default: 'Knowledge Stores using this library'
+				})}
+				bordered={false}
+				open={ksPanelExpanded}
+				onopenchange={handleKsPanelToggle}
+			>
+				{#if ksPanelLoading}
+					<div class="text-text-muted px-6 py-3 text-sm">
+						<Loader2 class="mr-2 inline-block h-3 w-3 animate-spin" aria-hidden="true" />
+						{$_('common.processing', { default: 'Loading...' })}
+					</div>
+				{:else if libraryKnowledgeStores.length === 0}
+					<p class="text-text-muted px-6 py-3 text-sm">
+						{$_('libraries.knowledgeStores.empty', {
+							default: 'No Knowledge Stores reference this library yet.'
+						})}
+					</p>
+				{:else}
+					<ul class="divide-border divide-y">
 						{#each libraryKnowledgeStores as ks (ks.id)}
-							<li class="flex items-center gap-3 px-6 py-2.5 hover:bg-gray-50">
+							<li class="hover:bg-surface-sunken flex items-center gap-3 px-6 py-2.5">
 								<div class="min-w-0 flex-1">
-									<span class="truncate text-sm font-medium text-gray-900" title={ks.name}>{ks.name}</span>
-									<span class="ml-2 text-xs text-gray-400">{ks.embedding_vendor} · {ks.embedding_model}</span>
+									<span class="text-text truncate text-sm font-medium" title={ks.name}>
+										{ks.name}
+									</span>
+									<span class="text-text-subtle ml-2 text-xs">
+										{ks.embedding_vendor} · {ks.embedding_model}
+									</span>
 								</div>
-								{#if ks.is_shared}
-									<span class="shrink-0 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-										{$_('libraries.knowledgeStores.shared', { default: 'Shared' })}
-									</span>
-								{:else}
-									<span class="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-										{$_('libraries.knowledgeStores.private', { default: 'Private' })}
-									</span>
-								{/if}
-								<a
-									href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
-									title={$_('libraries.knowledgeStores.view', { default: 'Open Knowledge Store' })}
-									class="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+								<Badge
+									variant={ks.is_shared ? 'success' : 'neutral'}
+									icon={ks.is_shared ? Users : Lock}
 								>
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-									</svg>
-								</a>
+									{ks.is_shared
+										? $_('libraries.knowledgeStores.shared', { default: 'Shared' })
+										: $_('libraries.knowledgeStores.private', { default: 'Private' })}
+								</Badge>
+								<IconButton
+									icon={ExternalLink}
+									ariaLabel={$_('libraries.knowledgeStores.view', {
+										default: 'Open Knowledge Store'
+									})}
+									tooltip={$_('libraries.knowledgeStores.view', {
+										default: 'Open Knowledge Store'
+									})}
+									variant="ghost"
+									size="sm"
+									href={`${base}/libraries?section=knowledge-stores&view=detail&id=${ks.id}&library=${encodeURIComponent(libraryId)}`}
+								/>
 							</li>
 						{/each}
 					</ul>
 				{/if}
-			</div>
-		{/if}
+			</Collapsible>
+		</div>
 
-		<div class="overflow-hidden rounded-lg bg-white shadow">
-			<div class="border-b border-gray-200 px-6 py-4">
-				<h3 class="text-base font-semibold text-gray-900">
+		<!-- Items table -->
+		<div class="border-border bg-surface shadow-card overflow-hidden rounded-lg border">
+			<div class="border-border flex items-center justify-between gap-4 border-b px-6 py-4">
+				<h3 class="type-section-title">
 					{$_('libraries.items.title', { default: 'Items' })}
-					<span class="ml-1 text-sm font-normal text-gray-500">({totalItems})</span>
+					<span class="text-text-muted ml-1 text-sm font-normal">({totalItems})</span>
 					{#if itemsLoading && items.length > 0}
-						<span class="ml-2 inline-flex items-center text-xs font-normal text-gray-400">
-							<svg class="mr-1 h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
-								<path
-									d="M4 12a8 8 0 018-8"
-									stroke="currentColor"
-									stroke-width="4"
-									class="opacity-75"
-									fill="none"
-								/>
-							</svg>
+						<span class="text-text-subtle ml-2 inline-flex items-center text-xs font-normal">
+							<Loader2 class="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
 							{$_('libraries.items.refreshing', { default: 'Refreshing…' })}
 						</span>
 					{/if}
 				</h3>
+				<Button
+					variant="secondary"
+					size="sm"
+					iconLeftComponent={FolderTree}
+					onclick={() => (treeModalOpen = true)}
+				>
+					{$_('libraries.fileTree.detailButton', { default: 'View file tree' })}
+				</Button>
 			</div>
 
 			{#if itemsLoading && items.length === 0}
-				<div class="p-6 text-center text-gray-400">
-					<div class="inline-flex items-center gap-2">
-						<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25" />
-							<path
-								d="M4 12a8 8 0 018-8"
-								stroke="currentColor"
-								stroke-width="4"
-								class="opacity-75"
-								fill="none"
-							/>
-						</svg>
-						<span>{$_('libraries.items.loading', { default: 'Loading items…' })}</span>
-					</div>
+				<div class="p-6">
+					<SkeletonCard lines={4} class="border-0 shadow-none" />
 				</div>
 			{:else if itemsError}
 				<div class="p-6">
-					<div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
-						<div class="font-medium">
-							{$_('libraries.items.loadErrorTitle', {
-								default: 'Could not load items'
-							})}
-						</div>
-						<p class="mt-1">{itemsError}</p>
-						<button
-							type="button"
-							onclick={refreshItems}
-							class="mt-3 inline-flex items-center rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm hover:bg-red-50"
-						>
-							{$_('libraries.items.retry', { default: 'Retry' })}
-						</button>
-					</div>
+					<Banner
+						variant="danger"
+						title={$_('libraries.items.loadErrorTitle', { default: 'Could not load items' })}
+						description={itemsError}
+					>
+						{#snippet actions()}
+							<Button
+								variant="secondary"
+								size="sm"
+								iconLeftComponent={RefreshCw}
+								onclick={refreshItems}
+							>
+								{$_('common.retry', { default: 'Retry' })}
+							</Button>
+						{/snippet}
+					</Banner>
 				</div>
 			{:else if itemsInconsistent}
-				<!-- Defensive state: library metadata says items exist, but the
-				     items endpoint returned an empty list after retries. Never
-				     show "No items yet" here — it makes users panic that their
-				     data is gone. Show a calm "having trouble loading" panel
-				     with a retry button and a hint about what the system
-				     thinks should be there. -->
 				<div class="p-6">
-					<div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
-						<div class="font-medium">
-							{$_('libraries.items.inconsistentTitle', {
-								default: 'Having trouble loading items'
-							})}
-						</div>
-						<p class="mt-1">
+					<Banner
+						variant="warning"
+						title={$_('libraries.items.inconsistentTitle', {
+							default: 'Having trouble loading items'
+						})}
+					>
+						<p>
 							{$_('libraries.items.inconsistentBody', {
 								default:
 									'Your items are safe — the library record shows they should be here, but we could not load the list this time. Please retry; if this keeps happening, refresh the page or try again in a moment.'
 							})}
 							{#if typeof library?.item_count === 'number' && library.item_count > 0}
-								<span class="block text-xs text-amber-700 mt-1">
+								<span class="mt-1 block text-xs">
 									{$_('libraries.items.inconsistentExpected', {
 										default: 'Library record reports'
-									})}: {library.item_count} {library.item_count === 1
+									})}: {library.item_count}
+									{library.item_count === 1
 										? $_('libraries.items.itemSingular', { default: 'item' })
 										: $_('libraries.items.itemPlural', { default: 'items' })}.
 								</span>
 							{/if}
 						</p>
-						<button
-							type="button"
-							onclick={refreshItems}
-							class="mt-3 inline-flex items-center rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 shadow-sm hover:bg-amber-50"
-						>
-							{$_('libraries.items.retry', { default: 'Retry' })}
-						</button>
-					</div>
+						{#snippet actions()}
+							<Button
+								variant="secondary"
+								size="sm"
+								iconLeftComponent={RefreshCw}
+								onclick={refreshItems}
+							>
+								{$_('common.retry', { default: 'Retry' })}
+							</Button>
+						{/snippet}
+					</Banner>
 				</div>
 			{:else if items.length === 0}
-				<div class="p-6 text-center text-gray-500">
-					{$_('libraries.items.empty', {
-						default: 'No items yet. Upload a file or import content to get started.'
+				<EmptyState
+					icon={FileText}
+					title={$_('libraries.items.emptyTitle', { default: 'No items yet' })}
+					description={$_('libraries.items.empty', {
+						default: 'Upload a file or import content to get started.'
 					})}
-				</div>
+				/>
 			{:else}
 				<div class="overflow-x-auto">
-					<table class="min-w-full divide-y divide-gray-200">
-						<thead class="bg-gray-50">
+					<table class="divide-border min-w-full divide-y">
+						<thead class="bg-surface-muted">
 							<tr>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label px-4 py-3 text-left"
 									>{$_('libraries.items.titleCol', { default: 'Title' })}</th
 								>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label px-4 py-3 text-left"
 									>{$_('libraries.items.source', { default: 'Source' })}</th
 								>
-								<th class="w-24 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label w-24 px-4 py-3 text-left"
 									>{$_('libraries.items.size', { default: 'Size' })}</th
 								>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label px-4 py-3 text-left"
 									>{$_('libraries.items.status', { default: 'Status' })}</th
 								>
-								<th class="w-28 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label w-28 px-4 py-3 text-left"
 									>{$_('libraries.items.created', { default: 'Created' })}</th
 								>
-								<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"
+								<th class="type-label px-4 py-3 text-right"
 									>{$_('libraries.actions', { default: 'Actions' })}</th
 								>
 							</tr>
 						</thead>
-						<tbody class="divide-y divide-gray-200 bg-white">
+						<tbody class="divide-border bg-surface divide-y">
 							{#each items as item (item.id)}
-								<tr class="hover:bg-gray-50">
+								{@const sb = statusBadgeProps(item.status)}
+								<tr class="hover:bg-surface-sunken">
 									<td class="px-4 py-3">
-										<div class="text-sm font-medium text-gray-900">{item.title}</div>
+										<div class="text-text text-sm font-medium">{item.title}</div>
 										{#if item.original_filename}
-											<div class="text-xs text-gray-400">{item.original_filename}</div>
+											<div class="text-text-subtle text-xs">{item.original_filename}</div>
 										{/if}
 									</td>
-									<td class="px-4 py-3 text-sm text-gray-500">{item.source_type}</td>
-									<td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatSize(item.file_size)}</td>
-									<td class="px-4 py-3">
-										<span
-											class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {statusBadge(
-												item.status
-											)}"
-										>
-											{item.status}
-										</span>
+									<td class="text-text-muted px-4 py-3 text-sm">{item.source_type}</td>
+									<td class="text-text-muted px-4 py-3 text-sm whitespace-nowrap">
+										{formatSize(item.file_size)}
 									</td>
-									<td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatDate(item.created_at)}</td>
+									<td class="px-4 py-3">
+										<Badge variant={sb.variant} icon={sb.icon} spin={sb.spin}>
+											{sb.label}
+										</Badge>
+									</td>
+									<td class="text-text-muted px-4 py-3 text-sm whitespace-nowrap">
+										{formatDate(item.created_at)}
+									</td>
 									<td class="px-4 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1">
 											{#if item.status === 'completed' || item.status === 'ready' || item.status === 'failed'}
-												<button
-													type="button"
-													onclick={() => requestViewItem(item)}
-													class="rounded p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
-													title={item.status === 'failed'
+												<IconButton
+													icon={Eye}
+													ariaLabel={item.status === 'failed'
 														? $_('libraries.viewError', { default: 'View error details' })
 														: $_('libraries.viewItem', { default: 'View item' })}
-												>
-													<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-														<path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-														<path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
-													</svg>
-												</button>
+													tooltip={item.status === 'failed'
+														? $_('libraries.viewError', { default: 'View error details' })
+														: $_('libraries.viewItem', { default: 'View item' })}
+													variant="ghost"
+													size="sm"
+													onclick={() => requestViewItem(item)}
+												/>
 											{/if}
 											{#if isOwner}
-												<button
-													type="button"
-													onclick={() => requestDeleteItem(item)}
-													class="rounded p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-													title={$_('libraries.delete', { default: 'Delete' })}
-												>
-													<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-														<path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-													</svg>
-												</button>
+												<OverflowMenu
+													items={buildItemMenuItems(item)}
+													ariaLabel={$_('list.moreActions', { default: 'More actions' })}
+													tooltip={$_('list.moreActions', { default: 'More actions' })}
+													size="sm"
+												/>
 											{/if}
 										</div>
 									</td>
@@ -1185,6 +1247,16 @@
 {/if}
 
 <ImportModal bind:this={importModal} on:imported={handleImported} />
+
+<PluginPickerModal
+	bind:isOpen={showPluginPicker}
+	matches={pluginMatches}
+	file={selectedFile}
+	onselect={handlePluginPicked}
+	oncancel={() => {
+		showPluginPicker = false;
+	}}
+/>
 
 <ConfirmationModal
 	bind:isOpen={showDeleteItemModal}
@@ -1204,7 +1276,8 @@
 	message={deleteItemBlockers.length > 0
 		? ''
 		: $_('libraries.deleteItemModal.message', {
-				default: `Are you sure you want to delete "${deleteItemTarget.title}"?`
+				default: `Delete "${deleteItemTarget.title}"? This action cannot be undone.`,
+				values: { title: deleteItemTarget.title }
 			})}
 	confirmText={$_('libraries.deleteItemModal.confirm', { default: 'Delete' })}
 	hideConfirm={deleteItemBlockers.length > 0}
@@ -1226,6 +1299,8 @@
 	sourceType={itemContentTarget.sourceType}
 	sourceUrl={itemContentTarget.sourceUrl}
 	originalFilename={itemContentTarget.originalFilename}
+	{libraryId}
+	itemId={itemContentTarget.id}
 	onviewOriginal={() => {
 		if (itemContentTarget.id) {
 			requestViewItemOriginal({ id: itemContentTarget.id, title: itemContentTarget.title });
@@ -1233,5 +1308,16 @@
 	}}
 	onclose={() => {
 		showItemContentModal = false;
+	}}
+/>
+
+<FileTreeModal
+	bind:isOpen={treeModalOpen}
+	{libraryId}
+	libraryName={library?.name || ''}
+	isReadOnly={!isOwner}
+	onclose={async () => {
+		treeModalOpen = false;
+		await refreshItems();
 	}}
 />

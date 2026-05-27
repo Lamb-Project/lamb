@@ -486,23 +486,8 @@ async def import_library(
 
 
 def _item_to_summary(item: ContentItem) -> dict:
-    """Convert a ContentItem ORM object to a summary dict."""
-    return {
-        "id": item.id,
-        "title": item.title,
-        "source_type": item.source_type,
-        "source_url": item.source_url,
-        "original_filename": item.original_filename,
-        "content_type": item.content_type,
-        "file_size": item.file_size,
-        "import_plugin": item.import_plugin,
-        "status": item.status,
-        "error_message": item.error_message,
-        "page_count": item.page_count,
-        "image_count": item.image_count,
-        "created_at": item.created_at,
-        "updated_at": item.updated_at,
-    }
+    """Thin wrapper around the shared service helper (kept for call sites)."""
+    return content_service.item_to_summary(item)
 
 
 def _item_to_detail(item: ContentItem) -> dict:

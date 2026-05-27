@@ -97,29 +97,44 @@ async def test_content_format_text(client: AsyncClient, library: dict):
 
 
 @pytest.mark.asyncio
-async def test_pages_empty_for_text(client: AsyncClient, library: dict):
-    """A plain text file should have no pages."""
+async def test_pages_unavailable_for_text(client: AsyncClient, library: dict):
+    """A plain text file exposes no ``pages`` capability — the handler 404s."""
     lib_id = library["id"]
     item_id = await _upload_md(client, lib_id, "No pages here.")
 
+    # The capability handler at ``/content/pages`` raises HandlerUnavailable
+    # → 404 when the item has no ``content/pages/`` directory on disk. The
+    # frontend never asks for a capability that isn't in the item's
+    # ``/capabilities`` list, so this is the correct contract.
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/pages", headers=AUTH_HEADERS
     )
-    assert resp.status_code == 200
-    assert resp.json()["count"] == 0
+    assert resp.status_code == 404
+
+    # And ``capabilities`` shouldn't list it either.
+    caps = await client.get(
+        f"/libraries/{lib_id}/items/{item_id}/capabilities", headers=AUTH_HEADERS
+    )
+    assert caps.status_code == 200
+    assert "pages" not in caps.json()["capabilities"]
 
 
 @pytest.mark.asyncio
-async def test_images_empty_for_text(client: AsyncClient, library: dict):
-    """A plain text file should have no images."""
+async def test_images_unavailable_for_text(client: AsyncClient, library: dict):
+    """A plain text file exposes no ``images`` capability — the handler 404s."""
     lib_id = library["id"]
     item_id = await _upload_md(client, lib_id, "No images here.")
 
     resp = await client.get(
         f"/libraries/{lib_id}/items/{item_id}/content/images", headers=AUTH_HEADERS
     )
-    assert resp.status_code == 200
-    assert resp.json()["count"] == 0
+    assert resp.status_code == 404
+
+    caps = await client.get(
+        f"/libraries/{lib_id}/items/{item_id}/capabilities", headers=AUTH_HEADERS
+    )
+    assert caps.status_code == 200
+    assert "images" not in caps.json()["capabilities"]
 
 
 @pytest.mark.asyncio

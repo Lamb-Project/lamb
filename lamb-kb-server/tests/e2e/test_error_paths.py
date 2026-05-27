@@ -1,10 +1,11 @@
 """E2E error-path tests — table-driven over real HTTP.
 
-Each test hits a real uvicorn subprocess (the session-scoped ``kb_server_process``
-fixture from conftest.py) and asserts the correct HTTP status code plus that the
-response body matches the ``ErrorResponse`` shape from ``schemas/common.py``
-(i.e., ``{"detail": "<message>"}``) or FastAPI's 422 validation error shape
-(``{"detail": [...]}``) where applicable.
+Each test hits a real uvicorn subprocess (the session-scoped
+``kb_server_process_standalone`` fixture from conftest.py, no Docker required)
+and asserts the correct HTTP status code plus that the response body matches the
+``ErrorResponse`` shape from ``schemas/common.py`` (i.e., ``{"detail":
+"<message>"}``) or FastAPI's 422 validation error shape (``{"detail": [...]}``)
+where applicable.
 
 **Embedding vendor in helpers:** The e2e subprocess does NOT register the
 ``FakeEmbedding`` test double — that is only available in unit/integration tiers.
@@ -69,10 +70,10 @@ def _minimal_collection_payload(
     }
 
 
-def _create_collection(http: httpx.Client, **kwargs) -> dict:
+def _create_collection(http_standalone: httpx.Client, **kwargs) -> dict:
     """POST /collections with a minimal payload; assert 201 and return body."""
     payload = _minimal_collection_payload(**kwargs)
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
     assert r.status_code == 201, f"Expected 201, got {r.status_code}: {r.text}"
     return r.json()
 
@@ -92,10 +93,10 @@ def _assert_error_response(body: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_400_unknown_chunking_strategy(http: httpx.Client) -> None:
+def test_400_unknown_chunking_strategy(http_standalone: httpx.Client) -> None:
     """POST /collections with an unregistered chunking_strategy returns 400."""
     payload = _minimal_collection_payload(chunking_strategy="bogus_strategy")
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
 
     assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
     body = r.json()
@@ -105,10 +106,10 @@ def test_400_unknown_chunking_strategy(http: httpx.Client) -> None:
     )
 
 
-def test_400_unknown_embedding_vendor(http: httpx.Client) -> None:
+def test_400_unknown_embedding_vendor(http_standalone: httpx.Client) -> None:
     """POST /collections with an unregistered embedding vendor returns 400."""
     payload = _minimal_collection_payload(embedding_vendor="definitely_fake_vendor_xyz")
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
 
     assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
     body = r.json()
@@ -119,10 +120,10 @@ def test_400_unknown_embedding_vendor(http: httpx.Client) -> None:
     ), f"Error detail should mention the bad vendor: {body['detail']}"
 
 
-def test_400_unknown_vector_db_backend(http: httpx.Client) -> None:
+def test_400_unknown_vector_db_backend(http_standalone: httpx.Client) -> None:
     """POST /collections with an unregistered vector_db_backend returns 400."""
     payload = _minimal_collection_payload(vector_db_backend="nonexistent_backend")
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
 
     assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
     body = r.json()
@@ -139,7 +140,7 @@ def test_400_unknown_vector_db_backend(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_400_or_422_empty_documents_in_add_content(http: httpx.Client) -> None:
+def test_400_or_422_empty_documents_in_add_content(http_standalone: httpx.Client) -> None:
     """POST /collections/{id}/add-content with documents=[] returns 400 or 422.
 
     ``AddContentRequest`` declares ``min_length=1`` on the ``documents`` field
@@ -147,10 +148,10 @@ def test_400_or_422_empty_documents_in_add_content(http: httpx.Client) -> None:
     the error before the route handler runs, so FastAPI converts it to 422.
     Both 400 and 422 are acceptable outcomes for this validation guard.
     """
-    coll = _create_collection(http)
+    coll = _create_collection(http_standalone)
     coll_id = coll["id"]
 
-    r = http.post(f"/collections/{coll_id}/add-content", json={"documents": []})
+    r = http_standalone.post(f"/collections/{coll_id}/add-content", json={"documents": []})
 
     assert r.status_code in (400, 422), (
         f"Expected 400 or 422 for empty documents, got {r.status_code}: {r.text}"
@@ -164,14 +165,14 @@ def test_400_or_422_empty_documents_in_add_content(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_401_missing_auth(kb_server_process: dict) -> None:
+def test_401_missing_auth(kb_server_process_standalone: dict) -> None:
     """GET /collections with no Authorization header returns 401 or 403.
 
     FastAPI's ``HTTPBearer`` returns 403 when the scheme is absent because it
     treats a missing Authorization header as a forbidden request (auto_error
     behavior).  Both codes correctly indicate unauthenticated access.
     """
-    with httpx.Client(base_url=kb_server_process["base_url"], timeout=10.0) as client:
+    with httpx.Client(base_url=kb_server_process_standalone["base_url"], timeout=10.0) as client:
         r = client.get("/collections")
 
     assert r.status_code in (401, 403), (
@@ -181,19 +182,17 @@ def test_401_missing_auth(kb_server_process: dict) -> None:
     _assert_error_response(body)
 
 
-def test_401_invalid_token(kb_server_process: dict) -> None:
+def test_401_invalid_token(kb_server_process_standalone: dict) -> None:
     """GET /collections with a wrong bearer token returns 401."""
     bad_headers = {"Authorization": "Bearer this-is-totally-wrong"}
     with httpx.Client(
-        base_url=kb_server_process["base_url"],
+        base_url=kb_server_process_standalone["base_url"],
         headers=bad_headers,
         timeout=10.0,
     ) as client:
         r = client.get("/collections")
 
-    assert r.status_code == 401, (
-        f"Expected 401 for invalid token, got {r.status_code}: {r.text}"
-    )
+    assert r.status_code == 401, f"Expected 401 for invalid token, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
@@ -203,34 +202,34 @@ def test_401_invalid_token(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_404_collection_not_found_get(http: httpx.Client) -> None:
+def test_404_collection_not_found_get(http_standalone: httpx.Client) -> None:
     """GET /collections/{nonexistent-id} returns 404."""
-    r = http.get("/collections/nonexistent-collection-uuid")
+    r = http_standalone.get("/collections/nonexistent-collection-uuid")
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_collection_not_found_put(http: httpx.Client) -> None:
+def test_404_collection_not_found_put(http_standalone: httpx.Client) -> None:
     """PUT /collections/{nonexistent-id} returns 404."""
-    r = http.put("/collections/nonexistent-collection-uuid", json={"name": "new-name"})
+    r = http_standalone.put("/collections/nonexistent-collection-uuid", json={"name": "new-name"})
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_collection_not_found_delete(http: httpx.Client) -> None:
+def test_404_collection_not_found_delete(http_standalone: httpx.Client) -> None:
     """DELETE /collections/{nonexistent-id} returns 404."""
-    r = http.delete("/collections/nonexistent-collection-uuid")
+    r = http_standalone.delete("/collections/nonexistent-collection-uuid")
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_collection_not_found_add_content(http: httpx.Client) -> None:
+def test_404_collection_not_found_add_content(http_standalone: httpx.Client) -> None:
     """POST /collections/{nonexistent-id}/add-content returns 404."""
     payload = {
         "documents": [
@@ -241,35 +240,35 @@ def test_404_collection_not_found_add_content(http: httpx.Client) -> None:
             }
         ]
     }
-    r = http.post("/collections/nonexistent-collection-uuid/add-content", json=payload)
+    r = http_standalone.post("/collections/nonexistent-collection-uuid/add-content", json=payload)
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_collection_not_found_query(http: httpx.Client) -> None:
+def test_404_collection_not_found_query(http_standalone: httpx.Client) -> None:
     """POST /collections/{nonexistent-id}/query returns 404."""
     payload = {"query_text": "some query", "top_k": 3}
-    r = http.post("/collections/nonexistent-collection-uuid/query", json=payload)
+    r = http_standalone.post("/collections/nonexistent-collection-uuid/query", json=payload)
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_collection_not_found_delete_source(http: httpx.Client) -> None:
+def test_404_collection_not_found_delete_source(http_standalone: httpx.Client) -> None:
     """DELETE /collections/{nonexistent-id}/content/{source-id} returns 404."""
-    r = http.delete("/collections/nonexistent-collection-uuid/content/source-item-abc")
+    r = http_standalone.delete("/collections/nonexistent-collection-uuid/content/source-item-abc")
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
     _assert_error_response(body)
 
 
-def test_404_job_not_found(http: httpx.Client) -> None:
+def test_404_job_not_found(http_standalone: httpx.Client) -> None:
     """GET /jobs/{nonexistent-id} returns 404."""
-    r = http.get("/jobs/nonexistent-job-id-xyz")
+    r = http_standalone.get("/jobs/nonexistent-job-id-xyz")
 
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
     body = r.json()
@@ -281,18 +280,18 @@ def test_404_job_not_found(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_409_duplicate_collection_name(http: httpx.Client) -> None:
+def test_409_duplicate_collection_name(http_standalone: httpx.Client) -> None:
     """Creating two collections with the same name in the same org returns 409."""
     org_id = _unique_org()
     name = f"duplicate-test-{uuid4().hex[:6]}"
 
     # First creation must succeed.
-    first = _create_collection(http, org_id=org_id, name=name)
+    first = _create_collection(http_standalone, org_id=org_id, name=name)
     assert first["name"] == name
 
     # Second creation with same (org_id, name) must conflict.
     payload = _minimal_collection_payload(org_id=org_id, name=name)
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
 
     assert r.status_code == 409, f"Expected 409 for duplicate name, got {r.status_code}: {r.text}"
     body = r.json()
@@ -454,12 +453,12 @@ def test_413_payload_exceeds_limit(small_limit_server: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_422_invalid_request_body_type_top_k_negative(http: httpx.Client) -> None:
+def test_422_invalid_request_body_type_top_k_negative(http_standalone: httpx.Client) -> None:
     """POST /collections/{id}/query with top_k=-1 returns 422 (ge=1 violated)."""
-    coll = _create_collection(http)
+    coll = _create_collection(http_standalone)
     coll_id = coll["id"]
 
-    r = http.post(
+    r = http_standalone.post(
         f"/collections/{coll_id}/query",
         json={"query_text": "hello", "top_k": -1},
     )
@@ -469,12 +468,12 @@ def test_422_invalid_request_body_type_top_k_negative(http: httpx.Client) -> Non
     _assert_error_response(body)
 
 
-def test_422_invalid_top_k_too_large(http: httpx.Client) -> None:
+def test_422_invalid_top_k_too_large(http_standalone: httpx.Client) -> None:
     """POST /collections/{id}/query with top_k=1000 returns 422 (le=100 violated)."""
-    coll = _create_collection(http)
+    coll = _create_collection(http_standalone)
     coll_id = coll["id"]
 
-    r = http.post(
+    r = http_standalone.post(
         f"/collections/{coll_id}/query",
         json={"query_text": "hello", "top_k": 1000},
     )
@@ -486,7 +485,7 @@ def test_422_invalid_top_k_too_large(http: httpx.Client) -> None:
     _assert_error_response(body)
 
 
-def test_422_missing_required_field_name(http: httpx.Client) -> None:
+def test_422_missing_required_field_name(http_standalone: httpx.Client) -> None:
     """POST /collections without ``name`` (required field) returns 422."""
     org_id = _unique_org()
     # Deliberately omit the required ``name`` field.
@@ -499,7 +498,7 @@ def test_422_missing_required_field_name(http: httpx.Client) -> None:
         },
         "vector_db_backend": "chromadb",
     }
-    r = http.post("/collections", json=payload)
+    r = http_standalone.post("/collections", json=payload)
 
     assert r.status_code == 422, (
         f"Expected 422 for missing 'name' field, got {r.status_code}: {r.text}"
@@ -513,19 +512,17 @@ def test_422_missing_required_field_name(http: httpx.Client) -> None:
 #
 # The 503 path requires (a) a collection persisted in SQLite that references
 # a backend, and (b) that backend being unregistered at query time. The
-# ``kb_server_no_chromadb`` fixture provides both via a two-phase server
+# ``kb_server_no_chromadb_standalone`` fixture provides both via a two-phase server
 # lifecycle sharing one DATA_DIR (see tests/e2e/conftest.py).
 # ---------------------------------------------------------------------------
 
 
-def test_503_backend_unavailable(kb_server_no_chromadb: dict) -> None:
+def test_503_backend_unavailable(kb_server_no_chromadb_standalone: dict) -> None:
     """Querying a chromadb-backed collection returns 503 when the backend is disabled."""
-    info = kb_server_no_chromadb["info"]
-    collection_id = kb_server_no_chromadb["collection_id"]
+    info = kb_server_no_chromadb_standalone["info"]
+    collection_id = kb_server_no_chromadb_standalone["collection_id"]
 
-    with httpx.Client(
-        base_url=info["base_url"], headers=AUTH_HEADERS, timeout=30.0
-    ) as client:
+    with httpx.Client(base_url=info["base_url"], headers=AUTH_HEADERS, timeout=30.0) as client:
         r = client.post(
             f"/collections/{collection_id}/query",
             json={"query_text": "anything", "top_k": 5},

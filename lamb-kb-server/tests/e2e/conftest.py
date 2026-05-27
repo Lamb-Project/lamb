@@ -266,6 +266,24 @@ def _stop_kb_server(info: dict) -> None:
 
 
 @pytest.fixture(scope="session")
+def kb_server_process_standalone() -> Iterator[dict]:
+    """Launch the KB server in a subprocess on a free port — no Docker required.
+
+    Use this fixture for tests that only need a live KB server (auth, routing,
+    error paths, capability listings) and do NOT need real Ollama or Qdrant
+    services.  Tests that perform actual ingestion with real embeddings must
+    use ``kb_server_process`` (which depends on ``docker_stack``).
+    """
+    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-sa-")
+    info = _spawn_kb_server(data_dir=data_dir)
+    try:
+        yield info
+    finally:
+        _stop_kb_server(info)
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
 def kb_server_process(docker_stack: dict) -> Iterator[dict]:
     """Launch the KB server in a subprocess on a free port."""
     data_dir = tempfile.mkdtemp(prefix="kbs-e2e-")
@@ -275,6 +293,61 @@ def kb_server_process(docker_stack: dict) -> Iterator[dict]:
     finally:
         _stop_kb_server(info)
         shutil.rmtree(data_dir, ignore_errors=True)
+
+
+def _make_no_chromadb_fixture(ollama_url: str) -> Iterator[dict]:
+    """Shared implementation for the two-phase 503-backend-unavailable fixture.
+
+    Phase 1: spawn a default-config server, create a chromadb-backed collection
+    (using *ollama_url* for the embedding endpoint — Ollama is never contacted),
+    stop the server. Phase 2: spawn a second server against the same DATA_DIR
+    with ``VECTOR_DB_CHROMADB=DISABLE`` so the persisted collection's backend is
+    no longer registered. Yields ``{"info": phase2_info, "collection_id": str}``.
+    """
+    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-503-")
+
+    # Phase 1 — chromadb registered, create the collection.
+    info1 = _spawn_kb_server(data_dir=data_dir)
+    try:
+        payload = {
+            "organization_id": "org-503",
+            "name": "kb-503",
+            "description": "503 e2e test",
+            "chunking_strategy": "simple",
+            "chunking_params": {"chunk_size": 400, "chunk_overlap": 0},
+            "embedding": {
+                "vendor": "ollama",
+                "model": "nomic-embed-text",
+                "api_endpoint": f"{ollama_url}/api/embeddings",
+            },
+            "vector_db_backend": "chromadb",
+        }
+        with httpx.Client(base_url=info1["base_url"], headers=AUTH_HEADERS, timeout=30.0) as client:
+            r = client.post("/collections", json=payload)
+            assert r.status_code == 201, f"phase-1 create failed: {r.status_code} {r.text}"
+            collection_id = r.json()["id"]
+    finally:
+        _stop_kb_server(info1)
+
+    # Phase 2 — chromadb disabled; persisted collection now points at a
+    # backend that is not registered, so /query returns 503.
+    info2 = _spawn_kb_server(data_dir=data_dir, env_overrides={"VECTOR_DB_CHROMADB": "DISABLE"})
+    try:
+        yield {"info": info2, "collection_id": collection_id}
+    finally:
+        _stop_kb_server(info2)
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def kb_server_no_chromadb_standalone() -> Iterator[dict]:
+    """Two-phase 503-backend-unavailable fixture — no Docker required.
+
+    Ollama is listed as the embedding vendor in the collection payload but is
+    never contacted: 503 fires before the embedding callable is invoked, so
+    a dummy (unreachable) endpoint suffices.
+    """
+    yield from _make_no_chromadb_fixture("http://127.0.0.1:19999")
 
 
 @pytest.fixture
@@ -291,43 +364,7 @@ def kb_server_no_chromadb(docker_stack: dict) -> Iterator[dict]:
     only registers in the test process). Ollama is not actually contacted —
     503 fires before the embedding callable is invoked.
     """
-    data_dir = tempfile.mkdtemp(prefix="kbs-e2e-503-")
-
-    # Phase 1 — chromadb registered, create the collection.
-    info1 = _spawn_kb_server(data_dir=data_dir)
-    try:
-        payload = {
-            "organization_id": "org-503",
-            "name": "kb-503",
-            "description": "503 e2e test",
-            "chunking_strategy": "simple",
-            "chunking_params": {"chunk_size": 400, "chunk_overlap": 0},
-            "embedding": {
-                "vendor": "ollama",
-                "model": "nomic-embed-text",
-                "api_endpoint": f"{docker_stack['ollama_url']}/api/embeddings",
-            },
-            "vector_db_backend": "chromadb",
-        }
-        with httpx.Client(
-            base_url=info1["base_url"], headers=AUTH_HEADERS, timeout=30.0
-        ) as client:
-            r = client.post("/collections", json=payload)
-            assert r.status_code == 201, f"phase-1 create failed: {r.status_code} {r.text}"
-            collection_id = r.json()["id"]
-    finally:
-        _stop_kb_server(info1)
-
-    # Phase 2 — chromadb disabled; persisted collection now points at a
-    # backend that is not registered, so /query returns 503.
-    info2 = _spawn_kb_server(
-        data_dir=data_dir, env_overrides={"VECTOR_DB_CHROMADB": "DISABLE"}
-    )
-    try:
-        yield {"info": info2, "collection_id": collection_id}
-    finally:
-        _stop_kb_server(info2)
-        shutil.rmtree(data_dir, ignore_errors=True)
+    yield from _make_no_chromadb_fixture(docker_stack["ollama_url"])
 
 
 @pytest.fixture
@@ -335,6 +372,17 @@ def http(kb_server_process: dict) -> Iterator[httpx.Client]:
     """Real HTTP client (loopback TCP) bound to the e2e server."""
     with httpx.Client(
         base_url=kb_server_process["base_url"],
+        headers=AUTH_HEADERS,
+        timeout=30.0,
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+def http_standalone(kb_server_process_standalone: dict) -> Iterator[httpx.Client]:
+    """Real HTTP client bound to the standalone (no-Docker) e2e server."""
+    with httpx.Client(
+        base_url=kb_server_process_standalone["base_url"],
         headers=AUTH_HEADERS,
         timeout=30.0,
     ) as client:

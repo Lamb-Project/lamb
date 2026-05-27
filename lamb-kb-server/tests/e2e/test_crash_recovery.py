@@ -13,6 +13,7 @@ remote Qdrant instance is involved.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import signal
@@ -137,16 +138,13 @@ def _poll_job_status(
     last_body: dict = {}
     while time.monotonic() < deadline:
         r = client.get(f"/jobs/{job_id}", headers=_AUTH_HEADERS, timeout=10.0)
-        assert r.status_code == 200, (
-            f"GET /jobs/{job_id} returned {r.status_code}: {r.text}"
-        )
+        assert r.status_code == 200, f"GET /jobs/{job_id} returned {r.status_code}: {r.text}"
         last_body = r.json()
         if last_body["status"] in target_statuses:
             return last_body
         time.sleep(_JOB_POLL_INTERVAL)
     raise AssertionError(
-        f"Job {job_id} did not reach {target_statuses} within {timeout}s; "
-        f"last status: {last_body}"
+        f"Job {job_id} did not reach {target_statuses} within {timeout}s; last status: {last_body}"
     )
 
 
@@ -173,9 +171,7 @@ def _make_collection_payload(ollama_url: str, name: str = "crash-test") -> dict:
     }
 
 
-def _make_add_content_payload(
-    ollama_url: str, text: str, source_id: str = "item-1"
-) -> dict:
+def _make_add_content_payload(ollama_url: str, text: str, source_id: str = "item-1") -> dict:
     """Return a ``POST /collections/{id}/add-content`` body."""
     ollama_endpoint = f"{ollama_url}/api/embeddings"
     return {
@@ -201,9 +197,7 @@ def _make_add_content_payload(
 class TestSigkillThenRestartResumesPendingJobs:
     """Queue several jobs, SIGKILL mid-flight, restart, confirm all terminal."""
 
-    def test_sigkill_then_restart_resumes_pending_jobs(
-        self, docker_stack: dict
-    ) -> None:
+    def test_sigkill_then_restart_resumes_pending_jobs(self, docker_stack: dict) -> None:
         ollama_url = docker_stack["ollama_url"]
 
         data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
@@ -344,9 +338,7 @@ def test_sigkill_preserves_completed_jobs(docker_stack: dict) -> None:
             job_id = add_r.json()["job_id"]
 
             # Poll until completed.
-            final = _poll_job_status(
-                client, job_id, target_statuses=("completed", "failed")
-            )
+            final = _poll_job_status(client, job_id, target_statuses=("completed", "failed"))
             assert final["status"] == "completed", (
                 f"Initial ingestion failed: {final.get('error_message')}"
             )
@@ -431,9 +423,7 @@ def test_sigkill_preserves_collection_metadata(docker_stack: dict) -> None:
             assert list_r.status_code == 200, list_r.text
             listed_ids = {c["id"] for c in list_r.json()["collections"]}
             for cid in col_ids:
-                assert cid in listed_ids, (
-                    f"Collection {cid} missing from list after restart"
-                )
+                assert cid in listed_ids, f"Collection {cid} missing from list after restart"
 
             # Each collection must be individually accessible.
             for cid in col_ids:
@@ -506,12 +496,8 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
             assert add_r.status_code == 202, add_r.text
             job_id = add_r.json()["job_id"]
 
-            final = _poll_job_status(
-                client, job_id, target_statuses=("completed", "failed")
-            )
-            assert final["status"] == "completed", (
-                f"Ingestion failed: {final.get('error_message')}"
-            )
+            final = _poll_job_status(client, job_id, target_statuses=("completed", "failed"))
+            assert final["status"] == "completed", f"Ingestion failed: {final.get('error_message')}"
             chunks_before = final["chunks_created"]
             assert chunks_before >= 5
 
@@ -573,11 +559,8 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
-def test_graceful_sigterm(docker_stack: dict) -> None:
+def test_graceful_sigterm() -> None:
     """SIGTERM causes the server to exit cleanly; /health is up after restart."""
-    # docker_stack used only to ensure Ollama container is running; we don't
-    # need ollama_url here since no ingestion is performed in this test.
-    _ = docker_stack  # mark used
 
     data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
     port = _free_port()
@@ -589,10 +572,8 @@ def test_graceful_sigterm(docker_stack: dict) -> None:
         assert _wait_health(base, timeout=30), "Server failed to start"
 
         # Send SIGTERM — uvicorn handles this as a graceful shutdown.
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.kill(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass  # already gone
 
         # Expect exit within 10 seconds.
         try:
@@ -612,9 +593,7 @@ def test_graceful_sigterm(docker_stack: dict) -> None:
         port2 = _free_port()
         proc = _start_server(data_dir, port2)
         base2 = f"http://127.0.0.1:{port2}"
-        assert _wait_health(base2, timeout=30), (
-            "Server did not become healthy after restart"
-        )
+        assert _wait_health(base2, timeout=30), "Server did not become healthy after restart"
 
         hr = httpx.get(f"{base2}/health", timeout=5.0)
         assert hr.status_code == 200, hr.text

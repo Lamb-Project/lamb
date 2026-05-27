@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -35,9 +34,7 @@ def _render_fr10_conflict(exc: ApiError) -> None:
         ks_name = ks.get("name", "") if isinstance(ks, dict) else ""
         suffix = f" — {ks_name}" if ks_name else ""
         print_error(f"  - {ks_id}{suffix}")
-    print_error(
-        "Run 'lamb ks remove-content <ks_id> <item_id>' for each, then retry."
-    )
+    print_error("Run 'lamb ks remove-content <ks_id> <item_id>' for each, then retry.")
 
 
 # lifecycle verification 2026-05-03 (#337): library item polling helper.
@@ -87,11 +84,10 @@ def _wait_for_library_items(
             time.sleep(delay)
             delay = min(delay * 2, 16.0)
     if pending:
-        print_warning(
-            f"Timed out waiting on {len(pending)} item(s); they remain in flight."
-        )
+        print_warning(f"Timed out waiting on {len(pending)} item(s); they remain in flight.")
     if failed:
         raise typer.Exit(1)
+
 
 app = typer.Typer(help="Manage document libraries.")
 
@@ -238,13 +234,27 @@ def upload_files(
     library_id: str = typer.Argument(..., help="Library ID."),
     files: list[str] = typer.Argument(..., help="File paths to upload."),
     plugin: Optional[str] = typer.Option(None, "--plugin", "-p", help="Import plugin name."),
-    title: Optional[str] = typer.Option(None, "--title", "-t", help="Document title (default: filename)."),
+    title: Optional[str] = typer.Option(
+        None, "--title", "-t", help="Document title (default: filename)."
+    ),
     # lifecycle verification 2026-05-03 (#337): allow blocking until import
     # finishes so scripts/CI can act on the produced item without manually polling.
     wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
-    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
+    max_wait: int = typer.Option(
+        600, "--max-wait", help="Maximum seconds to wait when --wait is set."
+    ),
 ) -> None:
-    """Upload files to a library for import."""
+    """Upload local file(s) to a library for import.
+
+    Plugin selection is generic — pass any plugin name returned by
+    ``lamb library plugins``. Examples:
+
+      lamb library upload <lib-id> ./mybook.pdf --plugin markitdown_import
+      lamb library upload <lib-id> ./notes.txt --plugin simple_import
+
+    For URL-based plugins (including youtube_transcript_import) use
+    ``lamb library import-url`` instead.
+    """
     for fp in files:
         if not os.path.isfile(fp):
             print_error(f"File not found: {fp}")
@@ -293,9 +303,18 @@ def import_url(
     depth: Optional[int] = typer.Option(None, "--depth", help="Max crawl depth."),
     # lifecycle verification 2026-05-03 (#337)
     wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
-    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
+    max_wait: int = typer.Option(
+        600, "--max-wait", help="Maximum seconds to wait when --wait is set."
+    ),
 ) -> None:
-    """Import content from a URL."""
+    """Import content from a URL using any URL-capable plugin.
+
+    Plugin selection is generic — pass any plugin name returned by
+    ``lamb library plugins``. Examples:
+
+      lamb library import-url <lib-id> --url https://example.com --plugin url_import
+      lamb library import-url <lib-id> --url https://youtu.be/abc --plugin youtube_transcript_import
+    """
     body: dict = {
         "url": url,
         "plugin_name": plugin,
@@ -315,33 +334,25 @@ def import_url(
         _wait_for_library_items(library_id, [item_id], max_wait_seconds=max_wait)
 
 
-@app.command("import-youtube")
-def import_youtube(
-    library_id: str = typer.Argument(..., help="Library ID."),
-    url: str = typer.Option(..., "--url", help="YouTube video URL."),
-    language: str = typer.Option("en", "--language", "-l", help="Transcript language (ISO 639-1)."),
-    title: Optional[str] = typer.Option(None, "--title", "-t", help="Document title."),
-    # lifecycle verification 2026-05-03 (#337)
-    wait: bool = typer.Option(False, "--wait", help="Block until import finishes (ready/failed)."),
-    max_wait: int = typer.Option(600, "--max-wait", help="Maximum seconds to wait when --wait is set."),
-) -> None:
-    """Import a YouTube video transcript."""
-    body: dict = {
-        "video_url": url,
-        "language": language,
-        "plugin_name": "youtube_transcript_import",
-        "title": title or url,
-    }
-    with get_client(timeout=120.0) as client:
-        data = client.post(f"/creator/libraries/{library_id}/import-youtube", json=body)
-    item_id = data.get("item_id") if isinstance(data, dict) else None
-    if item_id:
-        print_success(f"Import started. Item ID: {item_id}")
-    else:
-        print_success("Import request submitted.")
-    if wait and item_id:
-        print_success("Waiting for item to finish importing...")
-        _wait_for_library_items(library_id, [item_id], max_wait_seconds=max_wait)
+@app.command(
+    "import-youtube",
+    help="DEPRECATED: use 'lamb library import-url --plugin youtube_transcript_import --url <url>'.",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def import_youtube_deprecated(ctx: typer.Context) -> None:
+    """Deprecation shim — the dedicated 'import-youtube' subcommand has been removed.
+
+    The shim takes no functional action: it points users at the generic
+    ``lamb library import-url --plugin <name> --url <url>`` flow (zero-touch
+    plugin discovery: any URL-capable plugin works) and exits with code 2 so
+    scripts surface the change.
+    """
+    print_error("The 'import-youtube' subcommand has been removed.")
+    print_error(
+        "Use: lamb library import-url <library-id> --plugin youtube_transcript_import --url <youtube-url>"
+    )
+    print_error("Discover available plugins with: lamb library plugins")
+    raise typer.Exit(2)
 
 
 @app.command("items")
@@ -381,18 +392,22 @@ def get_item_content(
     library_id: str = typer.Argument(..., help="Library ID."),
     item_id: str = typer.Argument(..., help="Item ID."),
     view: str = typer.Option(
-        "markdown", "--view",
+        "markdown",
+        "--view",
         help="What to view: 'markdown' (extracted content) or 'original' (source file).",
     ),
     format: str = typer.Option(
-        "markdown", "--format", "-f",
+        "markdown",
+        "--format",
+        "-f",
         help="Markdown sub-format: 'markdown' or 'text'. Ignored when --view original.",
     ),
     output_file: Optional[str] = typer.Option(
-        None, "--output-file",
+        None,
+        "--output-file",
         help="Path to write to. For --view original, defaults to the source filename "
-             "in the current directory; binary content is always written to a file, "
-             "never to stdout.",
+        "in the current directory; binary content is always written to a file, "
+        "never to stdout.",
     ),
 ) -> None:
     """Print or download the content of an imported library item.
@@ -422,14 +437,13 @@ def get_item_content(
                 )
         except ApiError as exc:
             if exc.status_code == 413:
-                print_error(
-                    "Item is too large to print. Use --view original to download it."
-                )
+                print_error("Item is too large to print. Use --view original to download it.")
                 raise typer.Exit(2)
             raise
         text = content if isinstance(content, str) else None
         if text is None:
             from lamb_cli.output import print_json
+
             print_json(content)
             return
         if output_file:
@@ -467,9 +481,7 @@ def get_item_content(
                     )
                     sys.stdout.write(source_url + "\n")
                     return
-                print_error(
-                    "Item has no original file and no source URL."
-                )
+                print_error("Item has no original file and no source URL.")
                 raise typer.Exit(2)
             if not resp.is_success:
                 print_error(f"Fetch failed: HTTP {resp.status_code}")
@@ -482,9 +494,11 @@ def get_item_content(
                 cd = resp.headers.get("content-disposition", "")
                 # Look for filename="..." (quoted) or filename=... (bare).
                 import re
-                m = re.search(r'filename\*=UTF-8\'\'([^;]+)', cd)
+
+                m = re.search(r"filename\*=UTF-8\'\'([^;]+)", cd)
                 if m:
                     from urllib.parse import unquote
+
                     dest = unquote(m.group(1))
                 else:
                     m = re.search(r'filename="([^"]+)"', cd)
@@ -566,7 +580,9 @@ def show_import_config(
 @app.command("set-import-config")
 def set_import_config(
     library_id: str = typer.Argument(..., help="Library ID."),
-    image_descriptions: Optional[str] = typer.Option(None, "--image-descriptions", help="basic or llm."),
+    image_descriptions: Optional[str] = typer.Option(
+        None, "--image-descriptions", help="basic or llm."
+    ),
     crawl_depth: Optional[int] = typer.Option(None, "--crawl-depth", help="Max URL crawl depth."),
 ) -> None:
     """Update the import configuration for a library."""
@@ -613,7 +629,9 @@ def import_library(
         print_error(f"File not found: {file_path}")
         raise typer.Exit(1)
     with get_client(timeout=300.0) as client:
-        data = client.upload_file(f"/creator/libraries/import", file_path=file_path, field_name="file")
+        data = client.upload_file(
+            "/creator/libraries/import", file_path=file_path, field_name="file"
+        )
     if isinstance(data, dict):
         print_success(
             f"Library imported: {data.get('library_name', '?')} "

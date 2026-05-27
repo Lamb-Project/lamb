@@ -24,12 +24,28 @@ wheels/
 
 # Virtual Environments
 .env
+.env.local
+.env.*.local
+**/.env.local
+**/.env.*.local
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Secrets / credentials (any depth)
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# Playwright / vitest artifacts
+**/test-results/.last-run.json
+**/test-results/
+playwright-report/
+.playwright/
 
 # Backend specific
 backend/__pycache__/

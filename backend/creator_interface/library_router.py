@@ -39,12 +39,37 @@ class URLImportRequest(BaseModel):
     plugin_name: str = "url_import"
     title: Optional[str] = None
     plugin_params: Optional[Dict[str, Any]] = None
+    folder_id: Optional[str] = None
 
 class YouTubeImportRequest(BaseModel):
     video_url: str
+    # Deprecated: prefer ``plugin_params["language"]`` so all plugin knobs
+    # travel through the same dict. Kept for API clients that still send
+    # ``language`` as a top-level field — the proxy folds it into
+    # ``plugin_params`` only when ``plugin_params["language"]`` is missing.
     language: str = "en"
     title: Optional[str] = None
     plugin_name: str = "youtube_transcript_import"
+    plugin_params: Optional[Dict[str, Any]] = None
+    folder_id: Optional[str] = None
+
+
+class FolderCreateBody(BaseModel):
+    name: str
+    parent_folder_id: Optional[str] = None
+
+
+class FolderRenameBody(BaseModel):
+    name: str
+
+
+class FolderMoveBody(BaseModel):
+    parent_folder_id: Optional[str] = None
+
+
+class ItemsMoveBody(BaseModel):
+    item_ids: list[str]
+    folder_id: Optional[str] = None
 
 
 router = APIRouter()
@@ -88,6 +113,14 @@ async def list_plugins(
 ):
     """List available import plugins (filtered by org config)."""
     return await _client.get_plugins(creator_user=auth.user)
+
+
+@router.get("/capabilities")
+async def list_capabilities(
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List capability handlers registered on the Library Manager."""
+    return await _client.get_capabilities(creator_user=auth.user)
 
 
 @router.post("/import")
@@ -313,6 +346,7 @@ async def upload_file(
     file: UploadFile = File(...),
     plugin_name: str = Form(None),
     title: str = Form(None),
+    folder_id: Optional[str] = Form(None),
     auth: AuthContext = Depends(get_auth_context),
 ):
     """Upload a file for import into the library."""
@@ -336,6 +370,7 @@ async def upload_file(
         plugin_name=plugin_name or "simple_import",
         title=file_title,
         api_keys=api_keys,
+        folder_id=folder_id,
         creator_user=auth.user,
     )
 
@@ -380,6 +415,7 @@ async def import_url(
         title=body.title or body.url,
         plugin_params=body.plugin_params,
         api_keys=api_keys,
+        folder_id=body.folder_id,
         creator_user=auth.user,
     )
 
@@ -422,7 +458,9 @@ async def import_youtube(
         plugin_name=body.plugin_name,
         title=body.title or body.video_url,
         language=body.language,
+        plugin_params=body.plugin_params,
         api_keys=api_keys,
+        folder_id=body.folder_id,
         creator_user=auth.user,
     )
 
@@ -438,11 +476,125 @@ async def import_youtube(
             uploader_user_id=auth.user.get("id"),
             source_url=body.video_url,
         )
+        # Resolve language from plugin_params first (the new schema-driven
+        # path), then the legacy top-level field — both flows audit the
+        # same value.
+        audit_language = (body.plugin_params or {}).get("language", body.language)
         _audit(auth, "library.upload", "library_item", item_id, {
             "video_url": body.video_url,
-            "language": body.language,
+            "language": audit_language,
         })
 
+    return result
+
+
+# ------------------------------------------------------------------
+# Folders & tree
+# ------------------------------------------------------------------
+
+
+@router.get("/{library_id}/tree")
+async def get_library_tree(
+    library_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Return the folder + item tree for a library (flat lists)."""
+    auth.require_library_access(library_id, level="any")
+    return await _client.get_tree(library_id, creator_user=auth.user)
+
+
+@router.post("/{library_id}/folders", status_code=201)
+async def create_folder(
+    library_id: str,
+    body: FolderCreateBody,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Create a folder in a library."""
+    auth.require_library_access(library_id, level="any")
+    result = await _client.create_folder(
+        library_id,
+        name=body.name,
+        parent_folder_id=body.parent_folder_id,
+        creator_user=auth.user,
+    )
+    _audit(auth, "library.folder.create", "library_folder", result.get("id", ""), {
+        "name": body.name,
+        "parent_folder_id": body.parent_folder_id,
+    })
+    return result
+
+
+@router.put("/{library_id}/folders/{folder_id}")
+async def rename_folder(
+    library_id: str,
+    folder_id: str,
+    body: FolderRenameBody,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Rename a folder."""
+    auth.require_library_access(library_id, level="any")
+    result = await _client.rename_folder(
+        library_id, folder_id, body.name, creator_user=auth.user
+    )
+    _audit(auth, "library.folder.rename", "library_folder", folder_id, {"name": body.name})
+    return result
+
+
+@router.put("/{library_id}/folders/{folder_id}/move")
+async def move_folder(
+    library_id: str,
+    folder_id: str,
+    body: FolderMoveBody,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Re-parent a folder."""
+    auth.require_library_access(library_id, level="any")
+    result = await _client.move_folder(
+        library_id, folder_id, body.parent_folder_id, creator_user=auth.user
+    )
+    _audit(auth, "library.folder.move", "library_folder", folder_id, {
+        "parent_folder_id": body.parent_folder_id,
+    })
+    return result
+
+
+@router.delete("/{library_id}/folders/{folder_id}")
+async def delete_folder(
+    library_id: str,
+    folder_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Delete a folder. Items + subfolders reparent to its parent.
+
+    Never cascade-deletes items; folder delete is unaffected by FR-10
+    (item IDs are preserved).
+    """
+    auth.require_library_access(library_id, level="owner")
+    result = await _client.delete_folder(library_id, folder_id, creator_user=auth.user)
+    _audit(auth, "library.folder.delete", "library_folder", folder_id)
+    return result
+
+
+@router.post("/{library_id}/items/move")
+async def move_items(
+    library_id: str,
+    body: ItemsMoveBody,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Move a batch of items to a folder (or to root)."""
+    auth.require_library_access(library_id, level="any")
+    if len(body.item_ids) > 500:
+        raise HTTPException(status_code=413, detail="Too many items (max 500 per request).")
+    result = await _client.move_items(
+        library_id,
+        item_ids=body.item_ids,
+        folder_id=body.folder_id,
+        creator_user=auth.user,
+    )
+    _audit(auth, "library.items.move", "library", library_id, {
+        "count": len(body.item_ids),
+        "folder_id": body.folder_id,
+    })
     return result
 
 
@@ -552,6 +704,89 @@ def _content_disposition(filename: str) -> str:
     ascii_safe = "".join(c if c.isalnum() or c in " -_." else "_" for c in filename)
     quoted = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_safe}\"; filename*=UTF-8''{quoted}"
+
+
+@router.get("/{library_id}/items/{item_id}/capabilities")
+async def get_item_capabilities(
+    library_id: str,
+    item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """List capabilities exposed by a specific library item.
+
+    Reads the item's ``metadata.json`` ``capabilities`` field on the
+    Library Manager side. Legacy items default to ``["text"]``.
+    """
+    auth.require_library_access(library_id, level="any")
+    return await _client.get_item_capabilities(
+        library_id, item_id, creator_user=auth.user,
+    )
+
+
+@router.get("/{library_id}/items/{item_id}/content/{capability}")
+async def get_item_capability_content(
+    library_id: str,
+    item_id: str,
+    capability: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Dispatch to the capability handler for an item and forward the payload.
+
+    The ``capability`` path segment must match a registered
+    :class:`Capability` enum value (e.g. ``text``, ``pages``, ``images``).
+    The 5 MB inline-content cap from ``get_item_content`` also applies here.
+    """
+    auth.require_library_access(library_id, level="any")
+    response = await _client.get_item_content(
+        library_id, item_id, capability, creator_user=auth.user,
+    )
+    if len(response.content) > MAX_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB."
+            ),
+        )
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+    )
+
+
+@router.get("/{library_id}/items/{item_id}/content/images/file/{filename}")
+async def get_item_image_file(
+    library_id: str,
+    item_id: str,
+    filename: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Serve a single extracted image file by name.
+
+    The ``images`` capability handler returns gallery URLs of the form
+    ``/libraries/{lib}/items/{item}/content/images/file/{filename}``. The
+    ``ImagesRenderer`` in the frontend points ``<img src>`` at this route
+    (proxied under ``/creator/...``); without it the renderer just shows
+    broken-image placeholders.
+
+    Inherits the standard library ACL.
+    """
+    auth.require_library_access(library_id, level="any")
+
+    # Reject obvious path traversal attempts before they hit the LM. The
+    # LM has its own safety but defense in depth is cheap here.
+    if "/" in filename or "\\" in filename or filename in ("", ".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath=f"content/images/file/{filename}",
+        creator_user=auth.user,
+    )
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+    )
 
 
 @router.get("/{library_id}/items/{item_id}/original")

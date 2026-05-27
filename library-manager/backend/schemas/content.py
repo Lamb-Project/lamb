@@ -35,6 +35,7 @@ class UrlImportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Document title.")
     plugin_params: dict[str, Any] | None = None
     api_keys: dict[str, str] | None = None
+    folder_id: str | None = None
 
     @field_validator("url")
     @classmethod
@@ -58,6 +59,7 @@ class YoutubeImportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="Document title.")
     plugin_params: dict[str, Any] | None = None
     api_keys: dict[str, str] | None = None
+    folder_id: str | None = None
 
     @field_validator("video_url")
     @classmethod
@@ -99,6 +101,7 @@ class ContentItemSummary(BaseModel):
     error_message: str | None = None
     page_count: int = 0
     image_count: int = 0
+    folder_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

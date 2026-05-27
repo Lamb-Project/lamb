@@ -8,7 +8,7 @@ export default defineConfig({
 	// Ensure Svelte and related packages are properly pre-bundled to avoid
 	// "lifecycle_outside_component" errors from duplicate Svelte instances
 	optimizeDeps: {
-		include: ['svelte', 'svelte-i18n', 'flowbite-svelte', 'flowbite-svelte-icons'],
+		include: ['svelte', 'svelte-i18n'],
 		exclude: ['@sveltejs/kit']
 	},
 	ssr: {

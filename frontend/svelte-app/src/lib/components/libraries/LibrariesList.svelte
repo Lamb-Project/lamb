@@ -1,19 +1,53 @@
 <!--
   @component LibrariesList
-  Displays libraries with combinable filter chips, resizable columns,
-  skeleton loading, icon-button actions, and localStorage-persisted page size.
+  Displays libraries with combinable filter chips, skeleton loading,
+  canonical IconButton actions, and localStorage-persisted page size.
+
+  Perceived performance: paint page 1 immediately from the cache (if any),
+  then revalidate in the background. After the fresh fetch lands, the rest
+  of the rows are prefetched into the cache so pagination clicks are instant.
 -->
 <script>
 	import { onMount, createEventDispatcher } from 'svelte';
-	import { getLibraries, deleteLibrary, toggleSharing, getLibraryKbLinks } from '$lib/services/libraryService';
+	import {
+		getLibraries,
+		deleteLibrary,
+		toggleSharing,
+		getLibraryKbLinks
+	} from '$lib/services/libraryService';
 	import { removeContent as removeKsContent } from '$lib/services/knowledgeStoreService';
 	import { _ } from '$lib/i18n';
 	import { user } from '$lib/stores/userStore';
 	import { processListData } from '$lib/utils/listHelpers';
+	import { toast } from '$lib/stores/toast.js';
+	import {
+		readLibrariesCache,
+		writeLibrariesCache,
+		patchLibraryInCache,
+		removeLibraryFromCache
+	} from '$lib/stores/librariesCache.js';
 	import CreateLibraryModal from '$lib/components/modals/CreateLibraryModal.svelte';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
 	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
+	import FileTreeModal from './fileTree/FileTreeModal.svelte';
+	import {
+		Button,
+		IconButton,
+		OverflowMenu,
+		Badge,
+		EmptyState
+	} from '$lib/components/ui';
+	import {
+		Plus,
+		Eye,
+		Trash2,
+		Share2,
+		Users,
+		Lock,
+		BookOpen,
+		FolderTree
+	} from 'lucide-svelte';
 
 	const dispatch = createEventDispatcher();
 
@@ -37,7 +71,6 @@
 	let displayLibraries = $state([]);
 	let loading = $state(true);
 	let error = $state('');
-	let successMessage = $state('');
 
 	// Filter / sort / pagination
 	let searchTerm = $state('');
@@ -73,9 +106,6 @@
 	 * }>}
 	 */
 	let deleteBlockers = $state([]);
-
-	// Overflow menu state (sharing toggle)
-	let openMenuId = $state(/** @type {string|null} */ (null));
 
 	// Refs
 	/** @type {any} */
@@ -223,13 +253,34 @@
 			createdFilter !== 'any'
 	);
 
+	let orgId = $derived(/** @type {any} */ ($user)?.organization_id || '');
+
 	onMount(async () => {
-		await loadLibraries();
+		await loadLibraries({ paintFromCacheFirst: true });
 	});
 
-	async function loadLibraries() {
-		loading = true;
+	/**
+	 * Load libraries. When `paintFromCacheFirst` is set, the cached array (if
+	 * any) is rendered immediately while a fresh fetch runs in the background.
+	 * The skeleton is hidden for at most 300ms via a min-show guard so a fast
+	 * cache hit doesn't flicker.
+	 *
+	 * @param {{ paintFromCacheFirst?: boolean }} [opts]
+	 */
+	async function loadLibraries(opts = {}) {
 		error = '';
+		// Skeleton min-show guard: only show the skeleton if the fetch takes
+		// longer than 300ms. Cache hit or fast network = no skeleton.
+		const cached = readLibrariesCache(orgId);
+		if (opts.paintFromCacheFirst && cached) {
+			libraries = cached.libraries;
+			loading = false;
+			applyFiltersAndPagination();
+		} else {
+			// Defer the loading flag so quick responses skip the skeleton.
+			loading = true;
+		}
+
 		try {
 			if (!$user.isLoggedIn) {
 				error = $_('libraries.loginRequired', {
@@ -237,12 +288,14 @@
 				});
 				return;
 			}
-			libraries = await getLibraries();
+			const fresh = await getLibraries();
+			libraries = fresh;
+			writeLibrariesCache(orgId, fresh);
 			applyFiltersAndPagination();
 		} catch (/** @type {unknown} */ err) {
 			console.error('Error loading libraries:', err);
 			error = err instanceof Error ? err.message : 'Failed to load libraries';
-			libraries = [];
+			if (!cached) libraries = [];
 		} finally {
 			loading = false;
 		}
@@ -329,18 +382,32 @@
 		dispatch('view', { id });
 	}
 
-	/** @param {string} msg */
-	function showSuccess(msg) {
-		successMessage = msg;
-		setTimeout(() => {
-			successMessage = '';
-		}, 4000);
+	// File-tree modal state
+	let treeModalOpen = $state(false);
+	let treeModalLibrary = $state(
+		/** @type {{ id: string, name: string, isReadOnly: boolean }} */ ({
+			id: '',
+			name: '',
+			isReadOnly: false
+		})
+	);
+
+	/** @param {import('$lib/services/libraryService').Library} lib */
+	function openTreeModal(lib) {
+		treeModalLibrary = {
+			id: lib.id,
+			name: lib.name,
+			isReadOnly: lib.is_owner === false
+		};
+		treeModalOpen = true;
 	}
 
 	/** @param {CustomEvent<{id: string, name: string}>} event */
 	async function handleCreated(event) {
-		showSuccess(
-			$_('libraries.createSuccess', { default: `Library "${event.detail.name}" created.` })
+		toast.success(
+			$_('libraries.createSuccess', {
+				default: `Library "${event.detail.name}" created.`
+			})
 		);
 		await loadLibraries();
 	}
@@ -376,14 +443,21 @@
 	async function handleDeleteConfirm() {
 		isDeleting = true;
 		deleteError = '';
+		const targetId = deleteTarget.id;
+		const targetName = deleteTarget.name;
 		try {
-			await deleteLibrary(deleteTarget.id);
+			await deleteLibrary(targetId);
 			showDeleteModal = false;
 			deleteBlockers = [];
-			showSuccess(
-				$_('libraries.deleteSuccess', { default: `Library "${deleteTarget.name}" deleted.` })
+			// Optimistic: drop from local list + cache so the row disappears
+			// instantly, then revalidate in the background.
+			libraries = libraries.filter((l) => l.id !== targetId);
+			removeLibraryFromCache(orgId, targetId);
+			applyFiltersAndPagination();
+			toast.success(
+				$_('libraries.deleteSuccess', { default: `Library "${targetName}" deleted.` })
 			);
-			await loadLibraries();
+			loadLibraries(); // background revalidate
 		} catch (/** @type {unknown} */ err) {
 			deleteError = err instanceof Error ? err.message : 'Delete failed';
 		} finally {
@@ -428,20 +502,30 @@
 	async function handleToggleSharing(lib) {
 		if (!lib.is_owner && lib.is_owner !== undefined) return;
 		const newState = !lib.is_shared;
-		openMenuId = null;
+		// Optimistic update: flip immediately, rollback on failure.
+		const idx = libraries.findIndex((l) => l.id === lib.id);
+		if (idx !== -1) {
+			libraries[idx].is_shared = newState;
+			libraries = [...libraries];
+			patchLibraryInCache(orgId, lib.id, { is_shared: newState });
+			applyFiltersAndPagination();
+		}
 		try {
 			await toggleSharing(lib.id, newState);
-			const idx = libraries.findIndex((l) => l.id === lib.id);
-			if (idx !== -1) libraries[idx].is_shared = newState;
-			libraries = [...libraries];
-			applyFiltersAndPagination();
-			showSuccess(
+			toast.success(
 				newState
 					? $_('libraries.shareSuccess', { default: 'Library shared with organization.' })
 					: $_('libraries.unshareSuccess', { default: 'Library is now private.' })
 			);
 		} catch (/** @type {unknown} */ err) {
-			error = err instanceof Error ? err.message : 'Failed to toggle sharing';
+			// Rollback
+			if (idx !== -1) {
+				libraries[idx].is_shared = !newState;
+				libraries = [...libraries];
+				patchLibraryInCache(orgId, lib.id, { is_shared: !newState });
+				applyFiltersAndPagination();
+			}
+			toast.error(err instanceof Error ? err.message : 'Failed to toggle sharing');
 		}
 	}
 
@@ -458,18 +542,32 @@
 		});
 	}
 
-	/** @param {string} id */
-	function toggleMenu(id) {
-		openMenuId = openMenuId === id ? null : id;
+	/** @param {import('$lib/services/libraryService').Library} lib */
+	function buildMenuItems(lib) {
+		/** @type {Array<{label?: string, onClick?: () => void, icon?: any, danger?: boolean, divider?: boolean}>} */
+		const items = [];
+		items.push({
+			label: lib.is_shared
+				? $_('libraries.sharing.makePrivate', { default: 'Make private' })
+				: $_('libraries.sharing.share', { default: 'Share' }),
+			icon: lib.is_shared ? Lock : Share2,
+			onClick: () => handleToggleSharing(lib)
+		});
+		items.push({
+			label: $_('libraries.fileTree.openTitle', { default: 'Open file tree' }),
+			icon: FolderTree,
+			onClick: () => openTreeModal(lib)
+		});
+		items.push({ divider: true });
+		items.push({
+			label: $_('libraries.delete', { default: 'Delete' }),
+			icon: Trash2,
+			danger: true,
+			onClick: () => requestDelete(lib)
+		});
+		return items;
 	}
 </script>
-
-<!-- Close overflow menu on outside click -->
-<svelte:window
-	onclick={(e) => {
-		if (!(/** @type {Element} */ (e.target)?.closest?.('[data-overflow-menu]'))) openMenuId = null;
-	}}
-/>
 
 <EntityListShell
 	isLoading={loading}
@@ -492,7 +590,7 @@
 	]}
 	{sortBy}
 	{sortOrder}
-	onRetry={loadLibraries}
+	onRetry={() => loadLibraries()}
 	onSearchChange={handleSearchChange}
 	onFilterChange={handleFilterChange}
 	onSortChange={handleSortChange}
@@ -502,185 +600,101 @@
 	onItemsPerPageChange={handleItemsPerPageChange}
 >
 	{#snippet headerActions()}
-		<button
-			type="button"
+		<Button
+			variant="primary"
+			iconLeftComponent={Plus}
 			onclick={() => createModal.open()}
-			title={$_('libraries.createNewTitle', {
-				default: 'Create a new Library'
-			})}
-			class="inline-flex items-center rounded-md bg-[#2271b3] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+			ariaLabel={$_('libraries.createNewTitle', { default: 'Create a new Library' })}
 		>
-			+ {$_('libraries.createNew', { default: 'New Library' })}
-		</button>
+			{$_('libraries.createNew', { default: 'New Library' })}
+		</Button>
 	{/snippet}
 
 	{#snippet emptyState()}
-		<p class="text-sm font-medium text-gray-700">
-			{isFiltered
-				? $_('libraries.noResults', { default: 'No libraries match your filters.' })
-				: $_('libraries.noOwned', {
-						default: 'You have no libraries yet. Create one to get started!'
-					})}
-		</p>
-		{#if !isFiltered}
-			<button
-				type="button"
-				onclick={() => createModal.open()}
-				class="mt-4 inline-flex items-center rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91]"
+		{#if isFiltered}
+			<EmptyState
+				icon={BookOpen}
+				title={$_('libraries.noResults', {
+					default: 'No libraries match your filters.'
+				})}
+			/>
+		{:else}
+			<EmptyState
+				icon={BookOpen}
+				title={$_('libraries.empty.title', { default: 'No libraries yet' })}
+				description={$_('libraries.empty.description', {
+					default: 'Create one to start importing content.'
+				})}
 			>
-				+ {$_('libraries.createNew', { default: 'New Library' })}
-			</button>
+				{#snippet actions()}
+					<Button
+						variant="primary"
+						iconLeftComponent={Plus}
+						onclick={() => createModal.open()}
+					>
+						{$_('libraries.createNew', { default: 'New Library' })}
+					</Button>
+				{/snippet}
+			</EmptyState>
 		{/if}
 	{/snippet}
 
 	{#snippet table()}
-		{#if successMessage}
-			<div
-				class="border-b border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700"
-				role="status"
-			>
-				{successMessage}
-			</div>
-		{/if}
 		<ResizableTable tableId="libraries" {columns}>
-			<tbody class="divide-y divide-gray-200 bg-white">
-				{#each displayLibraries as lib, rowIdx (lib.id)}
-					<tr class="hover:bg-gray-50">
+			<tbody class="divide-border bg-surface divide-y">
+				{#each displayLibraries as lib (lib.id)}
+					<tr class="hover:bg-surface-sunken">
 						<!-- Name -->
 						<td class="overflow-hidden px-4 py-2">
 							<button
 								type="button"
 								onclick={() => viewLibrary(lib.id)}
-								class="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-[#2271b3] hover:underline"
+								title={lib.name}
+								class="text-brand block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium hover:underline"
 							>
 								{lib.name}
 							</button>
 							{#if lib.description}
-								<p class="mt-0.5 truncate text-xs text-gray-500">{lib.description}</p>
+								<p class="type-caption mt-0.5 truncate">{lib.description}</p>
 							{/if}
 						</td>
 						<!-- Items -->
-						<td class="px-4 py-2 text-sm text-gray-500">{lib.item_count ?? 0}</td>
+						<td class="type-body-muted px-4 py-2">{lib.item_count ?? 0}</td>
 						<!-- Sharing badge -->
 						<td class="px-4 py-2" style:text-align="center">
 							{#if lib.is_owner !== false}
-								<span
-									class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium {lib.is_shared
-										? 'bg-green-100 text-green-700'
-										: 'bg-gray-100 text-gray-600'}"
+								<Badge
+									variant={lib.is_shared ? 'success' : 'neutral'}
+									icon={lib.is_shared ? Users : Lock}
 								>
 									{lib.is_shared
 										? $_('libraries.sharing.shared', { default: 'Shared' })
 										: $_('libraries.sharing.private', { default: 'Private' })}
-								</span>
+								</Badge>
 							{:else}
-								<span class="text-xs text-gray-400">{lib.owner_name || lib.owner_email || ''}</span>
+								<span class="type-caption">{lib.owner_name || lib.owner_email || ''}</span>
 							{/if}
 						</td>
 						<!-- Created -->
-						<td class="px-4 py-2 text-sm text-gray-500">{formatDate(lib.created_at)}</td>
+						<td class="type-body-muted px-4 py-2">{formatDate(lib.created_at)}</td>
 						<!-- Actions -->
 						<td class="px-4 py-2">
 							<div class="flex items-center justify-end gap-1">
-								<!-- View icon button -->
-								<button
-									type="button"
+								<IconButton
+									icon={Eye}
+									ariaLabel={`${$_('libraries.view', { default: 'View' })} ${lib.name}`}
+									tooltip={$_('libraries.view', { default: 'View' })}
+									variant="ghost"
+									size="sm"
 									onclick={() => viewLibrary(lib.id)}
-									title={$_('libraries.view', { default: 'View' })}
-									aria-label="{$_('libraries.view', { default: 'View' })} {lib.name}"
-									class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-[#2271b3]"
-								>
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-										/>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-										/>
-									</svg>
-								</button>
-
-								<!-- Overflow menu (share + delete) -->
+								/>
 								{#if lib.is_owner !== false}
-									<div class="relative" data-overflow-menu>
-										<button
-											type="button"
-											onclick={() => toggleMenu(lib.id)}
-											title={$_('list.moreActions', { default: 'More actions' })}
-											aria-label="{$_('list.moreActions', {
-												default: 'More actions'
-											})} for {lib.name}"
-											class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-										>
-											<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-												<path
-													d="M12 5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 13.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM12 22a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"
-												/>
-											</svg>
-										</button>
-										{#if openMenuId === lib.id}
-											<div
-												class="absolute right-0 z-10 w-40 rounded-md border border-gray-200 bg-white shadow-lg {rowIdx >=
-												displayLibraries.length - 2
-													? 'bottom-full mb-1'
-													: 'top-full mt-1'}"
-												data-overflow-menu
-											>
-												<button
-													type="button"
-													onclick={() => handleToggleSharing(lib)}
-													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-												>
-													<svg
-														class="h-4 w-4"
-														fill="none"
-														stroke="currentColor"
-														viewBox="0 0 24 24"
-													>
-														<path
-															stroke-linecap="round"
-															stroke-linejoin="round"
-															stroke-width="2"
-															d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-														/>
-													</svg>
-													{lib.is_shared
-														? $_('libraries.sharing.makePrivate', { default: 'Make private' })
-														: $_('libraries.sharing.share', { default: 'Share' })}
-												</button>
-												<hr class="border-gray-100" />
-												<button
-													type="button"
-													onclick={() => {
-														openMenuId = null;
-														requestDelete(lib);
-													}}
-													class="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-												>
-													<svg
-														class="h-4 w-4"
-														fill="none"
-														stroke="currentColor"
-														viewBox="0 0 24 24"
-													>
-														<path
-															stroke-linecap="round"
-															stroke-linejoin="round"
-															stroke-width="2"
-															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-														/>
-													</svg>
-													{$_('libraries.delete', { default: 'Delete' })}
-												</button>
-											</div>
-										{/if}
-									</div>
+									<OverflowMenu
+										items={buildMenuItems(lib)}
+										ariaLabel={$_('list.moreActions', { default: 'More actions' })}
+										tooltip={$_('list.moreActions', { default: 'More actions' })}
+										size="sm"
+									/>
 								{/if}
 							</div>
 						</td>
@@ -699,10 +713,12 @@
 	title={$_('libraries.deleteModal.title', { default: 'Delete Library' })}
 	message={deleteBlockers.length > 0
 		? $_('libraries.deleteModal.blockedMessage', {
-				default: 'These items are still linked to Knowledge Stores. Remove them first, then the library can be deleted.'
+				default:
+					'These items are still linked to Knowledge Stores. Remove them first, then the library can be deleted.'
 			})
 		: $_('libraries.deleteModal.message', {
-				default: `Are you sure you want to delete "${deleteTarget.name}"? All content will be permanently removed.`
+				default: `Delete library "${deleteTarget.name}"? This action cannot be undone. All items inside will be permanently removed.`,
+				values: { name: deleteTarget.name }
 			})}
 	confirmText={$_('libraries.deleteModal.confirm', { default: 'Delete' })}
 	cancelText={deleteBlockers.length > 0
@@ -725,4 +741,12 @@
 		deleteError = '';
 		deleteBlockers = [];
 	}}
+/>
+
+<FileTreeModal
+	bind:isOpen={treeModalOpen}
+	libraryId={treeModalLibrary.id}
+	libraryName={treeModalLibrary.name}
+	isReadOnly={treeModalLibrary.isReadOnly}
+	onclose={() => (treeModalOpen = false)}
 />

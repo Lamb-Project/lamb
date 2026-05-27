@@ -37,6 +37,14 @@ _RESPLIT_CHUNK_SIZE: int = int(os.getenv("RESPLIT_CHUNK_SIZE", "4000"))
 _RESPLIT_OVERLAP: int = 200
 
 
+class JobCancelledError(Exception):
+    """Raised when the worker detects an ingestion job was cancelled mid-flight.
+
+    The worker catches this specifically and leaves the job row in its
+    ``cancelled`` state rather than overwriting it with ``failed``.
+    """
+
+
 def queue_add_content(
     db: Session, collection_id: str, req: AddContentRequest
 ) -> IngestionJob:
@@ -190,6 +198,18 @@ def execute_ingestion_job(
     total_chunks_added = 0
 
     for i, doc_dict in enumerate(docs_list):
+        # Cooperative cancellation: commit any in-flight progress, then read
+        # the latest committed status. ``db.commit`` ends the current
+        # transaction so the next read picks up writes from other connections
+        # (e.g. ``POST /jobs/{id}/cancel``) under SQLite WAL isolation.
+        db.commit()
+        db.refresh(job)
+        if job.status == "cancelled":
+            raise JobCancelledError(
+                f"Job {job.id} cancelled after "
+                f"{job.documents_processed}/{len(docs_list)} documents"
+            )
+
         # Build the plugin dataclass from the serialized payload.
         doc_input = DocumentInput(
             source_item_id=doc_dict["source_item_id"],

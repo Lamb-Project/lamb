@@ -67,7 +67,31 @@ def write_structured_content(
         The base path of the content directory.
     """
     base_dir = CONTENT_DIR / organization_id / library_id / item_id
-    base_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        # The parent directory is owned by a different user (commonly root,
+        # from when the lib-manager ran in docker as root). Surface a
+        # message the user can act on instead of leaking the raw path /
+        # errno. Full path remains in the operator log.
+        logger.exception(
+            "Cannot create content directory for item %s under %s",
+            item_id,
+            base_dir.parent,
+        )
+        raise RuntimeError(
+            "Cannot save imported content: the library's storage directory "
+            "is not writable by the server. An administrator needs to fix "
+            "the directory permissions on the data folder."
+        ) from exc
+    except OSError as exc:
+        logger.exception(
+            "Filesystem error creating content directory for item %s", item_id
+        )
+        raise RuntimeError(
+            "Cannot save imported content: the server's storage is "
+            "unavailable. Try again later or contact an administrator."
+        ) from exc
 
     permalink_base = f"{PERMALINK_PREFIX}/{organization_id}/{library_id}/{item_id}"
 
@@ -98,9 +122,7 @@ def write_structured_content(
             page_filename = f"page_{page.page_number:03d}.md"
             page_path = pages_dir / page_filename
             page_path.write_text(page.text, encoding="utf-8")
-            page_permalinks.append(
-                f"{permalink_base}/content/pages/{page_filename}"
-            )
+            page_permalinks.append(f"{permalink_base}/content/pages/{page_filename}")
 
     # --- Extracted images ---
     image_permalinks = []
@@ -111,9 +133,7 @@ def write_structured_content(
             safe_name = _sanitize_filename(img.filename)
             img_path = images_dir / safe_name
             img_path.write_bytes(img.data)
-            image_permalinks.append(
-                f"{permalink_base}/content/images/{safe_name}"
-            )
+            image_permalinks.append(f"{permalink_base}/content/images/{safe_name}")
 
     # --- source_ref.json ---
     source_ref_path = base_dir / "source_ref.json"
@@ -122,7 +142,8 @@ def write_structured_content(
         encoding="utf-8",
     )
 
-    # --- metadata.json (with permalinks) ---
+    # --- metadata.json (with permalinks + runtime capabilities) ---
+    capabilities = detect_capabilities(base_dir)
     metadata_obj = {
         "item_id": item_id,
         "title": title,
@@ -133,6 +154,7 @@ def write_structured_content(
             "pages": page_permalinks,
             "images": image_permalinks,
         },
+        "capabilities": capabilities,
         "source_ref": source_ref,
     }
     metadata_path = base_dir / "metadata.json"
@@ -150,9 +172,7 @@ def write_structured_content(
 # ---------------------------------------------------------------------------
 
 
-def get_item_base_path(
-    organization_id: str, library_id: str, item_id: str
-) -> Path:
+def get_item_base_path(organization_id: str, library_id: str, item_id: str) -> Path:
     """Return the base directory for a content item.
 
     Args:
@@ -185,9 +205,7 @@ def _safe_resolve(path: Path, expected_parent: Path) -> Path | None:
     return resolved
 
 
-def read_full_markdown(
-    organization_id: str, library_id: str, item_id: str
-) -> str | None:
+def read_full_markdown(organization_id: str, library_id: str, item_id: str) -> str | None:
     """Read the full.md file for a content item.
 
     Args:
@@ -230,9 +248,7 @@ def read_page_markdown(
     return path.read_text(encoding="utf-8")
 
 
-def read_metadata_json(
-    organization_id: str, library_id: str, item_id: str
-) -> dict | None:
+def read_metadata_json(organization_id: str, library_id: str, item_id: str) -> dict | None:
     """Read metadata.json for a content item.
 
     Args:
@@ -250,9 +266,7 @@ def read_metadata_json(
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def read_source_ref(
-    organization_id: str, library_id: str, item_id: str
-) -> dict | None:
+def read_source_ref(organization_id: str, library_id: str, item_id: str) -> dict | None:
     """Read source_ref.json for a content item.
 
     Args:
@@ -270,9 +284,7 @@ def read_source_ref(
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def list_pages(
-    organization_id: str, library_id: str, item_id: str
-) -> list[str]:
+def list_pages(organization_id: str, library_id: str, item_id: str) -> list[str]:
     """List available page markdown files for a content item.
 
     Args:
@@ -283,17 +295,13 @@ def list_pages(
     Returns:
         Sorted list of page filenames.
     """
-    pages_dir = (
-        get_item_base_path(organization_id, library_id, item_id) / "content" / "pages"
-    )
+    pages_dir = get_item_base_path(organization_id, library_id, item_id) / "content" / "pages"
     if not pages_dir.is_dir():
         return []
     return sorted(f.name for f in pages_dir.iterdir() if f.suffix == ".md")
 
 
-def list_images(
-    organization_id: str, library_id: str, item_id: str
-) -> list[str]:
+def list_images(organization_id: str, library_id: str, item_id: str) -> list[str]:
     """List available image files for a content item.
 
     Args:
@@ -304,9 +312,7 @@ def list_images(
     Returns:
         Sorted list of image filenames.
     """
-    images_dir = (
-        get_item_base_path(organization_id, library_id, item_id) / "content" / "images"
-    )
+    images_dir = get_item_base_path(organization_id, library_id, item_id) / "content" / "images"
     if not images_dir.is_dir():
         return []
     return sorted(f.name for f in images_dir.iterdir() if f.is_file())
@@ -412,6 +418,31 @@ def get_content_item(db: Session, item_id: str) -> ContentItem | None:
     return db.query(ContentItem).filter(ContentItem.id == item_id).first()
 
 
+def item_to_summary(item: ContentItem) -> dict:
+    """Convert a ContentItem ORM row to the API summary dict.
+
+    Single source of truth shared by routers/content.py and
+    routers/folders.py so the tree and list endpoints agree on shape.
+    """
+    return {
+        "id": item.id,
+        "title": item.title,
+        "source_type": item.source_type,
+        "source_url": item.source_url,
+        "original_filename": item.original_filename,
+        "content_type": item.content_type,
+        "file_size": item.file_size,
+        "import_plugin": item.import_plugin,
+        "status": item.status,
+        "error_message": item.error_message,
+        "page_count": item.page_count,
+        "image_count": item.image_count,
+        "folder_id": item.folder_id,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
 def list_content_items(
     db: Session,
     library_id: str,
@@ -448,6 +479,45 @@ def list_content_items(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def detect_capabilities(item_path: Path) -> list[str]:
+    """Inspect an item directory and return the capabilities actually present.
+
+    Truth-from-filesystem: a plugin may *declare* it produces images but
+    skip them for a particular file. The runtime capability list is built
+    from what's on disk, not from the plugin's declaration.
+
+    Args:
+        item_path: Path to the item directory (the one containing
+            ``content/``).
+
+    Returns:
+        A sorted list of capability string values (matches
+        :class:`Capability` enum values). Legacy items that lack any
+        content directories return an empty list — callers should treat
+        missing/empty as ``["text"]`` for backward compatibility.
+    """
+    # Imported lazily to avoid a circular dependency at module load time.
+    from plugins.content_handlers.capability import Capability  # noqa: PLC0415
+
+    found: list[str] = []
+    content_dir = item_path / "content"
+    if not content_dir.is_dir():
+        return found
+
+    if (content_dir / "full.md").is_file():
+        found.append(Capability.TEXT.value)
+
+    pages_dir = content_dir / "pages"
+    if pages_dir.is_dir() and any(p.suffix == ".md" for p in pages_dir.iterdir() if p.is_file()):
+        found.append(Capability.PAGES.value)
+
+    images_dir = content_dir / "images"
+    if images_dir.is_dir() and any(p.is_file() for p in images_dir.iterdir()):
+        found.append(Capability.IMAGES.value)
+
+    return sorted(found)
 
 
 def _sanitize_filename(name: str) -> str:

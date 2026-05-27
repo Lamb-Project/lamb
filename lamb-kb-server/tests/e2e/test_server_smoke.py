@@ -4,9 +4,9 @@ These tests talk to a real uvicorn subprocess (not ASGI in-process).
 They exercise the server startup sequence, public vs. protected endpoints,
 OpenAPI introspection, plugin capability listings, and graceful shutdown.
 
-All tests in this module use the ``http`` fixture from ``conftest.py``
-(an ``httpx.Client`` bound to the session-scoped server) except
-``test_graceful_shutdown`` which spawns its own short-lived server process.
+All tests in this module use the ``http_standalone`` fixture from ``conftest.py``
+(an ``httpx.Client`` bound to a session-scoped server that requires no Docker)
+except ``test_graceful_shutdown`` which spawns its own short-lived server process.
 """
 
 from __future__ import annotations
@@ -55,9 +55,9 @@ def _wait_for_health(base_url: str, timeout: float = 10.0) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_server_starts_and_health_ok(http: httpx.Client) -> None:
+def test_server_starts_and_health_ok(http_standalone: httpx.Client) -> None:
     """GET /health returns 200 with status=ok and both subsystem checks green."""
-    r = http.get("/health")
+    r = http_standalone.get("/health")
     assert r.status_code == 200
 
     body = r.json()
@@ -66,16 +66,16 @@ def test_server_starts_and_health_ok(http: httpx.Client) -> None:
     assert body["checks"]["worker"] == "ok"
 
 
-def test_health_is_public_no_auth(kb_server_process: dict) -> None:
+def test_health_is_public_no_auth(kb_server_process_standalone: dict) -> None:
     """GET /health is accessible without an Authorization header."""
-    with httpx.Client(base_url=kb_server_process["base_url"], timeout=10.0) as client:
+    with httpx.Client(base_url=kb_server_process_standalone["base_url"], timeout=10.0) as client:
         r = client.get("/health")
     assert r.status_code == 200
 
 
-def test_unknown_endpoint_returns_404(http: httpx.Client) -> None:
+def test_unknown_endpoint_returns_404(http_standalone: httpx.Client) -> None:
     """GET /nonexistent returns 404 (FastAPI default-route handling)."""
-    r = http.get("/nonexistent")
+    r = http_standalone.get("/nonexistent")
     assert r.status_code == 404
 
 
@@ -84,9 +84,9 @@ def test_unknown_endpoint_returns_404(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_openapi_json_valid_when_debug(http: httpx.Client) -> None:
+def test_openapi_json_valid_when_debug(http_standalone: httpx.Client) -> None:
     """GET /openapi.json returns valid OpenAPI JSON with expected keys when LOG_LEVEL=DEBUG."""
-    r = http.get("/openapi.json")
+    r = http_standalone.get("/openapi.json")
     assert r.status_code == 200
 
     schema = r.json()
@@ -99,9 +99,9 @@ def test_openapi_json_valid_when_debug(http: httpx.Client) -> None:
     assert schema["info"]["title"] == "LAMB KB Server"
 
 
-def test_docs_ui_accessible_when_debug(http: httpx.Client) -> None:
+def test_docs_ui_accessible_when_debug(http_standalone: httpx.Client) -> None:
     """GET /docs returns an HTML page when LOG_LEVEL=DEBUG."""
-    r = http.get("/docs")
+    r = http_standalone.get("/docs")
     assert r.status_code == 200
 
     content_type = r.headers.get("content-type", "")
@@ -113,10 +113,10 @@ def test_docs_ui_accessible_when_debug(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_health_ok_within_2s_response_time(http: httpx.Client) -> None:
+def test_health_ok_within_2s_response_time(http_standalone: httpx.Client) -> None:
     """Repinging /health from an already-started server responds in under 2s."""
     start = time.monotonic()
-    r = http.get("/health")
+    r = http_standalone.get("/health")
     elapsed = time.monotonic() - start
 
     assert r.status_code == 200
@@ -128,9 +128,9 @@ def test_health_ok_within_2s_response_time(http: httpx.Client) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_backends_lists_chromadb_via_http(http: httpx.Client) -> None:
+def test_backends_lists_chromadb_via_http(http_standalone: httpx.Client) -> None:
     """GET /backends (with auth) returns a list that includes 'chromadb'."""
-    r = http.get("/backends")
+    r = http_standalone.get("/backends")
     assert r.status_code == 200
 
     body = r.json()
@@ -140,9 +140,9 @@ def test_backends_lists_chromadb_via_http(http: httpx.Client) -> None:
     assert "chromadb" in names, f"chromadb not in backends: {names}"
 
 
-def test_chunking_strategies_lists_all_four(http: httpx.Client) -> None:
+def test_chunking_strategies_lists_all_four(http_standalone: httpx.Client) -> None:
     """GET /chunking-strategies returns all four registered strategies."""
-    r = http.get("/chunking-strategies")
+    r = http_standalone.get("/chunking-strategies")
     assert r.status_code == 200
 
     body = r.json()
@@ -153,9 +153,9 @@ def test_chunking_strategies_lists_all_four(http: httpx.Client) -> None:
     assert expected.issubset(names), f"Missing strategies: {expected - names}"
 
 
-def test_embedding_vendors_listed(http: httpx.Client) -> None:
-    """GET /embedding-vendors returns openai and ollama (real plugins, no FakeEmbedding in subprocess)."""
-    r = http.get("/embedding-vendors")
+def test_embedding_vendors_listed(http_standalone: httpx.Client) -> None:
+    """GET /embedding-vendors returns openai and ollama (real plugins; no FakeEmbedding here)."""
+    r = http_standalone.get("/embedding-vendors")
     assert r.status_code == 200
 
     body = r.json()

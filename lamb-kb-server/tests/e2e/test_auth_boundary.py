@@ -4,9 +4,10 @@ The integration tier covers ASGI-level auth semantics.  This module focuses
 on what is only observable over real HTTP: header transport, encoding,
 malformed requests, and response-time safety properties.
 
-All tests require ``kb_server_process`` (a live uvicorn subprocess launched by
-conftest.py).  They use a plain ``httpx.Client`` without any auth headers so
-that every test controls the exact Authorization value sent.
+All tests require ``kb_server_process_standalone_standalone`` (a live uvicorn subprocess
+launched by conftest.py, no Docker required).  They use a plain ``httpx.Client``
+without any auth headers so that every test controls the exact Authorization
+value sent.
 """
 
 from __future__ import annotations
@@ -16,16 +17,15 @@ import time
 import httpx
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
 
 
-def _client_no_auth(kb_server_process: dict) -> httpx.Client:
+def _client_no_auth(kb_server_process_standalone: dict) -> httpx.Client:
     """Return a synchronous httpx client with NO default auth headers."""
     return httpx.Client(
-        base_url=kb_server_process["base_url"],
+        base_url=kb_server_process_standalone["base_url"],
         timeout=10.0,
     )
 
@@ -35,14 +35,14 @@ def _client_no_auth(kb_server_process: dict) -> httpx.Client:
 # ---------------------------------------------------------------------------
 
 
-def test_health_reachable_without_auth_over_http(kb_server_process: dict) -> None:
+def test_health_reachable_without_auth_over_http(kb_server_process_standalone: dict) -> None:
     """GET /health over real HTTP without any Authorization header returns 200.
 
     Confirms the public endpoint is accessible without credentials even when
     the request travels through real TCP rather than the in-process ASGI
     transport used by the integration tests.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get("/health")
     assert r.status_code == 200, r.text
 
@@ -52,12 +52,12 @@ def test_health_reachable_without_auth_over_http(kb_server_process: dict) -> Non
 # ---------------------------------------------------------------------------
 
 
-def test_health_reachable_with_invalid_auth_over_http(kb_server_process: dict) -> None:
+def test_health_reachable_with_invalid_auth_over_http(kb_server_process_standalone: dict) -> None:
     """GET /health with 'Authorization: Bearer wrong' still returns 200.
 
     /health has no auth dependency; a bad token must not cause 401.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get("/health", headers={"Authorization": "Bearer wrong"})
     assert r.status_code == 200, r.text
 
@@ -67,18 +67,16 @@ def test_health_reachable_with_invalid_auth_over_http(kb_server_process: dict) -
 # ---------------------------------------------------------------------------
 
 
-def test_protected_endpoint_rejects_no_auth_over_http(kb_server_process: dict) -> None:
+def test_protected_endpoint_rejects_no_auth_over_http(kb_server_process_standalone: dict) -> None:
     """GET /collections without Authorization header returns 401 or 403.
 
     Over real HTTP the header must be absent from the TCP stream — this
     confirms the server enforces auth at the network level, not just in the
     ASGI test client.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get("/collections")
-    assert r.status_code in (401, 403), (
-        f"Expected 401 or 403, got {r.status_code}: {r.text}"
-    )
+    assert r.status_code in (401, 403), f"Expected 401 or 403, got {r.status_code}: {r.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -87,16 +85,12 @@ def test_protected_endpoint_rejects_no_auth_over_http(kb_server_process: dict) -
 
 
 def test_protected_endpoint_rejects_wrong_token_over_http(
-    kb_server_process: dict,
+    kb_server_process_standalone: dict,
 ) -> None:
     """GET /collections with 'Authorization: Bearer wrong-token' returns 401."""
-    with _client_no_auth(kb_server_process) as client:
-        r = client.get(
-            "/collections", headers={"Authorization": "Bearer wrong-token"}
-        )
-    assert r.status_code == 401, (
-        f"Expected 401, got {r.status_code}: {r.text}"
-    )
+    with _client_no_auth(kb_server_process_standalone) as client:
+        r = client.get("/collections", headers={"Authorization": "Bearer wrong-token"})
+    assert r.status_code == 401, f"Expected 401, got {r.status_code}: {r.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +98,7 @@ def test_protected_endpoint_rejects_wrong_token_over_http(
 # ---------------------------------------------------------------------------
 
 
-def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
+def test_token_with_multibyte_utf8_difference(kb_server_process_standalone: dict) -> None:
     """A non-ASCII byte in the bearer token must return 401, not 500.
 
     HTTP/1.1 header values are decoded by Starlette as latin-1.  We send the
@@ -124,23 +118,20 @@ def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
 
     header_value = b"Bearer " + bad_token_bytes
 
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get(
             "/collections",
             headers={"Authorization": header_value},
         )
 
-    print(
-        f"\nBearer <latin-1 é token b'test-tok\\xe9n'> → {r.status_code}"
-    )
+    print(f"\nBearer <latin-1 é token b'test-tok\\xe9n'> → {r.status_code}")
 
     # The request must NOT be granted (no 2xx).
     assert r.status_code not in range(200, 300), (
         f"Non-ASCII token must not grant access; got {r.status_code}"
     )
     assert r.status_code == 401, (
-        f"Expected 401 (clean rejection of non-ASCII token),"
-        f" got {r.status_code}: {r.text}"
+        f"Expected 401 (clean rejection of non-ASCII token), got {r.status_code}: {r.text}"
     )
 
 
@@ -149,7 +140,7 @@ def test_token_with_multibyte_utf8_difference(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_options_request_returns_405_or_204(kb_server_process: dict) -> None:
+def test_options_request_returns_405_or_204(kb_server_process_standalone: dict) -> None:
     """OPTIONS /collections: document what the server actually returns.
 
     FastAPI does not enable CORS by default, so a CORS preflight (OPTIONS)
@@ -160,7 +151,7 @@ def test_options_request_returns_405_or_204(kb_server_process: dict) -> None:
     Actual observed behavior is asserted so CI catches regressions in the
     HTTP-layer behavior even if the exact value is server-policy-dependent.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.options("/collections")
 
     # Document the actual behavior.
@@ -178,7 +169,7 @@ def test_options_request_returns_405_or_204(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_weird_content_type_on_post(kb_server_process: dict) -> None:
+def test_weird_content_type_on_post(kb_server_process_standalone: dict) -> None:
     """POST /collections with Content-Type: text/plain and a JSON body.
 
     FastAPI's body parser requires 'application/json'; sending 'text/plain'
@@ -190,7 +181,7 @@ def test_weird_content_type_on_post(kb_server_process: dict) -> None:
     """
     json_body = b'{"organization_id": "org-x", "name": "test"}'
 
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.post(
             "/collections",
             content=json_body,
@@ -213,7 +204,7 @@ def test_weird_content_type_on_post(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_no_host_header(kb_server_process: dict) -> None:
+def test_no_host_header(kb_server_process_standalone: dict) -> None:
     """GET /health with an empty Host header.
 
     HTTP/1.1 requires a Host header (RFC 7230 §5.4).  When Host is set to an
@@ -223,15 +214,13 @@ def test_no_host_header(kb_server_process: dict) -> None:
     httpx does not prevent sending an empty Host header, so the raw value
     travels over TCP.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get("/health", headers={"Host": ""})
 
     print(f"\nGET /health (Host: '') → {r.status_code}")
 
     # Both 200 (server tolerates it) and 400 (strict RFC compliance) are valid.
-    assert r.status_code in (200, 400), (
-        f"Unexpected status for empty Host header: {r.status_code}"
-    )
+    assert r.status_code in (200, 400), f"Unexpected status for empty Host header: {r.status_code}"
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +228,7 @@ def test_no_host_header(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_unicode_in_header_value(kb_server_process: dict) -> None:
+def test_unicode_in_header_value(kb_server_process_standalone: dict) -> None:
     """Sending a non-ASCII Unicode bearer token is rejected before reaching the server.
 
     HTTP/1.1 header values are strictly latin-1 / ASCII.  httpx enforces this
@@ -257,17 +246,17 @@ def test_unicode_in_header_value(kb_server_process: dict) -> None:
     unicode_token = "test-token-中文"
 
     # Sanity: confirm the token contains non-ASCII characters.
-    assert any(ord(c) > 127 for c in unicode_token), (
-        "sanity: token must contain non-ASCII chars"
-    )
+    assert any(ord(c) > 127 for c in unicode_token), "sanity: token must contain non-ASCII chars"
 
     # httpx rejects non-ASCII header values before sending anything over TCP.
-    with _client_no_auth(kb_server_process) as client:
-        with pytest.raises(UnicodeEncodeError):
-            client.get(
-                "/collections",
-                headers={"Authorization": f"Bearer {unicode_token}"},
-            )
+    with (
+        _client_no_auth(kb_server_process_standalone) as client,
+        pytest.raises(UnicodeEncodeError),
+    ):
+        client.get(
+            "/collections",
+            headers={"Authorization": f"Bearer {unicode_token}"},
+        )
 
     print(f"\nBearer {unicode_token!r} → UnicodeEncodeError (httpx refuses to send)")
     print("  This is the correct behavior: non-ASCII header values are rejected client-side.")
@@ -278,7 +267,7 @@ def test_unicode_in_header_value(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_extremely_long_token_doesnt_crash(kb_server_process: dict) -> None:
+def test_extremely_long_token_doesnt_crash(kb_server_process_standalone: dict) -> None:
     """A 100 000-character bearer token is rejected quickly (< 2 s).
 
     ``hmac.compare_digest`` operates on the full byte length, but the server
@@ -288,7 +277,7 @@ def test_extremely_long_token_doesnt_crash(kb_server_process: dict) -> None:
     """
     long_token = "x" * 100_000
     start = time.monotonic()
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get(
             "/collections",
             headers={"Authorization": f"Bearer {long_token}"},
@@ -302,9 +291,7 @@ def test_extremely_long_token_doesnt_crash(kb_server_process: dict) -> None:
     assert r.status_code in (400, 401, 403, 431), (
         f"Expected 400/401/403/431 for long token, got {r.status_code}"
     )
-    assert elapsed < 2.0, (
-        f"Long-token response took {elapsed:.3f}s (> 2s), possible DoS vector"
-    )
+    assert elapsed < 2.0, f"Long-token response took {elapsed:.3f}s (> 2s), possible DoS vector"
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +299,7 @@ def test_extremely_long_token_doesnt_crash(kb_server_process: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_multiple_authorization_headers(kb_server_process: dict) -> None:
+def test_multiple_authorization_headers(kb_server_process_standalone: dict) -> None:
     """Sending two Authorization headers: the FIRST one wins.
 
     httpx keeps duplicate headers as separate raw entries in its internal
@@ -327,7 +314,7 @@ def test_multiple_authorization_headers(kb_server_process: dict) -> None:
     valid credential by appending a second Authorization header.  Only the
     first header is evaluated.
     """
-    with _client_no_auth(kb_server_process) as client:
+    with _client_no_auth(kb_server_process_standalone) as client:
         r = client.get(
             "/collections",
             headers=[  # type: ignore[arg-type]
@@ -339,6 +326,4 @@ def test_multiple_authorization_headers(kb_server_process: dict) -> None:
     print(f"\nTwo Authorization headers (valid first, wrong second) → {r.status_code}")
     print("  Starlette picks the first Authorization header; second is ignored.")
     # Starlette returns the first header value → valid token → 200.
-    assert r.status_code == 200, (
-        f"Expected 200 (first header wins), got {r.status_code}: {r.text}"
-    )
+    assert r.status_code == 200, f"Expected 200 (first header wins), got {r.status_code}: {r.text}"

@@ -1,6 +1,9 @@
 services:
   openwebui:
     image: python:3.11-slim
+    # Colima does not auto-provide host.docker.internal — map it to the host gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/open-webui/backend
     environment:
       - PORT=8080
@@ -50,6 +53,8 @@ services:
     # This service only runs the build step and exits
   kb:
     image: python:3.11-slim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/lamb-kb-server-stable/backend
     environment:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -72,6 +77,8 @@ services:
       uvicorn main:app --host 0.0.0.0 --port 9090 --reload --log-level $$LOG_LEVEL --no-access-log"
   library-manager:
     image: python:3.11-slim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/library-manager/backend
     environment:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -104,6 +111,8 @@ services:
   # KB_SERVER_V2_TOKEN in production — the `change-me` default is a footgun.
   kb-server:
     image: python:3.11-slim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/lamb-kb-server/backend
     environment:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -130,14 +139,26 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    # System pip install needs root, but uvicorn must NOT run as root: any
+    # files it writes under DATA_DIR would otherwise be root-owned, and a
+    # later host-mode dev server (running as the unprivileged host user)
+    # would fail with SQLite "readonly database" errors. Strategy: stay
+    # root for apt/pip, then `exec setpriv` to drop to HOST_UID:HOST_GID
+    # for uvicorn so every chromadb/sqlite write inherits the host user's
+    # ownership. The leading `chown -R` heals files left over from older
+    # container runs that pre-date this drop.
     command: >
       sh -lc "apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1 && \
+      chown -R ${HOST_UID:-1000}:${HOST_GID:-1001} ${LAMB_PROJECT_PATH}/lamb-kb-server/data 2>/dev/null || true && \
       python -m pip install --upgrade pip && \
       pip install -e '${LAMB_PROJECT_PATH}/lamb-kb-server[all]' && \
       LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
-      uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
+      exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups \
+        uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
     image: python:3.11-slim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/backend
     environment:
       - PORT=9099
@@ -175,6 +196,8 @@ services:
       uvicorn main:app --port $$PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload --log-level $$LOG_LEVEL --no-access-log"
   frontend:
     image: node:20-alpine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: ${LAMB_PROJECT_PATH}/frontend/svelte-app
     environment:
       - HOST=0.0.0.0

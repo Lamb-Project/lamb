@@ -24,6 +24,7 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,28 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
         "optional LLM-generated image descriptions."
     )
     supported_source_types = {"file"}
-    supported_file_types = {
-        "pdf", "pptx", "docx", "xlsx", "xls",
-        "mp3", "wav", "html", "csv", "json",
-        "xml", "zip", "epub",
-    }
     required_keys = ["openai_vision"]
+    # Emits text + per-page splits + extracted images (when requested).
+    produces_capabilities = [Capability.TEXT, Capability.PAGES, Capability.IMAGES]
+    # Intentionally overlaps with markitdown_import — both plugins accept the
+    # same office formats. When the user uploads a PDF/DOCX, the frontend
+    # picker prompts them to pick which one (basic vs image-extraction).
+    file_extensions = [
+        "pdf",
+        "pptx",
+        "docx",
+        "xlsx",
+        "xls",
+        "mp3",
+        "wav",
+        "html",
+        "csv",
+        "json",
+        "xml",
+        "zip",
+        "epub",
+    ]
+    human_label = "Document import with images and pages (Markitdown Plus)"
 
     def import_content(
         self,
@@ -70,7 +87,11 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
         if not path.is_file():
             raise FileNotFoundError(f"Source file not found: {source_path}")
 
-        image_mode = kwargs.get("image_descriptions", "none")
+        # Default to ``basic`` — the plugin's name and description promise
+        # image extraction, so it would be surprising to silently skip it.
+        # ``basic`` extracts images with filename-style alt text at no API
+        # cost; ``llm`` adds OpenAI-Vision descriptions; ``none`` is opt-in.
+        image_mode = kwargs.get("image_descriptions") or "basic"
         api_keys = api_keys or {}
         stats: dict[str, Any] = {
             "images_extracted": 0,
@@ -88,13 +109,19 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
             result = md.convert(str(path))
             content = result.text_content or ""
         except Exception as exc:
-            raise RuntimeError(
-                f"MarkItDown conversion failed for {path.name}: {exc}"
-            ) from exc
-        stats["stage_timings"].append({
-            "stage": "markitdown_conversion",
-            "duration_ms": int((time.monotonic() - t0) * 1000),
-        })
+            # The raw exception chain (MissingDependencyException, pip hints,
+            # tracebacks) is hostile to end users. Translate to a short,
+            # user-facing message; the full chain is logged by the worker.
+            from plugins._markitdown_errors import humanize_markitdown_error  # noqa: PLC0415
+
+            logger.exception("MarkItDown conversion failed for %s", path.name)
+            raise RuntimeError(humanize_markitdown_error(exc, path.name)) from exc
+        stats["stage_timings"].append(
+            {
+                "stage": "markitdown_conversion",
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+            }
+        )
 
         self.report_progress(kwargs, 1, total_steps, "Extracting images...")
 
@@ -103,10 +130,12 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
         if ext in _PAGE_AWARE_TYPES and image_mode != "none":
             t1 = time.monotonic()
             images = _extract_images(path, image_mode, api_keys, stats)
-            stats["stage_timings"].append({
-                "stage": "image_extraction",
-                "duration_ms": int((time.monotonic() - t1) * 1000),
-            })
+            stats["stage_timings"].append(
+                {
+                    "stage": "image_extraction",
+                    "duration_ms": int((time.monotonic() - t1) * 1000),
+                }
+            )
 
         stats["images_extracted"] = len(images)
 
@@ -114,10 +143,12 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
 
         t2 = time.monotonic()
         pages = _split_into_pages(content, ext)
-        stats["stage_timings"].append({
-            "stage": "page_splitting",
-            "duration_ms": int((time.monotonic() - t2) * 1000),
-        })
+        stats["stage_timings"].append(
+            {
+                "stage": "page_splitting",
+                "duration_ms": int((time.monotonic() - t2) * 1000),
+            }
+        )
 
         self.report_progress(kwargs, 3, total_steps, "Building metadata...")
 
@@ -169,7 +200,7 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
                     "'basic' = extract with filename descriptions, "
                     "'llm' = extract + generate descriptions via OpenAI Vision."
                 ),
-                default="none",
+                default="basic",
                 choices=["none", "basic", "llm"],
             ),
             PluginParameter(
@@ -244,16 +275,59 @@ def _extract_images(
                 filename = f"img_{img_counter:03d}.{ext}"
                 img_data = base_image["image"]
 
-                description = _describe_image(
-                    img_data, filename, ext, mode, api_keys, stats
+                description = _describe_image(img_data, filename, ext, mode, api_keys, stats)
+
+                images.append(
+                    ExtractedImage(
+                        filename=filename,
+                        data=img_data,
+                        page_number=page_num + 1,
+                        description=description,
+                    )
                 )
 
-                images.append(ExtractedImage(
-                    filename=filename,
-                    data=img_data,
-                    page_number=page_num + 1,
-                    description=description,
-                ))
+        # Fallback: if no Image XObjects were embedded, the visual content
+        # of the PDF is drawn as vector graphics (logos, diagrams, etc.) or
+        # the PDF is a vector-only document. ``extract_image`` can't surface
+        # those — they're not bitmap resources. Render each page as a PNG
+        # so the user still has something to view in the Images tab.
+        if not images:
+            logger.info(
+                "No bitmap images found in %s — rasterizing %d page(s) "
+                "as PNG fallback (vector content / scanned page).",
+                path.name,
+                len(doc),
+            )
+            page_counter = 0
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                try:
+                    # 144 DPI = 2x the 72-DPI PDF default. Crisp enough for
+                    # logos and diagrams without exploding file size.
+                    pix = page.get_pixmap(dpi=144)
+                    png_bytes = pix.tobytes("png")
+                except Exception:
+                    logger.exception(
+                        "Failed to rasterize page %d of %s",
+                        page_num + 1,
+                        path.name,
+                    )
+                    continue
+
+                page_counter += 1
+                filename = f"page_{page_counter:03d}.png"
+                description = _describe_image(
+                    png_bytes, filename, "png", mode, api_keys, stats
+                )
+                images.append(
+                    ExtractedImage(
+                        filename=filename,
+                        data=png_bytes,
+                        page_number=page_num + 1,
+                        description=description,
+                    )
+                )
+            stats["rendered_page_fallback"] = page_counter
     finally:
         doc.close()
 
@@ -302,46 +376,50 @@ def _describe_image(
         t0 = time.monotonic()
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Describe this image concisely in one or two "
-                            "sentences for use as alt-text in a document."
-                        ),
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{b64}"},
-                    },
-                ],
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Describe this image concisely in one or two "
+                                "sentences for use as alt-text in a document."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{b64}"},
+                        },
+                    ],
+                }
+            ],
             max_tokens=200,
         )
         duration_ms = int((time.monotonic() - t0) * 1000)
 
         description = response.choices[0].message.content.strip()
-        stats["images_with_llm_descriptions"] = (
-            stats.get("images_with_llm_descriptions", 0) + 1
+        stats["images_with_llm_descriptions"] = stats.get("images_with_llm_descriptions", 0) + 1
+        stats["llm_calls"].append(
+            {
+                "image": filename,
+                "duration_ms": duration_ms,
+                "success": True,
+                "tokens_used": getattr(response.usage, "total_tokens", None),
+            }
         )
-        stats["llm_calls"].append({
-            "image": filename,
-            "duration_ms": duration_ms,
-            "success": True,
-            "tokens_used": getattr(response.usage, "total_tokens", None),
-        })
         return description
 
     except Exception as exc:
         logger.warning("LLM image description failed for %s: %s", filename, exc)
-        stats["llm_calls"].append({
-            "image": filename,
-            "duration_ms": 0,
-            "success": False,
-            "error": str(exc)[:200],
-        })
+        stats["llm_calls"].append(
+            {
+                "image": filename,
+                "duration_ms": 0,
+                "success": False,
+                "error": str(exc)[:200],
+            }
+        )
         return f"Image: {filename}"
 
 
@@ -351,8 +429,8 @@ def _describe_image(
 
 # MarkItDown and PyMuPDF both tend to insert page-break markers.
 _PAGE_BREAK_PATTERNS = [
-    re.compile(r"^-{3,}\s*$", re.MULTILINE),          # --- (horizontal rule)
-    re.compile(r"^\f", re.MULTILINE),                  # form-feed character
+    re.compile(r"^-{3,}\s*$", re.MULTILINE),  # --- (horizontal rule)
+    re.compile(r"^\f", re.MULTILINE),  # form-feed character
     re.compile(r"^<!--\s*page\s*break\s*-->", re.MULTILINE | re.IGNORECASE),
 ]
 

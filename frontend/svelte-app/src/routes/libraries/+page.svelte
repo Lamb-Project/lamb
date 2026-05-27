@@ -24,6 +24,8 @@
 	import { base } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
+	import { Button, Tabs } from '$lib/components/ui';
+	import { ChevronLeft } from 'lucide-svelte';
 
 	/** @type {'libraries'|'knowledge-stores'} */
 	let section = $state('libraries');
@@ -125,6 +127,19 @@
 		openWizardWithState(event.detail || {});
 	}
 
+	let sectionTabs = $derived([
+		{ value: 'libraries', label: $_('libraries.pageTitle', { default: 'Libraries' }) },
+		{
+			value: 'knowledge-stores',
+			label: $_('knowledgeStores.pageTitle', { default: 'Knowledge Stores' })
+		}
+	]);
+
+	/** @param {string} v */
+	function handleTabChange(v) {
+		switchSection(v);
+	}
+
 	/** @param {CustomEvent<Record<string, any>>} event */
 	function handleWizardDone(event) {
 		const refs = event.detail || {};
@@ -170,33 +185,21 @@
 </script>
 
 <div class="mx-auto max-w-7xl px-4 pt-6 pb-0 sm:px-6 lg:px-8">
-	<div class="border-b border-gray-200 pb-5">
+	<div class="border-border border-b pb-5">
 		{#if view === 'detail' && detailId}
-			<div class="flex items-center">
-				<button
-					type="button"
-					onclick={backToList}
-					aria-label={section === 'knowledge-stores'
+			<div class="flex items-center gap-2">
+				<Button
+					variant="ghost"
+					size="sm"
+					iconLeftComponent={ChevronLeft}
+					ariaLabel={section === 'knowledge-stores'
 						? $_('knowledgeStores.backButton', { default: 'Back to Knowledge Stores' })
 						: $_('libraries.backButton', { default: 'Back to libraries' })}
-					class="mr-3 inline-flex items-center rounded-full border border-transparent bg-[#2271b3] p-1 text-white shadow-sm hover:bg-[#195a91] focus:ring-2 focus:ring-[#2271b3] focus:ring-offset-2 focus:outline-none"
+					onclick={backToList}
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-5 w-5"
-						viewBox="0 0 20 20"
-						fill="currentColor"
-					>
-						<path
-							fill-rule="evenodd"
-							d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
-							clip-rule="evenodd"
-						/>
-					</svg>
-				</button>
-				<h1
-					class="text-2xl leading-tight font-bold text-gray-900 sm:truncate sm:text-3xl sm:leading-tight"
-				>
+					{$_('common.back', { default: 'Back' })}
+				</Button>
+				<h1 class="type-page-title min-w-0 flex-1 truncate">
 					{#if section === 'knowledge-stores'}
 						{$_('knowledgeStores.detailTitle', { default: 'Knowledge Store Details' })}
 					{:else}
@@ -206,10 +209,10 @@
 			</div>
 		{:else}
 			<div>
-				<h1 class="text-2xl leading-tight font-bold text-gray-900 sm:text-3xl sm:leading-tight">
+				<h1 class="type-page-title">
 					{$_('knowledge.title', { default: 'Sources of Knowledge' })}
 				</h1>
-				<p class="mt-1 text-sm text-gray-500">
+				<p class="type-body-muted mt-1">
 					{#if section === 'knowledge-stores'}
 						{$_('knowledgeStores.pageDescription', {
 							default: 'Manage Knowledge Stores — vector indexes built from library content.'
@@ -222,30 +225,13 @@
 				</p>
 			</div>
 
-			<div class="mt-4 flex gap-6 border-b border-transparent">
-				<button
-					type="button"
-					onclick={() => switchSection('libraries')}
-					class="-mb-px border-b-2 pb-2 text-sm font-medium {section === 'libraries'
-						? 'border-[#2271b3] text-[#2271b3]'
-						: 'border-transparent text-gray-500 hover:text-gray-700'}"
-				>
-					{$_('libraries.pageTitle', { default: 'Libraries' })}
-				</button>
-				<button
-					type="button"
-					onclick={() => switchSection('knowledge-stores')}
-					class="-mb-px border-b-2 pb-2 text-sm font-medium {section === 'knowledge-stores'
-						? 'border-[#2271b3] text-[#2271b3]'
-						: 'border-transparent text-gray-500 hover:text-gray-700'}"
-				>
-					{$_('knowledgeStores.pageTitle', { default: 'Knowledge Stores' })}
-				</button>
+			<div class="mt-4">
+				<Tabs tabs={sectionTabs} value={section} onchange={handleTabChange} />
 			</div>
 		{/if}
 	</div>
 
-	<div class="mt-6">
+	<main class="mt-6">
 		{#if section === 'libraries'}
 			{#if view === 'detail' && detailId}
 				<LibraryDetail libraryId={detailId} />
@@ -266,7 +252,7 @@
 				{/key}
 			{/if}
 		{/if}
-	</div>
+	</main>
 </div>
 
 <svelte:window

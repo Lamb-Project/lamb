@@ -191,4 +191,56 @@ Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `nod
 * DO NOT include authoriship information in commits (No Co-authored-By, signed-off-by , or similar)
 * Commit messages should be concise and descriptive without aditional metadata.
 * Include the Issue ID in commit messages like #{issue number} 
- 
+
+## Design System
+
+The Svelte frontend follows a strict design-system contract. Primitives live in `frontend/svelte-app/src/lib/components/ui/` and tokens in `frontend/svelte-app/src/app.css`. See `.claude/plans/elegant-mixing-adleman.md` for the full plan, primitive APIs, token list, and verification checklist.
+
+### Consistency Contract (the rules everything follows)
+
+**Action -> primitive mapping (locked).** Same intent always renders with the same primitive, same icon, same variant, same position:
+
+| Action | Primitive | Icon | Variant | Position |
+|---|---|---|---|---|
+| List "Create new" CTA | `Button` | `Plus` (iconLeft) | `primary` | top-right of page header |
+| Row "View" | `IconButton` | `Eye` | `ghost`, sm | leftmost in row actions |
+| Row "Edit" | `IconButton` | `Pencil` | `ghost`, sm | inline next to value, or overflow |
+| Row "More" | `OverflowMenu` | `MoreHorizontal` | `ghost` | rightmost in row actions |
+| Modal close | `IconButton` | `X` | `ghost`, sm | top-right of modal header |
+| Per-item remove | `IconButton` | `X` | `danger-ghost`, sm | right of item row |
+| Confirm destructive | `ConfirmationModal` | `AlertCircle` header / `Trash2` confirm | `variant=danger` | - |
+| Retry on error | `Button` | `RefreshCw` | `secondary` | end of error Banner |
+| Loading | `Skeleton.*` | - | - | always replaces "Loading..." text |
+| Async write feedback | `toast` | varies | `success` / `danger` | top-right stack |
+
+Overflow menus always render Delete last with a divider above it and `text-danger` styling.
+
+**Status pill mapping (locked).** Resolve via `statusBadgeProps(status)` in `src/lib/utils/statusBadge.js`; never hand-code badge colors. Mapping:
+
+| Status | Badge variant | Icon | Label |
+|---|---|---|---|
+| `ready` / completed | `success` | `CheckCircle2` | Ready |
+| `processing` / `pending` / `queued` | `info` | `Loader2` (spin) | Processing |
+| `failed` / `error` | `danger` | `AlertCircle` | Failed |
+| `empty` (count === 0) | `warning` | `AlertCircle` | Empty |
+| `private` | `neutral` | `Lock` | Private |
+| `shared` | `success` | `Users` | Shared |
+| immutable field | `neutral` | `Lock` | Locked |
+
+**Color rule.** Brand color is accessed ONLY via `bg-brand` / `text-brand` / `border-brand` / `ring-brand`. Any literal `#2271b3` or `[#2271b3]` outside `app.css` is a violation. Status colors come exclusively from the `success-* / info-* / warning-* / danger-*` tokens — never `bg-green-100`, `text-red-700`, etc.
+
+**Copy rule.** All `variant="danger"` confirmation modals MUST include the literal `common.cannotBeUndone` line in the body. `ConfirmationModal` enforces this automatically.
+
+**Modal header rule.** Canonical header: `bg-surface` (white), bottom `border-border`, title `type-section-title`, close `IconButton(X, ghost, sm)` top-right. No `bg-blue-50`, no `bg-red-50`, no gradient backgrounds — anywhere.
+
+**Toast rule.** Every async write that succeeds calls `toast.success(...)`; every async write that fails calls `toast.error(...)` (with inline-only when the user must act in place to recover). Inline persistent `successMessage` state is a smell — route it through the toast store at `src/lib/stores/toast.js`.
+
+**Perceived-performance rule.** Never block on the full payload when you can show the first chunk now. Render-as-you-receive (page 1 first, then prefetch the rest), optimistic UI for writes, stale-while-revalidate on navigation, cache list responses keyed by `(orgId, filters, page)`, stream long operations, defer non-critical work (e.g., collapsible panels), and suppress skeletons that would flicker for under 300 ms.
+
+### Icons
+
+Always import from `$lib/components/ui/icons.js` (a curated re-export of `lucide-svelte`). `flowbite-svelte` and `flowbite-svelte-icons` are removed from the project — do not reintroduce them.
+
+### Primitives barrel
+
+`import { Button, IconButton, Modal, Badge, Card, Toast, Tabs, FormField, Dropdown, OverflowMenu, Dropzone, Stepper, Banner, Collapsible, Checkbox, EmptyState, Skeleton, SkeletonRow, SkeletonCard, SkeletonTable } from '$lib/components/ui';`

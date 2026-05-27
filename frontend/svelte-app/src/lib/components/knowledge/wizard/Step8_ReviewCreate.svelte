@@ -12,20 +12,23 @@
        Poll each item via getItemStatus until 'ready' or 'failed'.
     3. If ksPath === 'new': createKnowledgeStore({ ...ksConfig, name, description }).
        Optionally toggle sharing.
-    4. Build the final list of item IDs to ingest:
-         - existing-library: use the user's selectedItemIds.
-         - new-library: use the IDs of items that became 'ready' in step 2.
-    5. addContent(ksId, { libraryId, itemIds }) — fire and forget; the
-       KB Server runs the ingestion job asynchronously.
+    4. Build the final list of item IDs to ingest.
+    5. addContent(ksId, { libraryId, itemIds }) — fire and forget.
     6. Emit 'created' with { libraryId, libraryName, ksId, ksName }.
+
+  Phase C consistency contract:
+    * Card titles use `type-label` (instead of `text-gray-400 uppercase`).
+    * Each summary section wraps in `<Card>` with a `<IconButton
+      icon={Pencil}>` jump-back affordance in the header.
+    * Progress icons use canonical Loader2 / CheckCircle2 / AlertCircle.
 
   Emits:
     - update: ()
-    - validity: { valid: boolean }     (always true, but disabled while submitting)
+    - validity: { valid: boolean }     (always true, disabled while submitting)
     - created: { libraryId, libraryName, ksId, ksName }
 -->
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 	import axios from 'axios';
 	import {
 		createLibrary,
@@ -34,36 +37,87 @@
 		uploadFile,
 		importUrl,
 		importYouTube,
-		getItemStatus
+		getItemStatus,
+		getPlugins
 	} from '$lib/services/libraryService';
+	import { matchPluginsForFile } from '$lib/services/pluginMatcher';
 	import {
 		createKnowledgeStore,
 		getKnowledgeStores,
 		toggleSharing as toggleKSSharing,
 		addContent
 	} from '$lib/services/knowledgeStoreService';
+	import PluginPickerModal from '$lib/components/libraries/PluginPickerModal.svelte';
 	import { _ } from '$lib/i18n';
+	import { Card, Banner, IconButton } from '$lib/components/ui';
+	import { Pencil, Loader2, CheckCircle2, AlertCircle } from 'lucide-svelte';
 
-	// Same auto-routing rule the Library Detail page uses for inline file
-	// uploads: only the simple-import plugin is right for plain-text
-	// extensions; everything else (PDF, DOCX, XLSX, ...) needs markitdown.
-	// Without this routing the wizard always sent ``simple_import``,
-	// which rejects PDF with a 400 before the file ever reaches disk.
-	const SIMPLE_IMPORT_EXTENSIONS = new Set(['txt', 'md', 'html', 'htm']);
-	/** @param {File} file */
-	function pluginForFile(file) {
-		const ext = file.name.split('.').pop()?.toLowerCase() || '';
-		return SIMPLE_IMPORT_EXTENSIONS.has(ext) ? 'simple_import' : 'markitdown_import';
+	/** @type {any[]} */
+	let plugins = $state([]);
+
+	onMount(async () => {
+		try {
+			plugins = await getPlugins();
+		} catch (err) {
+			console.warn('Step8_ReviewCreate: failed to load plugins', err);
+		}
+	});
+
+	/**
+	 * Pick the first plugin registered for a source type.
+	 * @param {string} sourceType
+	 * @returns {string|null}
+	 */
+	function pluginForSourceType(sourceType) {
+		const match = plugins.find(
+			(p) =>
+				Array.isArray(p?.supported_source_types) && p.supported_source_types.includes(sourceType)
+		);
+		return match?.name ?? null;
+	}
+
+	// Picker modal state for the multi-match tie-break.
+	let showPluginPicker = $state(false);
+	/** @type {any[]} */
+	let pluginMatches = $state([]);
+	/** @type {File|null} */
+	let pickerFile = $state(null);
+	/** @type {((pluginName: string|null) => void) | null} */
+	let pickerResolver = null;
+
+	/**
+	 * @param {File} file
+	 * @returns {Promise<string|null>}
+	 */
+	async function resolvePluginForFile(file) {
+		const matches = matchPluginsForFile(file, plugins);
+		if (matches.length === 0) return null;
+		if (matches.length === 1) return matches[0].name;
+		pluginMatches = matches;
+		pickerFile = file;
+		showPluginPicker = true;
+		await tick();
+		return new Promise((resolve) => {
+			pickerResolver = resolve;
+		});
+	}
+
+	/** @param {{ name: string }} plugin */
+	function handlePluginPicked(plugin) {
+		showPluginPicker = false;
+		const resolver = pickerResolver;
+		pickerResolver = null;
+		if (resolver) resolver(plugin.name);
+	}
+
+	function handlePluginPickerCancel() {
+		showPluginPicker = false;
+		const resolver = pickerResolver;
+		pickerResolver = null;
+		if (resolver) resolver(null);
 	}
 
 	/**
-	 * Extract a user-readable message from a thrown error. Axios surfaces
-	 * the status-code generic message ("Request failed with status code 409")
-	 * on `err.message`, which is useless to users — the actionable text is in
-	 * `err.response.data.detail` (FastAPI's HTTPException payload). Fall
-	 * through to `data.message`, then to a tagged status code, then the
-	 * caller's fallback.
-	 *
 	 * @param {unknown} err
 	 * @param {string} fallback
 	 * @returns {string}
@@ -84,14 +138,11 @@
 		return fallback;
 	}
 
-	/** @type {{ wizardState: any, submitting?: boolean }} */
-	let { wizardState, submitting = $bindable(false) } = $props();
+	/** @type {{ wizardState: any, submitting?: boolean, onJumpToStep?: (stepIndex: number) => void }} */
+	let { wizardState, submitting = $bindable(false), onJumpToStep } = $props();
 
 	const dispatch = createEventDispatcher();
 
-	// Exposed to the wizard shell so the footer can host the Create button.
-	// Wizard binds this component via bind:this and calls submit() from its
-	// footer Create button so the button visually aligns with Back/Skip.
 	export function submit() {
 		return handleCreate();
 	}
@@ -113,7 +164,7 @@
 	 * @param {string} libraryId
 	 * @param {string} itemId
 	 * @param {number} [maxWaitMs]
-	 * @returns {Promise<string>}  Final status.
+	 * @returns {Promise<string>}
 	 */
 	async function pollItem(libraryId, itemId, maxWaitMs = 120_000) {
 		const deadline = Date.now() + maxWaitMs;
@@ -155,14 +206,13 @@
 		let ksId = wizardState.existingKsId;
 		let ksName = wizardState.ksName;
 
-		// Pre-flight name-conflict check: aggregate every duplicate-name
-		// problem before doing any actual creation, so the user sees ALL
-		// conflicts at once instead of being shown library errors first
-		// and KS errors only after fixing the library name.
+		// Pre-flight name-conflict check.
 		try {
+			/** @type {string[]} */
 			const conflicts = [];
 			const proposedLibName = (wizardState.libraryName || '').trim().toLowerCase();
 			const proposedKsName = (wizardState.ksName || '').trim().toLowerCase();
+			/** @type {Promise<void>[]} */
 			const checks = [];
 			if (wizardState.libraryPath === 'new' && proposedLibName) {
 				checks.push(
@@ -180,10 +230,7 @@
 								);
 							}
 						})
-						.catch(() => {
-							// If the lookup fails, fall through; the create call
-							// itself will still surface a 409 if there's a real conflict.
-						})
+						.catch(() => {})
 				);
 			}
 			if (wizardState.ksPath === 'new' && proposedKsName) {
@@ -240,11 +287,7 @@
 				}
 			}
 
-			// 2. Upload pending files queued in Step 2. Runs for BOTH new
-			// and existing libraries — when adding content to an existing
-			// library/KS, the user may queue new files in Step 2 and we
-			// need to upload them here before the Pick-Items mapping can
-			// link them.
+			// 2. Upload pending files.
 			/** @type {string[]} */
 			const newlyReadyIds = [];
 			const pending = wizardState.pendingFiles ?? [];
@@ -258,8 +301,17 @@
 						})
 					);
 					try {
+						const pluginName = await resolvePluginForFile(f);
+						if (!pluginName) {
+							const ext = f.name.split('.').pop()?.toLowerCase() || '';
+							console.warn(`No plugin can handle .${ext} for ${f.name}`);
+							finishStep('failed');
+							continue;
+						}
+						const fileParams = (wizardState.pendingFileParams ?? [])[i] ?? {};
 						const result = await uploadFile(libraryId, f, {
-							pluginName: pluginForFile(f)
+							pluginName,
+							params: fileParams
 						});
 						const itemId = result.item_id;
 						finishStep('done');
@@ -281,8 +333,7 @@
 				}
 			}
 
-			// 2b. Import pending URL / YouTube sources. Same rationale as
-			// the file-upload block above — runs regardless of library path.
+			// 2b. Import pending URL / YouTube sources.
 			const pendingUrlSources = wizardState.pendingUrlSources ?? [];
 			if (pendingUrlSources.length > 0 && libraryId) {
 				for (let i = 0; i < pendingUrlSources.length; i += 1) {
@@ -295,16 +346,32 @@
 					);
 					try {
 						let result;
+						const srcParams = src.params || {};
 						if (src.type === 'youtube') {
+							const ytPlugin = pluginForSourceType('youtube');
+							if (!ytPlugin) {
+								console.warn('No YouTube plugin enabled');
+								finishStep('failed');
+								continue;
+							}
 							result = await importYouTube(libraryId, {
 								videoUrl: src.url,
-								language: src.language || 'en',
-								title: src.title || undefined
+								pluginName: ytPlugin,
+								title: src.title || undefined,
+								params: srcParams
 							});
 						} else {
+							const urlPlugin = pluginForSourceType('url');
+							if (!urlPlugin) {
+								console.warn('No URL plugin enabled');
+								finishStep('failed');
+								continue;
+							}
 							result = await importUrl(libraryId, {
 								url: src.url,
-								title: src.title || undefined
+								pluginName: urlPlugin,
+								title: src.title || undefined,
+								params: srcParams
 							});
 						}
 						const itemId = result.item_id;
@@ -342,7 +409,9 @@
 					embedding_vendor: wizardState.ksConfig.embedding_vendor,
 					embedding_model: wizardState.ksConfig.embedding_model,
 					embedding_endpoint: wizardState.ksConfig.embedding_endpoint || undefined,
+					embedding_params: wizardState.ksConfig.embedding_params || {},
 					vector_db_backend: wizardState.ksConfig.vector_db_backend,
+					vector_db_params: wizardState.ksConfig.vector_db_params || {},
 					graph_enabled: !!wizardState.ksConfig.graph_enabled
 				});
 				ksId = ks.id;
@@ -358,18 +427,7 @@
 				}
 			}
 
-			// 4. Compute final list of item IDs to ingest. An empty selection
-			// is now meaningful — it's the explicit "Skip" outcome from
-			// Step 4 and means "create the KS but ingest nothing right now".
-			// We do NOT silently fall back to "everything" on empty.
-			//
-			// Selected IDs may be a mix of:
-			//   - Real DB item IDs (existing library items the user picked)
-			//   - Transient ``pendingFile_<i>`` / ``pendingUrl_<i>`` ids from
-			//     items the user queued in Step 2 (need to be mapped back to
-			//     the freshly-uploaded item ids in ``newlyReadyIds``).
-			// This unified mapping works for both new and existing library
-			// flows now that Step 2 is shown for both.
+			// 4. Compute final list of item IDs to ingest.
 			/** @type {string[]} */
 			let itemsToIngest = [];
 			{
@@ -390,7 +448,6 @@
 							itemsToIngest.push(newlyReadyIds[urlOffset + idx]);
 						}
 					} else {
-						// Real item ID (existing-library pick or resumed draft).
 						itemsToIngest.push(selId);
 					}
 				}
@@ -410,7 +467,6 @@
 				} catch (e) {
 					console.error('addContent failed', e);
 					finishStep('failed');
-					// Don't fail the whole wizard — KS and library exist.
 				}
 			}
 
@@ -418,21 +474,16 @@
 			dispatch('created', { libraryId, libraryName, ksId, ksName });
 		} catch (/** @type {unknown} */ err) {
 			error = readableError(err, 'Failed to create');
-			// Replace a bare "Network Error" with the duplicate-name message
-			// when that's the real cause (the pre-flight check may have
-			// silently failed too).
 			const isNoResponseAxios =
 				!!err &&
 				typeof err === 'object' &&
 				/** @type {any} */ (err).isAxiosError === true &&
-				!/** @type {any} */ (err).response;
+				!(/** @type {any} */ (err).response);
 			if (isNoResponseAxios && wizardState.ksPath === 'new' && wizardState.ksName) {
 				try {
 					const stores = await getKnowledgeStores();
 					const proposed = wizardState.ksName.trim().toLowerCase();
-					const dup = (stores || []).some(
-						(s) => (s?.name || '').trim().toLowerCase() === proposed
-					);
+					const dup = (stores || []).some((s) => (s?.name || '').trim().toLowerCase() === proposed);
 					if (dup) {
 						error = $_('knowledge.wizard.step8.ksNameTaken', {
 							default: 'A Knowledge Store named "{name}" already exists.',
@@ -459,7 +510,6 @@
 		if (wizardState.libraryPath === 'new') {
 			return (wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length;
 		}
-		// For existing library, total = same as selected (we don't know the full count here).
 		return (wizardState.selectedItemIds ?? []).length;
 	});
 
@@ -467,22 +517,29 @@
 	let summarySelectedCount = $derived.by(() => {
 		if (wizardState.libraryPath === 'new') {
 			const selectedIds = wizardState.selectedItemIds ?? [];
-			// An empty selection is the explicit Skip outcome — count is 0,
-			// not "default to total". The wizard never advances past Step 4
-			// without either a populated selection (Next) or a deliberate
-			// clear (Skip), so empty here always means "ingest nothing".
 			return selectedIds.length;
 		}
 		return (wizardState.selectedItemIds ?? []).length;
 	});
+
+	// Wizard step indices kept in sync with CreateKnowledgeWizard.
+	const STEP_LIBRARY_SETUP = 1;
+	const STEP_LIBRARY_CONTENT = 2;
+	const STEP_KS_SETUP = 3;
+	const STEP_KS_CONTENT = 4;
+
+	/** @param {number} stepIndex */
+	function jumpTo(stepIndex) {
+		if (typeof onJumpToStep === 'function') onJumpToStep(stepIndex);
+	}
 </script>
 
 <div class="space-y-5">
 	<div>
-		<h3 class="text-base font-semibold text-gray-900">
+		<h3 class="type-section-title">
 			{$_('knowledge.wizard.step8.heading', { default: 'Review & create' })}
 		</h3>
-		<p class="mt-1 text-sm text-gray-500">
+		<p class="type-body-muted mt-1">
 			{$_('knowledge.wizard.step8.description', {
 				default:
 					'Double-check the summary below. Nothing has been created yet — clicking "Create" will create the resources and queue the ingestion.'
@@ -491,215 +548,206 @@
 	</div>
 
 	{#if error}
-		<div
-			class="flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
-			role="alert"
-		>
-			<svg
-				class="mt-0.5 h-4 w-4 shrink-0 text-red-500"
-				viewBox="0 0 20 20"
-				fill="currentColor"
-				aria-hidden="true"
-			>
-				<path
-					fill-rule="evenodd"
-					d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-4.75a.75.75 0 001.5 0v-4.5a.75.75 0 00-1.5 0v4.5zm.75-7a.75.75 0 100 1.5.75.75 0 000-1.5z"
-					clip-rule="evenodd"
-				/>
-			</svg>
-			<div class="min-w-0 flex-1">
-				<p class="font-medium">{error}</p>
+		<Banner variant="danger" description={error}>
+			{#snippet actions()}
 				<button
 					type="button"
 					onclick={handleCreate}
-					class="mt-1 font-medium underline hover:no-underline"
+					class="text-danger text-sm font-medium underline hover:no-underline"
 				>
 					{$_('knowledge.wizard.step8.retry', { default: 'Retry' })}
 				</button>
-			</div>
-		</div>
+			{/snippet}
+		</Banner>
 	{/if}
 
-	<!-- Summary cards -->
-	<div class="space-y-3">
-		<!-- Library card -->
-		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
-				{$_('knowledge.wizard.step8.libraryHeading', { default: 'Library' })}
-			</p>
-			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-				<dt class="font-medium text-gray-500">
-					{$_('knowledge.wizard.libraryStep.selectLabel', { default: 'Library' })}
-				</dt>
-				<dd class="text-gray-900">{wizardState.libraryName || '-'}</dd>
+	<!-- Library summary -->
+	<Card title={$_('knowledge.wizard.step8.libraryHeading', { default: 'Library' })}>
+		{#snippet actions()}
+			<IconButton
+				icon={Pencil}
+				ariaLabel={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+				tooltip={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+				variant="ghost"
+				size="sm"
+				onclick={() => jumpTo(STEP_LIBRARY_SETUP)}
+			/>
+		{/snippet}
 
-				<dt class="font-medium text-gray-500">
-					{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
+		<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+			<dt class="type-label">
+				{$_('knowledge.wizard.libraryStep.selectLabel', { default: 'Library' })}
+			</dt>
+			<dd class="text-text">{wizardState.libraryName || '-'}</dd>
+
+			<dt class="type-label">
+				{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
+			</dt>
+			<dd class="text-text">
+				{wizardState.libraryPath === 'existing'
+					? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
+					: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+			</dd>
+
+			{#if wizardState.libraryDescription}
+				<dt class="type-label">
+					{$_('knowledge.wizard.libraryStep.descriptionLabel', { default: 'Description' })}
 				</dt>
-				<dd class="text-gray-900">
-					{wizardState.libraryPath === 'existing'
-						? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
-						: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+				<dd class="text-text">{wizardState.libraryDescription}</dd>
+			{/if}
+
+			{#if wizardState.libraryPath === 'new'}
+				<dt class="type-label">
+					{$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
+				</dt>
+				<dd class="text-text">
+					{wizardState.libraryImportConfig?.pluginName ||
+						$_('knowledge.wizard.step8.pluginAuto', { default: 'Auto-selected' })}
 				</dd>
 
-				{#if wizardState.libraryDescription}
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.libraryStep.descriptionLabel', { default: 'Description' })}
-					</dt>
-					<dd class="text-gray-900">{wizardState.libraryDescription}</dd>
-				{/if}
-
-				{#if wizardState.libraryPath === 'new'}
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.libraryStep.pluginLabel', { default: 'Import plugin' })}
-					</dt>
-					<dd class="text-gray-900">
-						{wizardState.libraryImportConfig?.pluginName || 'simple_import'}
-					</dd>
-
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.libraryContent.queuedLabel', { default: 'Queued sources' })}
-					</dt>
-					<dd class="text-gray-900">
-						{$_('knowledge.wizard.step8.libraryFileCount', {
-							default: '{n} file(s) to upload',
-							values: { n: (wizardState.pendingFiles ?? []).length }
+				<dt class="type-label">
+					{$_('knowledge.wizard.libraryContent.queuedLabel', { default: 'Queued sources' })}
+				</dt>
+				<dd class="text-text">
+					{$_('knowledge.wizard.step8.libraryFileCount', {
+						default: '{n} file(s) to upload',
+						values: { n: (wizardState.pendingFiles ?? []).length }
+					})}
+					{#if (wizardState.pendingUrlSources ?? []).length > 0}
+						+
+						{$_('knowledge.wizard.step8.libraryUrlCount', {
+							default: '{n} URL/YouTube source(s) to import',
+							values: { n: (wizardState.pendingUrlSources ?? []).length }
 						})}
-						{#if (wizardState.pendingUrlSources ?? []).length > 0}
-							+
-							{$_('knowledge.wizard.step8.libraryUrlCount', {
-								default: '{n} URL/YouTube source(s) to import',
-								values: { n: (wizardState.pendingUrlSources ?? []).length }
-							})}
-						{/if}
-					</dd>
-				{/if}
-			</dl>
-		</div>
-
-		<!-- Knowledge Store card -->
-		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<p class="mb-3 text-xs font-semibold tracking-wide text-gray-400 uppercase">
-				{$_('knowledge.wizard.step8.ksHeading', { default: 'Knowledge Store' })}
-			</p>
-			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-				<dt class="font-medium text-gray-500">
-					{$_('knowledge.wizard.ksStep.selectLabel', { default: 'Knowledge Store' })}
-				</dt>
-				<dd class="text-gray-900">{wizardState.ksName || '-'}</dd>
-
-				<dt class="font-medium text-gray-500">
-					{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
-				</dt>
-				<dd class="text-gray-900">
-					{wizardState.ksPath === 'existing'
-						? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
-						: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+					{/if}
 				</dd>
+			{/if}
+		</dl>
+	</Card>
 
-				<dt class="font-medium text-gray-500">
+	<!-- Knowledge Store summary -->
+	<Card title={$_('knowledge.wizard.step8.ksHeading', { default: 'Knowledge Store' })}>
+		{#snippet actions()}
+			<IconButton
+				icon={Pencil}
+				ariaLabel={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+				tooltip={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+				variant="ghost"
+				size="sm"
+				onclick={() => jumpTo(STEP_KS_SETUP)}
+			/>
+		{/snippet}
+
+		<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+			<dt class="type-label">
+				{$_('knowledge.wizard.ksStep.selectLabel', { default: 'Knowledge Store' })}
+			</dt>
+			<dd class="text-text">{wizardState.ksName || '-'}</dd>
+
+			<dt class="type-label">
+				{$_('knowledge.wizard.ksStep.legend', { default: 'Path' })}
+			</dt>
+			<dd class="text-text">
+				{wizardState.ksPath === 'existing'
+					? $_('knowledge.wizard.useExisting', { default: 'Use existing' })
+					: $_('knowledge.wizard.createNew', { default: 'Create new' })}
+			</dd>
+
+			<dt class="type-label">
+				{$_('knowledge.wizard.step8.itemsToIngest', { default: 'Items to ingest' })}
+			</dt>
+			<dd class="text-text">{summarySelectedCount} of {summaryTotalCount}</dd>
+
+			{#if wizardState.ksPath === 'new'}
+				<dt class="type-label">
+					{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}
+				</dt>
+				<dd class="text-text">{wizardState.ksConfig?.chunking_strategy || '-'}</dd>
+
+				<dt class="type-label">
+					{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}
+				</dt>
+				<dd class="text-text">{wizardState.ksConfig?.embedding_vendor || '-'}</dd>
+
+				<dt class="type-label">
+					{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}
+				</dt>
+				<dd class="text-text">{wizardState.ksConfig?.embedding_model || '-'}</dd>
+
+				<dt class="type-label">
+					{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
+				</dt>
+				<dd class="text-text">{wizardState.ksConfig?.vector_db_backend || '-'}</dd>
+			{/if}
+		</dl>
+	</Card>
+
+	<!-- Content / ingestion section: only show when the user queued items
+	     so we don't surface a stub card when there's nothing to summarise. -->
+	{#if (wizardState.pendingFiles ?? []).length > 0 || (wizardState.pendingUrlSources ?? []).length > 0 || (wizardState.selectedItemIds ?? []).length > 0}
+		<Card title={$_('knowledge.wizard.libraryContent.title', { default: 'Library Content' })}>
+			{#snippet actions()}
+				<IconButton
+					icon={Pencil}
+					ariaLabel={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+					tooltip={$_('knowledge.wizard.editStep', { default: 'Edit this step' })}
+					variant="ghost"
+					size="sm"
+					onclick={() =>
+						jumpTo(
+							(wizardState.pendingFiles ?? []).length > 0 ||
+								(wizardState.pendingUrlSources ?? []).length > 0
+								? STEP_LIBRARY_CONTENT
+								: STEP_KS_CONTENT
+						)}
+				/>
+			{/snippet}
+			<dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="type-label">
+					{$_('knowledge.wizard.libraryContent.queuedSources', { default: 'Queued sources' })}
+				</dt>
+				<dd class="text-text">
+					{(wizardState.pendingFiles ?? []).length + (wizardState.pendingUrlSources ?? []).length}
+				</dd>
+				<dt class="type-label">
 					{$_('knowledge.wizard.step8.itemsToIngest', { default: 'Items to ingest' })}
 				</dt>
-				<dd class="text-gray-900">{summarySelectedCount} of {summaryTotalCount}</dd>
-
-				{#if wizardState.ksPath === 'new'}
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.step6.chunkingLabel', { default: 'Chunking strategy' })}
-					</dt>
-					<dd class="text-gray-900">{wizardState.ksConfig?.chunking_strategy || '-'}</dd>
-
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.step6.vendorLabel', { default: 'Embedding vendor' })}
-					</dt>
-					<dd class="text-gray-900">{wizardState.ksConfig?.embedding_vendor || '-'}</dd>
-
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.step6.modelLabel', { default: 'Embedding model' })}
-					</dt>
-					<dd class="text-gray-900">{wizardState.ksConfig?.embedding_model || '-'}</dd>
-
-					<dt class="font-medium text-gray-500">
-						{$_('knowledge.wizard.step6.vectorDbLabel', { default: 'Vector DB' })}
-					</dt>
-					<dd class="text-gray-900">{wizardState.ksConfig?.vector_db_backend || '-'}</dd>
-				{/if}
+				<dd class="text-text">{summarySelectedCount}</dd>
 			</dl>
-		</div>
-
-		<!-- Ingestion section removed — the Knowledge Store card already
-             shows "Items to ingest: N of total" so a separate card here was
-             redundant. -->
-	</div>
+		</Card>
+	{/if}
 
 	<!-- Progress steps during creation -->
 	{#if submitting && progressSteps.length > 0}
 		<div
-			class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3"
+			class="border-info-border bg-info-subtle text-info-text rounded-lg border px-4 py-3"
 			aria-live="polite"
 			aria-label="Creation progress"
 		>
 			<ul class="space-y-2">
 				{#each progressSteps as step (step.label + step.status)}
-					<li class="flex items-center gap-2 pl-1 text-sm text-blue-900">
+					<li class="flex items-center gap-2 pl-1 text-sm">
 						{#if step.status === 'running'}
-							<!-- Spinner -->
-							<svg
-								class="h-4 w-4 shrink-0 animate-spin text-blue-500"
-								viewBox="0 0 24 24"
-								fill="none"
-								aria-hidden="true"
-							>
-								<circle
-									class="opacity-25"
-									cx="12"
-									cy="12"
-									r="10"
-									stroke="currentColor"
-									stroke-width="4"
-								/>
-								<path
-									class="opacity-75"
-									fill="currentColor"
-									d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-								/>
-							</svg>
+							<Loader2 size={14} class="text-info shrink-0 animate-spin" aria-hidden="true" />
 						{:else if step.status === 'done'}
-							<!-- Checkmark -->
-							<svg
-								class="h-4 w-4 shrink-0 text-green-500"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-								aria-hidden="true"
-							>
-								<path
-									fill-rule="evenodd"
-									d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-									clip-rule="evenodd"
-								/>
-							</svg>
+							<CheckCircle2 size={14} class="text-success shrink-0" aria-hidden="true" />
 						{:else}
-							<!-- X / failed -->
-							<svg
-								class="h-4 w-4 shrink-0 text-red-400"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-								aria-hidden="true"
-							>
-								<path
-									d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
-								/>
-							</svg>
+							<AlertCircle size={14} class="text-danger shrink-0" aria-hidden="true" />
 						{/if}
-						<span class={step.status === 'failed' ? 'text-red-700 line-through' : ''}
-							>{step.label}</span
-						>
+						<span class={step.status === 'failed' ? 'text-danger-text line-through' : ''}>
+							{step.label}
+						</span>
 					</li>
 				{/each}
 			</ul>
 		</div>
 	{/if}
-
-	<!-- Create button lives in the wizard shell footer (alongside Back) so
-	     it doesn't push the dialog content into a scroll. The wizard calls
-	     this component's exported submit() when the user clicks it. -->
 </div>
+
+<PluginPickerModal
+	bind:isOpen={showPluginPicker}
+	matches={pluginMatches}
+	file={pickerFile?.name ?? ''}
+	onselect={handlePluginPicked}
+	oncancel={handlePluginPickerCancel}
+/>
