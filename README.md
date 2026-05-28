@@ -107,14 +107,12 @@ Visit our [official website](http://www.lamb-project.org) for:
 - **Community support**
 
 ### 📖 Developer Documentation
-Comprehensive documentation is available in the `/Documentation` directory:
+Comprehensive documentation is available in the [`/Documentation`](Documentation/) directory:
 
-- [Backend Architecture](Documentation/small-context/backend_architecture.md)
-- [Frontend Development Guide](Documentation/small-context/frontend_architecture.md)
-- [Knowledge Base Integration](Documentation/attic/kb-server-integration.md)
-- [Multi-Organization Setup](Documentation/attic/multi_org.md)
-- [Database Schema](Documentation/LAMB_DATABASE_SCHEMA.md)
-- [Final Setup Guide](Documentation/slop-docs/final-setup.md)
+- [Documentation Index](Documentation/DOCUMENTATION_INDEX.md) — start here
+- [Architecture Reference](Documentation/lamb_architecture_v2.md)
+- [Installation Guide](Documentation/installationguide.md)
+- [Deployment Guide](Documentation/deployment.md)
 
 ## 🗂️ Project Structure
 

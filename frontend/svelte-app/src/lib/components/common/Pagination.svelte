@@ -121,7 +121,7 @@
         id="items-per-page"
         value={itemsPerPage}
         onchange={handleItemsPerPageChange}
-        class="rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring-brand text-sm py-1 px-2"
+        class="rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring-brand text-sm py-1 pr-6 pl-2"
       >
         {#each itemsPerPageOptions as option}
           <option value={option}>{option}</option>
