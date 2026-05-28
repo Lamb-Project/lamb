@@ -28,11 +28,14 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
-		userFiles = [],
-		selectedFilePath = $bindable(''),
-		loadingFiles = false,
-		fileError = '',
-		onFilesChanged,
+		libraries = [],
+		selectedLibraryId = $bindable(''),
+		loadingLibraries = false,
+		libraryError = '',
+		libraryItems = [],
+		selectedItemId = $bindable(''),
+		loadingItems = false,
+		itemsError = '',
 		onchange
 	} = $props();
 
@@ -202,12 +205,15 @@
 			bind:selectedKnowledgeBases
 			loadingKnowledgeBases={loadingKnowledgeBases}
 			knowledgeBaseError={knowledgeBaseError}
-			{userFiles}
-			bind:selectedFilePath
-			loadingFiles={loadingFiles}
-			fileError={fileError}
+			{libraries}
+			bind:selectedLibraryId
+			{loadingLibraries}
+			{libraryError}
+			{libraryItems}
+			bind:selectedItemId
+			{loadingItems}
+			{itemsError}
 			{formState}
-			{onFilesChanged}
 		/>
 	{/if}
 </fieldset>

@@ -3,7 +3,7 @@
 	import { _ } from '$lib/i18n';
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import KnowledgeBaseSelector from './KnowledgeBaseSelector.svelte';
-	import SingleFileSelector from './SingleFileSelector.svelte';
+	import LibraryItemSelector from './LibraryItemSelector.svelte';
 
 	let {
 		selectedRagProcessor = '',
@@ -13,12 +13,15 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
-		userFiles = [],
-		selectedFilePath = $bindable(''),
-		loadingFiles = false,
-		fileError = '',
-		formState,
-		onFilesChanged
+		libraries = [],
+		selectedLibraryId = $bindable(''),
+		loadingLibraries = false,
+		libraryError = '',
+		libraryItems = [],
+		selectedItemId = $bindable(''),
+		loadingItems = false,
+		itemsError = '',
+		formState
 	} = $props();
 
 	let showKbSelector = $derived(isKbBasedRag(selectedRagProcessor));
@@ -57,13 +60,16 @@
 		/>
 	{/if}
 	{#if showFileSelector}
-		<SingleFileSelector
-			{userFiles}
-			bind:selectedFilePath
-			loading={loadingFiles}
-			error={fileError}
+		<LibraryItemSelector
+			{libraries}
+			bind:selectedLibraryId
+			loadingLibraries={loadingLibraries}
+			libraryError={libraryError}
+			items={libraryItems}
+			bind:selectedItemId
+			loadingItems={loadingItems}
+			itemsError={itemsError}
 			{formState}
-			{onFilesChanged}
 		/>
 	{/if}
 </div>
