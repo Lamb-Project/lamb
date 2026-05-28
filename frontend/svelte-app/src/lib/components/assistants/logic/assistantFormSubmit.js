@@ -30,12 +30,16 @@ export function buildAssistantPayload(form) {
 		connector: form.selectedConnector,
 		llm: form.selectedLlm,
 		rag_processor: form.selectedRagProcessor,
-		file_path: isSingleFileRag(form.selectedRagProcessor) ? form.selectedFilePath : '',
 		capabilities: {
 			vision: form.visionEnabled,
 			image_generation: form.imageGenerationEnabled
 		}
 	};
+
+	if (isSingleFileRag(form.selectedRagProcessor)) {
+		metadataObj.library_id = form.selectedLibraryId || '';
+		metadataObj.item_id = form.selectedItemId || '';
+	}
 
 	if (isRubricRag(form.selectedRagProcessor)) {
 		metadataObj.rubric_id = form.selectedRubricId;

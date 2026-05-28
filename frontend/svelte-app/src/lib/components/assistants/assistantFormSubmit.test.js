@@ -37,7 +37,8 @@ describe('buildAssistantPayload', () => {
 			selectedConnector: 'openai',
 			selectedLlm: 'gpt-4',
 			selectedRagProcessor: 'no_rag',
-			selectedFilePath: '',
+			selectedLibraryId: '',
+			selectedItemId: '',
 			visionEnabled: false,
 			imageGenerationEnabled: false,
 			selectedKnowledgeBases: [],
@@ -46,7 +47,10 @@ describe('buildAssistantPayload', () => {
 		};
 		const payload = buildAssistantPayload(form);
 		expect(payload.name).toBe('test');
-		expect(JSON.parse(payload.metadata).connector).toBe('openai');
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.connector).toBe('openai');
+		expect(metadata.library_id).toBeUndefined();
+		expect(metadata.item_id).toBeUndefined();
 	});
 
 	test('includes rubric fields when rubric_rag is selected', () => {
@@ -60,7 +64,8 @@ describe('buildAssistantPayload', () => {
 			selectedConnector: 'openai',
 			selectedLlm: 'gpt-4',
 			selectedRagProcessor: 'rubric_rag',
-			selectedFilePath: '',
+			selectedLibraryId: '',
+			selectedItemId: '',
 			visionEnabled: false,
 			imageGenerationEnabled: false,
 			selectedKnowledgeBases: [],
@@ -84,7 +89,8 @@ describe('buildAssistantPayload', () => {
 			selectedConnector: 'openai',
 			selectedLlm: 'gpt-4',
 			selectedRagProcessor: 'simple_rag',
-			selectedFilePath: '',
+			selectedLibraryId: '',
+			selectedItemId: '',
 			visionEnabled: true,
 			imageGenerationEnabled: false,
 			selectedKnowledgeBases: ['kb1', 'kb2'],
@@ -96,5 +102,31 @@ describe('buildAssistantPayload', () => {
 		expect(payload.RAG_Top_k).toBe(5);
 		const metadata = JSON.parse(payload.metadata);
 		expect(metadata.capabilities.vision).toBe(true);
+	});
+
+	test('includes library_id and item_id when single_file_rag is selected', () => {
+		const form = {
+			name: 'test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			RAG_Top_k: 3,
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'single_file_rag',
+			selectedLibraryId: 'lib-123',
+			selectedItemId: 'item-456',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			selectedKnowledgeBases: [],
+			selectedRubricId: '',
+			rubricFormat: 'markdown'
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.library_id).toBe('lib-123');
+		expect(metadata.item_id).toBe('item-456');
+		expect(metadata.file_path).toBeUndefined();
 	});
 });
