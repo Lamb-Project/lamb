@@ -90,7 +90,7 @@
                 {$_('knowledgeBases.detailDescription', { default: 'View details and manage files for this knowledge base.' })}
             </p>
         {:else}
-            <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
+            <h1 class="text-2xl font-bold text-gray-900 sm:text-3xl sm:truncate sm:leading-10">
                 {$_('knowledgeBases.pageTitle', { default: 'Knowledge Bases' })}
             </h1>
             <p class="mt-1 text-sm text-gray-500">

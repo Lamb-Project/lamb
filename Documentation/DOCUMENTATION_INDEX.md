@@ -58,24 +58,17 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 ```
 Documentation/
 ├── DOCUMENTATION_INDEX.md      ← YOU ARE HERE
-├── lamb_architecture_v2.md     ← Main architecture guide (START HERE)
-├── lamb_architecture.md        ← Full detailed reference (legacy)
-├── lamb_architecture_small.md  ← Condensed version (legacy)
-├── lamb_architecture_nano.md   ← Minimal context for LLMs
+├── README.md                   ← Docs landing page
+├── lamb_architecture_v2.md     ← Single canonical architecture reference
 │
-├── deployment.apache.md        ← Apache deployment guide
 ├── installationguide.md        ← Installation instructions
-├── training.md                 ← Training materials
+├── deployment.md               ← General deployment guide
+├── deployLocal.md              ← Local Docker deployment
+├── deployNext.md               ← Hetzner autonomous deployment
+├── deployment.apache.md        ← Apache reverse proxy config
+├── deployment.nginx.md         ← Nginx reverse proxy config
 │
-├── ER-diagrams/                ← Database diagrams
-│   ├── creator_users.md
-│   ├── assistant_shares.md
-│   └── ...
-│
-├── small-context/              ← Compact docs for LLM context
-│   └── ...
-│
-└── (enterprise docs moved to private repo)
+└── (all other docs moved to private enterprise repo)
 ```
 
 ---
