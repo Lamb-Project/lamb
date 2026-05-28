@@ -124,11 +124,10 @@ export async function fetchLibraries(form, force = false) {
  */
 export async function fetchLibraryItems(form, libraryId, force = false) {
 	if (!libraryId) return;
-	if (form.itemsFetchAttempted && !force) return;
 	form.loadingItems = true;
 	form.itemsError = '';
 	try {
-		const response = await getItems(libraryId, { status: 'ready', limit: 100 });
+		const response = await getItems(libraryId, { limit: 100 });
 		form.libraryItems = response.items || [];
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith('Session expired')) return;
@@ -136,6 +135,5 @@ export async function fetchLibraryItems(form, libraryId, force = false) {
 		form.libraryItems = [];
 	} finally {
 		form.loadingItems = false;
-		form.itemsFetchAttempted = true;
 	}
 }

@@ -84,14 +84,13 @@ describe('fetchLibraryItems', () => {
 		const form = {
 			libraryItems: [],
 			loadingItems: false,
-			itemsError: '',
-			itemsFetchAttempted: false
+			itemsError: ''
 		};
 
 		await fetchLibraryItems(form, 'lib-1');
 
+		expect(getItems).toHaveBeenCalledWith('lib-1', { limit: 100 });
 		expect(form.libraryItems).toEqual(mockResponse.items);
-		expect(form.itemsFetchAttempted).toBe(true);
 		expect(form.loadingItems).toBe(false);
 	});
 
@@ -109,5 +108,22 @@ describe('fetchLibraryItems', () => {
 
 		expect(form.libraryItems).toEqual([]);
 		expect(form.itemsError).toBeTruthy();
+	});
+
+	it('re-fetches when called again without force flag', async () => {
+		const mockResponse = { items: [{ id: 'item-1', title: 'Doc A', status: 'ready' }], total: 1 };
+		getItems.mockResolvedValue(mockResponse);
+
+		const form = {
+			libraryItems: [],
+			loadingItems: false,
+			itemsError: ''
+		};
+
+		await fetchLibraryItems(form, 'lib-1');
+		expect(getItems).toHaveBeenCalledTimes(1);
+
+		await fetchLibraryItems(form, 'lib-1');
+		expect(getItems).toHaveBeenCalledTimes(2);
 	});
 });

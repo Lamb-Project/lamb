@@ -177,7 +177,6 @@
 	// Effect to fetch library items when selected library changes
 	$effect(() => {
 		if (isSingleFileRag(form.selectedRagProcessor) && form.selectedLibraryId && form.configInitialized) {
-			form.itemsFetchAttempted = false;
 			doFetchLibraryItems(form.selectedLibraryId);
 		}
 	});
