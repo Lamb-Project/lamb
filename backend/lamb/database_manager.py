@@ -33,6 +33,12 @@ logger = get_logger(__name__, component="DB")
 
 
 class LambDatabaseManager:
+    # Class-level flag: initialize_system_organization (which calls sync_system_org_with_env)
+    # must only run once per process lifetime. Many parts of the codebase instantiate
+    # LambDatabaseManager() per-request; running sync on every instantiation would
+    # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
+    _system_org_initialized = False
+
     def __init__(self):
         try:
             # Load environment variables
@@ -55,8 +61,13 @@ class LambDatabaseManager:
             self.run_migrations()
 
             # Initialize system organization AFTER migrations so that
-            # Creator_users columns (enabled, password_hash, role) exist
-            self.initialize_system_organization()
+            # Creator_users columns (enabled, password_hash, role) exist.
+            # Guard with a class-level flag so this only runs once per process —
+            # sync_system_org_with_env overwrites provider config from .env and must
+            # not run on every per-request LambDatabaseManager() instantiation.
+            if not LambDatabaseManager._system_org_initialized:
+                self.initialize_system_organization()
+                LambDatabaseManager._system_org_initialized = True
 
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
