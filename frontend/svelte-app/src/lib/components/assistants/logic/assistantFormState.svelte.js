@@ -203,6 +203,12 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 			}
 		}
 
+		// Library fields (single_file_rag with Library Manager)
+		if (isSingleFileRag(form.selectedRagProcessor)) {
+			form.selectedLibraryId = metadata?.library_id || '';
+			form.selectedItemId = metadata?.item_id || '';
+		}
+
 		// Vision capability
 		try {
 			form.visionEnabled = metadata?.capabilities?.vision || false;
