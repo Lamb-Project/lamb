@@ -186,7 +186,6 @@ docs/
 frontend-architecture-diagrams.md
 opencode.json
 package-lock.json
-
 .playwright-mcp
 
 aac_logs/
