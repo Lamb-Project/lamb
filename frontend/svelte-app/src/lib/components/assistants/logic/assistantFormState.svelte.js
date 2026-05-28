@@ -75,6 +75,20 @@ export function createAssistantFormState() {
 		fileError: '',
 		filesFetchAttempted: false,
 
+		// --- Library state (for single_file_rag with Library Manager) ---
+		/** @type {Array<{id: string, name: string}>} */
+		libraries: [],
+		selectedLibraryId: '',
+		loadingLibraries: false,
+		libraryError: '',
+		librariesFetchAttempted: false,
+		/** @type {Array<{id: string, title: string, original_filename?: string, status: string}>} */
+		libraryItems: [],
+		selectedItemId: '',
+		loadingItems: false,
+		itemsError: '',
+		itemsFetchAttempted: false,
+
 		// --- Rubric state ---
 		/** @type {Array<{rubric_id: string, title: string, description: string, is_mine: boolean, is_showcase: boolean, is_public: boolean}>} */
 		accessibleRubrics: [],
@@ -132,6 +146,8 @@ export function resetFormFieldsToDefaults(form, getAvailableModels) {
 
 	form.selectedKnowledgeBases = [];
 	form.selectedFilePath = '';
+	form.selectedLibraryId = '';
+	form.selectedItemId = '';
 	form.visionEnabled = false;
 	form.imageGenerationEnabled = false;
 }
@@ -234,5 +250,15 @@ export function clearRagDependentState(form) {
 	if (!isRubricRag(form.selectedRagProcessor) && (form.selectedRubricId || form.accessibleRubrics.length > 0)) {
 		form.selectedRubricId = '';
 		form.rubricFormat = 'markdown';
+	}
+
+	// Library state
+	if (form.selectedLibraryId || form.libraries.length > 0 || form.selectedItemId || form.libraryItems.length > 0) {
+		form.libraries = [];
+		form.selectedLibraryId = '';
+		form.libraryItems = [];
+		form.selectedItemId = '';
+		form.librariesFetchAttempted = false;
+		form.itemsFetchAttempted = false;
 	}
 }

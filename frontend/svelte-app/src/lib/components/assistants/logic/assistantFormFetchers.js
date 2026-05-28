@@ -9,6 +9,7 @@ import { fetchAccessibleRubrics } from '$lib/services/rubricService';
 import { apiJson } from '$lib/services/apiClient';
 import { isKbBasedRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 import { getAssistantMetadataObject } from '$lib/utils/assistantData';
+import { getLibraries, getItems } from '$lib/services/libraryService';
 
 /**
  * Fetches accessible knowledge bases (owned + shared).
@@ -90,5 +91,51 @@ export async function fetchUserFiles(form, { force = false, assistant = null } =
 	} finally {
 		form.loadingFiles = false;
 		form.filesFetchAttempted = true;
+	}
+}
+
+/**
+ * Fetches libraries accessible to the current user.
+ * @param {import('./assistantFormState.svelte.js').createAssistantFormState} form
+ * @param {boolean} [force=false]
+ */
+export async function fetchLibraries(form, force = false) {
+	if (form.librariesFetchAttempted && !force) return;
+	form.loadingLibraries = true;
+	form.libraryError = '';
+	try {
+		const libraries = await getLibraries();
+		form.libraries = libraries.map((lib) => ({ id: lib.id, name: lib.name }));
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith('Session expired')) return;
+		form.libraryError = err instanceof Error ? err.message : 'Failed to load libraries';
+		form.libraries = [];
+	} finally {
+		form.loadingLibraries = false;
+		form.librariesFetchAttempted = true;
+	}
+}
+
+/**
+ * Fetches items for a specific library.
+ * @param {import('./assistantFormState.svelte.js').createAssistantFormState} form
+ * @param {string} libraryId
+ * @param {boolean} [force=false]
+ */
+export async function fetchLibraryItems(form, libraryId, force = false) {
+	if (!libraryId) return;
+	if (form.itemsFetchAttempted && !force) return;
+	form.loadingItems = true;
+	form.itemsError = '';
+	try {
+		const response = await getItems(libraryId, { status: 'ready', limit: 100 });
+		form.libraryItems = response.items || [];
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith('Session expired')) return;
+		form.itemsError = err instanceof Error ? err.message : 'Failed to load documents';
+		form.libraryItems = [];
+	} finally {
+		form.loadingItems = false;
+		form.itemsFetchAttempted = true;
 	}
 }

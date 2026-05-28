@@ -13,6 +13,11 @@ vi.mock('$lib/services/apiClient', () => ({
 	apiJson: vi.fn()
 }));
 
+vi.mock('$lib/services/libraryService', () => ({
+	getLibraries: vi.fn(),
+	getItems: vi.fn()
+}));
+
 vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 	isKbBasedRag: (p) => ['simple_rag', 'context_aware_rag', 'hierarchical_rag'].includes(p),
 	isSingleFileRag: (p) => p === 'single_file_rag',

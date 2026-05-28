@@ -86,6 +86,11 @@ vi.mock('$lib/services/apiClient', () => ({
 	apiJson: vi.fn().mockResolvedValue([])
 }));
 
+vi.mock('$lib/services/libraryService', () => ({
+	getLibraries: vi.fn().mockResolvedValue([]),
+	getItems: vi.fn().mockResolvedValue({ items: [], total: 0 })
+}));
+
 vi.mock('$lib/stores/templateStore', async () => {
 	const { writable } = await import('svelte/store');
 	return {
