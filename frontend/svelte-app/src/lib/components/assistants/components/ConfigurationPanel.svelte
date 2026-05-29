@@ -8,6 +8,7 @@
 		extractModelsMetadata
 	} from '../logic/assistantFormUtils.svelte.js';
 	import RagOptionsPanel from './RagOptionsPanel.svelte';
+	import LibraryItemSelector from './LibraryItemSelector.svelte';
 
 	let {
 		formState,
@@ -36,6 +37,8 @@
 		selectedItemId = $bindable(''),
 		loadingItems = false,
 		itemsError = '',
+		documentRagEnabled = $bindable(false),
+		selectedFilePath = '',
 		onchange
 	} = $props();
 
@@ -52,6 +55,13 @@
 	let currentModelMetadata = $derived(currentModelsMetadata.find((m) => m.id === selectedLlm) || null);
 	let imageGenerationForced = $derived(currentModelMetadata?.forced_capabilities?.image_generation === true);
 	let showRagOptions = $derived(hasRagOptions(selectedRagProcessor));
+	let isLegacySingleFileRag = $derived(selectedRagProcessor === 'single_file_rag');
+	let showDocumentSection = $derived(!isLegacySingleFileRag);
+	let filteredRAGProcessors = $derived(
+		formState === 'edit'
+			? ragProcessors
+			: ragProcessors.filter((p) => p !== 'single_file_rag')
+	);
 
 	async function handleConnectorChange() {
 		await tick();
@@ -190,11 +200,35 @@
 		<select id="rag-processor" bind:value={selectedRagProcessor} onchange={onchange}
 			disabled={formState === 'edit'}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
-			{#each ragProcessors as processor (processor)}
-				<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, (/** @type {string} */ l) => l.toUpperCase())}</option>
-			{/each}
+		{#each filteredRAGProcessors as processor (processor)}
+			<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, (/** @type {string} */ l) => l.toUpperCase())}</option>
+		{/each}
 		</select>
 	</div>
+
+	{#if showDocumentSection}
+		<div class="pt-4 border-t border-gray-200">
+			<label class="inline-flex items-center cursor-pointer mb-2">
+				<input type="checkbox" bind:checked={documentRagEnabled} onchange={onchange} class="sr-only peer" />
+				<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+				<span class="ms-3 text-sm font-medium text-gray-900">{$_('assistants.form.documentRag.label', { default: 'Reference Document' })}</span>
+			</label>
+			<p class="text-xs text-gray-500 mb-2">{$_('assistants.form.documentRag.description', { default: 'Attach a reference document that will be available in the system context for all messages.' })}</p>
+			{#if documentRagEnabled}
+				<LibraryItemSelector
+					{libraries}
+					bind:selectedLibraryId
+					loadingLibraries={loadingLibraries}
+					libraryError={libraryError}
+					items={libraryItems}
+					bind:selectedItemId
+					loadingItems={loadingItems}
+					itemsError={itemsError}
+					{formState}
+				/>
+			{/if}
+		</div>
+	{/if}
 
 	{#if showRagOptions}
 		<RagOptionsPanel
@@ -207,12 +241,13 @@
 			knowledgeBaseError={knowledgeBaseError}
 			{libraries}
 			bind:selectedLibraryId
-			{loadingLibraries}
-			{libraryError}
+			loadingLibraries={loadingLibraries}
+			libraryError={libraryError}
 			{libraryItems}
 			bind:selectedItemId
-			{loadingItems}
-			{itemsError}
+			loadingItems={loadingItems}
+			itemsError={itemsError}
+			{selectedFilePath}
 			{formState}
 		/>
 	{/if}

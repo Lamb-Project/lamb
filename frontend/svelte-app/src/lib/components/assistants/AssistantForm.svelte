@@ -181,6 +181,22 @@
 		}
 	});
 
+	// Effect to fetch libraries when document_rag is enabled (independent of RAG processor)
+	$effect(() => {
+		if (form.documentRagEnabled && form.configInitialized) {
+			if (!form.librariesFetchAttempted && !form.loadingLibraries) {
+				doFetchLibraries();
+			}
+		}
+	});
+
+	// Effect to fetch library items when selected library changes (for document_rag)
+	$effect(() => {
+		if (form.documentRagEnabled && form.selectedLibraryId && form.configInitialized) {
+			doFetchLibraryItems(form.selectedLibraryId);
+		}
+	});
+
 	// --- Mode Switching Functions ---
 	function switchToViewMode() {
 		// Revert fields to initial state
@@ -469,9 +485,11 @@
 					libraryError={form.libraryError}
 					libraryItems={form.libraryItems}
 					bind:selectedItemId={form.selectedItemId}
-					loadingItems={form.loadingItems}
-					itemsError={form.itemsError}
-					onchange={() => handleFieldChange(form)}
+				loadingItems={form.loadingItems}
+				itemsError={form.itemsError}
+				bind:documentRagEnabled={form.documentRagEnabled}
+				selectedFilePath={form.selectedFilePath}
+				onchange={() => handleFieldChange(form)}
 				/>
 			</div>
 			</div>

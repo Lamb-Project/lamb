@@ -21,12 +21,14 @@
 		selectedItemId = $bindable(''),
 		loadingItems = false,
 		itemsError = '',
+		selectedFilePath = '',
 		formState
 	} = $props();
 
 	let showKbSelector = $derived(isKbBasedRag(selectedRagProcessor));
 	let showFileSelector = $derived(isSingleFileRag(selectedRagProcessor));
 	let showTopK = $derived(isKbBasedRag(selectedRagProcessor));
+	let isLegacyWithFilePath = $derived(isSingleFileRag(selectedRagProcessor) && !!selectedFilePath);
 </script>
 
 <div class="pt-4 border-t border-gray-200 space-y-4">
@@ -59,17 +61,15 @@
 			error={knowledgeBaseError}
 		/>
 	{/if}
-	{#if showFileSelector}
-		<LibraryItemSelector
-			{libraries}
-			bind:selectedLibraryId
-			loadingLibraries={loadingLibraries}
-			libraryError={libraryError}
-			items={libraryItems}
-			bind:selectedItemId
-			loadingItems={loadingItems}
-			itemsError={itemsError}
-			{formState}
-		/>
+	{#if showFileSelector && isLegacyWithFilePath}
+		<div class="p-3 bg-amber-50 border border-amber-200 rounded-md mb-3">
+			<p class="text-sm text-amber-800">
+				{$_('assistants.form.ragOptions.legacySingleFileNotice', { default: 'This assistant uses the legacy single-file RAG. The document cannot be changed. To use a different document, create a new assistant with the Reference Document option.' })}
+			</p>
+		</div>
+		<div class="p-3 bg-gray-50 border border-gray-200 rounded-md">
+			<p class="text-sm font-medium text-gray-700">{$_('assistants.form.ragOptions.document', { default: 'Document' })}</p>
+			<p class="text-sm text-gray-500 font-mono mt-1">{selectedFilePath}</p>
+		</div>
 	{/if}
 </div>
