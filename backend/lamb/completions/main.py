@@ -168,8 +168,9 @@ async def create_completion(
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
         logger.debug(f"RAG context: {rag_context}")
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
         logger.debug(f"Stream mode: {stream}")
@@ -324,7 +325,8 @@ def parse_plugin_config(assistant_details) -> Dict[str, str]:
         "prompt_processor": "default",
         "connector": "openai",
         "llm": "gpt-4",
-        "rag_processor": ""
+        "rag_processor": "",
+        "document_rag": ""
     }
     
     # Apply defaults for missing keys
@@ -352,6 +354,9 @@ def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, 
     if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in rag_processors:
         logger.error(f"RAG processor '{plugin_config['rag_processor']}' not found")
         raise HTTPException(status_code=400, detail=f"RAG processor '{plugin_config['rag_processor']}' not found")
+    if plugin_config.get("document_rag") and plugin_config["document_rag"] not in rag_processors:
+        logger.error(f"Document RAG processor '{plugin_config['document_rag']}' not found")
+        raise HTTPException(status_code=400, detail=f"Document RAG processor '{plugin_config['document_rag']}' not found")
 
     return pps, connectors, rag_processors
 
@@ -378,12 +383,12 @@ async def get_rag_context(request: Dict[str, Any], rag_processors: Dict[str, Any
     logger.debug("No RAG processor requested")
     return None
 
-def process_completion_request(request: Dict[str, Any], assistant_details: Any, plugin_config: Dict[str, str], rag_context: Any, pps: Dict[str, Any]) -> Any:
+def process_completion_request(request: Dict[str, Any], assistant_details: Any, plugin_config: Dict[str, str], rag_context: Any, pps: Dict[str, Any], document_context=None) -> Any:
     """
     Process the prompt using the specified prompt processor and return prepared messages.
     """
     logger.info("Processing completion request")
-    messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context)
+    messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context, document_context=document_context)
     logger.debug(f"Processed messages: {messages}")
     return messages
 
@@ -494,7 +499,8 @@ async def run_lamb_assistant(
             )
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
