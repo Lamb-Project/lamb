@@ -102,3 +102,53 @@ def test_simple_rag_not_affected():
     result, error = validate_update_plugin_metadata(body)
     assert error is None
     assert result is not None
+
+
+class TestDocumentRagValidation:
+    def _make_body(self, **overrides):
+        base = {
+            "metadata": {
+                "prompt_processor": "simple_augment",
+                "connector": "openai",
+                "llm": "gpt-4o-mini",
+                "rag_processor": "no_rag",
+                "document_rag": "",
+            }
+        }
+        base["metadata"].update(overrides)
+        return base
+
+    def test_document_rag_single_file_requires_library_or_file(self):
+        body = self._make_body(document_rag="single_file_rag")
+        _, error = validate_update_plugin_metadata(body)
+        assert error is not None
+        assert "document_rag" in error
+
+    def test_document_rag_with_library_id_and_item_id_is_valid(self):
+        body = self._make_body(
+            document_rag="single_file_rag",
+            library_id="lib-1",
+            item_id="item-1",
+        )
+        metadata, error = validate_update_plugin_metadata(body)
+        assert error is None
+        assert metadata is not None
+
+    def test_document_rag_library_id_without_item_id(self):
+        body = self._make_body(
+            document_rag="single_file_rag",
+            library_id="lib-1",
+        )
+        _, error = validate_update_plugin_metadata(body)
+        assert error is not None
+        assert "item_id" in error
+
+    def test_document_rag_empty_is_valid(self):
+        body = self._make_body(document_rag="")
+        metadata, error = validate_update_plugin_metadata(body)
+        assert error is None
+
+    def test_non_document_rag_unaffected(self):
+        body = self._make_body(rag_processor="simple_rag", document_rag="")
+        metadata, error = validate_update_plugin_metadata(body)
+        assert error is None
