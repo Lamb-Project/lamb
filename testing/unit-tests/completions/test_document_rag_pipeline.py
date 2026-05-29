@@ -1,5 +1,24 @@
 import json
+import os
 import pytest
+
+_dummy_env = {
+    "LAMB_WEB_HOST": "http://localhost:9099",
+    "LAMB_BACKEND_HOST": "http://localhost:9099",
+    "LAMB_BEARER_TOKEN": "test-token",
+    "OPENAI_BASE_URL": "http://localhost:11434",
+    "OPENAI_MODEL": "gpt-4",
+    "OWI_BASE_URL": "http://localhost:8080",
+    "OWI_PATH": "/tmp/owi",
+    "SIGNUP_SECRET_KEY": "test-secret",
+    "OWI_ADMIN_NAME": "admin",
+    "OWI_ADMIN_EMAIL": "admin@test.com",
+    "OWI_ADMIN_PASSWORD": "test-password",
+    "LAMB_DB_PATH": "/tmp/test_lamb.db",
+}
+for _k, _v in _dummy_env.items():
+    os.environ.setdefault(_k, _v)
+
 from lamb.completions.main import parse_plugin_config, process_completion_request
 
 
