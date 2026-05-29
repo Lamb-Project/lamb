@@ -56,9 +56,6 @@
 				onchange={handleLibraryChange}
 				class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 			>
-				<option value="">
-					{$_('assistants.form.singleFile.selectLibrary', { default: '-- Select a library --' })}
-				</option>
 				{#each libraries as lib (lib.id)}
 					<option value={lib.id}>{lib.name}</option>
 				{/each}
@@ -92,9 +89,6 @@
 					onchange={handleItemChange}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
 				>
-					<option value="">
-						{$_('assistants.form.singleFile.selectItem', { default: '-- Select a document --' })}
-					</option>
 					{#each readyItems as item (item.id)}
 						<option value={item.id}>{item.title || item.original_filename}</option>
 					{/each}
