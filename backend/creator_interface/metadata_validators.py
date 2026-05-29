@@ -73,5 +73,19 @@ def validate_update_plugin_metadata(
         if metadata_dict.get("item_id") and not metadata_dict.get("library_id"):
             return None, "single_file_rag: item_id requires library_id"
 
+    # document_rag specific validation
+    if metadata_dict.get("document_rag") == "single_file_rag":
+        has_library_ref = (
+            metadata_dict.get("library_id") and metadata_dict.get("item_id")
+        )
+        if not has_library_ref:
+            return None, (
+                "document_rag=single_file_rag requires library_id + item_id in metadata"
+            )
+        if metadata_dict.get("library_id") and not metadata_dict.get("item_id"):
+            return None, "document_rag: library_id requires item_id"
+        if metadata_dict.get("item_id") and not metadata_dict.get("library_id"):
+            return None, "document_rag: item_id requires library_id"
+
     normalized_metadata = json.dumps(metadata_dict)
     return normalized_metadata, None
