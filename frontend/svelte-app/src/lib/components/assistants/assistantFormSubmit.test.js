@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/utils/ragProcessorHelpers.js', () => ({
 	isKbBasedRag: (p) => ['simple_rag', 'context_aware_rag', 'hierarchical_rag'].includes(p),
@@ -104,7 +104,7 @@ describe('buildAssistantPayload', () => {
 		expect(metadata.capabilities.vision).toBe(true);
 	});
 
-	test('includes library_id and item_id when single_file_rag is selected', () => {
+	test('legacy single_file_rag without documentRagEnabled does not include library refs', () => {
 		const form = {
 			name: 'test',
 			description: '',
@@ -117,6 +117,8 @@ describe('buildAssistantPayload', () => {
 			selectedRagProcessor: 'single_file_rag',
 			selectedLibraryId: 'lib-123',
 			selectedItemId: 'item-456',
+			selectedFilePath: '',
+			documentRagEnabled: false,
 			visionEnabled: false,
 			imageGenerationEnabled: false,
 			selectedKnowledgeBases: [],
@@ -125,8 +127,89 @@ describe('buildAssistantPayload', () => {
 		};
 		const payload = buildAssistantPayload(form);
 		const metadata = JSON.parse(payload.metadata);
-		expect(metadata.library_id).toBe('lib-123');
-		expect(metadata.item_id).toBe('item-456');
+		expect(metadata.library_id).toBeUndefined();
+		expect(metadata.item_id).toBeUndefined();
 		expect(metadata.file_path).toBeUndefined();
+		expect(metadata.document_rag).toBeUndefined();
+	});
+});
+
+describe('buildAssistantPayload with document_rag', () => {
+	it('includes document_rag and library refs when documentRagEnabled', () => {
+		const form = {
+			name: 'Test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'no_rag',
+			documentRagEnabled: true,
+			selectedLibraryId: 'lib-1',
+			selectedItemId: 'item-1',
+			selectedFilePath: '',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: []
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.document_rag).toBe('single_file_rag');
+		expect(metadata.library_id).toBe('lib-1');
+		expect(metadata.item_id).toBe('item-1');
+		expect(metadata.rag_processor).toBe('no_rag');
+	});
+
+	it('omits document_rag when documentRagEnabled is false', () => {
+		const form = {
+			name: 'Test',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'context_aware_rag',
+			documentRagEnabled: false,
+			selectedLibraryId: '',
+			selectedItemId: '',
+			selectedFilePath: '',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: ['kb-1']
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.document_rag).toBeUndefined();
+		expect(metadata.library_id).toBeUndefined();
+	});
+
+	it('legacy single_file_rag with file_path preserves file_path', () => {
+		const form = {
+			name: 'Legacy Old',
+			description: '',
+			system_prompt: '',
+			prompt_template: '',
+			selectedPromptProcessor: 'simple_augment',
+			selectedConnector: 'openai',
+			selectedLlm: 'gpt-4o-mini',
+			selectedRagProcessor: 'single_file_rag',
+			documentRagEnabled: false,
+			selectedLibraryId: '',
+			selectedItemId: '',
+			selectedFilePath: 'docs/mi_documento.md',
+			visionEnabled: false,
+			imageGenerationEnabled: false,
+			RAG_Top_k: 3,
+			selectedKnowledgeBases: []
+		};
+		const payload = buildAssistantPayload(form);
+		const metadata = JSON.parse(payload.metadata);
+		expect(metadata.rag_processor).toBe('single_file_rag');
+		expect(metadata.file_path).toBe('docs/mi_documento.md');
+		expect(metadata.document_rag).toBeUndefined();
 	});
 });
