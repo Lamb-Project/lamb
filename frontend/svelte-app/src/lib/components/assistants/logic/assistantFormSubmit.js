@@ -36,9 +36,12 @@ export function buildAssistantPayload(form) {
 		}
 	};
 
-	if (isSingleFileRag(form.selectedRagProcessor)) {
+	if (form.documentRagEnabled) {
+		metadataObj.document_rag = 'single_file_rag';
 		metadataObj.library_id = form.selectedLibraryId || '';
 		metadataObj.item_id = form.selectedItemId || '';
+	} else if (isSingleFileRag(form.selectedRagProcessor) && form.selectedFilePath) {
+		metadataObj.file_path = form.selectedFilePath;
 	}
 
 	if (isRubricRag(form.selectedRagProcessor)) {

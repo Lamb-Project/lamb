@@ -89,6 +89,8 @@ export function createAssistantFormState() {
 		itemsError: '',
 		itemsFetchAttempted: false,
 
+		documentRagEnabled: false,
+
 		// --- Rubric state ---
 		/** @type {Array<{rubric_id: string, title: string, description: string, is_mine: boolean, is_showcase: boolean, is_public: boolean}>} */
 		accessibleRubrics: [],
@@ -148,6 +150,7 @@ export function resetFormFieldsToDefaults(form, getAvailableModels) {
 	form.selectedFilePath = '';
 	form.selectedLibraryId = '';
 	form.selectedItemId = '';
+	form.documentRagEnabled = false;
 	form.visionEnabled = false;
 	form.imageGenerationEnabled = false;
 }
@@ -203,8 +206,14 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 			}
 		}
 
-		// Library fields (single_file_rag with Library Manager)
+		// Library fields: legacy path (rag_processor=single_file_rag)
 		if (isSingleFileRag(form.selectedRagProcessor)) {
+			form.selectedFilePath = metadata?.file_path || '';
+		}
+
+		// Document RAG: new path (document_rag=single_file_rag)
+		form.documentRagEnabled = metadata?.document_rag === 'single_file_rag';
+		if (form.documentRagEnabled && !isSingleFileRag(form.selectedRagProcessor)) {
 			form.selectedLibraryId = metadata?.library_id || '';
 			form.selectedItemId = metadata?.item_id || '';
 		}
@@ -258,8 +267,9 @@ export function clearRagDependentState(form) {
 		form.rubricFormat = 'markdown';
 	}
 
-	// Library state
-	if (form.selectedLibraryId || form.libraries.length > 0 || form.selectedItemId || form.libraryItems.length > 0) {
+	// Library state — clear when neither document_rag nor legacy single_file_rag is active
+	const needsLibraryState = form.documentRagEnabled || isSingleFileRag(form.selectedRagProcessor);
+	if (!needsLibraryState && (form.selectedLibraryId || form.libraries.length > 0 || form.selectedItemId || form.libraryItems.length > 0)) {
 		form.libraries = [];
 		form.selectedLibraryId = '';
 		form.libraryItems = [];
