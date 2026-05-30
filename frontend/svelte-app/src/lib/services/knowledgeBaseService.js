@@ -431,7 +431,15 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
     // Add plugin parameters to form data
     Object.entries(pluginParams).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
-            formData.append(key, value.toString());
+            // If value is an array, append each element as a separate form field
+            // with the same key (FastAPI can receive multiple values for the same key)
+            if (Array.isArray(value)) {
+                value.forEach(item => {
+                    formData.append(key, String(item));
+                });
+            } else {
+                formData.append(key, String(value));
+            }
         }
     });
 

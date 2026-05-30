@@ -775,6 +775,11 @@
                 pluginParams[paramName] = input.value ? Number(input.value) : paramDef.default;
             } else if (paramDef.type === 'boolean') {
                 pluginParams[paramName] = input.checked;
+            } else if (paramDef.type === 'array') {
+                // Split textarea value by newlines to create an array
+                pluginParams[paramName] = input.value
+                    ? input.value.split('\n').map(s => s.trim()).filter(s => s !== '')
+                    : [];
             } else {
                 pluginParams[paramName] = input.value;
             }
