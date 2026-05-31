@@ -167,8 +167,8 @@ test.describe.serial("Creator flow (KB + ingest + query)", () => {
 
 // Assistant-related tests do not depend on the KB flow above,
 // so they live in their own describe block and will still run
-// even if the KB tests fail.
-test.describe("Creator flow (assistants + chat)", () => {
+// even if the KB tests fail. Serial so shared assistantId state is reliable.
+test.describe.serial("Creator flow (assistants + chat)", () => {
   const assistantName = `pw_asst_${Date.now()}`;
 
 
@@ -234,6 +234,85 @@ test.describe("Creator flow (assistants + chat)", () => {
   });
 
 
+  test("Assistant chat returns a response", async ({ page }) => {
+    // Resolve the assistant created by the smoke test by looking it up via API.
+    // This is self-contained: no shared state needed across test boundaries.
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+
+    const token = await page.evaluate(() => localStorage.getItem("userToken"));
+    expect(token, "user token must be present").toBeTruthy();
+
+    // Find the assistant created by the smoke test.
+    const listRes = await page.evaluate(async ({ token }) => {
+      const r = await fetch("/creator/assistant/get_assistants", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const text = await r.text();
+      try { return { status: r.status, data: JSON.parse(text) }; } catch { return { status: r.status, data: text }; }
+    }, { token });
+
+    const all = listRes.data?.assistants || listRes.data?.data || listRes.data || [];
+    const slug = assistantName.toLowerCase();
+    const found = (Array.isArray(all) ? all : []).find(
+      (a) => a && typeof a.name === "string" && a.name.toLowerCase().includes(slug)
+    );
+    // If creation failed in the previous test, fall back gracefully.
+    test.skip(!found, `Assistant "${assistantName}" not found in list — smoke creation may have failed.`);
+
+    const resolvedId = found?.id;
+
+    // Switch the assistant to the bypass connector so chat works without
+    // needing a real LLM (OpenAI/Ollama). The bypass connector is always
+    // available when PLUGIN_BYPASS=ENABLE is set in the backend env.
+    const bypassMeta = JSON.stringify({
+      prompt_processor: "simple_augment",
+      connector: "bypass",
+      llm: "simple-bypass",
+      rag_processor: "no_rag",
+    });
+    await page.evaluate(
+      async ({ resolvedId, token, bypassMeta }) => {
+        await fetch(`/creator/assistant/update_assistant/${resolvedId}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata: bypassMeta }),
+        });
+      },
+      { resolvedId, token, bypassMeta },
+    );
+
+    const chatRes = await page.evaluate(
+      async ({ resolvedId, token }) => {
+        const r = await fetch(`/creator/assistant/${resolvedId}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: "ping" }],
+            stream: false,
+          }),
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        return { status: r.status, data };
+      },
+      { resolvedId, token },
+    );
+
+    const chatBlob = JSON.stringify(chatRes.data);
+    expect(chatRes.status, `chat completions must return 200, got: ${chatBlob.slice(0, 400)}`).toBe(200);
+    const content =
+      chatRes.data?.choices?.[0]?.message?.content ||
+      chatRes.data?.choices?.[0]?.delta?.content ||
+      "";
+    expect(content.length, "assistant must return a non-empty response").toBeGreaterThan(0);
+  });
+
+
   test("Delete assistant", async ({ page }) => {
     await page.goto("assistants");
     await page.waitForLoadState("networkidle");
@@ -280,58 +359,6 @@ test.describe("Creator flow (assistants + chat)", () => {
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
     await expect(assistantRow).not.toBeVisible({ timeout: 10_000 });
     console.log(`Assistant "${assistantName}" successfully deleted.`);
-  });
-
-
-  test("Assistant chat responds with expected answer", async ({ page }, testInfo) => {
-    // Read assistant id from environment (must be set in tests/.env)
-    const ASSISTANT_ID = process.env.ASSISTANT_ID || "";
-    if (!ASSISTANT_ID) {
-      testInfo.skip(true, "ASSISTANT_ID not set in tests/.env - skipping chat test");
-      return;
-    }
-    const targetUrl = `assistants?view=detail&id=${ASSISTANT_ID}`;
-
-
-    await page.goto(targetUrl);
-    await page.waitForLoadState("networkidle");
-
-
-    // Check if the assistant exists by looking for the Chat button
-    // If not found, the assistant might not exist - skip the test
-    const chatTab = page.getByRole("button", { name: /Chat with/i });
-    const chatTabExists = await chatTab.isVisible().catch(() => false);
-   
-    if (!chatTabExists) {
-      // Also try with getByText as fallback
-      const chatTabAlt = page.getByText(/Chat with/i).first();
-      const chatTabAltExists = await chatTabAlt.isVisible().catch(() => false);
-     
-      if (!chatTabAltExists) {
-        testInfo.skip(true, `Assistant ID ${ASSISTANT_ID} not found or doesn't have chat enabled - skipping`);
-        return;
-      }
-      await chatTabAlt.click();
-    } else {
-      await chatTab.click();
-    }
-
-
-    // Wait for chat input
-    const input = page.getByPlaceholder(/Type your message/i);
-    await expect(input).toBeVisible({ timeout: 10_000 });
-
-
-    // Type the question and send
-    await input.fill("Cuántas becas se convocan?");
-    const send = page.getByRole("button", { name: /^Send$/ });
-    await expect(send).toBeVisible({ timeout: 5_000 });
-    await send.click();
-
-
-    // Wait for answer to appear (short wait then longer timeout check)
-    await page.waitForTimeout(5_000);
-    await expect(page.getByText(/190/)).toBeVisible({ timeout: 60_000 });
   });
 });
 

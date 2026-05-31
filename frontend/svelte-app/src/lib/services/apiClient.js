@@ -31,7 +31,7 @@ let _redirecting = false;
 
 /** @returns {string} */
 function getStoredToken() {
-	return browser ? (localStorage.getItem('userToken') || '') : '';
+	return browser ? localStorage.getItem('userToken') || '' : '';
 }
 
 async function handleUnauthorized() {
@@ -49,13 +49,16 @@ async function handleUnauthorized() {
 
 	try {
 		// Root path renders the Login component when not authenticated.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		await goto(`${base}/`, { replaceState: true });
 	} catch (e) {
 		console.error('Failed to redirect after 401:', e);
 	}
 
 	// Reset the guard after navigation has had time to settle.
-	setTimeout(() => { _redirecting = false; }, 1500);
+	setTimeout(() => {
+		_redirecting = false;
+	}, 1500);
 }
 
 /**
@@ -115,7 +118,9 @@ export async function apiJson(path, options = {}) {
 		try {
 			const err = await res.json();
 			detail = err?.detail || err?.error || detail;
-		} catch (_) { /* response wasn't JSON */ }
+		} catch {
+			/* response wasn't JSON */
+		}
 		throw new Error(detail);
 	}
 
@@ -126,7 +131,7 @@ export async function apiJson(path, options = {}) {
 	if (!text) return null;
 	try {
 		return JSON.parse(text);
-	} catch (e) {
+	} catch {
 		throw new Error('Invalid JSON response from server');
 	}
 }
@@ -172,4 +177,3 @@ apiAxios.interceptors.response.use(
 		return Promise.reject(error);
 	}
 );
-

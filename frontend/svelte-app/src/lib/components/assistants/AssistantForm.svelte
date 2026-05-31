@@ -27,7 +27,9 @@
 	});
 
 	// --- Props ---
+	// --- Props ---
 	// Use $props for Svelte 5 runes mode
+	let {
 	let {
 		assistant = null,
 		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
@@ -218,6 +220,7 @@
 	 * // Add other expected fields from the createAssistant/updateAssistant response if known
 	 */
 
+	/**
 	/**
 	 * Handles form submission (Create or Update).
 	 * @param {Event} event - The form submission event.
@@ -503,6 +506,7 @@
 			/>
 
 		</form>
+	{/if}
 	{/if}
 
 

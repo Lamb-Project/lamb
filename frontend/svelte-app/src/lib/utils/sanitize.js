@@ -33,7 +33,7 @@ export function renderMarkdownSafe(text, options = {}) {
 	return DOMPurify.sanitize(html, {
 		// Strip event handlers and javascript: URIs by default. Allow common
 		// safe tags + class/id attrs so Tailwind prose styles still apply.
-		USE_PROFILES: { html: true },
+		USE_PROFILES: { html: true }
 	});
 }
 
@@ -48,4 +48,32 @@ export function sanitizeHtml(html) {
 	if (!html) return '';
 	if (!browser) return html;
 	return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+}
+
+/**
+ * Stricter markdown renderer for embedded user-uploaded content.
+ *
+ * Adds belt-and-braces over `renderMarkdownSafe`:
+ *  - Explicit `FORBID_TAGS` even though `USE_PROFILES.html` blocks most.
+ *  - Forces `target="_blank"` + `rel="noopener noreferrer"` on every `<a>`
+ *    via post-processing (not a DOMPurify hook, which would leak globally).
+ *
+ * @param {string} text - Markdown source
+ * @returns {string} Sanitized HTML
+ */
+export function renderMarkdownStrict(text) {
+	if (!text) return '';
+	const html = String(marked.parse(text, { breaks: true, gfm: true }));
+	if (!browser) return html;
+	const sanitized = DOMPurify.sanitize(html, {
+		USE_PROFILES: { html: true },
+		FORBID_TAGS: ['iframe', 'object', 'embed', 'form', 'input', 'button', 'style']
+	});
+	const container = document.createElement('div');
+	container.innerHTML = sanitized;
+	for (const anchor of container.querySelectorAll('a')) {
+		anchor.setAttribute('target', '_blank');
+		anchor.setAttribute('rel', 'noopener noreferrer');
+	}
+	return container.innerHTML;
 }

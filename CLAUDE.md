@@ -114,7 +114,15 @@ Organizations are the tenant boundary. Each org isolates users, assistants, KBs,
 
 A separate microservice (FastAPI, port 9091) that serves as a **document repository**. It imports documents into a structured, permalinkable markdown format. It does NOT chunk, embed, or interact with vector databases — that is the KB Server's responsibility.
 
-**Terminology:** Libraries **IMPORT** content (document repository). Knowledge Bases **INGEST** content (chunking + embedding). These terms are used consistently throughout the codebase and must not be confused.
+**Terminology — three distinct concepts in this repo:**
+
+| Concept | Verb | Service | LAMB route | Storage |
+|---------|------|---------|-----------|---------|
+| **Libraries** | IMPORT | Library Manager (port 9091) | `/creator/libraries/*` | structured markdown on disk |
+| **Knowledge Bases** | INGEST (legacy) | `lamb-kb-server-stable/` (port 9090) | `/creator/knowledgebases/*` | ChromaDB only, file-upload model |
+| **Knowledge Stores** | INGEST (new) | `lamb-kb-server/` (port 9092) | `/creator/knowledge-stores/*` | pluggable vector DB, library-only ingestion |
+
+These terms are used consistently throughout the codebase and must not be confused. "Knowledge Bases" and "Knowledge Stores" are NOT synonyms — they refer to two parallel, coexisting integrations with different KB Server backends. New work should target Knowledge Stores; the Knowledge Base surface is preserved unchanged for backward compatibility.
 
 **Key decisions:**
 - LAMB is the only caller. Single bearer token auth, no user-level ACL (LAMB handles that).
@@ -126,6 +134,22 @@ A separate microservice (FastAPI, port 9091) that serves as a **document reposit
 - 52 tests, 80% coverage. Full README at `library-manager/README.md`.
 
 **LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
+
+### Knowledge Stores — new KB Server (`lamb-kb-server/`)
+
+A separate microservice (FastAPI, port 9092) — pluggable redesign of the legacy KB Server. Pure compute service: chunks, embeds, and stores vectors. Receives JSON payloads from LAMB containing pre-extracted text + permalinks; **never calls the Library Manager directly**. Coexists with the legacy stable KB Server (port 9090) — both run simultaneously per #334 NFR-1.
+
+**Key decisions** (see `lamb-kb-server/Documentation/` for full ADRs):
+- LAMB owns ACL, multi-tenancy, and content delivery. KB Server is a single-bearer-token compute service.
+- Plugin architecture: 3 vector-DB backends (ChromaDB, Qdrant), 4 chunking strategies (simple, hierarchical/parent-child, by_page, by_section), 3 embedding vendors (openai, ollama, local).
+- **Library-only ingestion:** Knowledge Stores are populated exclusively by linking Library items. No direct file upload path.
+- **Locked store setup:** chunking strategy, embedding vendor/model, and vector DB backend are immutable after creation. Only `name` and `description` are mutable.
+- **Per-request embedding credentials:** sent on every `/add-content` and `/query`, held in memory only by the KB Server. LAMB resolves them from `setups.default.providers.{vendor}.api_key` (the same org-level key used by chat completions and RAG).
+- **Async ingestion:** SQLite-backed job queue with polling (no webhooks). LAMB queues `add-content`, gets a `job_id`, polls `/jobs/{job_id}` until ready/failed.
+- **Per-org filesystem isolation:** vectors live at `data/storage/{org_id}/{collection_id}/`.
+- **FR-10:** a Library item that is referenced by any active Knowledge Store cannot be deleted from its Library — LAMB enforces this in `DELETE /creator/libraries/{lib}/items/{item}` against the `kb_content_links` table.
+
+**LAMB integration:** Creator Interface endpoints (`/creator/knowledge-stores/...`) validate ACL and proxy to the new KB Server. Tables: `knowledge_stores` + `kb_content_links` in LAMB DB (separate from `kb_registry` which serves the legacy stable KBs). HTTP client at `backend/creator_interface/knowledge_store_client.py`. RAG processor at `backend/lamb/completions/rag/knowledge_store_rag.py` (sibling of `simple_rag.py` — assistants opt in via `rag_processor='knowledge_store_rag'`). The `lamb-cli` commands are `lamb ks ...` (alias `lamb knowledge-store ...`) in `lamb-cli/src/lamb_cli/commands/knowledge_store.py`. Svelte frontend integrated into the unified `/libraries` page (sub-tab "Knowledge Stores" + primary "Create Knowledge" wizard); components in `frontend/svelte-app/src/lib/components/knowledgeStores/` and the wizard in `frontend/svelte-app/src/lib/components/knowledge/`. Direct entry point at `/knowledge-stores` redirects to `/libraries?section=knowledge-stores`.
 
 ### Database
 - **LAMB DB** — SQLite with WAL mode (`lamb_v4.db` at `LAMB_DB_PATH`). Schema managed in `backend/lamb/database_manager.py`.
@@ -144,7 +168,8 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 ## Key Configuration
 
 - Backend env: `backend/.env` (copy from `backend/.env.example`)
-- KB Server env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
+- KB Server (legacy) env: `lamb-kb-server-stable/backend/.env` (copy from `.env.example`)
+- KB Server (new, Knowledge Stores) env: `lamb-kb-server/backend/.env` — requires `LAMB_API_TOKEN`. Backend reads it via `LAMB_KB_SERVER_V2` / `LAMB_KB_SERVER_V2_TOKEN`.
 - Library Manager env: `library-manager/backend/.env` (copy from `.env.example`) — requires `LAMB_API_TOKEN`
 - Playwright env: `testing/playwright/.env` (copy from `.env.sample`)
 - Frontend runtime config: `frontend/svelte-app/static/config.js` (copy from `config.js.sample`)
@@ -155,7 +180,7 @@ Svelte 5 + SvelteKit + Vite + TailwindCSS 4. JavaScript with JSDoc (not TypeScri
 
 `open-webui/` and `lamb-kb-server-stable/` are separate projects maintained in their own repositories. They are included here only as stable snapshots so Docker Compose can launch them alongside LAMB. **Do not edit code in these directories** — changes belong in their upstream repos. The `frontend/build/` directory is build output. All three are excluded from search via `.cursorignore`.
 
-Note: `library-manager/` is NOT vendored — it is developed in-tree as part of this repository. Edit freely.
+Note: `library-manager/` and `lamb-kb-server/` (the new KB Server backing Knowledge Stores) are NOT vendored — both are developed in-tree as part of this repository. Edit freely.
 
 ## Version Bumping
 
@@ -166,4 +191,56 @@ Dev version lives in `frontend/svelte-app/scripts/generate-version.js`. Run `nod
 * DO NOT include authoriship information in commits (No Co-authored-By, signed-off-by , or similar)
 * Commit messages should be concise and descriptive without aditional metadata.
 * Include the Issue ID in commit messages like #{issue number} 
- 
+
+## Design System
+
+The Svelte frontend follows a strict design-system contract. Primitives live in `frontend/svelte-app/src/lib/components/ui/` and tokens in `frontend/svelte-app/src/app.css`. See `.claude/plans/elegant-mixing-adleman.md` for the full plan, primitive APIs, token list, and verification checklist.
+
+### Consistency Contract (the rules everything follows)
+
+**Action -> primitive mapping (locked).** Same intent always renders with the same primitive, same icon, same variant, same position:
+
+| Action | Primitive | Icon | Variant | Position |
+|---|---|---|---|---|
+| List "Create new" CTA | `Button` | `Plus` (iconLeft) | `primary` | top-right of page header |
+| Row "View" | `IconButton` | `Eye` | `ghost`, sm | leftmost in row actions |
+| Row "Edit" | `IconButton` | `Pencil` | `ghost`, sm | inline next to value, or overflow |
+| Row "More" | `OverflowMenu` | `MoreHorizontal` | `ghost` | rightmost in row actions |
+| Modal close | `IconButton` | `X` | `ghost`, sm | top-right of modal header |
+| Per-item remove | `IconButton` | `X` | `danger-ghost`, sm | right of item row |
+| Confirm destructive | `ConfirmationModal` | `AlertCircle` header / `Trash2` confirm | `variant=danger` | - |
+| Retry on error | `Button` | `RefreshCw` | `secondary` | end of error Banner |
+| Loading | `Skeleton.*` | - | - | always replaces "Loading..." text |
+| Async write feedback | `toast` | varies | `success` / `danger` | top-right stack |
+
+Overflow menus always render Delete last with a divider above it and `text-danger` styling.
+
+**Status pill mapping (locked).** Resolve via `statusBadgeProps(status)` in `src/lib/utils/statusBadge.js`; never hand-code badge colors. Mapping:
+
+| Status | Badge variant | Icon | Label |
+|---|---|---|---|
+| `ready` / completed | `success` | `CheckCircle2` | Ready |
+| `processing` / `pending` / `queued` | `info` | `Loader2` (spin) | Processing |
+| `failed` / `error` | `danger` | `AlertCircle` | Failed |
+| `empty` (count === 0) | `warning` | `AlertCircle` | Empty |
+| `private` | `neutral` | `Lock` | Private |
+| `shared` | `success` | `Users` | Shared |
+| immutable field | `neutral` | `Lock` | Locked |
+
+**Color rule.** Brand color is accessed ONLY via `bg-brand` / `text-brand` / `border-brand` / `ring-brand`. Any literal `#2271b3` or `[#2271b3]` outside `app.css` is a violation. Status colors come exclusively from the `success-* / info-* / warning-* / danger-*` tokens — never `bg-green-100`, `text-red-700`, etc.
+
+**Copy rule.** All `variant="danger"` confirmation modals MUST include the literal `common.cannotBeUndone` line in the body. `ConfirmationModal` enforces this automatically.
+
+**Modal header rule.** Canonical header: `bg-surface` (white), bottom `border-border`, title `type-section-title`, close `IconButton(X, ghost, sm)` top-right. No `bg-blue-50`, no `bg-red-50`, no gradient backgrounds — anywhere.
+
+**Toast rule.** Every async write that succeeds calls `toast.success(...)`; every async write that fails calls `toast.error(...)` (with inline-only when the user must act in place to recover). Inline persistent `successMessage` state is a smell — route it through the toast store at `src/lib/stores/toast.js`.
+
+**Perceived-performance rule.** Never block on the full payload when you can show the first chunk now. Render-as-you-receive (page 1 first, then prefetch the rest), optimistic UI for writes, stale-while-revalidate on navigation, cache list responses keyed by `(orgId, filters, page)`, stream long operations, defer non-critical work (e.g., collapsible panels), and suppress skeletons that would flicker for under 300 ms.
+
+### Icons
+
+Always import from `$lib/components/ui/icons.js` (a curated re-export of `lucide-svelte`). `flowbite-svelte` and `flowbite-svelte-icons` are removed from the project — do not reintroduce them.
+
+### Primitives barrel
+
+`import { Button, IconButton, Modal, Badge, Card, Toast, Tabs, FormField, Dropdown, OverflowMenu, Dropzone, Stepper, Banner, Collapsible, Checkbox, EmptyState, Skeleton, SkeletonRow, SkeletonCard, SkeletonTable } from '$lib/components/ui';`
