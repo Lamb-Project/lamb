@@ -29,7 +29,7 @@
 	// --- Props ---
 	// --- Props ---
 	// Use $props for Svelte 5 runes mode
-	let {
+
 	let {
 		assistant = null,
 		onFormSuccess = /** @type {(e: { assistantId: number }) => void} */ (() => {}),
