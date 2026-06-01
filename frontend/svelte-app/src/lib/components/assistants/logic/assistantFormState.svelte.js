@@ -16,7 +16,7 @@
 
 import { get } from 'svelte/store';
 import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-import { isKbBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag, normalizeRagProcessor } from '$lib/utils/ragProcessorHelpers.js';
 import { loadRagPlaceholders, selectModel } from './assistantFormUtils.svelte.js';
 import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 
@@ -67,6 +67,19 @@ export function createAssistantFormState() {
 		/** @type {string[] | null} */
 		pendingKBSelections: null,
 
+		// --- Knowledge Store state ---
+		/** @type {Array<{id: string, name: string, is_shared: boolean, owner_email: string, embedding_vendor: string, embedding_model: string}>} */
+		ownedKnowledgeStores: [],
+		/** @type {Array<{id: string, name: string, is_shared: boolean, owner_email: string, embedding_vendor: string, embedding_model: string}>} */
+		sharedKnowledgeStores: [],
+		/** @type {string[]} */
+		selectedKnowledgeStores: [],
+		loadingKnowledgeStores: false,
+		knowledgeStoreError: '',
+		ksFetchAttempted: false,
+		/** @type {string[] | null} */
+		pendingKSSelections: null,
+
 		// --- File state ---
 		/** @type {Array<{name: string, path: string}>} */
 		userFiles: [],
@@ -114,6 +127,9 @@ export function createAssistantFormState() {
 		// --- Derived ---
 		get accessibleKnowledgeBases() {
 			return [...this.ownedKnowledgeBases, ...this.sharedKnowledgeBases];
+		},
+		get accessibleKnowledgeStores() {
+			return [...this.ownedKnowledgeStores, ...this.sharedKnowledgeStores];
 		}
 	});
 
@@ -147,6 +163,9 @@ export function resetFormFieldsToDefaults(form, getAvailableModels) {
 	form.selectedLlm = selectModel(defaults.llm || '', getAvailableModels());
 
 	form.selectedKnowledgeBases = [];
+	form.ownedKnowledgeStores = [];
+	form.sharedKnowledgeStores = [];
+	form.selectedKnowledgeStores = [];
 	form.selectedFilePath = '';
 	form.selectedLibraryId = '';
 	form.selectedItemId = '';
@@ -192,6 +211,13 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 			form.pendingKBSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
 		} else {
 			form.pendingKBSelections = null;
+		}
+
+		// Deferred selection for KSs
+		if (isKsBasedRag(form.selectedRagProcessor)) {
+			form.pendingKSSelections = data.RAG_collections?.split(',').filter(Boolean) || [];
+		} else {
+			form.pendingKSSelections = null;
 		}
 
 		// Rubric fields
@@ -256,6 +282,14 @@ export function clearRagDependentState(form) {
 		form.selectedKnowledgeBases = [];
 		form.knowledgeBaseError = '';
 		form.kbFetchAttempted = false;
+	}
+
+	if (!isKsBasedRag(form.selectedRagProcessor) && (form.selectedKnowledgeStores.length > 0 || form.ownedKnowledgeStores.length > 0 || form.sharedKnowledgeStores.length > 0 || form.ksFetchAttempted)) {
+		form.ownedKnowledgeStores = [];
+		form.sharedKnowledgeStores = [];
+		form.selectedKnowledgeStores = [];
+		form.knowledgeStoreError = '';
+		form.ksFetchAttempted = false;
 	}
 
 	if (!isSingleFileRag(form.selectedRagProcessor) && (form.selectedFilePath || form.userFiles.length > 0)) {
