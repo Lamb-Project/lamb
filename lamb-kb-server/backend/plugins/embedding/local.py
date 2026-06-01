@@ -13,9 +13,14 @@ disk each time.
 from __future__ import annotations
 
 import logging
+import os
+
+# Prevent huggingface_hub from trying to read /root/.cache/huggingface/token
+# when running as a non-root user inside the container.
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
 # Guard import: if sentence_transformers is missing the module will raise
-# ImportError and the plugin will be skipped by the discovery mechanism.
+# ImportError at import time so the plugin will be skipped by the discovery mechanism.
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:

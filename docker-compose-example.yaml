@@ -63,6 +63,7 @@ services:
       - PYTHONUNBUFFERED=1
       - GLOBAL_LOG_LEVEL=WARNING
       - KB_LOG_LEVEL=WARNING
+      - LAMB_API_KEY=0p3n-w3bu!
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
@@ -129,6 +130,10 @@ services:
       # per-request by LAMB on add-content/query and override this fallback.
       - OPENAI_API_KEY=placeholder-set-per-request
       - EMBEDDINGS_APIKEY=placeholder-set-per-request
+      - HF_TOKEN=none
+      - HF_HOME=/tmp/huggingface
+      - TRANSFORMERS_CACHE=/tmp/huggingface
+      - HF_HUB_CACHE=/tmp/huggingface/hub
     volumes:
       - ${LAMB_PROJECT_PATH}:${LAMB_PROJECT_PATH}
       - pip-cache:/root/.cache/pip
@@ -152,9 +157,11 @@ services:
       chown -R ${HOST_UID:-1000}:${HOST_GID:-1001} ${LAMB_PROJECT_PATH}/lamb-kb-server/data 2>/dev/null || true && \
       python -m pip install --upgrade pip && \
       pip install -e '${LAMB_PROJECT_PATH}/lamb-kb-server[all]' && \
+      mkdir -p /root/.cache/huggingface && \
+      touch /root/.cache/huggingface/token && \
+      chown -R ${HOST_UID:-1000}:${HOST_GID:-1001} /root/.cache/huggingface 2>/dev/null || true && \
       LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
-      exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups \
-        uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
+      exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
     image: python:3.11-slim
     extra_hosts:

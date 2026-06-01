@@ -21,9 +21,7 @@ logger.setLevel(os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING
 
 # Get environment variables
 _raw_kb_server = os.getenv('LAMB_KB_SERVER', None)
-# In dev/test: if the configured URL is the Docker service name that isn't running, redirect to host
-_KB_REDIRECTS = {'http://kb:9090': 'http://172.18.0.1:9090'}
-LAMB_KB_SERVER = _KB_REDIRECTS.get(_raw_kb_server, _raw_kb_server) or 'http://172.17.0.1:9090'
+LAMB_KB_SERVER = _raw_kb_server or 'http://172.17.0.1:9090'
 LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
 if not LAMB_KB_SERVER_TOKEN:
     raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")
@@ -76,9 +74,8 @@ class KBServerManager:
                 if not api_token:
                     api_token = self.global_kb_server_token
                 org_url = kb_config.get('server_url')
-                resolved_url = _KB_REDIRECTS.get(org_url, org_url)
                 return {
-                    'url': resolved_url,
+                    'url': org_url,
                     'token': api_token
                 }
             else:
@@ -90,9 +87,8 @@ class KBServerManager:
         # Fallback to global environment variables
         if not self.global_kb_server_url:
             raise ValueError("LAMB_KB_SERVER environment variable is required")
-        resolved_url = _KB_REDIRECTS.get(self.global_kb_server_url, self.global_kb_server_url)
         return {
-            'url': resolved_url,
+            'url': self.global_kb_server_url,
             'token': self.global_kb_server_token
         }
         
