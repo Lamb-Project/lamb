@@ -29,6 +29,11 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
+		ownedKnowledgeStores = [],
+		sharedKnowledgeStores = [],
+		selectedKnowledgeStores = $bindable([]),
+		loadingKnowledgeStores = false,
+		knowledgeStoreError = '',
 		libraries = [],
 		selectedLibraryId = $bindable(''),
 		loadingLibraries = false,
@@ -239,6 +244,11 @@
 			bind:selectedKnowledgeBases
 			loadingKnowledgeBases={loadingKnowledgeBases}
 			knowledgeBaseError={knowledgeBaseError}
+			{ownedKnowledgeStores}
+			{sharedKnowledgeStores}
+			bind:selectedKnowledgeStores
+			loadingKnowledgeStores={loadingKnowledgeStores}
+			knowledgeStoreError={knowledgeStoreError}
 			{libraries}
 			bind:selectedLibraryId
 			loadingLibraries={loadingLibraries}
