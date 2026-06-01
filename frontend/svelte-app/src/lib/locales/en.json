@@ -328,6 +328,14 @@
         "sharedKB": "Shared Knowledge Bases",
         "shared": "Shared by {shared_by}"
 			},
+			"knowledgeStores": {
+				"label": "Knowledge Stores",
+				"loading": "Loading knowledge stores...",
+				"error": "Error loading knowledge stores:",
+				"noneFound": "No accessible knowledge stores found.",
+				"myKS": "My Knowledge Stores",
+				"sharedKS": "Shared Knowledge Stores"
+			},
 			"singleFile": {
 				"label": "Select File",
 				"selectedLabel": "Selected File",

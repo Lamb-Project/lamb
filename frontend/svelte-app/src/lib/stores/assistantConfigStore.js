@@ -84,7 +84,7 @@ function getFallbackCapabilities() {
 	const capabilities = {
 		prompt_processors: ['simple_augment'],
 		connectors: {},
-		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag']
+		rag_processors: ['no_rag', 'simple_rag', 'context_aware_rag', 'single_file_rag', 'query_rewriting_ks_rag']
 	};
 	return capabilities;
 }

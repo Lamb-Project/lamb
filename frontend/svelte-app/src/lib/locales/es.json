@@ -190,6 +190,14 @@
         "sharedKB": "Bases de Conocimiento Compartidas",
         "shared": "Compartida por {shared_by}"
 			},
+			"knowledgeStores": {
+				"label": "Knowledge Stores",
+				"loading": "Cargando knowledge stores...",
+				"error": "Error al cargar knowledge stores:",
+				"noneFound": "No se encontraron knowledge stores accesibles.",
+				"myKS": "Mis Knowledge Stores",
+				"sharedKS": "Knowledge Stores compartidos"
+			},
 			"singleFile": {
 				"label": "Seleccionar Archivo",
 				"selectedLabel": "Archivo Seleccionado",
