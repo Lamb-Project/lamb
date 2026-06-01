@@ -1,8 +1,9 @@
 <!-- src/lib/components/assistants/RagOptionsPanel.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
-	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import KnowledgeBaseSelector from './KnowledgeBaseSelector.svelte';
+	import KnowledgeStoreSelector from './KnowledgeStoreSelector.svelte';
 	import LibraryItemSelector from './LibraryItemSelector.svelte';
 
 	let {
@@ -13,6 +14,11 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
+		ownedKnowledgeStores = [],
+		sharedKnowledgeStores = [],
+		selectedKnowledgeStores = $bindable([]),
+		loadingKnowledgeStores = false,
+		knowledgeStoreError = '',
 		libraries = [],
 		selectedLibraryId = $bindable(''),
 		loadingLibraries = false,
@@ -26,8 +32,9 @@
 	} = $props();
 
 	let showKbSelector = $derived(isKbBasedRag(selectedRagProcessor));
+	let showKsSelector = $derived(isKsBasedRag(selectedRagProcessor));
 	let showFileSelector = $derived(isSingleFileRag(selectedRagProcessor));
-	let showTopK = $derived(isKbBasedRag(selectedRagProcessor));
+	let showTopK = $derived(isKbBasedRag(selectedRagProcessor) || isKsBasedRag(selectedRagProcessor));
 	let isLegacyWithFilePath = $derived(isSingleFileRag(selectedRagProcessor) && !!selectedFilePath);
 </script>
 
@@ -59,6 +66,15 @@
 			bind:selectedKnowledgeBases
 			loading={loadingKnowledgeBases}
 			error={knowledgeBaseError}
+		/>
+	{/if}
+	{#if showKsSelector}
+		<KnowledgeStoreSelector
+			{ownedKnowledgeStores}
+			{sharedKnowledgeStores}
+			bind:selectedKnowledgeStores
+			loading={loadingKnowledgeStores}
+			error={knowledgeStoreError}
 		/>
 	{/if}
 	{#if showFileSelector && isLegacyWithFilePath}
