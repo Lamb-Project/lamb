@@ -4,150 +4,10 @@ import requests
 from typing import Dict, Any, List
 from lamb.lamb_classes import Assistant
 from lamb.completions.org_config_resolver import OrganizationConfigResolver
+from lamb.completions.rag._query_rewriting_helper import generate_optimal_query
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="RAG")
-
-
-async def _generate_optimal_query(messages: List[Dict[str, Any]], assistant: Assistant) -> str:
-    """
-    Use the small-fast-model to analyze the full conversation and generate
-    an optimal query for RAG retrieval.
-
-    Args:
-        messages: Full conversation history
-        assistant: Assistant object with owner information
-
-    Returns:
-        Optimized query string for RAG retrieval
-    """
-    try:
-        from lamb.completions.small_fast_model_helper import invoke_small_fast_model, is_small_fast_model_configured
-
-        # Check if small-fast-model is configured
-        if not is_small_fast_model_configured(assistant.owner):
-            logger.info(
-                "Small-fast-model not configured, using last user message as query")
-            # Fallback: return last user message
-            for msg in reversed(messages):
-                if msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    if isinstance(content, list):
-                        # Extract text from multimodal content
-                        text_parts = [
-                            item.get('text', '') for item in content if item.get('type') == 'text']
-                        return ' '.join(text_parts)
-                    return content
-            return ""
-
-        # Build a condensed conversation history (last 5 turns max to save tokens)
-        conversation_summary = []
-        recent_messages = messages[-10:] if len(messages) > 10 else messages
-
-        for msg in recent_messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-
-            # Handle multimodal content
-            if isinstance(content, list):
-                text_parts = [item.get('text', '')
-                              for item in content if item.get('type') == 'text']
-                content = ' '.join(text_parts)
-
-            # Truncate very long messages
-            if len(content) > 500:
-                content = content[:500] + "..."
-
-            conversation_summary.append(f"{role.upper()}: {content}")
-
-        conversation_text = "\n".join(conversation_summary)
-
-        # Create prompt for query optimization
-        system_prompt = """You are a query optimization assistant for a RAG (Retrieval-Augmented Generation) system.
-
-Your task is to analyze the conversation history and generate an optimal search query that will retrieve the most relevant documents from a knowledge base.
-
-Guidelines:
-1. Consider the full conversation context, not just the last message
-2. Identify the core information need
-3. Include relevant keywords and concepts
-4. If the conversation references previous topics, incorporate them
-5. Make the query specific and focused
-6. Keep the query concise (1-3 sentences max)
-7. Return ONLY the optimized query, nothing else
-
-Example:
-CONVERSATION:
-USER: What is photosynthesis?
-ASSISTANT: Photosynthesis is the process by which plants convert light energy into chemical energy.
-USER: How does it work in detail?
-
-OPTIMAL QUERY: detailed explanation of photosynthesis process mechanism light energy conversion chlorophyll
-
-Now generate the optimal query for the following conversation:"""
-
-        user_prompt = f"""CONVERSATION:
-{conversation_text}
-
-OPTIMAL QUERY:"""
-
-        # Invoke small-fast-model
-        enhancement_messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-
-        logger.info("🔍 Generating optimal query using small-fast-model...")
-        logger.debug(
-            f"Query optimization context: {len(recent_messages)} messages")
-
-        response = await invoke_small_fast_model(
-            messages=enhancement_messages,
-            assistant_owner=assistant.owner,
-            stream=False
-        )
-
-        # Extract the optimized query from response
-        optimized_query = ""
-        if isinstance(response, dict):
-            if 'choices' in response and len(response['choices']) > 0:
-                optimized_query = response['choices'][0]['message']['content'].strip(
-                )
-            elif 'message' in response:
-                optimized_query = response['message'].get(
-                    'content', '').strip()
-
-        if optimized_query:
-            logger.info(
-                f"✅ Optimized query generated: {optimized_query[:100]}...")
-            logger.debug(f"Full optimized query: {optimized_query}")
-            return optimized_query
-        else:
-            logger.warning(
-                "Empty response from small-fast-model, falling back to last user message")
-            # Fallback to last user message
-            for msg in reversed(messages):
-                if msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    if isinstance(content, list):
-                        text_parts = [
-                            item.get('text', '') for item in content if item.get('type') == 'text']
-                        return ' '.join(text_parts)
-                    return content
-            return ""
-
-    except Exception as e:
-        logger.error(f"Error generating optimal query: {e}", exc_info=True)
-        # Fallback: return last user message
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    text_parts = [
-                        item.get('text', '') for item in content if item.get('type') == 'text']
-                    return ' '.join(text_parts)
-                return content
-        return ""
 
 
 async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = None, request: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -197,7 +57,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
 
     # Generate optimal query from full conversation context
     logger.info("Analyzing conversation context for optimal query generation...")
-    optimal_query = await _generate_optimal_query(messages, assistant)
+    owner_email = getattr(assistant, "owner", "") or ""
+    optimal_query = await generate_optimal_query(messages, owner_email)
 
     if not optimal_query:
         # Fallback: extract last user message
@@ -362,7 +223,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
 
             print("===========================================\n")
 
-        # Print a summary of all responses
+        # Print a summary of all queries
         print("\n===== SUMMARY OF ALL QUERIES =====")
         sources = []
         contexts = []
