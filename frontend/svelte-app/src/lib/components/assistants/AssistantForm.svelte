@@ -9,7 +9,7 @@
 	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './logic/assistantFormState.svelte.js';
-	import { fetchKnowledgeBases, fetchRubricsList, fetchLibraries, fetchLibraryItems } from './logic/assistantFormFetchers.js';
+	import { fetchKnowledgeBases, fetchRubricsList, fetchLibraries, fetchLibraryItems, fetchKnowledgeStores } from './logic/assistantFormFetchers.js';
 	import { validateSubmission, buildAssistantPayload } from './logic/assistantFormSubmit.js';
 	import AssistantFormHeader from './components/AssistantFormHeader.svelte';
 	import AssistantNameField from './components/AssistantNameField.svelte';
@@ -52,6 +52,11 @@
 	async function doFetchKnowledgeBases() {
 		if (!isMounted) return;
 		await fetchKnowledgeBases(form);
+	}
+
+	async function doFetchKnowledgeStores() {
+		if (!isMounted) return;
+		await fetchKnowledgeStores(form);
 	}
 
 	async function doFetchLibraries(force = false) {
@@ -152,6 +157,16 @@
 		}
 	});
 
+	// Effect to apply pending KS selections when list becomes available
+	$effect(() => {
+		if (form.pendingKSSelections && form.accessibleKnowledgeStores.length > 0) {
+			form.selectedKnowledgeStores = form.pendingKSSelections.filter((id) =>
+				form.accessibleKnowledgeStores.some((ks) => ks.id === id)
+			);
+			form.pendingKSSelections = null;
+		}
+	});
+
 	// Effect to fetch KBs/Files when RAG processor changes
 	$effect(() => {
 		if ((isKbBasedRag(form.selectedRagProcessor)) && form.configInitialized) {
@@ -160,6 +175,10 @@
 				doFetchKnowledgeBases();
 			} else {
 				// Already attempted or loading
+			}
+		} else if (isKsBasedRag(form.selectedRagProcessor) && form.configInitialized) {
+			if (!form.ksFetchAttempted && !form.loadingKnowledgeStores) {
+				doFetchKnowledgeStores();
 			}
 		} else if (isSingleFileRag(form.selectedRagProcessor) && form.configInitialized) {
 			// Fetch libraries when switching to single_file_rag
@@ -477,12 +496,17 @@
 					bind:visionEnabled={form.visionEnabled}
 					bind:imageGenerationEnabled={form.imageGenerationEnabled}
 					bind:RAG_Top_k={form.RAG_Top_k}
-					ownedKnowledgeBases={form.ownedKnowledgeBases}
-					sharedKnowledgeBases={form.sharedKnowledgeBases}
-					bind:selectedKnowledgeBases={form.selectedKnowledgeBases}
-					loadingKnowledgeBases={form.loadingKnowledgeBases}
-					knowledgeBaseError={form.knowledgeBaseError}
-					libraries={form.libraries}
+				ownedKnowledgeBases={form.ownedKnowledgeBases}
+				sharedKnowledgeBases={form.sharedKnowledgeBases}
+				bind:selectedKnowledgeBases={form.selectedKnowledgeBases}
+				loadingKnowledgeBases={form.loadingKnowledgeBases}
+				knowledgeBaseError={form.knowledgeBaseError}
+				ownedKnowledgeStores={form.ownedKnowledgeStores}
+				sharedKnowledgeStores={form.sharedKnowledgeStores}
+				bind:selectedKnowledgeStores={form.selectedKnowledgeStores}
+				loadingKnowledgeStores={form.loadingKnowledgeStores}
+				knowledgeStoreError={form.knowledgeStoreError}
+				libraries={form.libraries}
 					bind:selectedLibraryId={form.selectedLibraryId}
 					loadingLibraries={form.loadingLibraries}
 					libraryError={form.libraryError}
