@@ -15,6 +15,8 @@
 export const RAG_TYPES = Object.freeze({
 	/** RAG processors that use knowledge base collections */
 	KB_BASED: ['simple_rag', 'context_aware_rag', 'hierarchical_rag'],
+	/** RAG processors that use knowledge stores (new KB Server v2) */
+	KS_BASED: ['query_rewriting_ks_rag', 'knowledge_store_rag'],
 	/** RAG processor that uses a single file */
 	SINGLE_FILE: ['single_file_rag'],
 	/** RAG processor that uses rubrics */
@@ -30,6 +32,15 @@ export const RAG_TYPES = Object.freeze({
  */
 export function isKbBasedRag(processor) {
 	return RAG_TYPES.KB_BASED.includes(processor);
+}
+
+/**
+ * Returns true if the processor uses knowledge stores.
+ * @param {string} processor
+ * @returns {boolean}
+ */
+export function isKsBasedRag(processor) {
+	return RAG_TYPES.KS_BASED.includes(processor);
 }
 
 /**
