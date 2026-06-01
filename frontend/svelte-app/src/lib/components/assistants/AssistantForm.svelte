@@ -6,7 +6,7 @@
 	import { get } from 'svelte/store';
 	import { createAssistant, updateAssistant } from '$lib/services/assistantService';
 	import { extractModelsFromConnectorData, selectModel } from './logic/assistantFormUtils.svelte.js';
-	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import { validateImportedAssistant } from './logic/importAssistantValidator.js';
 	import { createAssistantFormState, resetFormFieldsToDefaults, populateFormFields, revertToInitial, clearRagDependentState, handleFieldChange } from './logic/assistantFormState.svelte.js';
 	import { fetchKnowledgeBases, fetchRubricsList, fetchLibraries, fetchLibraryItems, fetchKnowledgeStores } from './logic/assistantFormFetchers.js';
@@ -496,28 +496,28 @@
 					bind:visionEnabled={form.visionEnabled}
 					bind:imageGenerationEnabled={form.imageGenerationEnabled}
 					bind:RAG_Top_k={form.RAG_Top_k}
-				ownedKnowledgeBases={form.ownedKnowledgeBases}
-				sharedKnowledgeBases={form.sharedKnowledgeBases}
-				bind:selectedKnowledgeBases={form.selectedKnowledgeBases}
-				loadingKnowledgeBases={form.loadingKnowledgeBases}
-				knowledgeBaseError={form.knowledgeBaseError}
-				ownedKnowledgeStores={form.ownedKnowledgeStores}
-				sharedKnowledgeStores={form.sharedKnowledgeStores}
-				bind:selectedKnowledgeStores={form.selectedKnowledgeStores}
-				loadingKnowledgeStores={form.loadingKnowledgeStores}
-				knowledgeStoreError={form.knowledgeStoreError}
-				libraries={form.libraries}
+					ownedKnowledgeBases={form.ownedKnowledgeBases}
+					sharedKnowledgeBases={form.sharedKnowledgeBases}
+					bind:selectedKnowledgeBases={form.selectedKnowledgeBases}
+					loadingKnowledgeBases={form.loadingKnowledgeBases}
+					knowledgeBaseError={form.knowledgeBaseError}
+					ownedKnowledgeStores={form.ownedKnowledgeStores}
+					sharedKnowledgeStores={form.sharedKnowledgeStores}
+					bind:selectedKnowledgeStores={form.selectedKnowledgeStores}
+					loadingKnowledgeStores={form.loadingKnowledgeStores}
+					knowledgeStoreError={form.knowledgeStoreError}
+					libraries={form.libraries}
 					bind:selectedLibraryId={form.selectedLibraryId}
 					loadingLibraries={form.loadingLibraries}
 					libraryError={form.libraryError}
 					libraryItems={form.libraryItems}
 					bind:selectedItemId={form.selectedItemId}
-				loadingItems={form.loadingItems}
-				itemsError={form.itemsError}
-				bind:documentRagEnabled={form.documentRagEnabled}
-				selectedFilePath={form.selectedFilePath}
-				onchange={() => handleFieldChange(form)}
-				/>
+					loadingItems={form.loadingItems}
+					itemsError={form.itemsError}
+					bind:documentRagEnabled={form.documentRagEnabled}
+					selectedFilePath={form.selectedFilePath}
+					onchange={() => handleFieldChange(form)}
+					/>
 			</div>
 			</div>
 
