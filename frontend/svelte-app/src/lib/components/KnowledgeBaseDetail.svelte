@@ -7,6 +7,7 @@
     import { getApiUrl } from '$lib/config'; // Import getApiUrl
     import { browser } from '$app/environment'; // Import browser
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+    import NotificationModal from '$lib/components/modals/NotificationModal.svelte';
     
     /** 
      * @typedef {import('$lib/services/knowledgeBaseService').IngestionPlugin} IngestionPlugin
@@ -250,6 +251,20 @@
     /** @type {number|null} */
     let cancelJobTarget = $state(null);
     let isCancellingJob = $state(false);
+
+    // --- Notification Modal State ---
+    /** @type {{ isOpen: boolean, title: string, message: string, variant: 'success' | 'error' | 'info' }} */
+    let notification = $state({ isOpen: false, title: '', message: '', variant: 'success' });
+
+    /**
+     * Show a notification modal (replaces alert() calls)
+     * @param {'success' | 'error' | 'info'} variant
+     * @param {string} title
+     * @param {string} message
+     */
+    function showNotification(variant, title, message) {
+        notification = { isOpen: true, title, message, variant };
+    }
     
     // Polling configuration
     let pollingRefreshRate = $state(3000); // Default 3 seconds, will be fetched from backend
@@ -494,7 +509,7 @@
             closeJobModal();
         } catch (/** @type {unknown} */ err) {
             console.error('Error retrying job:', err);
-            alert(err instanceof Error ? err.message : 'Failed to retry job');
+            showNotification('error', 'Error', err instanceof Error ? err.message : 'Failed to retry job');
         } finally {
             jobActionLoading = false;
         }
@@ -2170,4 +2185,13 @@
     variant="warning"
     onconfirm={confirmCancelJob}
     oncancel={cancelCancelJobModal}
+/>
+
+<!-- Notification Modal (replaces browser alert() dialogs) -->
+<NotificationModal
+    bind:isOpen={notification.isOpen}
+    title={notification.title}
+    message={notification.message}
+    variant={notification.variant}
+    onclose={() => { notification.isOpen = false; }}
 />

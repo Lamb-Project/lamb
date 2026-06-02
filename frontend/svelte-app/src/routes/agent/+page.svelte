@@ -6,12 +6,16 @@
     import { createSession, getSessions, deleteSession } from '$lib/services/aacService';
     import { openTab, setActiveTab, getActiveTabId, closeTab, activeTabId } from '$lib/stores/aacStore.svelte';
     import AacTerminal from '$lib/components/aac/AacTerminal.svelte';
+    import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
     import { goto } from '$app/navigation';
 
     let sessionId = $state(/** @type {string|null} */ (null));
     let isNewSession = $state(false);
     let loading = $state(true);
     let error = $state('');
+
+    // --- New Conversation Confirmation Modal ---
+    let showNewConversationModal = $state(false);
 
     // React to global tab bar switches. Subscribe to the writable store so this
     // updates whenever the active tab changes anywhere in the app — previously
@@ -89,10 +93,12 @@
 
     async function startNewConversation() {
         if (!sessionId) return;
-        const confirmed = confirm($_('home.dashboard.agent.confirmNew', {
-            default: 'End this conversation and start a new one?'
-        }));
-        if (!confirmed) return;
+        showNewConversationModal = true;
+    }
+
+    async function confirmNewConversation() {
+        showNewConversationModal = false;
+        if (!sessionId) return;
 
         loading = true;
         const oldId = sessionId;
@@ -176,3 +182,14 @@
         </div>
     {/if}
 </div>
+
+<!-- New Conversation Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showNewConversationModal}
+    title={$_('home.dashboard.agent.confirmNewTitle', { default: 'New Conversation' })}
+    message={$_('home.dashboard.agent.confirmNew', { default: 'End this conversation and start a new one?' })}
+    confirmText={$_('common.confirm', { default: 'Confirm' })}
+    variant="warning"
+    onconfirm={confirmNewConversation}
+    oncancel={() => { showNewConversationModal = false; }}
+/>

@@ -7,6 +7,7 @@
     import { _, locale } from '$lib/i18n';
     import { user } from '$lib/stores/userStore';
     import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte'; // Generic confirmation modal
+    import NotificationModal from '$lib/components/modals/NotificationModal.svelte';
     import { onMount, onDestroy } from 'svelte';
     import { page } from '$app/stores'; // Import page store to read URL params
     import { getAssistantById, createAssistant, deleteAssistant, setAssistantPublishStatus } from '$lib/services/assistantService'; // Import service
@@ -147,6 +148,20 @@
     // --- Publish State ---
     let isPublishing = $state(false);
     let publishError = $state('');
+
+    // --- Notification Modal State ---
+    /** @type {{ isOpen: boolean, title: string, message: string, variant: 'success' | 'error' | 'info' }} */
+    let notification = $state({ isOpen: false, title: '', message: '', variant: 'success' });
+
+    /**
+     * Show a notification modal (replaces alert() calls)
+     * @param {'success' | 'error' | 'info'} variant
+     * @param {string} title
+     * @param {string} message
+     */
+    function showNotification(variant, title, message) {
+        notification = { isOpen: true, title, message, variant };
+    }
 
     // --- Knowledge Base State (for detail view) ---
     /** @type {import('$lib/services/knowledgeBaseService').KnowledgeBase[]} */
@@ -478,7 +493,7 @@
         console.log(`Delete request received for ID: ${id}, Name: ${name}, Published: ${published}`);
 
         if (published) {
-            alert(currentLocale ? $_('assistants.deleteErrorPublished') : 'Cannot delete a published assistant. Please unpublish it first.');
+            showNotification('info', 'Cannot Delete Published Assistant', currentLocale ? $_('assistants.deleteErrorPublished') : 'Cannot delete a published assistant. Please unpublish it first.');
             return;
         }
 
@@ -626,7 +641,7 @@
 
         } catch (error) {
             console.error('Error during assistant export:', error);
-            alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            showNotification('error', 'Export Failed', error instanceof Error ? error.message : 'Unknown error');
         } finally {
             isExporting = false;
             exportingId = null;
@@ -670,8 +685,7 @@
         } catch (error) {
             console.error('Error toggling publish status:', error);
             publishError = error instanceof Error ? error.message : 'Failed to update publish status.';
-            // Display error to user (e.g., alert or inline message)
-            alert(`Error: ${publishError}`); 
+            showNotification('error', 'Error', publishError);
         } finally {
             isPublishing = false;
         }
@@ -1604,6 +1618,15 @@
         assistantToDeleteName = null;
         deleteError = ''; // Clear errors on close
     }}
+/>
+
+<!-- Notification Modal (replaces browser alert() dialogs) -->
+<NotificationModal
+    bind:isOpen={notification.isOpen}
+    title={notification.title}
+    message={notification.message}
+    variant={notification.variant}
+    onclose={() => { notification.isOpen = false; }}
 />
 
 <!-- Loading state for detail view -->
