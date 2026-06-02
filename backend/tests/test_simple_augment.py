@@ -89,6 +89,31 @@ def test_explicit_template_with_context_placeholder_unchanged():
     assert "Some chunk." in augmented
 
 
+def test_document_context_gets_descriptive_label():
+    """Document RAG content should be wrapped with a descriptive REFERENCE DOCUMENT label."""
+    assistant = _make_assistant(system_prompt="You are helpful.", prompt_template="Answer: {user_input}")
+    request = {
+        "messages": [
+            {"role": "user", "content": "What is the answer?"}
+        ]
+    }
+    document_context = {"context": "This is the reference document content.", "sources": []}
+
+    result = prompt_processor(request, assistant=assistant, document_context=document_context)
+
+    system_msg = result[0]
+    assert system_msg["role"] == "system"
+    assert "REFERENCE DOCUMENT" in system_msg["content"]
+    assert "This is the reference document content." in system_msg["content"]
+    # Should contain the explanation for the LLM
+    assert "selected by the assistant creator" in system_msg["content"]
+    # Should come after the original system prompt
+    assert "You are helpful." in system_msg["content"]
+    doc_index = system_msg["content"].index("REFERENCE DOCUMENT")
+    sys_index = system_msg["content"].index("You are helpful.")
+    assert doc_index > sys_index
+
+
 def test_default_template_constant_matches_cli():
     """Sanity check: the module-level constant matches the CLI default
     (kept in lamb-cli/src/lamb_cli/commands/assistant.py). If either side
