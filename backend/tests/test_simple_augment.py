@@ -107,6 +107,10 @@ def test_document_context_gets_descriptive_label():
     assert "This is the reference document content." in system_msg["content"]
     # Should contain the explanation for the LLM
     assert "selected by the assistant creator" in system_msg["content"]
+    # Should contain the recency-bias reminder at the end
+    assert "available for this entire conversation" in system_msg["content"]
+    # Reminder should be at the very end of the system content
+    assert system_msg["content"].rstrip().endswith("use it.")
     # Should come after the original system prompt
     assert "You are helpful." in system_msg["content"]
     doc_index = system_msg["content"].index("REFERENCE DOCUMENT")

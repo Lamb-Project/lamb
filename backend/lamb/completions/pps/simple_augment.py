@@ -104,6 +104,10 @@ def prompt_processor(
                     "that will likely be useful for many queries, as it is generally a helpful "
                     "document. Use it as context when answering questions.\n\n"
                     f"{doc_text}"
+                    "\n\nIMPORTANT: The reference document above is available for this entire "
+                    "conversation. Always consider it alongside any retrieved context when "
+                    "answering questions. If the user's question relates to the document's "
+                    "content, use it."
                 )
                 system_content = (system_content + labeled_doc) if system_content else labeled_doc
         if system_content:
