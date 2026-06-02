@@ -493,10 +493,6 @@ class KBServerManager:
         kb_data.name = sanitized_name
    
         # Create collection in KB server
-        # Apply host redirect for dev/test environments where 'kb' DNS doesn't resolve
-        _alt_url = _KB_REDIRECTS.get(kb_server_url)
-        if _alt_url:
-            kb_server_url = _alt_url
         async with httpx.AsyncClient() as client:
             kb_server_collections_url = f"{kb_server_url}/collections"
             logger.info(f"Creating collection in KB server at {kb_server_collections_url}: {sanitized_name}")
