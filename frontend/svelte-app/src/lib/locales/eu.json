@@ -313,7 +313,9 @@
 				"fileReadError": "Errorea hautatutako fitxategia irakurtzean."
 			},
 			"ragOptions": {
-				"title": "RAG Aukerak"
+				"title": "RAG Aukerak",
+				"legacySingleFileNotice": "Laguntzaile honek fitxategi bakarreko RAG legacy-a erabiltzen du. Dokumentua ezin da aldatu. Dokumentu desberdin bat erabiltzeko, sortu laguntzaile berri bat Erreferentzia Dokumentua aukerarekin.",
+				"document": "Dokumentua"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
@@ -328,6 +330,18 @@
         "sharedKB": "Partekatutako Ezagutza Baseak",
         "shared": "{shared_by}(e)k partekatua"
 			},
+			"knowledgeStores": {
+				"label": "Knowledge Stores",
+				"loading": "Knowledge Stores kargatzen...",
+				"error": "Errorea knowledge Stores kargatzean:",
+				"noneFound": "Ez da knowledge Stores sarbiderik aurkitu.",
+				"myKS": "Nire Knowledge Stores",
+				"sharedKS": "Partekatutako Knowledge Stores"
+			},
+			"documentRag": {
+				"label": "Erreferentzia Dokumentua",
+				"description": "Erreferentzia dokumentu bat erantsi, sistemaren testuan erabilgarri egongo dena mezu guztietarako."
+			},
 			"singleFile": {
 				"label": "Fitxategia Hautatu",
 				"selectedLabel": "Hautatutako Fitxategia",
@@ -336,7 +350,13 @@
 				"loading": "Fitxategiak kargatzen...",
 				"error": "Errorea fitxategiak kargatzean:",
 				"noneFound": "Ez da fitxategirik aurkitu. Mesedez igo fitxategi bat.",
-				"required": "Mesedez hautatu fitxategi bat"
+				"required": "Mesedez hautatu fitxategi bat",
+				"libraryLabel": "Liburutegia",
+				"loadingLibraries": "Liburutegiak kargatzen...",
+				"noLibraries": "Ez dago liburutegi erabilgarririk.",
+				"manageLibraries": "Liburutegiak kudeatu",
+				"itemLabel": "Dokumentua",
+				"loadingItems": "Dokumentuak kargatzen..."
 			}
 		}
 	},

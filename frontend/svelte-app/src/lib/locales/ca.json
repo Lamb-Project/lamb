@@ -175,7 +175,9 @@
 				"fileReadError": "Error llegint l'arxiu seleccionat."
 			},
 			"ragOptions": {
-				"title": "Opcions RAG"
+				"title": "Opcions RAG",
+				"legacySingleFileNotice": "Aquest assistent utilitza el RAG de fitxer únic legacy. El document no es pot canviar. Per utilitzar un document diferent, crea un nou assistent amb l'opció Document de Referència.",
+				"document": "Document"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
@@ -190,6 +192,18 @@
         "sharedKB": "Bases de Coneixement Compartides",
         "shared": "Compartida per {shared_by}"
 			},
+			"knowledgeStores": {
+				"label": "Knowledge Stores",
+				"loading": "Carregant knowledge stores...",
+				"error": "Error en carregar knowledge stores:",
+				"noneFound": "No s'han trobat knowledge stores accessibles.",
+				"myKS": "Els meus Knowledge Stores",
+				"sharedKS": "Knowledge Stores compartits"
+			},
+			"documentRag": {
+				"label": "Document de Referència",
+				"description": "Adjunta un document de referència que estarà disponible en el context del sistema per a tots els missatges."
+			},
 			"singleFile": {
 				"label": "Seleccionar Arxiu",
 				"selectedLabel": "Arxiu Seleccionat",
@@ -198,7 +212,13 @@
 				"loading": "Carregant arxius...",
 				"error": "Error en carregar arxius:",
 				"noneFound": "No s'han trobat arxius. Si us plau puja un arxiu.",
-				"required": "Si us plau selecciona un arxiu"
+				"required": "Si us plau selecciona un arxiu",
+				"libraryLabel": "Biblioteca",
+				"loadingLibraries": "Carregant biblioteques...",
+				"noLibraries": "No hi ha biblioteques disponibles.",
+				"manageLibraries": "Gestionar biblioteques",
+				"itemLabel": "Document",
+				"loadingItems": "Carregant documents..."
 			}
 		},
 		"noDescription": "Sense descripció",

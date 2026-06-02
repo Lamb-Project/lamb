@@ -175,7 +175,9 @@
 				"fileReadError": "Error leyendo el archivo seleccionado."
 			},
 			"ragOptions": {
-				"title": "Opciones RAG"
+				"title": "Opciones RAG",
+				"legacySingleFileNotice": "Este asistente usa el RAG de archivo único legacy. El documento no se puede cambiar. Para usar un documento diferente, crea un nuevo asistente con la opción Documento de Referencia.",
+				"document": "Documento"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
@@ -198,6 +200,10 @@
 				"myKS": "Mis Knowledge Stores",
 				"sharedKS": "Knowledge Stores compartidos"
 			},
+			"documentRag": {
+				"label": "Documento de Referencia",
+				"description": "Adjunta un documento de referencia que estará disponible en el contexto del sistema para todos los mensajes."
+			},
 			"singleFile": {
 				"label": "Seleccionar Archivo",
 				"selectedLabel": "Archivo Seleccionado",
@@ -206,7 +212,13 @@
 				"loading": "Cargando archivos...",
 				"error": "Error al cargar archivos:",
 				"noneFound": "No se encontraron archivos. Por favor sube un archivo.",
-				"required": "Por favor selecciona un archivo"
+				"required": "Por favor selecciona un archivo",
+				"libraryLabel": "Biblioteca",
+				"loadingLibraries": "Cargando bibliotecas...",
+				"noLibraries": "No hay bibliotecas disponibles.",
+				"manageLibraries": "Gestionar bibliotecas",
+				"itemLabel": "Documento",
+				"loadingItems": "Cargando documentos..."
 			}
 		},
 		"noDescription": "Sin descripción",

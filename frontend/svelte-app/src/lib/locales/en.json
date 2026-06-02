@@ -313,7 +313,9 @@
 				"fileReadError": "Error reading the selected file."
 			},
 			"ragOptions": {
-				"title": "RAG Options"
+				"title": "RAG Options",
+				"legacySingleFileNotice": "This assistant uses the legacy single-file RAG. The document cannot be changed. To use a different document, create a new assistant with the Reference Document option.",
+				"document": "Document"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
@@ -336,6 +338,10 @@
 				"myKS": "My Knowledge Stores",
 				"sharedKS": "Shared Knowledge Stores"
 			},
+			"documentRag": {
+				"label": "Reference Document",
+				"description": "Attach a reference document that will be available in the system context for all messages."
+			},
 			"singleFile": {
 				"label": "Select File",
 				"selectedLabel": "Selected File",
@@ -344,7 +350,13 @@
 				"loading": "Loading files...",
 				"error": "Error loading files:",
 				"noneFound": "No files found. Please upload a file.",
-				"required": "Please select a file"
+				"required": "Please select a file",
+				"libraryLabel": "Library",
+				"loadingLibraries": "Loading libraries...",
+				"noLibraries": "No libraries available.",
+				"manageLibraries": "Manage libraries",
+				"itemLabel": "Document",
+				"loadingItems": "Loading documents..."
 			}
 		}
 	},
