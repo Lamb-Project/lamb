@@ -322,21 +322,21 @@
 				"help": "Berreskuratzeko dokumentu garrantzitsuen kopurua (1-10)."
 			},
 			"knowledgeBases": {
-				"label": "Ezagutza Baseak",
-				"loading": "Ezagutza baseak kargatzen...",
-				"error": "Errorea ezagutza baseak kargatzean:",
-				"noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza baserik.",
-        "myKB": "Nire Ezagutza Baseak",
+				"label": "Ezagutza Iturriak",
+				"loading": "Ezagutza iturriak kargatzen...",
+				"error": "Errorea ezagutza iturriak kargatzean:",
+				"noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza iturririk.",
+        "myKB": "Nire Ezagutza Iturriak",
         "sharedKB": "Partekatutako Ezagutza Baseak",
         "shared": "{shared_by}(e)k partekatua"
 			},
 			"knowledgeStores": {
-				"label": "Knowledge Stores",
-				"loading": "Knowledge Stores kargatzen...",
-				"error": "Errorea knowledge Stores kargatzean:",
-				"noneFound": "Ez da knowledge Stores sarbiderik aurkitu.",
-				"myKS": "Nire Knowledge Stores",
-				"sharedKS": "Partekatutako Knowledge Stores"
+				"label": "Ezagutza Iturriak",
+				"loading": "Ezagutza iturriak kargatzen...",
+				"error": "Errorea ezagutza iturriak kargatzean:",
+				"noneFound": "Ez da ezagutza iturri sarbiderik aurkitu.",
+				"myKS": "Nire Ezagutza Iturriak",
+				"sharedKS": "Partekatutako Ezagutza Iturriak"
 			},
 			"documentRag": {
 				"label": "Erreferentzia Dokumentua",
@@ -424,10 +424,10 @@
 		"resetColumns": "Zutabeak berrezarri"
 	},
 	"knowledgeBases": {
-		"title": "Ezagutza Baseak",
-		"pageTitle": "Ezagutza Baseak",
-		"pageDescription": "Kudeatu zure ezagutza baseak ikaskuntza laguntzaileekin erabiltzeko.",
-		"myKnowledgeBases": "Nire Ezagutza Baseak",
+		"title": "Ezagutza Iturriak",
+		"pageTitle": "Ezagutza Iturriak",
+		"pageDescription": "Kudeatu zure ezagutza iturriak ikaskuntza laguntzaileekin erabiltzeko.",
+		"myKnowledgeBases": "Nire Ezagutza Iturriak",
 		"createNew": "Ezagutza Base Berria Sortu",
 		"createFirst": "Sortu Zure Lehen Ezagutza Basea",
 		"loading": "Ezagutza baseak kargatzen...",

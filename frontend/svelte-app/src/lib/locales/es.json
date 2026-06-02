@@ -184,21 +184,21 @@
 				"help": "Número de documentos relevantes a recuperar (1-10)."
 			},
 			"knowledgeBases": {
-				"label": "Bases de Conocimiento",
-				"loading": "Cargando bases de conocimiento...",
-				"error": "Error al cargar bases de conocimiento:",
-				"noneFound": "No se encontraron bases de conocimiento accesibles.",
-        "myKB": "Mis Bases de Conocimiento",
+				"label": "Fuentes de Conocimiento",
+				"loading": "Cargando fuentes de conocimiento...",
+				"error": "Error al cargar fuentes de conocimiento:",
+				"noneFound": "No se encontraron fuentes de conocimiento accesibles.",
+        "myKB": "Mis Fuentes de Conocimiento",
         "sharedKB": "Bases de Conocimiento Compartidas",
         "shared": "Compartida por {shared_by}"
 			},
 			"knowledgeStores": {
-				"label": "Knowledge Stores",
-				"loading": "Cargando knowledge stores...",
-				"error": "Error al cargar knowledge stores:",
-				"noneFound": "No se encontraron knowledge stores accesibles.",
-				"myKS": "Mis Knowledge Stores",
-				"sharedKS": "Knowledge Stores compartidos"
+				"label": "Fuentes de Conocimiento",
+				"loading": "Cargando fuentes de conocimiento...",
+				"error": "Error al cargar fuentes de conocimiento:",
+				"noneFound": "No se encontraron fuentes de conocimiento accesibles.",
+				"myKS": "Mis Fuentes de Conocimiento",
+				"sharedKS": "Fuentes de Conocimiento compartidas"
 			},
 			"documentRag": {
 				"label": "Documento de Referencia",
@@ -424,10 +424,10 @@
 		"resetColumns": "Restablecer columnas"
 	},
 	"knowledgeBases": {
-		"title": "Bases de Conocimiento",
-		"pageTitle": "Bases de Conocimiento",
-		"pageDescription": "Gestiona tus bases de conocimiento para usar con asistentes de aprendizaje.",
-		"myKnowledgeBases": "Mis Bases de Conocimiento",
+		"title": "Fuentes de Conocimiento",
+		"pageTitle": "Fuentes de Conocimiento",
+		"pageDescription": "Gestiona tus fuentes de conocimiento para usar con asistentes de aprendizaje.",
+		"myKnowledgeBases": "Mis Fuentes de Conocimiento",
 		"createNew": "Crear Nueva Base de Conocimiento",
 		"createFirst": "Crea Tu Primera Base de Conocimiento",
 		"loading": "Cargando bases de conocimiento...",

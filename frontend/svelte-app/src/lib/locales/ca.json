@@ -184,21 +184,21 @@
 				"help": "Nombre de documents rellevants a recuperar (1-10)."
 			},
 			"knowledgeBases": {
-				"label": "Bases de Coneixement",
-				"loading": "Carregant bases de coneixement...",
-				"error": "Error en carregar bases de coneixement:",
-				"noneFound": "No s'han trobat bases de coneixement accessibles.",
-        "myKB": "Les Meves Bases de Coneixement",
+				"label": "Fonts de Coneixement",
+				"loading": "Carregant fonts de coneixement...",
+				"error": "Error en carregar fonts de coneixement:",
+				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
+        "myKB": "Les Meves Fonts de Coneixement",
         "sharedKB": "Bases de Coneixement Compartides",
         "shared": "Compartida per {shared_by}"
 			},
 			"knowledgeStores": {
-				"label": "Knowledge Stores",
-				"loading": "Carregant knowledge stores...",
-				"error": "Error en carregar knowledge stores:",
-				"noneFound": "No s'han trobat knowledge stores accessibles.",
-				"myKS": "Els meus Knowledge Stores",
-				"sharedKS": "Knowledge Stores compartits"
+				"label": "Fonts de Coneixement",
+				"loading": "Carregant fonts de coneixement...",
+				"error": "Error en carregar fonts de coneixement:",
+				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
+				"myKS": "Les meves Fonts de Coneixement",
+				"sharedKS": "Fonts de Coneixement compartides"
 			},
 			"documentRag": {
 				"label": "Document de Referència",
@@ -424,10 +424,10 @@
 		"resetColumns": "Restablir columnes"
 	},
 	"knowledgeBases": {
-		"title": "Bases de Coneixement",
-		"pageTitle": "Bases de Coneixement",
-		"pageDescription": "Gestiona les teves bases de coneixement per utilitzar amb assistents d'aprenentatge.",
-		"myKnowledgeBases": "Les Meves Bases de Coneixement",
+		"title": "Fonts de Coneixement",
+		"pageTitle": "Fonts de Coneixement",
+		"pageDescription": "Gestiona les teves fonts de coneixement per utilitzar amb assistents d'aprenentatge.",
+		"myKnowledgeBases": "Les Meves Fonts de Coneixement",
 		"createNew": "Crear Nova Base de Coneixement",
 		"createFirst": "Crea la Teva Primera Base de Coneixement",
 		"loading": "Carregant bases de coneixement...",
