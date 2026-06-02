@@ -86,8 +86,7 @@
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div 
             class="relative bg-white rounded-lg shadow-xl overflow-hidden max-w-md w-full border border-gray-300 mx-2" 
-            role="dialog" 
-            aria-modal="true" 
+            role="alert" 
             aria-labelledby="modal-title-notification"
         >
             <!-- Modal Header -->
