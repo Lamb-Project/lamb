@@ -1677,6 +1677,7 @@ class OrgUserResponse(BaseModel):
     user_type: str = "creator"
     auth_provider: str = "password"
     lti_user_id: Optional[str] = None
+    user_config: Optional[Dict[str, Any]] = None
 
 # Organization Admin Dashboard endpoint
 @router.get(
@@ -1864,6 +1865,16 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 enabled_status = True  # Default to enabled if status can't be determined
                 logger.warning(f"Could not determine enabled status for user {user['email']}, defaulting to enabled")
             
+            # Parse user_config from JSON string if needed
+            raw_config = user.get('user_config', {})
+            if isinstance(raw_config, str):
+                try:
+                    user_config = json.loads(raw_config) if raw_config else {}
+                except (json.JSONDecodeError, TypeError):
+                    user_config = {}
+            else:
+                user_config = raw_config if raw_config else {}
+
             user_responses.append(OrgUserResponse(
                 id=user['id'],
                 email=user['email'],
@@ -1873,7 +1884,8 @@ async def list_organization_users(request: Request, org: Optional[str] = None):
                 role=user.get('role', 'member'),
                 user_type=user.get('user_type', 'creator'),
                 auth_provider=user.get('auth_provider', 'password'),
-                lti_user_id=user.get('lti_user_id')
+                lti_user_id=user.get('lti_user_id'),
+                user_config=user_config
             ))
         
         return user_responses
@@ -1906,10 +1918,18 @@ curl -X POST 'http://localhost:8000/creator/admin/org-admin/users' \\
     dependencies=[Depends(security)],
     response_model=OrgUserResponse
 )
-async def create_organization_user(request: Request, user_data: OrgAdminUserCreate):
+async def create_organization_user(request: Request, user_data: OrgAdminUserCreate, org: Optional[str] = None):
     """Create a new user in the organization"""
     try:
-        admin_info = await verify_organization_admin_access(request)
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
         org_id = admin_info['organization_id']
         
         # Create user with organization assignment
@@ -1970,10 +1990,18 @@ curl -X PUT 'http://localhost:8000/creator/admin/org-admin/users/123' \\
     """,
     dependencies=[Depends(security)]
 )
-async def update_organization_user(request: Request, user_id: int, user_data: OrgAdminUserUpdate):
+async def update_organization_user(request: Request, user_id: int, user_data: OrgAdminUserUpdate, org: Optional[str] = None):
     """Update a user in the organization"""
     try:
-        admin_info = await verify_organization_admin_access(request)
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
         org_id = admin_info['organization_id']
         
         # Verify user belongs to this organization
@@ -2028,10 +2056,18 @@ curl -X POST 'http://localhost:8000/creator/admin/org-admin/users/123/password' 
     """,
     dependencies=[Depends(security)]
 )
-async def change_user_password(request: Request, user_id: int, password_data: OrgAdminPasswordChange):
+async def change_user_password(request: Request, user_id: int, password_data: OrgAdminPasswordChange, org: Optional[str] = None):
     """Change password for a user in the organization"""
     try:
-        admin_info = await verify_organization_admin_access(request)
+        # If org parameter is provided, get organization by slug
+        target_org_id = None
+        if org:
+            target_organization = db_manager.get_organization_by_slug(org)
+            if not target_organization:
+                raise HTTPException(status_code=404, detail=f"Organization '{org}' not found")
+            target_org_id = target_organization['id']
+        
+        admin_info = await verify_organization_admin_access(request, target_org_id)
         org_id = admin_info['organization_id']
         
         # Verify user belongs to this organization

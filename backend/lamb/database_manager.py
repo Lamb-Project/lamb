@@ -2849,7 +2849,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, 
                            COALESCE(r.role, 'member') as role, 
                            COALESCE(r.created_at, u.created_at) as joined_at,
-                           u.user_type, u.auth_provider, u.lti_user_id
+                           u.user_type, u.auth_provider, u.lti_user_id, u.user_config
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = ?
                     WHERE u.organization_id = ?
@@ -2866,7 +2866,8 @@ class LambDatabaseManager:
                         'joined_at': row[4],
                         'user_type': row[5],
                         'auth_provider': row[6] or 'password',
-                        'lti_user_id': row[7]
+                        'lti_user_id': row[7],
+                        'user_config': row[8]
                     })
 
                 return users

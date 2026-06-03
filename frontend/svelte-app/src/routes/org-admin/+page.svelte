@@ -778,7 +778,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}?org=${targetOrgSlug}`);
             console.log(`Enabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
@@ -792,12 +792,8 @@
 
             console.log('User enable response:', response.data);
 
-            // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
-            if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = true;
-                orgUsers = [...orgUsers]; // Trigger reactivity
-            }
+            // Refresh the users list from the server
+            await fetchUsers();
             
             showSingleUserEnableModal = false;
             userToToggle = null;
@@ -830,7 +826,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}`);
+            const apiUrl = getApiUrl(`/org-admin/users/${userToToggle.id}?org=${targetOrgSlug}`);
             console.log(`Disabling user ${userToToggle.email} at: ${apiUrl}`);
 
             const response = await axios.put(apiUrl, {
@@ -844,12 +840,8 @@
 
             console.log('User disable response:', response.data);
 
-            // Update the user in the local list
-            const userIndex = orgUsers.findIndex(u => u.id === userToToggle.id);
-            if (userIndex !== -1) {
-                orgUsers[userIndex].enabled = false;
-                orgUsers = [...orgUsers]; // Trigger reactivity
-            }
+            // Refresh the users list from the server
+            await fetchUsers();
             
             showSingleUserDisableModal = false;
             userToToggle = null;
@@ -906,14 +898,14 @@
 
             console.log('Updated user sharing permission:', response.data);
 
-            // Update the user in the local list
+            // Update local state directly — no need to reload all users
             const userIndex = orgUsers.findIndex(u => u.id === user.id);
             if (userIndex !== -1) {
                 const config = orgUsers[userIndex].user_config || {};
                 const userConfig = typeof config === 'string' ? JSON.parse(config || '{}') : config;
                 userConfig.can_share = canShare;
                 orgUsers[userIndex].user_config = userConfig;
-                orgUsers = [...orgUsers]; // Trigger reactivity
+                orgUsers = [...orgUsers]; // Trigger Svelte reactivity
             }
 
         } catch (err) {
@@ -927,8 +919,8 @@
             }
             
             console.error(errorMessage);
-            // Revert the checkbox state by reloading users
-            await fetchUsers();
+            // Local state wasn't modified, so the checkbox naturally stays at its previous value.
+            // No need to reload — just show the error.
         }
     }
     
@@ -1144,7 +1136,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl(`/org-admin/users/${passwordChangeData.user_id}/password`);
+            const apiUrl = getApiUrl(`/org-admin/users/${passwordChangeData.user_id}/password?org=${targetOrgSlug}`);
             console.log(`Changing password for user ${passwordChangeData.user_email} at: ${apiUrl}`);
 
             const response = await axios.post(apiUrl, {
@@ -1215,7 +1207,7 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            const apiUrl = getApiUrl('/org-admin/users');
+            const apiUrl = getApiUrl(`/org-admin/users?org=${targetOrgSlug}`);
             console.log(`Creating user at: ${apiUrl}`);
 
             const response = await axios.post(apiUrl, {
@@ -1447,8 +1439,16 @@
                 throw new Error('Authentication token not found. Please log in again.');
             }
 
-            // Use non-admin endpoint to read defaults for current org
-            const url = getApiUrl('/assistant/defaults').replace('/admin', ''); // maps to /creator/assistant/defaults
+            // Determine target organization slug
+            let slug = getTargetSlug();
+            if (!slug) {
+                // Ensure dashboard is loaded to get slug
+                await fetchDashboard();
+                slug = getTargetSlug();
+            }
+            if (!slug) throw new Error('Unable to resolve organization slug.');
+
+            const url = getApiUrl(`/organizations/${slug}/assistant-defaults`);
             const response = await axios.get(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
