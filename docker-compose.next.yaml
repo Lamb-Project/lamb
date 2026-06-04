@@ -36,7 +36,7 @@ services:
       openwebui:
         condition: service_healthy
       library-manager:
-        condition: service_started
+        condition: service_healthy
 
   kb:
     image: ghcr.io/lamb-project/lamb-kb:latest
