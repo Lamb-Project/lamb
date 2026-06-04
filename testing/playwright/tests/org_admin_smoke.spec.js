@@ -43,6 +43,19 @@ async function waitForPageReady(page) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * Search for a user by email in the org-admin Users view.
+ */
+async function searchForUser(page, email) {
+  const searchBox = page.locator(
+    'input[placeholder*="search" i], input[aria-label*="search" i]'
+  ).first();
+  if (await searchBox.count()) {
+    await searchBox.fill(email);
+    await page.waitForTimeout(500);
+  }
+}
+
 // ============================================================
 // Test Suite
 // ============================================================
@@ -140,8 +153,18 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
     const submitBtn = modal.getByRole("button", { name: /create user/i });
     await submitBtn.click();
 
-    // Wait for success or modal close
-    await page.waitForTimeout(1500);
+    // Wait for the modal to close (success message auto-closes after ~1.5s)
+    await expect(modal).not.toBeVisible({ timeout: 15_000 });
+
+    // Wait for the user list to refresh
+    await page.waitForTimeout(1000);
+
+    // Search for the user in the list
+    const searchBox = page.locator('input[placeholder*="search" i], input[aria-label*="search" i]').first();
+    if (await searchBox.count()) {
+      await searchBox.fill(testUserEmail);
+      await page.waitForTimeout(500);
+    }
 
     // Verify user appears in the list
     await expect(page.getByText(testUserEmail)).toBeVisible({ timeout: 10_000 });
@@ -152,6 +175,7 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
   test("Users — changes password for a user", async ({ page }) => {
     await goToView(page, "users");
     await waitForPageReady(page);
+    await searchForUser(page, testUserEmail);
 
     // Find the test user row
     const userRow = page.locator("tr", { hasText: testUserEmail });
@@ -188,6 +212,7 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
   test("Users — enable/disable toggle works", async ({ page }) => {
     await goToView(page, "users");
     await waitForPageReady(page);
+    await searchForUser(page, testUserEmail);
 
     // Find the test user row
     const userRow = page.locator("tr", { hasText: testUserEmail });
@@ -212,6 +237,7 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
 
       // Now re-enable
       await goToView(page, "users");
+      await searchForUser(page, testUserEmail);
       const userRow2 = page.locator("tr", { hasText: testUserEmail });
       await expect(userRow2.first()).toBeVisible({ timeout: 10_000 });
 
@@ -237,6 +263,7 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
   test("Users — can_share toggle persists after reload", async ({ page }) => {
     await goToView(page, "users");
     await waitForPageReady(page);
+    await searchForUser(page, testUserEmail);
 
     // Find the test user row
     const userRow = page.locator("tr", { hasText: testUserEmail });
@@ -258,6 +285,7 @@ test.describe.serial("Org-Admin Comprehensive Smoke Test", () => {
 
       // Reload and verify state persisted
       await goToView(page, "users");
+      await searchForUser(page, testUserEmail);
       await page.waitForTimeout(500);
 
       const userRow2 = page.locator("tr", { hasText: testUserEmail });
