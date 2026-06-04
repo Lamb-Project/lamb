@@ -57,7 +57,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - kb-data:/app/backend/data
+      - kb-data:/app/data
       - kb-static:/app/backend/static
 
   library-manager:
