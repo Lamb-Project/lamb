@@ -30,6 +30,20 @@ logger = logging.getLogger(__name__)
 
 _PAGE_AWARE_TYPES = {"pdf", "docx", "pptx"}
 
+# Map PyMuPDF extension strings to canonical, viewable formats.
+# PyMuPDF returns raw format names (e.g. "tiff", "jpx") that may not be
+# directly viewable in browsers. Normalize to widely-supported equivalents.
+_EXT_NORMALIZE = {
+    "tif": "tiff",
+    "jpx": "jpg",
+    "jp2": "jpg",
+    "jxr": "jpg",
+    "jb2": "png",
+    "pnm": "png",
+    "lzw": "png",
+    "rld": "png",
+}
+
 
 @PluginRegistry.register
 class MarkItDownPlusPlugin(LibraryImportPlugin):
@@ -271,7 +285,8 @@ def _extract_images(
                     continue
 
                 img_counter += 1
-                ext = base_image.get("ext", "png")
+                ext = base_image.get("ext", "png") or "png"
+                ext = _EXT_NORMALIZE.get(ext.lower(), ext.lower())
                 filename = f"img_{img_counter:03d}.{ext}"
                 img_data = base_image["image"]
 
@@ -286,48 +301,57 @@ def _extract_images(
                     )
                 )
 
-        # Fallback: if no Image XObjects were embedded, the visual content
-        # of the PDF is drawn as vector graphics (logos, diagrams, etc.) or
-        # the PDF is a vector-only document. ``extract_image`` can't surface
-        # those — they're not bitmap resources. Render each page as a PNG
-        # so the user still has something to view in the Images tab.
-        if not images:
-            logger.info(
-                "No bitmap images found in %s — rasterizing %d page(s) "
-                "as PNG fallback (vector content / scanned page).",
-                path.name,
-                len(doc),
-            )
-            page_counter = 0
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                try:
-                    # 144 DPI = 2x the 72-DPI PDF default. Crisp enough for
-                    # logos and diagrams without exploding file size.
-                    pix = page.get_pixmap(dpi=144)
-                    png_bytes = pix.tobytes("png")
-                except Exception:
-                    logger.exception(
-                        "Failed to rasterize page %d of %s",
-                        page_num + 1,
-                        path.name,
-                    )
-                    continue
+        logger.info(
+            "Extracted %d bitmap image(s) from %s: %s",
+            len(images),
+            path.name,
+            ", ".join(img.filename for img in images) if images else "(none)",
+        )
 
-                page_counter += 1
-                filename = f"page_{page_counter:03d}.png"
-                description = _describe_image(
-                    png_bytes, filename, "png", mode, api_keys, stats
+        # Always rasterize each page as a PNG so the user gets full-page
+        # renders in addition to any extracted bitmaps (profile photos,
+        # embedded logos, etc.). Vector graphics (text layout, charts,
+        # diagrams drawn as paths) are not surfaced by ``extract_image``.
+        logger.info(
+            "Rasterizing %d page(s) of %s as PNG for full-page renders.",
+            len(doc),
+            path.name,
+        )
+        page_counter = 0
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            try:
+                # 144 DPI = 2x the 72-DPI PDF default. Crisp enough for
+                # logos and diagrams without exploding file size.
+                pix = page.get_pixmap(dpi=144)
+                png_bytes = pix.tobytes("png")
+            except Exception:
+                logger.exception(
+                    "Failed to rasterize page %d of %s",
+                    page_num + 1,
+                    path.name,
                 )
-                images.append(
-                    ExtractedImage(
-                        filename=filename,
-                        data=png_bytes,
-                        page_number=page_num + 1,
-                        description=description,
-                    )
+                continue
+
+            page_counter += 1
+            filename = f"page_{page_counter:03d}.png"
+            description = _describe_image(
+                png_bytes, filename, "png", mode, api_keys, stats
+            )
+            images.append(
+                ExtractedImage(
+                    filename=filename,
+                    data=png_bytes,
+                    page_number=page_num + 1,
+                    description=description,
                 )
-            stats["rendered_page_fallback"] = page_counter
+            )
+        stats["rendered_page_fallback"] = page_counter
+        logger.info(
+            "Rasterized %d page(s) of %s as PNG.",
+            page_counter,
+            path.name,
+        )
     finally:
         doc.close()
 

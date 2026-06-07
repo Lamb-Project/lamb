@@ -514,8 +514,12 @@ def detect_capabilities(item_path: Path) -> list[str]:
         found.append(Capability.PAGES.value)
 
     images_dir = content_dir / "images"
-    if images_dir.is_dir() and any(p.is_file() for p in images_dir.iterdir()):
-        found.append(Capability.IMAGES.value)
+    if images_dir.is_dir():
+        # Use the same extension filter as ImagesHandler so we only advertise
+        # the images capability when the handler can actually serve files.
+        from plugins.content_handlers.images_handler import _IMAGE_EXTS  # noqa: PLC0415
+        if any(p.is_file() and p.suffix.lower() in _IMAGE_EXTS for p in images_dir.iterdir()):
+            found.append(Capability.IMAGES.value)
 
     return sorted(found)
 

@@ -89,43 +89,34 @@ class UrlImportPlugin(LibraryImportPlugin):
         from firecrawl import FirecrawlApp  # noqa: PLC0415
 
         api_url = api_keys.get("firecrawl_url", "https://api.firecrawl.dev")
-        max_depth = _safe_int(kwargs.get("max_discovery_depth"), 2)
         limit = _safe_int(kwargs.get("limit"), 100)
-        crawl_domain = _safe_bool(kwargs.get("crawl_entire_domain"), True)
         timeout_s = _safe_int(kwargs.get("timeout"), 300)
-        self.report_progress(kwargs, 0, 3, f"Crawling {url} via Firecrawl...")
+        self.report_progress(kwargs, 0, 3, f"Scraping {url} via Firecrawl...")
 
         t0 = time.monotonic()
         try:
-            from firecrawl.v2.types import ScrapeOptions  # noqa: PLC0415
-
             app = FirecrawlApp(api_key=api_key, api_url=api_url)
-            crawl_result = app.crawl(
+            scrape_result = app.scrape(
                 url,
-                limit=limit,
-                max_discovery_depth=max_depth,
-                crawl_entire_domain=crawl_domain,
-                allow_external_links=False,
-                scrape_options=ScrapeOptions(formats=["markdown"]),
-                poll_interval=5,
-                timeout=timeout_s,
+                formats=["markdown"],
+                timeout=max(timeout_s * 1000, 1000),  # Firecrawl v2 requires timeout in ms, min 1000
             )
         except Exception as exc:
-            raise RuntimeError(f"Firecrawl crawl failed for {url}: {exc}") from exc
+            raise RuntimeError(f"Firecrawl scrape failed for {url}: {exc}") from exc
 
         crawl_duration_ms = int((time.monotonic() - t0) * 1000)
-        self.report_progress(kwargs, 1, 3, "Processing crawled pages...")
+        self.report_progress(kwargs, 1, 3, "Processing scraped content...")
 
         pages_data = []
-        if hasattr(crawl_result, "data"):
-            pages_data = crawl_result.data or []
-        elif isinstance(crawl_result, dict):
-            pages_data = crawl_result.get("data", [])
+        if hasattr(scrape_result, "markdown"):
+            pages_data = [scrape_result]
+        elif isinstance(scrape_result, dict):
+            pages_data = [scrape_result] if scrape_result.get("markdown") else []
 
         if not pages_data:
             logger.warning("Firecrawl returned no data for %s", url)
             return ImportResult(
-                full_text=f"*(No content could be crawled from {url})*",
+                full_text=f"*(No content could be scraped from {url})*",
                 metadata={"source_url": url, "pages_crawled": 0},
                 source_ref={"type": "url", "source_url": url},
             )
@@ -164,10 +155,8 @@ class UrlImportPlugin(LibraryImportPlugin):
         metadata = {
             "source_url": url,
             "pages_crawled": len(pages_data),
-            "max_discovery_depth": max_depth,
-            "crawl_entire_domain": crawl_domain,
             "character_count": len(full_text),
-            "crawl_duration_ms": crawl_duration_ms,
+            "scrape_duration_ms": crawl_duration_ms,
             "import_plugin": self.name,
             "fetch_method": "firecrawl",
         }
@@ -179,8 +168,8 @@ class UrlImportPlugin(LibraryImportPlugin):
         source_ref = {
             "type": "url",
             "source_url": url,
-            "crawled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "pages_crawled": len(pages_data),
+            "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "pages_scraped": len(pages_data),
         }
 
         self.report_progress(kwargs, 3, 3, "Import complete.")

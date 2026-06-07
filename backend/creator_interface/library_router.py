@@ -723,36 +723,12 @@ async def get_item_capabilities(
     )
 
 
-@router.get("/{library_id}/items/{item_id}/content/{capability}")
-async def get_item_capability_content(
-    library_id: str,
-    item_id: str,
-    capability: str,
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """Dispatch to the capability handler for an item and forward the payload.
-
-    The ``capability`` path segment must match a registered
-    :class:`Capability` enum value (e.g. ``text``, ``pages``, ``images``).
-    The 5 MB inline-content cap from ``get_item_content`` also applies here.
-    """
-    auth.require_library_access(library_id, level="any")
-    response = await _client.get_item_content(
-        library_id, item_id, capability, creator_user=auth.user,
-    )
-    if len(response.content) > MAX_CONTENT_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=(
-                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB."
-            ),
-        )
-    return Response(
-        content=response.content,
-        media_type=response.headers.get("content-type", "application/octet-stream"),
-    )
-
-
+# IMPORTANT: Route order matters for FastAPI matching.
+# The specific image file route MUST be registered before the wildcard
+# capability route, otherwise requests for /content/images/file/{filename}
+# will match the wildcard route with capability="images" and return JSON
+# instead of the image file. This mirrors the pattern in the Library Manager
+# (see library-manager/backend/main.py:95-106).
 @router.get("/{library_id}/items/{item_id}/content/images/file/{filename}")
 async def get_item_image_file(
     library_id: str,
@@ -783,6 +759,36 @@ async def get_item_image_file(
         subpath=f"content/images/file/{filename}",
         creator_user=auth.user,
     )
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "application/octet-stream"),
+    )
+
+
+@router.get("/{library_id}/items/{item_id}/content/{capability}")
+async def get_item_capability_content(
+    library_id: str,
+    item_id: str,
+    capability: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Dispatch to the capability handler for an item and forward the payload.
+
+    The ``capability`` path segment must match a registered
+    :class:`Capability` enum value (e.g. ``text``, ``pages``, ``images``).
+    The 5 MB inline-content cap from ``get_item_content`` also applies here.
+    """
+    auth.require_library_access(library_id, level="any")
+    response = await _client.get_item_content(
+        library_id, item_id, capability, creator_user=auth.user,
+    )
+    if len(response.content) > MAX_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Content exceeds {MAX_CONTENT_BYTES // (1024 * 1024)} MB."
+            ),
+        )
     return Response(
         content=response.content,
         media_type=response.headers.get("content-type", "application/octet-stream"),
