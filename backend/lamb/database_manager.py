@@ -33,6 +33,12 @@ logger = get_logger(__name__, component="DB")
 
 
 class LambDatabaseManager:
+    # Class-level flag: initialize_system_organization (which calls sync_system_org_with_env)
+    # must only run once per process lifetime. Many parts of the codebase instantiate
+    # LambDatabaseManager() per-request; running sync on every instantiation would
+    # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
+    _system_org_initialized = False
+
     def __init__(self):
         try:
             # Load environment variables
@@ -53,6 +59,15 @@ class LambDatabaseManager:
             
             # Always run migrations on initialization (handles existing databases)
             self.run_migrations()
+
+            # Initialize system organization AFTER migrations so that
+            # Creator_users columns (enabled, password_hash, role) exist.
+            # Guard with a class-level flag so this only runs once per process —
+            # sync_system_org_with_env overwrites provider config from .env and must
+            # not run on every per-request LambDatabaseManager() instantiation.
+            if not LambDatabaseManager._system_org_initialized:
+                self.initialize_system_organization()
+                LambDatabaseManager._system_org_initialized = True
 
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
@@ -546,8 +561,8 @@ class LambDatabaseManager:
                 logger.info(
                     f"Table '{self.table_prefix}config' created successfully")
 
-            # Initialize system organization and admin user
-            self.initialize_system_organization()
+            # Note: initialize_system_organization() is now called from __init__
+            # AFTER run_migrations() to ensure all columns exist.
         except sqlite3.Error as e:
             logger.error(f"Database error occurred: {e}")
 
@@ -651,6 +666,9 @@ class LambDatabaseManager:
                 )
                 logger.info(
                     f"Updated admin user role to 'admin' in system organization")
+
+        # Ensure LAMB-side system role matches OWI (bootstrap admin should be system admin).
+        self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin')
 
     def run_migrations(self):
         """Run database migrations for schema updates"""
@@ -2124,13 +2142,19 @@ class LambDatabaseManager:
                     WHERE organization_id = ?
                 """, (org_id,))
 
-                # 4. Creator_users (organization_roles, lti_identity_links,
-                #    kb_registry, prompt_templates and bulk_import_logs all
-                #    carry ON DELETE CASCADE / SET NULL and follow).
+                # 4. Creator_users — move them to the system org rather than
+                #    deleting them, so users survive organization deletion.
                 cursor.execute(f"""
-                    DELETE FROM {self.table_prefix}Creator_users
+                    SELECT id FROM {self.table_prefix}organizations
+                    WHERE is_system = 1 LIMIT 1
+                """)
+                sys_row = cursor.fetchone()
+                system_org_id = sys_row[0] if sys_row else None
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
                     WHERE organization_id = ?
-                """, (org_id,))
+                """, (system_org_id, int(time.time()), org_id))
 
                 # 5. collections
                 cursor.execute(f"""
@@ -2890,7 +2914,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, 
                            COALESCE(r.role, 'member') as role, 
                            COALESCE(r.created_at, u.created_at) as joined_at,
-                           u.user_type, u.auth_provider, u.lti_user_id
+                           u.user_type, u.auth_provider, u.lti_user_id, u.user_config
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = ?
                     WHERE u.organization_id = ?
@@ -2907,7 +2931,8 @@ class LambDatabaseManager:
                         'joined_at': row[4],
                         'user_type': row[5],
                         'auth_provider': row[6] or 'password',
-                        'lti_user_id': row[7]
+                        'lti_user_id': row[7],
+                        'user_config': row[8]
                     })
 
                 return users

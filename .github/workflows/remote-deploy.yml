@@ -31,6 +31,26 @@ jobs:
             set -e
             cd /opt/lamb-test
             git pull
+
+            # Ensure Docker services are running (backend may be down after
+            # server maintenance or manual intervention).
+            echo "Starting Docker services..."
+            docker compose up -d 2>&1
+
+            # Wait for the backend to become healthy (max 10 minutes).
+            echo "Waiting for backend to become healthy..."
+            for i in $(seq 1 60); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                http://localhost:7099/creator/login \
+                -X POST -d "email=nobody" -d "password=nobody" 2>/dev/null || echo "000")
+              if [ "$STATUS" = "200" ] || [ "$STATUS" = "400" ]; then
+                echo "Backend is responding (HTTP $STATUS)."
+                break
+              fi
+              echo "  attempt $i/60: backend returned HTTP $STATUS, waiting..."
+              sleep 10
+            done
+
             cd testing/playwright
 
             # Ensure nvm (and node/npm installed via nvm) is loaded for non-interactive SSH sessions
@@ -47,12 +67,13 @@ jobs:
             command -v node && echo "node found at: $(command -v node)" || echo "node not found"
 
             # Run tests but keep the exit code so we can always collect the HTML report
-            # temporarily exclude three known-flaky tests using grep-invert
+            # temporarily exclude known-flaky / environment-disabled tests using grep-invert.
             # patterns should match the test names (case‑sensitive).  Remove the
             # `--grep-invert` flag when the tests are fixed so they run again.
+            # - Library Manager: disabled in test env (LAMB_LIBRARY_SERVER_ENABLE=DISABLE)
             set +e
             FORCE_RELOGIN=true npx playwright test \
-              --grep-invert "Moodle LTI integration|Organization Without Admin & Role Promotion|URL ingestion and query verification"
+              --grep-invert "Moodle LTI integration|Organization Without Admin & Role Promotion|URL ingestion and query verification|Library Manager integration"
             TEST_EXIT_CODE=$?
             set -e
 

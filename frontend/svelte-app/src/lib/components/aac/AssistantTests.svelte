@@ -10,6 +10,7 @@
 		getEvaluations
 	} from '$lib/services/testService';
 	import { _ } from 'svelte-i18n';
+	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 
 	/** @type {{ assistantId: number, onLaunchSkill?: (skill: string) => void }} */
 	let { assistantId, onLaunchSkill = () => {} } = $props();
@@ -39,6 +40,11 @@
 
 	// Expanded run detail
 	let expandedRunId = $state(null);
+
+	// --- Delete Scenario Confirmation Modal ---
+	let showDeleteScenarioModal = $state(false);
+	/** @type {number | null} */
+	let scenarioToDelete = $state(null);
 
 	onMount(async () => {
 		await loadData();
@@ -79,9 +85,17 @@
 	}
 
 	async function handleDeleteScenario(scenarioId) {
-		if (!confirm('Delete this test scenario?')) return;
+		scenarioToDelete = scenarioId;
+		showDeleteScenarioModal = true;
+	}
+
+	async function confirmDeleteScenario() {
+		if (!scenarioToDelete) return;
+		showDeleteScenarioModal = false;
+		const id = scenarioToDelete;
+		scenarioToDelete = null;
 		try {
-			await deleteScenario(assistantId, scenarioId);
+			await deleteScenario(assistantId, id);
 			await loadData();
 		} catch (e) {
 			error = e.message;
@@ -438,3 +452,14 @@
 		{/if}
 	{/if}
 </div>
+
+<!-- Delete Scenario Confirmation Modal -->
+<ConfirmationModal
+    bind:isOpen={showDeleteScenarioModal}
+    title="Delete Test Scenario"
+    message="Are you sure you want to delete this test scenario? This action cannot be undone."
+    confirmText="Delete"
+    variant="danger"
+    onconfirm={confirmDeleteScenario}
+    oncancel={() => { showDeleteScenarioModal = false; scenarioToDelete = null; }}
+/>
