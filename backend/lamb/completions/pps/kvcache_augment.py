@@ -150,7 +150,36 @@ def prompt_processor(
                     "content": prompt
                 })
         else:
-            processed_messages.append(messages[-1])
+            effective_template = None
+            if rag_context:
+                context_text = (
+                    rag_context.get("context", "")
+                    if isinstance(rag_context, dict)
+                    else str(rag_context)
+                )
+                if context_text:
+                    effective_template = DEFAULT_RAG_PROMPT_TEMPLATE
+
+            if effective_template:
+                if isinstance(last_message, list):
+                    text_parts = []
+                    for item in last_message:
+                        if item.get('type') == 'text':
+                            text_parts.append(item.get('text', ''))
+                    user_input_text = ' '.join(text_parts)
+                else:
+                    user_input_text = str(last_message)
+
+                prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
+                prompt = prompt.replace("{context}", "\n\n" + context + "\n\n")
+
+                processed_messages.append({
+                    "role": messages[-1]['role'],
+                    "content": prompt
+                })
+            else:
+                processed_messages.append(messages[-1])
 
         return processed_messages
 

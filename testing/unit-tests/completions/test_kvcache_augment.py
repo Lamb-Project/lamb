@@ -135,3 +135,46 @@ class TestDefaultRagPromptTemplate:
             "Context:\n{context}\n\nQuestion: {user_input}"
         )
         assert DEFAULT_RAG_PROMPT_TEMPLATE == expected
+
+
+class TestD3Fallback:
+    def test_default_template_used_when_no_prompt_template_but_rag_context(self):
+        assistant = MockAssistant(
+            system_prompt="You are a tutor.",
+            prompt_template="",
+        )
+        request = _make_request([{"role": "user", "content": "What is 2+2?"}])
+        rag_ctx = {"context": "RAG chunks here.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, rag_context=rag_ctx)
+
+        last_msg = result[-1]
+        assert "RAG chunks here." in last_msg["content"]
+        assert "Use the following context" in last_msg["content"]
+
+    def test_no_fallback_when_no_rag_context(self):
+        assistant = MockAssistant(
+            system_prompt="You are a tutor.",
+            prompt_template="",
+        )
+        request = _make_request([{"role": "user", "content": "Hi"}])
+
+        result = prompt_processor(request, assistant=assistant)
+
+        last_msg = result[-1]
+        assert last_msg["content"] == "Hi"
+        assert "Use the following context" not in last_msg["content"]
+
+    def test_explicit_template_wins_over_default(self):
+        assistant = MockAssistant(
+            system_prompt="Sys.",
+            prompt_template="Custom: {context}\nQ: {user_input}",
+        )
+        request = _make_request([{"role": "user", "content": "Q?"}])
+        rag_ctx = {"context": "Some chunk.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, rag_context=rag_ctx)
+
+        last_msg = result[-1]
+        assert "Custom:" in last_msg["content"]
+        assert "Some chunk." in last_msg["content"]
