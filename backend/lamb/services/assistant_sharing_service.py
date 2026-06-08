@@ -329,12 +329,12 @@ class AssistantSharingService:
 
         # Get all users who should have access (owner + shared users from LAMB_assistant_shares)
         shares = self.db_manager.get_assistant_shares(assistant_id)
-        user_emails = [assistant.owner]  # Owner always has access
+        desired_emails = {assistant.owner}  # Owner always has access
 
         for share in shares:
             user = self.db_manager.get_creator_user_by_id(share['shared_with_user_id'])
             if user:
-                user_emails.append(user['user_email'])
+                desired_emails.add(user['user_email'])
 
         # Use the ORIGINAL assistant group (assistant_X, not assistant_X_shared)
         group_name = f"assistant_{assistant_id}"
@@ -349,8 +349,28 @@ class AssistantSharingService:
         )
         group_id = result.get('id')
 
-        # Add all users to the assistant_X group
-        self._add_users_to_owi_group(group_id, user_emails)
+        if not group_id:
+            logger.error(f"Failed to create/get OWI group for assistant {assistant_id}")
+            return
+
+        # Get current members of the OWI group to calculate removals
+        current_emails = set(self.group_manager.get_group_users_by_emails(group_id))
+
+        logger.info(f"OWI sync for assistant {assistant_id}: desired={desired_emails}, current={current_emails}")
+
+        # Calculate users to add and remove
+        to_add = desired_emails - current_emails
+        to_remove = current_emails - desired_emails
+
+        logger.info(f"OWI sync for assistant {assistant_id}: to_add={to_add}, to_remove={to_remove}")
+
+        # Add new users to the assistant_X group
+        if to_add:
+            self._add_users_to_owi_group(group_id, list(to_add))
+
+        # Remove users who no longer have access
+        if to_remove:
+            self._remove_users_from_owi_group(group_id, list(to_remove))
 
     def _add_users_to_owi_group(self, group_id: str, user_emails: List[str]):
         """Add users to OWI group by email"""
@@ -359,6 +379,8 @@ class AssistantSharingService:
                 result = self.group_manager.add_user_to_group_by_email(group_id, email)
                 if result.get('status') != 'success':
                     logger.warning(f"Failed to add user {email} to group {group_id}: {result.get('error')}")
+                else:
+                    logger.warning(f"Added user {email} to OWI group {group_id}")
             except Exception as e:
                 logger.error(f"Error adding user {email} to group {group_id}: {e}")
 
@@ -369,6 +391,8 @@ class AssistantSharingService:
                 result = self.group_manager.remove_user_from_group_by_email(group_id, email)
                 if result.get('status') != 'success':
                     logger.warning(f"Failed to remove user {email} from group {group_id}: {result.get('error')}")
+                else:
+                    logger.warning(f"Removed user {email} from OWI group {group_id}")
             except Exception as e:
                 logger.error(f"Error removing user {email} from group {group_id}: {e}")
 

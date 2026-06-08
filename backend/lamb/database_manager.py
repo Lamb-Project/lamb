@@ -7819,10 +7819,15 @@ class LambDatabaseManager:
                         s.shared_at,
                         s.shared_by_user_id,
                         u.user_email as shared_by_email,
-                        u.user_name as shared_by_name
+                        u.user_name as shared_by_name,
+                        CASE 
+                            WHEN p.oauth_consumer_name IS NOT NULL AND p.oauth_consumer_name != 'null' THEN 1 
+                            ELSE 0 
+                        END as published
                     FROM {self.table_prefix}assistant_shares s
                     JOIN {self.table_prefix}assistants a ON s.assistant_id = a.id
                     JOIN {self.table_prefix}Creator_users u ON s.shared_by_user_id = u.id
+                    LEFT JOIN {self.table_prefix}assistant_publish p ON a.id = p.assistant_id
                     WHERE s.shared_with_user_id = ?
                     ORDER BY s.shared_at DESC
                 """, (user_id,))
@@ -7846,6 +7851,7 @@ class LambDatabaseManager:
                         'shared_by_user_id': row[13],
                         'shared_by_email': row[14],
                         'shared_by_name': row[15],
+                        'published': bool(row[16]),
                         'is_shared': True  # Flag to indicate this is a shared assistant
                     })
 

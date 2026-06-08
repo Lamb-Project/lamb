@@ -133,15 +133,24 @@ class OwiGroupManager:
             query = 'SELECT * FROM "group" WHERE user_id = ?'
             owned_groups = self.db.execute_query(query, (user_id,))
 
-            # Then get groups where user is a member
-            query = 'SELECT * FROM "group" WHERE json_array_contains(user_ids, ?)'
-            member_groups = self.db.execute_query(query, (user_id,))
+            # Then get all groups and filter in Python (avoids custom json_array_contains function)
+            query = 'SELECT * FROM "group" WHERE user_id != ?'
+            all_other_groups = self.db.execute_query(query, (user_id,))
 
             groups = []
             if owned_groups:
                 groups.extend([self._row_to_dict(row) for row in owned_groups])
-            if member_groups:
-                groups.extend([self._row_to_dict(row) for row in member_groups])
+            if all_other_groups:
+                for row in all_other_groups:
+                    group = self._row_to_dict(row)
+                    user_ids = group.get('user_ids', [])
+                    if isinstance(user_ids, str):
+                        try:
+                            user_ids = json.loads(user_ids)
+                        except (json.JSONDecodeError, TypeError):
+                            user_ids = []
+                    if user_id in user_ids:
+                        groups.append(group)
 
             return groups
 
@@ -457,7 +466,7 @@ class OwiGroupManager:
         """
         try:
             # First verify the group exists
-            group = self.db.get_group_by_id(group_id)
+            group = self.get_group_by_id(group_id)
             if not group:
                 return None
                
@@ -468,7 +477,7 @@ class OwiGroupManager:
             return [
                 {
                     "id": user["id"],
-                    "name": user["display_name"],
+                    "name": user.get("name", user.get("display_name", "")),
                     "email": user["email"]
                 }
                 for user in users

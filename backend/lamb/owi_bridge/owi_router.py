@@ -626,7 +626,7 @@ async def get_group_users(group_id: str, _=Depends(verify_api_key)):
             if user:
                 users.append({
                     "id": user["id"],
-                    "name": user.get("display_name", "N/A"),
+                    "name": user.get("name", user.get("display_name", "N/A")),
                     "email": user["email"]
                 })
         

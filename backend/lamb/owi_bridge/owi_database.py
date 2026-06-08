@@ -227,14 +227,31 @@ class OwiDatabaseManager:
             try:
                 with connection:
                     cursor = connection.cursor()
-                    cursor.execute("""
-                        SELECT u.* 
-                        FROM user u
-                        JOIN "group" g ON g.id = ? AND json_array_contains(g.user_ids, u.id)
-                    """, (group_id,))
-                    
-                    columns = [col[0] for col in cursor.description]
-                    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+                    # Get the group's user_ids JSON array first
+                    cursor.execute('SELECT user_ids FROM "group" WHERE id = ?', (group_id,))
+                    row = cursor.fetchone()
+                    if not row:
+                        return []
+
+                    user_ids_raw = row[0]
+                    try:
+                        user_ids = json.loads(user_ids_raw) if isinstance(user_ids_raw, str) else (user_ids_raw if user_ids_raw else [])
+                    except (json.JSONDecodeError, TypeError):
+                        return []
+
+                    if not user_ids:
+                        return []
+
+                    # Look up each user by ID individually (avoids custom json_array_contains function)
+                    users = []
+                    for uid in user_ids:
+                        cursor.execute("SELECT * FROM user WHERE id = ?", (uid,))
+                        user_row = cursor.fetchone()
+                        if user_row:
+                            columns = [col[0] for col in cursor.description]
+                            users.append(dict(zip(columns, user_row)))
+
+                    return users
             except sqlite3.Error as e:
                 logging.error(f"Error getting users in group: {e}")
                 return []

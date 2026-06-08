@@ -1400,7 +1400,7 @@
                                                             {#each selectedAssistantData.RAG_collections.split(',') as kbId}
                                                                 {@const kb = accessibleKnowledgeBases.find(k => k.id === kbId)}
                                                                 <span class="inline-block bg-gray-200 rounded px-2 py-0.5 text-xs font-medium text-gray-700">
-                                                                    {kb ? kb.name : `${kbId} (Not Found)`}
+                                                                    {kb ? kb.name : `${kbId} (${currentView === 'shared' ? 'No access' : 'Not Found'})`}
                                                                 </span>
                                                             {/each}
                                                         </div>
