@@ -53,7 +53,8 @@ class TestDocumentContextInSystemPrompt:
 
         system_msg = result[0]
         assert system_msg["role"] == "system"
-        assert system_msg["content"] == "Document content."
+        assert "## REFERENCE DOCUMENT" in system_msg["content"]
+        assert "Document content." in system_msg["content"]
 
     def test_no_document_context_leaves_system_prompt_unchanged(self):
         assistant = MockAssistant(
@@ -178,3 +179,67 @@ class TestD3Fallback:
         last_msg = result[-1]
         assert "Custom:" in last_msg["content"]
         assert "Some chunk." in last_msg["content"]
+
+
+class TestLabeledDocWrapper:
+    def test_labeled_doc_wrapper_in_system_prompt(self):
+        assistant = MockAssistant(
+            system_prompt="You are a tutor.",
+            prompt_template="Answer: {user_input}",
+        )
+        request = _make_request([{"role": "user", "content": "Hello"}])
+        doc_ctx = {"context": "# Reference Document\nSome content.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, document_context=doc_ctx)
+
+        system_msg = result[0]
+        assert "## REFERENCE DOCUMENT" in system_msg["content"]
+        assert "This document has been selected by the assistant creator" in system_msg["content"]
+        assert "# Reference Document\nSome content." in system_msg["content"]
+        assert "IMPORTANT: The reference document above is available" in system_msg["content"]
+
+    def test_recency_bias_reminder_after_doc_content(self):
+        assistant = MockAssistant(
+            system_prompt="You are a tutor.",
+            prompt_template="Answer: {user_input}",
+        )
+        request = _make_request([{"role": "user", "content": "Hello"}])
+        doc_ctx = {"context": "Doc content.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, document_context=doc_ctx)
+
+        system_msg = result[0]
+        doc_index = system_msg["content"].index("Doc content.")
+        reminder_index = system_msg["content"].index("IMPORTANT: The reference document above")
+        assert doc_index < reminder_index
+
+    def test_labeled_doc_prepended_before_system_prompt(self):
+        assistant = MockAssistant(
+            system_prompt="You are a tutor.",
+            prompt_template="Answer: {user_input}",
+        )
+        request = _make_request([{"role": "user", "content": "Hello"}])
+        doc_ctx = {"context": "Doc content.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, document_context=doc_ctx)
+
+        system_msg = result[0]
+        doc_index = system_msg["content"].index("## REFERENCE DOCUMENT")
+        sys_index = system_msg["content"].index("You are a tutor.")
+        assert doc_index < sys_index
+
+    def test_labeled_doc_becomes_system_prompt_when_none_exists(self):
+        assistant = MockAssistant(
+            system_prompt="",
+            prompt_template="Answer: {user_input}",
+        )
+        request = _make_request([{"role": "user", "content": "Hello"}])
+        doc_ctx = {"context": "Document content.", "sources": []}
+
+        result = prompt_processor(request, assistant=assistant, document_context=doc_ctx)
+
+        system_msg = result[0]
+        assert system_msg["role"] == "system"
+        assert "## REFERENCE DOCUMENT" in system_msg["content"]
+        assert "Document content." in system_msg["content"]
+        assert system_msg["content"].rstrip().endswith("use it.")

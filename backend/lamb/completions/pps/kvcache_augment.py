@@ -66,7 +66,18 @@ def prompt_processor(
         if document_context and isinstance(document_context, dict):
             doc_text = document_context.get("context", "")
             if doc_text:
-                system_content = (system_content + "\n\n" + doc_text) if system_content else doc_text
+                labeled_doc = (
+                    "\n\n## REFERENCE DOCUMENT\n\n"
+                    "This document has been selected by the assistant creator as a reference "
+                    "that will likely be useful for many queries, as it is generally a helpful "
+                    "document. Use it as context when answering questions.\n\n"
+                    f"{doc_text}"
+                    "\n\nIMPORTANT: The reference document above is available for this entire "
+                    "conversation. Always consider it alongside any retrieved context when "
+                    "answering questions. If the user's question relates to the document's "
+                    "content, use it."
+                )
+                system_content = (labeled_doc + "\n\n" + system_content) if system_content else labeled_doc
         if system_content:
             processed_messages.append({
                 "role": "system",
