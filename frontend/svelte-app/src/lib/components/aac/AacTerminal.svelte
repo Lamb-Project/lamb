@@ -95,10 +95,13 @@
 			try {
 				const session = await getSession(sessionId);
 				if (!isMounted) return;
-				const conv = (session.conversation || []).filter(
-					m => (m.role === 'user' && !(m.content || '').startsWith('[System:'))
-					  || (m.role === 'assistant' && m.content && !m.tool_calls)
-				).map(m => ({ role: m.role, content: m.content || '' }));
+				const conv = (session.conversation || [])
+					.filter(
+						(m) =>
+							(m.role === 'user' && !(m.content || '').startsWith('[System:')) ||
+							(m.role === 'assistant' && m.content && !m.tool_calls)
+					)
+					.map((m) => ({ role: m.role, content: m.content || '' }));
 				if (conv.length > 0) {
 					messages = conv;
 					resumeNotice = true;
@@ -132,20 +135,30 @@
 				'[System: Skill startup]',
 				(chunk) => {
 					statusText = '';
-					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
+					messages[streamIdx] = {
+						...messages[streamIdx],
+						content: messages[streamIdx].content + chunk
+					};
 					messages = messages;
 					scrollToBottom();
 				},
-				(stats) => { lastStats = stats; statusText = ''; },
-				(err) => { messages[streamIdx] = { role: 'system', content: `Error: ${err}` }; messages = messages; },
+				(stats) => {
+					lastStats = stats;
+					statusText = '';
+				},
+				(err) => {
+					messages[streamIdx] = { role: 'system', content: `Error: ${err}` };
+					messages = messages;
+				},
 				(status) => {
 					if (status.status === 'thinking') statusText = '🧠 Thinking...';
 					else if (status.status === 'tool') statusText = `⚡ ${status.command || 'Running'}...`;
-					else if (status.status === 'tool_done') statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
+					else if (status.status === 'tool_done')
+						statusText = `${status.success ? '✓' : '✗'} ${status.command || 'Done'}`;
 					else if (status.status === 'responding') statusText = '';
 					scrollToBottom();
 				},
-				streamAbort.signal,
+				streamAbort.signal
 			);
 		} catch (e) {
 			if (isMounted && e?.name !== 'AbortError') {
@@ -197,7 +210,10 @@
 				messageToSend,
 				(chunk) => {
 					statusText = '';
-					messages[streamIdx] = { ...messages[streamIdx], content: messages[streamIdx].content + chunk };
+					messages[streamIdx] = {
+						...messages[streamIdx],
+						content: messages[streamIdx].content + chunk
+					};
 					messages = messages;
 					scrollToBottom();
 				},
@@ -222,7 +238,7 @@
 					}
 					scrollToBottom();
 				},
-				streamAbort.signal,
+				streamAbort.signal
 			);
 		} catch (e) {
 			if (isMounted && e?.name !== 'AbortError') {
@@ -278,152 +294,203 @@
 	}
 </script>
 
-<div class="flex flex-col lg:flex-row h-full gap-0">
-<!-- Terminal panel -->
-<div
-	class="flex flex-col font-mono text-sm rounded-lg border overflow-hidden transition-all duration-200
-	       {canvasData ? 'lg:w-[55%] h-[60%] lg:h-full' : 'w-full h-full'}"
-	class:bg-gray-900={darkMode}
-	class:text-green-400={darkMode}
-	class:border-gray-700={darkMode}
-	class:bg-gray-50={!darkMode}
-	class:text-gray-800={!darkMode}
-	class:border-gray-300={!darkMode}
->
-	<!-- Header -->
+<div class="flex h-full flex-col gap-0 lg:flex-row">
+	<!-- Terminal panel -->
 	<div
-		class="flex items-center justify-between px-3 py-1.5 border-b text-xs"
+		class="flex flex-col overflow-hidden rounded-lg border font-mono text-sm transition-all duration-200
+	       {canvasData ? 'h-[60%] lg:h-full lg:w-[55%]' : 'h-full w-full'}"
+		class:bg-gray-900={darkMode}
+		class:text-green-400={darkMode}
 		class:border-gray-700={darkMode}
-		class:bg-gray-800={darkMode}
+		class:bg-gray-50={!darkMode}
+		class:text-gray-800={!darkMode}
 		class:border-gray-300={!darkMode}
-		class:bg-gray-100={!darkMode}
 	>
-		<span class="opacity-60">AAC Agent — Session {sessionId.slice(0, 8)}...</span>
-		<div class="flex gap-2 items-center">
-			{#if lastStats}
+		<!-- Header -->
+		<div
+			class="flex items-center justify-between border-b px-3 py-1.5 text-xs"
+			class:border-gray-700={darkMode}
+			class:bg-gray-800={darkMode}
+			class:border-gray-300={!darkMode}
+			class:bg-gray-100={!darkMode}
+		>
+			<span class="opacity-60">AAC Agent — Session {sessionId.slice(0, 8)}...</span>
+			<div class="flex items-center gap-2">
+				{#if lastStats}
+					<button
+						onclick={() => (showStats = !showStats)}
+						class="cursor-pointer opacity-40 transition-opacity hover:opacity-80"
+						title="Toggle tool details"
+					>
+						{lastStats.tool_calls || 0} tools, {Math.round(lastStats.total_tool_time_ms || 0)}ms
+						{showStats ? '▴' : '▾'}
+					</button>
+				{/if}
 				<button
-					onclick={() => showStats = !showStats}
-					class="opacity-40 hover:opacity-80 transition-opacity cursor-pointer"
-					title="Toggle tool details"
+					onclick={toggleDarkMode}
+					class="opacity-60 transition-opacity hover:opacity-100"
+					title="Toggle dark/light mode"
 				>
-					{lastStats.tool_calls || 0} tools, {Math.round(lastStats.total_tool_time_ms || 0)}ms
-					{showStats ? '▴' : '▾'}
+					{darkMode ? '☀️' : '🌙'}
 				</button>
-			{/if}
-			<button
-				onclick={toggleDarkMode}
-				class="opacity-60 hover:opacity-100 transition-opacity"
-				title="Toggle dark/light mode"
+			</div>
+		</div>
+
+		<!-- Stats Panel (collapsible) -->
+		{#if showStats && lastStats}
+			<div
+				class="flex flex-wrap gap-x-6 gap-y-1 border-b px-4 py-2 text-xs"
+				class:border-gray-700={darkMode}
+				class:bg-gray-800={darkMode}
+				class:text-gray-400={darkMode}
+				class:border-gray-200={!darkMode}
+				class:bg-gray-50={!darkMode}
+				class:text-gray-500={!darkMode}
 			>
-				{darkMode ? '☀️' : '🌙'}
+				<span
+					>Model: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}
+						>{lastStats.model || '?'}</strong
+					></span
+				>
+				<span
+					>Tool calls: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}
+						>{lastStats.tool_calls || 0}</strong
+					></span
+				>
+				<span
+					>Errors: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}
+						>{lastStats.tool_errors || 0}</strong
+					></span
+				>
+				<span
+					>Tool time: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}
+						>{Math.round(lastStats.total_tool_time_ms || 0)}ms</strong
+					></span
+				>
+				<span
+					>Turns: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}
+						>{lastStats.turns || 0}</strong
+					></span
+				>
+			</div>
+		{/if}
+
+		<!-- Messages -->
+		<div bind:this={scrollContainer} class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+			{#each messages as msg}
+				{#if msg.role === 'user'}
+					<div class="my-3">
+						<hr
+							class="border-t-2"
+							class:border-blue-400={darkMode}
+							class:border-blue-300={!darkMode}
+						/>
+						<div
+							class="flex gap-2 rounded px-2 py-2.5"
+							class:bg-gray-800={darkMode}
+							class:bg-blue-50={!darkMode}
+						>
+							<span
+								class="shrink-0 font-bold"
+								class:text-cyan-400={darkMode}
+								class:text-blue-600={!darkMode}>$</span
+							>
+							<span
+								class="font-semibold"
+								class:text-gray-100={darkMode}
+								class:text-gray-800={!darkMode}>{msg.content}</span
+							>
+						</div>
+						<hr
+							class="border-t-2"
+							class:border-blue-400={darkMode}
+							class:border-blue-300={!darkMode}
+						/>
+					</div>
+				{:else if msg.role === 'assistant'}
+					<div
+						class="aac-md pl-2 font-sans text-sm leading-relaxed"
+						class:text-green-300={darkMode}
+						class:text-gray-700={!darkMode}
+					>
+						{@html renderAssistantMessage(msg.content)}
+					</div>
+				{:else if msg.role === 'system'}
+					<div class="pl-2 text-xs italic opacity-50">
+						{msg.content}
+					</div>
+				{/if}
+			{/each}
+
+			{#if loading && statusText}
+				<div
+					class="pl-2 text-xs opacity-60"
+					class:text-yellow-400={darkMode}
+					class:text-gray-500={!darkMode}
+				>
+					{statusText}
+				</div>
+			{:else if loading}
+				<div class="animate-pulse pl-2 opacity-60">▌</div>
+			{/if}
+		</div>
+
+		<!-- Input -->
+		<div
+			class="flex items-center gap-2 border-t px-3 py-2"
+			class:border-gray-700={darkMode}
+			class:bg-gray-800={darkMode}
+			class:border-gray-300={!darkMode}
+			class:bg-gray-100={!darkMode}
+		>
+			<span class="opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}
+				>$</span
+			>
+			<input
+				bind:this={inputEl}
+				bind:value={inputText}
+				onkeydown={handleKeydown}
+				disabled={loading}
+				placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
+				class="flex-1 bg-transparent outline-none placeholder:opacity-40"
+			/>
+			<button
+				onclick={handleSend}
+				disabled={loading || !inputText.trim()}
+				class="rounded px-2 py-0.5 text-xs transition-opacity"
+				class:opacity-60={loading || !inputText.trim()}
+				class:hover:opacity-100={!loading && inputText.trim()}
+				class:bg-green-800={darkMode}
+				class:bg-blue-100={!darkMode}
+			>
+				Send
 			</button>
 		</div>
 	</div>
-
-	<!-- Stats Panel (collapsible) -->
-	{#if showStats && lastStats}
+	<!-- Canvas panel (side panel for structured content) -->
+	{#if canvasData}
 		<div
-			class="px-4 py-2 text-xs border-b flex flex-wrap gap-x-6 gap-y-1"
-			class:border-gray-700={darkMode}
-			class:bg-gray-800={darkMode}
-			class:text-gray-400={darkMode}
-			class:border-gray-200={!darkMode}
-			class:bg-gray-50={!darkMode}
-			class:text-gray-500={!darkMode}
+			class="mt-2 flex h-[40%] w-full flex-col overflow-hidden rounded-lg border lg:mt-0 lg:ml-2 lg:h-full lg:w-[45%]
+	            {darkMode
+				? 'border-gray-700 bg-gray-800 text-gray-200'
+				: 'border-gray-300 bg-white text-gray-800'}"
 		>
-			<span>Model: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.model || '?'}</strong></span>
-			<span>Tool calls: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.tool_calls || 0}</strong></span>
-			<span>Errors: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.tool_errors || 0}</strong></span>
-			<span>Tool time: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{Math.round(lastStats.total_tool_time_ms || 0)}ms</strong></span>
-			<span>Turns: <strong class:text-gray-200={darkMode} class:text-gray-700={!darkMode}>{lastStats.turns || 0}</strong></span>
+			<div
+				class="flex items-center justify-between border-b px-4 py-2
+		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}"
+			>
+				<h3 class="truncate text-sm font-semibold">{canvasData.title || 'Canvas'}</h3>
+				<button
+					onclick={() => (canvasData = null)}
+					class="text-xs opacity-50 transition-opacity hover:opacity-100"
+					title="Close canvas">✕</button
+				>
+			</div>
+			<div class="aac-md flex-1 overflow-y-auto px-4 py-3 font-sans text-sm leading-relaxed">
+				{@html renderMarkdown(canvasData.content)}
+			</div>
 		</div>
 	{/if}
-
-	<!-- Messages -->
-	<div
-		bind:this={scrollContainer}
-		class="flex-1 overflow-y-auto px-4 py-3 space-y-3"
-	>
-		{#each messages as msg}
-			{#if msg.role === 'user'}
-				<div class="my-3">
-					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
-					<div class="flex gap-2 py-2.5 px-2 rounded" class:bg-gray-800={darkMode} class:bg-blue-50={!darkMode}>
-						<span class="shrink-0 font-bold" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-						<span class="font-semibold" class:text-gray-100={darkMode} class:text-gray-800={!darkMode}>{msg.content}</span>
-					</div>
-					<hr class="border-t-2" class:border-blue-400={darkMode} class:border-blue-300={!darkMode}>
-				</div>
-			{:else if msg.role === 'assistant'}
-				<div class="aac-md pl-2 leading-relaxed font-sans text-sm" class:text-green-300={darkMode} class:text-gray-700={!darkMode}>
-					{@html renderAssistantMessage(msg.content)}
-				</div>
-			{:else if msg.role === 'system'}
-				<div class="pl-2 opacity-50 italic text-xs">
-					{msg.content}
-				</div>
-			{/if}
-		{/each}
-
-		{#if loading && statusText}
-			<div class="pl-2 opacity-60 text-xs" class:text-yellow-400={darkMode} class:text-gray-500={!darkMode}>
-				{statusText}
-			</div>
-		{:else if loading}
-			<div class="pl-2 opacity-60 animate-pulse">
-				▌
-			</div>
-		{/if}
-	</div>
-
-	<!-- Input -->
-	<div
-		class="flex items-center gap-2 px-3 py-2 border-t"
-		class:border-gray-700={darkMode}
-		class:bg-gray-800={darkMode}
-		class:border-gray-300={!darkMode}
-		class:bg-gray-100={!darkMode}
-	>
-		<span class="opacity-60" class:text-cyan-400={darkMode} class:text-blue-600={!darkMode}>$</span>
-		<input
-			bind:this={inputEl}
-			bind:value={inputText}
-			onkeydown={handleKeydown}
-			disabled={loading}
-			placeholder={loading ? 'Waiting for agent...' : 'Type a message...'}
-			class="flex-1 bg-transparent outline-none placeholder:opacity-40"
-		/>
-		<button
-			onclick={handleSend}
-			disabled={loading || !inputText.trim()}
-			class="px-2 py-0.5 rounded text-xs transition-opacity"
-			class:opacity-60={loading || !inputText.trim()}
-			class:hover:opacity-100={!loading && inputText.trim()}
-			class:bg-green-800={darkMode}
-			class:bg-blue-100={!darkMode}
-		>
-			Send
-		</button>
-	</div>
-</div>
-<!-- Canvas panel (side panel for structured content) -->
-{#if canvasData}
-	<div class="lg:w-[45%] w-full h-[40%] lg:h-full flex flex-col border rounded-lg overflow-hidden lg:ml-2 mt-2 lg:mt-0
-	            {darkMode ? 'bg-gray-800 border-gray-700 text-gray-200' : 'bg-white border-gray-300 text-gray-800'}">
-		<div class="flex items-center justify-between px-4 py-2 border-b
-		            {darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}">
-			<h3 class="text-sm font-semibold truncate">{canvasData.title || 'Canvas'}</h3>
-			<button
-				onclick={() => canvasData = null}
-				class="text-xs opacity-50 hover:opacity-100 transition-opacity"
-				title="Close canvas"
-			>✕</button>
-		</div>
-		<div class="flex-1 overflow-y-auto px-4 py-3 aac-md font-sans text-sm leading-relaxed">
-			{@html renderMarkdown(canvasData.content)}
-		</div>
-	</div>
-{/if}
 </div>
 
 <style>
@@ -467,9 +534,16 @@
 		font-weight: 600;
 		margin: 0.5rem 0 0.25rem;
 	}
-	:global(.aac-md h1) { font-size: 1.1rem; }
-	:global(.aac-md h2) { font-size: 1rem; }
-	:global(.aac-md h3) { font-size: 0.9rem; opacity: 0.85; }
+	:global(.aac-md h1) {
+		font-size: 1.1rem;
+	}
+	:global(.aac-md h2) {
+		font-size: 1rem;
+	}
+	:global(.aac-md h3) {
+		font-size: 0.9rem;
+		opacity: 0.85;
+	}
 	:global(.aac-md code) {
 		font-family: ui-monospace, monospace;
 		font-size: 0.8rem;

@@ -5,9 +5,10 @@
  */
 
 import { getUserKnowledgeBases, getSharedKnowledgeBases } from '$lib/services/knowledgeBaseService';
+import { getKnowledgeStores } from '$lib/services/knowledgeStoreService';
 import { fetchAccessibleRubrics } from '$lib/services/rubricService';
 import { apiJson } from '$lib/services/apiClient';
-import { isKbBasedRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isKsBasedRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 import { getAssistantMetadataObject } from '$lib/utils/assistantData';
 import { getLibraries, getItems } from '$lib/services/libraryService';
 
@@ -40,6 +41,42 @@ export async function fetchKnowledgeBases(form) {
 	} finally {
 		form.loadingKnowledgeBases = false;
 		form.kbFetchAttempted = true;
+	}
+}
+
+/**
+ * Fetches accessible knowledge stores, separating owned vs shared
+ * by comparing owner_email against the logged-in user's email.
+ * @param {import('./assistantFormState.svelte.js').createAssistantFormState} form
+ */
+export async function fetchKnowledgeStores(form) {
+	if (form.loadingKnowledgeStores || form.ksFetchAttempted) return;
+	if (!isKsBasedRag(form.selectedRagProcessor)) return;
+
+	form.loadingKnowledgeStores = true;
+	form.knowledgeStoreError = '';
+
+	try {
+		const stores = await getKnowledgeStores();
+		const currentEmail = localStorage.getItem('userEmail') || '';
+
+		const owned = stores.filter((ks) => ks.owner_email === currentEmail);
+		const shared = stores.filter((ks) => ks.owner_email !== currentEmail);
+
+		owned.sort((a, b) => a.name.localeCompare(b.name));
+		shared.sort((a, b) => a.name.localeCompare(b.name));
+
+		form.ownedKnowledgeStores = owned;
+		form.sharedKnowledgeStores = shared;
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith('Session expired')) return;
+		console.error('Error fetching knowledge stores:', err);
+		form.knowledgeStoreError = err instanceof Error ? err.message : 'Failed to load knowledge stores';
+		form.ownedKnowledgeStores = [];
+		form.sharedKnowledgeStores = [];
+	} finally {
+		form.loadingKnowledgeStores = false;
+		form.ksFetchAttempted = true;
 	}
 }
 

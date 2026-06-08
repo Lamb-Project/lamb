@@ -14,13 +14,24 @@ from pathlib import Path
 from typing import Any
 
 from config import CONTENT_DIR, PERMALINK_PREFIX
-from database.models import ContentImage, ContentItem, ImportJob
+from database.models import ContentFolder, ContentImage, ContentItem, ImportJob
 from plugins.base import PluginRegistry
 from sqlalchemy.orm import Session
 from tasks.worker import store_api_keys
 
 from services import content_service
 from services.library_service import ensure_organization
+
+
+def _validate_folder_id(db: Session, library_id: str, folder_id: str | None) -> None:
+    """Ensure ``folder_id`` exists and belongs to ``library_id``."""
+    if folder_id is None:
+        return
+    folder = db.query(ContentFolder).filter(ContentFolder.id == folder_id).first()
+    if folder is None:
+        raise ValueError("Destination folder not found.")
+    if folder.library_id != library_id:
+        raise ValueError("Destination folder belongs to a different library.")
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +48,7 @@ def queue_file_import(
     file_size: int | None = None,
     plugin_params: dict[str, Any] | None = None,
     api_keys: dict[str, str] | None = None,
+    folder_id: str | None = None,
 ) -> tuple[str, str]:
     """Create a content item and queue an import job for a file upload.
 
@@ -56,6 +68,8 @@ def queue_file_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
+    _validate_folder_id(db, library_id, folder_id)
+
     item_id = str(uuid.uuid4())
     job_id = str(uuid.uuid4())
 
@@ -67,6 +81,7 @@ def queue_file_import(
         id=item_id,
         library_id=library_id,
         organization_id=organization_id,
+        folder_id=folder_id,
         title=title,
         source_type="file",
         original_filename=original_filename,
@@ -112,6 +127,7 @@ def queue_url_import(
     url: str,
     plugin_params: dict[str, Any] | None = None,
     api_keys: dict[str, str] | None = None,
+    folder_id: str | None = None,
 ) -> tuple[str, str]:
     """Create a content item and queue an import job for a URL.
 
@@ -128,6 +144,8 @@ def queue_url_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
+    _validate_folder_id(db, library_id, folder_id)
+
     item_id = str(uuid.uuid4())
     job_id = str(uuid.uuid4())
 
@@ -139,6 +157,7 @@ def queue_url_import(
         id=item_id,
         library_id=library_id,
         organization_id=organization_id,
+        folder_id=folder_id,
         title=title,
         source_type="url",
         source_url=url,
@@ -179,6 +198,7 @@ def queue_youtube_import(
     video_url: str,
     plugin_params: dict[str, Any] | None = None,
     api_keys: dict[str, str] | None = None,
+    folder_id: str | None = None,
 ) -> tuple[str, str]:
     """Create a content item and queue an import job for a YouTube video.
 
@@ -195,6 +215,8 @@ def queue_youtube_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
+    _validate_folder_id(db, library_id, folder_id)
+
     item_id = str(uuid.uuid4())
     job_id = str(uuid.uuid4())
 
@@ -206,6 +228,7 @@ def queue_youtube_import(
         id=item_id,
         library_id=library_id,
         organization_id=organization_id,
+        folder_id=folder_id,
         title=title,
         source_type="youtube",
         source_url=video_url,

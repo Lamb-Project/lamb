@@ -2,7 +2,10 @@
 
 Uses the ``markitdown`` library to convert PDF, DOCX, PPTX, XLSX, and
 other formats into Markdown. No image extraction or LLM features — for
-those, use ``markitdown_plus_import``.
+those, use ``markitdown_plus_import``. Page boundaries that MarkItDown
+emits in its output (form-feeds for PDFs, etc.) are preserved into
+``content/pages/`` so that downstream consumers like the KB Server's
+``by_page`` chunking strategy can use them.
 """
 
 import logging
@@ -15,6 +18,8 @@ from plugins.base import (
     PluginParameter,
     PluginRegistry,
 )
+from plugins.content_handlers.capability import Capability
+from plugins.markitdown_plus_import import _PAGE_AWARE_TYPES, _split_into_pages
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +29,29 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
     """Convert document files to Markdown via MarkItDown."""
 
     name = "markitdown_import"
-    description = (
-        "Convert documents (PDF, DOCX, PPTX, XLSX, etc.) to Markdown "
-        "using MarkItDown."
-    )
+    description = "Convert documents (PDF, DOCX, PPTX, XLSX, etc.) to Markdown using MarkItDown."
     supported_source_types = {"file"}
-    supported_file_types = {
-        "pdf", "pptx", "docx", "xlsx", "xls",
-        "mp3", "wav", "html", "csv", "json",
-        "xml", "zip", "epub", "txt", "md",
-    }
     required_keys: list[str] = []
+    # Emits full markdown plus per-page splits for paginated formats.
+    produces_capabilities = [Capability.TEXT, Capability.PAGES]
+    file_extensions = [
+        "pdf",
+        "pptx",
+        "docx",
+        "xlsx",
+        "xls",
+        "mp3",
+        "wav",
+        "html",
+        "csv",
+        "json",
+        "xml",
+        "zip",
+        "epub",
+        "txt",
+        "md",
+    ]
+    human_label = "Document import (Markitdown converter)"
 
     def import_content(
         self,
@@ -70,9 +87,12 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
             result = md.convert(str(path))
             content = result.text_content
         except Exception as exc:
-            raise RuntimeError(
-                f"MarkItDown conversion failed for {path.name}: {exc}"
-            ) from exc
+            # Translate to a short, user-facing message; full chain in the
+            # worker log.
+            from plugins._markitdown_errors import humanize_markitdown_error  # noqa: PLC0415
+
+            logger.exception("MarkItDown conversion failed for %s", path.name)
+            raise RuntimeError(humanize_markitdown_error(exc, path.name)) from exc
 
         if not content or not content.strip():
             logger.warning("MarkItDown produced empty content for %s", path.name)
@@ -80,12 +100,16 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
 
         self.report_progress(kwargs, 1, 3, "Building metadata...")
 
+        ext = path.suffix.lower().lstrip(".")
+        pages = _split_into_pages(content, ext) if ext in _PAGE_AWARE_TYPES else []
+
         stat = path.stat()
         metadata = {
             "original_filename": path.name,
             "content_type": _guess_mime(path.suffix),
             "file_size": stat.st_size,
             "character_count": len(content),
+            "page_count": len(pages),
             "import_plugin": self.name,
         }
 
@@ -104,7 +128,7 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
 
         return ImportResult(
             full_text=content,
-            pages=[],
+            pages=pages,
             images=[],
             metadata=metadata,
             source_ref=source_ref,

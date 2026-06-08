@@ -4,7 +4,7 @@
  * Extracted from AssistantForm.svelte to enable isolated testing.
  */
 
-import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 
 /**
  * Validates form data before submission.
@@ -55,7 +55,11 @@ export function buildAssistantPayload(form) {
 		system_prompt: form.system_prompt,
 		prompt_template: form.prompt_template,
 		RAG_Top_k: Number(form.RAG_Top_k) || 3,
-		RAG_collections: isKbBasedRag(form.selectedRagProcessor) ? form.selectedKnowledgeBases.join(',') : '',
+		RAG_collections: isKbBasedRag(form.selectedRagProcessor)
+			? form.selectedKnowledgeBases.join(',')
+			: isKsBasedRag(form.selectedRagProcessor)
+				? form.selectedKnowledgeStores.join(',')
+				: '',
 		metadata: JSON.stringify(metadataObj),
 		pre_retrieval_endpoint: '',
 		post_retrieval_endpoint: '',

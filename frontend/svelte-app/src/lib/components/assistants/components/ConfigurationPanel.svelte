@@ -3,7 +3,7 @@
 	import { _ } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-	import { hasRagOptions } from '$lib/utils/ragProcessorHelpers.js';
+	import { hasRagOptions, isHiddenInCreate, getRagProcessorDisplayName } from '$lib/utils/ragProcessorHelpers.js';
 	import {
 		extractModelsMetadata
 	} from '../logic/assistantFormUtils.svelte.js';
@@ -29,6 +29,11 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
+		ownedKnowledgeStores = [],
+		sharedKnowledgeStores = [],
+		selectedKnowledgeStores = $bindable([]),
+		loadingKnowledgeStores = false,
+		knowledgeStoreError = '',
 		libraries = [],
 		selectedLibraryId = $bindable(''),
 		loadingLibraries = false,
@@ -60,7 +65,7 @@
 	let filteredRAGProcessors = $derived(
 		formState === 'edit'
 			? ragProcessors
-			: ragProcessors.filter((p) => p !== 'single_file_rag')
+			: ragProcessors.filter((p) => !isHiddenInCreate(p))
 	);
 
 	async function handleConnectorChange() {
@@ -201,7 +206,7 @@
 			disabled={formState === 'edit'}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
 		{#each filteredRAGProcessors as processor (processor)}
-			<option value={processor}>{processor.replace(/_/g, ' ').replace(/\b\w/g, (/** @type {string} */ l) => l.toUpperCase())}</option>
+			<option value={processor}>{getRagProcessorDisplayName(processor)}</option>
 		{/each}
 		</select>
 	</div>
@@ -239,6 +244,11 @@
 			bind:selectedKnowledgeBases
 			loadingKnowledgeBases={loadingKnowledgeBases}
 			knowledgeBaseError={knowledgeBaseError}
+			{ownedKnowledgeStores}
+			{sharedKnowledgeStores}
+			bind:selectedKnowledgeStores
+			loadingKnowledgeStores={loadingKnowledgeStores}
+			knowledgeStoreError={knowledgeStoreError}
 			{libraries}
 			bind:selectedLibraryId
 			loadingLibraries={loadingLibraries}

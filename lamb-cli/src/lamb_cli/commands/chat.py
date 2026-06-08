@@ -92,7 +92,7 @@ def chat(
     """
     persist = not no_persist
 
-    with get_client() as client:
+    with get_client(timeout=600.0) as client:
         if bypass:
             if message:
                 _bypass_response(client, assistant_id, message)

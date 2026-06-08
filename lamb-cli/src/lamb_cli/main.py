@@ -9,7 +9,7 @@ import typer
 
 from lamb_cli import __version__
 from lamb_cli.client import LambClient, get_client
-from lamb_cli.commands import aac, analytics, assistant, job, kb, library, model, org, rubric, template, test, user
+from lamb_cli.commands import aac, analytics, assistant, job, kb, knowledge_store, library, model, org, rubric, template, test, user
 from lamb_cli.commands.chat import chat as chat_cmd
 from lamb_cli.config import clear_credentials, get_output_format, get_server_url, get_user_info, save_config, save_credentials
 from lamb_cli.errors import LambCliError, exit_code_for
@@ -25,6 +25,8 @@ app.add_typer(aac.app, name="aac")
 app.add_typer(assistant.app, name="assistant")
 app.add_typer(model.app, name="model")
 app.add_typer(kb.app, name="kb")
+app.add_typer(knowledge_store.app, name="ks")
+app.add_typer(knowledge_store.app, name="knowledge-store")
 app.add_typer(library.app, name="library")
 app.add_typer(job.app, name="job")
 app.add_typer(org.app, name="org")

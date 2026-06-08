@@ -11,6 +11,7 @@ from config import DB_PATH
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from database.models import Base
 
@@ -59,19 +60,49 @@ def init_db() -> None:
             "Only one instance may run per data directory."
         ) from exc
 
+    # Use NullPool: every request opens its own SQLite connection, so we
+    # never reuse a connection that may still hold a stale read-snapshot
+    # from a previous transaction. SQLite is in-process and connection
+    # setup is microseconds, so the overhead is negligible — and it
+    # eliminates a class of intermittent "0 items returned" bugs that
+    # users saw on page reload, where the request happened to land on a
+    # pooled connection whose deferred-BEGIN snapshot predated recent
+    # commits from the import worker (which runs on its own sessions).
+    #
+    # We still enable WAL via the connect event so concurrent readers
+    # never block on the writer worker. ``check_same_thread=False`` is
+    # still required because FastAPI may dispatch a request on a thread
+    # different from the one that opened the connection (e.g., via
+    # ``run_in_executor``).
     _engine = create_engine(
         f"sqlite:///{DB_PATH}",
-        pool_pre_ping=True,
+        poolclass=NullPool,
         connect_args={"check_same_thread": False},
     )
 
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
     Base.metadata.create_all(bind=_engine)
+    _apply_lightweight_migrations(_engine)
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info("Database initialized at %s", DB_PATH)
+
+
+def _apply_lightweight_migrations(engine: Engine) -> None:
+    """Idempotently add additive schema deltas not handled by ``create_all``.
+
+    ``Base.metadata.create_all`` creates missing tables but never adds new
+    columns to existing ones. Every new column we ship lives here, gated by
+    a ``PRAGMA table_info`` check so re-running is a no-op. This runs on
+    every startup, matching the project's existing on-boot schema setup.
+    """
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(content_items)")}
+        if "folder_id" not in cols:
+            conn.exec_driver_sql("ALTER TABLE content_items ADD COLUMN folder_id TEXT")
+            logger.info("Schema migration: added content_items.folder_id")
 
 
 def get_session() -> Generator[Session, None, None]:

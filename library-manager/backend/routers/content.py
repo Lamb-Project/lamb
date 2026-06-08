@@ -38,7 +38,7 @@ router = APIRouter(prefix="/libraries", tags=["Content"], dependencies=[Depends(
 @router.get("/{lib_id}/items", response_model=ContentItemListResponse)
 async def list_items(
     lib_id: str,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status_filter: str = Query(None, alias="status"),
     ids: str = Query(None, description="Comma-separated item IDs to filter."),
@@ -445,7 +445,7 @@ async def import_library(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a .zip archive.")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")  # noqa: SIM115 — streaming write needs handle outlive scope
     try:
         bytes_written = 0
         while chunk := await file.read(1024 * 1024):
@@ -486,21 +486,8 @@ async def import_library(
 
 
 def _item_to_summary(item: ContentItem) -> dict:
-    """Convert a ContentItem ORM object to a summary dict."""
-    return {
-        "id": item.id,
-        "title": item.title,
-        "source_type": item.source_type,
-        "original_filename": item.original_filename,
-        "content_type": item.content_type,
-        "file_size": item.file_size,
-        "import_plugin": item.import_plugin,
-        "status": item.status,
-        "page_count": item.page_count,
-        "image_count": item.image_count,
-        "created_at": item.created_at,
-        "updated_at": item.updated_at,
-    }
+    """Thin wrapper around the shared service helper (kept for call sites)."""
+    return content_service.item_to_summary(item)
 
 
 def _item_to_detail(item: ContentItem) -> dict:
@@ -511,7 +498,6 @@ def _item_to_detail(item: ContentItem) -> dict:
         "import_params": json.loads(item.import_params) if item.import_params else None,
         "metadata": json.loads(item.metadata_) if item.metadata_ else None,
         "processing_stats": json.loads(item.processing_stats) if item.processing_stats else None,
-        "error_message": item.error_message,
         "permalink_base": item.permalink_base,
     })
     return detail

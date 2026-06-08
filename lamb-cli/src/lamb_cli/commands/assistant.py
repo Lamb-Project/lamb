@@ -221,7 +221,17 @@ def create_assistant(
     image_generation: bool = typer.Option(False, "--image-generation/--no-image-generation", help="Enable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
     rag_collections: Optional[str] = typer.Option(
-        None, "--rag-collections", help="Comma-separated RAG collection names."
+        None, "--rag-collections", help="Comma-separated RAG collection names or Knowledge Store IDs."
+    ),
+    knowledge_store: Optional[list[str]] = typer.Option(
+        None,
+        "--knowledge-store",
+        "--ks",
+        help=(
+            "Bind a Knowledge Store ID to the assistant (repeatable). "
+            "Requires --rag-processor knowledge_store_rag. "
+            "Equivalent to --rag-collections <id1>,<id2>,... but accepts one --knowledge-store per ID."
+        ),
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),
@@ -240,10 +250,38 @@ def create_assistant(
         prompt = system_prompt_file.read_text(encoding="utf-8")
 
     body: dict = {"name": name, "description": description, "system_prompt": prompt}
+    # lifecycle verification 2026-05-03 (#337 KS verification): if a real RAG
+    # processor is selected without a prompt template, default to one that
+    # surfaces the retrieved chunks via {context}. simple_augment silently
+    # drops RAG context when {context} is absent, which used to look like
+    # "RAG retrieves but the LLM never sees it" — a footgun for end users.
+    if (rag_processor and rag_processor != "no_rag") and prompt_template is None:
+        prompt_template = (
+            "Use the following context to answer the question. "
+            "If the context does not contain the answer, say you do not know.\n\n"
+            "Context:\n{context}\n\nQuestion: {user_input}"
+        )
     if prompt_template is not None:
         body["prompt_template"] = prompt_template
     if rag_top_k is not None:
         body["RAG_Top_k"] = rag_top_k
+
+    # lifecycle verification 2026-05-03 (#337 KS verification):
+    # --knowledge-store is an ergonomic alias for --rag-collections that
+    # accepts repeated UUIDs. The binding ultimately lands in the
+    # `RAG_collections` field on the assistant row (comma-separated).
+    if knowledge_store:
+        if rag_processor and rag_processor != "knowledge_store_rag":
+            print_error(
+                "--knowledge-store is only valid with --rag-processor knowledge_store_rag "
+                f"(got --rag-processor {rag_processor})."
+            )
+            raise typer.Exit(1)
+        if rag_collections:
+            print_error("Use either --knowledge-store or --rag-collections, not both.")
+            raise typer.Exit(1)
+        rag_collections = ",".join(ks.strip() for ks in knowledge_store if ks.strip())
+
     if rag_collections:
         body["RAG_collections"] = rag_collections
 
@@ -292,7 +330,17 @@ def update_assistant(
     image_generation: Optional[bool] = typer.Option(None, "--image-generation/--no-image-generation", help="Enable/disable image generation."),
     rag_top_k: Optional[int] = typer.Option(None, "--rag-top-k", help="Number of RAG chunks."),
     rag_collections: Optional[str] = typer.Option(
-        None, "--rag-collections", help="Comma-separated RAG collection names."
+        None, "--rag-collections", help="Comma-separated RAG collection names or Knowledge Store IDs."
+    ),
+    knowledge_store: Optional[list[str]] = typer.Option(
+        None,
+        "--knowledge-store",
+        "--ks",
+        help=(
+            "Bind a Knowledge Store ID to the assistant (repeatable). "
+            "Requires the assistant's rag_processor to be knowledge_store_rag "
+            "(either already set or passed in this update). Replaces RAG_collections."
+        ),
     ),
     prompt_template: Optional[str] = typer.Option(None, "--prompt-template", help="Prompt template text."),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Run interactive configuration wizard."),
@@ -315,6 +363,23 @@ def update_assistant(
         body["prompt_template"] = prompt_template
     if rag_top_k is not None:
         body["RAG_Top_k"] = rag_top_k
+
+    # lifecycle verification 2026-05-03 (#337 KS verification):
+    # --knowledge-store on update replaces RAG_collections with the supplied
+    # comma-separated UUID list. We only validate the rag_processor when it's
+    # explicitly being set in the same call (the existing one is opaque here).
+    if knowledge_store:
+        if rag_processor and rag_processor != "knowledge_store_rag":
+            print_error(
+                "--knowledge-store is only valid with --rag-processor knowledge_store_rag "
+                f"(got --rag-processor {rag_processor})."
+            )
+            raise typer.Exit(1)
+        if rag_collections is not None:
+            print_error("Use either --knowledge-store or --rag-collections, not both.")
+            raise typer.Exit(1)
+        rag_collections = ",".join(ks.strip() for ks in knowledge_store if ks.strip())
+
     if rag_collections is not None:
         body["RAG_collections"] = rag_collections
 

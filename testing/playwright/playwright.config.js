@@ -10,7 +10,13 @@ module.exports = defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  workers: process.env.CI ? 1 : undefined,
+  // The specs share LAMB DB state (libraries, Knowledge Stores), so running
+  // them across multiple workers causes resource-count assertions to flap
+  // when one spec's afterAll runs while another spec's beforeAll is still
+  // snapshotting counts. Force a single worker so specs run end-to-end
+  // serially -- matches CI behavior and is the only safe mode for these
+  // integration tests.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI
     ? [
