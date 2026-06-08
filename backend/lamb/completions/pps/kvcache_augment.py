@@ -13,6 +13,12 @@ COMPATIBLE_RAG = [
     "no_rag",
 ]
 
+DEFAULT_RAG_PROMPT_TEMPLATE = (
+    "Use the following context to answer the question. "
+    "If the context does not contain the answer, say you do not know.\n\n"
+    "Context:\n{context}\n\nQuestion: {user_input}"
+)
+
 
 def _has_vision_capability(assistant: Assistant) -> bool:
     if not assistant:

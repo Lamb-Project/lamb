@@ -1,5 +1,5 @@
 import pytest
-from lamb.completions.pps.kvcache_augment import prompt_processor, COMPATIBLE_RAG
+from lamb.completions.pps.kvcache_augment import prompt_processor, COMPATIBLE_RAG, DEFAULT_RAG_PROMPT_TEMPLATE
 
 
 class MockAssistant:
@@ -125,3 +125,13 @@ class TestDocumentContextInSystemPrompt:
 
         assert len(result) == 1
         assert result[0]["role"] == "user"
+
+
+class TestDefaultRagPromptTemplate:
+    def test_constant_matches_expected_value(self):
+        expected = (
+            "Use the following context to answer the question. "
+            "If the context does not contain the answer, say you do not know.\n\n"
+            "Context:\n{context}\n\nQuestion: {user_input}"
+        )
+        assert DEFAULT_RAG_PROMPT_TEMPLATE == expected
