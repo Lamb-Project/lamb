@@ -18,19 +18,19 @@ class MockAssistant:
 class TestParsePluginConfigDocumentRag:
     def test_reads_document_rag_from_metadata(self):
         metadata = json.dumps({
-            "prompt_processor": "simple_augment",
+            "prompt_processor": "kvcache_augment",
             "connector": "openai",
             "llm": "gpt-4o-mini",
             "rag_processor": "context_aware_rag",
-            "document_rag": "single_file_rag",
+            "document_rag": "library_file_rag",
         })
         assistant = MockAssistant(metadata=metadata)
         config = parse_plugin_config(assistant)
-        assert config["document_rag"] == "single_file_rag"
+        assert config["document_rag"] == "library_file_rag"
 
     def test_document_rag_defaults_to_empty(self):
         metadata = json.dumps({
-            "prompt_processor": "simple_augment",
+            "prompt_processor": "kvcache_augment",
             "connector": "openai",
             "llm": "gpt-4o-mini",
             "rag_processor": "no_rag",
@@ -61,8 +61,8 @@ class TestProcessCompletionRequestDocumentContext:
             captured_kwargs["rag_context"] = rag_context
             return [{"role": "user", "content": "test"}]
 
-        pps = {"simple_augment": mock_pps}
-        plugin_config = {"prompt_processor": "simple_augment"}
+        pps = {"kvcache_augment": mock_pps}
+        plugin_config = {"prompt_processor": "kvcache_augment"}
         doc_ctx = {"context": "Doc.", "sources": []}
 
         process_completion_request(
