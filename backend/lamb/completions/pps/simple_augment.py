@@ -58,8 +58,7 @@ def _has_image_generation_capability(assistant: Assistant) -> bool:
 def prompt_processor(
     request: Dict[str, Any],
     assistant: Optional[Assistant] = None,
-    rag_context: Optional[Dict[str, Any]] = None,
-    document_context: Optional[Dict[str, Any]] = None,
+    rag_context: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, str]]:
     """
     Simple augment prompt processor that:
@@ -79,16 +78,11 @@ def prompt_processor(
     processed_messages = []
 
     if assistant:
-        # Build system prompt with optional document context
-        system_content = assistant.system_prompt or ""
-        if document_context and isinstance(document_context, dict):
-            doc_text = document_context.get("context", "")
-            if doc_text:
-                system_content = (system_content + "\n\n" + doc_text) if system_content else doc_text
-        if system_content:
+        # Add system message from assistant if available
+        if assistant.system_prompt:
             processed_messages.append({
                 "role": "system",
-                "content": system_content
+                "content": assistant.system_prompt
             })
         
         # Add previous messages except the last one
