@@ -308,6 +308,7 @@ def _check_quota(assistant_id: int, assistant_details) -> None:
 def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Load plugin modules and verify that the requested plugins exist.
+    Also validates COMPATIBLE_RAG declared by the prompt processor.
     """
     pps = load_plugins('pps')
     connectors = load_plugins('connectors')
@@ -325,6 +326,28 @@ def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, 
     if plugin_config.get("document_rag") and plugin_config["document_rag"] not in rag_processors:
         logger.error(f"Document RAG processor '{plugin_config['document_rag']}' not found")
         raise HTTPException(status_code=400, detail=f"Document RAG processor '{plugin_config['document_rag']}' not found")
+
+    pps_name = plugin_config["prompt_processor"]
+    pps_module = importlib.import_module(f"lamb.completions.pps.{pps_name}")
+    compatible_rag = getattr(pps_module, "COMPATIBLE_RAG", None)
+
+    if compatible_rag is not None:
+        if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"rag_processor '{plugin_config['rag_processor']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
+        if plugin_config.get("document_rag") and plugin_config["document_rag"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"document_rag '{plugin_config['document_rag']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
 
     return pps, connectors, rag_processors
 

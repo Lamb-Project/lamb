@@ -1,0 +1,17 @@
+import os
+
+os.environ.setdefault("LAMB_WEB_HOST", "localhost")
+os.environ.setdefault("PIPELINES_HOST", "localhost")
+os.environ.setdefault("LAMB_BACKEND_HOST", "localhost")
+os.environ.setdefault("LAMB_BEARER_TOKEN", "test-bearer-token")
+os.environ.setdefault("PIPELINES_BEARER_TOKEN", "test-bearer-token")
+os.environ.setdefault("OPENAI_BASE_URL", "http://localhost:9099")
+os.environ.setdefault("OPENAI_MODEL", "gpt-4")
+os.environ.setdefault("OWI_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("OWI_PATH", "/tmp/owi")
+os.environ.setdefault("SIGNUP_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("OWI_ADMIN_NAME", "admin")
+os.environ.setdefault("OWI_ADMIN_EMAIL", "admin@test.com")
+os.environ.setdefault("OWI_ADMIN_PASSWORD", "admin-password")
+os.environ.setdefault("LAMB_PROJECT_PATH", "/tmp/lamb")
+os.environ.setdefault("LAMB_DB_PATH", "/tmp/lamb_test.db")
