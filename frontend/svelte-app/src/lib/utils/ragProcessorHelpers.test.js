@@ -9,7 +9,8 @@ import {
 	normalizeRagProcessor,
 	PPS_COMPATIBLE_RAG,
 	getCompatibleRagForPps,
-	ppsSupportsDocumentRag
+	ppsSupportsDocumentRag,
+	isDocumentRag
 } from './ragProcessorHelpers.js';
 
 describe('isKbBasedRag', () => {
@@ -197,5 +198,35 @@ describe('ppsSupportsDocumentRag', () => {
 
 	test('returns false for unknown PPS', () => {
 		expect(ppsSupportsDocumentRag('unknown_pps')).toBe(false);
+	});
+});
+
+describe('isDocumentRag', () => {
+	test('returns true for library_file_rag', () => {
+		expect(isDocumentRag('library_file_rag')).toBe(true);
+	});
+
+	test('returns false for simple_rag', () => {
+		expect(isDocumentRag('simple_rag')).toBe(false);
+	});
+
+	test('returns false for knowledge_store_rag', () => {
+		expect(isDocumentRag('knowledge_store_rag')).toBe(false);
+	});
+
+	test('returns false for no_rag', () => {
+		expect(isDocumentRag('no_rag')).toBe(false);
+	});
+
+	test('returns false for undefined', () => {
+		expect(isDocumentRag(undefined)).toBe(false);
+	});
+
+	test('returns false for null', () => {
+		expect(isDocumentRag(null)).toBe(false);
+	});
+
+	test('returns false for empty string', () => {
+		expect(isDocumentRag('')).toBe(false);
 	});
 });

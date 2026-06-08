@@ -21,7 +21,9 @@ export const RAG_TYPES = Object.freeze({
 	/** RAG processor that uses rubrics */
 	RUBRIC: ['rubric_rag'],
 	/** No RAG processing */
-	NONE: ['no_rag']
+	NONE: ['no_rag'],
+	/** RAG processors that are document-level (selected via document section toggle, not RAG dropdown) */
+	DOCUMENT_RAG: ['library_file_rag']
 });
 
 /**
@@ -49,6 +51,16 @@ export function isKsBasedRag(processor) {
  */
 export function isHiddenInCreate(processor) {
 	return RAG_TYPES.HIDDEN_IN_CREATE.includes(processor);
+}
+
+/**
+ * Returns true if the processor is a document-level RAG (selected via document section toggle,
+ * not the RAG processor dropdown). These should never appear in the RAG dropdown.
+ * @param {string} processor
+ * @returns {boolean}
+ */
+export function isDocumentRag(processor) {
+	return RAG_TYPES.DOCUMENT_RAG.includes(processor);
 }
 
 /**

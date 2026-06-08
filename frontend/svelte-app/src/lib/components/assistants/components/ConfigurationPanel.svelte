@@ -3,7 +3,7 @@
 	import { _ } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-	import { hasRagOptions, isHiddenInCreate, getRagProcessorDisplayName, getCompatibleRagForPps, ppsSupportsDocumentRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { hasRagOptions, getRagProcessorDisplayName, getCompatibleRagForPps, ppsSupportsDocumentRag, isDocumentRag } from '$lib/utils/ragProcessorHelpers.js';
 	import {
 		extractModelsMetadata
 	} from '../logic/assistantFormUtils.svelte.js';
@@ -67,13 +67,9 @@
 		}
 		return !isLegacySingleFileRag;
 	});
-	let filteredRAGProcessors = $derived.by(() => {
-		const compatibleWithPps = getCompatibleRagForPps(selectedPromptProcessor, ragProcessors);
-		if (formState === 'edit') {
-			return compatibleWithPps;
-		}
-		return compatibleWithPps.filter((p) => !isHiddenInCreate(p));
-	});
+	let filteredRAGProcessors = $derived(
+		getCompatibleRagForPps(selectedPromptProcessor, ragProcessors).filter((p) => !isDocumentRag(p))
+	);
 
 	async function handleConnectorChange() {
 		await tick();
