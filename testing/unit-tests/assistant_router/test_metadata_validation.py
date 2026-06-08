@@ -108,7 +108,7 @@ class TestDocumentRagValidation:
     def _make_body(self, **overrides):
         base = {
             "metadata": {
-                "prompt_processor": "simple_augment",
+                "prompt_processor": "kvcache_augment",
                 "connector": "openai",
                 "llm": "gpt-4o-mini",
                 "rag_processor": "no_rag",
@@ -118,15 +118,15 @@ class TestDocumentRagValidation:
         base["metadata"].update(overrides)
         return base
 
-    def test_document_rag_single_file_requires_library_or_file(self):
-        body = self._make_body(document_rag="single_file_rag")
+    def test_document_rag_library_file_requires_library_or_file(self):
+        body = self._make_body(document_rag="library_file_rag")
         _, error = validate_update_plugin_metadata(body)
         assert error is not None
         assert "document_rag" in error
 
     def test_document_rag_with_library_id_and_item_id_is_valid(self):
         body = self._make_body(
-            document_rag="single_file_rag",
+            document_rag="library_file_rag",
             library_id="lib-1",
             item_id="item-1",
         )
@@ -136,7 +136,7 @@ class TestDocumentRagValidation:
 
     def test_document_rag_library_id_without_item_id(self):
         body = self._make_body(
-            document_rag="single_file_rag",
+            document_rag="library_file_rag",
             library_id="lib-1",
         )
         _, error = validate_update_plugin_metadata(body)
