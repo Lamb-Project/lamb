@@ -5,6 +5,15 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="MAIN")
 
+COMPATIBLE_RAG = [
+    "simple_rag",
+    "context_aware_rag",
+    "hierarchical_rag",
+    "single_file_rag",
+    "rubric_rag",
+    "no_rag",
+]
+
 
 def _has_vision_capability(assistant: Assistant) -> bool:
     """
