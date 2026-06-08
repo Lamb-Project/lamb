@@ -3,7 +3,7 @@
 	import { _ } from '$lib/i18n';
 	import { tick } from 'svelte';
 	import { assistantConfigStore } from '$lib/stores/assistantConfigStore';
-	import { hasRagOptions, isHiddenInCreate, getRagProcessorDisplayName } from '$lib/utils/ragProcessorHelpers.js';
+	import { hasRagOptions, isHiddenInCreate, getRagProcessorDisplayName, getCompatibleRagForPps, ppsSupportsDocumentRag } from '$lib/utils/ragProcessorHelpers.js';
 	import {
 		extractModelsMetadata
 	} from '../logic/assistantFormUtils.svelte.js';
@@ -61,12 +61,19 @@
 	let imageGenerationForced = $derived(currentModelMetadata?.forced_capabilities?.image_generation === true);
 	let showRagOptions = $derived(hasRagOptions(selectedRagProcessor));
 	let isLegacySingleFileRag = $derived(selectedRagProcessor === 'single_file_rag');
-	let showDocumentSection = $derived(!isLegacySingleFileRag);
-	let filteredRAGProcessors = $derived(
-		formState === 'edit'
-			? ragProcessors
-			: ragProcessors.filter((p) => !isHiddenInCreate(p))
-	);
+	let showDocumentSection = $derived.by(() => {
+		if (!ppsSupportsDocumentRag(selectedPromptProcessor)) {
+			return false;
+		}
+		return !isLegacySingleFileRag;
+	});
+	let filteredRAGProcessors = $derived.by(() => {
+		const compatibleWithPps = getCompatibleRagForPps(selectedPromptProcessor, ragProcessors);
+		if (formState === 'edit') {
+			return compatibleWithPps;
+		}
+		return compatibleWithPps.filter((p) => !isHiddenInCreate(p));
+	});
 
 	async function handleConnectorChange() {
 		await tick();
