@@ -6,7 +6,10 @@ import {
 	isRubricRag,
 	isNoRag,
 	hasRagOptions,
-	normalizeRagProcessor
+	normalizeRagProcessor,
+	PPS_COMPATIBLE_RAG,
+	getCompatibleRagForPps,
+	ppsSupportsDocumentRag
 } from './ragProcessorHelpers.js';
 
 describe('isKbBasedRag', () => {
@@ -135,5 +138,64 @@ describe('normalizeRagProcessor', () => {
 	});
 	test('returns empty string for empty string', () => {
 		expect(normalizeRagProcessor('')).toBe('');
+	});
+});
+
+describe('PPS_COMPATIBLE_RAG', () => {
+	test('declares simple_augment compatible RAGs', () => {
+		expect(PPS_COMPATIBLE_RAG.simple_augment).toContain('simple_rag');
+		expect(PPS_COMPATIBLE_RAG.simple_augment).toContain('context_aware_rag');
+		expect(PPS_COMPATIBLE_RAG.simple_augment).toContain('single_file_rag');
+		expect(PPS_COMPATIBLE_RAG.simple_augment).toContain('no_rag');
+		expect(PPS_COMPATIBLE_RAG.simple_augment).not.toContain('knowledge_store_rag');
+	});
+
+	test('declares kvcache_augment compatible RAGs', () => {
+		expect(PPS_COMPATIBLE_RAG.kvcache_augment).toContain('knowledge_store_rag');
+		expect(PPS_COMPATIBLE_RAG.kvcache_augment).toContain('query_rewriting_ks_rag');
+		expect(PPS_COMPATIBLE_RAG.kvcache_augment).toContain('library_file_rag');
+		expect(PPS_COMPATIBLE_RAG.kvcache_augment).toContain('no_rag');
+		expect(PPS_COMPATIBLE_RAG.kvcache_augment).not.toContain('simple_rag');
+	});
+
+	test('is frozen (immutable)', () => {
+		expect(Object.isFrozen(PPS_COMPATIBLE_RAG)).toBe(true);
+	});
+});
+
+describe('getCompatibleRagForPps', () => {
+	const allRags = ['simple_rag', 'knowledge_store_rag', 'no_rag', 'library_file_rag'];
+
+	test('filters RAGs to only compatible ones for simple_augment', () => {
+		const result = getCompatibleRagForPps('simple_augment', allRags);
+		expect(result).toContain('simple_rag');
+		expect(result).toContain('no_rag');
+		expect(result).not.toContain('knowledge_store_rag');
+	});
+
+	test('filters RAGs to only compatible ones for kvcache_augment', () => {
+		const result = getCompatibleRagForPps('kvcache_augment', allRags);
+		expect(result).toContain('knowledge_store_rag');
+		expect(result).toContain('library_file_rag');
+		expect(result).not.toContain('simple_rag');
+	});
+
+	test('returns all RAGs for unknown PPS', () => {
+		const result = getCompatibleRagForPps('unknown_pps', allRags);
+		expect(result).toEqual(allRags);
+	});
+});
+
+describe('ppsSupportsDocumentRag', () => {
+	test('returns true for kvcache_augment', () => {
+		expect(ppsSupportsDocumentRag('kvcache_augment')).toBe(true);
+	});
+
+	test('returns false for simple_augment', () => {
+		expect(ppsSupportsDocumentRag('simple_augment')).toBe(false);
+	});
+
+	test('returns false for unknown PPS', () => {
+		expect(ppsSupportsDocumentRag('unknown_pps')).toBe(false);
 	});
 });

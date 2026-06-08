@@ -120,3 +120,52 @@ export function getRagProcessorDisplayName(processor) {
 	}
 	return processor.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
+
+/**
+ * Declaracio de compatibilitat PPS ↔ RAG (mirall del backend).
+ * Cada PPS declara quins RAGs son compatibles.
+ * Si un PPS no esta a la llista, s'assumeix que accepta qualsevol RAG.
+ */
+export const PPS_COMPATIBLE_RAG = Object.freeze({
+	simple_augment: [
+		'simple_rag',
+		'context_aware_rag',
+		'hierarchical_rag',
+		'single_file_rag',
+		'rubric_rag',
+		'no_rag'
+	],
+	kvcache_augment: [
+		'library_file_rag',
+		'knowledge_store_rag',
+		'query_rewriting_ks_rag',
+		'rubric_rag',
+		'no_rag'
+	]
+});
+
+/**
+ * Retorna els RAGs compatibles amb un PPS donat.
+ * Si el PPS no te declaracio, retorna tots els RAGs disponibles.
+ * @param {string} pps - Nom del prompt processor
+ * @param {string[]} allRagProcessors - Llista de tots els RAGs disponibles
+ * @returns {string[]} RAGs compatibles
+ */
+export function getCompatibleRagForPps(pps, allRagProcessors) {
+	const compatible = PPS_COMPATIBLE_RAG[pps];
+	if (!compatible) {
+		return allRagProcessors;
+	}
+	return allRagProcessors.filter((rag) => compatible.includes(rag));
+}
+
+/**
+ * Retorna true si el PPS suporta document RAG.
+ * @param {string} pps - Nom del prompt processor
+ * @returns {boolean}
+ */
+export function ppsSupportsDocumentRag(pps) {
+	const compatible = PPS_COMPATIBLE_RAG[pps];
+	if (!compatible) return false;
+	return compatible.includes('library_file_rag');
+}
