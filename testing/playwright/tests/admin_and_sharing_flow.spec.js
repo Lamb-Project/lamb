@@ -18,8 +18,9 @@ const { test, expect } = require("@playwright/test");
  *   c) Create second user in the organization
  *   d) Login as first user, create assistant
  *   e) Share assistant with second user
- *   f) Verify sharing works
- *   g) Cleanup (remove sharing, delete assistant, org, disable users)
+ *   f) Verify sharing works (second user can see assistant)
+ *   g) Unshare assistant and verify second user CANNOT see it
+ *   h) Cleanup (delete assistant, org, disable users)
  * 
  * Prerequisites: 
  * - Logged in as admin via global-setup.js
@@ -561,19 +562,18 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     const modal = page.locator(".modal, [role='dialog']");
     await expect(modal.first()).toBeVisible({ timeout: 5_000 });
 
-    // Move all available users to shared
-    const moveAllButton = page.getByRole("button", { name: /move all/i }).first();
-    if (await moveAllButton.count()) {
-      await moveAllButton.click();
-    } else {
-      const moveButton = page.locator('button:has-text("<<")').first();
-      if (await moveButton.count()) {
-        await moveButton.click();
-      }
-    }
+    // Check the checkbox for the second user in Available Users, then click < to share
+    const user2Checkbox = modal.locator(`label:has-text("${sharingUser2Email}") input[type="checkbox"]`).first();
+    await expect(user2Checkbox).toBeVisible({ timeout: 10_000 });
+    await user2Checkbox.check();
+
+    // Click the < button (move-left) to transfer the selected user to Shared Users
+    const moveLeftButton = modal.locator('button.move-left');
+    await expect(moveLeftButton).toBeVisible({ timeout: 5_000 });
+    await moveLeftButton.click();
 
     // Save changes
-    const saveButton = page.getByRole("button", { name: /save/i });
+    const saveButton = modal.locator('button.btn-save');
     await expect(saveButton).toBeVisible({ timeout: 5_000 });
     await saveButton.click();
 
@@ -603,11 +603,16 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
 
     await page.waitForTimeout(2000);
 
-    // Navigate to assistants
+    // Navigate to assistants and switch to "Shared with Me" tab
     await page.goto("assistants");
     await page.waitForLoadState("networkidle");
 
-    // The shared assistant should be visible
+    // Click the "Shared with Me" tab to see shared assistants
+    const sharedWithMeTab = page.getByRole("button", { name: /shared with me/i });
+    await expect(sharedWithMeTab).toBeVisible({ timeout: 10_000 });
+    await sharedWithMeTab.click();
+
+    // Wait for shared-with-me API call
     await page.waitForResponse(
       (response) => response.url().includes("shared-with-me"),
       { timeout: 10_000 }
@@ -618,29 +623,21 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
     console.log(`Shared assistant with timestamp "${timestamp2}" visible to ${sharingUser2Email}`);
   });
 
-  test("11. Sharing: Remove sharing and cleanup", async ({ page }) => {
-    // Use the app's logout feature to properly sign out
+  test("11. Sharing: Unshare assistant and verify it disappears for second user", async ({ page }) => {
+    // === Step 1: Login as first user (owner) and unshare the assistant ===
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    
-    // Click logout button
     await page.getByRole("button", { name: "Logout" }).click();
-    
-    // Wait for login form to appear
     await page.waitForSelector("#email", { timeout: 30_000 });
-
-    // Login back as first user (owner)
     await page.fill("#email", sharingUser1Email);
     await page.fill("#password", sharingPassword);
-
     await Promise.all([
       page.waitForLoadState("networkidle").catch(() => {}),
       page.click('button[type="submit"], form button')
     ]);
-
     await page.waitForTimeout(2000);
 
-    // Navigate to the assistant
+    // Navigate to assistants and find the created assistant
     await page.goto("assistants");
     await page.waitForLoadState("networkidle");
 
@@ -650,46 +647,82 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       await page.waitForTimeout(500);
     }
 
-    // View the assistant (search by timestamp since backend transforms name)
+    // View the assistant
     const assistantRow = page.locator(`tr:has-text("${timestamp2}")`);
     await expect(assistantRow).toBeVisible({ timeout: 10_000 });
     await assistantRow.getByRole("button", { name: /view/i }).first().click();
-
     await page.waitForLoadState("networkidle");
 
-    // Go to Share tab (use exact match to avoid matching "Shared with Me")
+    // Go to Share tab
     const shareTab = page.getByRole("button", { name: /^share$/i });
     await expect(shareTab).toBeVisible({ timeout: 10_000 });
     await shareTab.click();
 
-    // Wait for Share view to load, then open sharing modal
+    // Open sharing modal
     const manageButton = page.getByRole("button", { name: /manage shared users/i });
     await expect(manageButton).toBeVisible({ timeout: 15_000 });
     await manageButton.click();
-
     await page.waitForTimeout(2000);
 
-    // Move all users back to available
-    const moveAllButton = page.getByRole("button", { name: /move all/i }).last();
-    if (await moveAllButton.count()) {
-      await moveAllButton.click();
-    } else {
-      const moveButton = page.locator('button:has-text(">>")').first();
-      if (await moveButton.count()) {
-        await moveButton.click();
-      }
-    }
+    // Move the shared user back to available (unshare).
+    // Check the checkbox for user 2 in Shared Users, then click >> (move-all-right).
+    const sharedModal = page.locator(".modal, [role='dialog']");
+    await expect(sharedModal.first()).toBeVisible({ timeout: 5_000 });
 
-    // Save
-    const saveButton = page.getByRole("button", { name: /save/i });
+    const sharedUser2Checkbox = sharedModal.locator(`label:has-text("${sharingUser2Email}") input[type="checkbox"]`).first();
+    await expect(sharedUser2Checkbox).toBeVisible({ timeout: 10_000 });
+    await sharedUser2Checkbox.check();
+
+    // Click the >> button (move-all-right) to transfer the user back to Available
+    const moveAllRightButton = sharedModal.locator('button.move-all-right');
+    await expect(moveAllRightButton).toBeVisible({ timeout: 5_000 });
+    await moveAllRightButton.click();
+
+    // Save the unshare
+    const saveButton = sharedModal.locator('button.btn-save');
+    await expect(saveButton).toBeVisible({ timeout: 5_000 });
     await saveButton.click();
-
     await page.waitForTimeout(2000);
-    console.log(`Sharing removed from assistant "${assistantName}"`);
+    console.log(`Assistant unshared from ${sharingUser2Email}`);
+
+    // === Step 2: Login as second user and verify assistant is GONE ===
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Logout" }).click();
+    await page.waitForSelector("#email", { timeout: 30_000 });
+    await page.fill("#email", sharingUser2Email);
+    await page.fill("#password", sharingPassword);
+    await Promise.all([
+      page.waitForLoadState("networkidle").catch(() => {}),
+      page.click('button[type="submit"], form button')
+    ]);
+    await page.waitForTimeout(2000);
+
+    // Navigate to assistants and switch to "Shared with Me" tab
+    await page.goto("assistants");
+    await page.waitForLoadState("networkidle");
+
+    // Click the "Shared with Me" tab
+    const sharedWithMeTab = page.getByRole("button", { name: /shared with me/i });
+    await expect(sharedWithMeTab).toBeVisible({ timeout: 10_000 });
+    await sharedWithMeTab.click();
+
+    // Wait for shared-with-me API call
+    await page.waitForResponse(
+      (response) => response.url().includes("shared-with-me"),
+      { timeout: 10_000 }
+    ).catch(() => null);
+
+    // The assistant should NOT be visible to the unshared user.
+    // Search within the main content area for the assistant's timestamp.
+    const contentArea = page.locator(".bg-white.shadow.rounded-lg, [role='main']");
+    await expect(contentArea.first()).toBeVisible({ timeout: 10_000 });
+    await expect(contentArea.first().getByText(timestamp2.toString())).not.toBeVisible({ timeout: 15_000 });
+    console.log(`Verified: unshared assistant with timestamp "${timestamp2}" is NOT visible to ${sharingUser2Email}`);
   });
 
-  test("12. Sharing: Delete test assistant", async ({ page }) => {
-    // Login as first user (assistant owner) - each test starts with global auth state
+  test("12. Sharing: Cleanup — delete test assistant", async ({ page }) => {
+    // Login as first user (assistant owner)
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Logout" }).click();
@@ -711,7 +744,7 @@ test.describe.serial("Admin & Assistant Sharing Flow", () => {
       await page.waitForTimeout(500);
     }
 
-    // Find and delete the assistant (search by timestamp since backend transforms name)
+    // Find and delete the assistant
     const assistantRow = page.locator(`tr:has-text("${timestamp2}")`);
     await expect(assistantRow).toBeVisible({ timeout: 10_000 });
 
