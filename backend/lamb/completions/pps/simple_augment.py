@@ -97,27 +97,8 @@ def prompt_processor(
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
 
-        # If RAG context was produced but the assistant has an empty / missing
-        # prompt template, substitute the default template so the retrieved
-        # chunks actually reach the LLM. Otherwise the {context} substitution
-        # below would silently drop them. (Defect D3 — lifecycle 2026-05-03.)
-        effective_template = assistant.prompt_template
-        if (not effective_template) and rag_context:
-            context_text = (
-                rag_context.get("context", "")
-                if isinstance(rag_context, dict)
-                else str(rag_context)
-            )
-            if context_text:
-                logger.info(
-                    "simple_augment: applying DEFAULT_RAG_PROMPT_TEMPLATE "
-                    "because assistant has empty prompt_template but "
-                    "rag_context is present (defect D3 fallback)."
-                )
-                effective_template = DEFAULT_RAG_PROMPT_TEMPLATE
-
         # Process the last message using the prompt template
-        if effective_template:
+        if assistant.prompt_template:
             # Check if assistant has vision capabilities
             has_vision = _has_vision_capability(assistant)
 
@@ -136,7 +117,7 @@ def prompt_processor(
 
                 # Create augmented text content with template
                 logger.debug(f"User message: {user_input_text}")
-                augmented_text = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available
                 if rag_context:
@@ -192,7 +173,7 @@ def prompt_processor(
 
                 # Replace placeholders in template
                 logger.debug(f"User message: {user_input_text}")
-                prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 # Add RAG context if available
                 if rag_context:
