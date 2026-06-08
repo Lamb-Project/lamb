@@ -195,3 +195,6 @@ aac_logs/
 .worktrees/
 .agents/
 skills-lock.json
+test-results/
+testing/load/document-cache-test/
+testing/load/kv-cache-classroom/
