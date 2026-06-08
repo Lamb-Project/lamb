@@ -117,7 +117,8 @@
 		<div>
 			<label for="prompt-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.promptProcessor.label', { default: 'Prompt Processor' })}</label>
 			<select id="prompt-processor" name="prompt_processor" bind:value={selectedPromptProcessor} onchange={onchange}
-				class="mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900">
+				disabled={formState === 'edit'}
+				class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
 				{#each promptProcessors as processor (processor)}
 					<option value={processor}>{processor}</option>
 				{/each}

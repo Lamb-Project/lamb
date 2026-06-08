@@ -124,8 +124,8 @@ export function getRagProcessorDisplayName(processor) {
 	if (!processor) return '';
 	const displayNames = {
 		'query_rewriting_ks_rag': 'Context Aware Rag',
-		'context_aware_rag': 'Context Aware Rag (Old)',
-		'knowledge_store_rag': 'Knowledge Store Rag (Legacy)',
+		'context_aware_rag': 'Context Aware Rag',
+		'knowledge_store_rag': 'Knowledge Store Rag',
 	};
 	if (displayNames[processor]) {
 		return displayNames[processor];
