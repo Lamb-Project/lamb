@@ -211,8 +211,8 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 			form.selectedFilePath = metadata?.file_path || '';
 		}
 
-		// Document RAG: new path (document_rag=single_file_rag)
-		form.documentRagEnabled = metadata?.document_rag === 'single_file_rag';
+		// Document RAG: new path (document_rag=library_file_rag)
+		form.documentRagEnabled = metadata?.document_rag === 'library_file_rag';
 		if (form.documentRagEnabled && !isSingleFileRag(form.selectedRagProcessor)) {
 			form.selectedLibraryId = metadata?.library_id || '';
 			form.selectedItemId = metadata?.item_id || '';

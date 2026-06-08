@@ -156,7 +156,7 @@ describe('buildAssistantPayload with document_rag', () => {
 		};
 		const payload = buildAssistantPayload(form);
 		const metadata = JSON.parse(payload.metadata);
-		expect(metadata.document_rag).toBe('single_file_rag');
+		expect(metadata.document_rag).toBe('library_file_rag');
 		expect(metadata.library_id).toBe('lib-1');
 		expect(metadata.item_id).toBe('item-1');
 		expect(metadata.rag_processor).toBe('no_rag');

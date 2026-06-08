@@ -109,7 +109,7 @@ describe('documentRagEnabled in form state', () => {
 				connector: 'openai',
 				llm: 'gpt-4o-mini',
 				rag_processor: 'no_rag',
-				document_rag: 'single_file_rag',
+				document_rag: 'library_file_rag',
 				library_id: 'lib-1',
 				item_id: 'item-1'
 			})
