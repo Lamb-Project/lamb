@@ -71,7 +71,7 @@
 		ExternalLink,
 		RefreshCw,
 		Loader2
-	} from 'lucide-svelte';
+	} from '$lib/components/ui/icons.js';
 
 	let treeModalOpen = $state(false);
 
@@ -491,7 +491,7 @@
 			if (pollFailures >= 5) {
 				clearInterval(pollInterval);
 				pollInterval = null;
-				error = 'Lost connection while checking item status. Reload to retry.';
+				error = $_('libraries.detail.connectionLost');
 				return;
 			}
 		} else {

@@ -29,7 +29,7 @@
 	import { getPlugins } from '$lib/services/libraryService';
 	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { Banner, FormField, IconButton, Dropzone, Button, Badge } from '$lib/components/ui';
-	import { FileText, Youtube, Link as LinkIcon, X } from 'lucide-svelte';
+	import { FileText, Youtube, Link as LinkIcon, X } from '$lib/components/ui/icons.js';
 
 	/** @type {{ wizardState: any }} */
 	let { wizardState } = $props();

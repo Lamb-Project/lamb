@@ -31,13 +31,7 @@
 	import EntityListShell from '$lib/components/common/EntityListShell.svelte';
 	import ResizableTable from '$lib/components/common/ResizableTable.svelte';
 	import FileTreeModal from './fileTree/FileTreeModal.svelte';
-	import {
-		Button,
-		IconButton,
-		OverflowMenu,
-		Badge,
-		EmptyState
-	} from '$lib/components/ui';
+	import { Button, IconButton, OverflowMenu, Badge, EmptyState } from '$lib/components/ui';
 	import {
 		Plus,
 		Eye,
@@ -47,7 +41,7 @@
 		Lock,
 		BookOpen,
 		FolderTree
-	} from 'lucide-svelte';
+	} from '$lib/components/ui/icons.js';
 
 	const dispatch = createEventDispatcher();
 
@@ -128,9 +122,7 @@
 			const todayStart = localMidnight.getTime();
 			/** @param {any} l */
 			const ts = (l) =>
-				typeof l.created_at === 'number'
-					? l.created_at * 1000
-					: Date.parse(String(l.created_at));
+				typeof l.created_at === 'number' ? l.created_at * 1000 : Date.parse(String(l.created_at));
 			if (createdFilter === 'today') {
 				preds.push((l) => ts(l) >= todayStart);
 			} else if (createdFilter === 'this-week') {
@@ -243,7 +235,12 @@
 			align: 'center'
 		},
 		{ key: 'created', label: $_('libraries.createdAt', { default: 'Created' }), defaultWidth: 145 },
-		{ key: 'actions', label: $_('libraries.actions', { default: 'Actions' }), defaultWidth: 100, align: 'right' }
+		{
+			key: 'actions',
+			label: $_('libraries.actions', { default: 'Actions' }),
+			defaultWidth: 100,
+			align: 'right'
+		}
 	];
 
 	let isFiltered = $derived(
@@ -420,7 +417,9 @@
 		isCheckingBlockers = true;
 		try {
 			const data = await getLibraryKbLinks(lib.id);
-			const ksNameById = new Map((data.knowledge_stores ?? []).map((/** @type {any} */ k) => [String(k.id), k.name || k.id]));
+			const ksNameById = new Map(
+				(data.knowledge_stores ?? []).map((/** @type {any} */ k) => [String(k.id), k.name || k.id])
+			);
 			deleteBlockers = (data.items ?? []).map((/** @type {any} */ it) => {
 				const itemId = String(it.id);
 				const ksId = String(it.knowledge_store_id);
@@ -454,9 +453,7 @@
 			libraries = libraries.filter((l) => l.id !== targetId);
 			removeLibraryFromCache(orgId, targetId);
 			applyFiltersAndPagination();
-			toast.success(
-				$_('libraries.deleteSuccess', { default: `Library "${targetName}" deleted.` })
-			);
+			toast.success($_('libraries.deleteSuccess', { default: `Library "${targetName}" deleted.` }));
 			loadLibraries(); // background revalidate
 		} catch (/** @type {unknown} */ err) {
 			deleteError = err instanceof Error ? err.message : 'Delete failed';
@@ -475,9 +472,7 @@
 	async function handleRemoveLibraryBlocker(blockerId) {
 		const blocker = deleteBlockers.find((b) => b.id === blockerId);
 		if (!blocker) return;
-		deleteBlockers = deleteBlockers.map((b) =>
-			b.id === blockerId ? { ...b, removing: true } : b
-		);
+		deleteBlockers = deleteBlockers.map((b) => (b.id === blockerId ? { ...b, removing: true } : b));
 		try {
 			await removeKsContent(blocker.ksId, blocker.itemId);
 			deleteBlockers = deleteBlockers.filter((b) => b.id !== blockerId);
@@ -581,7 +576,7 @@
 	{itemsPerPage}
 	filters={filterDefs}
 	{filterValues}
-	activeChips={activeChips}
+	{activeChips}
 	searchValue={searchTerm}
 	searchPlaceholder={$_('list.searchPlaceholder', { default: 'Search libraries...' })}
 	sortOptions={[
@@ -627,11 +622,7 @@
 				})}
 			>
 				{#snippet actions()}
-					<Button
-						variant="primary"
-						iconLeftComponent={Plus}
-						onclick={() => createModal.open()}
-					>
+					<Button variant="primary" iconLeftComponent={Plus} onclick={() => createModal.open()}>
 						{$_('libraries.createNew', { default: 'New Library' })}
 					</Button>
 				{/snippet}

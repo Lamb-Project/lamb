@@ -50,7 +50,7 @@
 	import PluginPickerModal from '$lib/components/libraries/PluginPickerModal.svelte';
 	import { _ } from '$lib/i18n';
 	import { Card, Banner, IconButton } from '$lib/components/ui';
-	import { Pencil, Loader2, CheckCircle2, AlertCircle } from 'lucide-svelte';
+	import { Pencil, Loader2, CheckCircle2, AlertCircle } from '$lib/components/ui/icons.js';
 
 	/** @type {any[]} */
 	let plugins = $state([]);

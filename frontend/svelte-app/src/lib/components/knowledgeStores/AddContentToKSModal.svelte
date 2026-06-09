@@ -34,7 +34,7 @@
 	import { user } from '$lib/stores/userStore';
 	import { _ } from '$lib/i18n';
 	import { Modal, Stepper, Banner, Button, Badge, Checkbox } from '$lib/components/ui';
-	import { FileText, Link as LinkIcon, Youtube } from 'lucide-svelte';
+	import { FileText, Link as LinkIcon, Youtube } from '$lib/components/ui/icons.js';
 
 	const dispatch = createEventDispatcher();
 

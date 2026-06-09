@@ -64,7 +64,7 @@
 		RefreshCw,
 		X,
 		ExternalLink
-	} from 'lucide-svelte';
+	} from '$lib/components/ui/icons.js';
 
 	/** @type {{ ksId: string, onclose?: () => void }} */
 	let { ksId, onclose } = $props();
@@ -453,7 +453,7 @@
 				headers: token ? { Authorization: `Bearer ${token}` } : {}
 			});
 			if (!res.ok) {
-				queryError = `Could not load content (${res.status})`;
+				queryError = `${$_('knowledgeStores.detail.contentLoadError')} (${res.status})`;
 				return;
 			}
 			const blob = await res.blob();
@@ -1042,7 +1042,9 @@
 							<div class="border-border bg-surface rounded-md border p-3 text-sm">
 								<div class="mb-1 flex items-center justify-between">
 									<div class="text-text font-medium">
-										{r.metadata?.source_title || r.metadata?.title || 'Source'}
+										{r.metadata?.source_title ||
+											r.metadata?.title ||
+											$_('knowledgeStores.detail.source')}
 									</div>
 									<div class="type-caption">
 										{$_('knowledgeStores.score', { default: 'score' })}:

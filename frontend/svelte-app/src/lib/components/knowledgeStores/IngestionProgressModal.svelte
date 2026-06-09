@@ -25,7 +25,7 @@
 	import { toast } from '$lib/stores/toast.js';
 	import { statusBadgeProps } from '$lib/utils/statusBadge.js';
 	import { Modal, Banner, Button, IconButton, Badge } from '$lib/components/ui';
-	import { ArrowRight, RefreshCw, FileText } from 'lucide-svelte';
+	import { ArrowRight, RefreshCw, FileText } from '$lib/components/ui/icons.js';
 
 	/**
 	 * @type {{

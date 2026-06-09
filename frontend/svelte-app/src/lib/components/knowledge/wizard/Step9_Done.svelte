@@ -20,7 +20,7 @@
 	import { _ } from '$lib/i18n';
 	import { toast } from '$lib/stores/toast.js';
 	import { Button } from '$lib/components/ui';
-	import { CheckCircle2, Database, BookOpen, Plus } from 'lucide-svelte';
+	import { CheckCircle2, Database, BookOpen, Plus } from '$lib/components/ui/icons.js';
 
 	/** @type {{ wizardState: any }} */
 	let { wizardState } = $props();

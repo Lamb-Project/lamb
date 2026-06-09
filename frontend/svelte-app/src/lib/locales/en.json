@@ -992,6 +992,9 @@
 		"addContent": "Add Content",
 		"export": "Export",
 		"itemDeleteSuccess": "Item deleted.",
+		"detail": {
+			"connectionLost": "Lost connection while checking item status. Reload to retry."
+		},
 		"viewContent": "View",
 		"itemContentModal": {
 			"title": "Item Content",
@@ -1108,6 +1111,8 @@
 		"testQuery": "Test Query",
 		"testQueryHelp": "Run a similarity search against this Knowledge Store to verify it returns useful chunks.",
 		"score": "score",
+		"contentLoadError": "Could not load content",
+		"source": "Source",
 		"linkedContent": "Linked Library Content",
 		"addContent": "Add Content",
 		"contentTitle": "Title",
@@ -1174,6 +1179,8 @@
 		"description": "Manage libraries and Knowledge Stores.",
 		"createKnowledge": "Create Knowledge",
 		"wizard": {
+			"defaultLibraryName": "My Library",
+			"defaultKsName": "My Knowledge Store",
 			"title": "Create Knowledge",
 			"next": "Next",
 			"back": "Back",
@@ -1374,6 +1381,14 @@
 			"tooSmall": "Must be ≥ {min}",
 			"tooLarge": "Must be ≤ {max}",
 			"fixErrors": "Fix the plugin parameter errors first."
+		}
+	},
+	"wizard": {
+		"draftAge": {
+			"justNow": "just now",
+			"minutesAgo": "{count} minute(s) ago",
+			"hoursAgo": "{count} hour(s) ago",
+			"daysAgo": "{count} day(s) ago"
 		}
 	}
 }

@@ -992,6 +992,9 @@
 		"addContent": "Afegir Contingut",
 		"export": "Exportar",
 		"itemDeleteSuccess": "Element eliminat.",
+		"detail": {
+			"connectionLost": "S'ha perdut la connexió en comprovar l'estat. Recarrega per reintentar."
+		},
 		"viewContent": "Veure",
 		"itemContentModal": {
 			"title": "Contingut de l'element",
@@ -1108,6 +1111,8 @@
 		"testQuery": "Consulta de prova",
 		"testQueryHelp": "Executa una cerca per similitud contra aquest Magatzem de Coneixement per verificar que retorna fragments útils.",
 		"score": "puntuació",
+		"contentLoadError": "No s'ha pogut carregar el contingut",
+		"source": "Font",
 		"linkedContent": "Contingut de Biblioteca Enllaçat",
 		"addContent": "Afegir Contingut",
 		"contentTitle": "Títol",
@@ -1174,6 +1179,8 @@
 		"description": "Gestiona biblioteques i Magatzems de Coneixement.",
 		"createKnowledge": "Crear Coneixement",
 		"wizard": {
+			"defaultLibraryName": "La meva Biblioteca",
+			"defaultKsName": "La meva Base de Coneixement",
 			"title": "Crear Coneixement",
 			"next": "Següent",
 			"back": "Enrere",
@@ -1374,6 +1381,14 @@
 			"tooSmall": "Ha de ser ≥ {min}",
 			"tooLarge": "Ha de ser ≤ {max}",
 			"fixErrors": "Corregeix els errors de paràmetres del plugin abans de continuar."
+		}
+	},
+	"wizard": {
+		"draftAge": {
+			"justNow": "ara mateix",
+			"minutesAgo": "fa {count} minut(s)",
+			"hoursAgo": "fa {count} hora(es)",
+			"daysAgo": "fa {count} dia(es)"
 		}
 	}
 }

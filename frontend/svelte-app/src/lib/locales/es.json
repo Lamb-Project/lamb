@@ -992,6 +992,9 @@
 		"addContent": "Añadir Contenido",
 		"export": "Exportar",
 		"itemDeleteSuccess": "Elemento eliminado.",
+		"detail": {
+			"connectionLost": "Se perdió la conexión al verificar el estado. Recarga para reintentar."
+		},
 		"viewContent": "Ver",
 		"itemContentModal": {
 			"title": "Contenido del elemento",
@@ -1108,6 +1111,8 @@
 		"testQuery": "Consulta de prueba",
 		"testQueryHelp": "Ejecuta una búsqueda por similitud contra este Almacén de Conocimiento para verificar que devuelve fragmentos útiles.",
 		"score": "puntuación",
+		"contentLoadError": "No se pudo cargar el contenido",
+		"source": "Fuente",
 		"linkedContent": "Contenido de Biblioteca Vinculado",
 		"addContent": "Añadir Contenido",
 		"contentTitle": "Título",
@@ -1174,6 +1179,8 @@
 		"description": "Gestiona bibliotecas y Almacenes de Conocimiento.",
 		"createKnowledge": "Crear Conocimiento",
 		"wizard": {
+			"defaultLibraryName": "Mi Biblioteca",
+			"defaultKsName": "Mi Base de Conocimiento",
 			"title": "Crear Conocimiento",
 			"next": "Siguiente",
 			"back": "Atrás",
@@ -1374,6 +1381,14 @@
 			"tooSmall": "Debe ser ≥ {min}",
 			"tooLarge": "Debe ser ≤ {max}",
 			"fixErrors": "Corrige los errores de parámetros del plugin antes de continuar."
+		}
+	},
+	"wizard": {
+		"draftAge": {
+			"justNow": "ahora mismo",
+			"minutesAgo": "hace {count} minuto(s)",
+			"hoursAgo": "hace {count} hora(s)",
+			"daysAgo": "hace {count} día(s)"
 		}
 	}
 }
