@@ -112,11 +112,11 @@
 
 {#if totalPages > 0}
 	<div
-		class="flex flex-col items-center justify-between gap-4 border-t border-gray-200 bg-white px-4 py-3 sm:flex-row"
+		class="border-border bg-surface flex flex-col items-center justify-between gap-4 border-t px-4 py-3 sm:flex-row"
 	>
 		<!-- Items per page selector -->
 		<div class="flex items-center gap-2">
-			<label for="items-per-page" class="text-sm whitespace-nowrap text-gray-700">
+			<label for="items-per-page" class="text-text text-sm whitespace-nowrap">
 				{$locale
 					? $_('pagination.itemsPerPage', { default: 'Items per page:' })
 					: 'Items per page:'}
@@ -125,7 +125,7 @@
 				id="items-per-page"
 				value={itemsPerPage}
 				onchange={handleItemsPerPageChange}
-				class="focus:border-brand focus:ring-brand rounded-md border-gray-300 py-1 pr-7 pl-2 text-sm shadow-sm"
+				class="focus:border-brand focus:ring-brand border-border rounded-md py-1 pr-7 pl-2 text-sm shadow-sm"
 			>
 				{#each itemsPerPageOptions as option}
 					<option value={option}>{option}</option>
@@ -140,7 +140,7 @@
 				type="button"
 				onclick={handleFirstPage}
 				disabled={currentPage === 1}
-				class="focus:ring-brand rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+				class="focus:ring-brand border-border bg-surface text-text hover:bg-surface-muted rounded-md border px-2 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label={$locale ? $_('pagination.firstPage', { default: 'First page' }) : 'First page'}
 			>
 				«
@@ -151,7 +151,7 @@
 				type="button"
 				onclick={handlePreviousPage}
 				disabled={currentPage === 1}
-				class="focus:ring-brand rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+				class="focus:ring-brand border-border bg-surface text-text hover:bg-surface-muted rounded-md border px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label={$locale
 					? $_('pagination.previousPage', { default: 'Previous page' })
 					: 'Previous page'}
@@ -163,14 +163,14 @@
 			<div class="hidden items-center gap-1 sm:flex">
 				{#each visiblePages as page}
 					{#if page === '...'}
-						<span class="px-2 py-1 text-sm text-gray-500">...</span>
+						<span class="text-text-muted px-2 py-1 text-sm">...</span>
 					{:else}
 						<button
 							type="button"
 							onclick={() => handlePageChange(page)}
 							class="{page === currentPage
 								? 'bg-brand hover:bg-brand-hover text-white'
-								: 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'} 
+								: 'border-border bg-surface text-text hover:bg-surface border'} 
                 focus:ring-brand min-w-[2.5rem] rounded-md px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none"
 							aria-label={$locale
 								? $_('pagination.pageN', { default: 'Page {page}', values: { page } })
@@ -184,7 +184,7 @@
 			</div>
 
 			<!-- Mobile: Current page indicator -->
-			<div class="px-3 py-1 text-sm text-gray-700 sm:hidden">
+			<div class="text-text px-3 py-1 text-sm sm:hidden">
 				{currentPage} / {totalPages}
 			</div>
 
@@ -193,7 +193,7 @@
 				type="button"
 				onclick={handleNextPage}
 				disabled={currentPage === totalPages}
-				class="focus:ring-brand rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+				class="focus:ring-brand border-border bg-surface text-text hover:bg-surface rounded-md border px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label={$locale ? $_('pagination.nextPage', { default: 'Next page' }) : 'Next page'}
 			>
 				{$locale ? $_('pagination.next', { default: 'Next' }) : 'Next'}
@@ -204,7 +204,7 @@
 				type="button"
 				onclick={handleLastPage}
 				disabled={currentPage === totalPages}
-				class="focus:ring-brand rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+				class="focus:ring-brand border-border bg-surface text-text hover:bg-surface rounded-md border px-2 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				aria-label={$locale ? $_('pagination.lastPage', { default: 'Last page' }) : 'Last page'}
 			>
 				»
@@ -212,7 +212,7 @@
 		</div>
 
 		<!-- Results info -->
-		<div class="text-sm whitespace-nowrap text-gray-700">
+		<div class="text-text text-sm whitespace-nowrap">
 			{#if totalItems > 0}
 				{$locale
 					? $_('pagination.showing', {
