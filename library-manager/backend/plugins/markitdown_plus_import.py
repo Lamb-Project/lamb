@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from plugins._mime import guess_mime
 from plugins.base import (
     ExtractedImage,
     ImportResult,
@@ -169,7 +170,7 @@ class MarkItDownPlusPlugin(LibraryImportPlugin):
         stat = path.stat()
         metadata = {
             "original_filename": path.name,
-            "content_type": _guess_mime(path.suffix),
+            "content_type": guess_mime(path.suffix),
             "file_size": stat.st_size,
             "character_count": len(content),
             "page_count": len(pages),
@@ -511,22 +512,3 @@ def _image_mime(ext: str) -> str:
     }
     return mapping.get(ext.lower().lstrip("."), "image/png")
 
-
-def _guess_mime(ext: str) -> str:
-    """Map file extension to MIME type."""
-    mapping = {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls": "application/vnd.ms-excel",
-        ".html": "text/html",
-        ".csv": "text/csv",
-        ".json": "application/json",
-        ".xml": "application/xml",
-        ".zip": "application/zip",
-        ".epub": "application/epub+zip",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-    }
-    return mapping.get(ext.lower(), "application/octet-stream")

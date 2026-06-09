@@ -111,7 +111,6 @@ class ContentItemSummary(BaseModel):
 class ContentItemDetail(ContentItemSummary):
     """Full representation including metadata and permalinks."""
 
-    source_url: str | None = None
     import_params: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     processing_stats: dict[str, Any] | None = None
