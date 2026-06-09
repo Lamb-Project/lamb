@@ -7,9 +7,13 @@ chunking logic rather than API wiring.
 import json
 
 import pytest
-
 from plugins.base import ChunkingRegistry, DocumentInput
-from plugins.chunking._common import build_base_metadata, encode_list, encode_list_json, validate_chunking_params
+from plugins.chunking._common import (
+    build_base_metadata,
+    encode_list,
+    encode_list_json,
+    validate_chunking_params,
+)
 from plugins.chunking.by_page import ByPageChunking
 from plugins.chunking.by_section import BySectionChunking
 from plugins.chunking.hierarchical import HierarchicalChunking
@@ -668,7 +672,11 @@ def test_hierarchical_oversized_splits_into_multiple_sub_chunks_section_part_1_b
         _doc(text),
         {"parent_chunk_size": 500, "child_chunk_size": 200, "child_chunk_overlap": 20},
     )
-    parts = [c.metadata.get("section_part") for c in chunks if c.metadata.get("section_part") is not None]
+    parts = [
+        c.metadata.get("section_part")
+        for c in chunks
+        if c.metadata.get("section_part") is not None
+    ]
     assert parts, "Expected at least one chunk with section_part"
     assert min(parts) == 1, "section_part must be 1-based (minimum value should be 1)"
 

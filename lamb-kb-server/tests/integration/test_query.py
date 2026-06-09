@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
-
 from plugins.base import VectorDBRegistry
-from tests._helpers import AUTH_HEADERS, _poll_job
 
+from tests._helpers import AUTH_HEADERS, _poll_job
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,7 +75,11 @@ async def test_top_k_1_returns_single_result(
 ) -> None:
     """top_k=1 must return exactly one result even when more chunks exist."""
     docs = [
-        {"source_item_id": f"doc-{i}", "title": f"Doc {i}", "text": f"unique content item number {i} for testing top k one"}
+        {
+            "source_item_id": f"doc-{i}",
+            "title": f"Doc {i}",
+            "text": f"unique content item number {i} for testing top k one",
+        }
         for i in range(5)
     ]
     job = await _ingest(client, collection["id"], docs)

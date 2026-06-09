@@ -22,11 +22,10 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient
-
 import tasks.worker as worker_module
 from database.connection import get_session_direct
 from database.models import Collection, IngestionJob
+from httpx import AsyncClient
 from plugins.base import Chunk, ChunkingRegistry, ChunkingStrategy, DocumentInput, PluginParameter
 from tasks.worker import (
     _MAX_ATTEMPTS,
@@ -36,6 +35,7 @@ from tasks.worker import (
     stop_worker,
     store_credentials,
 )
+
 from tests._helpers import AUTH_HEADERS, poll_job
 
 # ---------------------------------------------------------------------------
@@ -939,7 +939,7 @@ async def test_process_job_sync_job_none_in_error_handler() -> None:
     mock_session = MagicMock()
     mock_job = MagicMock()
     mock_collection = MagicMock()
-    mock_collection.chunking_strategy = "nonexistent_xyz"  # will cause failure in execute_ingestion_job
+    mock_collection.chunking_strategy = "nonexistent_xyz"
     mock_job.collection_id = "col-1"
     mock_job.id = "job-1"
     mock_job.attempts = 0

@@ -4,10 +4,9 @@ import shutil
 import tempfile
 from uuid import uuid4
 
+import plugins.vector_db.chromadb_backend as chromadb_backend
 import pytest
 from chromadb.api.types import EmbeddingFunction as ChromaEmbeddingFunction
-
-import plugins.vector_db.chromadb_backend as chromadb_backend
 from plugins.base import Chunk, EmbeddingFunction
 from plugins.vector_db.chromadb_backend import ChromaDBBackend, _to_chroma_ef
 
@@ -318,7 +317,6 @@ def test_add_chunks_batch_boundary(tmp_storage: str, fake_embedding) -> None:
     assert n == 101
 
     # Verify ChromaDB actually stored all 101 documents.
-    import chromadb as _chromadb  # noqa: PLC0415
 
     client = chromadb_backend._clients[tmp_storage]
     collection = client.get_collection(name=cid)

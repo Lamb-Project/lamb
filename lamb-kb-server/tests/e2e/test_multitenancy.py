@@ -17,9 +17,6 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from tests._helpers import AUTH_HEADERS
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

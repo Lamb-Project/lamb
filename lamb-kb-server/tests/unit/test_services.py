@@ -12,15 +12,13 @@ assume it is available in ``EmbeddingRegistry._plugins["fake"]``.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-
 from database.models import Collection, IngestionJob
-from plugins.base import EmbeddingRegistry, VectorDBRegistry, ChunkingRegistry
+from fastapi import HTTPException
+from plugins.base import ChunkingRegistry, EmbeddingRegistry, VectorDBRegistry
 from schemas.collection import CreateCollectionRequest, EmbeddingConfig, UpdateCollectionRequest
 from schemas.content import (
     AddContentRequest,
@@ -42,7 +40,6 @@ from services.ingestion_service import (
     queue_add_content,
 )
 from services.query_service import query_collection
-
 
 # ---------------------------------------------------------------------------
 # Helper builders
@@ -218,8 +215,8 @@ class TestCreateCollection:
 
     def test_backend_failure_storage_dir_removed(self, db_session, monkeypatch, tmp_path) -> None:
         """More targeted: monkeypatch STORAGE_DIR so we can inspect the exact path."""
-        from plugins.vector_db.chromadb_backend import ChromaDBBackend
         import config as cfg  # noqa: PLC0415
+        from plugins.vector_db.chromadb_backend import ChromaDBBackend
 
         # Point STORAGE_DIR at a subdirectory of tmp_path so we can inspect it.
         storage_root = tmp_path / "storage"
@@ -666,7 +663,6 @@ class TestExecuteIngestionJob:
     ) -> None:
         """When a chunking strategy returns an empty list for a document, n_stored
         stays 0 and the job still progresses (covers the 'if chunks:' false branch)."""
-        from plugins.base import ChunkingStrategy  # noqa: PLC0415
 
         original_chunk_fn = None
         strategy_name = "simple"
@@ -833,7 +829,9 @@ class TestQueryCollection:
         @classmethod  # type: ignore[misc]
         def _capturing_build(cls, name, *, model, api_key="", api_endpoint=""):
             observed.append({"api_key": api_key, "api_endpoint": api_endpoint})
-            return original_build.__func__(cls, name, model=model, api_key=api_key, api_endpoint=api_endpoint)
+            return original_build.__func__(
+                cls, name, model=model, api_key=api_key, api_endpoint=api_endpoint
+            )
 
         monkeypatch.setattr(EmbeddingRegistry, "build", _capturing_build)
 

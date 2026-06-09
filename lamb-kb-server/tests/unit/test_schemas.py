@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

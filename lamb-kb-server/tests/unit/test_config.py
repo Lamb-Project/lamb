@@ -9,9 +9,8 @@ fixture so subsequent tests are unaffected.
 from __future__ import annotations
 
 import importlib
-import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
@@ -65,7 +64,7 @@ def test_defaults(monkeypatch, reload_config) -> None:
     assert config.MAX_CONCURRENT_INGESTIONS == 3
     assert config.INGESTION_TASK_TIMEOUT_SECONDS == 1800
     assert config.MAX_REQUEST_SIZE_BYTES == 200 * 1024 * 1024
-    assert config.DATA_DIR == Path("data")
+    assert Path("data") == config.DATA_DIR
     assert config.QDRANT_URL == ""
     assert config.QDRANT_API_KEY == ""
 
@@ -110,7 +109,7 @@ def test_storage_dir_is_under_data_dir(monkeypatch, reload_config) -> None:
     importlib.reload(config)
 
     assert config.STORAGE_DIR == config.DATA_DIR / "storage"
-    assert config.STORAGE_DIR == Path("/tmp/kbs-test-data/storage")
+    assert Path("/tmp/kbs-test-data/storage") == config.STORAGE_DIR
 
 
 def test_db_path_is_under_data_dir(monkeypatch, reload_config) -> None:
@@ -122,7 +121,7 @@ def test_db_path_is_under_data_dir(monkeypatch, reload_config) -> None:
     importlib.reload(config)
 
     assert config.DB_PATH == config.DATA_DIR / "kb-server.db"
-    assert config.DB_PATH == Path("/tmp/kbs-test-data/kb-server.db")
+    assert Path("/tmp/kbs-test-data/kb-server.db") == config.DB_PATH
 
 
 # ---------------------------------------------------------------------------

@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import hmac
 
+import dependencies
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-
-import dependencies
 
 
 def _creds(token: str) -> HTTPAuthorizationCredentials:

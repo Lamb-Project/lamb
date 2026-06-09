@@ -16,12 +16,12 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-from httpx import ASGITransport, AsyncClient
-
 import main
+import pytest
 from database.connection import get_session_direct
 from database.models import IngestionJob
+from httpx import AsyncClient
+
 from tests._helpers import AUTH_HEADERS
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -90,9 +90,11 @@ def test_discover_plugins_survives_import_error(
             raise ImportError("Simulated dependency missing for openai plugin")
         return original_import(name, *args, **kwargs)
 
-    with caplog.at_level(logging.WARNING, logger="main"):
-        with patch.object(importlib, "import_module", side_effect=_failing_import):
-            main._discover_plugins()
+    with (
+        caplog.at_level(logging.WARNING, logger="main"),
+        patch.object(importlib, "import_module", side_effect=_failing_import),
+    ):
+        main._discover_plugins()
 
     # The warning log must mention the failing module.
     warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
