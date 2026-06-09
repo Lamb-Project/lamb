@@ -8,6 +8,7 @@ services:
     environment:
       PORT: ${LAMB_PORT:-9099}
       OWI_BASE_URL: ${OWI_BASE_URL?Set OWI_BASE_URL}
+      OWI_PUBLIC_BASE_URL: ${OWI_PUBLIC_BASE_URL:-http://localhost:8080}
       OWI_PATH: ${OWI_PATH?Set OWI_PATH}
       LAMB_KB_SERVER: ${LAMB_KB_SERVER:-http://kb:9090}
       LAMB_BACKEND_HOST: ${LAMB_BACKEND_HOST?Set LAMB_BACKEND_HOST}
@@ -15,6 +16,7 @@ services:
       LAMB_BEARER_TOKEN: ${LAMB_BEARER_TOKEN?Set LAMB_BEARER_TOKEN}
       LAMB_KB_SERVER_TOKEN: ${LAMB_KB_SERVER_TOKEN:-0p3n-w3bu!}
       LAMB_WORKERS: ${LAMB_WORKERS:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL?Set OPENAI_BASE_URL}
       OPENAI_MODEL: ${OPENAI_MODEL?Set OPENAI_MODEL}
@@ -88,6 +90,10 @@ services:
     build:
       context: ./open-webui
       dockerfile: Dockerfile
+      args:
+        USE_CUDA: ${OWI_USE_CUDA:-false}
+        USE_OLLAMA: ${OWI_USE_OLLAMA:-false}
+        USE_CUDA_VER: ${OWI_CUDA_VER:-cu124}
     restart: unless-stopped
     environment:
       PORT: ${OPENWEBUI_PORT:-8080}

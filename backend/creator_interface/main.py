@@ -321,6 +321,7 @@ class UpdateSharesRequest(BaseModel):
 
 class ShareUserResponse(BaseModel):
     """Response model for a shared user"""
+    user_id: int
     user_email: str
     user_name: str
     shared_at: int
