@@ -23,3 +23,4 @@ Use `lamb docs read <topic> --section "heading"` to read a subsection.
 | collaboration | collaboration.md | Sharing assistants, KBs, and templates with other educators | sharing, shared-with-me, organization, permissions |
 | troubleshooting | troubleshooting.md | Common problems and solutions for assistants, RAG, publishing, and access | errors, empty-context, rag-broken, cant-publish, no-share-tab, students-cant-access |
 | glossary | glossary.md | Definitions of key LAMB terms | terms, definitions, vocabulary |
+| moodle-cli | moodle-cli.md | Moodle CLI integration — courses, users, grades, enrolments, assignments, forums, quizzes, calendar, messages, completion, files, cohorts, roles | moodle, courses, users, grades, enrolments, assignments, forums, quizzes, calendar, messages, completion, files, cohorts, roles, site |
