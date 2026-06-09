@@ -1,14 +1,9 @@
-"""HTTP client for the new KB Server microservice (Knowledge Stores).
+"""HTTP client for the Knowledge Store server (port 9092).
 
-Targets the redesigned server on port 9092 — distinct from the stable
-``kb_server_manager.py`` (port 9090). Resolves org-specific config via
-``OrganizationConfigResolver.get_knowledge_store_config`` and uses async
-httpx with per-call client lifecycle (matches ``LibraryManagerClient``).
-
-The KB Server is intentionally ignorant of users, organizations, and
-libraries; LAMB owns ACL, multi-tenancy, and content delivery (ADR-1 / ADR-6
-of issue #334). Embedding API keys are sent per-request and held in memory
-only by the KB Server (ADR-4) — they are never persisted there.
+Handles collection lifecycle, content ingestion, queries, and server
+discovery. Resolves per-organisation configuration via
+``OrganizationConfigResolver`` so multi-tenant setups can point different
+orgs at different KB Server instances.
 """
 
 import logging
@@ -43,8 +38,8 @@ class KnowledgeStoreClient:
     """Async HTTP client for the new KB Server (port 9092)."""
 
     def __init__(self):
-        self.global_server_url = LAMB_KB_SERVER_V2
-        self.global_token = LAMB_KB_SERVER_V2_TOKEN
+        self.global_server_url = os.getenv("LAMB_KB_SERVER_V2", LAMB_KB_SERVER_V2)
+        self.global_token = os.getenv("LAMB_KB_SERVER_V2_TOKEN", LAMB_KB_SERVER_V2_TOKEN)
 
     def _get_ks_config(self, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """Resolve KB Server URL, token, and org allow-lists for the user.

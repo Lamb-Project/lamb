@@ -187,7 +187,7 @@ async def create_library(
         )
     except Exception as e:
         _db.delete_library(library_id)
-        raise HTTPException(status_code=502, detail=f"Library Manager error: {e}")
+        raise HTTPException(status_code=502, detail=f"Library Manager error: {e}") from e
 
     _db.update_library_status(library_id, "active")
     _audit(auth, "library.create", "library", library_id, {"name": body.name})

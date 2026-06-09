@@ -276,6 +276,17 @@ class LibraryManagerClient:
     async def create_folder(self, library_id: str, name: str,
                             parent_folder_id: str | None = None,
                             creator_user: Dict[str, Any] = None) -> Dict:
+        """Create a folder in a library.
+
+        Args:
+            library_id: Library UUID.
+            name: Folder name.
+            parent_folder_id: Optional parent folder UUID for nesting.
+            creator_user: LAMB user dict for org config resolution.
+
+        Returns:
+            Dict with the created folder's details (id, name, parent_folder_id).
+        """
         config = self._get_library_config(creator_user)
         return await self._request(
             "POST", f"/libraries/{library_id}/folders", config,
@@ -284,6 +295,17 @@ class LibraryManagerClient:
 
     async def rename_folder(self, library_id: str, folder_id: str, name: str,
                             creator_user: Dict[str, Any] = None) -> Dict:
+        """Rename a folder.
+
+        Args:
+            library_id: Library UUID.
+            folder_id: Folder UUID.
+            name: New folder name.
+            creator_user: LAMB user dict for org config resolution.
+
+        Returns:
+            Dict with the updated folder's details.
+        """
         config = self._get_library_config(creator_user)
         return await self._request(
             "PUT", f"/libraries/{library_id}/folders/{folder_id}", config,
@@ -293,6 +315,17 @@ class LibraryManagerClient:
     async def move_folder(self, library_id: str, folder_id: str,
                           parent_folder_id: str | None,
                           creator_user: Dict[str, Any] = None) -> Dict:
+        """Move a folder to a new parent (or to root).
+
+        Args:
+            library_id: Library UUID.
+            folder_id: Folder UUID.
+            parent_folder_id: New parent folder UUID, or None for root.
+            creator_user: LAMB user dict for org config resolution.
+
+        Returns:
+            Dict with the updated folder's details.
+        """
         config = self._get_library_config(creator_user)
         return await self._request(
             "PUT", f"/libraries/{library_id}/folders/{folder_id}/move", config,
@@ -301,6 +334,16 @@ class LibraryManagerClient:
 
     async def delete_folder(self, library_id: str, folder_id: str,
                             creator_user: Dict[str, Any] = None) -> Dict:
+        """Delete a folder. Items and subfolders are reparented to its parent.
+
+        Args:
+            library_id: Library UUID.
+            folder_id: Folder UUID.
+            creator_user: LAMB user dict for org config resolution.
+
+        Returns:
+            Dict with deletion confirmation.
+        """
         config = self._get_library_config(creator_user)
         return await self._request(
             "DELETE", f"/libraries/{library_id}/folders/{folder_id}", config,
@@ -309,6 +352,17 @@ class LibraryManagerClient:
     async def move_items(self, library_id: str, item_ids: list,
                          folder_id: str | None,
                          creator_user: Dict[str, Any] = None) -> Dict:
+        """Move a batch of items to a folder (or to root).
+
+        Args:
+            library_id: Library UUID.
+            item_ids: List of item UUIDs to move.
+            folder_id: Target folder UUID, or None for root.
+            creator_user: LAMB user dict for org config resolution.
+
+        Returns:
+            Dict with move confirmation and count of moved items.
+        """
         config = self._get_library_config(creator_user)
         return await self._request(
             "POST", f"/libraries/{library_id}/items/move", config,

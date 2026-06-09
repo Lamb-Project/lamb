@@ -5,6 +5,34 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="MAIN")
 
+
+def _inject_rag_context(template: str, rag_context: Optional[Dict[str, Any]]) -> str:
+    """Replace {context} placeholder with RAG context and formatted sources.
+
+    Args:
+        template: The prompt template containing a ``{context}`` placeholder.
+        rag_context: Optional dict with ``context`` and ``sources`` keys.
+
+    Returns:
+        The template with ``{context}`` replaced by the formatted context
+        string, or with the placeholder removed if no context is available.
+    """
+    if rag_context:
+        context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
+        sources_text = ""
+        if isinstance(rag_context, dict) and "sources" in rag_context:
+            sources = rag_context["sources"]
+            if sources:
+                sources_text = "\n\n## Available Sources\n\n"
+                for i, source in enumerate(sources, 1):
+                    title = source.get("title", "Unknown")
+                    url = source.get("url", "")
+                    similarity = source.get("similarity", 0)
+                    sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+        full_context = context + sources_text
+        return template.replace("{context}", "\n\n" + full_context + "\n\n")
+    return template.replace("{context}", "")
+
 # Default prompt template used when an assistant is configured with a real
 # RAG processor (knowledge_store_rag, simple_rag, …) but no explicit
 # prompt_template. Without this default, simple_augment would silently drop
@@ -143,27 +171,7 @@ def prompt_processor(
                 logger.debug(f"User message: {user_input_text}")
                 augmented_text = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
-                    # Format sources if available
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
-                    # Combine context with sources
-                    full_context = context + sources_text
-                    augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
-                else:
-                    augmented_text = augmented_text.replace("{context}", "")
+                augmented_text = _inject_rag_context(augmented_text, rag_context)
 
                 # Add the augmented text as first element
                 augmented_content.append({
@@ -199,27 +207,7 @@ def prompt_processor(
                 logger.debug(f"User message: {user_input_text}")
                 prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
-                    # Format sources if available
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
-                    # Combine context with sources
-                    full_context = context + sources_text
-                    prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
-                else:
-                    prompt = prompt.replace("{context}", "")
+                prompt = _inject_rag_context(prompt, rag_context)
 
                 # Add processed text message
                 processed_messages.append({
