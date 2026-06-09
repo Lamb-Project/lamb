@@ -22,10 +22,7 @@ export async function fetchKnowledgeBases(form) {
 	form.knowledgeBaseError = '';
 
 	try {
-		const [owned, shared] = await Promise.all([
-			getUserKnowledgeBases(),
-			getSharedKnowledgeBases()
-		]);
+		const [owned, shared] = await Promise.all([getUserKnowledgeBases(), getSharedKnowledgeBases()]);
 		owned.sort((a, b) => a.name.localeCompare(b.name));
 		shared.sort((a, b) => a.name.localeCompare(b.name));
 		form.ownedKnowledgeBases = owned;
@@ -80,7 +77,10 @@ export async function fetchUserFiles(form, { force = false, assistant = null } =
 		const data = await apiJson('/files/list');
 		form.userFiles = data;
 		const callbackData = getAssistantMetadataObject(assistant);
-		if (callbackData.file_path && form.userFiles.some(file => file.path === callbackData.file_path)) {
+		if (
+			callbackData.file_path &&
+			form.userFiles.some((file) => file.path === callbackData.file_path)
+		) {
 			form.selectedFilePath = callbackData.file_path;
 		}
 	} catch (err) {

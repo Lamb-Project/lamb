@@ -6,6 +6,48 @@ from lamb.logging_config import get_logger
 logger = get_logger(__name__, component="MAIN")
 
 
+def _inject_rag_context(template: str, rag_context: Optional[Dict[str, Any]]) -> str:
+    """Replace {context} placeholder with RAG context and formatted sources.
+
+    Args:
+        template: The prompt template containing a ``{context}`` placeholder.
+        rag_context: Optional dict with ``context`` and ``sources`` keys.
+
+    Returns:
+        The template with ``{context}`` replaced by the formatted context
+        string, or with the placeholder removed if no context is available.
+    """
+    if rag_context:
+        context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
+        sources_text = ""
+        if isinstance(rag_context, dict) and "sources" in rag_context:
+            sources = rag_context["sources"]
+            if sources:
+                sources_text = "\n\n## Available Sources\n\n"
+                for i, source in enumerate(sources, 1):
+                    title = source.get("title", "Unknown")
+                    url = source.get("url", "")
+                    similarity = source.get("similarity", 0)
+                    sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
+        full_context = context + sources_text
+        return template.replace("{context}", "\n\n" + full_context + "\n\n")
+    return template.replace("{context}", "")
+
+# Default prompt template used when an assistant is configured with a real
+# RAG processor (knowledge_store_rag, simple_rag, …) but no explicit
+# prompt_template. Without this default, simple_augment would silently drop
+# the retrieved ``rag_context`` because the empty template contains no
+# ``{context}`` placeholder, which looks like "RAG retrieves but the LLM
+# never sees it" to the user. Kept in sync with the lamb-cli default
+# (lifecycle verification 2026-05-03 — see lamb-cli/src/lamb_cli/commands/
+# assistant.py).
+DEFAULT_RAG_PROMPT_TEMPLATE = (
+    "Use the following context to answer the question. "
+    "If the context does not contain the answer, say you do not know.\n\n"
+    "Context:\n{context}\n\nQuestion: {user_input}"
+)
+
+
 def _has_vision_capability(assistant: Assistant) -> bool:
     """
     Check if the assistant has vision capabilities enabled.
@@ -84,12 +126,31 @@ def prompt_processor(
                 "role": "system",
                 "content": assistant.system_prompt
             })
-        
+
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
-        
+
+        # If RAG context was produced but the assistant has an empty / missing
+        # prompt template, substitute the default template so the retrieved
+        # chunks actually reach the LLM. Otherwise the {context} substitution
+        # below would silently drop them. (Defect D3 — lifecycle 2026-05-03.)
+        effective_template = assistant.prompt_template
+        if (not effective_template) and rag_context:
+            context_text = (
+                rag_context.get("context", "")
+                if isinstance(rag_context, dict)
+                else str(rag_context)
+            )
+            if context_text:
+                logger.info(
+                    "simple_augment: applying DEFAULT_RAG_PROMPT_TEMPLATE "
+                    "because assistant has empty prompt_template but "
+                    "rag_context is present (defect D3 fallback)."
+                )
+                effective_template = DEFAULT_RAG_PROMPT_TEMPLATE
+
         # Process the last message using the prompt template
-        if assistant.prompt_template:
+        if effective_template:
             # Check if assistant has vision capabilities
             has_vision = _has_vision_capability(assistant)
 
@@ -108,29 +169,9 @@ def prompt_processor(
 
                 # Create augmented text content with template
                 logger.debug(f"User message: {user_input_text}")
-                augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                augmented_text = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
-                    # Format sources if available
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
-                    # Combine context with sources
-                    full_context = context + sources_text
-                    augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
-                else:
-                    augmented_text = augmented_text.replace("{context}", "")
+                augmented_text = _inject_rag_context(augmented_text, rag_context)
 
                 # Add the augmented text as first element
                 augmented_content.append({
@@ -164,29 +205,9 @@ def prompt_processor(
 
                 # Replace placeholders in template
                 logger.debug(f"User message: {user_input_text}")
-                prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    
-                    # Format sources if available
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    
-                    # Combine context with sources
-                    full_context = context + sources_text
-                    prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
-                else:
-                    prompt = prompt.replace("{context}", "")
+                prompt = _inject_rag_context(prompt, rag_context)
 
                 # Add processed text message
                 processed_messages.append({

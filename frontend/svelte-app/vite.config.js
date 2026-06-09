@@ -8,7 +8,7 @@ export default defineConfig({
 	// Ensure Svelte and related packages are properly pre-bundled to avoid
 	// "lifecycle_outside_component" errors from duplicate Svelte instances
 	optimizeDeps: {
-		include: ['svelte', 'svelte-i18n', 'flowbite-svelte', 'flowbite-svelte-icons'],
+		include: ['svelte', 'svelte-i18n'],
 		exclude: ['@sveltejs/kit']
 	},
 	ssr: {
@@ -18,6 +18,12 @@ export default defineConfig({
 	// Allow overriding the proxy target via environment variable so the
 	// containerized frontend can proxy to the backend service name (backend:9099)
 	server: {
+		watch: {
+			// SSHFS (Colima/Lima) doesn't propagate inotify events into the VM,
+			// so Vite's default event-based watcher never fires. Polling fixes HMR.
+			usePolling: true,
+			interval: 500
+		},
 		proxy: {
 			'/creator': {
 				// Use PROXY_TARGET if set (e.g. http://backend:9099 inside docker),
@@ -32,6 +38,11 @@ export default defineConfig({
 				secure: false
 			},
 			'/static': {
+				target: process.env.PROXY_TARGET || 'http://localhost:9099',
+				changeOrigin: true,
+				secure: false
+			},
+			'/docs': {
 				target: process.env.PROXY_TARGET || 'http://localhost:9099',
 				changeOrigin: true,
 				secure: false

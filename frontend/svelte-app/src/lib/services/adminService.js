@@ -14,7 +14,7 @@ async function jsonRequest(path, token, init = {}) {
 	const response = await apiFetch(path, {
 		token,
 		headers: { 'Content-Type': 'application/json' },
-		...init,
+		...init
 	});
 	if (!response.ok) {
 		// Tolerate non-JSON 5xx responses (Caddy/proxy HTML) instead of throwing
@@ -23,7 +23,9 @@ async function jsonRequest(path, token, init = {}) {
 		try {
 			const err = await response.json();
 			detail = err?.error || err?.detail;
-		} catch (_) { /* not JSON */ }
+		} catch {
+			/* not JSON */
+		}
 		throw new Error(detail || `Request failed (${response.status})`);
 	}
 	return response.json();
@@ -77,7 +79,7 @@ export async function enableUser(token, userId) {
 export async function disableUsersBulk(token, userIds) {
 	return jsonRequest('/admin/users/disable-bulk', token, {
 		method: 'POST',
-		body: JSON.stringify({ user_ids: userIds }),
+		body: JSON.stringify({ user_ids: userIds })
 	});
 }
 
@@ -90,7 +92,7 @@ export async function disableUsersBulk(token, userIds) {
 export async function enableUsersBulk(token, userIds) {
 	return jsonRequest('/admin/users/enable-bulk', token, {
 		method: 'POST',
-		body: JSON.stringify({ user_ids: userIds }),
+		body: JSON.stringify({ user_ids: userIds })
 	});
 }
 

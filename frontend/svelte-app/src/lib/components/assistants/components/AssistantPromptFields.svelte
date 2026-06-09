@@ -38,8 +38,7 @@
 			textareaRef.focus();
 			tick().then(() => {
 				if (textareaRef) {
-					textareaRef.selectionStart = textareaRef.selectionEnd =
-						start + placeholder.length;
+					textareaRef.selectionStart = textareaRef.selectionEnd = start + placeholder.length;
 				}
 			});
 		}
@@ -47,7 +46,7 @@
 </script>
 
 <div>
-	<div class="flex items-center justify-between mb-2">
+	<div class="mb-2 flex items-center justify-between">
 		<label for="system-prompt" class="block text-sm font-medium text-gray-700">
 			{$_('assistants.form.systemPrompt.label', { default: 'System Prompt' })}
 		</label>
@@ -55,9 +54,9 @@
 			<button
 				type="button"
 				onclick={handleLoadTemplate}
-				class="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
+				class="focus:ring-brand inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:outline-none"
 			>
-				<svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<svg class="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -73,10 +72,10 @@
 		id="system-prompt"
 		name="system_prompt"
 		bind:value={systemPrompt}
-		oninput={oninput}
+		{oninput}
 		rows="4"
 		disabled={false}
-		class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand focus:border-brand sm:text-sm bg-white text-gray-900"
+		class="focus:ring-brand focus:border-brand mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:outline-none sm:text-sm"
 		placeholder={$_('assistants.form.systemPrompt.placeholder', {
 			default: "Define the assistant's role and personality..."
 		})}
@@ -94,7 +93,7 @@
 		{#each ragPlaceholders as placeholder (placeholder)}
 			<button
 				type="button"
-				class="ml-1 px-2 py-0.5 text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-brand"
+				class="focus:ring-brand ml-1 rounded bg-gray-200 px-2 py-0.5 text-xs hover:bg-gray-300 focus:ring-2 focus:outline-none dark:bg-gray-700 dark:hover:bg-gray-600"
 				onclick={() => insertPlaceholder(placeholder)}
 			>
 				{placeholder}
@@ -104,15 +103,17 @@
 	<textarea
 		bind:this={textareaRef}
 		bind:value={promptTemplate}
-		oninput={oninput}
+		{oninput}
 		id="prompt_template"
 		rows="6"
-		class="mt-1 block w-full shadow-sm sm:text-sm border border-gray-300 rounded-md bg-white text-gray-900"
-		placeholder={$_('assistants.form.promptTemplate.placeholder', { default: 'e.g. Use the {context} to answer the question: {user_input}' })}
+		class="mt-1 block w-full rounded-md border border-gray-300 bg-white text-gray-900 shadow-sm sm:text-sm"
+		placeholder={$_('assistants.form.promptTemplate.placeholder', {
+			default: 'e.g. Use the {context} to answer the question: {user_input}'
+		})}
 	></textarea>
 	{#if promptTemplate}
-		<div class="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-			<div class="text-xs text-gray-500 mb-1">
+		<div class="mt-2 rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+			<div class="mb-1 text-xs text-gray-500">
 				{$_('preview') || 'Preview with highlighted placeholders:'}
 			</div>
 			<div class="whitespace-pre-wrap" data-testid="prompt-preview">

@@ -63,6 +63,10 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# B008: function call in default argument — standard FastAPI idiom (Depends(), File()).
+# B904: raise from — optional-dep guards deliberately re-raise without chaining.
+# B905: zip strict — prefer concise zip() over strict=False noise everywhere.
+ignore = ["B008", "B904", "B905"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

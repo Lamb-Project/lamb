@@ -4,295 +4,417 @@
   Emits 'imported' event on success.
 -->
 <script>
-    import axios from 'axios';
-    import { createEventDispatcher, tick } from 'svelte';
-    import { importUrl, importYouTube, importLibrary } from '$lib/services/libraryService';
-    import { _ } from '$lib/i18n';
+	import axios from 'axios';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
+	import {
+		importUrl,
+		importYouTube,
+		importLibrary,
+		getPlugins
+	} from '$lib/services/libraryService';
+	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
+	import { _ } from '$lib/i18n';
 
-    const MAX_ZIP_SIZE = 500 * 1024 * 1024;
+	const MAX_ZIP_SIZE = 500 * 1024 * 1024;
 
-    const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher();
 
-    /** @type {string} */
-    let libraryId = '';
-    let isOpen = $state(false);
-    let isSubmitting = $state(false);
-    let error = $state('');
+	/** @type {string} */
+	let libraryId = '';
+	let isOpen = $state(false);
+	let isSubmitting = $state(false);
+	let error = $state('');
 
-    let importType = $state('url');
-    let url = $state('');
-    let videoUrl = $state('');
-    let language = $state('en');
-    let title = $state('');
-    /** @type {File|null} */
-    let zipFile = $state(null);
+	let importType = $state('url');
+	let url = $state('');
+	let videoUrl = $state('');
+	let title = $state('');
+	/** @type {File|null} */
+	let zipFile = $state(null);
+	// Plugin params dict — filled by PluginParamFields from the matched
+	// plugin's schema. Resets when the user switches tabs or closes the
+	// modal. The renderer initialises any missing key from
+	// ``PluginParameter.default``, so a brand-new plugin works without
+	// any modal change.
+	let params = $state(/** @type {Record<string, unknown>} */ ({}));
+	let paramErrors = $state(/** @type {Record<string, string>} */ ({}));
 
-    /**
-     * Open the modal for a specific library.
-     * @param {string} id - Library ID.
-     */
-    export async function open(id) {
-        libraryId = id;
-        isOpen = true;
-        resetForm();
-        await tick();
-        focusFirstInput();
-    }
+	// Plugin metadata fetched once on mount. The first plugin whose
+	// ``supported_source_types`` includes the active import type wins —
+	// keeps the frontend free of hardcoded plugin names while still
+	// auto-selecting the obvious choice when only one plugin exists for
+	// a given source type.
+	/** @type {any[]} */
+	let plugins = $state([]);
 
-    function focusFirstInput() {
-        if (importType === 'url') {
-            document.getElementById('import-url')?.focus();
-        } else if (importType === 'youtube') {
-            document.getElementById('import-yt-url')?.focus();
-        } else if (importType === 'zip') {
-            document.getElementById('import-zip')?.focus();
-        }
-    }
+	onMount(async () => {
+		try {
+			plugins = await getPlugins();
+		} catch (err) {
+			console.warn('ImportModal: failed to load plugins', err);
+		}
+	});
 
-    function close() {
-        if (isSubmitting) return;
-        isOpen = false;
-        resetForm();
-    }
+	/**
+	 * Pick the first plugin that handles a given source type. Returns
+	 * ``null`` when no plugin is registered for that type so the caller can
+	 * surface a clear error rather than POST with a missing plugin name.
+	 * @param {string} sourceType
+	 * @returns {any|null}
+	 */
+	function pluginForSourceType(sourceType) {
+		const match = plugins.find(
+			(p) =>
+				Array.isArray(p?.supported_source_types) && p.supported_source_types.includes(sourceType)
+		);
+		return match ?? null;
+	}
 
-    function resetForm() {
-        importType = 'url';
-        url = '';
-        videoUrl = '';
-        language = 'en';
-        title = '';
-        zipFile = null;
-        error = '';
-        isSubmitting = false;
-    }
+	// The plugin matching the active tab's source type. Drives the param
+	// renderer below the form fields.
+	let activePlugin = $derived.by(() => {
+		if (importType === 'url') return pluginForSourceType('url');
+		if (importType === 'youtube') return pluginForSourceType('youtube');
+		return null;
+	});
+	let activePluginParameters = $derived(activePlugin?.parameters ?? []);
 
-    function isValidHttpUrl(value) {
-        try {
-            const parsed = new URL(value);
-            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-        } catch {
-            return false;
-        }
-    }
+	// Reset params whenever the user switches tabs so a stale param dict
+	// from a different plugin doesn't leak across.
+	$effect(() => {
+		const _type = importType;
+		void _type;
+		params = {};
+	});
 
-    async function handleSubmit(event) {
-        event.preventDefault();
-        isSubmitting = true;
-        error = '';
+	/**
+	 * Open the modal for a specific library.
+	 * @param {string} id - Library ID.
+	 */
+	export async function open(id) {
+		libraryId = id;
+		isOpen = true;
+		resetForm();
+		await tick();
+		focusFirstInput();
+	}
 
-        try {
-            if (importType === 'url') {
-                if (!url.trim() || !isValidHttpUrl(url.trim())) {
-                    error = $_('libraries.importModal.invalidUrl', { default: 'A valid HTTP(S) URL is required.' });
-                    isSubmitting = false;
-                    return;
-                }
-                const result = await importUrl(libraryId, { url: url.trim(), title: title.trim() || undefined });
-                isOpen = false;
-                dispatch('imported', { type: 'url', itemId: result.item_id });
-            } else if (importType === 'youtube') {
-                if (!videoUrl.trim() || !isValidHttpUrl(videoUrl.trim())) {
-                    error = $_('libraries.importModal.invalidYoutubeUrl', { default: 'A valid YouTube URL is required.' });
-                    isSubmitting = false;
-                    return;
-                }
-                const result = await importYouTube(libraryId, { videoUrl: videoUrl.trim(), language, title: title.trim() || undefined });
-                isOpen = false;
-                dispatch('imported', { type: 'youtube', itemId: result.item_id });
-            } else if (importType === 'zip') {
-                if (!zipFile) {
-                    error = $_('libraries.importModal.zipRequired', { default: 'A ZIP file is required.' });
-                    isSubmitting = false;
-                    return;
-                }
-                if (zipFile.size > MAX_ZIP_SIZE) {
-                    error = $_('libraries.importModal.zipTooLarge', { default: 'ZIP file exceeds 500 MB limit.' });
-                    isSubmitting = false;
-                    return;
-                }
-                const result = await importLibrary(zipFile);
-                isOpen = false;
-                dispatch('imported', { type: 'zip', libraryId: result.library_id, libraryName: result.library_name });
-            }
-            resetForm();
-        } catch (/** @type {unknown} */ err) {
-            error = axios.isAxiosError(err) && err.response?.data?.detail
-                ? err.response.data.detail
-                : $_('libraries.importModal.importFailed', { default: 'Import failed. Please try again.' });
-            isSubmitting = false;
-        }
-    }
+	function focusFirstInput() {
+		if (importType === 'url') {
+			document.getElementById('import-url')?.focus();
+		} else if (importType === 'youtube') {
+			document.getElementById('import-yt-url')?.focus();
+		} else if (importType === 'zip') {
+			document.getElementById('import-zip')?.focus();
+		}
+	}
 
-    function handleZipSelect(event) {
-        const files = event.target?.files;
-        zipFile = files?.[0] || null;
-    }
+	function close() {
+		if (isSubmitting) return;
+		isOpen = false;
+		resetForm();
+	}
 
-    function handleKeydown(event) {
-        if (event.key === 'Escape') close();
-    }
+	function resetForm() {
+		importType = 'url';
+		url = '';
+		videoUrl = '';
+		title = '';
+		zipFile = null;
+		error = '';
+		isSubmitting = false;
+		params = {};
+	}
 
-    function handleBackdropClick() { close(); }
-    function stopPropagation(event) { event.stopPropagation(); }
+	function isValidHttpUrl(value) {
+		try {
+			const parsed = new URL(value);
+			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+		} catch {
+			return false;
+		}
+	}
+
+	async function handleSubmit(event) {
+		event.preventDefault();
+		isSubmitting = true;
+		error = '';
+
+		try {
+			if (Object.keys(paramErrors).length > 0) {
+				error = $_('plugins.params.fixErrors', {
+					default: 'Fix the plugin parameter errors before importing.'
+				});
+				isSubmitting = false;
+				return;
+			}
+			if (importType === 'url') {
+				if (!url.trim() || !isValidHttpUrl(url.trim())) {
+					error = $_('libraries.importModal.invalidUrl', {
+						default: 'A valid HTTP(S) URL is required.'
+					});
+					isSubmitting = false;
+					return;
+				}
+				const urlPlugin = pluginForSourceType('url');
+				if (!urlPlugin) {
+					error = $_('libraries.importModal.noUrlPlugin', {
+						default: 'No URL import plugin is enabled on this server.'
+					});
+					isSubmitting = false;
+					return;
+				}
+				const result = await importUrl(libraryId, {
+					url: url.trim(),
+					pluginName: urlPlugin.name,
+					title: title.trim() || undefined,
+					params
+				});
+				isOpen = false;
+				dispatch('imported', { type: 'url', itemId: result.item_id });
+			} else if (importType === 'youtube') {
+				if (!videoUrl.trim() || !isValidHttpUrl(videoUrl.trim())) {
+					error = $_('libraries.importModal.invalidYoutubeUrl', {
+						default: 'A valid YouTube URL is required.'
+					});
+					isSubmitting = false;
+					return;
+				}
+				const ytPlugin = pluginForSourceType('youtube');
+				if (!ytPlugin) {
+					error = $_('libraries.importModal.noYoutubePlugin', {
+						default: 'No YouTube import plugin is enabled on this server.'
+					});
+					isSubmitting = false;
+					return;
+				}
+				const result = await importYouTube(libraryId, {
+					videoUrl: videoUrl.trim(),
+					pluginName: ytPlugin.name,
+					title: title.trim() || undefined,
+					params
+				});
+				isOpen = false;
+				dispatch('imported', { type: 'youtube', itemId: result.item_id });
+			} else if (importType === 'zip') {
+				if (!zipFile) {
+					error = $_('libraries.importModal.zipRequired', { default: 'A ZIP file is required.' });
+					isSubmitting = false;
+					return;
+				}
+				if (zipFile.size > MAX_ZIP_SIZE) {
+					error = $_('libraries.importModal.zipTooLarge', {
+						default: 'ZIP file exceeds 500 MB limit.'
+					});
+					isSubmitting = false;
+					return;
+				}
+				const result = await importLibrary(zipFile);
+				isOpen = false;
+				dispatch('imported', {
+					type: 'zip',
+					libraryId: result.library_id,
+					libraryName: result.library_name
+				});
+			}
+			resetForm();
+		} catch (/** @type {unknown} */ err) {
+			error =
+				axios.isAxiosError(err) && err.response?.data?.detail
+					? err.response.data.detail
+					: $_('libraries.importModal.importFailed', {
+							default: 'Import failed. Please try again.'
+						});
+			isSubmitting = false;
+		}
+	}
+
+	function handleZipSelect(event) {
+		const files = event.target?.files;
+		zipFile = files?.[0] || null;
+	}
+
+	function handleKeydown(event) {
+		if (event.key === 'Escape') close();
+	}
+
+	function handleBackdropClick() {
+		close();
+	}
+	function stopPropagation(event) {
+		event.stopPropagation();
+	}
 </script>
 
 {#if isOpen}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="import-modal-title"
-        tabindex="-1"
-        onclick={handleBackdropClick}
-        onkeydown={handleKeydown}
-    >
-        <!-- Inner panel: presentational only — see CreateLibraryModal for context. -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4" role="presentation" onclick={stopPropagation}>
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 id="import-modal-title" class="text-lg font-semibold text-gray-900">
-                    {$_('libraries.importModal.title', { default: 'Import Content' })}
-                </h2>
-            </div>
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="import-modal-title"
+		tabindex="-1"
+		onclick={handleBackdropClick}
+		onkeydown={handleKeydown}
+	>
+		<!-- Inner panel: presentational only — see CreateLibraryModal for context. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div
+			class="mx-4 w-full max-w-lg rounded-lg bg-white shadow-xl"
+			role="presentation"
+			onclick={stopPropagation}
+		>
+			<div class="border-b border-gray-200 px-6 py-4">
+				<h2 id="import-modal-title" class="text-lg font-semibold text-gray-900">
+					{$_('libraries.importModal.title', { default: 'Import Content' })}
+				</h2>
+			</div>
 
-            <form onsubmit={handleSubmit} class="px-6 py-4 space-y-4">
-                {#if error}
-                    <div class="p-3 text-sm text-red-700 bg-red-50 rounded-md" role="alert">{error}</div>
-                {/if}
+			<form onsubmit={handleSubmit} class="space-y-4 px-6 py-4">
+				{#if error}
+					<div class="rounded-md bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>
+				{/if}
 
-                <fieldset>
-                    <legend class="block text-sm font-medium text-gray-700 mb-2">
-                        {$_('libraries.importModal.typeLabel', { default: 'Import type' })}
-                    </legend>
-                    <div class="flex gap-2">
-                        {#each [
-                            { value: 'url', label: $_('libraries.importModal.typeUrl', { default: 'URL' }) },
-                            { value: 'youtube', label: $_('libraries.importModal.typeYouTube', { default: 'YouTube' }) },
-                            { value: 'zip', label: $_('libraries.importModal.typeZip', { default: 'ZIP Archive' }) },
-                        ] as tab}
-                            <button
-                                type="button"
-                                class="px-3 py-1.5 text-sm rounded-md border {importType === tab.value ? 'bg-[#2271b3] text-white border-[#2271b3]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
-                                onclick={() => { importType = tab.value; error = ''; }}
-                            >
-                                {tab.label}
-                            </button>
-                        {/each}
-                    </div>
-                </fieldset>
+				<fieldset>
+					<legend class="mb-2 block text-sm font-medium text-gray-700">
+						{$_('libraries.importModal.typeLabel', { default: 'Import type' })}
+					</legend>
+					<div class="flex gap-2">
+						{#each [{ value: 'url', label: $_( 'libraries.importModal.typeUrl', { default: 'URL' } ) }, { value: 'youtube', label: $_( 'libraries.importModal.typeYouTube', { default: 'YouTube' } ) }, { value: 'zip', label: $_( 'libraries.importModal.typeZip', { default: 'ZIP Archive' } ) }] as tab}
+							<button
+								type="button"
+								class="rounded-md border px-3 py-1.5 text-sm {importType === tab.value
+									? 'border-[#2271b3] bg-[#2271b3] text-white'
+									: 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}"
+								onclick={() => {
+									importType = tab.value;
+									error = '';
+								}}
+							>
+								{tab.label}
+							</button>
+						{/each}
+					</div>
+				</fieldset>
 
-                {#if importType === 'url'}
-                    <div>
-                        <label for="import-url" class="block text-sm font-medium text-gray-700">
-                            URL <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="url"
-                            id="import-url"
-                            bind:value={url}
-                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 text-sm focus:ring-[#2271b3] focus:border-[#2271b3]"
-                            placeholder="https://example.com/document"
-                            disabled={isSubmitting}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label for="import-url-title" class="block text-sm font-medium text-gray-700">
-                            {$_('libraries.importModal.titleLabel', { default: 'Title (optional)' })}
-                        </label>
-                        <input
-                            type="text"
-                            id="import-url-title"
-                            bind:value={title}
-                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 text-sm focus:ring-[#2271b3] focus:border-[#2271b3]"
-                            disabled={isSubmitting}
-                        />
-                    </div>
+				{#if importType === 'url'}
+					<div>
+						<label for="import-url" class="block text-sm font-medium text-gray-700">
+							URL <span class="text-red-500">*</span>
+						</label>
+						<input
+							type="url"
+							id="import-url"
+							bind:value={url}
+							class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
+							placeholder="https://example.com/document"
+							disabled={isSubmitting}
+							required
+						/>
+					</div>
+					<div>
+						<label for="import-url-title" class="block text-sm font-medium text-gray-700">
+							{$_('libraries.importModal.titleLabel', { default: 'Title (optional)' })}
+						</label>
+						<input
+							type="text"
+							id="import-url-title"
+							bind:value={title}
+							class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
+							disabled={isSubmitting}
+						/>
+					</div>
+				{:else if importType === 'youtube'}
+					<div>
+						<label for="import-yt-url" class="block text-sm font-medium text-gray-700">
+							{$_('libraries.importModal.youtubeUrl', { default: 'YouTube URL' })}
+							<span class="text-red-500">*</span>
+						</label>
+						<input
+							type="url"
+							id="import-yt-url"
+							bind:value={videoUrl}
+							class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
+							placeholder="https://www.youtube.com/watch?v=..."
+							disabled={isSubmitting}
+							required
+						/>
+					</div>
+					<div>
+						<label for="import-yt-title" class="block text-sm font-medium text-gray-700">
+							{$_('libraries.importModal.titleLabel', { default: 'Title (optional)' })}
+						</label>
+						<input
+							type="text"
+							id="import-yt-title"
+							bind:value={title}
+							class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-[#2271b3] focus:ring-[#2271b3]"
+							disabled={isSubmitting}
+						/>
+					</div>
+				{:else if importType === 'zip'}
+					<div>
+						<label for="import-zip" class="block text-sm font-medium text-gray-700">
+							{$_('libraries.importModal.zipFile', { default: 'ZIP file' })}
+							<span class="text-red-500">*</span>
+						</label>
+						<input
+							type="file"
+							id="import-zip"
+							accept=".zip"
+							onchange={handleZipSelect}
+							class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-[#2271b3] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#195a91]"
+							disabled={isSubmitting}
+						/>
+						<p class="mt-1 text-xs text-gray-500">
+							{$_('libraries.importModal.zipHint', {
+								default: 'Import a previously exported library.'
+							})}
+						</p>
+					</div>
+				{/if}
 
-                {:else if importType === 'youtube'}
-                    <div>
-                        <label for="import-yt-url" class="block text-sm font-medium text-gray-700">
-                            {$_('libraries.importModal.youtubeUrl', { default: 'YouTube URL' })} <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="url"
-                            id="import-yt-url"
-                            bind:value={videoUrl}
-                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 text-sm focus:ring-[#2271b3] focus:border-[#2271b3]"
-                            placeholder="https://www.youtube.com/watch?v=..."
-                            disabled={isSubmitting}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label for="import-yt-lang" class="block text-sm font-medium text-gray-700">
-                            {$_('libraries.importModal.language', { default: 'Transcript language' })}
-                        </label>
-                        <input
-                            type="text"
-                            id="import-yt-lang"
-                            bind:value={language}
-                            class="mt-1 block w-32 border border-gray-300 rounded-md shadow-sm px-3 py-2 text-sm focus:ring-[#2271b3] focus:border-[#2271b3]"
-                            placeholder="en"
-                            disabled={isSubmitting}
-                        />
-                    </div>
-                    <div>
-                        <label for="import-yt-title" class="block text-sm font-medium text-gray-700">
-                            {$_('libraries.importModal.titleLabel', { default: 'Title (optional)' })}
-                        </label>
-                        <input
-                            type="text"
-                            id="import-yt-title"
-                            bind:value={title}
-                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 text-sm focus:ring-[#2271b3] focus:border-[#2271b3]"
-                            disabled={isSubmitting}
-                        />
-                    </div>
+				{#if importType !== 'zip' && activePluginParameters.length > 0}
+					<fieldset class="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+						<legend class="px-1 text-xs font-medium text-gray-700">
+							{$_('libraries.importModal.pluginParamsLabel', {
+								values: { plugin: activePlugin?.human_label || activePlugin?.name },
+								default: 'Plugin parameters'
+							})}
+						</legend>
+						<PluginParamFields
+							parameters={activePluginParameters}
+							bind:values={params}
+							bind:errors={paramErrors}
+							idPrefix="import-modal-param"
+							mode={activePlugin?.mode === 'ADVANCED' ? 'advanced' : 'simplified'}
+						/>
+					</fieldset>
+				{/if}
 
-                {:else if importType === 'zip'}
-                    <div>
-                        <label for="import-zip" class="block text-sm font-medium text-gray-700">
-                            {$_('libraries.importModal.zipFile', { default: 'ZIP file' })} <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="file"
-                            id="import-zip"
-                            accept=".zip"
-                            onchange={handleZipSelect}
-                            class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#2271b3] file:text-white hover:file:bg-[#195a91]"
-                            disabled={isSubmitting}
-                        />
-                        <p class="mt-1 text-xs text-gray-500">
-                            {$_('libraries.importModal.zipHint', { default: 'Import a previously exported library.' })}
-                        </p>
-                    </div>
-                {/if}
-
-                <div class="flex justify-end gap-3 pt-2">
-                    <button
-                        type="button"
-                        onclick={close}
-                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                        disabled={isSubmitting}
-                    >
-                        {$_('common.cancel', { default: 'Cancel' })}
-                    </button>
-                    <button
-                        type="submit"
-                        class="px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm bg-[#2271b3] hover:bg-[#195a91] disabled:opacity-50"
-                        disabled={isSubmitting}
-                    >
-                        {#if isSubmitting}
-                            {$_('libraries.importModal.importing', { default: 'Importing...' })}
-                        {:else}
-                            {$_('libraries.importModal.importButton', { default: 'Import' })}
-                        {/if}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+				<div class="flex justify-end gap-3 pt-2">
+					<button
+						type="button"
+						onclick={close}
+						class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+						disabled={isSubmitting}
+					>
+						{$_('common.cancel', { default: 'Cancel' })}
+					</button>
+					<button
+						type="submit"
+						class="rounded-md bg-[#2271b3] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#195a91] disabled:opacity-50"
+						disabled={isSubmitting}
+					>
+						{#if isSubmitting}
+							{$_('libraries.importModal.importing', { default: 'Importing...' })}
+						{:else}
+							{$_('libraries.importModal.importButton', { default: 'Import' })}
+						{/if}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
 {/if}

@@ -23,13 +23,7 @@ vi.mock('$lib/stores/assistantConfigStore', async () => {
 					}
 				}
 			},
-			rag_processors: [
-				'simple_rag',
-				'no_rag',
-				'single_file_rag',
-				'rubric_rag',
-				'hierarchical_rag'
-			]
+			rag_processors: ['simple_rag', 'no_rag', 'single_file_rag', 'rubric_rag', 'hierarchical_rag']
 		},
 		configDefaults: {
 			config: {

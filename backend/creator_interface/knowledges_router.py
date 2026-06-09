@@ -1,3 +1,10 @@
+"""Legacy Knowledge Base router (port 9090 stable KB Server).
+
+This module handles the original Knowledge Base CRUD, ingestion, and
+query endpoints. For the new Knowledge Store router (port 9092), see
+``knowledge_store_router.py``.
+"""
+
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Depends, BackgroundTasks, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import httpx
@@ -10,6 +17,9 @@ from lamb.database_manager import LambDatabaseManager
 from typing import Optional, List, Dict, Any, Union
 import json
 import time
+import re
+from urllib.parse import urlparse
+import io as _io
 from pydantic import BaseModel, Field
 from lamb.auth_context import AuthContext, get_auth_context, _build_auth_context
 from lamb.logging_config import get_logger
@@ -20,6 +30,100 @@ from .knowledgebase_classes import (
     KnowledgeBaseListResponse
 )
 from .kb_server_manager import KBServerManager
+
+try:
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logger.warning("httpx not available, will use basic filename generation")
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
+    logger.warning("beautifulsoup4 not available, will use basic filename generation")
+
+
+def slugify(text: str, max_length: int = 80) -> str:
+    """Convert text to a filesystem-safe slug."""
+    text = text.strip().lower()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[-\s]+', '_', text)
+    return text[:max_length]
+
+
+async def get_youtube_title(video_url: str) -> str:
+    """Try to extract YouTube video title using yt-dlp or web scraping."""
+    try:
+        import yt_dlp
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'extract_flat': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            if info and 'title' in info:
+                return info['title']
+    except Exception as e:
+        logger.warning(f"yt-dlp failed to get YouTube title: {e}")
+
+    if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(video_url, follow_redirects=True)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                title_tag = soup.find('meta', property='og:title')
+                if title_tag and title_tag.get('content'):
+                    return title_tag['content']
+                title_element = soup.find('title')
+                if title_element:
+                    title = title_element.get_text().replace(' - YouTube', '').strip()
+                    return title
+    except Exception as e:
+        logger.warning(f"Web scraping failed to get YouTube title: {e}")
+
+    return None
+
+
+async def get_web_page_title(url: str) -> str:
+    """Try to extract web page title."""
+    if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            response = await client.get(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    return og_title['content']
+                title = soup.find('title')
+                if title:
+                    return title.get_text().strip()
+    except Exception as e:
+        logger.warning(f"Failed to get web page title for {url}: {e}")
+
+    return None
+
+
+class InMemoryUploadFile:
+    def __init__(self, filename: str, data: bytes, content_type: str = "text/plain"):
+        self.filename = filename
+        self._data = data
+        self.file = _io.BytesIO(data)
+        self.content_type = content_type
+
+    async def read(self):
+        return self._data
 
 # --- Pydantic Models for Knowledges Router --- #
 
@@ -234,7 +338,7 @@ class RetryJobRequest(BaseModel):
 logger = get_logger(__name__, component="API")
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Import config module
 import config
@@ -411,7 +515,7 @@ async def get_user_knowledge_bases(request: Request):
         
         # Get owned knowledge bases from the KB server
         knowledge_bases = await kb_server_manager.get_user_knowledge_bases(creator_user)
-        
+
         # Return knowledge bases to the client
         logger.info(f"Returning {len(knowledge_bases)} owned knowledge bases to client")
         return {"knowledge_bases": knowledge_bases}
@@ -1893,96 +1997,6 @@ async def plugin_ingest_base(
 
 
         # Build placeholder file content and generate a meaningful, filesystem-safe filename
-        import re
-        from urllib.parse import urlparse
-        import io as _io
-        
-        try:
-            import httpx
-            HTTPX_AVAILABLE = True
-        except ImportError:
-            HTTPX_AVAILABLE = False
-            logger.warning("httpx not available, will use basic filename generation")
-        
-        try:
-            from bs4 import BeautifulSoup
-            BS4_AVAILABLE = True
-        except ImportError:
-            BS4_AVAILABLE = False
-            logger.warning("beautifulsoup4 not available, will use basic filename generation")
-
-        def slugify(text: str, max_length: int = 80) -> str:
-            """Convert text to a filesystem-safe slug."""
-            text = text.strip().lower()
-            text = re.sub(r'[^\w\s-]', '', text)
-            text = re.sub(r'[-\s]+', '_', text)
-            return text[:max_length]
-
-        async def get_youtube_title(video_url: str) -> str:
-            """Try to extract YouTube video title using yt-dlp or web scraping."""
-            # First try with yt-dlp if available
-            try:
-                import yt_dlp
-                ydl_opts = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'skip_download': True,
-                    'extract_flat': True,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(video_url, download=False)
-                    if info and 'title' in info:
-                        return info['title']
-            except Exception as e:
-                logger.warning(f"yt-dlp failed to get YouTube title: {e}")
-            
-            # Fallback: scrape the page if httpx and bs4 are available
-            if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
-                return None
-                
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get(video_url, follow_redirects=True)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        # YouTube stores title in meta tags and title element
-                        title_tag = soup.find('meta', property='og:title')
-                        if title_tag and title_tag.get('content'):
-                            return title_tag['content']
-                        title_element = soup.find('title')
-                        if title_element:
-                            title = title_element.get_text().replace(' - YouTube', '').strip()
-                            return title
-            except Exception as e:
-                logger.warning(f"Web scraping failed to get YouTube title: {e}")
-            
-            return None
-
-        async def get_web_page_title(url: str) -> str:
-            """Try to extract web page title."""
-            if not HTTPX_AVAILABLE or not BS4_AVAILABLE:
-                return None
-                
-            try:
-                async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                    response = await client.get(url, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    })
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        # Try og:title first (more reliable)
-                        og_title = soup.find('meta', property='og:title')
-                        if og_title and og_title.get('content'):
-                            return og_title['content']
-                        # Fallback to title element
-                        title = soup.find('title')
-                        if title:
-                            return title.get_text().strip()
-            except Exception as e:
-                logger.warning(f"Failed to get web page title for {url}: {e}")
-            
-            return None
-
         content_bytes = b""
         meaningful_filename = "base_ingest_placeholder.txt"
 
@@ -2039,16 +2053,6 @@ async def plugin_ingest_base(
                         safe_val = "".join(c for c in safe_val if c.isalnum() or c == "_")
                         meaningful_filename = f"{body.plugin_name}_{safe_val}.txt"
                         break
-
-        class InMemoryUploadFile:
-            def __init__(self, filename: str, data: bytes, content_type: str = "text/plain"):
-                self.filename = filename
-                self._data = data
-                self.file = _io.BytesIO(data)
-                self.content_type = content_type
-
-            async def read(self):  # Matches UploadFile.read signature
-                return self._data
 
         placeholder_file = InMemoryUploadFile(
             filename=meaningful_filename,

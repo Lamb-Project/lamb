@@ -32,6 +32,10 @@ lamb.yourdomain.com {
         redir https://owi.lamb.yourdomain.com{uri} 301
     }
 
+    handle /docs/* {
+        reverse_proxy backend:9099
+    }
+
     handle {
         root * /var/www/frontend
         try_files {path} /index.html

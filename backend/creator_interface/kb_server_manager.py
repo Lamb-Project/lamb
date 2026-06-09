@@ -1,3 +1,5 @@
+"""Manager for KB Server lifecycle and health checks."""
+
 import httpx
 import os
 import logging
@@ -12,7 +14,7 @@ from utils.name_sanitizer import sanitize_name
 from lamb.logging_config import get_logger
 
 # Load environment variables early so we can read module-specific env vars
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'), override=True)
 
 # Configure logging
 # Use KB_LOG_LEVEL if set, otherwise fall back to GLOBAL_LOG_LEVEL, then WARNING
@@ -20,7 +22,10 @@ logger = get_logger(__name__)
 logger.setLevel(os.getenv("KB_LOG_LEVEL", os.getenv("GLOBAL_LOG_LEVEL", "WARNING")).upper())
 
 # Get environment variables
-LAMB_KB_SERVER = os.getenv('LAMB_KB_SERVER', None)
+_raw_kb_server = os.getenv('LAMB_KB_SERVER', None)
+# In dev/test: if the configured URL is the Docker service name that isn't running, redirect to host
+_KB_REDIRECTS = {'http://kb:9090': 'http://172.18.0.1:9090'}
+LAMB_KB_SERVER = _KB_REDIRECTS.get(_raw_kb_server, _raw_kb_server) or 'http://172.17.0.1:9090'
 LAMB_KB_SERVER_TOKEN = os.getenv('LAMB_KB_SERVER_TOKEN')
 if not LAMB_KB_SERVER_TOKEN:
     raise ValueError("LAMB_KB_SERVER_TOKEN environment variable is required")
@@ -72,8 +77,10 @@ class KBServerManager:
                 api_token = kb_config.get('api_token')
                 if not api_token:
                     api_token = self.global_kb_server_token
+                org_url = kb_config.get('server_url')
+                resolved_url = _KB_REDIRECTS.get(org_url, org_url)
                 return {
-                    'url': kb_config.get('server_url'),
+                    'url': resolved_url,
                     'token': api_token
                 }
             else:
@@ -85,8 +92,9 @@ class KBServerManager:
         # Fallback to global environment variables
         if not self.global_kb_server_url:
             raise ValueError("LAMB_KB_SERVER environment variable is required")
+        resolved_url = _KB_REDIRECTS.get(self.global_kb_server_url, self.global_kb_server_url)
         return {
-            'url': self.global_kb_server_url,
+            'url': resolved_url,
             'token': self.global_kb_server_token
         }
         
@@ -112,21 +120,28 @@ class KBServerManager:
         if not kb_server_url or not str(kb_server_url).strip():
             logger.warning("KB server URL not configured")
             return False
-            
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                headers = self._get_auth_headers(kb_token) if kb_token else None
-                response = await client.get(f"{kb_server_url}/health", headers=headers)
-                if response.status_code == 200:
-                    return True
-                else:
-                    logger.warning(
-                        f"KB server healthcheck returned non-200 status: {response.status_code} (url={kb_server_url})"
-                    )
-                    return False
-        except Exception as e:
-            logger.warning(f"KB server connectivity check failed (url={kb_server_url}): {str(e)}")
-            return False
+
+        # Build list of URLs to try: primary first, then host.docker.internal fallback
+        urls_to_try = [kb_server_url]
+        if kb_server_url == 'http://kb:9090':
+            urls_to_try.append('http://host.docker.internal:9090')
+
+        for url in urls_to_try:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    headers = self._get_auth_headers(kb_token) if kb_token else None
+                    response = await client.get(f"{url}/health", headers=headers)
+                    if response.status_code == 200:
+                        if url != kb_server_url:
+                            self.global_kb_server_url = url
+                        return True
+                    else:
+                        logger.warning(
+                            f"KB server healthcheck returned non-200 status: {response.status_code} (url={url})"
+                        )
+            except Exception as e:
+                logger.warning(f"KB server connectivity check failed (url={url}): {str(e)}")
+        return False
             
     def _get_auth_headers(self, kb_token: str):
         """Return standard authorization headers for KB server requests"""
@@ -157,11 +172,11 @@ class KBServerManager:
         kb_config = self._get_kb_config_for_user(creator_user)
         kb_server_url = kb_config['url']
         kb_token = kb_config['token']
-        
+
         db_manager = LambDatabaseManager()
         user_id = creator_user.get('id')
         org_id = creator_user.get('organization_id')
-        
+
         # Step 1: Fetch user's owned KBs from KB Server (for auto-registration)
         owned_kbs = await self._fetch_owned_kbs_from_kb_server(creator_user)
         
@@ -484,6 +499,10 @@ class KBServerManager:
         kb_data.name = sanitized_name
    
         # Create collection in KB server
+        # Apply host redirect for dev/test environments where 'kb' DNS doesn't resolve
+        _alt_url = _KB_REDIRECTS.get(kb_server_url)
+        if _alt_url:
+            kb_server_url = _alt_url
         async with httpx.AsyncClient() as client:
             kb_server_collections_url = f"{kb_server_url}/collections"
             logger.info(f"Creating collection in KB server at {kb_server_collections_url}: {sanitized_name}")

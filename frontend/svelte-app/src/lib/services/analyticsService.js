@@ -1,7 +1,7 @@
 /**
  * Analytics Service
  * Provides API calls for assistant chat analytics
- * 
+ *
  * Created: December 27, 2025
  */
 
@@ -71,14 +71,14 @@ axios.isAxiosError = isAxiosError;
  * @returns {Object} Headers object with Authorization
  */
 function getAuthHeaders() {
-    const token = browser ? localStorage.getItem('userToken') : null;
-    if (!token) {
-        throw new Error('Not authenticated');
-    }
-    return {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
+	const token = browser ? localStorage.getItem('userToken') : null;
+	if (!token) {
+		throw new Error('Not authenticated');
+	}
+	return {
+		Authorization: `Bearer ${token}`,
+		'Content-Type': 'application/json'
+	};
 }
 
 /**
@@ -94,27 +94,27 @@ function getAuthHeaders() {
  * @returns {Promise<ChatListResponse>}
  */
 export async function getAssistantChats(assistantId, options = {}) {
-    if (!browser) {
-        throw new Error('This operation is only available in the browser');
-    }
-    
-    const { startDate, endDate, userId, searchContent, page = 1, perPage = 20 } = options;
+	if (!browser) {
+		throw new Error('This operation is only available in the browser');
+	}
 
-    const params = new URLSearchParams();
-    params.append('page', page.toString());
-    params.append('per_page', perPage.toString());
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    if (userId) params.append('user_id', userId);
-    if (searchContent) params.append('search_content', searchContent);
-    
-    const url = getApiUrl(`/analytics/assistant/${assistantId}/chats?${params.toString()}`);
-    
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
-    
-    return response.data;
+	const { startDate, endDate, userId, searchContent, page = 1, perPage = 20 } = options;
+
+	const params = new URLSearchParams();
+	params.append('page', page.toString());
+	params.append('per_page', perPage.toString());
+	if (startDate) params.append('start_date', startDate);
+	if (endDate) params.append('end_date', endDate);
+	if (userId) params.append('user_id', userId);
+	if (searchContent) params.append('search_content', searchContent);
+
+	const url = getApiUrl(`/analytics/assistant/${assistantId}/chats?${params.toString()}`);
+
+	const response = await axios.get(url, {
+		headers: getAuthHeaders()
+	});
+
+	return response.data;
 }
 
 /**
@@ -124,17 +124,17 @@ export async function getAssistantChats(assistantId, options = {}) {
  * @returns {Promise<ChatDetail>}
  */
 export async function getChatDetail(assistantId, chatId) {
-    if (!browser) {
-        throw new Error('This operation is only available in the browser');
-    }
-    
-    const url = getApiUrl(`/analytics/assistant/${assistantId}/chats/${chatId}`);
-    
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
-    
-    return response.data;
+	if (!browser) {
+		throw new Error('This operation is only available in the browser');
+	}
+
+	const url = getApiUrl(`/analytics/assistant/${assistantId}/chats/${chatId}`);
+
+	const response = await axios.get(url, {
+		headers: getAuthHeaders()
+	});
+
+	return response.data;
 }
 
 /**
@@ -146,24 +146,26 @@ export async function getChatDetail(assistantId, chatId) {
  * @returns {Promise<{assistant_id: number, period: Object, stats: AnalyticsStats}>}
  */
 export async function getAssistantStats(assistantId, options = {}) {
-    if (!browser) {
-        throw new Error('This operation is only available in the browser');
-    }
-    
-    const { startDate, endDate } = options;
-    
-    const params = new URLSearchParams();
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    
-    const queryString = params.toString();
-    const url = getApiUrl(`/analytics/assistant/${assistantId}/stats${queryString ? '?' + queryString : ''}`);
-    
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
-    
-    return response.data;
+	if (!browser) {
+		throw new Error('This operation is only available in the browser');
+	}
+
+	const { startDate, endDate } = options;
+
+	const params = new URLSearchParams();
+	if (startDate) params.append('start_date', startDate);
+	if (endDate) params.append('end_date', endDate);
+
+	const queryString = params.toString();
+	const url = getApiUrl(
+		`/analytics/assistant/${assistantId}/stats${queryString ? '?' + queryString : ''}`
+	);
+
+	const response = await axios.get(url, {
+		headers: getAuthHeaders()
+	});
+
+	return response.data;
 }
 
 /**
@@ -176,24 +178,24 @@ export async function getAssistantStats(assistantId, options = {}) {
  * @returns {Promise<{assistant_id: number, period: string, data: TimelineDataPoint[]}>}
  */
 export async function getAssistantTimeline(assistantId, options = {}) {
-    if (!browser) {
-        throw new Error('This operation is only available in the browser');
-    }
-    
-    const { period = 'day', startDate, endDate } = options;
-    
-    const params = new URLSearchParams();
-    params.append('period', period);
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    
-    const url = getApiUrl(`/analytics/assistant/${assistantId}/timeline?${params.toString()}`);
-    
-    const response = await axios.get(url, {
-        headers: getAuthHeaders()
-    });
-    
-    return response.data;
+	if (!browser) {
+		throw new Error('This operation is only available in the browser');
+	}
+
+	const { period = 'day', startDate, endDate } = options;
+
+	const params = new URLSearchParams();
+	params.append('period', period);
+	if (startDate) params.append('start_date', startDate);
+	if (endDate) params.append('end_date', endDate);
+
+	const url = getApiUrl(`/analytics/assistant/${assistantId}/timeline?${params.toString()}`);
+
+	const response = await axios.get(url, {
+		headers: getAuthHeaders()
+	});
+
+	return response.data;
 }
 
 /**
@@ -202,19 +204,19 @@ export async function getAssistantTimeline(assistantId, options = {}) {
  * @returns {string} Formatted date string
  */
 export function formatDate(isoDate) {
-    if (!isoDate) return '-';
-    try {
-        const date = new Date(isoDate);
-        return date.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    } catch {
-        return isoDate;
-    }
+	if (!isoDate) return '-';
+	try {
+		const date = new Date(isoDate);
+		return date.toLocaleDateString(undefined, {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	} catch {
+		return isoDate;
+	}
 }
 
 /**
@@ -223,15 +225,14 @@ export function formatDate(isoDate) {
  * @returns {string} Short formatted date
  */
 export function formatShortDate(isoDate) {
-    if (!isoDate) return '-';
-    try {
-        const date = new Date(isoDate);
-        return date.toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric'
-        });
-    } catch {
-        return isoDate;
-    }
+	if (!isoDate) return '-';
+	try {
+		const date = new Date(isoDate);
+		return date.toLocaleDateString(undefined, {
+			month: 'short',
+			day: 'numeric'
+		});
+	} catch {
+		return isoDate;
+	}
 }
-
