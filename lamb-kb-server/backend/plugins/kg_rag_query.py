@@ -58,10 +58,6 @@ class KGRAGQueryPlugin:
             params.get("graph_depth") or kg_config.get("graph_depth") or 2
         )
         graph_depth = max(1, min(graph_depth, 4))
-        graph_limit_factor = int(
-            params.get("graph_limit_factor") or kg_config.get("limit_factor") or 4
-        )
-        graph_limit_factor = max(1, min(graph_limit_factor, 20))
 
         seed_chunk_ids = [
             cid
@@ -75,9 +71,7 @@ class KGRAGQueryPlugin:
             "graph_expanded": False,
             "seed_chunk_ids": seed_chunk_ids,
             "entry_concepts": [],
-            "traversed_edges": [],
             "expanded_chunk_ids": [],
-            "latest_changes": [],
             "vector_latency_ms": 0.0,
             "graph_latency_ms": 0.0,
             "warnings": [],
@@ -109,29 +103,13 @@ class KGRAGQueryPlugin:
             )
             return self._attach_trace(baseline_results, trace, include_trace)
 
-        graph_start = time.perf_counter()
-        try:
-            expansion = graph_store.expand_from_chunks(
-                collection_id=str(collection.id),
-                org_id=str(collection.organization_id),
-                seed_chunk_ids=seed_chunk_ids,
-                depth=graph_depth,
-                limit=top_k * graph_limit_factor,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("KG-RAG graph expansion failed: %s", exc)
-            trace["warnings"].append(f"Graph expansion failed: {exc}")
-            trace["graph_latency_ms"] = (time.perf_counter() - graph_start) * 1000
-            return self._attach_trace(baseline_results, trace, include_trace)
-
         # Question-entity seeding: extract named-entity-like tokens from
         # the question itself and let the graph contribute chunks that
         # MENTION them, even if vector retrieval missed those chunks.
-        # This is the ``local search'' pattern from Microsoft GraphRAG.
-        # The expansion is intentionally limited (a few chunks per
-        # entity, only specific entities with ≤25 mentions) to avoid
-        # flooding the candidate set with chunks that mention common
-        # nouns.
+        # This is the ``local search'' pattern from Microsoft GraphRAG:
+        # we start from the concepts that match the question's entities
+        # and follow RELATES_TO edges to a bounded depth.
+        graph_start = time.perf_counter()
         question_entities = self._extract_question_entities(query_text, collection)
         question_expansion: dict[str, Any] = {}
         if question_entities:
@@ -145,48 +123,25 @@ class KGRAGQueryPlugin:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Question-entity expansion failed: %s", exc)
-
-        # Decide which expansion arms contribute. Chunk-seeded
-        # expansion can be useful when the question is short and
-        # ambiguous, but it tends to inflate noise on
-        # encyclopedic / Wikipedia-style corpora because shared
-        # high-frequency entities (``World War II``, ``United
-        # States``) connect unrelated chunks. Toggleable via
-        # ``params.use_chunk_expansion``.
-        use_chunk_expansion = self._as_bool(
-            params.get("use_chunk_expansion", False)
-        )
+                trace["warnings"].append(f"Graph expansion failed: {exc}")
 
         merged_entry_concepts = list(
-            dict.fromkeys(
-                question_expansion.get("entry_concepts", [])
-                + (expansion.get("entry_concepts", []) if use_chunk_expansion else [])
-            )
+            dict.fromkeys(question_expansion.get("entry_concepts", []))
         )
-        # Question-entity expansion ranks first: those chunks were
-        # reached via question-derived concepts, so their precision is
-        # higher than the chunk-seeded expansion which can drift via
-        # generic shared entities.
         merged_expanded_ids = list(
-            dict.fromkeys(
-                question_expansion.get("expanded_chunk_ids", [])
-                + (expansion.get("expanded_chunk_ids", []) if use_chunk_expansion else [])
-            )
+            dict.fromkeys(question_expansion.get("expanded_chunk_ids", []))
         )
 
         trace.update(
             {
                 "graph_expanded": bool(merged_expanded_ids),
                 "entry_concepts": merged_entry_concepts,
-                "traversed_edges": expansion.get("traversed_edges", []),
                 "expanded_chunk_ids": merged_expanded_ids,
-                "latest_changes": expansion.get("latest_changes", []),
                 "question_entities": question_entities,
-                "graph_latency_ms": expansion.get(
+                "graph_latency_ms": question_expansion.get(
                     "graph_latency_ms",
                     (time.perf_counter() - graph_start) * 1000,
-                )
-                + question_expansion.get("graph_latency_ms", 0.0),
+                ),
             }
         )
 
@@ -205,8 +160,8 @@ class KGRAGQueryPlugin:
             baseline_results=baseline_results,
             expanded_results=expanded_results,
             top_k=top_k,
-            rrf_k=int(params.get("rrf_k", 40) or 40),
-            graph_weight=float(params.get("graph_weight", 0.5) or 0.5),
+            rrf_k=int(params.get("rrf_k", 20) or 20),
+            graph_weight=float(params.get("graph_weight", 0.85) or 0.85),
         )
         if not expanded_results and not trace["graph_expanded"]:
             trace["warnings"].append("Graph returned no additional chunks")
@@ -402,8 +357,8 @@ class KGRAGQueryPlugin:
         baseline_results: list[dict[str, Any]],
         expanded_results: list[dict[str, Any]],
         top_k: int,
-        rrf_k: int = 60,
-        graph_weight: float = 0.6,
+        rrf_k: int = 20,
+        graph_weight: float = 0.85,
     ) -> list[dict[str, Any]]:
         """Reciprocal Rank Fusion of the vector baseline and the graph expansion.
 

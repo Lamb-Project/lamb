@@ -29,14 +29,6 @@ class GraphChangeDetail(GraphChangeEvent):
     )
 
 
-class GraphAuditRequest(BaseModel):
-    seed_chunk_ids: List[str] = Field(
-        ..., description="Chroma/graph chunk IDs to use as graph entry points"
-    )
-    graph_depth: int = Field(2, description="RELATES_TO traversal depth")
-    limit: int = Field(20, description="Maximum number of expanded chunks to return")
-
-
 class GraphRevertRequest(BaseModel):
     actor: str = Field(
         "graph-traceability-api", description="Actor requesting the revert"
@@ -56,12 +48,6 @@ class GraphRevertResponse(BaseModel):
     chunk_ids: List[str] = Field(
         default_factory=list, description="Reverted graph chunk IDs"
     )
-
-
-class GraphAuditResponse(BaseModel):
-    collection_id: str = Field(..., description="Collection ID")
-    seed_chunk_ids: List[str] = Field(..., description="Requested seed chunk IDs")
-    trace: Dict[str, Any] = Field(..., description="Graph expansion trace")
 
 
 class GraphNode(BaseModel):

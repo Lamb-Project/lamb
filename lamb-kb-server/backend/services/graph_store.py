@@ -2454,154 +2454,6 @@ class GraphStore:
             document_id=document_id,
         )
 
-    def expand_from_chunks(
-        self,
-        collection_id: str,
-        org_id: str,
-        seed_chunk_ids: List[str],
-        depth: int,
-        limit: int,
-    ) -> Dict[str, Any]:
-        depth = max(1, min(int(depth or 2), 4))
-        limit = max(1, int(limit or 10))
-        start = time.perf_counter()
-        if not seed_chunk_ids:
-            return self._empty_expansion(start)
-        if not self.ensure_schema():
-            return self._empty_expansion(
-                start,
-                warning="Neo4j is not configured or available; KG expansion skipped",
-            )
-
-        # ``MAX_ENTRY_MENTIONS`` filters out highly-cited concepts: a
-        # concept that appears in N+ chunks (e.g. "World War II",
-        # "United States") behaves as a stop-word in the graph — it
-        # would expand to dozens of unrelated chunks that share only a
-        # generic theme. The threshold is conservative because the
-        # extractor caps each chunk at 12 entities, so a truly specific
-        # bridging concept rarely exceeds ~10 mentions in a
-        # benchmark-sized corpus.
-        MAX_ENTRY_MENTIONS = 20
-
-        with self.driver.session() as session:
-            entry_rows = session.run(
-                """
-                MATCH (chunk:Chunk {collection_id: $collection_id})-[m:MENTIONS]->(concept:Concept {org_id: $org_id})
-                WHERE chunk.chunk_id IN $seed_chunk_ids
-                  AND m.verification_state = 'verified'
-                WITH concept, count(*) AS local_mentions
-                OPTIONAL MATCH (concept)<-[:MENTIONS]-(global:Chunk {collection_id: $collection_id})
-                WITH concept, local_mentions, count(global) AS total_mentions
-                WHERE total_mentions <= $max_total_mentions
-                RETURN concept.name AS name, local_mentions AS mentions
-                ORDER BY mentions DESC, name ASC
-                LIMIT 8
-                """,
-                collection_id=collection_id,
-                org_id=org_id,
-                seed_chunk_ids=seed_chunk_ids,
-                max_total_mentions=MAX_ENTRY_MENTIONS,
-            ).data()
-            entry_concepts = [row["name"] for row in entry_rows]
-
-            if not entry_concepts:
-                return self._empty_expansion(start)
-
-            relation_path_query = f"""
-                MATCH (entry:Concept {{org_id: $org_id}})
-                WHERE entry.name IN $entry_concepts
-                MATCH path=(entry)-[:RELATES_TO*1..{depth}]-(related:Concept {{org_id: $org_id}})
-                WHERE related.name <> entry.name
-                  AND all(rel IN relationships(path) WHERE rel.collection_id = $collection_id)
-                                    AND all(node IN nodes(path) WHERE node.verification_state = 'verified')
-                                    AND all(rel IN relationships(path) WHERE rel.verification_state = 'verified')
-                WITH entry, related, path,
-                     length(path) AS hops,
-                     reduce(score = 0.0, rel IN relationships(path) |
-                         score + 2.0 * coalesce(rel.weight, 1.0)
-                     ) AS path_score
-                ORDER BY path_score DESC, hops ASC, related.name ASC
-                LIMIT $limit
-                OPTIONAL MATCH (related)<-[:MENTIONS]-(chunk:Chunk {{collection_id: $collection_id}})
-                RETURN entry.name AS entry,
-                       related.name AS related,
-                       [rel IN relationships(path) | {{type: coalesce(rel.relation, type(rel)), raw_type: type(rel), source: startNode(rel).name, target: endNode(rel).name, weight: coalesce(rel.weight, 1), description: coalesce(rel.description, '')}}] AS edges,
-                       collect(DISTINCT chunk.chunk_id)[0..6] AS chunk_ids,
-                       hops AS hops,
-                       path_score AS score
-                ORDER BY score DESC, hops ASC
-            """
-            expanded_rows = session.run(
-                relation_path_query,
-                org_id=org_id,
-                collection_id=collection_id,
-                entry_concepts=entry_concepts,
-                limit=limit,
-            ).data()
-
-            direct_rows = session.run(
-                """
-                MATCH (concept:Concept {org_id: $org_id})<-[:MENTIONS]-(chunk:Chunk {collection_id: $collection_id})
-                WHERE concept.name IN $entry_concepts
-                                    AND concept.verification_state = 'verified'
-                RETURN chunk.chunk_id AS chunk_id,
-                       count(*) AS mentions,
-                       min(chunk.source_label) AS source_label
-                ORDER BY mentions DESC, source_label ASC
-                LIMIT $limit
-                """,
-                org_id=org_id,
-                collection_id=collection_id,
-                entry_concepts=entry_concepts,
-                limit=limit,
-            ).data()
-
-            chunk_ids: List[str] = []
-            seen_chunk_ids: Set[str] = set()
-
-            def add_chunk_id(chunk_id: str) -> None:
-                if chunk_id and chunk_id not in seen_chunk_ids:
-                    seen_chunk_ids.add(chunk_id)
-                    chunk_ids.append(chunk_id)
-
-            for row in direct_rows:
-                add_chunk_id(row.get("chunk_id"))
-
-            edges: List[Dict[str, Any]] = []
-            related_concepts: Set[str] = set(entry_concepts)
-            for row in expanded_rows:
-                if row.get("related"):
-                    related_concepts.add(row.get("related"))
-                for chunk_id in row.get("chunk_ids", []):
-                    add_chunk_id(chunk_id)
-                edges.extend(row.get("edges") or [])
-
-            changes = session.run(
-                """
-                MATCH (event:ChangeEvent {collection_id: $collection_id, org_id: $org_id})
-                WHERE any(concept IN coalesce(event.concepts, []) WHERE concept IN $concepts)
-                RETURN event.operation AS operation,
-                       event.actor AS actor,
-                       event.timestamp AS timestamp,
-                       event.filename AS filename,
-                       event.concepts AS concepts,
-                       event.payload_json AS payload_json
-                ORDER BY event.timestamp DESC
-                LIMIT 10
-                """,
-                collection_id=collection_id,
-                org_id=org_id,
-                concepts=[concept for concept in related_concepts if concept],
-            ).data()
-
-        return {
-            "entry_concepts": entry_concepts,
-            "expanded_chunk_ids": chunk_ids[:limit],
-            "traversed_edges": self._dedupe_edges(edges),
-            "latest_changes": changes,
-            "graph_latency_ms": (time.perf_counter() - start) * 1000,
-        }
-
     def expand_from_concept_names(
         self,
         collection_id: str,
@@ -2612,10 +2464,9 @@ class GraphStore:
     ) -> Dict[str, Any]:
         """Local-search-style expansion seeded directly by concept names.
 
-        Unlike :meth:`expand_from_chunks`, which discovers entry concepts
-        via the seed chunks' MENTIONS edges, this method takes concept
-        names directly (after :func:`normalize_concept`) and returns the
-        chunks that mention any of them or any concept reachable via
+        This method takes concept names directly (after
+        :func:`normalize_concept`) and returns the chunks that mention
+        any of them or any concept reachable via
         ``RELATES_TO*1..depth``.
 
         This is the entry point for question-entity seeding: the caller
@@ -2731,15 +2582,3 @@ class GraphStore:
             "latest_changes": changes,
             "graph_latency_ms": (time.perf_counter() - start) * 1000,
         }
-
-    @staticmethod
-    def _dedupe_edges(edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        seen = set()
-        deduped = []
-        for edge in edges:
-            key = (edge.get("source"), edge.get("target"), edge.get("type"))
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(edge)
-        return deduped[:80]

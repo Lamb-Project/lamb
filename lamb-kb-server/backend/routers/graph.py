@@ -17,8 +17,6 @@ from database.models import Collection
 from dependencies import verify_token
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from schemas.graph import (
-    GraphAuditRequest,
-    GraphAuditResponse,
     GraphChangeDetail,
     GraphChangeEvent,
     GraphConceptCurationRequest,
@@ -330,33 +328,6 @@ async def list_document_changes(
         document_id=document_id,
         limit=limit,
     )
-
-
-@router.post(
-    "/collections/{collection_id}/audit-trace",
-    response_model=GraphAuditResponse,
-    summary="Audit a KG-RAG graph retrieval trace",
-)
-async def audit_graph_trace(
-    collection_id: str,
-    request: GraphAuditRequest,
-    token: str = Depends(verify_token),
-    db: Session = Depends(get_session),
-):
-    collection = _get_collection_or_404(db, collection_id)
-    graph_store = _graph_store_or_503()
-    trace = graph_store.expand_from_chunks(
-        collection_id=collection_id,
-        org_id=str(collection.organization_id),
-        seed_chunk_ids=request.seed_chunk_ids,
-        depth=request.graph_depth,
-        limit=request.limit,
-    )
-    return {
-        "collection_id": collection_id,
-        "seed_chunk_ids": request.seed_chunk_ids,
-        "trace": trace,
-    }
 
 
 @router.post(
