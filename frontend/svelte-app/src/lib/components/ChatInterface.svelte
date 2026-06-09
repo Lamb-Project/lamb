@@ -1,7 +1,7 @@
 <script>
 	import { writable } from 'svelte/store';
 	import { onMount, onDestroy } from 'svelte';
-	import { marked } from 'marked';
+	import { renderMarkdownSafe } from '$lib/utils/sanitize';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import { apiFetch } from '$lib/services/apiClient';
 
@@ -27,12 +27,6 @@
 	function isSessionExpired(err) {
 		return err instanceof Error && err.message.startsWith('Session expired');
 	}
-
-	// Configure marked to preserve line breaks (converts \n to <br>)
-	marked.setOptions({
-		breaks: true, // Convert single newlines to <br>
-		gfm: true // GitHub Flavored Markdown (tables, strikethrough, etc.)
-	});
 
 	// Action to focus element on mount (avoids a11y autofocus warning)
 	/** @param {HTMLElement} node */
@@ -850,7 +844,7 @@
 								</div>
 							{:else if renderMarkdown}
 								<div class="prose prose-sm {message.role === 'user' ? 'prose-invert' : ''}">
-									{@html marked(message.content)}
+									{@html renderMarkdownSafe(message.content)}
 								</div>
 							{:else}
 								<p class="whitespace-pre-wrap">{message.content}</p>
