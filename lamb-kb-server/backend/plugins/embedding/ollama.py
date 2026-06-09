@@ -48,10 +48,10 @@ class OllamaEmbedding(EmbeddingFunction):
 
         client = ollama.Client(host=base_url)
 
-        try:
+        if hasattr(client, "embed"):
             response = client.embed(model=self._model, input=input)
             embeddings = response.embeddings
-        except AttributeError:
+        else:
             embeddings = [
                 client.embeddings(model=self._model, prompt=text)["embedding"]
                 for text in input

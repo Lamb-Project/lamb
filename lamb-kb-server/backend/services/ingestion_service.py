@@ -2,10 +2,11 @@
 
 import json
 import logging
-import os
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import sqlalchemy as sa
+from config import MAX_EMBED_CHARS, RESPLIT_CHUNK_SIZE, RESPLIT_OVERLAP
 from database.models import Collection, IngestionJob
 from fastapi import HTTPException, status
 from plugins.base import (
@@ -23,18 +24,6 @@ logger = logging.getLogger(__name__)
 
 # How many documents to process before committing progress counters.
 _COMMIT_BATCH_SIZE = 5
-
-# Maximum characters per chunk sent to the embedding model. Chunks produced
-# by by_page / by_section strategies are unbounded; simple chunking is already
-# bounded by chunk_size. Chunks exceeding this limit are re-split (not
-# truncated) so no content is lost. Override via MAX_EMBED_CHARS env var.
-# Default 30 000 chars ≈ 7 500 tokens — safely under Ollama / OpenAI's 8 192
-# token limit at ~4 chars/token.
-_MAX_EMBED_CHARS: int = int(os.getenv("MAX_EMBED_CHARS", "30000"))
-# Target size for re-split sub-chunks. Chosen to be conservative enough for
-# even low-context models (all-MiniLM-L6-v2 at 256 tokens ≈ 1 024 chars).
-_RESPLIT_CHUNK_SIZE: int = int(os.getenv("RESPLIT_CHUNK_SIZE", "4000"))
-_RESPLIT_OVERLAP: int = 200
 
 
 class JobCancelledError(Exception):
@@ -226,25 +215,26 @@ def execute_ingestion_job(
         # context window. by_page / by_section produce unbounded chunk sizes;
         # simple chunking is already bounded by chunk_size.
         # Re-splitting preserves all content — truncation would silently drop it.
-        oversized = [c for c in chunks if len(c.text) > _MAX_EMBED_CHARS]
+        oversized = [c for c in chunks if len(c.text) > MAX_EMBED_CHARS]
         if oversized:
             logger.warning(
                 "Job %s: %d chunk(s) for document '%s' exceed MAX_EMBED_CHARS=%d "
                 "and will be re-split at %d chars. Consider using 'simple' chunking "
                 "or reducing pages_per_chunk / headings_per_chunk.",
                 job.id, len(oversized), doc_dict["source_item_id"],
-                _MAX_EMBED_CHARS, _RESPLIT_CHUNK_SIZE,
+                MAX_EMBED_CHARS, RESPLIT_CHUNK_SIZE,
             )
             from dataclasses import replace as _dc_replace
+
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             _resplitter = RecursiveCharacterTextSplitter(
-                chunk_size=_RESPLIT_CHUNK_SIZE,
-                chunk_overlap=_RESPLIT_OVERLAP,
+                chunk_size=RESPLIT_CHUNK_SIZE,
+                chunk_overlap=RESPLIT_OVERLAP,
                 separators=["\n\n", "\n", " ", ""],
             )
             guarded: list = []
             for c in chunks:
-                if len(c.text) <= _MAX_EMBED_CHARS:
+                if len(c.text) <= MAX_EMBED_CHARS:
                     guarded.append(c)
                 else:
                     sub_texts = _resplitter.split_text(c.text)
@@ -363,3 +353,34 @@ def delete_vectors(
         collection_id,
     )
     return deleted_count
+
+
+def cancel_job(db: Session, job_id: str) -> IngestionJob:
+    """Cancel a pending or in-flight ingestion job.
+
+    Idempotent: cancelling a job already in a terminal state is a no-op.
+
+    Args:
+        db: Database session.
+        job_id: The job ID to cancel.
+
+    Returns:
+        The updated job row.
+
+    Raises:
+        HTTPException: 404 if the job is not found.
+    """
+    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{job_id}' not found.",
+        )
+    if job.status in ("pending", "processing"):
+        prior_status = job.status
+        job.status = "cancelled"
+        job.completed_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(job)
+        logger.info("Job %s cancelled (was %s)", job_id, prior_status)
+    return job

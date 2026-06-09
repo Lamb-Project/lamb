@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # --- Sub-models ---
 
@@ -103,12 +103,6 @@ class AddContentRequest(BaseModel):
         default_factory=EmbeddingCredentials,
         description="Request-scoped credentials for the embedding vendor.",
     )
-
-    @model_validator(mode="after")
-    def check_documents_non_empty(self) -> "AddContentRequest":
-        if not self.documents:
-            raise ValueError("documents list must not be empty.")
-        return self
 
 
 # --- Responses ---

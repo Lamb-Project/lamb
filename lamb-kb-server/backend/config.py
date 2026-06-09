@@ -34,6 +34,10 @@ MAX_CONCURRENT_INGESTIONS: int = int(os.getenv("MAX_CONCURRENT_INGESTIONS", "3")
 INGESTION_TASK_TIMEOUT_SECONDS: int = int(
     os.getenv("INGESTION_TASK_TIMEOUT_SECONDS", "1800")
 )
+MAX_EMBED_CHARS: int = int(os.getenv("MAX_EMBED_CHARS", "30000"))
+RESPLIT_CHUNK_SIZE: int = int(os.getenv("RESPLIT_CHUNK_SIZE", "4000"))
+RESPLIT_OVERLAP: int = 200
+MAX_JOB_ATTEMPTS: int = int(os.getenv("KB_MAX_JOB_ATTEMPTS", "3"))
 
 # --- Payload limits ---
 # Hard cap on add-content request bodies. Default 200 MB.

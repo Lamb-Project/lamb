@@ -1,13 +1,13 @@
 """Ingestion job status routes."""
 
 import logging
-from datetime import UTC, datetime
 
 from database.connection import get_session
 from database.models import IngestionJob
 from dependencies import verify_token
 from fastapi import APIRouter, Depends, HTTPException, status
 from schemas.jobs import JobStatusResponse
+from services.ingestion_service import cancel_job as cancel_job_service
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -61,17 +61,5 @@ async def cancel_job(
     (``completed`` / ``failed`` / ``cancelled``) is a no-op and the current
     row is returned unchanged.
     """
-    job = db.query(IngestionJob).filter(IngestionJob.id == job_id).first()
-    if job is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
-    if job.status in ("pending", "processing"):
-        prior_status = job.status
-        job.status = "cancelled"
-        job.completed_at = datetime.now(UTC)
-        db.commit()
-        db.refresh(job)
-        logger.info("Job %s cancelled (was %s)", job_id, prior_status)
+    job = cancel_job_service(db, job_id)
     return JobStatusResponse.model_validate(job)

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import shutil
 from uuid import uuid4
 
@@ -120,6 +121,14 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
         )
 
     collection_id = req.id or uuid4().hex
+    if not re.match(r"^[a-zA-Z0-9_-]+$", req.organization_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "organization_id must contain only alphanumeric characters, "
+                "hyphens, and underscores."
+            ),
+        )
     storage_path = str(STORAGE_DIR / req.organization_id / collection_id)
 
     # Some vector backends (e.g. ChromaDB 1.5+) require collection names of
@@ -174,10 +183,7 @@ def create_collection(db: Session, req: CreateCollectionRequest) -> Collection:
         db.commit()
         db.refresh(collection)
 
-    except HTTPException:
-        shutil.rmtree(storage_path, ignore_errors=True)
-        raise
-    except Exception:
+    except BaseException:
         shutil.rmtree(storage_path, ignore_errors=True)
         raise
 
@@ -287,10 +293,6 @@ def update_collection(
         collection.description = req.description
 
     if req.chunking_params is not None:
-        # Validate against the (immutable) chunking strategy's declared params
-        from plugins.chunking._common import validate_chunking_params  # noqa: PLC0415
-        from plugins.base import ChunkingRegistry  # noqa: PLC0415
-
         strategy = ChunkingRegistry.get(collection.chunking_strategy)
         try:
             validate_chunking_params(strategy, req.chunking_params)
@@ -299,7 +301,6 @@ def update_collection(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
             ) from exc
-        import json  # noqa: PLC0415
         collection.chunking_params = json.dumps(req.chunking_params)
 
     db.commit()
