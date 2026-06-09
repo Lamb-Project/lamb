@@ -90,6 +90,10 @@ services:
     build:
       context: ./open-webui
       dockerfile: Dockerfile
+      args:
+        USE_CUDA: ${OWI_USE_CUDA:-false}
+        USE_OLLAMA: ${OWI_USE_OLLAMA:-false}
+        USE_CUDA_VER: ${OWI_CUDA_VER:-cu124}
     restart: unless-stopped
     environment:
       PORT: ${OPENWEBUI_PORT:-8080}

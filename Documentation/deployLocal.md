@@ -341,7 +341,35 @@ docker compose -f docker-compose.next.yaml --profile ollama up -d
 
 > **Insight:** When using the Ollama profile, the user will need to pull models inside the Ollama container before they can be used. See Phase 5.5.
 
-### 4.3 — Windows-Specific Notes
+### 4.3 — With CUDA/GPU (NVIDIA DGX / GPU Servers)
+
+On NVIDIA GPU hosts, use the GPU override file to enable CUDA-accelerated PyTorch inside OpenWebUI and grant GPU access to both `openwebui` and `ollama` containers (equivalent to `--gpus=all`):
+
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml up -d
+```
+
+With Ollama + GPU:
+
+```bash
+cd <install-location>
+docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml --profile ollama up -d
+```
+
+**What the GPU override does:**
+- Passes `USE_CUDA=true` to the OpenWebUI Dockerfile build, which installs CUDA-enabled PyTorch instead of CPU-only PyTorch
+- Adds `deploy.resources.reservations.devices` with `driver: nvidia, count: all, capabilities: [gpu]` to `openwebui` and `ollama` services
+
+**Optional env vars:**
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `OWI_CUDA_VER` | `cu124` | PyTorch CUDA version index (e.g., `cu124` for CUDA 12.4, `cu130` for CUDA 13.0). CUDA drivers are backward-compatible, so `cu124` works on CUDA 13.x hosts. |
+
+> **Insight:** Do NOT use the GPU override on Mac or non-CUDA hosts — it will fail because the `nvidia` device driver isn't available. The main `docker-compose.next.yaml` defaults to CPU-only and is safe for all platforms.
+
+### 4.4 — Windows-Specific Notes
 
 On Windows with Docker Desktop:
 - Ensure the WSL2 backend is running.
@@ -461,6 +489,11 @@ cd <install-location> && docker compose -f docker-compose.next.yaml restart lamb
 cd <install-location> && docker compose -f docker-compose.next.yaml up -d --build
 ```
 
+### Rebuild with GPU support (CUDA hosts only)
+```bash
+cd <install-location> && docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml up -d --build
+```
+
 ### Reset all data (WARNING: deletes all databases and uploaded files)
 ```bash
 cd <install-location> && docker compose -f docker-compose.next.yaml down -v
@@ -553,6 +586,10 @@ WEBUI_SECRET_KEY=
 # LAMB_PORT=9099
 # KB_PORT=9090
 # OPENWEBUI_PORT=8080
+
+# --- CUDA / GPU (DGX / NVIDIA GPU hosts only) ---
+# OWI_USE_CUDA=true
+# OWI_CUDA_VER=cu124
 ```
 
 ---
@@ -571,6 +608,10 @@ WEBUI_SECRET_KEY=
 - `kb` is independent
 - `openwebui` is independent
 - `ollama` is independent (used by `kb` for embeddings and by `lamb` for chat if configured)
+
+**Docker compose files:**
+- `docker-compose.next.yaml` — Main stack (CPU-only by default, safe for all platforms)
+- `docker-compose.next.gpu.yaml` — GPU override (CUDA hosts only; enables CUDA PyTorch build + `--gpus=all` for `openwebui` and `ollama`)
 
 **Docker volumes:**
 - `lamb-data` — LAMB database and uploads
@@ -611,6 +652,10 @@ WEBUI_SECRET_KEY=
 
 14. **Schema migration can fail silently on first boot:** The backend runs database migrations and then immediately tries to use the migrated columns. On the first startup with an existing database, you may see errors like `no such column: password_hash` in the logs. These are one-time — the migration adds the columns, and subsequent restarts are clean. If the error persists across multiple restarts, the migration itself may be failing; check `docker logs lamb-lamb-1` for `Migration error` messages.
 
+15. **OpenWebUI build may run out of memory:** The OpenWebUI Dockerfile bundles heavy dependencies (`pyodide`, `onnxruntime-web`) that can exceed Node.js's default ~2 GB heap during `npm run build`, causing `JavaScript heap out of memory`. LAMB's vendored `open-webui/Dockerfile` includes `ENV NODE_OPTIONS=--max-old-space-size=4096` to prevent this. If you still hit this error, increase Docker Desktop's memory allocation (Settings → Resources → Memory → 8 GB or more).
+
+16. **GPU override is platform-specific:** `docker-compose.next.gpu.yaml` uses `driver: nvidia` for GPU access. This only works on hosts with NVIDIA GPUs and the NVIDIA Container Toolkit installed. On Mac, Windows (non-WSL2 with GPU), or CPU-only Linux, omit this file from the compose command. The main `docker-compose.next.yaml` is safe for all platforms.
+
 ---
 
 ## Appendix D: Agent Workflow Checklist
@@ -629,7 +674,8 @@ The agent should follow this sequence and check off each step:
 - [ ] **2.2** — Clone repository (and checkout branch if needed)
 - [ ] **3** — Create `.env` file with all collected variables
 - [ ] **3.5** — (If existing data) Stop old stack, create volumes, copy LAMB DB, OWI data, KB data, verify
-- [ ] **4** — Run `docker compose -f docker-compose.next.yaml up -d` (with `--profile ollama` if needed)
+- [ ] **3.6** — (If DGX/CUDA host) Note that `docker-compose.next.gpu.yaml` is available for GPU acceleration
+- [ ] **4** — Run `docker compose -f docker-compose.next.yaml up -d` (with `--profile ollama` and/or `-f docker-compose.next.gpu.yaml` if needed)
 - [ ] **5.1** — Verify all containers are Up and healthy
 - [ ] **5.2** — Check logs for startup errors
 - [ ] **5.3** — Report access URLs to user
@@ -689,3 +735,5 @@ docker exec lamb-ollama-1 ollama pull nomic-embed-text
 ```
 
 > **Note:** The user MUST replace `sk-REPLACE_ME` with a real OpenAI API key, or configure their preferred LLM provider. If they want to skip Ollama entirely, they must set `EMBEDDINGS_VENDOR=openai` and provide both `EMBEDDINGS_APIKEY` and `EMBEDDINGS_ENDPOINT`.
+
+> **GPU hosts (DGX / NVIDIA):** Add `-f docker-compose.next.gpu.yaml` to the `docker compose` command above for CUDA-accelerated PyTorch and GPU access.
