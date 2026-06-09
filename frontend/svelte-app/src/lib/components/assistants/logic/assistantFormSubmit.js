@@ -48,7 +48,9 @@ export function buildAssistantPayload(form) {
 		system_prompt: form.system_prompt,
 		prompt_template: form.prompt_template,
 		RAG_Top_k: Number(form.RAG_Top_k) || 3,
-		RAG_collections: isKbBasedRag(form.selectedRagProcessor) ? form.selectedKnowledgeBases.join(',') : '',
+		RAG_collections: isKbBasedRag(form.selectedRagProcessor)
+			? form.selectedKnowledgeBases.join(',')
+			: '',
 		metadata: JSON.stringify(metadataObj),
 		pre_retrieval_endpoint: '',
 		post_retrieval_endpoint: '',

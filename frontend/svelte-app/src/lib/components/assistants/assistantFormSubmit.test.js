@@ -10,17 +10,29 @@ import { validateSubmission, buildAssistantPayload } from './logic/assistantForm
 
 describe('validateSubmission', () => {
 	test('returns error when name is empty', () => {
-		const result = validateSubmission({ name: '', selectedRagProcessor: 'no_rag', selectedRubricId: '' });
+		const result = validateSubmission({
+			name: '',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: ''
+		});
 		expect(result).toContain('Name');
 	});
 
 	test('returns error when rubric_rag selected without rubric', () => {
-		const result = validateSubmission({ name: 'test', selectedRagProcessor: 'rubric_rag', selectedRubricId: '' });
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'rubric_rag',
+			selectedRubricId: ''
+		});
 		expect(result).toContain('rubric');
 	});
 
 	test('returns null when valid', () => {
-		const result = validateSubmission({ name: 'test', selectedRagProcessor: 'no_rag', selectedRubricId: '' });
+		const result = validateSubmission({
+			name: 'test',
+			selectedRagProcessor: 'no_rag',
+			selectedRubricId: ''
+		});
 		expect(result).toBeNull();
 	});
 });

@@ -29,9 +29,7 @@ describe('StepKSContent — race-guard contract', () => {
 	});
 
 	it('discards stale responses on the success path', () => {
-		expect(source).toMatch(
-			/await getItems\([^)]+\);[\s\n]*if \(mySeq !== loadSeq\) return;/
-		);
+		expect(source).toMatch(/await getItems\([^)]+\);[\s\n]*if \(mySeq !== loadSeq\) return;/);
 	});
 
 	it('discards stale errors on the failure path', () => {

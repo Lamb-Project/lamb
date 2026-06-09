@@ -49,43 +49,41 @@
 >
 	<div class="max-h-[60vh] flex-1 overflow-y-auto">
 		<!-- Root option -->
-			<button
-				type="button"
-				class="hover:bg-brand-subtle flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
-				onclick={() => pick(null)}
-			>
-				<Folder size={16} class="text-brand" aria-hidden="true" />
-				<span class="text-text italic">
-					{localeLoaded
-						? $_('libraries.fileTree.moveToPicker.rootOption', { default: 'Library root' })
-						: 'Library root'}
-				</span>
-			</button>
+		<button
+			type="button"
+			class="hover:bg-brand-subtle flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+			onclick={() => pick(null)}
+		>
+			<Folder size={16} class="text-brand" aria-hidden="true" />
+			<span class="text-text italic">
+				{localeLoaded
+					? $_('libraries.fileTree.moveToPicker.rootOption', { default: 'Library root' })
+					: 'Library root'}
+			</span>
+		</button>
 
-			{#snippet folder(node, depth)}
-				{#if node.kind === 'folder'}
-					<button
-						type="button"
-						class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm
-							{isDisabled(node)
-								? 'text-text-disabled cursor-not-allowed'
-								: 'text-text hover:bg-brand-subtle'}"
-						style="padding-left: {depth * 1.25 + 0.5}rem;"
-						disabled={isDisabled(node)}
-						onclick={() => pick(node.id)}
-					>
-						<Folder
-							size={16}
-							class="shrink-0 {isDisabled(node) ? 'text-text-disabled' : 'text-brand'}"
-							aria-hidden="true"
-						/>
-						<span class="min-w-0 flex-1 truncate">{node.name}</span>
-					</button>
-					{#each node.children.filter((c) => c.kind === 'folder') as child (child.key)}
-						{@render folder(child, depth + 1)}
-					{/each}
-				{/if}
-			{/snippet}
+		{#snippet folder(node, depth)}
+			{#if node.kind === 'folder'}
+				<button
+					type="button"
+					class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm
+							{isDisabled(node) ? 'text-text-disabled cursor-not-allowed' : 'text-text hover:bg-brand-subtle'}"
+					style="padding-left: {depth * 1.25 + 0.5}rem;"
+					disabled={isDisabled(node)}
+					onclick={() => pick(node.id)}
+				>
+					<Folder
+						size={16}
+						class="shrink-0 {isDisabled(node) ? 'text-text-disabled' : 'text-brand'}"
+						aria-hidden="true"
+					/>
+					<span class="min-w-0 flex-1 truncate">{node.name}</span>
+				</button>
+				{#each node.children.filter((c) => c.kind === 'folder') as child (child.key)}
+					{@render folder(child, depth + 1)}
+				{/each}
+			{/if}
+		{/snippet}
 
 		{#each tree.children.filter((c) => c.kind === 'folder') as topFolder (topFolder.key)}
 			{@render folder(topFolder, 0)}

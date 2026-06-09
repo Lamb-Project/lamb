@@ -59,9 +59,7 @@
 			// (``GET /content/text``) and its registration are kept so
 			// non-UI consumers still work.
 			capabilities = Array.isArray(list)
-				? list
-						.map((c) => String(c).toLowerCase())
-						.filter((c) => c !== 'text')
+				? list.map((c) => String(c).toLowerCase()).filter((c) => c !== 'text')
 				: [];
 		} catch (err) {
 			console.warn('ItemContentTabs: failed to load capabilities', err);
@@ -220,8 +218,7 @@
 							: 'YouTube rate-limited this request.'}
 						description={localeLoaded
 							? $_('libraries.itemContentModal.errorRateLimitHint', {
-									default:
-										'Wait a few minutes, then delete this item and try importing it again.'
+									default: 'Wait a few minutes, then delete this item and try importing it again.'
 								})
 							: 'Wait a few minutes, then delete this item and try importing it again.'}
 					/>

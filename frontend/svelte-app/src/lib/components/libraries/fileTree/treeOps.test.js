@@ -182,7 +182,7 @@ describe('resolveUploadFolderId', () => {
 		expect(resolveUploadFolderId(new Set(['folder:f1']), root)).toBe('f1');
 	});
 
-	it("returns the parent of a selected item", () => {
+	it('returns the parent of a selected item', () => {
 		// item i2 lives in folder f1
 		expect(resolveUploadFolderId(new Set(['item:i2']), root)).toBe('f1');
 	});

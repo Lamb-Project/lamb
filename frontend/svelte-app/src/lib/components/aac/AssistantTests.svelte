@@ -455,11 +455,14 @@
 
 <!-- Delete Scenario Confirmation Modal -->
 <ConfirmationModal
-    bind:isOpen={showDeleteScenarioModal}
-    title="Delete Test Scenario"
-    message="Are you sure you want to delete this test scenario? This action cannot be undone."
-    confirmText="Delete"
-    variant="danger"
-    onconfirm={confirmDeleteScenario}
-    oncancel={() => { showDeleteScenarioModal = false; scenarioToDelete = null; }}
+	bind:isOpen={showDeleteScenarioModal}
+	title="Delete Test Scenario"
+	message="Are you sure you want to delete this test scenario? This action cannot be undone."
+	confirmText="Delete"
+	variant="danger"
+	onconfirm={confirmDeleteScenario}
+	oncancel={() => {
+		showDeleteScenarioModal = false;
+		scenarioToDelete = null;
+	}}
 />
