@@ -1218,6 +1218,11 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
+        # Enforce object-level authorization before any mutation (#408).
+        # 404 (not 403) when the caller has no access at all, to avoid
+        # leaking existence; owner or org-admin required to modify.
+        auth.require_assistant_access(assistant_id, level="owner_or_admin")
+
         # Fetch current assistant to merge with partial updates (#328)
         assistant_service = AssistantService()
         current = assistant_service.get_assistant_by_id(assistant_id)
@@ -1264,6 +1269,12 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         if error:
             logger.error(f"Error preparing update body for assistant {assistant_id}: {error}")
             raise HTTPException(status_code=400, detail=error)
+
+        # Owner is immutable on update — never derive it from the caller (#408).
+        # prepare_assistant_body() sets owner to the calling user (correct for
+        # create, an ownership-takeover hole on update); preserve the existing owner.
+        new_body["owner"] = current.owner
+
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 
         # Create a mock request object with the prepared body
