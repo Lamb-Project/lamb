@@ -109,16 +109,20 @@ if not SIGNUP_SECRET_KEY:
 # LAMB Native Authentication
 # JWT secret for signing LAMB-issued tokens. Resolution order:
 #   1. LAMB_JWT_SECRET (explicit, for full OWI decoupling)
-#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY env vars
-#   3. OWI's hardcoded default ("t0p-s3cr3t") — matches open_webui/env.py
-# This ensures zero-config compatibility: LAMB signs tokens with the same
-# secret OWI uses, so existing OWI tokens decode seamlessly.
+#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY env vars (zero-config OWI compat —
+#      LAMB signs with the same secret OWI uses, so OWI tokens decode seamlessly)
+# Refuse to start on the public OWI default ("t0p-s3cr3t"): the auth layer trusts
+# the JWT `role` claim, so a default secret means forgeable admin tokens (#412).
 LAMB_JWT_SECRET = (
     os.getenv('LAMB_JWT_SECRET')
     or os.getenv('WEBUI_SECRET_KEY')
     or os.getenv('WEBUI_JWT_SECRET_KEY')
-    or 't0p-s3cr3t'
 )
+if not LAMB_JWT_SECRET or LAMB_JWT_SECRET == 't0p-s3cr3t':
+    raise ValueError(
+        "LAMB_JWT_SECRET (or WEBUI_SECRET_KEY) must be set to a strong, non-default "
+        "value. Refusing to start with the public default 't0p-s3cr3t'."
+    )
 
 # OWI Admin Configuration
 OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME')

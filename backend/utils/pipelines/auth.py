@@ -19,7 +19,8 @@ warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
 import requests
 import uuid
 
-SESSION_SECRET = os.getenv("SESSION_SECRET", " ")
+# No insecure fallback: signing without a configured secret must fail closed.
+SESSION_SECRET = os.getenv("SESSION_SECRET")
 ALGORITHM = "HS256"
 
 ##############
@@ -41,6 +42,8 @@ def get_password_hash(password):
 
 
 def create_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
+    if not SESSION_SECRET:
+        raise RuntimeError("SESSION_SECRET environment variable is required to sign tokens")
     payload = data.copy()
 
     if expires_delta:
@@ -52,6 +55,8 @@ def create_token(data: dict, expires_delta: Union[timedelta, None] = None) -> st
 
 
 def decode_token(token: str) -> Optional[dict]:
+    if not SESSION_SECRET:
+        return None
     try:
         decoded = jwt.decode(token, SESSION_SECRET, algorithms=[ALGORITHM])
         return decoded
@@ -65,6 +70,21 @@ def extract_token_from_auth_header(auth_header: str):
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_security),
-) -> Optional[dict]:
+) -> str:
+    """Validate the bearer token against the system API key.
+
+    Previously this returned the token unconditionally, so any
+    ``Authorization: Bearer <anything>`` header was accepted. The
+    endpoints that depend on this (legacy LTI-users routes, the
+    pipelines reload endpoint) are system/admin surfaces and require
+    the LAMB system token. (#410)
+    """
+    import config
+
     token = credentials.credentials
+    if not token or token != config.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing authentication token",
+        )
     return token
