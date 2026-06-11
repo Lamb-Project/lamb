@@ -1067,20 +1067,17 @@
             currentUserData = userData; // Store current user data for self-disable prevention
             
             if (userData.isLoggedIn) {
-                console.log("User is logged in:", userData.email);
-                // Check if user is admin (based on role in userData)
+                // Gate the admin UI on the admin role (#416). The backend
+                // authorizes the data, but the page must not render for
+                // non-admins (client-side defense in depth).
                 const userRole = userData.data?.role;
-                if (userRole === 'admin') {
-                    console.log("User has admin role, can access admin features");
-                } else {
-                    console.warn("User doesn't have admin role:", userRole);
-                    // Optionally redirect non-admin users
-                    // goto(`${base}/`);
+                if (userRole !== 'admin') {
+                    console.warn("User lacks admin role, redirecting:", userRole);
+                    goto(`${base}/`);
                 }
             } else {
-                console.warn("User not logged in, redirecting...");
-                // Redirect to login page
-                // goto(`${base}/login`);
+                console.warn("User not logged in, redirecting to login");
+                goto(`${base}/`);
             }
         });
 
