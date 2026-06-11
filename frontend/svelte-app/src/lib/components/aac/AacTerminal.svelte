@@ -2,7 +2,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { sendMessageStream, getSession, sendMessage } from '$lib/services/aacService';
 	import { recordTabActivity } from '$lib/stores/aacStore.svelte';
-	import { marked } from 'marked';
+	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
 	// Abort any in-flight stream when the component unmounts so the fetch
 	// and getReader() loop stop running in the background (#352, H3).
@@ -264,17 +264,15 @@
 		darkMode = !darkMode;
 	}
 
-	// Configure marked for terminal-style rendering
-	marked.setOptions({ breaks: true, gfm: true });
-
 	/**
-	 * Render markdown to HTML using marked.
+	 * Render markdown to sanitized HTML (DOMPurify-backed; #417).
 	 * @param {string} text
 	 * @returns {string}
 	 */
 	function renderMarkdown(text) {
 		if (!text) return '';
-		return marked.parse(text);
+		// Sanitized render — agent/LLM output is untrusted (#417).
+		return renderMarkdownWithMath(text);
 	}
 </script>
 

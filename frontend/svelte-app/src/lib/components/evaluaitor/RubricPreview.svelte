@@ -1,5 +1,6 @@
 <script>
   import { _, locale } from '$lib/i18n';
+  import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
   // Props
   let { 
@@ -128,7 +129,7 @@
       <!-- Rendered Markdown -->
       <div class="prose max-w-none">
         <div class="bg-gray-50 p-6 rounded border">
-          {@html markdown.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')}
+          {@html renderMarkdownWithMath(markdown)}
         </div>
       </div>
     {:else if activeTab === 'raw'}
