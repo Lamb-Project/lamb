@@ -63,8 +63,10 @@ from schemas.query import (
     QueryPluginInfo
 )
 
-# Get API key from environment variable or use default
-API_KEY = os.getenv("LAMB_API_KEY", "0p3n-w3bu!")
+# Get API key from environment variable (required; no insecure default) (#413)
+API_KEY = os.getenv("LAMB_API_KEY")
+if not API_KEY:
+    raise RuntimeError("LAMB_API_KEY environment variable is required")
 
 # Get default embeddings model configuration from environment variables
 # Default to using Ollama with nomic-embed-text model
@@ -83,12 +85,12 @@ app = FastAPI(
     
     ## Authentication
     
-    All API endpoints are secured with Bearer token authentication. The token must match 
-    the `LAMB_API_KEY` environment variable (default: `0p3n-w3bu!`).
-    
+    All API endpoints are secured with Bearer token authentication. The token must match
+    the `LAMB_API_KEY` environment variable, which must be set to a strong, unique value.
+
     Example:
     ```
-    curl -H 'Authorization: Bearer 0p3n-w3bu!' http://localhost:9090/
+    curl -H "Authorization: Bearer $LAMB_API_KEY" http://localhost:9090/
     ```
     
     ## Features
@@ -210,7 +212,7 @@ async def get_ingestion_config():
     Example:
     ```bash
     curl -X GET 'http://localhost:9090/ingestion/plugins' \
-      -H 'Authorization: Bearer 0p3n-w3bu!'
+      -H "Authorization: Bearer $LAMB_API_KEY"
     ```
     """,
     tags=["Ingestion"],

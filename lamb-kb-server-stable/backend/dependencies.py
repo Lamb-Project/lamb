@@ -2,8 +2,10 @@ import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# Get API key from environment variable or use default
-API_KEY = os.getenv("LAMB_API_KEY", "0p3n-w3bu!")
+# Get API key from environment variable (required; no insecure default) (#413)
+API_KEY = os.getenv("LAMB_API_KEY")
+if not API_KEY:
+    raise RuntimeError("LAMB_API_KEY environment variable is required")
 
 # Security scheme
 security = HTTPBearer(
