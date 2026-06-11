@@ -38,7 +38,7 @@ class KBServerManager:
         self.global_kb_server_token = LAMB_KB_SERVER_TOKEN
         self.kb_server_configured = KB_SERVER_CONFIGURED
     
-    def _get_kb_config_for_user(self, creator_user: Dict[str, Any]) -> Dict[str, str]:
+    def _get_kb_config_for_user(self, creator_user: Dict[str, Any]) -> Dict[str, Any]:
         """
         Resolve KB server configuration based on user's organization.
         Uses organization-specific config if available, falls back to environment variables.
@@ -47,7 +47,7 @@ class KBServerManager:
             creator_user: Dict containing user information with 'email' and 'organization_id'
             
         Returns:
-            Dict with 'url' and 'token' keys for KB server connection
+            Dict with 'url', 'token', and optionally 'embedding_model' and 'collection_defaults'
         """
         from lamb.completions.org_config_resolver import OrganizationConfigResolver
         
@@ -72,10 +72,19 @@ class KBServerManager:
                 api_token = kb_config.get('api_token')
                 if not api_token:
                     api_token = self.global_kb_server_token
-                return {
+                result = {
                     'url': kb_config.get('server_url'),
                     'token': api_token
                 }
+                # Pass through embedding model and collection defaults if configured
+                embedding_model = kb_config.get('embedding_model')
+                if embedding_model:
+                    result['embedding_model'] = embedding_model
+                    logger.info(f"Using org embedding model: {embedding_model}")
+                collection_defaults = kb_config.get('collection_defaults')
+                if collection_defaults:
+                    result['collection_defaults'] = collection_defaults
+                return result
             else:
                 logger.info(f"No organization KB config for {user_email}, using global config")
                 
@@ -502,18 +511,33 @@ class KBServerManager:
             except Exception as md_err:
                 logger.warning(f"Error extracting metadata description: {str(md_err)}")
                 
+            # Resolve embedding model: use org config if set, otherwise default
+            org_embedding_model = kb_config.get('embedding_model')
+            if org_embedding_model:
+                # Use org-specified model; let KB server resolve vendor/endpoint from its env
+                embeddings_model = {
+                    "model": org_embedding_model,
+                    "vendor": "default",
+                    "api_endpoint": "default",
+                    "apikey": "default"
+                }
+                logger.info(f"Using org-configured embedding model: {org_embedding_model}")
+            else:
+                # No org config; fully default (KB server resolves all from its env)
+                embeddings_model = {
+                    "model": "default",
+                    "vendor": "default",
+                    "api_endpoint": "default",
+                    "apikey": "default"
+                }
+            
             # Prepare collection data according to KB server API
             collection_data = {
                 "name": kb_data.name,
                 "description": description,
                 "owner": str(creator_user.get('id')),  # Use ID instead of email for privacy (as string)
                 "visibility": kb_data.access_control or "private",
-                "embeddings_model": {
-                    "model": "default",
-                    "vendor": "default",
-                    "api_endpoint": "default",
-                    "apikey": "default"
-                }
+                "embeddings_model": embeddings_model
             }
             
             # Log the final data being sent to the KB server
