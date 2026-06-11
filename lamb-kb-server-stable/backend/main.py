@@ -63,10 +63,18 @@ from schemas.query import (
     QueryPluginInfo
 )
 
-# Get API key from environment variable (required; no insecure default) (#413)
+# API key from env. Backwards-compatible: fall back to the historical default
+# so existing installs keep working, but warn loudly — it must be overridden in
+# production (#413).
+import sys as _sys
 API_KEY = os.getenv("LAMB_API_KEY")
 if not API_KEY:
-    raise RuntimeError("LAMB_API_KEY environment variable is required")
+    API_KEY = "0p3n-w3bu!"
+    print(
+        "WARNING [kb-server]: LAMB_API_KEY not set; using the insecure default token. "
+        "Set LAMB_API_KEY to a strong value in production.",
+        file=_sys.stderr,
+    )
 
 # Get default embeddings model configuration from environment variables
 # Default to using Ollama with nomic-embed-text model
