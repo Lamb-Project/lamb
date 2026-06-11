@@ -2927,6 +2927,25 @@ class LambDatabaseManager:
         finally:
             connection.close()
 
+    def get_user_organization(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """The user's primary organization as a full dict (incl. parsed config), or None.
+
+        Resolves the first organization the user belongs to (system org sorts first)
+        and returns the complete record via get_organization_by_id so callers get
+        `config`. Added for #325 (rubric visibility/access paths called this).
+        """
+        orgs = self.get_user_organizations(user_id)
+        if not orgs:
+            return None
+        return self.get_organization_by_id(orgs[0]['id'])
+
+    def get_user_organization_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """The user's primary organization looked up by email, or None (#325)."""
+        user = self.get_creator_user_by_email(email)
+        if not user or not user.get('id'):
+            return None
+        return self.get_user_organization(user['id'])
+
     def get_user_organization_role(self, user_id: int, organization_id: int) -> Optional[str]:
         """
         Get the user's role in a specific organization
@@ -5170,6 +5189,41 @@ class LambDatabaseManager:
                     # Re-raise or return specific error? For now, just log and return False
                     return False
                 logger.error(f"Error publishing assistant {assistant_id}: {e}")
+                return False
+            finally:
+                connection.close()
+        return False
+
+    def update_assistant_publication(self, assistant_id: int, group_id: str,
+                                     group_name: str, oauth_consumer_name: Optional[str]) -> bool:
+        """Update the publication record for an already-published assistant (#397).
+
+        Updates group/oauth fields in place (name/owner are unchanged on update).
+        Returns True if a publication row was updated.
+        """
+        connection = self.get_connection()
+        if connection:
+            try:
+                with connection:
+                    cursor = connection.cursor()
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}assistant_publish
+                        SET group_id = ?, group_name = ?, oauth_consumer_name = ?
+                        WHERE assistant_id = ?
+                    """, (group_id, group_name, oauth_consumer_name, assistant_id))
+                    updated = cursor.rowcount
+                    if updated > 0:
+                        logger.info(f"Updated publication for assistant {assistant_id}")
+                    else:
+                        logger.warning(
+                            f"update_assistant_publication: no publication row for assistant {assistant_id}")
+                    return updated > 0
+            except sqlite3.Error as e:
+                if "UNIQUE constraint failed" in str(e) and "oauth_consumer_name" in str(e):
+                    logger.error(
+                        f"Error updating publication for {assistant_id}: oauth_consumer_name '{oauth_consumer_name}' already in use.")
+                    return False
+                logger.error(f"Error updating publication for assistant {assistant_id}: {e}")
                 return False
             finally:
                 connection.close()

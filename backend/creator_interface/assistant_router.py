@@ -556,8 +556,8 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         def check_assistant_exists(prefixed_name: str) -> bool:
             """Check if an assistant with this name exists for this owner"""
             try:
-                existing = db_manager.get_assistant_by_name_and_owner(
-                    prefixed_name, 
+                existing = db_manager.get_assistant_by_name(
+                    prefixed_name,
                     creator_user['email']
                 )
                 return existing is not None
