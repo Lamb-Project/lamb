@@ -8,6 +8,8 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import GlobalAacTabBar from '$lib/components/aac/GlobalAacTabBar.svelte';
 	import { replaceSessionWithToken } from '$lib/session/sessionManager';
+	import { get } from 'svelte/store';
+	import { user } from '$lib/stores/userStore';
 
 	let { children } = $props();
 	let sessionReady = $state(!$page.url.searchParams.get('token'));
@@ -59,7 +61,29 @@
 			void handleTokenLogin($page.url);
 		});
 
-		return unsubscribe;
+		// Cross-tab session reconciliation (#302). localStorage is shared across
+		// tabs of the same browser, but each tab keeps its own in-memory user
+		// store. If another tab logs in as a different user (or via an LTI
+		// activity launch) or logs out, this tab's in-memory session goes stale
+		// while the shared token changes underneath it — letting the previous
+		// user linger here and act with the new token. The `storage` event fires
+		// only in OTHER tabs, so when the auth token changes elsewhere we reload
+		// to re-bootstrap cleanly from the current localStorage. (e.key is null
+		// on a full localStorage.clear().)
+		const onStorage = (/** @type {StorageEvent} */ e) => {
+			if (e.key && e.key !== 'userToken') return;
+			const current = get(user).token || null;
+			const next = localStorage.getItem('userToken') || null;
+			if (next !== current) {
+				window.location.reload();
+			}
+		};
+		window.addEventListener('storage', onStorage);
+
+		return () => {
+			unsubscribe();
+			window.removeEventListener('storage', onStorage);
+		};
 	});
 </script>
 
