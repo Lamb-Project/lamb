@@ -9,6 +9,7 @@ activity configuration, and student launch.
 import os
 import re
 import time
+import secrets
 import hmac
 import hashlib
 import base64
@@ -358,7 +359,7 @@ class LtiActivityManager:
             owi_user = self.owi_user_manager.create_user(
                 name=display_name,
                 email=email,
-                password=f"lti_activity_{activity['id']}",
+                password=secrets.token_urlsafe(32),  # Random; header-trust signin, not this password (#411)
                 role="user"
             )
             if not owi_user:
