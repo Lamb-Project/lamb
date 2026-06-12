@@ -1,5 +1,6 @@
 <script>
 	import { _, locale } from '$lib/i18n';
+	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
 	// Props
 	let {
@@ -135,6 +136,7 @@
 		</nav>
 	</div>
 
+<<<<<<< HEAD
 	<!-- Tab Content -->
 	<div class="p-6">
 		{#if activeTab === 'markdown'}
@@ -173,6 +175,56 @@
 							: 'Validate JSON'}
 					</button>
 				</div>
+=======
+  <!-- Tab Content -->
+  <div class="p-6">
+    {#if activeTab === 'markdown'}
+      <!-- Rendered Markdown -->
+      <div class="prose max-w-none">
+        <div class="bg-gray-50 p-6 rounded border">
+          {@html renderMarkdownWithMath(markdown)}
+        </div>
+      </div>
+    {:else if activeTab === 'raw'}
+      <!-- Raw Markdown Source -->
+      <div class="bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm overflow-x-auto">
+        <pre>{markdown}</pre>
+      </div>
+    {:else if activeTab === 'json'}
+      <!-- Editable JSON -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <label for="json-editor" class="block text-sm font-medium text-gray-700">
+            {localeLoaded ? $_('rubrics.ai.editJsonLabel', { default: 'Edit JSON (changes will be used when you accept)' }) : 'Edit JSON (changes will be used when you accept)'}
+          </label>
+          <button
+            type="button"
+            onclick={validateAndUpdateJson}
+            class="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+          >
+            {localeLoaded ? $_('rubrics.ai.validateJson', { default: 'Validate JSON' }) : 'Validate JSON'}
+          </button>
+        </div>
+        
+        <textarea
+          id="json-editor"
+          bind:value={editableJson}
+          class="w-full h-96 font-mono text-sm border border-gray-300 rounded p-3 focus:ring-blue-500 focus:border-blue-500"
+          spellcheck="false"
+        ></textarea>
+        
+        {#if jsonError}
+          <div class="mt-2 text-sm text-red-600 bg-red-50 p-3 rounded">
+            {jsonError}
+          </div>
+        {:else}
+          <div class="mt-2 text-sm text-green-600">
+            ✓ {localeLoaded ? $_('rubrics.ai.jsonValid', { default: 'JSON is valid' }) : 'JSON is valid'}
+          </div>
+        {/if}
+      </div>
+    {/if}
+>>>>>>> origin/dev
 
 				<textarea
 					id="json-editor"

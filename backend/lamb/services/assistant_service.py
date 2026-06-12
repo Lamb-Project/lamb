@@ -238,9 +238,13 @@ class AssistantService:
             oauth_consumer_name=oauth_consumer_name
         )
     
-    def unpublish_assistant(self, assistant_id: int, group_id: str) -> bool:
-        """Unpublish an assistant"""
-        return self.db_manager.unpublish_assistant(assistant_id, group_id)
+    def unpublish_assistant(self, assistant_id: int, group_id: str = None) -> bool:
+        """Unpublish an assistant.
+
+        The publication row is keyed by assistant_id, so group_id is accepted for
+        call-site compatibility but not needed by the DB layer (#397).
+        """
+        return self.db_manager.unpublish_assistant(assistant_id)
     
     def validate_assistant_name(self, name: str) -> Tuple[bool, Optional[str]]:
         """

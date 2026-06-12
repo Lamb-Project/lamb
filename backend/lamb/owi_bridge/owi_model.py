@@ -231,34 +231,41 @@ class OWIModel:
         Remove a group from model's access control list
         """
         try:
+            # Use execute_query (OwiDatabaseManager has no .execute); mirror
+            # add_group_to_model. Previously self.db.execute(...) raised
+            # AttributeError, was swallowed, and every removal silently no-op'd —
+            # so unsharing never propagated to OWI (#399).
             query = "SELECT access_control FROM model WHERE id = ?"
-            result = self.db.execute(query, (model_id,)).fetchone()
-            
+            result = self.db.execute_query(query, (model_id,), fetch_one=True)
+
             if not result:
                 return False
-            
-            access_control = json.loads(result[0])
-            
+
+            access_control = json.loads(result[0]) if result[0] else {
+                "read": {"group_ids": [], "user_ids": []},
+                "write": {"group_ids": [], "user_ids": []}
+            }
+
             if permission_type not in ["read", "write"]:
                 raise ValueError("Permission type must be 'read' or 'write'")
-            
+
             if group_id in access_control[permission_type]["group_ids"]:
                 access_control[permission_type]["group_ids"].remove(group_id)
-            
+
             update_query = """
-                UPDATE model 
+                UPDATE model
                 SET access_control = ?,
                     updated_at = ?
                 WHERE id = ?
             """
-            
+
             current_time = int(datetime.now().timestamp())
-            self.db.execute(
+            success = self.db.execute_query(
                 update_query,
                 (json.dumps(access_control), current_time, model_id)
             )
-            
-            return True
+
+            return success is not None
             
         except Exception as e:
             print(f"Error removing group from model: {e}")
@@ -271,11 +278,11 @@ class OWIModel:
         """
         try:
             query = "SELECT access_control FROM model WHERE id = ?"
-            result = self.db.execute(query, (model_id,)).fetchone()
-            
-            if not result:
+            result = self.db.execute_query(query, (model_id,), fetch_one=True)
+
+            if not result or not result[0]:
                 return {"read": [], "write": []}
-            
+
             access_control = json.loads(result[0])
             return {
                 "read": access_control["read"]["group_ids"],

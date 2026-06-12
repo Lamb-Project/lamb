@@ -5,7 +5,7 @@
 	import { getSession } from '$lib/services/aacService';
 	import { openTab } from '$lib/stores/aacStore.svelte';
 	import { goto } from '$app/navigation';
-	import { marked } from 'marked';
+	import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 
 	let session = $state(/** @type {any} */ (null));
 	let loading = $state(true);
@@ -21,7 +21,8 @@
 
 	function renderMarkdown(text) {
 		if (!text) return '';
-		return marked.parse(text, { breaks: true });
+		// Sanitized render — persisted agent/LLM output is untrusted (#417).
+		return renderMarkdownWithMath(text);
 	}
 
 	onMount(async () => {
