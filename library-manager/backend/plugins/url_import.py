@@ -68,16 +68,6 @@ class UrlImportPlugin(LibraryImportPlugin):
         if not parsed.scheme or not parsed.netloc:
             raise ValueError(f"Invalid URL: {url}")
 
-        if parsed.scheme not in ("http", "https"):
-            raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-        hostname = parsed.hostname or ""
-        _blocked = {
-            "localhost", "127.0.0.1", "0.0.0.0", "::1",
-            "169.254.169.254", "metadata.google.internal",
-        }
-        if hostname.lower() in _blocked:
-            raise ValueError(f"URL host is not allowed: {hostname}")
-
         api_keys = api_keys or {}
         firecrawl_key = api_keys.get("firecrawl_key", "")
 
@@ -99,6 +89,7 @@ class UrlImportPlugin(LibraryImportPlugin):
         from firecrawl import FirecrawlApp  # noqa: PLC0415
 
         api_url = api_keys.get("firecrawl_url", "https://api.firecrawl.dev")
+        limit = _safe_int(kwargs.get("limit"), 100)
         timeout_s = _safe_int(kwargs.get("timeout"), 300)
         self.report_progress(kwargs, 0, 3, f"Scraping {url} via Firecrawl...")
 
@@ -108,8 +99,7 @@ class UrlImportPlugin(LibraryImportPlugin):
             scrape_result = app.scrape(
                 url,
                 formats=["markdown"],
-                timeout=max(timeout_s * 1000, 1000),
-                # Firecrawl v2 requires timeout in ms, min 1000
+                timeout=max(timeout_s * 1000, 1000),  # Firecrawl v2 requires timeout in ms, min 1000
             )
         except Exception as exc:
             raise RuntimeError(f"Firecrawl scrape failed for {url}: {exc}") from exc
@@ -264,6 +254,12 @@ class UrlImportPlugin(LibraryImportPlugin):
                 advanced=True,
             ),
             PluginParameter(
+                name="crawl_entire_domain",
+                type="bool",
+                description="Whether to follow links across the entire domain.",
+                default=True,
+            ),
+            PluginParameter(
                 name="timeout",
                 type="int",
                 description="Crawl job timeout in seconds.",
@@ -302,3 +298,21 @@ def _safe_int(value: Any, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
+
+def _safe_bool(value: Any, default: bool) -> bool:
+    """Safely convert a value to bool, handling string "false"/"true".
+
+    Args:
+        value: Value to convert.
+        default: Fallback value.
+
+    Returns:
+        Boolean value.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() not in ("false", "0", "no", "off")
+    return bool(value)

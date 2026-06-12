@@ -1,6 +1,7 @@
 services:
   firecrawl:
-    build: https://github.com/firecrawl/firecrawl.git#main:apps/api
+    image: ghcr.io/firecrawl/firecrawl:latest
+    # build: https://github.com/firecrawl/firecrawl.git#main:apps/api
     environment:
       HOST: 0.0.0.0
       PORT: ${FIRECRAWL_INTERNAL_PORT:-3002}
@@ -9,18 +10,18 @@ services:
       NUQ_RABBITMQ_URL: amqp://firecrawl-rabbitmq:5672
       REDIS_URL: ${FIRECRAWL_REDIS_URL:-redis://firecrawl-redis:6379}
       REDIS_RATE_LIMIT_URL: ${FIRECRAWL_REDIS_RATE_LIMIT_URL:-redis://firecrawl-redis:6379}
-      PLAYWRIGHT_MICROSERVICE_URL: ${FIRECRAWL_PLAYWRIGHT_URL:-http://firecrawl-playwright:3000/scrape}
+      PLAYWRIGHT_MICROSERVICE_URL: ""
       POSTGRES_USER: ${FIRECRAWL_POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${FIRECRAWL_POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${FIRECRAWL_POSTGRES_DB:-postgres}
       POSTGRES_HOST: ${FIRECRAWL_POSTGRES_HOST:-firecrawl-postgres}
       POSTGRES_PORT: ${FIRECRAWL_POSTGRES_PORT:-5432}
       USE_DB_AUTHENTICATION: ${FIRECRAWL_USE_DB_AUTHENTICATION:-false}
-      NUM_WORKERS_PER_QUEUE: ${FIRECRAWL_NUM_WORKERS_PER_QUEUE:-8}
-      CRAWL_CONCURRENT_REQUESTS: ${FIRECRAWL_CRAWL_CONCURRENT_REQUESTS:-5}
-      MAX_CONCURRENT_JOBS: ${FIRECRAWL_MAX_CONCURRENT_JOBS:-10}
-      BROWSER_POOL_SIZE: ${FIRECRAWL_BROWSER_POOL_SIZE:-5}
-      WORKER_CONCURRENCY: ${FIRECRAWL_WORKER_CONCURRENCY:-5}
+      NUM_WORKERS_PER_QUEUE: ${FIRECRAWL_NUM_WORKERS_PER_QUEUE:-2}
+      CRAWL_CONCURRENT_REQUESTS: ${FIRECRAWL_CRAWL_CONCURRENT_REQUESTS:-2}
+      MAX_CONCURRENT_JOBS: ${FIRECRAWL_MAX_CONCURRENT_JOBS:-3}
+      BROWSER_POOL_SIZE: ${FIRECRAWL_BROWSER_POOL_SIZE:-2}
+      WORKER_CONCURRENCY: ${FIRECRAWL_WORKER_CONCURRENCY:-2}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL}
       MODEL_NAME: ${MODEL_NAME}
@@ -40,8 +41,8 @@ services:
       SEARXNG_ENDPOINT: ${SEARXNG_ENDPOINT}
       SEARXNG_ENGINES: ${SEARXNG_ENGINES}
       SEARXNG_CATEGORIES: ${SEARXNG_CATEGORIES}
-      MAX_CPU: ${FIRECRAWL_MAX_CPU:-0.7}
-      MAX_RAM: ${FIRECRAWL_MAX_RAM:-0.7}
+      MAX_CPU: ${FIRECRAWL_MAX_CPU:-0.95}
+      MAX_RAM: ${FIRECRAWL_MAX_RAM:-0.95}
     ports:
       - "${FIRECRAWL_PORT:-3002}:${FIRECRAWL_INTERNAL_PORT:-3002}"
     depends_on:
@@ -60,9 +61,9 @@ services:
         max-size: "10m"
         max-file: "3"
         compress: "true"
-    cpus: 4.0
-    mem_limit: 8G
-    memswap_limit: 8G
+    cpus: 2.0
+    mem_limit: 6G
+    memswap_limit: 6G
     healthcheck:
       test:
         [
@@ -88,15 +89,16 @@ services:
       PROXY_PASSWORD: ${PROXY_PASSWORD}
       BLOCK_MEDIA: ${BLOCK_MEDIA}
       MAX_CONCURRENT_PAGES: ${FIRECRAWL_MAX_CONCURRENT_PAGES:-5}
+      CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --disable-dev-shm-usage --disable-setuid-sandbox"
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
         compress: "true"
-    cpus: 2.0
-    mem_limit: 4G
-    memswap_limit: 4G
+    cpus: 1.0
+    mem_limit: 3G
+    memswap_limit: 3G
     tmpfs:
       - /tmp/.cache:noexec,nosuid,size=1g
     healthcheck:
@@ -143,8 +145,9 @@ services:
       start_period: 5s
 
   firecrawl-postgres:
-    # Firecrawl's repo builds a custom image with pg_cron and init SQL.
-    build: https://github.com/firecrawl/firecrawl.git#main:apps/nuq-postgres
+    # Standard postgres - pg_cron not required for basic scraping functionality
+    image: postgres:16-alpine
+    # build: https://github.com/firecrawl/firecrawl.git#main:apps/nuq-postgres
     command: postgres -c log_min_messages=WARNING -c log_statement=none -c cron.log_run=off -c cron.log_statement=off
     environment:
       POSTGRES_USER: ${FIRECRAWL_POSTGRES_USER:-postgres}

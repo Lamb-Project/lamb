@@ -148,13 +148,12 @@ services:
     # ownership. The leading `chown -R` heals files left over from older
     # container runs that pre-date this drop.
     command: >
-      sh -lc "apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1 && \
-      chown -R ${HOST_UID:-1000}:${HOST_GID:-1001} ${LAMB_PROJECT_PATH}/lamb-kb-server/data 2>/dev/null || true && \
-      python -m pip install --upgrade pip && \
-      pip install -e '${LAMB_PROJECT_PATH}/lamb-kb-server[all]' && \
-      LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') && \
-      exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups \
-        uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
+      sh -lc "apt-get update -qq && apt-get install -y -qq curl util-linux > /dev/null 2>&1 &&
+      chown -R ${HOST_UID:-1000}:${HOST_GID:-1001} ${LAMB_PROJECT_PATH}/lamb-kb-server/data 2>/dev/null || true &&
+      python -m pip install --upgrade pip &&
+      pip install -e '${LAMB_PROJECT_PATH}/lamb-kb-server[all]' &&
+      LOG_LEVEL=$$(echo \"$${KB_LOG_LEVEL:-$${GLOBAL_LOG_LEVEL:-WARNING}}\" | tr '[:upper:]' '[:lower:]') &&
+      exec setpriv --reuid=${HOST_UID:-1000} --regid=${HOST_GID:-1001} --clear-groups uvicorn main:app --host 0.0.0.0 --port 9092 --reload --log-level $$LOG_LEVEL --no-access-log"
   backend:
     image: python:3.11-slim
     extra_hosts:
