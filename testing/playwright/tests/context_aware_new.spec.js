@@ -5,7 +5,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env"), quiet: true
 /**
  * E2E: Library → Knowledge Store → Context-Aware KS RAG + Document RAG → UI chat.
  *
- * Validates the query_rewriting_ks_rag + single_file_rag (document reference) stack
+ * Validates the kvcache_augment + query_rewriting_ks_rag + library_file_rag stack
  * described in docs/superpowers/plans/2026-06-01-query-rewriting-ks-rag-implementation-summary.md.
  *
  * Flow:
@@ -13,7 +13,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env"), quiet: true
  *      - one indexed in the Knowledge Store (KS token),
  *      - one used only as the Document RAG reference (doc-RAG token).
  *   2. Create Knowledge Store + link the KS-only item + poll until ready (API).
- *   3. Create assistant via UI with query_rewriting_ks_rag, document RAG, and KS binding.
+ *   3. Create assistant via UI with kvcache_augment PPS, query_rewriting_ks_rag, library_file_rag, and KS binding.
  *   4. Chat via the assistant detail UI; verify each token appears in its own channel.
  *   5. Cleanup assistant, KS content link, KS, library (API).
  */
@@ -51,14 +51,11 @@ const LLM_TOKEN_PROBE_MESSAGE =
 const BYPASS_CHAT_MESSAGE =
   "Do you have reference context from both channels? KS retrieval verification probe.";
 
-// Matches simple_augment.DEFAULT_RAG_PROMPT_TEMPLATE — predictable {context} placement for KS RAG.
+// Matches kvcache_augment.DEFAULT_RAG_PROMPT_TEMPLATE — predictable {context} placement for KS RAG.
 const RAG_PROMPT_TEMPLATE =
   "Use the following context to answer the question. " +
   "If the context does not contain the answer, say you do not know.\n\n" +
   "Context:\n{context}\n\nQuestion: {user_input}";
-
-const REFERENCE_DOCUMENT_BOILERPLATE =
-  /## REFERENCE DOCUMENT\s+This document has been selected by the assistant creator as a reference that will likely be useful for many queries, as it is generally a helpful document\. Use it as context when answering questions\.\s+/i;
 
 /** Collapse whitespace for stable substring / equality checks. */
 function normalizeText(text) {
@@ -86,12 +83,20 @@ function splitBypassConversation(responseText) {
 
 /** Document body injected after the REFERENCE DOCUMENT boilerplate in system prompt. */
 function extractReferenceDocumentBody(systemText) {
-  const markerIdx = systemText.search(/## REFERENCE DOCUMENT/i);
-  if (markerIdx === -1) return null;
-  const afterMarker = systemText.slice(markerIdx);
-  const bodyMatch = afterMarker.replace(REFERENCE_DOCUMENT_BOILERPLATE, "");
-  if (bodyMatch === afterMarker) return null;
-  return bodyMatch.trim();
+  if (!/## REFERENCE DOCUMENT/i.test(systemText)) return null;
+
+  const docStartMatch = systemText.match(
+    /Use it as context when answering questions\.\s*/i,
+  );
+  if (!docStartMatch || docStartMatch.index === undefined) return null;
+
+  let body = systemText.slice(docStartMatch.index + docStartMatch[0].length);
+  // kvcache_augment: recency-bias reminder (and optional assistant system prompt) follows the doc.
+  const importantIdx = body.search(/IMPORTANT:\s*The reference document above/i);
+  if (importantIdx !== -1) {
+    body = body.slice(0, importantIdx);
+  }
+  return body.trim();
 }
 
 /** RAG chunks substituted into the last user message ({context} placeholder). */
@@ -391,11 +396,18 @@ test.describe.serial("Context-aware KS RAG + document RAG (UI chat)", () => {
     await page.fill("#system-prompt", SYSTEM_PROMPT);
     await page.fill("#prompt_template", RAG_PROMPT_TEMPLATE);
 
-    // Advanced mode exposes connector / LLM pickers.
+    // Advanced mode exposes PPS / connector / LLM pickers.
     const advancedToggle = page.getByText(/Advanced Mode/i).first();
     if (await advancedToggle.count()) {
       await advancedToggle.click();
     }
+
+    const ppsSelect = page.locator("#prompt-processor");
+    await expect(ppsSelect).toBeVisible({ timeout: 10000 });
+    await ppsSelect.selectOption("kvcache_augment");
+    await expect(
+      page.locator('#rag-processor option[value="query_rewriting_ks_rag"]'),
+    ).toHaveCount(1, { timeout: 10000 });
 
     await page.waitForLoadState("networkidle").catch(() => {});
 
@@ -523,8 +535,9 @@ test.describe.serial("Context-aware KS RAG + document RAG (UI chat)", () => {
 
     const detail = await apiCall(page, "GET", `/creator/assistant/get_assistant/${assistantId}`);
     const meta = JSON.parse(detail.data?.metadata || "{}");
+    expect(meta.prompt_processor).toBe("kvcache_augment");
     expect(meta.rag_processor).toBe("query_rewriting_ks_rag");
-    expect(meta.document_rag).toBe("single_file_rag");
+    expect(meta.document_rag).toBe("library_file_rag");
     expect(meta.library_id).toBe(libraryId);
     expect(meta.item_id).toBe(docRagItemId);
     expect(meta.item_id).not.toBe(ksItemId);
@@ -563,7 +576,9 @@ test.describe.serial("Context-aware KS RAG + document RAG (UI chat)", () => {
     await chatInput.fill(chatMessage);
     await page.getByRole("button", { name: /^Send$/i }).click();
 
-    const assistantBubble = page.locator(".bg-gray-200.text-gray-800").last();
+    const assistantBubble = page
+      .locator("div.flex.justify-start > div.bg-gray-200.text-gray-800")
+      .last();
     await expect(assistantBubble).toBeVisible({ timeout: 120000 });
 
     let responseText = "";
