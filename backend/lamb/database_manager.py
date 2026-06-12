@@ -1603,8 +1603,13 @@ class LambDatabaseManager:
         if os.getenv("OLLAMA_BASE_URL"):
             providers["ollama"] = {
                 "base_url": os.getenv("OLLAMA_BASE_URL"),
-                "models": [os.getenv("OLLAMA_MODEL", "llama3.1")]
             }
+            # Ollama models are discovered dynamically via the Ollama API
+            # (get_available_llms in connectors/ollama.py). Do NOT hardcode
+            # a models list here — it would override the live model list
+            # on every restart.
+            if os.getenv("OLLAMA_MODEL"):
+                providers["ollama"]["models"] = os.getenv("OLLAMA_MODEL").split(",")
 
         return providers
 
