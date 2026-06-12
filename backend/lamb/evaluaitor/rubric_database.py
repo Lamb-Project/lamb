@@ -476,7 +476,13 @@ class RubricDatabaseManager:
                 if not system_org:
                     return False
 
-                admin_check = self.db_manager.get_user_organization_role(system_org['id'], admin_email)
+                # get_user_organization_role(user_id, organization_id) — resolve the
+                # admin's user_id from their email; args were previously swapped (#325).
+                admin_user = self.db_manager.get_creator_user_by_email(admin_email)
+                admin_check = (
+                    self.db_manager.get_user_organization_role(admin_user['id'], system_org['id'])
+                    if admin_user and admin_user.get('id') else None
+                )
                 if admin_check != 'admin':
                     return False
 

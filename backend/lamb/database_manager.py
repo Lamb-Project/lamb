@@ -33,6 +33,12 @@ logger = get_logger(__name__, component="DB")
 
 
 class LambDatabaseManager:
+    # Class-level flag: initialize_system_organization (which calls sync_system_org_with_env)
+    # must only run once per process lifetime. Many parts of the codebase instantiate
+    # LambDatabaseManager() per-request; running sync on every instantiation would
+    # overwrite user-saved provider config (e.g. custom base_url/api_key) with .env defaults.
+    _system_org_initialized = False
+
     def __init__(self):
         try:
             # Load environment variables
@@ -55,8 +61,13 @@ class LambDatabaseManager:
             self.run_migrations()
 
             # Initialize system organization AFTER migrations so that
-            # Creator_users columns (enabled, password_hash, role) exist
-            self.initialize_system_organization()
+            # Creator_users columns (enabled, password_hash, role) exist.
+            # Guard with a class-level flag so this only runs once per process —
+            # sync_system_org_with_env overwrites provider config from .env and must
+            # not run on every per-request LambDatabaseManager() instantiation.
+            if not LambDatabaseManager._system_org_initialized:
+                self.initialize_system_organization()
+                LambDatabaseManager._system_org_initialized = True
 
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
@@ -609,7 +620,15 @@ class LambDatabaseManager:
         self.ensure_system_admin(system_org_id)
 
     def ensure_system_admin(self, system_org_id: int):
-        """Ensure the system admin exists and has proper roles in both OWI and LAMB"""
+        """Ensure the system admin exists with system role 'admin' AND an 'admin'
+        organization role in the system org.
+
+        Idempotent and self-healing: runs on every startup, verifies the end state,
+        and repairs anything missing. Return values are checked and any incomplete
+        bootstrap is logged at WARNING (not swallowed), so a half-provisioned admin
+        — which silently hides the Admin menu — becomes visible and is fixed on the
+        next boot rather than persisting forever. (#405)
+        """
         # First, ensure OWI admin exists
         self.create_admin_user()
 
@@ -624,37 +643,56 @@ class LambDatabaseManager:
                 password=config.OWI_ADMIN_PASSWORD,
                 organization_id=system_org_id
             )
-            if admin_user_id:
-                logger.info(
-                    f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
-                # Assign admin role in organization
-                self.assign_organization_role(
-                    organization_id=system_org_id,
-                    user_id=admin_user_id,
-                    role="admin"
-                )
-                logger.info(
-                    f"Assigned admin role to user {admin_user_id} in system organization")
+            if not admin_user_id:
+                # First-boot races (e.g. migration/column visibility) can land here.
+                # Bail loudly; the next startup re-runs this and self-heals.
+                logger.warning(
+                    f"ensure_system_admin: could not create LAMB admin user "
+                    f"{config.OWI_ADMIN_EMAIL}; will retry on next startup")
+                return
+            logger.info(f"Created LAMB admin user: {config.OWI_ADMIN_EMAIL}")
+            # Re-fetch so we self-heal against the persisted row below.
+            admin_user = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
+            admin_user_id = admin_user.get('id', admin_user_id)
         else:
-            # User exists, ensure they have correct organization and role
             admin_user_id = admin_user['id']
-
-            # Check and update organization if needed
+            # Ensure the admin sits in the system organization
             if admin_user.get('organization_id') != system_org_id:
                 self.update_user_organization(admin_user_id, system_org_id)
-                logger.info(f"Updated admin user organization to system org")
+                logger.info("ensure_system_admin: moved admin user to system org")
 
-            # Check and assign admin role if needed
-            current_role = self.get_user_organization_role(
-                admin_user_id, system_org_id)
-            if current_role != "admin":
-                self.assign_organization_role(
-                    organization_id=system_org_id,
-                    user_id=admin_user_id,
-                    role="admin"
-                )
-                logger.info(
-                    f"Updated admin user role to 'admin' in system organization")
+        # Self-heal the organization role (the row found empty in #405).
+        if self.get_user_organization_role(admin_user_id, system_org_id) != "admin":
+            if self.assign_organization_role(
+                    organization_id=system_org_id, user_id=admin_user_id, role="admin"):
+                logger.info("ensure_system_admin: assigned admin org-role in system org")
+            else:
+                logger.warning(
+                    f"ensure_system_admin: FAILED to assign admin org-role to user "
+                    f"{admin_user_id} in org {system_org_id}")
+
+        # Self-heal the LAMB-side system role (bootstrap admin must be system admin).
+        if (admin_user or {}).get('role') != 'admin':
+            if not self.update_creator_user_role(config.OWI_ADMIN_EMAIL, 'admin'):
+                logger.warning(
+                    f"ensure_system_admin: FAILED to set system role 'admin' for "
+                    f"{config.OWI_ADMIN_EMAIL}")
+
+        # Final verification — loud if still incomplete, so the #405 silent-failure
+        # chain can't hide a non-admin admin (no Admin menu) again.
+        final = self.get_creator_user_by_email(config.OWI_ADMIN_EMAIL) or {}
+        final_org_role = (
+            self.get_user_organization_role(admin_user_id, system_org_id)
+            if admin_user_id else None)
+        if final.get('role') != 'admin' or final_org_role != 'admin':
+            logger.warning(
+                f"ensure_system_admin INCOMPLETE for {config.OWI_ADMIN_EMAIL}: "
+                f"system_role={final.get('role')!r}, org_role={final_org_role!r}. "
+                f"Admin menu will not appear; will retry on next startup.")
+        else:
+            logger.info(
+                f"ensure_system_admin: verified {config.OWI_ADMIN_EMAIL} has "
+                f"system role + org role = admin")
 
     def run_migrations(self):
         """Run database migrations for schema updates"""
@@ -2128,13 +2166,19 @@ class LambDatabaseManager:
                     WHERE organization_id = ?
                 """, (org_id,))
 
-                # 4. Creator_users (organization_roles, lti_identity_links,
-                #    kb_registry, prompt_templates and bulk_import_logs all
-                #    carry ON DELETE CASCADE / SET NULL and follow).
+                # 4. Creator_users — move them to the system org rather than
+                #    deleting them, so users survive organization deletion.
                 cursor.execute(f"""
-                    DELETE FROM {self.table_prefix}Creator_users
+                    SELECT id FROM {self.table_prefix}organizations
+                    WHERE is_system = 1 LIMIT 1
+                """)
+                sys_row = cursor.fetchone()
+                system_org_id = sys_row[0] if sys_row else None
+                cursor.execute(f"""
+                    UPDATE {self.table_prefix}Creator_users
+                    SET organization_id = ?, updated_at = ?
                     WHERE organization_id = ?
-                """, (org_id,))
+                """, (system_org_id, int(time.time()), org_id))
 
                 # 5. collections
                 cursor.execute(f"""
@@ -2894,7 +2938,7 @@ class LambDatabaseManager:
                     SELECT u.id, u.user_email, u.user_name, 
                            COALESCE(r.role, 'member') as role, 
                            COALESCE(r.created_at, u.created_at) as joined_at,
-                           u.user_type, u.auth_provider, u.lti_user_id
+                           u.user_type, u.auth_provider, u.lti_user_id, u.user_config
                     FROM {self.table_prefix}Creator_users u
                     LEFT JOIN {self.table_prefix}organization_roles r ON u.id = r.user_id AND r.organization_id = ?
                     WHERE u.organization_id = ?
@@ -2911,7 +2955,8 @@ class LambDatabaseManager:
                         'joined_at': row[4],
                         'user_type': row[5],
                         'auth_provider': row[6] or 'password',
-                        'lti_user_id': row[7]
+                        'lti_user_id': row[7],
+                        'user_config': row[8]
                     })
 
                 return users
@@ -2961,6 +3006,25 @@ class LambDatabaseManager:
             return []
         finally:
             connection.close()
+
+    def get_user_organization(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """The user's primary organization as a full dict (incl. parsed config), or None.
+
+        Resolves the first organization the user belongs to (system org sorts first)
+        and returns the complete record via get_organization_by_id so callers get
+        `config`. Added for #325 (rubric visibility/access paths called this).
+        """
+        orgs = self.get_user_organizations(user_id)
+        if not orgs:
+            return None
+        return self.get_organization_by_id(orgs[0]['id'])
+
+    def get_user_organization_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """The user's primary organization looked up by email, or None (#325)."""
+        user = self.get_creator_user_by_email(email)
+        if not user or not user.get('id'):
+            return None
+        return self.get_user_organization(user['id'])
 
     def get_user_organization_role(self, user_id: int, organization_id: int) -> Optional[str]:
         """
@@ -5205,6 +5269,41 @@ class LambDatabaseManager:
                     # Re-raise or return specific error? For now, just log and return False
                     return False
                 logger.error(f"Error publishing assistant {assistant_id}: {e}")
+                return False
+            finally:
+                connection.close()
+        return False
+
+    def update_assistant_publication(self, assistant_id: int, group_id: str,
+                                     group_name: str, oauth_consumer_name: Optional[str]) -> bool:
+        """Update the publication record for an already-published assistant (#397).
+
+        Updates group/oauth fields in place (name/owner are unchanged on update).
+        Returns True if a publication row was updated.
+        """
+        connection = self.get_connection()
+        if connection:
+            try:
+                with connection:
+                    cursor = connection.cursor()
+                    cursor.execute(f"""
+                        UPDATE {self.table_prefix}assistant_publish
+                        SET group_id = ?, group_name = ?, oauth_consumer_name = ?
+                        WHERE assistant_id = ?
+                    """, (group_id, group_name, oauth_consumer_name, assistant_id))
+                    updated = cursor.rowcount
+                    if updated > 0:
+                        logger.info(f"Updated publication for assistant {assistant_id}")
+                    else:
+                        logger.warning(
+                            f"update_assistant_publication: no publication row for assistant {assistant_id}")
+                    return updated > 0
+            except sqlite3.Error as e:
+                if "UNIQUE constraint failed" in str(e) and "oauth_consumer_name" in str(e):
+                    logger.error(
+                        f"Error updating publication for {assistant_id}: oauth_consumer_name '{oauth_consumer_name}' already in use.")
+                    return False
+                logger.error(f"Error updating publication for assistant {assistant_id}: {e}")
                 return False
             finally:
                 connection.close()

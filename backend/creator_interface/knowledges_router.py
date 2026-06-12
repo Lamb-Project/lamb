@@ -1795,9 +1795,28 @@ async def plugin_ingest_file(
         logger.info(f"Raw form data received for plugin ingest: {form_data}")
         
         # Extract all form fields that aren't the file or plugin_name as potential plugin parameters
-        for key, value in form_data.items():
-            if key not in ["file", "plugin_name"]:
-                # Try to parse numbers and booleans
+        processed_keys = set()
+        for key in form_data.keys():
+            if key in ["file", "plugin_name"] or key in processed_keys:
+                continue
+            processed_keys.add(key)
+            
+            # Get all values for this key (supports arrays sent as multiple form fields)
+            values = form_data.getlist(key)
+            
+            if len(values) > 1:
+                # Multiple values = array parameter
+                parsed_values = []
+                for v in values:
+                    if v.isdigit():
+                        parsed_values.append(int(v))
+                    elif v.lower() in ["true", "false"]:
+                        parsed_values.append(v.lower() == "true")
+                    else:
+                        parsed_values.append(v)
+                plugin_params[key] = parsed_values
+            else:
+                value = values[0]
                 if value.isdigit():
                     plugin_params[key] = int(value)
                 elif value.lower() in ["true", "false"]:

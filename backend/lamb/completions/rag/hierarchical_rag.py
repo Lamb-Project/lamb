@@ -316,7 +316,7 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                     # Parse the JSON response
                     raw_response = response.json()
                     # Print the entire raw response
-                    print(f"Response Summary: {len(raw_response.get('documents', []))} documents returned")
+                    print(f"Response Summary: {len(raw_response.get('results', raw_response.get('documents', [])))} documents returned")
                     print(f"Raw Response:\n{json.dumps(raw_response, indent=2)}")
                     
                     # Store the response
@@ -350,7 +350,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
         for cid, result in all_responses.items():
             status = result["status"]
             if status == "success":
-                documents = result["data"].get("documents", [])
+                # KB server returns hits under 'results'; fall back to legacy 'documents' (#330)
+                documents = result["data"].get("results", result["data"].get("documents", []))
                 doc_count = len(documents)
                 print(f"Collection {cid}: {status} - {doc_count} documents")
                 

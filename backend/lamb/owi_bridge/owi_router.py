@@ -791,18 +791,19 @@ async def update_user_role(request: Request):
     logger.error(f"[ULTRA_BASIC] update_user_role endpoint was called with method {request.method}")
     
     try:
-        # Check API key manually to ensure we're authenticated
+        # Validate the bearer token against the system API key (#409).
+        # Previously this checked only the "Bearer " prefix and never
+        # compared the token, so any bearer-shaped header authorized a
+        # role change (admin privilege escalation). Do not log the header.
         auth_header = request.headers.get("Authorization", "")
-        logger.error(f"[ULTRA_BASIC] Auth header: {auth_header}")
-        
-        # Very basic auth validation
-        if not auth_header.startswith("Bearer "):
-            logger.error("[ULTRA_BASIC] Missing or invalid authorization header")
+        token = auth_header[len("Bearer "):] if auth_header.startswith("Bearer ") else ""
+        if not token or token != API_KEY:
+            logger.error("[ULTRA_BASIC] Missing or invalid authorization token")
             return JSONResponse(
                 status_code=401,
                 content={"error": "Missing or invalid authorization"}
             )
-        
+
         # Manually parse the request body - no FastAPI magic
         body = await request.body()
         logger.error(f"[ULTRA_BASIC] Raw request body: {body}")

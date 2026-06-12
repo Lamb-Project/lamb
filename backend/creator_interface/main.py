@@ -9,7 +9,7 @@ from lamb.services.test_router import router as test_router
 from .learning_assistant_proxy import router as learning_assistant_proxy_router
 from .organization_router import router as organization_router
 from .setup_translations import setup_translations
-from fastapi import APIRouter, Request, Form, Response, HTTPException, File, UploadFile, Depends, BackgroundTasks
+from fastapi import APIRouter, Query, Request, Form, Response, HTTPException, File, UploadFile, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -321,6 +321,7 @@ class UpdateSharesRequest(BaseModel):
 
 class ShareUserResponse(BaseModel):
     """Response model for a shared user"""
+    user_id: int
     user_email: str
     user_name: str
     shared_at: int
@@ -2628,6 +2629,82 @@ async def update_assistant_shares_endpoint(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         logger.error(f"Error updating assistant shares: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.put(
+    "/lamb/assistant-sharing/user-permission/{user_id}",
+    tags=["Assistant Sharing"],
+    summary="Update User Sharing Permission",
+    description="""Admin endpoint to toggle a user's ability to share assistants.
+
+Example Request:
+```bash
+curl -X PUT 'http://localhost:9099/creator/lamb/assistant-sharing/user-permission/123?can_share=false' \\
+-H 'Authorization: Bearer <admin_token>'
+```
+
+Example Success Response:
+```json
+{
+  "message": "User sharing permission updated successfully",
+  "user_id": 123,
+  "can_share": false
+}
+```
+    """,
+    dependencies=[Depends(security)],
+    responses={
+        200: {"description": "Permission updated successfully"},
+        401: {"description": "Invalid authentication"},
+        403: {"description": "Admin access required"},
+        404: {"description": "User not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def update_user_sharing_permission_endpoint(
+    request: Request,
+    user_id: int,
+    can_share: bool = Query(..., description="Whether the user can share assistants"),
+    auth: AuthContext = Depends(get_auth_context)
+):
+    """Admin endpoint to toggle a user's ability to share assistants."""
+    try:
+        creator_user = auth.user
+        admin_user_id = creator_user.get('id')
+        admin_email = creator_user.get('email')
+        logger.info(f"Admin {admin_email} updating sharing permission for user {user_id} to can_share={can_share}")
+
+        from lamb.services.assistant_sharing_service import AssistantSharingService
+        sharing_service = AssistantSharingService()
+
+        result = sharing_service.update_user_sharing_permission(
+            user_id=user_id,
+            can_share=can_share,
+            admin_user_id=admin_user_id
+        )
+
+        logger.info(f"Admin {admin_email} successfully updated sharing permission for user {user_id}")
+
+        return {
+            "message": "User sharing permission updated successfully",
+            "user_id": user_id,
+            "can_share": can_share
+        }
+
+    except ValueError as e:
+        logger.error(f"Error updating user sharing permission: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        logger.error(f"Permission error updating user sharing permission: {str(e)}")
+        raise HTTPException(status_code=403, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user sharing permission: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
