@@ -1,9 +1,10 @@
 <!-- src/lib/components/assistants/RagOptionsPanel.svelte -->
 <script>
 	import { _ } from '$lib/i18n';
-	import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+	import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 	import KnowledgeBaseSelector from './KnowledgeBaseSelector.svelte';
-	import SingleFileSelector from './SingleFileSelector.svelte';
+	import KnowledgeStoreSelector from './KnowledgeStoreSelector.svelte';
+	import LibraryItemSelector from './LibraryItemSelector.svelte';
 
 	let {
 		selectedRagProcessor = '',
@@ -13,17 +14,28 @@
 		selectedKnowledgeBases = $bindable([]),
 		loadingKnowledgeBases = false,
 		knowledgeBaseError = '',
-		userFiles = [],
-		selectedFilePath = $bindable(''),
-		loadingFiles = false,
-		fileError = '',
-		formState,
-		onFilesChanged
+		ownedKnowledgeStores = [],
+		sharedKnowledgeStores = [],
+		selectedKnowledgeStores = $bindable([]),
+		loadingKnowledgeStores = false,
+		knowledgeStoreError = '',
+		libraries = [],
+		selectedLibraryId = $bindable(''),
+		loadingLibraries = false,
+		libraryError = '',
+		libraryItems = [],
+		selectedItemId = $bindable(''),
+		loadingItems = false,
+		itemsError = '',
+		selectedFilePath = '',
+		formState
 	} = $props();
 
 	let showKbSelector = $derived(isKbBasedRag(selectedRagProcessor));
+	let showKsSelector = $derived(isKsBasedRag(selectedRagProcessor));
 	let showFileSelector = $derived(isSingleFileRag(selectedRagProcessor));
-	let showTopK = $derived(isKbBasedRag(selectedRagProcessor));
+	let showTopK = $derived(isKbBasedRag(selectedRagProcessor) || isKsBasedRag(selectedRagProcessor));
+	let isLegacyWithFilePath = $derived(isSingleFileRag(selectedRagProcessor) && !!selectedFilePath);
 </script>
 
 <div class="space-y-4 border-t border-gray-200 pt-4">
@@ -69,14 +81,24 @@
 			error={knowledgeBaseError}
 		/>
 	{/if}
-	{#if showFileSelector}
-		<SingleFileSelector
-			{userFiles}
-			bind:selectedFilePath
-			loading={loadingFiles}
-			error={fileError}
-			{formState}
-			{onFilesChanged}
+	{#if showKsSelector}
+		<KnowledgeStoreSelector
+			{ownedKnowledgeStores}
+			{sharedKnowledgeStores}
+			bind:selectedKnowledgeStores
+			loading={loadingKnowledgeStores}
+			error={knowledgeStoreError}
 		/>
+	{/if}
+	{#if showFileSelector && isLegacyWithFilePath}
+		<div class="p-3 bg-amber-50 border border-amber-200 rounded-md mb-3">
+			<p class="text-sm text-amber-800">
+				{$_('assistants.form.ragOptions.legacySingleFileNotice', { default: 'This assistant uses the legacy single-file RAG. The document cannot be changed. To use a different document, create a new assistant with the Reference Document option.' })}
+			</p>
+		</div>
+		<div class="p-3 bg-gray-50 border border-gray-200 rounded-md">
+			<p class="text-sm font-medium text-gray-700">{$_('assistants.form.ragOptions.document', { default: 'Document' })}</p>
+			<p class="text-sm text-gray-500 font-mono mt-1">{selectedFilePath}</p>
+		</div>
 	{/if}
 </div>

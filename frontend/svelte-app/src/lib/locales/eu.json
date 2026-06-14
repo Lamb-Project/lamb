@@ -72,6 +72,9 @@
 		"connector": "Konektorea",
 		"llm": "LLM",
 		"ragProcessor": "RAG Prozesatzailea",
+    "loadingConfig": "Konfigurazioa kargatzen...",
+    "errorConfig": "Errorea konfigurazioa kargatzean:",
+    "initializingForm": "Formularioa hasieratzen...",
 		"noDescription": "Deskribapenik gabe",
 		"showing": "Erakusten",
 		"to": "tik",
@@ -217,7 +220,9 @@
 			"titleViewEdit": "Laguntzailearen Xehetasunak",
 			"name": {
 				"label": "Laguntzailearen Izena",
-				"placeholder": "Sartu izen bakarra (gehienez 20 karaktere)"
+				"placeholder": "Sartu izen bakarra (gehienez 20 karaktere)",
+        "willBeSaved": "Honela gordeko da:",
+        "hint": "Karaktere bereziak eta zuriuneak azpimarra bilakatuko dira"
 			},
 			"description": {
 				"label": "Deskribapena",
@@ -236,7 +241,8 @@
 			},
 			"promptTemplate": {
 				"label": "Prompt Txantiloia",
-				"help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du."
+				"help": "Prozesatzaile honek prompt txantiloi baliozko bat behar du.",
+        "placeholder": "adib. Erabili {context} galderari erantzuteko: {user_input}"
 			},
 			"configSection": {
 				"title": "Konfigurazioa"
@@ -251,9 +257,51 @@
 				"label": "Hizkuntza Modeloa (LLM)",
 				"noneAvailable": "Ez dago modelo erabilgarririk hautatutako konektorearentzat"
 			},
+      "vision": {
+        "label": "Ikusmen Gaitasuna Gaitu",
+        "description": "Baimendu laguntzaile honi irudiak testu mezuekin batera prozesatzea",
+        "imageToImageDescription": "Baimendu laguntzaile honi irudiak sarrera gisa onartzea iruditik-irudira sortzeko (edizioa, estilo transferentzia, etab.)"
+      },
+      "imageGeneration": {
+        "label": "Irudi Sorkuntza Gaitu",
+        "requiredForModel": "Gaitasun hau beharrezkoa da hautatutako modeloarentzat",
+        "requiredForModelPrefix": "Beharrezkoa modelo honentzat - ",
+        "geminiDescription": "Baimendu laguntzaile honi irudiak sortzea Google Gemini erabiliz"
+      },
 			"ragProcessor": {
 				"label": "RAG Prozesatzailea"
 			},
+      "rubric": {
+        "label": "Hautatu Errubrika",
+        "loading": "Errubrikak kargatzen...",
+        "error": "Errorea errubrikak kargatzean:",
+        "noneFound": "Ez dago errubrika erabilgarririk.",
+        "createLink": "Sortu errubrika bat",
+        "search": {
+          "label": "Bilatu errubrikak",
+          "placeholder": "Bilatu errubrikak izenburu edo deskribapenaren arabera..."
+        },
+        "selected": "Hautatuta:",
+        "view": "Ikusi",
+        "table": {
+          "select": "Hautatu",
+          "title": "Izenburua",
+          "description": "Deskribapena",
+          "type": "Mota",
+          "actions": "Ekintzak"
+        },
+        "noMatches": "Ez da errubrikarik aurkitu bilaketarekin.",
+        "mine": "Nirea",
+        "public": "Publikoa",
+        "required": "Mesedez hautatu errubrika bat",
+        "format": {
+          "label": "Errubrika Formatua LLMrako",
+          "markdown": "Markdown (taula formatua)",
+          "json": "JSON (datu egituratuak)",
+          "help": "Aukeratu zure hautatutako LLMarekin ondoen funtzionatzen duen formatua. Biak proba ditzakezu zeinek emaitza hobeak ematen dituen ikusteko."
+        },
+        "configLocation": "Ikusi errubrika aukerak Prompt Txantiloiaren atalaren azpian"
+      },
 			"import": {
 				"button": "JSON-etik inportatu",
 				"error": "Inportazio Errorea",
@@ -265,17 +313,34 @@
 				"fileReadError": "Errorea hautatutako fitxategia irakurtzean."
 			},
 			"ragOptions": {
-				"title": "RAG Aukerak"
+				"title": "RAG Aukerak",
+				"legacySingleFileNotice": "Laguntzaile honek fitxategi bakarreko RAG legacy-a erabiltzen du. Dokumentua ezin da aldatu. Dokumentu desberdin bat erabiltzeko, sortu laguntzaile berri bat Erreferentzia Dokumentua aukerarekin.",
+				"document": "Dokumentua"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
 				"help": "Berreskuratzeko dokumentu garrantzitsuen kopurua (1-10)."
 			},
 			"knowledgeBases": {
-				"label": "Ezagutza Baseak",
-				"loading": "Ezagutza baseak kargatzen...",
-				"error": "Errorea ezagutza baseak kargatzean:",
-				"noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza baserik."
+				"label": "Ezagutza Iturriak",
+				"loading": "Ezagutza iturriak kargatzen...",
+				"error": "Errorea ezagutza iturriak kargatzean:",
+				"noneFound": "Ez da aurkitu eskuragarri dagoen ezagutza iturririk.",
+        "myKB": "Nire Ezagutza Iturriak",
+        "sharedKB": "Partekatutako Ezagutza Baseak",
+        "shared": "{shared_by}(e)k partekatua"
+			},
+			"knowledgeStores": {
+				"label": "Ezagutza Iturriak",
+				"loading": "Ezagutza iturriak kargatzen...",
+				"error": "Errorea ezagutza iturriak kargatzean:",
+				"noneFound": "Ez da ezagutza iturri sarbiderik aurkitu.",
+				"myKS": "Nire Ezagutza Iturriak",
+				"sharedKS": "Partekatutako Ezagutza Iturriak"
+			},
+			"documentRag": {
+				"label": "Erreferentzia Dokumentua",
+				"description": "Erreferentzia dokumentu bat erantsi, sistemaren testuan erabilgarri egongo dena mezu guztietarako."
 			},
 			"singleFile": {
 				"label": "Fitxategia Hautatu",
@@ -285,7 +350,13 @@
 				"loading": "Fitxategiak kargatzen...",
 				"error": "Errorea fitxategiak kargatzean:",
 				"noneFound": "Ez da fitxategirik aurkitu. Mesedez igo fitxategi bat.",
-				"required": "Mesedez hautatu fitxategi bat"
+				"required": "Mesedez hautatu fitxategi bat",
+				"libraryLabel": "Liburutegia",
+				"loadingLibraries": "Liburutegiak kargatzen...",
+				"noLibraries": "Ez dago liburutegi erabilgarririk.",
+				"manageLibraries": "Liburutegiak kudeatu",
+				"itemLabel": "Dokumentua",
+				"loadingItems": "Dokumentuak kargatzen..."
 			}
 		}
 	},
@@ -301,6 +372,7 @@
 		"success": "Arrakasta",
 		"cancel": "Utzi",
 		"save": "Gorde",
+    "saveChanges": "Aldaketak Gorde",
 		"edit": "Editatu",
 		"delete": "Ezabatu",
 		"confirm": "Berretsi",
@@ -352,10 +424,10 @@
 		"resetColumns": "Zutabeak berrezarri"
 	},
 	"knowledgeBases": {
-		"title": "Ezagutza Baseak",
-		"pageTitle": "Ezagutza Baseak",
-		"pageDescription": "Kudeatu zure ezagutza baseak ikaskuntza laguntzaileekin erabiltzeko.",
-		"myKnowledgeBases": "Nire Ezagutza Baseak",
+		"title": "Ezagutza Iturriak",
+		"pageTitle": "Ezagutza Iturriak",
+		"pageDescription": "Kudeatu zure ezagutza iturriak ikaskuntza laguntzaileekin erabiltzeko.",
+		"myKnowledgeBases": "Nire Ezagutza Iturriak",
 		"createNew": "Ezagutza Base Berria Sortu",
 		"createFirst": "Sortu Zure Lehen Ezagutza Basea",
 		"loading": "Ezagutza baseak kargatzen...",

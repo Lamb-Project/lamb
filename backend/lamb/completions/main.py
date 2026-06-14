@@ -11,6 +11,7 @@ import json
 from lamb.logging_config import get_logger
 from lamb.auth_context import AuthContext, get_optional_auth_context
 from lamb.completions.task_routing import maybe_route_non_streaming_task
+from lamb.completions.plugin_config import parse_plugin_config, process_completion_request
 from utils.langsmith_config import traceable_llm_call, add_trace_metadata, is_tracing_enabled
 import traceback
 import asyncio
@@ -168,8 +169,9 @@ async def create_completion(
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         logger.debug(f"Plugins loaded: {pps}, {connectors}, {rag_processors}")
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
         logger.debug(f"RAG context: {rag_context}")
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         logger.debug(f"Messages: {messages}")
         stream = request.get("stream", False)
         logger.debug(f"Stream mode: {stream}")
@@ -303,41 +305,10 @@ def _check_quota(assistant_id: int, assistant_details) -> None:
             }
         )
 
-def parse_plugin_config(assistant_details) -> Dict[str, str]:
-    """
-    Parse the metadata field from the assistant record.
-    Expects a JSON string with keys: prompt_processor, connector, llm, rag_processor.
-    """
-    try:
-        # Handle empty string case by defaulting to an empty JSON object
-        if not assistant_details.metadata or assistant_details.metadata.strip() == '':
-            logger.warning(f"Empty metadata for assistant {assistant_details.id}, using default values")
-            callback = {}
-        else:
-            callback = json.loads(assistant_details.metadata)
-    except Exception as e:
-        logger.error(f"Failed to parse metadata for assistant {assistant_details.id}: {e}")
-        raise HTTPException(status_code=400, detail=f"Assistant metadata cannot be parsed: {e}")
-
-    # Set default values if keys are missing
-    defaults = {
-        "prompt_processor": "default",
-        "connector": "openai",
-        "llm": "gpt-4",
-        "rag_processor": ""
-    }
-    
-    # Apply defaults for missing keys
-    for key in defaults:
-        if key not in callback:
-            callback[key] = defaults[key]
-            logger.info(f"Using default {key}={defaults[key]} for assistant {assistant_details.id}")
-
-    return callback
-
 def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Load plugin modules and verify that the requested plugins exist.
+    Also validates COMPATIBLE_RAG declared by the prompt processor.
     """
     pps = load_plugins('pps')
     connectors = load_plugins('connectors')
@@ -352,6 +323,31 @@ def load_and_validate_plugins(plugin_config: Dict[str, str]) -> Tuple[Dict[str, 
     if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in rag_processors:
         logger.error(f"RAG processor '{plugin_config['rag_processor']}' not found")
         raise HTTPException(status_code=400, detail=f"RAG processor '{plugin_config['rag_processor']}' not found")
+    if plugin_config.get("document_rag") and plugin_config["document_rag"] not in rag_processors:
+        logger.error(f"Document RAG processor '{plugin_config['document_rag']}' not found")
+        raise HTTPException(status_code=400, detail=f"Document RAG processor '{plugin_config['document_rag']}' not found")
+
+    pps_name = plugin_config["prompt_processor"]
+    pps_module = importlib.import_module(f"lamb.completions.pps.{pps_name}")
+    compatible_rag = getattr(pps_module, "COMPATIBLE_RAG", None)
+
+    if compatible_rag is not None:
+        if plugin_config["rag_processor"] and plugin_config["rag_processor"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"rag_processor '{plugin_config['rag_processor']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
+        if plugin_config.get("document_rag") and plugin_config["document_rag"] not in compatible_rag:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"document_rag '{plugin_config['document_rag']}' not compatible with "
+                    f"prompt_processor '{pps_name}'. Compatible: {compatible_rag}"
+                ),
+            )
 
     return pps, connectors, rag_processors
 
@@ -377,15 +373,6 @@ async def get_rag_context(request: Dict[str, Any], rag_processors: Dict[str, Any
         return rag_context
     logger.debug("No RAG processor requested")
     return None
-
-def process_completion_request(request: Dict[str, Any], assistant_details: Any, plugin_config: Dict[str, str], rag_context: Any, pps: Dict[str, Any]) -> Any:
-    """
-    Process the prompt using the specified prompt processor and return prepared messages.
-    """
-    logger.info("Processing completion request")
-    messages = pps[plugin_config["prompt_processor"]](request=request, assistant=assistant_details, rag_context=rag_context)
-    logger.debug(f"Processed messages: {messages}")
-    return messages
 
 def load_plugins(plugin_type: str) -> Dict[str, Any]:
     """
@@ -494,7 +481,8 @@ async def run_lamb_assistant(
             )
         pps, connectors, rag_processors = load_and_validate_plugins(plugin_config)
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
-        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps)
+        document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
+        messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 

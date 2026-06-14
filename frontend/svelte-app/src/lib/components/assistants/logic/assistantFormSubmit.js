@@ -4,7 +4,7 @@
  * Extracted from AssistantForm.svelte to enable isolated testing.
  */
 
-import { isKbBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
+import { isKbBasedRag, isKsBasedRag, isSingleFileRag, isRubricRag } from '$lib/utils/ragProcessorHelpers.js';
 
 /**
  * Validates form data before submission.
@@ -30,12 +30,19 @@ export function buildAssistantPayload(form) {
 		connector: form.selectedConnector,
 		llm: form.selectedLlm,
 		rag_processor: form.selectedRagProcessor,
-		file_path: isSingleFileRag(form.selectedRagProcessor) ? form.selectedFilePath : '',
 		capabilities: {
 			vision: form.visionEnabled,
 			image_generation: form.imageGenerationEnabled
 		}
 	};
+
+	if (form.documentRagEnabled) {
+		metadataObj.document_rag = 'library_file_rag';
+		metadataObj.library_id = form.selectedLibraryId || '';
+		metadataObj.item_id = form.selectedItemId || '';
+	} else if (isSingleFileRag(form.selectedRagProcessor) && form.selectedFilePath) {
+		metadataObj.file_path = form.selectedFilePath;
+	}
 
 	if (isRubricRag(form.selectedRagProcessor)) {
 		metadataObj.rubric_id = form.selectedRubricId;
@@ -50,7 +57,9 @@ export function buildAssistantPayload(form) {
 		RAG_Top_k: Number(form.RAG_Top_k) || 3,
 		RAG_collections: isKbBasedRag(form.selectedRagProcessor)
 			? form.selectedKnowledgeBases.join(',')
-			: '',
+			: isKsBasedRag(form.selectedRagProcessor)
+				? form.selectedKnowledgeStores.join(',')
+				: '',
 		metadata: JSON.stringify(metadataObj),
 		pre_retrieval_endpoint: '',
 		post_retrieval_endpoint: '',

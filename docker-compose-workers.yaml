@@ -51,6 +51,8 @@ services:
   kb:
     image: python:3.11-slim
     working_dir: ${LAMB_PROJECT_PATH}/lamb-kb-server-stable/backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PIP_DISABLE_PIP_VERSION_CHECK=1
       - PIP_CACHE_DIR=/root/.cache/pip

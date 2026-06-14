@@ -72,6 +72,9 @@
 		"connector": "Connector",
 		"llm": "LLM",
 		"ragProcessor": "Processador RAG",
+    "loadingConfig": "Carregant configuracio...",
+    "errorConfig": "Error en carregar configuracio:",
+    "initializingForm": "Inicialitzant formulari...",
 		"form": {
 			"advancedMode": "Mode Avançat",
 			"insert_placeholder": "Inserir marcador",
@@ -79,7 +82,9 @@
 			"titleViewEdit": "Detalls de l'Assistent",
 			"name": {
 				"label": "Nom de l'Assistent",
-				"placeholder": "Introdueix un nom únic (màx 20 cars)"
+				"placeholder": "Introdueix un nom únic (màx 20 cars)",
+        "willBeSaved": "Es desarà com a:",
+        "hint": "Els caràcters especials i espais es convertiran en guions baixos"
 			},
 			"description": {
 				"label": "Descripció",
@@ -98,7 +103,8 @@
 			},
 			"promptTemplate": {
 				"label": "Plantilla de Prompt",
-				"help": "Aquest processador requereix una plantilla de prompt vàlida."
+				"help": "Aquest processador requereix una plantilla de prompt vàlida.",
+        "placeholder": "ex. Utilitza el {context} per respondre la pregunta: {user_input}"
 			},
 			"configSection": {
 				"title": "Configuració"
@@ -113,9 +119,51 @@
 				"label": "Model de Llenguatge (LLM)",
 				"noneAvailable": "No hi ha models disponibles per al connector seleccionat"
 			},
+      "vision": {
+        "label": "Habilitar Capacitat de Visió",
+        "description": "Permetre que aquest assistent processi imatges juntament amb missatges de text",
+        "imageToImageDescription": "Permetre que aquest assistent accepti imatges com a entrada per a generació d'imatge a imatge (edició, transferència d'estil, etc.)"
+      },
+      "imageGeneration": {
+        "label": "Habilitar Generació d'Imatges",
+        "requiredForModel": "Aquesta capacitat és necessària per al model seleccionat",
+        "requiredForModelPrefix": "Necessari per a aquest model - ",
+        "geminiDescription": "Permetre que aquest assistent generi imatges usant Google Gemini"
+      },
 			"ragProcessor": {
 				"label": "Processador RAG"
 			},
+      "rubric": {
+        "label": "Seleccionar Rubrica",
+        "loading": "Carregant rubriques...",
+        "error": "Error en carregar rubriques:",
+        "noneFound": "No hi ha rubriques disponibles.",
+        "createLink": "Crear una rubrica",
+        "search": {
+          "label": "Cercar rubriques",
+          "placeholder": "Cercar rubriques per titol o descripcio..."
+        },
+        "selected": "Seleccionada:",
+        "view": "Veure",
+        "table": {
+          "select": "Seleccionar",
+          "title": "Titol",
+          "description": "Descripcio",
+          "type": "Tipus",
+          "actions": "Accions"
+        },
+        "noMatches": "Cap rubrica coincideix amb la cerca.",
+        "mine": "Meva",
+        "public": "Publica",
+        "required": "Si us plau selecciona una rubrica",
+        "format": {
+          "label": "Format de Rubrica per a LLM",
+          "markdown": "Markdown (format taula)",
+          "json": "JSON (dades estructurades)",
+          "help": "Tria el format que millor funcioni amb el teu LLM seleccionat. Pots provar tots dos per veure quin produeix millors resultats."
+        },
+        "configLocation": "Veure opcions de rubrica sota la seccio de Plantilla de Prompt"
+      },
 			"import": {
 				"button": "Importar des de JSON",
 				"error": "Error d'Importació",
@@ -127,17 +175,34 @@
 				"fileReadError": "Error llegint l'arxiu seleccionat."
 			},
 			"ragOptions": {
-				"title": "Opcions RAG"
+				"title": "Opcions RAG",
+				"legacySingleFileNotice": "Aquest assistent utilitza el RAG de fitxer únic legacy. El document no es pot canviar. Per utilitzar un document diferent, crea un nou assistent amb l'opció Document de Referència.",
+				"document": "Document"
 			},
 			"ragTopK": {
 				"label": "RAG Top K",
 				"help": "Nombre de documents rellevants a recuperar (1-10)."
 			},
 			"knowledgeBases": {
-				"label": "Bases de Coneixement",
-				"loading": "Carregant bases de coneixement...",
-				"error": "Error en carregar bases de coneixement:",
-				"noneFound": "No s'han trobat bases de coneixement accessibles."
+				"label": "Fonts de Coneixement",
+				"loading": "Carregant fonts de coneixement...",
+				"error": "Error en carregar fonts de coneixement:",
+				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
+        "myKB": "Les Meves Fonts de Coneixement",
+        "sharedKB": "Bases de Coneixement Compartides",
+        "shared": "Compartida per {shared_by}"
+			},
+			"knowledgeStores": {
+				"label": "Fonts de Coneixement",
+				"loading": "Carregant fonts de coneixement...",
+				"error": "Error en carregar fonts de coneixement:",
+				"noneFound": "No s'han trobat fonts de coneixement accessibles.",
+				"myKS": "Les meves Fonts de Coneixement",
+				"sharedKS": "Fonts de Coneixement compartides"
+			},
+			"documentRag": {
+				"label": "Document de Referència",
+				"description": "Adjunta un document de referència que estarà disponible en el context del sistema per a tots els missatges."
 			},
 			"singleFile": {
 				"label": "Seleccionar Arxiu",
@@ -147,7 +212,13 @@
 				"loading": "Carregant arxius...",
 				"error": "Error en carregar arxius:",
 				"noneFound": "No s'han trobat arxius. Si us plau puja un arxiu.",
-				"required": "Si us plau selecciona un arxiu"
+				"required": "Si us plau selecciona un arxiu",
+				"libraryLabel": "Biblioteca",
+				"loadingLibraries": "Carregant biblioteques...",
+				"noLibraries": "No hi ha biblioteques disponibles.",
+				"manageLibraries": "Gestionar biblioteques",
+				"itemLabel": "Document",
+				"loadingItems": "Carregant documents..."
 			}
 		},
 		"noDescription": "Sense descripció",
@@ -301,6 +372,7 @@
 		"success": "Èxit!",
 		"cancel": "Cancel·lar",
 		"save": "Desar",
+    "saveChanges": "Desar Canvis",
 		"edit": "Editar",
 		"delete": "Eliminar",
 		"confirm": "Confirmar",
@@ -352,10 +424,10 @@
 		"resetColumns": "Restablir columnes"
 	},
 	"knowledgeBases": {
-		"title": "Bases de Coneixement",
-		"pageTitle": "Bases de Coneixement",
-		"pageDescription": "Gestiona les teves bases de coneixement per utilitzar amb assistents d'aprenentatge.",
-		"myKnowledgeBases": "Les Meves Bases de Coneixement",
+		"title": "Fonts de Coneixement",
+		"pageTitle": "Fonts de Coneixement",
+		"pageDescription": "Gestiona les teves fonts de coneixement per utilitzar amb assistents d'aprenentatge.",
+		"myKnowledgeBases": "Les Meves Fonts de Coneixement",
 		"createNew": "Crear Nova Base de Coneixement",
 		"createFirst": "Crea la Teva Primera Base de Coneixement",
 		"loading": "Carregant bases de coneixement...",

@@ -63,8 +63,18 @@ from schemas.query import (
     QueryPluginInfo
 )
 
-# Get API key from environment variable or use default
-API_KEY = os.getenv("LAMB_API_KEY", "0p3n-w3bu!")
+# API key from env. Backwards-compatible: fall back to the historical default
+# so existing installs keep working, but warn loudly — it must be overridden in
+# production (#413).
+import sys as _sys
+API_KEY = os.getenv("LAMB_API_KEY")
+if not API_KEY:
+    API_KEY = "0p3n-w3bu!"
+    print(
+        "WARNING [kb-server]: LAMB_API_KEY not set; using the insecure default token. "
+        "Set LAMB_API_KEY to a strong value in production.",
+        file=_sys.stderr,
+    )
 
 # Get default embeddings model configuration from environment variables
 # Default to using Ollama with nomic-embed-text model
@@ -83,12 +93,12 @@ app = FastAPI(
     
     ## Authentication
     
-    All API endpoints are secured with Bearer token authentication. The token must match 
-    the `LAMB_API_KEY` environment variable (default: `0p3n-w3bu!`).
-    
+    All API endpoints are secured with Bearer token authentication. The token must match
+    the `LAMB_API_KEY` environment variable, which must be set to a strong, unique value.
+
     Example:
     ```
-    curl -H 'Authorization: Bearer 0p3n-w3bu!' http://localhost:9090/
+    curl -H "Authorization: Bearer $LAMB_API_KEY" http://localhost:9090/
     ```
     
     ## Features
@@ -210,7 +220,7 @@ async def get_ingestion_config():
     Example:
     ```bash
     curl -X GET 'http://localhost:9090/ingestion/plugins' \
-      -H 'Authorization: Bearer 0p3n-w3bu!'
+      -H "Authorization: Bearer $LAMB_API_KEY"
     ```
     """,
     tags=["Ingestion"],

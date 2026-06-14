@@ -465,7 +465,13 @@ export async function uploadFileWithPlugin(kbId, file, pluginName, pluginParams 
 	// Add plugin parameters to form data
 	Object.entries(pluginParams).forEach(([key, value]) => {
 		if (value !== null && value !== undefined) {
-			formData.append(key, value.toString());
+			if (Array.isArray(value)) {
+				value.forEach(item => {
+					formData.append(key, String(item));
+				});
+			} else {
+				formData.append(key, String(value));
+			}
 		}
 	});
 

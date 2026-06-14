@@ -5,6 +5,15 @@ from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="MAIN")
 
+COMPATIBLE_RAG = [
+    "simple_rag",
+    "context_aware_rag",
+    "hierarchical_rag",
+    "single_file_rag",
+    "rubric_rag",
+    "no_rag",
+]
+
 
 def _inject_rag_context(template: str, rag_context: Optional[Dict[str, Any]]) -> str:
     """Replace {context} placeholder with RAG context and formatted sources.
@@ -130,27 +139,8 @@ def prompt_processor(
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
 
-        # If RAG context was produced but the assistant has an empty / missing
-        # prompt template, substitute the default template so the retrieved
-        # chunks actually reach the LLM. Otherwise the {context} substitution
-        # below would silently drop them. (Defect D3 — lifecycle 2026-05-03.)
-        effective_template = assistant.prompt_template
-        if (not effective_template) and rag_context:
-            context_text = (
-                rag_context.get("context", "")
-                if isinstance(rag_context, dict)
-                else str(rag_context)
-            )
-            if context_text:
-                logger.info(
-                    "simple_augment: applying DEFAULT_RAG_PROMPT_TEMPLATE "
-                    "because assistant has empty prompt_template but "
-                    "rag_context is present (defect D3 fallback)."
-                )
-                effective_template = DEFAULT_RAG_PROMPT_TEMPLATE
-
         # Process the last message using the prompt template
-        if effective_template:
+        if assistant.prompt_template:
             # Check if assistant has vision capabilities
             has_vision = _has_vision_capability(assistant)
 
@@ -169,7 +159,7 @@ def prompt_processor(
 
                 # Create augmented text content with template
                 logger.debug(f"User message: {user_input_text}")
-                augmented_text = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 augmented_text = _inject_rag_context(augmented_text, rag_context)
 
@@ -205,7 +195,7 @@ def prompt_processor(
 
                 # Replace placeholders in template
                 logger.debug(f"User message: {user_input_text}")
-                prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
+                prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 prompt = _inject_rag_context(prompt, rag_context)
 
