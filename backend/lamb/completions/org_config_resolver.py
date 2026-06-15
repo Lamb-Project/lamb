@@ -184,11 +184,19 @@ class OrganizationConfigResolver:
 
         if ks_config:
             return {
-                "server_url": ks_config.get("server_url") or ks_config.get("url"),
+                # Fall back to env when the org block carries only allow-lists
+                # (e.g. allowed_embedding_models) and omits the server URL/token,
+                # so a partial knowledge_store config still resolves the server.
+                "server_url": (
+                    ks_config.get("server_url")
+                    or ks_config.get("url")
+                    or os.getenv("LAMB_KB_SERVER_V2", "http://kb-server:9092")
+                ),
                 "api_token": (
                     ks_config.get("api_token")
                     or ks_config.get("api_key")
                     or ks_config.get("token")
+                    or os.getenv("LAMB_KB_SERVER_V2_TOKEN", "")
                 ),
                 "allowed_vector_db_backends": ks_config.get("allowed_vector_db_backends", []),
                 "allowed_chunking_strategies": ks_config.get("allowed_chunking_strategies", []),
