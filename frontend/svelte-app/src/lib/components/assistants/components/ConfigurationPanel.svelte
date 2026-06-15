@@ -206,7 +206,7 @@
 
 	<div>
 		<label for="rag-processor" class="block text-sm font-medium text-gray-700">{$_('assistants.form.ragProcessor.label')}</label>
-		<select id="rag-processor" bind:value={selectedRagProcessor} onchange={onchange}
+		<select id="rag-processor" name="rag_processor" data-testid="rag-processor-select" bind:value={selectedRagProcessor} onchange={onchange}
 			disabled={formState === 'edit'}
 			class="mt-1 block w-full pl-3 pr-10 py-2 text-base text-gray-900 border border-gray-300 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed">
 		{#each filteredRAGProcessors as processor (processor)}

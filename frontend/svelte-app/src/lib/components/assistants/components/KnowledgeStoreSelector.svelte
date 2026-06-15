@@ -36,7 +36,7 @@
 					</h5>
 					<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group">
 						{#each ownedKnowledgeStores as ks (ks.id)}
-							<label class="flex items-center space-x-2 cursor-pointer">
+							<label class="flex items-center space-x-2 cursor-pointer" data-testid="ks-picker-option" data-ks-id={ks.id}>
 								<input type="checkbox" bind:group={selectedKnowledgeStores} value={ks.id}
 									class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
 								<span class="text-sm text-gray-700">
@@ -55,7 +55,7 @@
 					</h5>
 					<div class="space-y-2 max-h-48 overflow-y-auto border rounded p-2" role="group">
 						{#each sharedKnowledgeStores as ks (ks.id)}
-							<label class="flex items-center space-x-2 cursor-pointer">
+							<label class="flex items-center space-x-2 cursor-pointer" data-testid="ks-picker-option" data-ks-id={ks.id}>
 								<input type="checkbox" bind:group={selectedKnowledgeStores} value={ks.id}
 									class="rounded border-gray-300 text-brand shadow-sm focus:border-brand focus:ring focus:ring-offset-0 focus:ring-brand focus:ring-opacity-50">
 								<span class="text-sm text-gray-700">
