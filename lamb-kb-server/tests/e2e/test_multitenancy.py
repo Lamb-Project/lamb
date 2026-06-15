@@ -1,7 +1,7 @@
 """E2E multi-tenancy isolation tests.
 
 Verifies per-org isolation over real HTTP against a real uvicorn subprocess
-with a real ChromaDB / Qdrant backend and real Ollama embeddings.
+with a real ChromaDB / Qdrant backend and real LM Studio (OpenAI-compatible) embeddings.
 
 ADR-6: LAMB owns ACL; KB Server does not enforce per-org access on GET by id.
 ADR-9: Per-org filesystem isolation at data/storage/{org_id}/{collection_id}/.
@@ -31,12 +31,12 @@ def _create_collection(
     http: httpx.Client,
     org_id: str,
     name: str,
-    vendor: str = "ollama",
+    vendor: str = "openai",
     api_endpoint: str = "",
 ) -> dict:
     """POST /collections and return the parsed JSON body.
 
-    Uses Ollama as the embedding vendor so real vectors are produced, which
+    Uses LM Studio (OpenAI-compatible) as the embedding vendor so real vectors are produced, which
     makes the cross-org leak test (#5) meaningful.
     """
     payload = {
@@ -47,7 +47,7 @@ def _create_collection(
         "chunking_params": {"chunk_size": 500, "chunk_overlap": 50},
         "embedding": {
             "vendor": vendor,
-            "model": "nomic-embed-text",
+            "model": "text-embedding-nomic-embed-text-v1.5",
             "api_endpoint": api_endpoint,
         },
         "vector_db_backend": "chromadb",
@@ -118,12 +118,12 @@ def test_two_orgs_same_collection_name(
     Name uniqueness is scoped per (organization_id, name) — the same name in
     different orgs must succeed.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     org_a = _org_id()
     org_b = _org_id()
 
-    col_a = _create_collection(http, org_a, "kb1", api_endpoint=ollama_url)
-    col_b = _create_collection(http, org_b, "kb1", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "kb1", api_endpoint=emb_endpoint)
+    col_b = _create_collection(http, org_b, "kb1", api_endpoint=emb_endpoint)
 
     assert col_a["organization_id"] == org_a
     assert col_b["organization_id"] == org_b
@@ -142,13 +142,13 @@ def test_filesystem_isolation_per_org(
     After creating and ingesting into collections for org-A and org-B, each
     org's storage directory must exist and be completely separate.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     data_dir = Path(kb_server_process["data_dir"])
     org_a = _org_id()
     org_b = _org_id()
 
-    col_a = _create_collection(http, org_a, "fs-test", api_endpoint=ollama_url)
-    col_b = _create_collection(http, org_b, "fs-test", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "fs-test", api_endpoint=emb_endpoint)
+    col_b = _create_collection(http, org_b, "fs-test", api_endpoint=emb_endpoint)
 
     # Ingest something to ensure the storage directories are populated.
     job_a = _ingest(
@@ -156,14 +156,14 @@ def test_filesystem_isolation_per_org(
         col_a["id"],
         "doc-a",
         "Filesystem isolation test content for org A.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
     job_b = _ingest(
         http,
         col_b["id"],
         "doc-b",
         "Filesystem isolation test content for org B.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
     result_a = _poll_job(http, job_a)
     result_b = _poll_job(http, job_b)
@@ -205,10 +205,10 @@ def test_cross_org_collection_access_via_id(
 
     This documents the actual behavior: the collection is returned with a 200.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     org_a = _org_id()
 
-    col_a = _create_collection(http, org_a, "acl-test", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "acl-test", api_endpoint=emb_endpoint)
     collection_id = col_a["id"]
 
     # Retrieve the collection by ID — no org filter is required or checked.
@@ -231,12 +231,12 @@ def test_list_with_org_filter_excludes_other_orgs(
     Create kb-1 in org-A and kb-2 in org-B. Listing with org-A's filter must
     contain kb-1 but not kb-2, and vice versa.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     org_a = _org_id()
     org_b = _org_id()
 
-    col_a = _create_collection(http, org_a, "kb-1", api_endpoint=ollama_url)
-    col_b = _create_collection(http, org_b, "kb-2", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "kb-1", api_endpoint=emb_endpoint)
+    col_b = _create_collection(http, org_b, "kb-2", api_endpoint=emb_endpoint)
 
     # List org-A.
     r_a = http.get(f"/collections?organization_id={org_a}")
@@ -270,17 +270,17 @@ def test_query_isolation_between_orgs(
 ) -> None:
     """Querying org-A's collection must not surface org-B's chunks.
 
-    Uses real Ollama embeddings so each phrase produces a real semantic vector.
+    Uses real LM Studio embeddings so each phrase produces a real semantic vector.
     Ingest "secret-org-A-data" into org-A's collection and "secret-org-B-data"
     into org-B's collection. Query org-A's collection for "secret-org-B-data"
     — no result with source_item_id from org-B must appear.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     org_a = _org_id()
     org_b = _org_id()
 
-    col_a = _create_collection(http, org_a, "query-iso-a", api_endpoint=ollama_url)
-    col_b = _create_collection(http, org_b, "query-iso-b", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "query-iso-a", api_endpoint=emb_endpoint)
+    col_b = _create_collection(http, org_b, "query-iso-b", api_endpoint=emb_endpoint)
 
     # Ingest into org-A.
     job_a = _ingest(
@@ -288,7 +288,7 @@ def test_query_isolation_between_orgs(
         col_a["id"],
         "src-a",
         "secret-org-A-data: confidential information belonging to organization A.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
     # Ingest into org-B.
     job_b = _ingest(
@@ -296,7 +296,7 @@ def test_query_isolation_between_orgs(
         col_b["id"],
         "src-b",
         "secret-org-B-data: confidential information belonging to organization B.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
 
     result_a = _poll_job(http, job_a)
@@ -312,7 +312,7 @@ def test_query_isolation_between_orgs(
             "top_k": 10,
             "embedding_credentials": {
                 "api_key": "",
-                "api_endpoint": ollama_url,
+                "api_endpoint": emb_endpoint,
             },
         },
     )
@@ -338,13 +338,13 @@ def test_delete_one_orgs_collection_doesnt_affect_other(
     - org-A's storage dir is gone
     - org-B's storage dir still exists
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     data_dir = Path(kb_server_process["data_dir"])
     org_a = _org_id()
     org_b = _org_id()
 
-    col_a = _create_collection(http, org_a, "del-test-a", api_endpoint=ollama_url)
-    col_b = _create_collection(http, org_b, "del-test-b", api_endpoint=ollama_url)
+    col_a = _create_collection(http, org_a, "del-test-a", api_endpoint=emb_endpoint)
+    col_b = _create_collection(http, org_b, "del-test-b", api_endpoint=emb_endpoint)
 
     # Ingest into both so storage directories are created.
     job_a = _ingest(
@@ -352,14 +352,14 @@ def test_delete_one_orgs_collection_doesnt_affect_other(
         col_a["id"],
         "doc-del-a",
         "Org A content for deletion test.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
     job_b = _ingest(
         http,
         col_b["id"],
         "doc-del-b",
         "Org B content for deletion test.",
-        api_endpoint=ollama_url,
+        api_endpoint=emb_endpoint,
     )
     assert _poll_job(http, job_a)["status"] == "completed"
     assert _poll_job(http, job_b)["status"] == "completed"
@@ -408,12 +408,12 @@ def test_concurrent_orgs_no_id_collision(
     ThreadPoolExecutor to issue creates concurrently, verifying that the
     server's ID-generation has no collision under concurrent load.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
     orgs = [_org_id() for _ in range(5)]
 
     def _create(org_id: str) -> dict:
         return _create_collection(
-            http, org_id, "shared-name", api_endpoint=ollama_url
+            http, org_id, "shared-name", api_endpoint=emb_endpoint
         )
 
     # ThreadPoolExecutor for concurrent HTTP requests.

@@ -6,7 +6,7 @@ server and verify:
   - MAX_CONCURRENT_INGESTIONS=2 is respected (≤2 jobs in "processing" at once).
   - SQLite WAL mode handles concurrent readers/writers without lock errors.
 
-Tests are SLOW (~30–90 s each due to Ollama latency × multiple jobs).
+Tests are SLOW (~30–90 s each due to embedding latency × multiple jobs).
 
 Each test creates its own ``httpx.Client`` with a generous timeout rather than
 using the session ``http`` fixture (which has ``timeout=30s``).  Concurrent
@@ -129,9 +129,9 @@ def _poll_until_complete(
 def _make_collection(
     base_url: str,
     org_id: str,
-    vendor: str = "ollama",
+    vendor: str = "openai",
     api_endpoint: str = "",
-    model: str = "nomic-embed-text",
+    model: str = "text-embedding-nomic-embed-text-v1.5",
     name_suffix: str = "",
 ) -> dict:
     """Create a collection using the given embedding vendor.
@@ -208,13 +208,12 @@ def test_20_concurrent_add_content_requests_succeed(
     # Drain stdout to prevent pipe buffer deadlock with LOG_LEVEL=DEBUG.
     _drain_server_stdout(kb_server_process["process"])
 
-    ollama_url = docker_stack["ollama_url"]
-    api_endpoint = f"{ollama_url}/api/embeddings"
+    api_endpoint = docker_stack["embedding"]["api_endpoint"]
     base_url = kb_server_process["base_url"]
 
     org_id = f"org-conc-{uuid4().hex[:8]}"
     collection = _make_collection(
-        base_url, org_id, vendor="ollama", api_endpoint=api_endpoint
+        base_url, org_id, vendor="openai", api_endpoint=api_endpoint
     )
     collection_id = collection["id"]
 
@@ -299,13 +298,12 @@ def test_concurrent_ingest_respects_semaphore(
     # Drain stdout to prevent pipe buffer deadlock with LOG_LEVEL=DEBUG.
     _drain_server_stdout(kb_server_process["process"])
 
-    ollama_url = docker_stack["ollama_url"]
-    api_endpoint = f"{ollama_url}/api/embeddings"
+    api_endpoint = docker_stack["embedding"]["api_endpoint"]
     base_url = kb_server_process["base_url"]
 
     org_id = f"org-sem-{uuid4().hex[:8]}"
     collection = _make_collection(
-        base_url, org_id, vendor="ollama", api_endpoint=api_endpoint
+        base_url, org_id, vendor="openai", api_endpoint=api_endpoint
     )
     collection_id = collection["id"]
 
@@ -372,8 +370,7 @@ def test_concurrent_collection_creation_no_conflicts(
     Verifies that concurrent SQLite writes for collection creation do not
     cause lock errors or duplicate-ID collisions.
     """
-    ollama_url = docker_stack["ollama_url"]
-    api_endpoint = f"{ollama_url}/api/embeddings"
+    api_endpoint = docker_stack["embedding"]["api_endpoint"]
     base_url = kb_server_process["base_url"]
 
     n = 10
@@ -394,8 +391,8 @@ def test_concurrent_collection_creation_no_conflicts(
                     "chunking_strategy": "simple",
                     "chunking_params": {"chunk_size": 300, "chunk_overlap": 30},
                     "embedding": {
-                        "vendor": "ollama",
-                        "model": "nomic-embed-text",
+                        "vendor": "openai",
+                        "model": "text-embedding-nomic-embed-text-v1.5",
                         "api_endpoint": api_endpoint,
                     },
                     "vector_db_backend": "chromadb",
@@ -438,13 +435,12 @@ def test_concurrent_queries_after_ingest(
     # Drain stdout to prevent pipe buffer deadlock with LOG_LEVEL=DEBUG.
     _drain_server_stdout(kb_server_process["process"])
 
-    ollama_url = docker_stack["ollama_url"]
-    api_endpoint = f"{ollama_url}/api/embeddings"
+    api_endpoint = docker_stack["embedding"]["api_endpoint"]
     base_url = kb_server_process["base_url"]
 
     org_id = f"org-qc-{uuid4().hex[:8]}"
     collection = _make_collection(
-        base_url, org_id, vendor="ollama", api_endpoint=api_endpoint
+        base_url, org_id, vendor="openai", api_endpoint=api_endpoint
     )
     collection_id = collection["id"]
 
@@ -525,8 +521,7 @@ def test_high_concurrency_no_db_lock_errors(
     # Drain stdout to prevent pipe buffer deadlock with LOG_LEVEL=DEBUG.
     _drain_server_stdout(kb_server_process["process"])
 
-    ollama_url = docker_stack["ollama_url"]
-    api_endpoint = f"{ollama_url}/api/embeddings"
+    api_endpoint = docker_stack["embedding"]["api_endpoint"]
     base_url = kb_server_process["base_url"]
 
     n_collections = 5
@@ -539,7 +534,7 @@ def test_high_concurrency_no_db_lock_errors(
         coll = _make_collection(
             base_url,
             org_id,
-            vendor="ollama",
+            vendor="openai",
             api_endpoint=api_endpoint,
             name_suffix=f"wal{ci}",
         )

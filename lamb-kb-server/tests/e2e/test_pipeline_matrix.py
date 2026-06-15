@@ -1,7 +1,7 @@
 """E2E pipeline matrix: create → ingest → query → delete over real HTTP.
 
 Parametrized over (vector_db, embedding_vendor) combinations using real
-backend containers (Qdrant on :16333, Ollama on :11435 with nomic-embed-text).
+backend containers (Qdrant on :16333, LM Studio on host (OpenAI-compatible)).
 
 OpenAI is excluded from this matrix because no real API key is available
 for recording VCR cassettes, and hand-crafted cassettes are fragile under
@@ -11,7 +11,7 @@ dedicated cassette-recording session.
 
 Stack requirements (provided by the session-scope docker_stack fixture):
   - Qdrant  : http://127.0.0.1:{qdrant_port}
-  - Ollama  : http://127.0.0.1:{ollama_port}  (nomic-embed-text must be pulled)
+  - Embeddings : LM Studio on the host (OpenAI-compatible, /v1)
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from tests._helpers import AUTH_HEADERS
 # ---------------------------------------------------------------------------
 
 _POLL_INTERVAL = 1.0  # seconds between polls
-_POLL_TIMEOUT = 120.0  # Ollama embeddings can be slow on first call
+_POLL_TIMEOUT = 120.0  # Embeddings can be slow on first call
 
 
 def _poll_job_sync(
@@ -59,9 +59,9 @@ def _unique_id(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:8]}"
 
 
-def _ollama_endpoint(docker_stack: dict) -> str:
-    """Return the Ollama /api/embeddings URL for the running container."""
-    return f"{docker_stack['ollama_url']}/api/embeddings"
+def _embedding_endpoint(docker_stack: dict) -> str:
+    """Return the OpenAI-compatible (LM Studio) /embeddings URL."""
+    return docker_stack["embedding"]["api_endpoint"]
 
 
 # ---------------------------------------------------------------------------
@@ -69,8 +69,8 @@ def _ollama_endpoint(docker_stack: dict) -> str:
 # ---------------------------------------------------------------------------
 
 _MATRIX = [
-    pytest.param("chromadb", "ollama", id="chromadb-ollama"),
-    pytest.param("qdrant", "ollama", id="qdrant-ollama"),
+    pytest.param("chromadb", "openai", id="chromadb-openai"),
+    pytest.param("qdrant", "openai", id="qdrant-openai"),
 ]
 
 
@@ -90,7 +90,7 @@ def test_full_pipeline(
       1.  POST /collections with the given (vector_db, embedding_vendor) combo.
       2.  POST /collections/{id}/add-content with 3 short documents using the
           "simple" chunking strategy.
-      3.  Poll /jobs/{id} until completed (up to 120 s for Ollama).
+      3.  Poll /jobs/{id} until completed (up to 120 s for embeddings).
       4.  POST /collections/{id}/query with text known to be in doc-2.
       5.  Assert top result has the expected source_item_id and score > 0.3.
       6.  DELETE /collections/{id}/content/{source_item_id} for doc-2.
@@ -100,7 +100,7 @@ def test_full_pipeline(
     """
     org_id = _unique_id("org-")
     collection_name = _unique_id(f"mat-{vector_db[:4]}-")
-    ollama_ep = _ollama_endpoint(docker_stack)
+    embedding_ep = _embedding_endpoint(docker_stack)
 
     # ------------------------------------------------------------------
     # Step 1: Create collection
@@ -113,8 +113,8 @@ def test_full_pipeline(
         "chunking_params": {"chunk_size": 512, "chunk_overlap": 50},
         "embedding": {
             "vendor": embedding_vendor,
-            "model": "nomic-embed-text",
-            "api_endpoint": ollama_ep,
+            "model": "text-embedding-nomic-embed-text-v1.5",
+            "api_endpoint": embedding_ep,
         },
         "vector_db_backend": vector_db,
     }
@@ -172,7 +172,7 @@ def test_full_pipeline(
         ],
         "embedding_credentials": {
             "api_key": "",
-            "api_endpoint": ollama_ep,
+            "api_endpoint": embedding_ep,
         },
     }
     r_ingest = http.post(
@@ -203,7 +203,7 @@ def test_full_pipeline(
         "top_k": 3,
         "embedding_credentials": {
             "api_key": "",
-            "api_endpoint": ollama_ep,
+            "api_endpoint": embedding_ep,
         },
     }
     r_query = http.post(
@@ -282,7 +282,7 @@ def test_full_pipeline(
 
 
 # ---------------------------------------------------------------------------
-# Chunking variety tests (chromadb + ollama, non-parametrized)
+# Chunking variety tests (chromadb + openai, non-parametrized)
 # ---------------------------------------------------------------------------
 
 
@@ -293,13 +293,13 @@ def test_pipeline_with_hierarchical_chunking(
     kb_server_process: dict,
     docker_stack: dict,
 ) -> None:
-    """Full pipeline using hierarchical chunking strategy with real Ollama embeddings.
+    """Full pipeline using hierarchical chunking strategy with real LM Studio embeddings.
 
     Verifies that hierarchical parent/child chunks are produced and that
     query results carry section_title metadata from the markdown headers.
     """
     org_id = _unique_id("org-")
-    ollama_ep = _ollama_endpoint(docker_stack)
+    embedding_ep = _embedding_endpoint(docker_stack)
 
     # Create collection
     r_create = http.post(
@@ -315,9 +315,9 @@ def test_pipeline_with_hierarchical_chunking(
                 "child_chunk_overlap": 30,
             },
             "embedding": {
-                "vendor": "ollama",
-                "model": "nomic-embed-text",
-                "api_endpoint": ollama_ep,
+                "vendor": "openai",
+                "model": "text-embedding-nomic-embed-text-v1.5",
+                "api_endpoint": embedding_ep,
             },
             "vector_db_backend": "chromadb",
         },
@@ -360,7 +360,7 @@ nearest neighbour search locates the most relevant document chunks.
                     "text": markdown_doc,
                 }
             ],
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_ingest.status_code == 202, r_ingest.text
@@ -374,7 +374,7 @@ nearest neighbour search locates the most relevant document chunks.
         json={
             "query_text": "retrieval augmented generation RAG language model",
             "top_k": 5,
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_query.status_code == 200, r_query.text
@@ -404,13 +404,13 @@ def test_pipeline_with_by_page_chunking(
     kb_server_process: dict,
     docker_stack: dict,
 ) -> None:
-    """Full pipeline using by_page chunking with pre-split pages and real Ollama.
+    """Full pipeline using by_page chunking with pre-split pages and real LM Studio.
 
     Verifies page_range metadata is present in query results and that each
     page produces a distinct chunk with the correct page number.
     """
     org_id = _unique_id("org-")
-    ollama_ep = _ollama_endpoint(docker_stack)
+    embedding_ep = _embedding_endpoint(docker_stack)
 
     # Create collection
     r_create = http.post(
@@ -422,9 +422,9 @@ def test_pipeline_with_by_page_chunking(
             "chunking_strategy": "by_page",
             "chunking_params": {"pages_per_chunk": 1},
             "embedding": {
-                "vendor": "ollama",
-                "model": "nomic-embed-text",
-                "api_endpoint": ollama_ep,
+                "vendor": "openai",
+                "model": "text-embedding-nomic-embed-text-v1.5",
+                "api_endpoint": embedding_ep,
             },
             "vector_db_backend": "chromadb",
         },
@@ -479,7 +479,7 @@ def test_pipeline_with_by_page_chunking(
                     },
                 }
             ],
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_ingest.status_code == 202, r_ingest.text
@@ -496,7 +496,7 @@ def test_pipeline_with_by_page_chunking(
         json={
             "query_text": "convolutional neural networks image recognition filters",
             "top_k": 3,
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_query.status_code == 200, r_query.text
@@ -527,13 +527,13 @@ def test_pipeline_with_by_section_chunking(
     kb_server_process: dict,
     docker_stack: dict,
 ) -> None:
-    """Full pipeline using by_section chunking with real Ollama embeddings.
+    """Full pipeline using by_section chunking with real LM Studio embeddings.
 
     Verifies that sections are split on H2 headings and that each chunk
     carries a section_title in its metadata.
     """
     org_id = _unique_id("org-")
-    ollama_ep = _ollama_endpoint(docker_stack)
+    embedding_ep = _embedding_endpoint(docker_stack)
 
     # Create collection
     r_create = http.post(
@@ -548,9 +548,9 @@ def test_pipeline_with_by_section_chunking(
                 "headings_per_chunk": 1,
             },
             "embedding": {
-                "vendor": "ollama",
-                "model": "nomic-embed-text",
-                "api_endpoint": ollama_ep,
+                "vendor": "openai",
+                "model": "text-embedding-nomic-embed-text-v1.5",
+                "api_endpoint": embedding_ep,
             },
             "vector_db_backend": "chromadb",
         },
@@ -589,7 +589,7 @@ and skeletons from calcium carbonate.
                     "text": section_doc,
                 }
             ],
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_ingest.status_code == 202, r_ingest.text
@@ -606,7 +606,7 @@ and skeletons from calcium carbonate.
         json={
             "query_text": "ocean acidification carbon dioxide seawater carbonic acid",
             "top_k": 3,
-            "embedding_credentials": {"api_key": "", "api_endpoint": ollama_ep},
+            "embedding_credentials": {"api_key": "", "api_endpoint": embedding_ep},
         },
     )
     assert r_query.status_code == 200, r_query.text

@@ -11,26 +11,3 @@ services:
       retries: 30
     tmpfs:
       - /qdrant/storage
-
-  ollama-test:
-    image: ollama/ollama:latest
-    container_name: kbs-test-ollama
-    ports:
-      - "${OLLAMA_TEST_PORT:-11434}:11434"
-    volumes:
-      - ollama-models:/root/.ollama
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 60
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama serve &
-        sleep 3
-        ollama pull nomic-embed-text || true
-        wait
-
-volumes:
-  ollama-models:
