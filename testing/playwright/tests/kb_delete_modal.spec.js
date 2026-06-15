@@ -91,8 +91,8 @@ test.describe.serial("Knowledge Base Delete Modal", () => {
     await expect(modal).toBeVisible({ timeout: UI_SHORT });
 
     // Check modal contains expected elements - use specific selectors
-    await expect(modal.locator("h3")).toContainText(/delete/i);
-    await expect(modal.locator("p")).toContainText(kbName);
+    await expect(modal.locator("h2")).toContainText(/delete/i);
+    await expect(modal).toContainText(kbName);
 
     // Check for Cancel and Confirm/Delete buttons
     const cancelButton = modal.locator("button", { hasText: /cancel/i });

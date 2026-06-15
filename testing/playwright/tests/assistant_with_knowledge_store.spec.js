@@ -40,6 +40,7 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
   let libraryId;
   let itemId;
   let knowledgeStoreId;
+  let knowledgeStoreId2;
   let knowledgeStoreName;
   let assistantId;
   let assistantName;
@@ -93,6 +94,43 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
       return (first && first.name) || fallback;
     }
     return fallback;
+  }
+
+  /**
+   * Drive the AssistantForm into a state where `knowledge_store_rag` is a
+   * selectable RAG processor and the KS picker is mounted.
+   *
+   * In the merged UI the RAG dropdown is filtered by the selected Prompt
+   * Processor: `knowledge_store_rag` is only compatible with the
+   * `kvcache_augment` PPS. The PPS dropdown itself is only rendered in
+   * "Advanced Mode" during create. So the sequence is:
+   *   1. enable Advanced Mode
+   *   2. switch PPS -> kvcache_augment
+   *   3. select knowledge_store_rag in the RAG dropdown
+   */
+  async function selectKnowledgeStoreRag(page) {
+    // Enable Advanced Mode so the Prompt Processor select is rendered. The
+    // toggle is an sr-only checkbox inside a <label> whose visible text is
+    // "Advanced Mode"; clicking the text toggles the checkbox.
+    const ppsSelect = page.locator('select[name="prompt_processor"], #prompt-processor').first();
+    if (!(await ppsSelect.isVisible().catch(() => false))) {
+      await page.getByText(/Advanced Mode/i).first().click();
+    }
+
+    // Switch the Prompt Processor to kvcache_augment so KS RAG is compatible.
+    await expect(ppsSelect).toBeVisible({ timeout: 10000 });
+    await ppsSelect.selectOption("kvcache_augment");
+
+    // Now the RAG dropdown exposes knowledge_store_rag.
+    const ragSelect = page.locator(
+      '[data-testid="rag-processor-select"], select[name="rag_processor"], #rag_processor',
+    ).first();
+    await expect(ragSelect, "AssistantForm must expose a RAG processor select").toBeVisible({
+      timeout: 10000,
+    });
+    await expect(ragSelect).toBeEnabled({ timeout: 10000 });
+    await ragSelect.selectOption("knowledge_store_rag");
+    return ragSelect;
   }
 
   test.beforeAll(async ({ browser }) => {
@@ -204,6 +242,23 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
         "Embedding ingestion did not reach 'ready' (likely missing API key) -- skipping.";
     }
 
+    // Seed a SECOND (empty) knowledge store so the multi-select picker test
+    // has 2+ options to choose from — otherwise it self-skips. No content
+    // needed: the picker lists all accessible KSes regardless of content.
+    const ks2Res = await apiCall(page, "POST", "/creator/knowledge-stores", {
+      body: {
+        name: `vt-A43-asst-ks2-${ts}`,
+        description: "Phase 4.3 assistant+KS spec (2nd KS for multi-select)",
+        chunking_strategy: chunkingStrategy,
+        embedding_vendor: embeddingVendor,
+        embedding_model: embeddingModel,
+        vector_db_backend: vectorDbBackend,
+      },
+    });
+    if (ks2Res.status === 200) {
+      knowledgeStoreId2 = ks2Res.data.id;
+    }
+
     assistantName = `vt_A43_asst_${ts}`;
 
     await context.close();
@@ -228,6 +283,9 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
       ).catch(() => {});
       await apiCall(page, "DELETE", `/creator/knowledge-stores/${knowledgeStoreId}`).catch(() => {});
     }
+    if (knowledgeStoreId2) {
+      await apiCall(page, "DELETE", `/creator/knowledge-stores/${knowledgeStoreId2}`).catch(() => {});
+    }
     if (libraryId) {
       await apiCall(page, "DELETE", `/creator/libraries/${libraryId}`).catch(() => {});
     }
@@ -244,7 +302,7 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
 
     // Navigate to the assistant creation flow.
     await page.goto("/assistants");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     // Click + Create (the button label may vary across i18n; allow several).
     const createBtn = page.getByRole("button", {
@@ -252,15 +310,11 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
     }).first();
     await expect(createBtn).toBeVisible({ timeout: 10000 });
     await createBtn.click();
+    await page.waitForLoadState("networkidle").catch(() => {});
 
-    // Pick `knowledge_store_rag` as RAG processor.
-    const ragSelect = page.locator(
-      '[data-testid="rag-processor-select"], select[name="rag_processor"], #rag_processor',
-    ).first();
-    await expect(ragSelect, "AssistantForm must expose a RAG processor select").toBeVisible({
-      timeout: 10000,
-    });
-    await ragSelect.selectOption("knowledge_store_rag");
+    // Pick `knowledge_store_rag` as RAG processor (requires Advanced Mode +
+    // kvcache_augment PPS in the merged UI).
+    await selectKnowledgeStoreRag(page);
 
     // The KS picker must appear and list our seeded KS.
     const picker = page.locator('[data-testid="ks-picker"]');
@@ -283,7 +337,7 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
     test.skip(!!pipelineSkipReason, pipelineSkipReason || "");
 
     await page.goto("/assistants");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     await page.getByRole("button", { name: /\+\s*Create|Create Assistant/i }).first().click();
 
@@ -297,30 +351,25 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
     await expect(nameInput).toBeVisible({ timeout: 10000 });
     await nameInput.fill(assistantName);
 
-    // Pick the RAG processor first so the Knowledge Store loader fires while
-    // we are still on the form. Doing connector/model first sometimes leaves
-    // the form in an intermediate loading state that blocks the rag select.
-    const ragSelect = page.locator(
-      '[data-testid="rag-processor-select"], select[name="rag_processor"], #rag_processor',
-    ).first();
-    await expect(ragSelect).toBeVisible({ timeout: 10000 });
-    await expect(ragSelect).toBeEnabled({ timeout: 10000 });
-    await ragSelect.selectOption("knowledge_store_rag");
+    // Enable Advanced Mode + kvcache_augment PPS so we can pick the connector
+    // and the knowledge_store_rag RAG processor. Doing this first so the
+    // Knowledge Store loader fires while we are still on the form.
+    await selectKnowledgeStoreRag(page);
 
-    // Try to pick the Ollama connector + a chat-capable model so we don't
-    // hit OpenAI (test orgs typically have a placeholder OpenAI key). If
-    // Ollama is not configured with a chat model on this org we'll fall
-    // through to whatever the form defaults to and detect the missing
-    // chat capability when calling /chat/completions, then skip.
-    let usingOllamaChat = false;
+    // Pick a chat-capable connector + model. This stack runs LM Studio behind
+    // the `openai` connector (Ollama is intentionally not configured). Choose
+    // the openai connector and a non-embedding chat model.
     const connectorSel = page.locator('select[name="connector"], #connector').first();
     if (await connectorSel.count()) {
       const connectorValues = await connectorSel.evaluate((sel) =>
         Array.from(sel.options).map((o) => o.value),
       );
-      const ollamaVal = connectorValues.find((v) => /ollama/i.test(v));
-      if (ollamaVal) {
-        await connectorSel.selectOption(ollamaVal, { timeout: 5000 }).catch(() => {});
+      // Prefer openai (LM Studio is exposed through the openai connector).
+      const chatConnector =
+        connectorValues.find((v) => /openai/i.test(v)) ||
+        connectorValues.find((v) => v && v !== "bypass");
+      if (chatConnector) {
+        await connectorSel.selectOption(chatConnector, { timeout: 5000 }).catch(() => {});
       }
     }
     const modelSel = page.locator('select[name="llm"], #llm').first();
@@ -331,15 +380,12 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
       const modelValues = await modelSel.evaluate((sel) =>
         Array.from(sel.options).map((o) => o.value),
       );
-      // Prefer a chat-capable Ollama model (qwen / llama / phi / mistral);
-      // if the org only has an embedding model (e.g. nomic-embed-text)
-      // there's no Ollama chat option to pick.
-      const chatModel = modelValues.find((v) =>
-        /qwen|llama|phi|mistral|gemma/i.test(v),
-      );
+      // Prefer a chat-capable model; avoid embedding-only models.
+      const chatModel =
+        modelValues.find((v) => /qwen|llama|phi|mistral|gemma|gpt|chat|instruct/i.test(v)) ||
+        modelValues.find((v) => v && !/embed/i.test(v));
       if (chatModel) {
         await modelSel.selectOption(chatModel, { timeout: 5000 }).catch(() => {});
-        usingOllamaChat = true;
       }
     }
 
@@ -450,14 +496,16 @@ test.describe.serial("Assistant with Knowledge Store RAG (UI) @phase5-pending", 
     // This test is gated: it only runs if the KS picker exposes multiple
     // options. Phase 5 may or may not ship multi-select on day one.
     await page.goto("/assistants");
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForLoadState("networkidle").catch(() => {});
     await page.getByRole("button", { name: /\+\s*Create|Create Assistant/i }).first().click();
+    await page.waitForLoadState("networkidle").catch(() => {});
 
-    await page.locator(
-      '[data-testid="rag-processor-select"], select[name="rag_processor"], #rag_processor',
-    ).first().selectOption("knowledge_store_rag");
+    await selectKnowledgeStoreRag(page);
 
     const allOptions = page.locator('[data-testid="ks-picker-option"]');
+    // Wait for the async knowledge-store fetch to populate the picker before
+    // counting — otherwise count() races the fetch and reads 0.
+    await expect(allOptions.first()).toBeVisible({ timeout: 10000 });
     const optionCount = await allOptions.count();
     test.skip(optionCount < 2, "Only one KS visible -- multi-select assertion not applicable.");
 
