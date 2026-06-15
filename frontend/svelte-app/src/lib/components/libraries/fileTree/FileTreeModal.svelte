@@ -372,6 +372,13 @@
 			await refreshTree();
 		} catch (err) {
 			loadError = err instanceof Error ? err.message : 'Move failed';
+		} finally {
+			// Close the picker and clear the pending selection so the move is
+			// reflected immediately (previously the picker stayed open after a
+			// successful move, making it look like nothing happened).
+			moveDialogOpen = false;
+			moveDialogCandidates = [];
+			selectedIds.clear();
 		}
 	}
 
