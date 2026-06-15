@@ -109,7 +109,8 @@ def _has_image_generation_capability(assistant: Assistant) -> bool:
 def prompt_processor(
     request: Dict[str, Any],
     assistant: Optional[Assistant] = None,
-    rag_context: Optional[Dict[str, Any]] = None
+    rag_context: Optional[Dict[str, Any]] = None,
+    document_context: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, str]]:
     """
     Simple augment prompt processor that:
