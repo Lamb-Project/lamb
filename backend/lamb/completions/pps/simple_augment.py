@@ -55,6 +55,23 @@ def _has_image_generation_capability(assistant: Assistant) -> bool:
         return capabilities.get('image_generation', False)
     except (json.JSONDecodeError, AttributeError):
         return False
+
+
+def _is_single_file_rag(assistant: Assistant) -> bool:
+    """
+    Check if the assistant uses single_file_rag — the only RAG where
+    context is byte-identical across requests and cache-aware splitting helps.
+    """
+    if not assistant:
+        return False
+    metadata_str = getattr(assistant, 'metadata', None)
+    if not metadata_str:
+        return False
+    try:
+        metadata = json.loads(metadata_str)
+        return metadata.get('rag_processor') == 'single_file_rag'
+    except (json.JSONDecodeError, AttributeError):
+        return False
 def prompt_processor(
     request: Dict[str, Any],
     assistant: Optional[Assistant] = None,
@@ -84,10 +101,38 @@ def prompt_processor(
                 "role": "system",
                 "content": assistant.system_prompt
             })
-        
+
+        # ── Cache-aware mode for single_file_rag ──────────────────────
+        # When the assistant uses single_file_rag, the file content is
+        # byte-identical across requests. Emitting it as a separate user
+        # message BEFORE conversation history lets LLM providers cache the
+        # stable prefix (system + context), slashing token costs by ~50-90%.
+        cache_mode = _is_single_file_rag(assistant) and rag_context
+
+        if cache_mode:
+            context = (
+                rag_context.get("context", "")
+                if isinstance(rag_context, dict)
+                else str(rag_context)
+            )
+            if context:
+                processed_messages.append({
+                    "role": "user",
+                    "content": (
+                        "The user may ask you questions about the following "
+                        "document. Use this content to answer their questions "
+                        "accurately.\n\n"
+                        f"{context}"
+                    ),
+                })
+                logger.debug(
+                    "Cache-aware mode: emitted context as separate user message "
+                    "(%d chars)", len(context)
+                )
+
         # Add previous messages except the last one
         processed_messages.extend(messages[:-1])
-        
+
         # Process the last message using the prompt template
         if assistant.prompt_template:
             # Check if assistant has vision capabilities
@@ -110,8 +155,8 @@ def prompt_processor(
                 logger.debug(f"User message: {user_input_text}")
                 augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
+                # Add RAG context if available (skip in cache mode — already emitted as separate message)
+                if rag_context and not cache_mode:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
                     
                     # Format sources if available
@@ -166,8 +211,8 @@ def prompt_processor(
                 logger.debug(f"User message: {user_input_text}")
                 prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
-                # Add RAG context if available
-                if rag_context:
+                # Add RAG context if available (skip in cache mode — already emitted as separate message)
+                if rag_context and not cache_mode:
                     context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
                     
                     # Format sources if available
