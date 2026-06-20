@@ -361,6 +361,26 @@ def test_get_embedding_vendors_5xx_wrapped(client):
         run(client.get_embedding_vendors())
 
 
+def test_get_backends_4xx_reraised(client):
+    client._request = AsyncMock(side_effect=HTTPException(403, "forbidden"))
+    with pytest.raises(HTTPException) as exc:
+        run(client.get_backends())
+    assert exc.value.status_code == 403
+
+
+def test_get_embedding_vendors_4xx_reraised(client):
+    client._request = AsyncMock(side_effect=HTTPException(404, "missing"))
+    with pytest.raises(HTTPException) as exc:
+        run(client.get_embedding_vendors())
+    assert exc.value.status_code == 404
+
+
+def test_update_collection_description_only(proxied):
+    run(proxied.update_collection("ks1", description="desc only"))
+    _, kwargs = _last_call(proxied)
+    assert kwargs["json"] == {"description": "desc only"}
+
+
 # ---------------------------------------------------------------------------
 # migrate_collection_to_graph (httpx mocked)
 # ---------------------------------------------------------------------------
@@ -452,6 +472,34 @@ def test_get_org_options_with_org_config(monkeypatch):
     assert ep["default"] == "http://org-endpoint"
     # explicit allowed-models list wins over plugin fallback.
     assert out["embedding_models"]["openai"] == ["text-embed-3"]
+
+
+def test_get_org_options_resolver_edge_branches(monkeypatch):
+    c = KnowledgeStoreClient()
+    monkeypatch.setattr(c, "_get_ks_config", lambda cu=None: _cfg())
+    c.get_backends = AsyncMock(return_value={"backends": []})
+    c.get_chunking_strategies = AsyncMock(return_value={"strategies": []})
+    # One nameless vendor (skipped) + one whose provider lookups raise.
+    c.get_embedding_vendors = AsyncMock(return_value={
+        "vendors": [{"parameters": []}, _vendor("openai")],
+    })
+
+    class _Resolver:
+        def __init__(self, email):
+            pass
+
+        def get_provider_config(self, vendor):
+            raise RuntimeError("no provider cfg")
+
+        def get_provider_endpoint(self, vendor):
+            raise ValueError("no endpoint")
+
+    monkeypatch.setattr(ksc, "OrganizationConfigResolver", _Resolver)
+    out = run(c.get_org_options({"email": "u@x.com"}))
+    # The nameless vendor is preserved in the list but skipped for tagging;
+    # openai gets api_key_configured=False (provider cfg lookup failed).
+    openai = next(v for v in out["embedding_vendors"] if v.get("name") == "openai")
+    assert openai["api_key_configured"] is False
 
 
 # ---------------------------------------------------------------------------
