@@ -78,12 +78,15 @@ class DocumentInputPayload(BaseModel):
     def _validate_extra_metadata(
         cls, v: dict[str, Any]
     ) -> dict[str, str | int | float | bool]:
+        # Defensive redundancy: the typed value-union on the field already
+        # rejects None / non-primitive values during type validation, so these
+        # guards are unreachable in practice (kept as an explicit contract).
         for key, value in v.items():
-            if value is None:
+            if value is None:  # pragma: no cover - unreachable past field typing
                 raise ValueError(
                     f"extra_metadata[{key!r}] is None; ChromaDB requires non-null primitive values."
                 )
-            if not isinstance(value, (str, int, float, bool)):
+            if not isinstance(value, (str, int, float, bool)):  # pragma: no cover
                 raise ValueError(
                     f"extra_metadata[{key!r}] has type {type(value).__name__}; "
                     f"only str, int, float, bool are allowed."
@@ -106,7 +109,7 @@ class AddContentRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_documents_non_empty(self) -> "AddContentRequest":
-        if not self.documents:
+        if not self.documents:  # pragma: no cover - Field(min_length=1) rejects first
             raise ValueError("documents list must not be empty.")
         return self
 
