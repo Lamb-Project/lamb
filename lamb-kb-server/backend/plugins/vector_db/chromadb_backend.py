@@ -409,7 +409,7 @@ class ChromaDBBackend(VectorDBBackend):
             # back up by ID. ChromaDB always returns ``ids`` alongside
             # documents — we surface it as ``chunk_id`` for the plugin's
             # seed-extraction step.
-            if idx < len(ids) and ids[idx]:
+            if idx < len(ids) and ids[idx]:  # pragma: no branch - chromadb always aligns ids
                 meta_dict.setdefault("chunk_id", ids[idx])
             # For hierarchical retrieval: return parent context if available
             text = meta_dict.pop("parent_text", None) or doc
