@@ -89,6 +89,12 @@ For development or custom deployments:
 
 📘 **[Complete Installation Guide](Documentation/installationguide.md)** - Step-by-step manual setup for all components
 
+### Optional: KG-RAG (Semantic Graph)
+
+To bring up the stack with the Neo4j-backed Knowledge-Graph RAG feature enabled:
+
+📘 **[KG-RAG Deployment Guide](Documentation/kg-rag-deployment.md)** - Enable graph-augmented retrieval with the `kg-rag` Compose profile
+
 ### Quick Overview
 
 LAMB requires four main services:
