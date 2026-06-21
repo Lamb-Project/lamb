@@ -90,7 +90,10 @@ def _is_valid_entity_name(value: str) -> bool:
     normalized = normalize_concept(cleaned)
     if len(normalized) < 2 or len(normalized) > 120:
         return False
-    if not any(char.isalpha() or char.isdigit() for char in normalized):
+    # Unreachable in practice: normalize_concept() strips to alphanumeric
+    # boundaries, so any normalized string of length >= 2 always contains an
+    # alphanumeric. Kept as a defensive guard.
+    if not any(char.isalpha() or char.isdigit() for char in normalized):  # pragma: no cover
         return False
     if cleaned[0].isdigit():
         return False

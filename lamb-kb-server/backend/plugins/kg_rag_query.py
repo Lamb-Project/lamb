@@ -273,7 +273,7 @@ class KGRAGQueryPlugin:
         if len(cls._question_cache) >= cls._QUESTION_CACHE_SIZE:
             try:
                 cls._question_cache.pop(next(iter(cls._question_cache)))
-            except StopIteration:
+            except StopIteration:  # pragma: no cover - cache is non-empty here
                 pass
         cls._question_cache[cache_key] = entities
         return entities

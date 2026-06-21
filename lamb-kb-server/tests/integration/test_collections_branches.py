@@ -142,3 +142,47 @@ def test_delete_graph_enabled_calls_neo4j_teardown(monkeypatch):
     finally:
         session2.close()
     assert deleted["called"] is True
+
+
+def test_delete_graph_teardown_error_is_swallowed(monkeypatch):
+    """If the Neo4j teardown raises, delete_collection swallows it and still
+    deletes the DB row (covers the graph except-handler branch)."""
+    import config as config_module
+    import services.collection_service as cs
+    import services.graph_store as gs_module
+    from database.connection import get_session_direct
+    from database.models import Collection
+
+    cid = f"col-graphdelerr-{uuid4().hex[:8]}"
+    session = get_session_direct()
+    try:
+        session.add(Collection(
+            id=cid, organization_id="org-z", name=f"gderr-{uuid4().hex[:6]}",
+            chunking_strategy="simple", embedding_vendor="fake",
+            embedding_model="fake-model", vector_db_backend="chromadb",
+            storage_path="/tmp/does-not-matter", graph_enabled=True,
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    monkeypatch.setattr(config_module, "get_kg_rag_config", lambda: {"enabled": True})
+
+    class _BoomStore:
+        def is_configured(self):
+            return True
+
+        def is_available(self):
+            return True
+
+        def delete_collection(self, collection_id):
+            raise RuntimeError("neo4j teardown boom")
+
+    monkeypatch.setattr(gs_module, "get_graph_store", lambda: _BoomStore())
+
+    session2 = get_session_direct()
+    try:
+        cs.delete_collection(session2, cid)  # must not raise
+        assert session2.get(Collection, cid) is None  # row still deleted
+    finally:
+        session2.close()
