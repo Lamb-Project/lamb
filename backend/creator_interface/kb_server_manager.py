@@ -1,3 +1,5 @@
+"""Manager for KB Server lifecycle and health checks."""
+
 import httpx
 import os
 import logging

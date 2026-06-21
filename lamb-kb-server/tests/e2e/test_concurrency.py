@@ -26,7 +26,6 @@ the test.  The ``_drain_server_stdout`` helper does this.
 from __future__ import annotations
 
 import concurrent.futures
-import io
 import subprocess
 import threading
 import time
@@ -233,11 +232,13 @@ def test_20_concurrent_add_content_requests_succeed(
 
     # Fire all 20 requests concurrently via a thread pool.
     results: list[dict] = []
-    with _client(kb_server_process) as client:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-            futures = [pool.submit(_submit, client, i) for i in range(n_requests)]
-            for fut in concurrent.futures.as_completed(futures):
-                results.append(fut.result())
+    with (
+        _client(kb_server_process) as client,
+        concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool,
+    ):
+        futures = [pool.submit(_submit, client, i) for i in range(n_requests)]
+        for fut in concurrent.futures.as_completed(futures):
+            results.append(fut.result())
 
     # All should return 202.
     failed_submissions = [r for r in results if r["status_code"] != 202]
@@ -477,11 +478,13 @@ def test_concurrent_queries_after_ingest(
         return {"status_code": r.status_code, "body": r.json()}
 
     query_results: list[dict] = []
-    with _client(kb_server_process) as q_client:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-            futures = [pool.submit(_query, q_client, i) for i in range(n_queries)]
-            for fut in concurrent.futures.as_completed(futures):
-                query_results.append(fut.result())
+    with (
+        _client(kb_server_process) as q_client,
+        concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool,
+    ):
+        futures = [pool.submit(_query, q_client, i) for i in range(n_queries)]
+        for fut in concurrent.futures.as_completed(futures):
+            query_results.append(fut.result())
 
     # All must return 200.
     non_200 = [qr for qr in query_results if qr["status_code"] != 200]

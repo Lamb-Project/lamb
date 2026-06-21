@@ -287,8 +287,14 @@ class URLIngestPlugin(IngestPlugin):
 				crawl_options["ignore_query_parameters"] = ignore_query_parameters
 				
 				if exclude_paths:
+					# Ensure exclude_paths is a list (handle case where a single string is passed)
+					if isinstance(exclude_paths, str):
+						exclude_paths = [p.strip() for p in exclude_paths.split('\n') if p.strip()]
 					crawl_options["exclude_paths"] = exclude_paths
 				if include_paths:
+					# Ensure include_paths is a list (handle case where a single string is passed)
+					if isinstance(include_paths, str):
+						include_paths = [p.strip() for p in include_paths.split('\n') if p.strip()]
 					crawl_options["include_paths"] = include_paths
 
 				# Crawl the website

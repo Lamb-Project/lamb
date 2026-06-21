@@ -6,21 +6,19 @@ session lifecycle, model defaults, constraints, and timestamp behavior.
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import multiprocessing
 import os
 import tempfile
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC
 
 import pytest
-from sqlalchemy import create_engine, text
+from database.models import Collection, IngestionJob
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import sessionmaker
-
-from database.models import Base, Collection, IngestionJob
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -110,6 +108,7 @@ def _child_init_db(data_dir: str, result_queue) -> None:
     os.environ["DATA_DIR"] = data_dir
     # Re-import config with the new DATA_DIR so DB_PATH reflects the temp dir.
     import importlib
+
     import config
     importlib.reload(config)
     import database.connection as conn
@@ -126,23 +125,23 @@ def _child_init_db(data_dir: str, result_queue) -> None:
 def test_file_lock_raises_runtime_error_direct(monkeypatch, tmp_path) -> None:
     """Test the lock-contention path in the main process for coverage."""
     import fcntl
+
     import database.connection as conn
 
     lock_dir = tmp_path / "locked-data"
     lock_dir.mkdir()
     lock_path = lock_dir / ".lock"
-    # Hold the lock ourselves before calling init_db().
-    lf = open(lock_path, "w")
+    lf = open(lock_path, "w")  # noqa: SIM115
     fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-    original_db_path = conn.DB_PATH if hasattr(conn, "DB_PATH") else None
-    import config as cfg
-    original_cfg_db_path = cfg.DB_PATH
+    saved_session_local = conn._SessionLocal
+    saved_engine = conn._engine
+    saved_lock_file = conn._lock_file
 
-    # Patch DB_PATH on the connection module to point at our locked dir.
-    monkeypatch.setattr(cfg, "DB_PATH", lock_dir / "kb-server.db")
-    import importlib
-    importlib.reload(conn)
+    conn._SessionLocal = None
+    conn._engine = None
+    conn._lock_file = None
+    conn.DB_PATH = lock_dir / "kb-server.db"
 
     try:
         with pytest.raises(RuntimeError, match="Another KB Server instance"):
@@ -150,11 +149,9 @@ def test_file_lock_raises_runtime_error_direct(monkeypatch, tmp_path) -> None:
     finally:
         fcntl.flock(lf, fcntl.LOCK_UN)
         lf.close()
-        # Restore the connection module to the working session state.
-        monkeypatch.setattr(cfg, "DB_PATH", original_cfg_db_path)
-        importlib.reload(conn)
-        # Re-run init_db so session remains functional.
-        conn.init_db()
+        conn._SessionLocal = saved_session_local
+        conn._engine = saved_engine
+        conn._lock_file = saved_lock_file
 
 
 def test_file_lock_raises_runtime_error() -> None:
@@ -211,10 +208,8 @@ def test_get_session_yields_session() -> None:
         result = session.execute(text("SELECT 1")).scalar()
         assert result == 1
     finally:
-        try:
+        with contextlib.suppress(StopIteration):
             next(gen)
-        except StopIteration:
-            pass
 
 
 def test_get_session_closes_on_exception() -> None:
@@ -224,10 +219,8 @@ def test_get_session_closes_on_exception() -> None:
     session = next(gen)
     original_close = session.close
     session.close = lambda: close_calls.append(True) or original_close()
-    try:
+    with contextlib.suppress(ValueError, StopIteration):
         gen.throw(ValueError("boom"))
-    except (ValueError, StopIteration):
-        pass
     assert close_calls, "session.close() was not called after exception"
 
 

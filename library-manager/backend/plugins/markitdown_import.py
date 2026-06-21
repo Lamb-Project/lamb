@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from plugins._mime import guess_mime
 from plugins.base import (
     ImportResult,
     LibraryImportPlugin,
@@ -106,7 +107,7 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
         stat = path.stat()
         metadata = {
             "original_filename": path.name,
-            "content_type": _guess_mime(path.suffix),
+            "content_type": guess_mime(path.suffix),
             "file_size": stat.st_size,
             "character_count": len(content),
             "page_count": len(pages),
@@ -155,31 +156,3 @@ class MarkItDownImportPlugin(LibraryImportPlugin):
             ),
         ]
 
-
-def _guess_mime(ext: str) -> str:
-    """Map a file extension to a plausible MIME type.
-
-    Args:
-        ext: File extension including the dot.
-
-    Returns:
-        MIME type string.
-    """
-    mapping = {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls": "application/vnd.ms-excel",
-        ".html": "text/html",
-        ".csv": "text/csv",
-        ".json": "application/json",
-        ".xml": "application/xml",
-        ".zip": "application/zip",
-        ".epub": "application/epub+zip",
-        ".txt": "text/plain",
-        ".md": "text/markdown",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-    }
-    return mapping.get(ext.lower(), "application/octet-stream")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from plugins._markitdown_errors import humanize_markitdown_error
 
 

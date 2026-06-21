@@ -53,7 +53,7 @@
 		AlertCircle,
 		ChevronRight,
 		Loader2
-	} from 'lucide-svelte';
+	} from '$lib/components/ui/icons.js';
 
 	const dispatch = createEventDispatcher();
 

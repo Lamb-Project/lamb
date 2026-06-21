@@ -21,7 +21,7 @@ from __future__ import annotations
 import abc
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class Capability(str, Enum):
+class Capability(StrEnum):
     """Controlled vocabulary of content capabilities.
 
     Add a new value here when introducing a new content type. Do NOT use

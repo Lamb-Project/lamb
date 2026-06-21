@@ -15,7 +15,8 @@ from plugins.content_handlers.capability import (
 # Recognised image extensions. Kept here (not in a global registry) because
 # the handler decides what counts as an image for *its* output.
 _IMAGE_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg",
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif",
+    ".svg", ".jpx", ".jp2", ".jxr", ".jb2", ".pnm",
 }
 
 _MIME_MAP = {
@@ -26,7 +27,13 @@ _MIME_MAP = {
     ".bmp": "image/bmp",
     ".webp": "image/webp",
     ".tiff": "image/tiff",
+    ".tif": "image/tiff",
     ".svg": "image/svg+xml",
+    ".jpx": "image/jpx",
+    ".jp2": "image/jp2",
+    ".jxr": "image/jxr",
+    ".jb2": "image/jb2",
+    ".pnm": "image/pnm",
 }
 
 

@@ -255,8 +255,19 @@ def rag_processor(
                         main_url = remote_source_url or original_url or source_url
 
                         if main_url:
+                            # For YouTube videos, use video_title if available, otherwise video_id
+                            if "video_id" in metadata and metadata["video_id"]:
+                                # Check if we have the full video title
+                                if "video_title" in metadata and metadata["video_title"] and metadata["video_title"] != "Unknown":
+                                    title = metadata["video_title"]
+                                else:
+                                    # Fallback to video_id format
+                                    title = f"YouTube: {metadata['video_id']}"
+                            else:
+                                title = metadata.get("filename", metadata.get("original_filename", "Unknown"))
+                            
                             source_entry = {
-                                "title": metadata.get("filename", metadata.get("original_filename", "Unknown")),
+                                "title": title,
                                 "url": main_url,
                                 "similarity": doc.get("similarity", 0)
                             }

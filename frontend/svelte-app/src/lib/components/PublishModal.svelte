@@ -107,7 +107,11 @@
 		onclick={handleClose}
 	>
 		<!-- The aria-labelledby attribute points to the h2 below -->
-		<div class="w-full max-w-md rounded-lg bg-white shadow-xl" role="presentation" onclick={(e) => e.stopPropagation()}>
+		<div
+			class="w-full max-w-md rounded-lg bg-white shadow-xl"
+			role="presentation"
+			onclick={(e) => e.stopPropagation()}
+		>
 			<div class="flex items-center justify-between border-b p-4">
 				<h2 class="text-lg font-semibold" id="publish-modal-title">
 					{localeLoaded ? $_('assistants.publishModal.title') : 'Publish Assistant'}

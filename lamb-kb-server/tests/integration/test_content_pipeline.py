@@ -10,7 +10,6 @@ from httpx import AsyncClient
 
 from tests.conftest import AUTH_HEADERS, _poll_job
 
-
 # ---------------------------------------------------------------------------
 # Original 6 tests (unchanged)
 # ---------------------------------------------------------------------------
@@ -106,7 +105,6 @@ async def test_delete_vectors_by_source(
     )
     # Wait for any one job to complete.
     # For simplicity, poll one job at a time via collection.chunk_count.
-    import asyncio  # noqa: PLC0415
 
     for _ in range(40):
         c = await client.get(
@@ -871,8 +869,8 @@ async def test_delete_vectors_backend_unavailable(
     Covers line 248 in ingestion_service (backend None in delete_vectors).
     Create a collection, then disable its backend plugin, then attempt delete.
     """
-    import main  # noqa: PLC0415
     from plugins.base import VectorDBRegistry  # noqa: PLC0415
+
     from tests._fakes import register_fake_embedding  # noqa: PLC0415
 
     # Create a normal chromadb collection.
@@ -1008,11 +1006,9 @@ def test_queue_add_content_empty_documents_raises(collection: dict) -> None:
     This path is normally guarded by Pydantic schema validation at the HTTP
     layer. We call the service directly to exercise the internal guard.
     """
-    from fastapi import HTTPException  # noqa: PLC0415
-
     import pytest  # noqa: PLC0415
-
     from database.connection import get_session_direct  # noqa: PLC0415
+    from fastapi import HTTPException  # noqa: PLC0415
     from schemas.content import AddContentRequest  # noqa: PLC0415
     from services import ingestion_service  # noqa: PLC0415
 
@@ -1059,9 +1055,10 @@ def test_execute_ingestion_job_chunking_strategy_none(collection: dict) -> None:
             id="test-chunking-none",
             collection_id=coll.id,
             organization_id=coll.organization_id,
-            documents_json=json.dumps([
-                {"source_item_id": "s", "title": "T", "text": "text", "permalinks": {}, "pages": [], "extra_metadata": {}}
-            ]),
+            documents_json=json.dumps([{
+                "source_item_id": "s", "title": "T", "text": "text",
+                "permalinks": {}, "pages": [], "extra_metadata": {},
+            }]),
             status="processing",
             documents_total=1,
             documents_processed=0,
@@ -1106,9 +1103,10 @@ def test_execute_ingestion_job_vector_backend_none(collection: dict) -> None:
             id="test-backend-none",
             collection_id=coll.id,
             organization_id=coll.organization_id,
-            documents_json=json.dumps([
-                {"source_item_id": "s", "title": "T", "text": "text", "permalinks": {}, "pages": [], "extra_metadata": {}}
-            ]),
+            documents_json=json.dumps([{
+                "source_item_id": "s", "title": "T", "text": "text",
+                "permalinks": {}, "pages": [], "extra_metadata": {},
+            }]),
             status="processing",
             documents_total=1,
             documents_processed=0,

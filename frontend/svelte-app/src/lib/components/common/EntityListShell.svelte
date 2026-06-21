@@ -44,6 +44,7 @@
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import { _ } from '$lib/i18n';
 	import { Banner, Button, SkeletonTable } from '$lib/components/ui';
+	import { Inbox } from '$lib/components/ui/icons.js';
 	import { RefreshCw } from 'lucide-svelte';
 
 	let {
@@ -124,7 +125,7 @@
 	{/if}
 
 	<!-- Filter bar + chip row (always show filter bar for search) -->
-	<div class="border-b border-gray-100">
+	<div class="border-border border-b">
 		<FilterBar
 			{searchValue}
 			{searchPlaceholder}
@@ -148,7 +149,7 @@
 					<button
 						type="button"
 						onclick={() => onClearAllChips()}
-						class="text-xs text-gray-500 hover:text-red-600 hover:underline"
+						class="text-muted hover:text-danger text-xs hover:underline"
 					>
 						{$_('list.clearAll', { default: 'Clear all' })}
 					</button>
@@ -187,23 +188,11 @@
 		<!-- Empty state -->
 	{:else if isEmpty}
 		<div class="flex flex-col items-center px-4 py-16 text-center">
-			<svg
-				class="mb-4 h-12 w-12 text-gray-300"
-				fill="none"
-				stroke="currentColor"
-				viewBox="0 0 24 24"
-			>
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="1.5"
-					d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-				/>
-			</svg>
+			<Inbox class="text-muted mb-4 h-12 w-12" />
 			{#if emptyState}
 				{@render emptyState()}
 			{:else}
-				<p class="text-sm text-gray-500">
+				<p class="text-muted text-sm">
 					{isFiltered
 						? $_('list.noResults', { default: 'No items match your filters.' })
 						: $_('list.noItems', { default: 'No items yet.' })}
@@ -220,7 +209,7 @@
 		</div>
 
 		<!-- Pagination -->
-		<div class="border-t border-gray-100">
+		<div class="border-border border-t">
 			<Pagination
 				{currentPage}
 				{totalPages}

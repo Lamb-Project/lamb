@@ -9,9 +9,6 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-from tests._helpers import AUTH_HEADERS
-
-
 # ---------------------------------------------------------------------------
 # Original 4 tests — preserved exactly
 # ---------------------------------------------------------------------------

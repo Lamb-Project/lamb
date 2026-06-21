@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from plugins.base import ChunkingStrategy
 
 
-def validate_chunking_params(strategy: "ChunkingStrategy", params: dict) -> None:
+def validate_chunking_params(strategy: ChunkingStrategy, params: dict) -> None:
     """Reject unknown keys and out-of-range numeric values in *params*.
 
     Each chunking strategy reads only the keys it recognises; unknown keys are

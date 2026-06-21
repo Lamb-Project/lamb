@@ -994,6 +994,9 @@
 		},
 		"export": "Esportatu",
 		"itemDeleteSuccess": "Elementua ezabatua.",
+		"detail": {
+			"connectionLost": "Konexioa galdu da egoera egiaztatzean. Kargatu berriro saiatzeko."
+		},
 		"viewContent": "Ikusi",
 		"itemContentModal": {
 			"title": "Elementuaren edukia",
@@ -1107,6 +1110,8 @@
 		"testQuery": "Proba-kontsulta",
 		"testQueryHelp": "Egin antzekotasun-bilaketa bat Ezagutza-biltegi honen aurka, zati erabilgarriak itzultzen dituela egiaztatzeko.",
 		"score": "puntuazioa",
+		"contentLoadError": "Ezin izan da edukia kargatu",
+		"source": "Iturria",
 		"linkedContent": "Lotutako Liburutegiko Edukia",
 		"addContent": "Edukia Gehitu",
 		"contentTitle": "Izenburua",
@@ -1263,6 +1268,8 @@
 		"description": "Kudeatu liburutegiak eta Ezagutza-biltegiak.",
 		"createKnowledge": "Ezagutza Sortu",
 		"wizard": {
+			"defaultLibraryName": "Nire Liburutegia",
+			"defaultKsName": "Nire Ezagutza Basea",
 			"title": "Ezagutza Sortu",
 			"next": "Hurrengoa",
 			"back": "Atzera",
@@ -1466,6 +1473,14 @@
 			"tooSmall": "≥ {min} izan behar du",
 			"tooLarge": "≤ {max} izan behar du",
 			"fixErrors": "Konpondu pluginaren parametro-erroreak jarraitu aurretik."
+		}
+	},
+	"wizard": {
+		"draftAge": {
+			"justNow": "orain",
+			"minutesAgo": "duela {count} minutu",
+			"hoursAgo": "duela {count} ordu",
+			"daysAgo": "duela {count} egun"
 		}
 	}
 }

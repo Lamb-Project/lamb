@@ -12,10 +12,8 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from plugins.base import Chunk
 from plugins.vector_db.qdrant_backend import QdrantBackend
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -99,11 +97,26 @@ def test_qdrant_add_and_query(tmp_storage: str, fake_embedding) -> None:
     )
 
     chunks = [
-        Chunk(text="LAMB uses FastAPI and SQLAlchemy.", metadata={"source_item_id": "src-a", "chunk_index": 0}),
-        Chunk(text="Libraries import; knowledge bases ingest.", metadata={"source_item_id": "src-a", "chunk_index": 1}),
-        Chunk(text="Python is widely used for machine learning.", metadata={"source_item_id": "src-b", "chunk_index": 0}),
-        Chunk(text="Qdrant supports cosine, dot, and L2 distance.", metadata={"source_item_id": "src-b", "chunk_index": 1}),
-        Chunk(text="FastAPI makes building APIs straightforward.", metadata={"source_item_id": "src-c", "chunk_index": 0}),
+        Chunk(
+            text="LAMB uses FastAPI and SQLAlchemy.",
+            metadata={"source_item_id": "src-a", "chunk_index": 0},
+        ),
+        Chunk(
+            text="Libraries import; knowledge bases ingest.",
+            metadata={"source_item_id": "src-a", "chunk_index": 1},
+        ),
+        Chunk(
+            text="Python is widely used for machine learning.",
+            metadata={"source_item_id": "src-b", "chunk_index": 0},
+        ),
+        Chunk(
+            text="Qdrant supports cosine, dot, and L2 distance.",
+            metadata={"source_item_id": "src-b", "chunk_index": 1},
+        ),
+        Chunk(
+            text="FastAPI makes building APIs straightforward.",
+            metadata={"source_item_id": "src-c", "chunk_index": 0},
+        ),
     ]
 
     n = be.add_chunks(
@@ -144,7 +157,10 @@ def test_qdrant_score_normalisation(tmp_storage: str, fake_embedding) -> None:
     )
 
     chunks = [
-        Chunk(text=f"document number {i}", metadata={"source_item_id": "src-norm", "chunk_index": i})
+        Chunk(
+            text=f"document number {i}",
+            metadata={"source_item_id": "src-norm", "chunk_index": i},
+        )
         for i in range(5)
     ]
     be.add_chunks(
@@ -264,8 +280,20 @@ def test_qdrant_delete_by_source(tmp_storage: str, fake_embedding) -> None:
     )
 
     chunks = (
-        [Chunk(text=f"alpha chunk {i}", metadata={"source_item_id": "src-alpha", "chunk_index": i}) for i in range(3)]
-        + [Chunk(text=f"beta chunk {i}", metadata={"source_item_id": "src-beta", "chunk_index": i}) for i in range(2)]
+        [
+            Chunk(
+                text=f"alpha chunk {i}",
+                metadata={"source_item_id": "src-alpha", "chunk_index": i},
+            )
+            for i in range(3)
+        ]
+        + [
+            Chunk(
+                text=f"beta chunk {i}",
+                metadata={"source_item_id": "src-beta", "chunk_index": i},
+            )
+            for i in range(2)
+        ]
     )
     be.add_chunks(
         collection_id=cid,
@@ -332,7 +360,10 @@ def test_qdrant_batch_upsert_boundary(tmp_storage: str, fake_embedding) -> None:
     )
 
     chunks = [
-        Chunk(text=f"batch boundary chunk {i}", metadata={"source_item_id": "src-batch", "chunk_index": i})
+        Chunk(
+            text=f"batch boundary chunk {i}",
+            metadata={"source_item_id": "src-batch", "chunk_index": i},
+        )
         for i in range(101)
     ]
     n = be.add_chunks(
@@ -426,8 +457,6 @@ def test_qdrant_remote_mode_uses_url(monkeypatch, tmp_storage: str) -> None:
     monkeypatch.setattr(qdrant_mod.config, "QDRANT_API_KEY", "test-key")
 
     captured_kwargs: dict = {}
-
-    original_QdrantClient = qdrant_mod.QdrantClient
 
     class CapturingClient:
         def __init__(self, **kwargs):

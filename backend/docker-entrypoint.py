@@ -72,6 +72,15 @@ def patch_frontend_config() -> None:
 def main() -> None:
     patch_frontend_config()
     if len(sys.argv) > 1:
+        # Handle LAMB_WORKERS configuration
+        workers = os.getenv("LAMB_WORKERS")
+        if workers and workers.isdigit() and int(workers) > 0:
+            # Check if this is a uvicorn command
+            if sys.argv[1] == "uvicorn" and "--workers" not in sys.argv:
+                # Inject --workers before the command execution
+                # Insert after the app argument (typically sys.argv[2])
+                cmd = sys.argv[1:3] + ["--workers", workers] + sys.argv[3:]
+                os.execvp(cmd[0], cmd)
         os.execvp(sys.argv[1], sys.argv[1:])
 
 

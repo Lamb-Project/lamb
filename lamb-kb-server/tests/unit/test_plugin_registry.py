@@ -22,7 +22,6 @@ Covers:
 from __future__ import annotations
 
 import pytest
-
 from plugins.base import (
     Chunk,
     ChunkingRegistry,
@@ -36,8 +35,8 @@ from plugins.base import (
     VectorDBRegistry,
     _class_parameters,
 )
-from tests._fakes import FakeEmbedding
 
+from tests._fakes import FakeEmbedding
 
 # ---------------------------------------------------------------------------
 # PluginParameter dataclass

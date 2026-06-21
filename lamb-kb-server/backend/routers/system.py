@@ -36,8 +36,10 @@ async def health() -> dict:
     db_ok = False
     try:
         db = get_session_direct()
-        db.execute(text("SELECT 1"))
-        db.close()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
         db_ok = True
     except Exception:
         logger.exception("Health check: database connectivity failed")

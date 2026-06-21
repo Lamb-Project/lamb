@@ -387,8 +387,8 @@ This document outlines a comprehensive refactoring plan for the LAMB frontend (`
 | `lib/components/LanguageSelector.svelte` | ✅ Analyzed | Clean |
 | **assistants/** | | |
 | `lib/components/assistants/AssistantForm.svelte` | ✅ Analyzed | Large, well-structured |
-| `lib/components/assistants/AssistantSharingModal.svelte` | ✅ Analyzed | Extensive inline styles |
-| `lib/components/assistants/AssistantSharing.svelte` | ✅ Analyzed | Need to verify usage |
+| `lib/components/assistants/AssistantSharingModal.svelte` | ✅ Analyzed | Not part of AssistantForm refactor; extensive inline styles |
+| `lib/components/assistants/AssistantSharing.svelte` | ✅ Analyzed | Not part of AssistantForm refactor; unused by routes; may overlap with modal |
 | **analytics/** | | |
 | `lib/components/analytics/ChatAnalytics.svelte` | ✅ Analyzed | Need to verify usage |
 | **common/** | | |

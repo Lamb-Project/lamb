@@ -11,7 +11,6 @@ chain.
 """
 
 import asyncio
-import io
 import time
 from typing import Any
 
@@ -22,7 +21,9 @@ from plugins.base import PluginRegistry
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
-async def _wait_for_done(client: AsyncClient, lib_id: str, item_id: str, timeout: float = 10.0) -> str:
+async def _wait_for_done(
+    client: AsyncClient, lib_id: str, item_id: str, timeout: float = 10.0
+) -> str:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         resp = await client.get(
@@ -68,7 +69,6 @@ async def test_url_import_forwards_plugin_params(client: AsyncClient, library: d
     custom_params = {
         "limit": 7,
         "max_discovery_depth": 3,
-        "crawl_entire_domain": False,
     }
     resp = await client.post(
         f"/libraries/{lib_id}/import/url",
@@ -98,7 +98,9 @@ async def test_url_import_forwards_plugin_params(client: AsyncClient, library: d
 
 
 @pytest.mark.asyncio
-async def test_youtube_import_language_via_plugin_params(client: AsyncClient, library: dict, monkeypatch):
+async def test_youtube_import_language_via_plugin_params(
+    client: AsyncClient, library: dict, monkeypatch
+):
     """``plugin_params['language']`` overrides the top-level ``language`` field.
 
     This is the schema-driven path the UI now uses; the top-level
@@ -142,7 +144,9 @@ async def test_youtube_import_language_via_plugin_params(client: AsyncClient, li
 
 
 @pytest.mark.asyncio
-async def test_youtube_import_top_level_language_fallback(client: AsyncClient, library: dict, monkeypatch):
+async def test_youtube_import_top_level_language_fallback(
+    client: AsyncClient, library: dict, monkeypatch
+):
     """When ``plugin_params`` omits ``language``, the top-level field fills the gap.
 
     Preserves backward compat for API clients that haven't migrated to

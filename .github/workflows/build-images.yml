@@ -18,6 +18,7 @@ on:
           - lamb
           - lamb-kb
           - openwebui
+          - lamb-library-manager
       manual_tag:
         description: "Tag to publish for manual runs (for example: dev or v0.5.0)"
         required: true
@@ -47,6 +48,9 @@ jobs:
           - image_name: openwebui
             dockerfile: open-webui/Dockerfile
             context: open-webui
+          - image_name: lamb-library-manager
+            dockerfile: library-manager/Dockerfile
+            context: library-manager
 
     steps:
       - name: Checkout

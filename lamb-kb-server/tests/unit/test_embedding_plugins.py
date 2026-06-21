@@ -20,7 +20,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -85,7 +84,10 @@ class TestOpenAIEmbedding:
             emb(["test"])
 
         fake_client.embeddings.create.assert_called_once()
-        assert fake_client.embeddings.create.call_args.kwargs.get("model") == "text-embedding-3-small"
+        assert (
+            fake_client.embeddings.create.call_args.kwargs.get("model")
+            == "text-embedding-3-small"
+        )
 
     def test_explicit_api_key_used(self):
         """Explicit ``api_key`` is forwarded to the ``OpenAI`` client constructor."""
@@ -290,7 +292,7 @@ class TestOllamaEmbedding:
         from plugins.embedding.ollama import OllamaEmbedding
 
         params = {p.name: p for p in OllamaEmbedding.class_parameters()}
-        assert params["api_endpoint"].default == "http://host.docker.internal:11435/api/embeddings"
+        assert params["api_endpoint"].default == "http://localhost:11434/api/embeddings"
 
     def test_default_model_applied_when_empty(self):
         """``model=""`` falls back to ``nomic-embed-text`` on the ``embed`` call."""
@@ -326,7 +328,7 @@ class TestOllamaEmbedding:
             emb(["test"])
 
         # The plugin strips /api/embeddings from the default endpoint.
-        assert ctor_kwargs.get("host") == "http://host.docker.internal:11435"
+        assert ctor_kwargs.get("host") == "http://localhost:11434"
 
     def test_custom_model_and_endpoint(self):
         """Custom ``model`` and ``api_endpoint`` are forwarded to the ollama client."""

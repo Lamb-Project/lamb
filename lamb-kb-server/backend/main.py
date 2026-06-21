@@ -13,12 +13,14 @@ The server runs on port 9092 (distinct from the legacy
 
 import logging
 import sys
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 import config
 from database.connection import init_db
 from fastapi import FastAPI
 from routers import collections, content, jobs, query, system
+from starlette.requests import Request
 from tasks.worker import recover_stale_jobs, start_worker, stop_worker
 
 # --- Logging ---
@@ -75,7 +77,7 @@ app = FastAPI(
 
 # --- Request logging ---
 @app.middleware("http")
-async def log_requests(request, call_next):
+async def log_requests(request: Request, call_next: Callable):
     """Log every request with method, path, status, and duration."""
     import time  # noqa: PLC0415
 

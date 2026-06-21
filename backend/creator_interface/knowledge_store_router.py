@@ -351,7 +351,10 @@ async def update_knowledge_store(
         )
     except HTTPException as e:
         if e.status_code == 404:
-            pass
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge Store not found on server — it may have been deleted out-of-band.",
+            ) from e
         else:
             raise
 

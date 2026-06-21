@@ -18,13 +18,14 @@ from httpx import AsyncClient
 
 from .conftest import AUTH_HEADERS
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-async def _create_folder(client: AsyncClient, lib_id: str, name: str, parent_id: str | None = None) -> dict:
+async def _create_folder(
+    client: AsyncClient, lib_id: str, name: str, parent_id: str | None = None
+) -> dict:
     resp = await client.post(
         f"/libraries/{lib_id}/folders",
         headers=AUTH_HEADERS,

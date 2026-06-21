@@ -1,0 +1,29 @@
+# GPU override for docker-compose.next.yaml
+# Usage (DGX / CUDA hosts only):
+#   docker compose -f docker-compose.next.yaml -f docker-compose.next.gpu.yaml up -d --build
+#
+# On Mac / non-CUDA hosts, omit this file:
+#   docker compose -f docker-compose.next.yaml up -d --build
+
+services:
+  openwebui:
+    build:
+      args:
+        USE_CUDA: "true"
+        USE_CUDA_VER: ${OWI_CUDA_VER:-cu124}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

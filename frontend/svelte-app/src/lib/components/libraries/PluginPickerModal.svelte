@@ -75,8 +75,13 @@
 					<p class="type-caption mt-0.5 truncate" title={filename}>{filename}</p>
 				{/if}
 			</div>
-			<div class="-mr-2 -mt-2 shrink-0">
-				<Button variant="ghost" size="sm" onclick={closeFn} ariaLabel={$_('common.close', { default: 'Close' })}>
+			<div class="-mt-2 -mr-2 shrink-0">
+				<Button
+					variant="ghost"
+					size="sm"
+					onclick={closeFn}
+					ariaLabel={$_('common.close', { default: 'Close' })}
+				>
 					{$_('common.close', { default: 'Close' })}
 				</Button>
 			</div>

@@ -49,6 +49,27 @@ def _unwrap(response: Any) -> Any:
     return response
 
 
+async def _resolve_kb_ids(ctx: "CommandContext", collections: str) -> str:
+    """Resolve KB names to numeric IDs. Numeric IDs pass through unchanged."""
+    if not collections or not collections.strip():
+        return collections
+
+    items = [item.strip() for item in collections.split(",")]
+    if all(item.isdigit() for item in items):
+        return collections
+
+    # Fetch KB list and build name→id map, falling back to pass-through on error
+    try:
+        kbs = _unwrap(await ctx.http.get("/creator/knowledgebases/user"))
+        kbs = kbs if isinstance(kbs, list) else kbs.get("knowledge_bases", [])
+    except Exception:
+        return collections
+
+    kb_map = {kb["name"].lower(): str(kb["id"]) for kb in kbs if kb.get("id") is not None and kb.get("name")}
+    resolved = [kb_map.get(item.lower(), item) for item in items]
+    return ",".join(resolved)
+
+
 # ---------------------------------------------------------------------------
 # Assistant commands (async HTTP → /creator/assistant/*)
 # ---------------------------------------------------------------------------
@@ -148,7 +169,7 @@ async def assistant_create(ctx: "CommandContext", args: list[str], kwargs: dict)
     if kwargs.get("rag_top_k"):
         body["RAG_Top_k"] = int(kwargs["rag_top_k"])
     if kwargs.get("rag_collections"):
-        body["RAG_collections"] = kwargs["rag_collections"]
+        body["RAG_collections"] = await _resolve_kb_ids(ctx, kwargs["rag_collections"])
     if metadata:
         body["metadata"] = json.dumps(metadata)
 
@@ -189,7 +210,7 @@ async def assistant_update(ctx: "CommandContext", args: list[str], kwargs: dict)
     if "rag_top_k" in kwargs:
         body["RAG_Top_k"] = int(kwargs["rag_top_k"])
     if "rag_collections" in kwargs:
-        body["RAG_collections"] = kwargs["rag_collections"]
+        body["RAG_collections"] = await _resolve_kb_ids(ctx, kwargs["rag_collections"])
 
     # Merge metadata: start from current, overlay changes
     existing_meta = {}

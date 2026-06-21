@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Iterable
+from collections.abc import Iterable
 
 from database.models import ContentFolder, ContentItem, Library
 from sqlalchemy.orm import Session
@@ -62,10 +62,30 @@ class FolderValidationError(FolderError):
 
 
 def get_folder(db: Session, folder_id: str) -> ContentFolder | None:
+    """Return the folder with the given ID, or ``None`` if not found.
+
+    Args:
+        db: Database session.
+        folder_id: The folder UUID to look up.
+
+    Returns:
+        The matching :class:`ContentFolder`, or ``None`` if no folder
+        exists with that ID.
+    """
     return db.query(ContentFolder).filter(ContentFolder.id == folder_id).first()
 
 
 def list_folders(db: Session, library_id: str) -> list[ContentFolder]:
+    """Return all folders in a library, ordered by name.
+
+    Args:
+        db: Database session.
+        library_id: The library UUID whose folders to list.
+
+    Returns:
+        A list of :class:`ContentFolder` objects sorted alphabetically
+        by name.
+    """
     return (
         db.query(ContentFolder)
         .filter(ContentFolder.library_id == library_id)
@@ -75,6 +95,16 @@ def list_folders(db: Session, library_id: str) -> list[ContentFolder]:
 
 
 def list_items_for_tree(db: Session, library_id: str) -> list[ContentItem]:
+    """Return all items in a library for tree rendering, newest first.
+
+    Args:
+        db: Database session.
+        library_id: The library UUID whose items to list.
+
+    Returns:
+        A list of :class:`ContentItem` objects ordered by
+        ``created_at`` descending.
+    """
     return (
         db.query(ContentItem)
         .filter(ContentItem.library_id == library_id)
@@ -130,6 +160,20 @@ def create_folder(
 
 
 def rename_folder(db: Session, folder_id: str, new_name: str) -> ContentFolder:
+    """Rename a folder, enforcing unique sibling names.
+
+    Args:
+        db: Database session.
+        folder_id: The UUID of the folder to rename.
+        new_name: The new name for the folder.
+
+    Returns:
+        The updated :class:`ContentFolder` with the new name applied.
+
+    Raises:
+        FolderNotFoundError: If no folder exists with ``folder_id``.
+        FolderConflictError: If a sibling folder already has ``new_name``.
+    """
     folder = get_folder(db, folder_id)
     if folder is None:
         raise FolderNotFoundError("Folder not found.")

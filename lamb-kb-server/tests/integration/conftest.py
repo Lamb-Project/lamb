@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
+import main
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-import main
 from tests._helpers import AUTH_HEADERS
 
 

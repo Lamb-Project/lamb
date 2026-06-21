@@ -13,6 +13,8 @@
  */
 
 import { browser } from '$app/environment';
+import { _ } from 'svelte-i18n';
+import { get } from 'svelte/store';
 // Use plain Map/Date — these structures must NOT be tracked as reactive
 // dependencies, otherwise the wizard's auto-save $effect causes an
 // effect_update_depth_exceeded loop (saveDraft mutates timers, which
@@ -120,10 +122,13 @@ export function hasDraft(userId, kind) {
 export function formatDraftAge(isoString) {
 	try {
 		const diff = Date.now() - new Date(isoString).getTime();
-		if (diff < 60_000) return 'just now';
-		if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} minute(s) ago`;
-		if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hour(s) ago`;
-		return `${Math.floor(diff / 86_400_000)} day(s) ago`;
+		const t = get(_);
+		if (diff < 60_000) return t('wizard.draftAge.justNow');
+		if (diff < 3_600_000)
+			return t('wizard.draftAge.minutesAgo', { values: { count: Math.floor(diff / 60_000) } });
+		if (diff < 86_400_000)
+			return t('wizard.draftAge.hoursAgo', { values: { count: Math.floor(diff / 3_600_000) } });
+		return t('wizard.draftAge.daysAgo', { values: { count: Math.floor(diff / 86_400_000) } });
 	} catch {
 		return '';
 	}

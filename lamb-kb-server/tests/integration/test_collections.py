@@ -600,9 +600,11 @@ async def test_create_collection_backend_exception_cleans_up_storage(
     payload = _create_payload(org_id, name=f"fail-{uuid4().hex[:6]}")
 
     # The RuntimeError propagates through ASGI transport — capture it.
-    with patch.object(VectorDBRegistry, "get", side_effect=_fail_get):
-        with pytest.raises(RuntimeError, match="simulated backend failure"):
-            await client.post("/collections", json=payload, headers=AUTH_HEADERS)
+    with (
+        patch.object(VectorDBRegistry, "get", side_effect=_fail_get),
+        pytest.raises(RuntimeError, match="simulated backend failure"),
+    ):
+        await client.post("/collections", json=payload, headers=AUTH_HEADERS)
 
     # Storage dir must have been cleaned up by the except block (lines 143-145).
     org_storage = STORAGE_DIR / org_id
@@ -671,9 +673,8 @@ async def test_create_collection_http_exception_in_try_cleans_up_storage(
     The HTTPException path re-raises after cleanup, so the response is a 4xx/5xx
     HTTP response (FastAPI catches HTTPException and converts it to a response).
     """
-    from fastapi import HTTPException as FastAPIHTTPException  # noqa: PLC0415
-
     from config import STORAGE_DIR  # noqa: PLC0415
+    from fastapi import HTTPException as FastAPIHTTPException  # noqa: PLC0415
     from plugins.base import VectorDBRegistry  # noqa: PLC0415
 
     original_get = VectorDBRegistry.get

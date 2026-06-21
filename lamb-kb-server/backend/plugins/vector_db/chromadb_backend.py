@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from typing import Any
 from uuid import uuid4
@@ -185,8 +186,6 @@ class ChromaDBBackend(VectorDBBackend):
             embedding_function=_to_chroma_ef(embedding_function),  # type: ignore[arg-type]
         )
 
-        import re as _re
-
         stored = 0
         for batch_start in range(0, len(chunks), _BATCH_SIZE):
             batch = chunks[batch_start : batch_start + _BATCH_SIZE]
@@ -197,7 +196,7 @@ class ChromaDBBackend(VectorDBBackend):
                     metadatas=[c.metadata for c in batch],
                 )
             except RuntimeError as exc:
-                msg = _re.sub(r"\s+in \w+\.$", "", str(exc))
+                msg = re.sub(r"\s+in \w+\.$", "", str(exc))
                 raise RuntimeError(msg) from exc
             stored += len(batch)
 

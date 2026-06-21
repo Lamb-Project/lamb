@@ -22,6 +22,8 @@ from tasks.worker import store_api_keys
 from services import content_service
 from services.library_service import ensure_organization
 
+logger = logging.getLogger(__name__)
+
 
 def _validate_folder_id(db: Session, library_id: str, folder_id: str | None) -> None:
     """Ensure ``folder_id`` exists and belongs to ``library_id``."""
@@ -33,7 +35,94 @@ def _validate_folder_id(db: Session, library_id: str, folder_id: str | None) -> 
     if folder.library_id != library_id:
         raise ValueError("Destination folder belongs to a different library.")
 
-logger = logging.getLogger(__name__)
+
+def _queue_import(
+    db: Session,
+    *,
+    library_id: str,
+    organization_id: str,
+    title: str,
+    plugin_name: str,
+    source_type: str,
+    folder_id: str | None = None,
+    source_path: str | None = None,
+    source_url: str | None = None,
+    original_filename: str | None = None,
+    content_type: str | None = None,
+    file_size: int | None = None,
+    plugin_params: dict[str, Any] | None = None,
+    api_keys: dict[str, str] | None = None,
+    log_extra: str = "",
+) -> tuple[str, str]:
+    """Create a content item and import job, then enqueue for processing.
+
+    Args:
+        db: Database session.
+        library_id: Library UUID.
+        organization_id: Organization UUID.
+        title: Display title.
+        plugin_name: Import plugin to use.
+        source_type: One of 'file', 'url', 'youtube'.
+        folder_id: Optional folder UUID.
+        source_path: File path on disk (file imports only).
+        source_url: Source URL (url/youtube imports only).
+        original_filename: Original upload filename.
+        content_type: MIME type.
+        file_size: File size in bytes.
+        plugin_params: Plugin-specific parameters.
+        api_keys: Per-request API keys.
+        log_extra: Extra text for the log message.
+
+    Returns:
+        Tuple of (item_id, job_id).
+    """
+    _validate_folder_id(db, library_id, folder_id)
+
+    item_id = str(uuid.uuid4())
+    job_id = str(uuid.uuid4())
+
+    ensure_organization(db, organization_id)
+
+    permalink_base = f"{PERMALINK_PREFIX}/{organization_id}/{library_id}/{item_id}"
+
+    item = ContentItem(
+        id=item_id,
+        library_id=library_id,
+        organization_id=organization_id,
+        folder_id=folder_id,
+        title=title,
+        source_type=source_type,
+        original_filename=original_filename,
+        content_type=content_type,
+        file_size=file_size,
+        source_url=source_url,
+        base_path=str(CONTENT_DIR / organization_id / library_id / item_id),
+        permalink_base=permalink_base,
+        import_plugin=plugin_name,
+        import_params=json.dumps(plugin_params) if plugin_params else None,
+        status="pending",
+    )
+    db.add(item)
+
+    job = ImportJob(
+        id=job_id,
+        content_item_id=item_id,
+        library_id=library_id,
+        organization_id=organization_id,
+        source_type=source_type,
+        plugin_name=plugin_name,
+        plugin_params=json.dumps(plugin_params) if plugin_params else None,
+        source_path=source_path,
+        source_url=source_url,
+        title=title,
+        status="pending",
+    )
+    db.add(job)
+    db.commit()
+    store_api_keys(job_id, api_keys)
+
+    logger.info("Queued %s import: item=%s, job=%s %s", source_type, item_id, job_id, log_extra)
+    return item_id, job_id
 
 
 def queue_file_import(
@@ -68,54 +157,22 @@ def queue_file_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
-    _validate_folder_id(db, library_id, folder_id)
-
-    item_id = str(uuid.uuid4())
-    job_id = str(uuid.uuid4())
-
-    ensure_organization(db, organization_id)
-
-    permalink_base = f"{PERMALINK_PREFIX}/{organization_id}/{library_id}/{item_id}"
-
-    item = ContentItem(
-        id=item_id,
+    return _queue_import(
+        db,
         library_id=library_id,
         organization_id=organization_id,
-        folder_id=folder_id,
         title=title,
+        plugin_name=plugin_name,
         source_type="file",
+        folder_id=folder_id,
+        source_path=file_path,
         original_filename=original_filename,
         content_type=content_type,
         file_size=file_size,
-        base_path=str(CONTENT_DIR / organization_id / library_id / item_id),
-        permalink_base=permalink_base,
-        import_plugin=plugin_name,
-        import_params=json.dumps(plugin_params) if plugin_params else None,
-        status="pending",
+        plugin_params=plugin_params,
+        api_keys=api_keys,
+        log_extra=f"plugin={plugin_name}",
     )
-    db.add(item)
-
-    job = ImportJob(
-        id=job_id,
-        content_item_id=item_id,
-        library_id=library_id,
-        organization_id=organization_id,
-        source_type="file",
-        plugin_name=plugin_name,
-        plugin_params=json.dumps(plugin_params) if plugin_params else None,
-        source_path=file_path,
-        title=title,
-        status="pending",
-    )
-    db.add(job)
-    db.commit()
-    store_api_keys(job_id, api_keys)
-
-    logger.info(
-        "Queued file import: item=%s, job=%s, plugin=%s",
-        item_id, job_id, plugin_name,
-    )
-    return item_id, job_id
 
 
 def queue_url_import(
@@ -144,49 +201,19 @@ def queue_url_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
-    _validate_folder_id(db, library_id, folder_id)
-
-    item_id = str(uuid.uuid4())
-    job_id = str(uuid.uuid4())
-
-    ensure_organization(db, organization_id)
-
-    permalink_base = f"{PERMALINK_PREFIX}/{organization_id}/{library_id}/{item_id}"
-
-    item = ContentItem(
-        id=item_id,
+    return _queue_import(
+        db,
         library_id=library_id,
         organization_id=organization_id,
-        folder_id=folder_id,
         title=title,
-        source_type="url",
-        source_url=url,
-        base_path=str(CONTENT_DIR / organization_id / library_id / item_id),
-        permalink_base=permalink_base,
-        import_plugin=plugin_name,
-        import_params=json.dumps(plugin_params) if plugin_params else None,
-        status="pending",
-    )
-    db.add(item)
-
-    job = ImportJob(
-        id=job_id,
-        content_item_id=item_id,
-        library_id=library_id,
-        organization_id=organization_id,
-        source_type="url",
         plugin_name=plugin_name,
-        plugin_params=json.dumps(plugin_params) if plugin_params else None,
+        source_type="url",
+        folder_id=folder_id,
         source_url=url,
-        title=title,
-        status="pending",
+        plugin_params=plugin_params,
+        api_keys=api_keys,
+        log_extra=f"url={url}",
     )
-    db.add(job)
-    db.commit()
-    store_api_keys(job_id, api_keys)
-
-    logger.info("Queued URL import: item=%s, job=%s, url=%s", item_id, job_id, url)
-    return item_id, job_id
 
 
 def queue_youtube_import(
@@ -215,49 +242,18 @@ def queue_youtube_import(
     Returns:
         Tuple of (content_item_id, job_id).
     """
-    _validate_folder_id(db, library_id, folder_id)
-
-    item_id = str(uuid.uuid4())
-    job_id = str(uuid.uuid4())
-
-    ensure_organization(db, organization_id)
-
-    permalink_base = f"{PERMALINK_PREFIX}/{organization_id}/{library_id}/{item_id}"
-
-    item = ContentItem(
-        id=item_id,
+    return _queue_import(
+        db,
         library_id=library_id,
         organization_id=organization_id,
-        folder_id=folder_id,
         title=title,
-        source_type="youtube",
-        source_url=video_url,
-        base_path=str(CONTENT_DIR / organization_id / library_id / item_id),
-        permalink_base=permalink_base,
-        import_plugin=plugin_name,
-        import_params=json.dumps(plugin_params) if plugin_params else None,
-        status="pending",
-    )
-    db.add(item)
-
-    job = ImportJob(
-        id=job_id,
-        content_item_id=item_id,
-        library_id=library_id,
-        organization_id=organization_id,
-        source_type="youtube",
         plugin_name=plugin_name,
-        plugin_params=json.dumps(plugin_params) if plugin_params else None,
+        source_type="youtube",
+        folder_id=folder_id,
         source_url=video_url,
-        title=title,
-        status="pending",
+        plugin_params=plugin_params,
+        api_keys=api_keys,
     )
-    db.add(job)
-    db.commit()
-    store_api_keys(job_id, api_keys)
-
-    logger.info("Queued YouTube import: item=%s, job=%s", item_id, job_id)
-    return item_id, job_id
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +350,8 @@ def execute_import_job(
     item.image_count = len(result.images)
     item.metadata_ = json.dumps(metadata_on_disk) if metadata_on_disk else None
     item.source_ref = json.dumps(result.source_ref)
-    item.processing_stats = json.dumps(result.metadata.get("processing_stats"))
+    stats = result.metadata.get("processing_stats")
+    item.processing_stats = json.dumps(stats) if stats else None
     item.updated_at = datetime.now(UTC)
 
     if result.metadata.get("file_size"):

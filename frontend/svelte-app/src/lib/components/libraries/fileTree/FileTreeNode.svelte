@@ -26,8 +26,15 @@
 		creatingFolderUnder = /** @type {string|null|undefined} */ (undefined),
 		newFolderName = $bindable(''),
 		ontoggle = (/** @type {string} */ _k) => {},
-		onselect = (/** @type {string} */ _k, /** @type {{ ctrl: boolean, shift: boolean }} */ _m) => {},
-		oncontextmenu = (/** @type {string} */ _k, /** @type {number} */ _x, /** @type {number} */ _y) => {},
+		onselect = (
+			/** @type {string} */ _k,
+			/** @type {{ ctrl: boolean, shift: boolean }} */ _m
+		) => {},
+		oncontextmenu = (
+			/** @type {string} */ _k,
+			/** @type {number} */ _x,
+			/** @type {number} */ _y
+		) => {},
 		ondragstart = (/** @type {string} */ _k, /** @type {DragEvent} */ _e) => {},
 		ondragover = (/** @type {string} */ _k, /** @type {DragEvent} */ _e) => {},
 		ondragleave = (/** @type {string} */ _k) => {},
@@ -59,9 +66,7 @@
 	let sourceKind = $derived(
 		!isFolder && node.raw ? String(node.raw.source_type || 'file').toLowerCase() : ''
 	);
-	let hasFailedImport = $derived(
-		!isFolder && node.raw && node.raw.status === 'failed'
-	);
+	let hasFailedImport = $derived(!isFolder && node.raw && node.raw.status === 'failed');
 
 	function handleClick(/** @type {MouseEvent} */ e) {
 		e.stopPropagation();
@@ -116,8 +121,8 @@
 		draggable={!isReadOnly && !isRenaming}
 		class="group relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-all
 			{isSelected
-				? 'bg-brand-subtle text-brand ring-brand/30 shadow-card ring-1'
-				: 'text-text hover:bg-surface-sunken'}
+			? 'bg-brand-subtle text-brand ring-brand/30 shadow-card ring-1'
+			: 'text-text hover:bg-surface-sunken'}
 			{isFocused ? 'outline-brand outline outline-2' : ''}
 			{isDragOver ? 'bg-brand-subtle ring-brand ring-2' : ''}
 			{isInvalidDrop ? 'opacity-40' : ''}"
@@ -147,7 +152,7 @@
 			>
 				<ChevronRight
 					size={12}
-					class="motion-safe:duration-150 transition-transform {isExpanded ? 'rotate-90' : ''}"
+					class="transition-transform motion-safe:duration-150 {isExpanded ? 'rotate-90' : ''}"
 					aria-hidden="true"
 				/>
 			</button>

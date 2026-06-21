@@ -8,10 +8,28 @@
  * We capture via a listener on that element. This test guards against the bug
  * where clicking the toggle button did nothing visible.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, fireEvent } from '@testing-library/svelte';
+import { addMessages, init, locale, waitLocale } from 'svelte-i18n';
 import FilterBar from './FilterBar.svelte';
+
+beforeAll(async () => {
+	addMessages('en', {
+		list: {
+			filters: {
+				title: 'Filters',
+				clear: 'Clear filters',
+				clearSearch: 'Clear search',
+				sortBy: 'Sort by',
+				clearAll: 'Clear all'
+			}
+		}
+	});
+	init({ fallbackLocale: 'en', initialLocale: 'en' });
+	locale.set('en');
+	await waitLocale('en');
+});
 
 describe('FilterBar sort-order toggle (issue #8)', () => {
 	it('shows toggle button when sortBy is set', () => {

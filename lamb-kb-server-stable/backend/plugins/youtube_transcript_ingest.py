@@ -118,8 +118,12 @@ def _chunk_transcript(pieces: List[Dict[str, Any]], chunk_duration: float) -> Li
     return chunks
 
 
-def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Optional[str]) -> List[Dict[str, Any]]:
-    """Fetch raw transcript pieces using yt-dlp."""
+def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Optional[str]) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Fetch raw transcript pieces using yt-dlp.
+    
+    Returns:
+        tuple: (transcript_pieces, video_info) where video_info contains title, duration, etc.
+    """
     if not _YT_DLP_AVAILABLE:
         raise ImportError(
             'yt-dlp not installed. Install with "pip install yt-dlp".'
@@ -211,8 +215,16 @@ def _fetch_transcript(video_id: str, languages: Iterable[str], proxy_url: Option
                 raise ValueError("YouTube rate-limited this request (429).")
 
             response.raise_for_status()
+            
+            # Extract video metadata
+            video_info = {
+                'title': info.get('title', 'Unknown'),
+                'duration': info.get('duration'),
+                'uploader': info.get('uploader'),
+                'upload_date': info.get('upload_date')
+            }
 
-            return _parse_srt_content(response.text)
+            return _parse_srt_content(response.text), video_info
 
         except Exception as e:
             raise ValueError(f"Failed to extract subtitles: {e}")
@@ -461,7 +473,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                 urls), f"Fetching transcript for video {video_id}...")
 
             try:    
-                pieces = _fetch_transcript(video_id, [language], proxy_url)
+                pieces, video_info = _fetch_transcript(video_id, [language], proxy_url)
 
             except ValueError as e:
                 # Skip videos without transcripts or other extraction failures
@@ -500,6 +512,7 @@ class YouTubeTranscriptIngestPlugin(IngestPlugin):
                     "ingestion_plugin": self.name,
                     "source_url": youtube_url_with_timestamp,
                     "video_id": video_id,
+                    "video_title": video_info.get('title', 'Unknown'),
                     "language": language,
                     "chunk_index": idx,
                     "chunk_count": total,

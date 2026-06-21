@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import { _ } from '$lib/i18n';
 	import { hasActiveFilters, countActiveFilters } from '$lib/utils/listHelpers';
 
 	const dispatch = createEventDispatcher();
@@ -85,14 +86,14 @@
 	}
 </script>
 
-<div class="border-b border-gray-200 bg-white">
+<div class="border-border bg-surface border-b">
 	<!-- Mobile toggle button (if collapsible) -->
 	{#if collapsible}
 		<div class="flex items-center justify-between px-4 py-3 sm:hidden">
 			<button
 				type="button"
 				onclick={toggleExpanded}
-				class="hover:text-brand focus:ring-brand flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-offset-2 focus:outline-none"
+				class="hover:text-brand focus:ring-brand text-text flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium focus:ring-2 focus:ring-offset-2 focus:outline-none"
 			>
 				<svg
 					class="h-5 w-5 transition-transform {isExpanded ? 'rotate-180' : ''}"
@@ -107,7 +108,7 @@
 						d="M19 9l-7 7-7-7"
 					/>
 				</svg>
-				<span>Filters</span>
+				<span>{$_('list.filters.title')}</span>
 				{#if filterCount > 0}
 					<span
 						class="bg-brand inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs leading-none font-bold text-white"
@@ -123,7 +124,7 @@
 					onclick={handleClearFilters}
 					class="text-brand hover:text-brand-hover focus:ring-brand rounded-md px-2 py-1 text-sm hover:underline focus:ring-2 focus:ring-offset-2 focus:outline-none"
 				>
-					Clear
+					{$_('list.filters.clear')}
 				</button>
 			{/if}
 		</div>
@@ -138,7 +139,7 @@
 					<div class="relative">
 						<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
 							<svg
-								class="h-5 w-5 text-gray-400"
+								class="text-text-muted h-5 w-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -156,14 +157,14 @@
 							value={searchInput}
 							oninput={handleSearchInput}
 							placeholder={searchPlaceholder}
-							class="focus:border-brand focus:ring-brand block w-full rounded-md border-gray-300 py-2 pr-10 pl-10 shadow-sm sm:text-sm"
+							class="focus:border-brand focus:ring-brand border-border block w-full rounded-md py-2 pr-10 pl-10 shadow-sm sm:text-sm"
 						/>
 						{#if searchInput}
 							<button
 								type="button"
 								onclick={handleSearchClear}
-								class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-								aria-label="Clear search"
+								class="text-text-muted hover:text-text absolute inset-y-0 right-0 flex items-center pr-3 focus:outline-none"
+								aria-label={$_('list.filters.clearSearch')}
 							>
 								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path
@@ -185,7 +186,7 @@
 						<select
 							value={filterValues[filter.key] || ''}
 							onchange={(e) => handleFilterChange(filter.key, e)}
-							class="focus:border-brand focus:ring-brand min-w-[140px] rounded-md border-gray-300 px-3 py-2 text-sm shadow-sm"
+							class="focus:border-brand focus:ring-brand border-border min-w-[140px] rounded-md px-3 py-2 text-sm shadow-sm"
 							aria-label={filter.label}
 						>
 							<option value="">{filter.label}: All</option>
@@ -197,7 +198,9 @@
 
 					<!-- Sort controls -->
 					{#if showSort && sortOptions.length > 0}
-						<div class="flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 p-0.5">
+						<div
+							class="border-border bg-surface-muted flex items-center gap-1 rounded-md border p-0.5"
+						>
 							<!-- Sort by dropdown -->
 							<select
 								value={sortBy}
@@ -205,7 +208,7 @@
 								class="focus:border-brand focus:ring-brand border-0 bg-transparent px-2 py-1.5 pr-8 text-sm"
 								aria-label="Sort by"
 							>
-								<option value="">Sort by...</option>
+								<option value="">{$_('list.filters.sortBy')}</option>
 								{#each sortOptions as option}
 									<option value={option.value}>{option.label}</option>
 								{/each}
@@ -216,17 +219,27 @@
 								<button
 									type="button"
 									onclick={handleSortOrderToggle}
-									class="hover:text-brand focus:ring-brand rounded p-1.5 text-gray-600 hover:bg-white focus:ring-2 focus:ring-offset-2 focus:outline-none"
+									class="hover:text-brand focus:ring-brand text-text hover:bg-surface rounded p-1.5 focus:ring-2 focus:ring-offset-2 focus:outline-none"
 									aria-label="Toggle sort order: {sortOrder === 'asc' ? 'ascending' : 'descending'}"
 									title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
 								>
 									{#if sortOrder === 'asc'}
 										<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+											/>
 										</svg>
 									{:else}
 										<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
+											/>
 										</svg>
 									{/if}
 								</button>
@@ -242,11 +255,16 @@
 					<button
 						type="button"
 						onclick={handleClearFilters}
-						class="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 py-0.5 pr-2 pl-2.5 text-xs font-medium text-red-700 hover:bg-red-100"
+						class="border-danger bg-danger-subtle text-danger hover:bg-danger-subtle/80 inline-flex items-center gap-1 rounded-full border py-0.5 pr-2 pl-2.5 text-xs font-medium"
 					>
-						Clear filters
+						{$_('list.filters.clearAll')}
 						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M6 18L18 6M6 6l12 12"
+							/>
 						</svg>
 					</button>
 				</div>

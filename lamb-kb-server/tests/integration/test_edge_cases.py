@@ -6,9 +6,8 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import AUTH_HEADERS
 from tests._helpers import _poll_job
-
+from tests.conftest import AUTH_HEADERS
 
 # ---------------------------------------------------------------------------
 # Original 5 tests (unchanged)
@@ -226,7 +225,10 @@ async def test_permalink_with_special_url_characters(
                 {
                     "source_item_id": "permalink-special-1",
                     "title": "Special Permalink Test",
-                    "text": "This document has a special permalink URL that must be preserved verbatim.",
+                    "text": (
+                        "This document has a special permalink URL that must be "
+                        "preserved verbatim."
+                    ),
                     "permalinks": {"original": special_permalink},
                 }
             ]
@@ -442,9 +444,10 @@ async def test_collection_name_with_weird_characters(
 
 @pytest.mark.asyncio
 async def test_org_id_with_weird_characters(client: AsyncClient) -> None:
-    """org_id with slashes, unicode, and special chars is accepted.
+    """org_id with slashes, unicode, and special chars is rejected.
 
-    The org_id is stored as a plain string in SQLite with no validation.
+    The org_id validation now rejects characters that could enable path
+    traversal or other security issues, returning 422.
     """
     weird_org = "org/weird 🌍 ñ chars&test"
     r = await client.post(
@@ -459,12 +462,7 @@ async def test_org_id_with_weird_characters(client: AsyncClient) -> None:
         },
         headers=AUTH_HEADERS,
     )
-    assert r.status_code == 201
-    assert r.json()["organization_id"] == weird_org
-
-    # Cleanup
-    coll_id = r.json()["id"]
-    await client.delete(f"/collections/{coll_id}", headers=AUTH_HEADERS)
+    assert r.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -532,7 +530,10 @@ async def test_title_with_newlines_and_tabs(
                 {
                     "source_item_id": "weird-title-1",
                     "title": weird_title,
-                    "text": "Testing metadata propagation for titles with whitespace control chars.",
+                    "text": (
+                        "Testing metadata propagation for titles with whitespace "
+                        "control chars."
+                    ),
                 }
             ]
         },
@@ -636,6 +637,9 @@ async def test_stale_job_at_max_attempts_marked_failed() -> None:
             f"(at max={_MAX_ATTEMPTS}), got '{got.status}'"
         )
         assert got.error_message is not None
-        assert "max attempts" in got.error_message.lower() or "exceeded" in got.error_message.lower()
+        assert (
+            "max attempts" in got.error_message.lower()
+            or "exceeded" in got.error_message.lower()
+        )
     finally:
         db.close()

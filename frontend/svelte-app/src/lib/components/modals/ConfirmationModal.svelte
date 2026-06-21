@@ -1,12 +1,12 @@
 <script>
 	import { _, locale } from '$lib/i18n';
-	import { AlertCircle, AlertTriangle, Info } from 'lucide-svelte';
+	import { AlertCircle, AlertTriangle, Info } from '$lib/components/ui/icons.js';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Banner from '$lib/components/ui/Banner.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
-	import { X } from 'lucide-svelte';
+	import { X } from '$lib/components/ui/icons.js';
 
 	/**
 	 * ConfirmationModal — design-system implementation.

@@ -91,7 +91,7 @@ class AACSessionManager:
             cursor = conn.cursor()
             cursor.execute(
                 f"""SELECT id, assistant_id, status, title, created_at, updated_at, conversation
-                   FROM {self._table} WHERE user_email = ?
+                   FROM {self._table} WHERE user_email = ? AND (status IS NULL OR status != 'archived')
                    ORDER BY updated_at DESC""",
                 (user_email,),
             )

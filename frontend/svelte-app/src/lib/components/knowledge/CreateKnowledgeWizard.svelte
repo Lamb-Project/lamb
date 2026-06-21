@@ -121,10 +121,10 @@
 	let wizardState = $state(structuredClone(defaultWizardState));
 
 	if (!wizardState.libraryName) {
-		wizardState.libraryName = `My Library ${todayLabel()}`;
+		wizardState.libraryName = `${$_('knowledge.wizard.defaultLibraryName')} ${todayLabel()}`;
 	}
 	if (!wizardState.ksName) {
-		wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
+		wizardState.ksName = `${$_('knowledge.wizard.defaultKsName')} ${todayLabel()}`;
 	}
 
 	// ── Draft persistence ────────────────────────────────────────────────────
@@ -191,10 +191,10 @@
 		if (initialState && typeof initialState === 'object') {
 			wizardState = { ...structuredClone(defaultWizardState), ...initialState };
 			if (!wizardState.libraryName) {
-				wizardState.libraryName = `My Library ${todayLabel()}`;
+				wizardState.libraryName = `${$_('knowledge.wizard.defaultLibraryName')} ${todayLabel()}`;
 			}
 			if (!wizardState.ksName) {
-				wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
+				wizardState.ksName = `${$_('knowledge.wizard.defaultKsName')} ${todayLabel()}`;
 			}
 			currentStep = STEP_LIBRARY_SETUP;
 			wizardStateVersion += 1;
@@ -376,8 +376,8 @@
 
 	function handleCreateAnother() {
 		wizardState = structuredClone(defaultWizardState);
-		wizardState.libraryName = `My Library ${todayLabel()}`;
-		wizardState.ksName = `My Knowledge Store ${todayLabel()}`;
+		wizardState.libraryName = `${$_('knowledge.wizard.defaultLibraryName')} ${todayLabel()}`;
+		wizardState.ksName = `${$_('knowledge.wizard.defaultKsName')} ${todayLabel()}`;
 		currentStep = STEP_LIBRARY_SETUP;
 		canAdvance = true;
 		discardDraft();

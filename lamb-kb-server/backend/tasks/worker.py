@@ -15,14 +15,15 @@ Design:
 
 import asyncio
 import logging
-import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
-from config import INGESTION_TASK_TIMEOUT_SECONDS, MAX_CONCURRENT_INGESTIONS
+from config import INGESTION_TASK_TIMEOUT_SECONDS, MAX_CONCURRENT_INGESTIONS, MAX_JOB_ATTEMPTS
 from database.connection import get_session_direct
 from database.models import Collection, IngestionJob
 from sqlalchemy.orm import Session
+
+_MAX_ATTEMPTS = MAX_JOB_ATTEMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,6 @@ _job_credentials: dict[str, dict[str, str]] = {}
 
 # How often (seconds) the worker checks for new pending jobs.
 _POLL_INTERVAL = 2.0
-
-# Maximum number of retry attempts before a stale job is marked failed.
-_MAX_ATTEMPTS = int(os.getenv("KB_MAX_JOB_ATTEMPTS", "3"))
 
 
 def store_credentials(job_id: str, credentials: dict[str, str] | None) -> None:
@@ -300,9 +298,9 @@ def recover_stale_jobs() -> None:
             .all()
         )
         for job in stale:
-            if job.attempts >= _MAX_ATTEMPTS:
+            if job.attempts >= MAX_JOB_ATTEMPTS:
                 error_msg = (
-                    f"Exceeded max attempts ({_MAX_ATTEMPTS}) — "
+                    f"Exceeded max attempts ({MAX_JOB_ATTEMPTS}) — "
                     "last seen processing when service restarted."
                 )
                 job.status = "failed"

@@ -44,6 +44,8 @@ def init_db() -> None:
         RuntimeError: If another instance holds the lock.
     """
     global _engine, _SessionLocal, _lock_file
+    if _SessionLocal is not None:
+        return
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -51,6 +53,8 @@ def init_db() -> None:
 
     lock_path = DB_PATH.parent / ".lock"
     _lock_file = open(lock_path, "w")  # noqa: SIM115
+    import atexit  # noqa: PLC0415
+    atexit.register(_lock_file.close)
     try:
         fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:

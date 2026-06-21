@@ -194,7 +194,7 @@ A continuación se listan las funcionalidades identificadas en el código fuente
 | **Cambio de contraseña de usuario (org-admin)** | `ChangePasswordModal.svelte`, `organization_router.py::change_user_password` |
 | **Bulk enable/disable de usuarios** | `org-admin/+page.svelte`, `organization_router.py::org_admin_bulk_enable_users/disable` |
 | **Vista "Assistants Access" del org-admin** | `org-admin/+page.svelte` |
-| **Gestión de sharing de assistants (org-admin)** | `AssistantSharingModal.svelte`, `org-admin/+page.svelte` |
+| **Gestión de sharing de assistants (org-admin)** | `src/lib/components/assistants/AssistantSharingModal.svelte`, `org-admin/+page.svelte` |
 | **Permiso "Can Share" por usuario** | `org-admin/+page.svelte` |
 | **Settings > General (Signup settings)** | `org-admin/+page.svelte` |
 | **Settings > API (modelado, claves, modelo por defecto)** | `org-admin/+page.svelte` |

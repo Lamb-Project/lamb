@@ -31,7 +31,7 @@
 	import PluginParamFields from '$lib/components/plugins/PluginParamFields.svelte';
 	import { _ } from '$lib/i18n';
 	import { FormField, Collapsible, Banner, Button, Checkbox, Tooltip } from '$lib/components/ui';
-	import { Lock } from 'lucide-svelte';
+	import { Lock } from '$lib/components/ui/icons.js';
 
 	/** @param {unknown} err @param {string} fallback @returns {string} */
 	function readableError(err, fallback) {

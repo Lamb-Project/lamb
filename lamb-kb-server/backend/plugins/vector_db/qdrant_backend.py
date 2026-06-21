@@ -129,7 +129,7 @@ class QdrantBackend(VectorDBBackend):
         try:
             client.delete_collection(collection_name=collection_id)
             logger.info("Qdrant collection deleted: %s", collection_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Qdrant delete_collection '%s' failed (may already be absent): %s",
                 collection_id,

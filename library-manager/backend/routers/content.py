@@ -163,7 +163,11 @@ async def delete_item(
 async def get_full_content(
     lib_id: str,
     item_id: str,
-    format: str = Query("markdown", description="Output format: markdown, text, html."),
+    fmt: str = Query(
+        "markdown",
+        alias="format",
+        description="Output format: markdown, text, html.",
+    ),
     db: Session = Depends(get_session),
 ) -> Response:
     """Get the full extracted markdown for a content item.
@@ -171,7 +175,7 @@ async def get_full_content(
     Args:
         lib_id: Library UUID.
         item_id: Content item UUID.
-        format: Response format (``markdown``, ``text``, or ``html``).
+        fmt: Response format (``markdown``, ``text``, or ``html``).
         db: Database session.
 
     Returns:
@@ -185,7 +189,7 @@ async def get_full_content(
     if text is None:
         raise HTTPException(status_code=404, detail="Content not found on disk.")
 
-    return _format_response(text, format)
+    return _format_response(text, fmt)
 
 
 @router.get("/{lib_id}/items/{item_id}/content/pages", response_model=PageListResponse)
@@ -217,7 +221,7 @@ async def get_page(
     lib_id: str,
     item_id: str,
     page: str,
-    format: str = Query("markdown"),
+    fmt: str = Query("markdown", alias="format"),
     db: Session = Depends(get_session),
 ) -> Response:
     """Get a specific page's markdown content.
@@ -226,7 +230,7 @@ async def get_page(
         lib_id: Library UUID.
         item_id: Content item UUID.
         page: Page filename (with or without ``.md`` extension).
-        format: Response format.
+        fmt: Response format.
         db: Database session.
 
     Returns:
@@ -240,7 +244,7 @@ async def get_page(
     if text is None:
         raise HTTPException(status_code=404, detail="Page not found.")
 
-    return _format_response(text, format)
+    return _format_response(text, fmt)
 
 
 @router.get("/{lib_id}/items/{item_id}/content/images", response_model=ImageListResponse)
@@ -438,9 +442,13 @@ async def import_library(
     Returns:
         Import result with library_id, name, and item count.
     """
+    import re  # noqa: PLC0415
     import tempfile  # noqa: PLC0415
 
     from config import MAX_ZIP_IMPORT_SIZE_BYTES  # noqa: PLC0415
+
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", organization_id):
+        raise HTTPException(status_code=400, detail="Invalid organization ID.")
 
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a .zip archive.")
