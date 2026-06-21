@@ -1,8 +1,6 @@
 """Pydantic schemas for add-content and delete-content operations."""
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- Sub-models ---
 
@@ -73,26 +71,6 @@ class DocumentInputPayload(BaseModel):
         description="Free-form metadata merged into every chunk produced from this document.",
     )
 
-    @field_validator("extra_metadata")
-    @classmethod
-    def _validate_extra_metadata(
-        cls, v: dict[str, Any]
-    ) -> dict[str, str | int | float | bool]:
-        # Defensive redundancy: the typed value-union on the field already
-        # rejects None / non-primitive values during type validation, so these
-        # guards are unreachable in practice (kept as an explicit contract).
-        for key, value in v.items():
-            if value is None:  # pragma: no cover - unreachable past field typing
-                raise ValueError(
-                    f"extra_metadata[{key!r}] is None; ChromaDB requires non-null primitive values."
-                )
-            if not isinstance(value, (str, int, float, bool)):  # pragma: no cover
-                raise ValueError(
-                    f"extra_metadata[{key!r}] has type {type(value).__name__}; "
-                    f"only str, int, float, bool are allowed."
-                )
-        return v
-
 
 class AddContentRequest(BaseModel):
     """Body for ``POST /collections/{collection_id}/add-content``."""
@@ -106,12 +84,6 @@ class AddContentRequest(BaseModel):
         default_factory=EmbeddingCredentials,
         description="Request-scoped credentials for the embedding vendor.",
     )
-
-    @model_validator(mode="after")
-    def check_documents_non_empty(self) -> "AddContentRequest":
-        if not self.documents:  # pragma: no cover - Field(min_length=1) rejects first
-            raise ValueError("documents list must not be empty.")
-        return self
 
 
 # --- Responses ---
