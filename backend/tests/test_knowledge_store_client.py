@@ -355,6 +355,12 @@ def test_get_chunking_strategies_4xx_reraised(client):
     assert exc.value.status_code == 400
 
 
+def test_get_chunking_strategies_5xx_wrapped(client):
+    client._request = AsyncMock(side_effect=HTTPException(502, "down"))
+    with pytest.raises(KnowledgeStoreUnavailable):
+        run(client.get_chunking_strategies())
+
+
 def test_get_embedding_vendors_5xx_wrapped(client):
     client._request = AsyncMock(side_effect=HTTPException(500, "boom"))
     with pytest.raises(KnowledgeStoreUnavailable):
