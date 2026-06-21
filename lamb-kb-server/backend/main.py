@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 # --- Startup checks ---
-if not config.LAMB_API_TOKEN:
+if not config.LAMB_API_TOKEN:  # pragma: no cover - import-time startup guard
     logger.critical("LAMB_API_TOKEN is not set. Refusing to start.")
     sys.exit(1)
 
@@ -102,7 +102,7 @@ app.include_router(jobs.router)
 # KG-RAG graph + benchmark routers are mounted only when the feature flag
 # is set. Keeping them off the OpenAPI surface by default means callers
 # see a clean 404 rather than a 503 on every endpoint.
-if config.KG_RAG_ENABLED:
+if config.KG_RAG_ENABLED:  # pragma: no cover - import-time, env-gated router wiring
     from routers import benchmarks as _bench_router  # noqa: PLC0415
     from routers import graph as _graph_router  # noqa: PLC0415
 

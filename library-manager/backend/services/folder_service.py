@@ -341,14 +341,13 @@ def _is_descendant(db: Session, ancestor_id: str, candidate_id: str) -> bool:
     cursor: str | None = candidate_id
     seen: set[str] = set()
     while cursor is not None:
-        if cursor in seen:
-            # Defensive: data corruption shouldn't loop us forever
+        if cursor in seen:  # pragma: no cover - defensive cycle guard (corrupt data)
             return False
         seen.add(cursor)
         if cursor == ancestor_id:
             return True
         parent = get_folder(db, cursor)
-        if parent is None:
+        if parent is None:  # pragma: no cover - defensive (orphaned parent ref)
             return False
         cursor = parent.parent_folder_id
     return False

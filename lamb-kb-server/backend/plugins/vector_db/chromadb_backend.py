@@ -13,6 +13,7 @@ of the child text so the LLM receives richer context.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from typing import Any
 from uuid import uuid4
@@ -129,6 +130,19 @@ class ChromaDBBackend(VectorDBBackend):
         collection is already gone (idempotent).  Then removes the storage
         directory entirely.
         """
+        # Idempotent fast path: if there's no cached client AND the storage
+        # directory is already gone, the collection has been fully deleted.
+        # Returning here avoids re-creating a PersistentClient against a path
+        # that was just ``rmtree``-d — ChromaDB's process-global system cache
+        # would otherwise hand back a stale system pointing at the deleted
+        # sqlite file, surfacing as a spurious "disk I/O error".
+        if storage_path not in _clients and not os.path.isdir(storage_path):
+            logger.debug(
+                "ChromaDB delete_collection: '%s' storage already absent, skipping",
+                collection_id,
+            )
+            return
+
         client = _get_client(storage_path)
         try:
             client.delete_collection(name=collection_id)
@@ -395,7 +409,7 @@ class ChromaDBBackend(VectorDBBackend):
             # back up by ID. ChromaDB always returns ``ids`` alongside
             # documents — we surface it as ``chunk_id`` for the plugin's
             # seed-extraction step.
-            if idx < len(ids) and ids[idx]:
+            if idx < len(ids) and ids[idx]:  # pragma: no branch - chromadb always aligns ids
                 meta_dict.setdefault("chunk_id", ids[idx])
             # For hierarchical retrieval: return parent context if available
             text = meta_dict.pop("parent_text", None) or doc

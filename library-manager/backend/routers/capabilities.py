@@ -220,6 +220,6 @@ async def get_item_capability_content(
 
     if payload.mime == "application/json":
         return JSONResponse(content=payload.body)
-    if isinstance(payload.body, bytes):
+    if isinstance(payload.body, bytes):  # pragma: no cover - no built-in handler emits bytes
         return Response(content=payload.body, media_type=payload.mime)
     return Response(content=str(payload.body), media_type=payload.mime)

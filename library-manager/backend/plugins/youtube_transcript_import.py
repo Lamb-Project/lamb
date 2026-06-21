@@ -311,7 +311,7 @@ def _download_and_parse(
         # file in the temp dir.
         try:
             files = os.listdir(tmp)
-        except OSError:
+        except OSError:  # pragma: no cover - defensive (just-written tmp dir)
             return []
         sub_files = [f for f in files if f.endswith((".srt", ".vtt"))]
         if not sub_files:
@@ -323,7 +323,7 @@ def _download_and_parse(
         try:
             with open(path, encoding="utf-8") as fh:
                 content = fh.read()
-        except OSError:
+        except OSError:  # pragma: no cover - defensive (just-written subtitle file)
             return []
 
         # _parse_srt_content already handles SRT and VTT alike (VTT is a

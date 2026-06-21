@@ -27,7 +27,7 @@ from uuid import uuid4
 
 try:
     from qdrant_client import QdrantClient, models
-except ImportError:
+except ImportError:  # pragma: no cover - optional-dependency import guard
     raise ImportError(
         "qdrant-client is not installed; "
         "the 'qdrant' vector DB plugin will not be available."

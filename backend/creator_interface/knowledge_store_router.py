@@ -609,16 +609,6 @@ async def add_content(
     }
 
 
-@router.get("/{ks_id}/content")
-async def list_content(
-    ks_id: str,
-    auth: AuthContext = Depends(get_auth_context),
-):
-    """List linked library items for a Knowledge Store."""
-    auth.require_knowledge_store_access(ks_id, level="any")
-    return {"content": _db.get_kb_content_links_for_ks(ks_id)}
-
-
 @router.get("/{ks_id}/content/{library_item_id}")
 async def get_content_link(
     ks_id: str,
