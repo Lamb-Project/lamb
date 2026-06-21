@@ -15,6 +15,7 @@
 <script>
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { getGraphSnapshot } from '$lib/services/graphService';
+	import { _ } from '$lib/i18n';
 
 	/** @type {{ ksId: string, open: boolean, onclose: () => void }} */
 	let { ksId, open, onclose } = $props();
@@ -278,7 +279,7 @@
 			applyReducers();
 		} catch (/** @type {*} */ err) {
 			console.error(err);
-			error = err?.response?.data?.detail || err?.message || 'Failed to load graph';
+			error = err?.response?.data?.detail || err?.message || $_('knowledgeStores.graph.errorLoad');
 		} finally {
 			loading = false;
 		}
@@ -433,34 +434,36 @@
 {#if open}
 	<div class="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-modal="true">
 		<header class="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2">
-			<h2 class="text-base font-semibold text-gray-900">Knowledge Graph</h2>
+			<h2 class="text-base font-semibold text-gray-900">{$_('knowledgeStores.graph.title')}</h2>
 			<div class="text-xs text-gray-500">
-				{stats.nodes} concepts · {stats.edges} relationships
+				{$_('knowledgeStores.graph.statsLine', {
+					values: { nodes: stats.nodes, edges: stats.edges },
+				})}
 			</div>
 			<div class="ml-auto flex items-center gap-2">
 				<input
 					id="sigma-search"
 					type="text"
 					bind:value={search}
-					placeholder="Find a concept (Enter to center)"
+					placeholder={$_('knowledgeStores.graph.findConcept')}
 					class="rounded border border-gray-300 px-2 py-1 text-sm"
 				/>
 				<button
 					type="button"
 					class="rounded bg-[#2271b3] px-3 py-1 text-sm text-white hover:bg-[#1a5a90]"
 					onclick={findAndCenter}
-				>Find</button>
+				>{$_('knowledgeStores.graph.find')}</button>
 				<button
 					type="button"
 					class="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-100"
 					onclick={onclose}
-				>Close</button>
+				>{$_('knowledgeStores.graph.close')}</button>
 			</div>
 		</header>
 
 		{#if loading}
 			<div class="flex flex-1 items-center justify-center text-sm text-gray-500">
-				Loading graph (this may take a moment for large knowledge stores)…
+				{$_('knowledgeStores.graph.fullGraphLoading')}
 			</div>
 		{:else if error}
 			<div class="flex flex-1 items-center justify-center text-sm text-red-600">
@@ -471,23 +474,23 @@
 		<div bind:this={container} class="relative flex-1 w-full" style="background: #f8fafc">
 			<!-- Legend (bottom-left, overlaid on canvas). -->
 			<div class="absolute bottom-4 left-4 rounded-md border border-gray-300 bg-white/95 p-3 text-xs shadow-md">
-				<div class="mb-1 font-semibold text-gray-700">Legend</div>
+				<div class="mb-1 font-semibold text-gray-700">{$_('knowledgeStores.graph.legend')}</div>
 				<div class="flex flex-col gap-1">
 					<div class="flex items-center gap-2">
 						<span class="inline-block h-3 w-3 rounded-full" style="background:#22c55e"></span>
-						Approved
+						{$_('knowledgeStores.graph.legendApproved')}
 					</div>
 					<div class="flex items-center gap-2">
 						<span class="inline-block h-3 w-3 rounded-full" style="background:#2271b3"></span>
-						Unverified
+						{$_('knowledgeStores.graph.legendUnverified')}
 					</div>
 					<div class="flex items-center gap-2">
 						<span class="inline-block h-3 w-3 rounded-full" style="background:#dc2626"></span>
-						Rejected
+						{$_('knowledgeStores.graph.legendRejected')}
 					</div>
 					<div class="mt-2 flex items-center gap-2">
 						<span class="inline-block h-[2px] w-6" style="background:#475569"></span>
-						RELATES_TO edge
+						{$_('knowledgeStores.graph.legendRelatesTo')}
 					</div>
 				</div>
 			</div>
@@ -497,18 +500,36 @@
 					<div class="font-semibold text-gray-900">
 						{(selectedNodeAttrs.label || selectedNodeAttrs.id || '').replace(/^[a-z]+:/i, '')}
 					</div>
-					<div class="text-xs text-gray-500">type: {selectedNodeAttrs.type}</div>
+					<div class="text-xs text-gray-500">
+						{$_('knowledgeStores.graph.nodeType', { values: { type: selectedNodeAttrs.type } })}
+					</div>
 					{#if selectedNodeAttrs.data?.entity_type}
-						<div class="text-xs text-gray-500">entity: {selectedNodeAttrs.data.entity_type}</div>
+						<div class="text-xs text-gray-500">
+							{$_('knowledgeStores.graph.nodeEntity', {
+								values: { entity: selectedNodeAttrs.data.entity_type },
+							})}
+						</div>
 					{/if}
 					{#if selectedNodeAttrs.data?.verification_state}
-						<div class="text-xs text-gray-500">verification: {selectedNodeAttrs.data.verification_state}</div>
+						<div class="text-xs text-gray-500">
+							{$_('knowledgeStores.graph.nodeVerification', {
+								values: { verification: selectedNodeAttrs.data.verification_state },
+							})}
+						</div>
 					{/if}
 					{#if selectedNodeAttrs.data?.filename}
-						<div class="text-xs text-gray-500 truncate">filename: {selectedNodeAttrs.data.filename}</div>
+						<div class="text-xs text-gray-500 truncate">
+							{$_('knowledgeStores.graph.nodeFilename', {
+								values: { filename: selectedNodeAttrs.data.filename },
+							})}
+						</div>
 					{/if}
 					{#if selectedNodeAttrs.data?.chunk_count}
-						<div class="text-xs text-gray-500">{selectedNodeAttrs.data.chunk_count} chunks</div>
+						<div class="text-xs text-gray-500">
+							{$_('knowledgeStores.graph.nodeChunks', {
+								values: { count: selectedNodeAttrs.data.chunk_count },
+							})}
+						</div>
 					{/if}
 				</div>
 			{/if}
