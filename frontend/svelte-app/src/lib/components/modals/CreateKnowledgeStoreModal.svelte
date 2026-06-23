@@ -409,8 +409,8 @@
 					<summary
 						class="cursor-pointer px-3 py-2 text-sm font-medium text-[#2271b3] select-none hover:underline"
 					>
-						{$_('knowledgeStores.createModal.advancedLabel', {
-							default: 'Advanced: chunking, embedding, vector DB'
+						{$_('knowledgeStores.createModal.vectorIndexingLabel', {
+							default: 'Vector indexing: chunking, embedding, vector DB'
 						})}
 					</summary>
 
@@ -611,6 +611,27 @@
 								</fieldset>
 							{/if}
 						{/if}
+					</div>
+				</details>
+
+				<!-- Scaffold for a future, non-vector indexing strategy. Disabled
+				     placeholder so the UI makes clear that "vector indexing" is one
+				     of several possible indexing strategies. When a new strategy is
+				     added (backend registry + /knowledge-stores/options), replace
+				     this with a real selector and its config panel. -->
+				<details class="rounded-md border border-gray-200 bg-gray-50 opacity-70">
+					<summary
+						class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-400 select-none hover:underline"
+					>
+						{$_('knowledgeStores.createModal.otherIndexingLabel', {
+							default: 'Other indexing strategy (coming soon)'
+						})}
+					</summary>
+					<div class="p-3 text-xs text-gray-500">
+						{$_('knowledgeStores.createModal.otherIndexingHint', {
+							default:
+								'Additional indexing strategies (beyond vector indexing) will be selectable here in a future version.'
+						})}
 					</div>
 				</details>
 

@@ -1430,7 +1430,9 @@
 				"nameTooLong": "El nom ha de tenir menys de 100 caràcters",
 				"shareLabel": "Compartir amb la meva organització",
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de l'Emmagatzematge de Coneixement.",
-				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embeddings, base de dades vectorial"
+				"vectorIndexingLabel": "Indexació vectorial: fragmentació, proveïdor/model d'embeddings, base de dades vectorial",
+				"otherIndexingLabel": "Una altra estratègia d'indexació (properament)",
+				"otherIndexingHint": "En una versió futura es podran seleccionar aquí altres estratègies d'indexació (més enllà de la vectorial)."
 			}
 		}
 	},
