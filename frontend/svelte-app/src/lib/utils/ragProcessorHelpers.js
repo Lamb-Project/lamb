@@ -19,6 +19,8 @@ export const RAG_TYPES = Object.freeze({
 	SINGLE_FILE: ['single_file_rag'],
 	/** RAG processor that uses rubrics */
 	RUBRIC: ['rubric_rag'],
+	/** RAG processor that uses iterative grep across KB documents */
+	GREP: ['grep_rag'],
 	/** No RAG processing */
 	NONE: ['no_rag']
 });
@@ -51,6 +53,15 @@ export function isRubricRag(processor) {
 }
 
 /**
+ * Returns true if the processor uses iterative grep across KB documents.
+ * @param {string} processor
+ * @returns {boolean}
+ */
+export function isGrepRag(processor) {
+	return RAG_TYPES.GREP.includes(processor);
+}
+
+/**
  * Returns true if no RAG processing is configured.
  * @param {string} processor
  * @returns {boolean}
@@ -66,6 +77,15 @@ export function isNoRag(processor) {
  */
 export function hasRagOptions(processor) {
 	return !!processor && !isNoRag(processor);
+}
+
+/**
+ * Returns true if the processor is grep-based and needs grep-specific UI.
+ * @param {string} processor
+ * @returns {boolean}
+ */
+export function isGrepBasedRag(processor) {
+	return isGrepRag(processor);
 }
 
 /**

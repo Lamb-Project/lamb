@@ -557,8 +557,8 @@
                                 <td class="px-6 py-2"></td> <!-- Empty cell to maintain table structure -->
                             </tr>
                             
-                            <!-- Conditional row for simple_rag details -->
-                            {#if callback.rag_processor === 'simple_rag'}
+                            <!-- Conditional row for simple_rag or grep_rag details -->
+                            {#if callback.rag_processor === 'simple_rag' || callback.rag_processor === 'grep_rag'}
                                 <tr class="bg-gray-50 border-b border-gray-200">
                                     <td colspan="2" class="px-6 py-2 text-sm">
                                         <div class="flex flex-wrap">

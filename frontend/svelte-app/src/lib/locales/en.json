@@ -342,6 +342,31 @@
         "error": "Error loading files:",
         "noneFound": "No files found. Please upload a file.",
         "required": "Please select a file"
+      },
+      "grepRag": {
+        "sectionTitle": "Grep RAG Configuration",
+        "mode": {
+          "label": "Mode",
+          "description": "How grep interacts with embedding-based RAG",
+          "hybrid": "Hybrid (grep + RAG in parallel)",
+          "primary": "Primary (grep first, RAG fallback)"
+        },
+        "fallbackRag": {
+          "label": "Fallback RAG",
+          "description": "Embedding RAG to complement or fall back to"
+        },
+        "maxTries": {
+          "label": "Max Search Tries",
+          "description": "Maximum number of search iterations (1-10)"
+        },
+        "contextLines": {
+          "label": "Context Lines",
+          "description": "Lines of context before/after each match (1-10)"
+        },
+        "maxTotalChars": {
+          "label": "Max Result Characters",
+          "description": "Max total characters of grep results sent to main LLM (1000-32000)"
+        }
       }
     }
   },
