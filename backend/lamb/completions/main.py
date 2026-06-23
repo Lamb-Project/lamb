@@ -442,7 +442,8 @@ def load_plugins(plugin_type: str) -> Dict[str, Any]:
 async def run_lamb_assistant(
     request: Dict[str, Any],
     assistant: int,  # now expect only an assistant id as int
-    headers: Optional[Dict[str, str]] = None # Add optional headers argument
+    headers: Optional[Dict[str, str]] = None, # Add optional headers argument
+    include_eval_metadata: bool = False  # opt-in: attach retrieved RAG context to the response
 ):
     """
     Implements a non WS version of create completion.
@@ -546,6 +547,19 @@ async def run_lamb_assistant(
                     provider=provider,
                     usage_data=llm_response["usage"]
                 )
+
+            # Opt-in: surface the retrieved RAG context so the evaluation
+            # framework can score answers against what was actually retrieved.
+            # Only attached when the caller set include_eval_metadata; the extra
+            # top-level key is ignored by standard OpenAI-compatible clients, so
+            # default callers get an unchanged response. Streaming is left as-is.
+            if include_eval_metadata and isinstance(rag_context, dict):
+                llm_response["eval_metadata"] = {
+                    "rag_context": {
+                        "context": rag_context.get("context", ""),
+                        "sources": rag_context.get("sources", []),
+                    }
+                }
 
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired
