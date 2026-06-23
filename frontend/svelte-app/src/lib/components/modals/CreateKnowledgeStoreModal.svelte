@@ -240,7 +240,7 @@
 		if (!chunkingStrategy || !embeddingVendor || !embeddingModel || !vectorDb) {
 			error = $_('knowledgeStores.createModal.advancedIncomplete', {
 				default:
-					'Some required fields are missing. Open the Advanced section to review chunking and embedding settings.'
+					'Some required fields are missing. Open the Vector indexing section to review chunking and embedding settings.'
 			});
 			advancedOpen = true;
 			return false;

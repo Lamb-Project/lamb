@@ -6,7 +6,7 @@
              empty ones, clearly badged) and pick one as the source.
     Step 2 — Items:   show ready items in the picked library, checkboxes +
              select-all, must pick at least one to advance.
-    Step 3 — Review:  list of items about to be ingested + the Add button.
+    Step 3 — Review:  list of items about to be indexed + the Add button.
 
   Draft auto-save uses the shared wizardDraftStore so a closed modal can
   be resumed on the same KS (state: { step, libraryId, itemIds }).
@@ -409,7 +409,7 @@
 			{#if step === 1}
 				<p class="type-body-muted">
 					{$_('knowledgeStores.addContentModal.libraryHint', {
-						default: 'Pick the library that contains the items to ingest.'
+						default: 'Pick the library that contains the items to index.'
 					})}
 				</p>
 				{#if loadingLibs}
@@ -485,7 +485,7 @@
 						variant="warning"
 						description={$_('knowledgeStores.addContentModal.libraryEmptyHint', {
 							default:
-								'This library has no items ready to ingest. Go back and choose a different library, or import content into this one first.'
+								'This library has no items ready to index. Go back and choose a different library, or import content into this one first.'
 						})}
 					/>
 				{:else if items.filter((i) => i.status === 'ready').length === 0}
@@ -505,7 +505,7 @@
 					).length}
 					<div class="flex items-center justify-between">
 						<span class="text-text type-body font-medium">
-							{$_('knowledgeStores.addContentModal.itemsLabel', { default: 'Items to ingest' })}
+							{$_('knowledgeStores.addContentModal.itemsLabel', { default: 'Items to index' })}
 						</span>
 						<Button variant="ghost" size="sm" onclick={toggleAllItems}>
 							{selectedItemIds.size === selectableCount
@@ -567,7 +567,7 @@
 			{:else}
 				<p class="type-body-muted">
 					{$_('knowledgeStores.addContentModal.reviewHint', {
-						default: 'Review what will be ingested, then click Add.'
+						default: 'Review what will be indexed, then click Add.'
 					})}
 				</p>
 				<div class="border-border bg-surface-muted rounded-md border p-3">
@@ -581,7 +581,7 @@
 				<div>
 					<p class="type-label mb-1">
 						{$_('knowledgeStores.addContentModal.reviewItems', {
-							default: 'Items to ingest',
+							default: 'Items to index',
 							values: { count: selectedItemIds.size }
 						})}
 						<span class="text-text-muted ml-1">({selectedItemIds.size})</span>

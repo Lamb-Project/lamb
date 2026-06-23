@@ -1233,15 +1233,15 @@
 		},
 		"addContentModal": {
 			"title": "Add Library Content to Knowledge Store",
-			"description": "Pick a library and the items to ingest. Only items with status \"ready\" can be ingested.",
+			"description": "Pick a library and the items to index. Only items with status \"ready\" can be indexed.",
 			"libraryLabel": "Library",
-			"itemsLabel": "Items to ingest",
+			"itemsLabel": "Items to index",
 			"selectAll": "Select all",
 			"deselectAll": "Deselect all",
 			"selected": "selected",
 			"noLibraries": "No libraries available. Create a library and import some content first.",
 			"noItems": "Select at least one item.",
-			"noItems2": "This library has no ready items to ingest.",
+			"noItems2": "This library has no ready items to index.",
 			"submit": "Add to Knowledge Store",
 			"submitting": "Adding..."
 		}
@@ -1330,7 +1330,7 @@
 				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings."
 			},
 			"step7": {
-				"title": "Pick items to ingest",
+				"title": "Pick items to index",
 				"description": "Choose which library items to index in the Knowledge Store.",
 				"allItems": "All items"
 			},
@@ -1339,8 +1339,8 @@
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
-				"itemsHeading": "Items to ingest",
-				"itemsToIngest": "Items to ingest",
+				"itemsHeading": "Items to index",
+				"itemsToIngest": "Items to index",
 				"submit": "Create",
 				"submitting": "Creating...",
 				"heading": "Review & create",
