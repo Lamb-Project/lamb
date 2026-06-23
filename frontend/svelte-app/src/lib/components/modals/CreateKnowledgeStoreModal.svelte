@@ -421,7 +421,7 @@
 						>
 							{$_('knowledgeStores.createModal.lockedNotice', {
 								default:
-									'Chunking strategy, embedding vendor/model, and vector DB are locked once the Knowledge Store is created. Chunking parameters can be edited later but only apply to newly ingested content.'
+									'Chunking strategy, embedding vendor/model, and vector DB are locked once the Knowledge Store is created. Chunking parameters can be edited later but only apply to newly indexed content.'
 							})}
 						</div>
 
