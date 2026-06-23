@@ -1430,7 +1430,9 @@
 				"nameTooLong": "Izenak 100 karaktere baino gutxiago izan behar ditu",
 				"shareLabel": "Partekatu nire erakundearekin",
 				"shareHint": "Geroago alda dezakezu Knowledge Store xehetasun ikuspegitik.",
-				"advancedLabel": "Aurreratua: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala"
+				"vectorIndexingLabel": "Bektore-indexazioa: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala",
+				"otherIndexingLabel": "Beste indexazio-estrategia bat (laster)",
+				"otherIndexingHint": "Etorkizuneko bertsio batean, beste indexazio-estrategia batzuk (bektorialaz haratago) hemen hautatu ahal izango dira."
 			}
 		}
 	},

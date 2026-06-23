@@ -1430,7 +1430,9 @@
 				"nameTooLong": "El nombre debe tener menos de 100 caracteres",
 				"shareLabel": "Compartir con mi organización",
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle del Almacén de Conocimiento.",
-				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embeddings, base de datos vectorial"
+				"vectorIndexingLabel": "Indexación vectorial: fragmentación, proveedor/modelo de embeddings, base de datos vectorial",
+				"otherIndexingLabel": "Otra estrategia de indexación (próximamente)",
+				"otherIndexingHint": "En una versión futura se podrán seleccionar aquí otras estrategias de indexación (más allá de la vectorial)."
 			}
 		}
 	},
