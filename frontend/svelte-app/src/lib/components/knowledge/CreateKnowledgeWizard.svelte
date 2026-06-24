@@ -61,8 +61,8 @@
 	 * @property {boolean} libraryIsShared
 	 * @property {{ pluginName: string, params: Object }} libraryImportConfig
 	 * @property {File[]} pendingFiles
+	 * @property {Record<string, unknown>[]} pendingFileParams
 	 * @property {Array<{ type: 'url'|'youtube', url: string, title?: string, language?: string }>} pendingUrlSources
-	 * @property {Array<{ id: string, title: string }>} uploadedItems
 	 * @property {'existing'|'new'} ksPath
 	 * @property {string} existingKsId
 	 * @property {string} ksName
@@ -88,8 +88,8 @@
 		libraryIsShared: false,
 		libraryImportConfig: { pluginName: '', params: {} },
 		pendingFiles: [],
+		pendingFileParams: [],
 		pendingUrlSources: [],
-		uploadedItems: [],
 		ksPath: 'new',
 		existingKsId: '',
 		ksName: '',

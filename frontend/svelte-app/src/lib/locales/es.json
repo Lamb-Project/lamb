@@ -1257,9 +1257,6 @@
 			"next": "Siguiente",
 			"back": "Atrás",
 			"skip": "Omitir",
-			"create": "Crear",
-			"cancel": "Cancelar",
-			"abort": "Abortar",
 			"useExisting": "Usar uno existente",
 			"createNew": "Crear nuevo",
 			"advancedLabel": "Configuración avanzada",
@@ -1273,57 +1270,9 @@
 				"title": "Estos ajustes no se pueden cambiar después.",
 				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén."
 			},
-			"editDefaults": "Editar valores por defecto",
-			"progress": "Paso {current} de {total}",
-			"step0": {
-				"title": "Elige una Biblioteca",
-				"description": "Usa una Biblioteca existente o crea una nueva.",
-				"newLibrary": "Crear una nueva Biblioteca",
-				"existingLibrary": "Usar una Biblioteca existente",
-				"pickLibrary": "Elige una Biblioteca"
-			},
-			"step1": {
-				"title": "Detalles de la Biblioteca",
-				"description": "Dale un nombre a tu Biblioteca y una descripción opcional.",
-				"nameLabel": "Nombre de la Biblioteca",
-				"descriptionLabel": "Descripción (opcional)",
-				"sharedLabel": "Compartir con la organización"
-			},
-			"step2": {
-				"title": "Configuración de importación de la Biblioteca",
-				"description": "Los valores por defecto funcionan en la mayoría de los casos. Expande para personalizar los plugins de importación.",
-				"defaultPluginLabel": "Plugin de importación por defecto"
-			},
-			"step3": {
-				"title": "Añadir contenido inicial",
-				"description": "Opcionalmente, sube uno o varios archivos ahora. Siempre podrás añadir más más tarde.",
-				"uploadHint": "Arrastra archivos aquí o haz clic para examinar",
-				"uploaded": "subido",
-				"processing": "procesando",
-				"ready": "listo",
-				"failed": "fallido"
-			},
-			"step4": {
-				"title": "Elige un Almacén de Conocimiento",
-				"description": "Usa un Almacén de Conocimiento existente o crea uno nuevo.",
-				"newKs": "Crear un nuevo Almacén de Conocimiento",
-				"existingKs": "Usar un Almacén de Conocimiento existente",
-				"pickKs": "Elige un Almacén de Conocimiento"
-			},
-			"step5": {
-				"title": "Detalles del Almacén de Conocimiento",
-				"description": "Nombre y descripción opcional para el Almacén de Conocimiento.",
-				"nameLabel": "Nombre del Almacén de Conocimiento",
-				"descriptionLabel": "Descripción (opcional)",
-				"sharedLabel": "Compartir con la organización"
-			},
 			"step6": {
-				"title": "Knowledge Store configuration",
-				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
-				"embeddingVendorLabel": "Embedding vendor",
-				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
@@ -1331,22 +1280,16 @@
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
-				"description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento.",
-				"allItems": "Todos los elementos"
+				"description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento."
 			},
 			"step8": {
 				"title": "Review & create",
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
-				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Elementos a ingerir",
 				"submit": "Create",
-				"submitting": "Creating...",
 				"heading": "Review & create",
-				"ingestionHeading": "Ingestion",
-				"ingestionCount": "{n} item(s) will be ingested",
-				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1358,25 +1301,17 @@
 				"retry": "Reintentar"
 			},
 			"step9": {
-				"title": "Todo listo",
 				"heading": "¡Todo listo!",
 				"description": "Tu Biblioteca y Almacén de Conocimiento están listos. La ingesta se ejecuta en segundo plano — puedes ver el progreso en la página del Almacén de Conocimiento.",
-				"openKs": "Abrir Almacén de Conocimiento",
 				"openLibrary": "Abrir Biblioteca",
 				"createAnother": "Crear otro",
 				"toast": "Almacén de Conocimiento creado."
 			},
-			"stepProgress": "Paso {n} de {total}",
 			"creating": "Creando...",
 			"draft": {
 				"banner": "Tienes un borrador sin terminar de {time}.",
 				"resume": "Retomar",
-				"discard": "Descartar",
-				"savePrompt": {
-					"title": "¿Guardar como borrador?",
-					"body": "Tu progreso se guardará hasta que cierres sesión o la pestaña.",
-					"save": "Guardar borrador"
-				}
+				"discard": "Descartar"
 			},
 			"libraryStep": {
 				"title": "Configuración de Biblioteca",
@@ -1393,22 +1328,15 @@
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle de la Biblioteca.",
 				"advancedLabel": "Avanzado: plugin de importación y parámetros",
 				"noPlugins": "No hay plugins de importación disponibles.",
-				"pluginLabel": "Plugin de importación",
-				"pluginNote": "Los parámetros por plugin se pueden personalizar más tarde desde la vista de detalle de la biblioteca."
+				"pluginLabel": "Plugin de importación"
 			},
 			"libraryContent": {
 				"title": "Contenido de Biblioteca",
 				"heading": "Contenido inicial",
-				"description": "Añade contenido a tu nueva Biblioteca ahora (opcional). También puedes omitir esto y añadir contenido más tarde.",
-				"sourceTypeFiles": "Archivos",
-				"sourceTypeUrl": "URL",
-				"sourceTypeYouTube": "YouTube",
-				"pickLabel": "Seleccionar archivos",
 				"invalidUrl": "Se requiere una URL HTTP(S) válida.",
 				"invalidYoutubeUrl": "Se requiere una URL de YouTube válida.",
 				"titleOptional": "Título (opcional)",
 				"youtubeUrl": "URL de YouTube",
-				"ytLanguage": "Idioma de la transcripción",
 				"addUrl": "+ Añadir URL",
 				"addYouTube": "+ Añadir YouTube",
 				"queuedLabel": "Fuentes en cola",

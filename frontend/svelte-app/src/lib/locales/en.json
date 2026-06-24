@@ -1257,9 +1257,6 @@
 			"next": "Next",
 			"back": "Back",
 			"skip": "Skip",
-			"create": "Create",
-			"cancel": "Cancel",
-			"abort": "Abort",
 			"useExisting": "Use an existing",
 			"createNew": "Create new",
 			"advancedLabel": "Advanced settings",
@@ -1273,57 +1270,9 @@
 				"title": "These settings cannot be changed later.",
 				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store."
 			},
-			"editDefaults": "Edit defaults",
-			"progress": "Step {current} of {total}",
-			"step0": {
-				"title": "Choose a Library",
-				"description": "Use an existing Library or create a new one.",
-				"newLibrary": "Create a new Library",
-				"existingLibrary": "Use an existing Library",
-				"pickLibrary": "Pick a Library"
-			},
-			"step1": {
-				"title": "Library details",
-				"description": "Give your Library a name and an optional description.",
-				"nameLabel": "Library name",
-				"descriptionLabel": "Description (optional)",
-				"sharedLabel": "Share with organization"
-			},
-			"step2": {
-				"title": "Library import settings",
-				"description": "Defaults work for most cases. Expand to customise import plugins.",
-				"defaultPluginLabel": "Default import plugin"
-			},
-			"step3": {
-				"title": "Add initial content",
-				"description": "Optionally upload one or more files now. You can always add more later.",
-				"uploadHint": "Drop files here or click to browse",
-				"uploaded": "uploaded",
-				"processing": "processing",
-				"ready": "ready",
-				"failed": "failed"
-			},
-			"step4": {
-				"title": "Choose a Knowledge Store",
-				"description": "Use an existing Knowledge Store or create a new one.",
-				"newKs": "Create a new Knowledge Store",
-				"existingKs": "Use an existing Knowledge Store",
-				"pickKs": "Pick a Knowledge Store"
-			},
-			"step5": {
-				"title": "Knowledge Store details",
-				"description": "Name and optional description for the Knowledge Store.",
-				"nameLabel": "Knowledge Store name",
-				"descriptionLabel": "Description (optional)",
-				"sharedLabel": "Share with organization"
-			},
 			"step6": {
-				"title": "Knowledge Store configuration",
-				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
-				"embeddingVendorLabel": "Embedding vendor",
-				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
@@ -1331,22 +1280,16 @@
 			},
 			"step7": {
 				"title": "Pick items to index",
-				"description": "Choose which library items to index in the Knowledge Store.",
-				"allItems": "All items"
+				"description": "Choose which library items to index in the Knowledge Store."
 			},
 			"step8": {
 				"title": "Review & create",
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
-				"itemsHeading": "Items to index",
 				"itemsToIngest": "Items to index",
 				"submit": "Create",
-				"submitting": "Creating...",
 				"heading": "Review & create",
-				"ingestionHeading": "Ingestion",
-				"ingestionCount": "{n} item(s) will be ingested",
-				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1358,25 +1301,17 @@
 				"retry": "Retry"
 			},
 			"step9": {
-				"title": "All done",
 				"heading": "You're all set",
 				"description": "Your Library and Knowledge Store are ready. Ingestion runs in the background — you can check progress on the Knowledge Store page.",
-				"openKs": "Open Knowledge Store",
 				"openLibrary": "Open Library",
 				"createAnother": "Create another",
 				"toast": "Knowledge Store created."
 			},
-			"stepProgress": "Step {n} of {total}",
 			"creating": "Creating...",
 			"draft": {
 				"banner": "You have an unfinished draft from {time}.",
 				"resume": "Resume",
-				"discard": "Discard",
-				"savePrompt": {
-					"title": "Save as draft?",
-					"body": "Your progress will be saved until you log out or close the tab.",
-					"save": "Save draft"
-				}
+				"discard": "Discard"
 			},
 			"libraryStep": {
 				"title": "Library Setup",
@@ -1393,22 +1328,15 @@
 				"shareHint": "You can change this later from the Library detail view.",
 				"advancedLabel": "Advanced: import plugin & params",
 				"noPlugins": "No import plugins available.",
-				"pluginLabel": "Import plugin",
-				"pluginNote": "Per-plugin parameters can be customized later from the library detail view."
+				"pluginLabel": "Import plugin"
 			},
 			"libraryContent": {
 				"title": "Library Content",
 				"heading": "Initial content",
-				"description": "Optionally add content to your new Library now. You can also skip this and add content later.",
-				"sourceTypeFiles": "Files",
-				"sourceTypeUrl": "URL",
-				"sourceTypeYouTube": "YouTube",
-				"pickLabel": "Pick files",
 				"invalidUrl": "A valid HTTP(S) URL is required.",
 				"invalidYoutubeUrl": "A valid YouTube URL is required.",
 				"titleOptional": "Title (optional)",
 				"youtubeUrl": "YouTube URL",
-				"ytLanguage": "Transcript language",
 				"addUrl": "+ Add URL",
 				"addYouTube": "+ Add YouTube",
 				"queuedLabel": "Queued sources",
