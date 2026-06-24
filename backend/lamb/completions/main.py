@@ -510,8 +510,27 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
+                # Build the OpenWebUI citations payload from the retrieved RAG
+                # sources and emit it as one SSE event just before [DONE] so OWI
+                # renders a clickable, persisted citations panel and links the
+                # inline [N] markers to it.
+                from lamb.completions.citation_sources import build_owi_sources  # noqa: PLC0415
+                owi_sources = build_owi_sources(rag_context)
+                sources_event = (
+                    f"data: {json.dumps({'sources': owi_sources})}\n\n"
+                    if owi_sources else None
+                )
+                sources_sent = False
                 async for chunk in generator:
+                    if (
+                        sources_event and not sources_sent
+                        and isinstance(chunk, str) and "data: [DONE]" in chunk
+                    ):
+                        yield sources_event
+                        sources_sent = True
                     yield chunk
+                if sources_event and not sources_sent:
+                    yield sources_event
                 # Log usage when stream completes for tracked connectors
                 if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
                     db_manager.log_token_usage(
@@ -560,6 +579,13 @@ async def run_lamb_assistant(
                         "sources": rag_context.get("sources", []),
                     }
                 }
+
+            # Attach OpenWebUI-shaped citations so the panel renders on the
+            # non-streaming path too (standard OpenAI clients ignore the key).
+            from lamb.completions.citation_sources import build_owi_sources  # noqa: PLC0415
+            owi_sources = build_owi_sources(rag_context)
+            if owi_sources:
+                llm_response["sources"] = owi_sources
 
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired

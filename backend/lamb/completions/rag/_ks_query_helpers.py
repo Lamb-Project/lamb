@@ -140,6 +140,9 @@ def build_context_and_sources(
             context_parts.append(f"[{n}] {text}")
             source = _build_source(ks_id, chunk)
             source["n"] = n
+            # Keep the chunk text on the source so the citation UI can show the
+            # supporting excerpt (e.g. OWI's citations panel).
+            source["text"] = text
             sources.append(source)
     combined_context = "\n\n".join(context_parts) if context_parts else ""
     return combined_context, sources

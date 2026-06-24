@@ -27,45 +27,25 @@ CITATION_INSTRUCTION = (
 )
 
 
-def _format_sources_block(sources: List[Dict[str, Any]]) -> str:
-    """Render a numbered ``## Available Sources`` markdown block.
-
-    Each source is labelled with its citation number ``n`` (assigned by the
-    KS RAG processor so it aligns with the ``[N]`` markers in the context). A
-    relevance score is shown when available.
-    """
-    if not sources:
-        return ""
-    lines = ["\n\n## Available Sources\n"]
-    for i, source in enumerate(sources, 1):
-        n = source.get("n", i)
-        title = source.get("title", "Unknown")
-        url = source.get("url", "")
-        score = source.get("score")
-        score_str = (
-            f" (relevance: {score:.3f})" if isinstance(score, (int, float)) else ""
-        )
-        if url:
-            lines.append(f"[{n}] [{title}]({url}){score_str}")
-        else:
-            lines.append(f"[{n}] {title}{score_str}")
-    return "\n".join(lines)
-
-
 def _build_full_context(rag_context: Any) -> str:
-    """Combine retrieved context, the numbered sources block, and the inline
-    citation instruction into the text that replaces ``{context}``.
+    """Build the text that replaces ``{context}``: the numbered context plus the
+    inline citation instruction.
 
-    The citation instruction is only appended when there are sources to cite,
-    so answers without retrieved context are never told to fabricate markers.
+    The retrieved context is already prefixed per chunk with ``[N]`` markers by
+    the KS RAG processor, so the model can cite from it directly. We do NOT
+    inject a visible sources list here — the source titles and clickable links
+    are rendered by the OpenWebUI citations panel (see
+    ``lamb.completions.citation_sources``), so echoing a second list in the
+    answer would be redundant and would surface non-clickable raw URLs. The
+    citation instruction is only appended when there are sources to cite, so
+    answers without retrieved context are never told to fabricate markers.
     """
     if not isinstance(rag_context, dict):
         return str(rag_context) if rag_context else ""
     context = rag_context.get("context", "") or ""
     sources = rag_context.get("sources", []) or []
-    sources_block = _format_sources_block(sources)
-    if sources_block:
-        return context + sources_block + "\n\n" + CITATION_INSTRUCTION
+    if sources:
+        return context + "\n\n" + CITATION_INSTRUCTION
     return context
 
 

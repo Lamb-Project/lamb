@@ -1072,6 +1072,118 @@ async def export_library(
 permalink_proxy_router = APIRouter()
 
 
+# ----------------------------------------------------------------------
+# Public, HMAC-signed citation permalinks (student-clickable, no login)
+# ----------------------------------------------------------------------
+# Defined BEFORE the authenticated catch-all below so `/docs/public/...` is not
+# swallowed by `/docs/{org_id}/.../{subpath:path}` (FastAPI matches in order).
+# A student clicking a citation in the OpenWebUI chat arrives with no LAMB
+# credential, so the link authorizes itself via an org-scoped HMAC signature
+# (see permalink_signing). Traffic still flows OpenWebUI -> LAMB -> Library
+# Manager; OWI never contacts the Library Manager directly.
+
+_PUBLIC_VIEW_CSS = (
+    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;"
+    "max-width:820px;margin:0 auto;padding:1.5rem;color:#1f2937;line-height:1.6}"
+    "header{display:flex;align-items:center;justify-content:space-between;gap:1rem;"
+    "border-bottom:1px solid #e5e7eb;padding-bottom:.75rem;margin-bottom:1.25rem}"
+    "h1{font-size:1.15rem;margin:0;word-break:break-word}"
+    "a.dl{flex:none;background:#2271b3;color:#fff;text-decoration:none;border-radius:6px;"
+    "padding:.45rem .8rem;font-size:.85rem}"
+    "article img{max-width:100%}article pre{overflow:auto;background:#f3f4f6;padding:.75rem;border-radius:6px}"
+    "article table{border-collapse:collapse}article td,article th{border:1px solid #e5e7eb;padding:.3rem .5rem}"
+)
+
+
+@permalink_proxy_router.get("/docs/public/{org_id}/{library_id}/{item_id}/view")
+async def public_permalink_view(
+    org_id: str,
+    library_id: str,
+    item_id: str,
+    name: str = Query("", description="Display filename for the cited item"),
+    sig: str = Query(..., description="Org-scoped HMAC signature"),
+):
+    """Render a cited item's content as an HTML page titled with its filename.
+
+    Public (signature-authorized) — no login required. Shows the item's
+    extracted markdown rendered to HTML under the original filename, plus a
+    "Download original" button when an original file exists.
+    """
+    from html import escape  # noqa: PLC0415
+    from urllib.parse import quote  # noqa: PLC0415
+
+    from creator_interface.permalink_signing import sign, verify  # noqa: PLC0415
+
+    if not verify(org_id, f"{org_id}/{library_id}/{item_id}/view", sig):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+
+    # Proxy the full markdown from the Library Manager using a system context
+    # (the signature is the authorization; there is no end-user identity here).
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath="content",
+        creator_user={},
+    )
+    markdown_text = response.content.decode("utf-8", errors="replace")
+
+    try:
+        from markdown_it import MarkdownIt  # noqa: PLC0415
+        body_html = MarkdownIt("commonmark", {"html": False, "linkify": True}).render(markdown_text)
+    except Exception:  # noqa: BLE001 — fall back to preformatted text
+        body_html = f"<pre>{escape(markdown_text)}</pre>"
+
+    title = escape(name or "Source document")
+    download_html = ""
+    # Offer the original download only when the cited item is a real file
+    # (has an extension); URL/transcript sources have no original to download.
+    if name and "." in name:
+        dl_sig = sign(org_id, f"{org_id}/{library_id}/{item_id}/original/{name}")
+        dl_url = (
+            f"/docs/public/{org_id}/{library_id}/{item_id}/original/{quote(name)}?sig={dl_sig}"
+        )
+        download_html = f'<a class="dl" href="{escape(dl_url)}">Download original</a>'
+
+    page = (
+        f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        f"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        f"<title>{title}</title><style>{_PUBLIC_VIEW_CSS}</style></head>"
+        f"<body><header><h1>{title}</h1>{download_html}</header>"
+        f"<article>{body_html}</article></body></html>"
+    )
+    return Response(content=page, media_type="text/html; charset=utf-8")
+
+
+@permalink_proxy_router.get(
+    "/docs/public/{org_id}/{library_id}/{item_id}/original/{filename:path}"
+)
+async def public_permalink_original(
+    org_id: str,
+    library_id: str,
+    item_id: str,
+    filename: str,
+    sig: str = Query(..., description="Org-scoped HMAC signature"),
+):
+    """Stream the original uploaded file for a cited item (signature-authorized)."""
+    from creator_interface.permalink_signing import verify  # noqa: PLC0415
+
+    if not verify(org_id, f"{org_id}/{library_id}/{item_id}/original/{filename}", sig):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+
+    response = await _client.proxy_content(
+        library_id=library_id,
+        item_id=item_id,
+        subpath=f"original/{filename}",
+        creator_user={},
+    )
+    content_type = response.headers.get("content-type", "application/octet-stream")
+    return Response(
+        content=response.content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @permalink_proxy_router.get("/docs/{org_id}/{library_id}/{item_id}/{subpath:path}")
 async def permalink_proxy(
     org_id: str,
