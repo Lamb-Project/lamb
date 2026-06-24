@@ -32,7 +32,8 @@ export function buildAssistantPayload(form) {
 		rag_processor: form.selectedRagProcessor,
 		capabilities: {
 			vision: form.visionEnabled,
-			image_generation: form.imageGenerationEnabled
+			image_generation: form.imageGenerationEnabled,
+			expose_sources: form.exposeSourcesEnabled
 		}
 	};
 

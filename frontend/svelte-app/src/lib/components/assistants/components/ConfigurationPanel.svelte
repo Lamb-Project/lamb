@@ -23,6 +23,7 @@
 		selectedRagProcessor = $bindable(''),
 		visionEnabled = $bindable(false),
 		imageGenerationEnabled = $bindable(false),
+		exposeSourcesEnabled = $bindable(false),
 		RAG_Top_k = $bindable(3),
 		ownedKnowledgeBases = [],
 		sharedKnowledgeBases = [],
@@ -175,6 +176,19 @@
 			</label>
 		</div>
 	{/if}
+
+	<div class="mb-3">
+		<label class="inline-flex items-start cursor-pointer">
+			<input type="checkbox" bind:checked={exposeSourcesEnabled} onchange={onchange} class="sr-only peer" />
+			<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 shrink-0 mt-0.5"></div>
+			<div class="ms-3">
+				<span class="text-sm font-medium text-gray-900 dark:text-gray-300">{$_('assistants.form.exposeSources.label', { default: 'Let students open cited sources' })}</span>
+				<p class="text-xs text-gray-500 mt-1">
+					{$_('assistants.form.exposeSources.description', { default: 'Show students clickable links to open and download the documents this assistant cites in its answers. Off by default.' })}
+				</p>
+			</div>
+		</label>
+	</div>
 
 	{#if selectedConnector === 'banana_img' || imageGenerationEnabled || currentConnectorMetadata?.capabilities?.image_generation}
 		<div class="mb-3">

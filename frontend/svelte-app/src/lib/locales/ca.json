@@ -130,6 +130,10 @@
         "requiredForModelPrefix": "Necessari per a aquest model - ",
         "geminiDescription": "Permetre que aquest assistent generi imatges usant Google Gemini"
       },
+      "exposeSources": {
+        "label": "Permet que els estudiants obrin les fonts citades",
+        "description": "Mostra als estudiants enllaços per obrir i descarregar els documents que aquest assistent cita a les seves respostes. Desactivat per defecte."
+      },
 			"ragProcessor": {
 				"label": "Processador RAG"
 			},
