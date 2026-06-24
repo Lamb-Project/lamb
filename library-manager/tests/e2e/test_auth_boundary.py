@@ -27,18 +27,6 @@ def test_wrong_bearer_token(server) -> None:
     assert resp.status_code == 401, resp.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SOURCE BUG: dependencies.verify_token calls hmac.compare_digest() with the "
-        "raw credential, which raises TypeError on non-ASCII strings ('comparing "
-        "strings with non-ASCII characters is not supported'). That propagates as a "
-        "500. A bad token must be rejected with 401, never crash the service. The "
-        "fix is to guard compare_digest (e.g. encode to bytes / catch the TypeError) "
-        "and return 401. This test asserts the correct behaviour and xfails until "
-        "the bug is fixed."
-    ),
-)
 def test_non_latin1_token_is_401_not_500(server) -> None:
     """A non-Latin-1 token must be rejected (401), never crash the server (500)."""
     # httpx encodes headers as latin-1; pass raw bytes to smuggle non-ASCII
