@@ -156,7 +156,15 @@ SQLite at `$DATA_DIR/kb-server.db`, WAL mode enabled at connection time. Two tab
 - `collections` — one row per KB (immutable store setup).
 - `ingestion_jobs` — persistent queue (document text lives here until processed; credentials do not).
 
-Schema is managed with `Base.metadata.create_all` (no Alembic migrations).
+Schema is managed with Alembic. Migrations live in `backend/migrations/` and are
+run automatically up to `head` at startup (`init_db` → `_run_migrations`). Databases
+created before Alembic adoption are detected (tables present, no `alembic_version`)
+and stamped to the baseline revision before upgrading, so existing data is preserved.
+To create a new migration after changing the models:
+
+```bash
+cd backend && alembic -c alembic.ini revision --autogenerate -m "describe change"
+```
 
 Per-org vector storage lives under `$DATA_DIR/storage/{organization_id}/{collection_id}/`.
 
