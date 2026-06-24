@@ -367,6 +367,8 @@
 		"close": "Close"
 	},
 	"common": {
+		"close": "Close",
+		"next": "Next",
 		"loading": "Loading...",
 		"error": "Error",
 		"success": "Success!",
@@ -1224,7 +1226,17 @@
 			"itemsIngested": "items ingested",
 			"runInBackground": "Run in background",
 			"retry": "Retry ingestion",
-			"backgroundToast": "Ingestion continues in the background. Track progress on the Knowledge Store page."
+			"backgroundToast": "Ingestion continues in the background. Track progress on the Knowledge Store page.",
+			"done": "Ingestion complete",
+			"etaHeuristic": "~1–2 min per item",
+			"etaMinutes": "~{n} min remaining",
+			"etaSeconds": "~{n}s remaining",
+			"ingesting": "ingesting",
+			"ofConnector": "of",
+			"processing": "Processing content…",
+			"retryComingSoon": "Retry feature coming soon.",
+			"retryQueued": "Retry queued.",
+			"viewKs": "View Knowledge Store"
 		},
 		"removeModal": {
 			"title": "Remove from Knowledge Store",
@@ -1243,7 +1255,54 @@
 			"noItems": "Select at least one item.",
 			"noItems2": "This library has no ready items to index.",
 			"submit": "Add to Knowledge Store",
-			"submitting": "Adding..."
+			"submitting": "Adding...",
+			"duplicateWarning1": "1 item is already in this Knowledge Store and will be skipped.",
+			"duplicateWarningN": "{n} items are already in this Knowledge Store and will be skipped.",
+			"emptyTag": "(empty — nothing to add)",
+			"fromLibrary": "From library:",
+			"itemPlural": "items",
+			"itemSingular": "item",
+			"libraryAllFailedHint": "All items in this library have failed to import. Go back and choose a different library.",
+			"libraryEmptyHint": "This library has no items ready to index. Go back and choose a different library, or import content into this one first.",
+			"libraryHint": "Pick the library that contains the items to index.",
+			"libraryRequired": "Pick a library to continue.",
+			"reviewHint": "Review what will be indexed, then click Add.",
+			"reviewItems": "Items to index",
+			"stepItems": "Items",
+			"stepLibrary": "Library",
+			"stepReview": "Review"
+		},
+		"addDescription": "Add description",
+		"chunkingParams": "Chunking parameters",
+		"collapseDetail": "Hide locked configuration",
+		"deletedSuffix": "(deleted)",
+		"editDescription": "Edit description",
+		"editName": "Edit name",
+		"expandDetail": "Show locked configuration",
+		"filterLibrary": "Library",
+		"filterLibraryAll": "All libraries",
+		"filterLibraryClear": "Clear filter",
+		"lockedConfigHint": "Configuration is locked after creation",
+		"nameRequired": "Name is required.",
+		"noContentForLibrary": "No items from the selected library are linked to this Knowledge Store.",
+		"results": "Results",
+		"totalChunks": "Total chunks",
+		"viewItem": "View item",
+		"items": {
+			"title": "Items"
+		},
+		"options": {
+			"unavailableBody": "Knowledge Store server unavailable. Please ensure lamb-kb-server is running and retry.",
+			"unavailableTitle": "Knowledge Store server unavailable"
+		},
+		"params": {
+			"editButton": "Edit",
+			"editNotice": "Changes apply only to content indexed after saving — existing chunks keep the parameters they were created with.",
+			"noParams": "This strategy has no editable parameters.",
+			"saveFailed": "Failed to update chunking parameters.",
+			"saved": "Chunking parameters updated. Applies to new ingestions only.",
+			"schemaFailed": "Could not load chunking parameter schema. Try again later.",
+			"usingDefaults": "Using the strategy defaults."
 		}
 	},
 	"knowledge": {
@@ -1268,7 +1327,8 @@
 			},
 			"lockedConfigNotice": {
 				"title": "These settings cannot be changed later.",
-				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store."
+				"body": "Chunking strategy, embedding vendor / model, and vector DB are locked once the Knowledge Store is created. To change them, create a new Knowledge Store.",
+				"paramsBody": "Chunking parameters can be edited later, but changes only apply to newly indexed content — existing chunks keep the parameters they were originally created with."
 			},
 			"step6": {
 				"chunkingLabel": "Chunking strategy",
@@ -1276,11 +1336,15 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings."
+				"noVendorConfigured": "Your organization has no embedding providers configured. Ask an admin to add an API key in the organization settings.",
+				"modelRequired": "No models returned by the API for this vendor — type a model name to continue."
 			},
 			"step7": {
 				"title": "Pick items to index",
-				"description": "Choose which library items to index in the Knowledge Store."
+				"description": "Choose which library items to index in the Knowledge Store.",
+				"heading": "Pick items to index",
+				"newBadge": "NEW",
+				"noItems": "This library has no ready items. You can skip this step and add content later."
 			},
 			"step8": {
 				"title": "Review & create",
@@ -1298,14 +1362,19 @@
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
 				"progressIngest": "Queuing {n} item(s) for ingestion...",
-				"retry": "Retry"
+				"retry": "Retry",
+				"ksNameTaken": "A Knowledge Store named \"{name}\" already exists.",
+				"libraryNameTaken": "A library named \"{name}\" already exists.",
+				"pluginAuto": "Auto-selected",
+				"submitAdd": "Add"
 			},
 			"step9": {
 				"heading": "You're all set",
 				"description": "Your Library and Knowledge Store are ready. Ingestion runs in the background — you can check progress on the Knowledge Store page.",
 				"openLibrary": "Open Library",
 				"createAnother": "Create another",
-				"toast": "Knowledge Store created."
+				"toast": "Knowledge Store created.",
+				"openKS": "Open Knowledge Store"
 			},
 			"creating": "Creating...",
 			"draft": {
@@ -1328,7 +1397,10 @@
 				"shareHint": "You can change this later from the Library detail view.",
 				"advancedLabel": "Advanced: import plugin & params",
 				"noPlugins": "No import plugins available.",
-				"pluginLabel": "Import plugin"
+				"pluginLabel": "Import plugin",
+				"descriptionLabel": "Description",
+				"pluginParamsHint": "Defaults come from the plugin and work for most documents — override only if needed.",
+				"pluginParamsLabel": "Plugin parameters"
 			},
 			"libraryContent": {
 				"title": "Library Content",
@@ -1343,7 +1415,14 @@
 				"queuedSources": "Queued sources",
 				"optionalHint": "Adding content here is optional — you can also add files, URLs, or YouTube transcripts later from the Library detail page. Note: a Knowledge Store can only ingest items that exist in its Library, so anything you skip now must be added to the Library before it can land in the Knowledge Store.",
 				"uploadNote": "Content will be imported when you click \"Create\" in the Review step.",
-				"emptyHint": "No content queued. You can skip this step."
+				"emptyHint": "No content queued. You can skip this step.",
+				"dropHint": "You can add multiple files; they will be imported when you click Create.",
+				"dropTitle": "Drop files here or click to upload",
+				"noPlugins": "No import plugins are currently enabled.",
+				"perFileParams": "Per-file plugin parameters",
+				"pluginLabel": "Import plugin",
+				"pluginParamsHint": "Defaults come from the plugin and work for most documents — override only if needed.",
+				"pluginParamsLabel": "Plugin parameters"
 			},
 			"ksStep": {
 				"title": "Knowledge Store Setup",
@@ -1358,8 +1437,14 @@
 				"nameTooLong": "Name must be less than 100 characters",
 				"shareLabel": "Share with my organization",
 				"shareHint": "You can change this later from the Knowledge Store detail view.",
-				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB"
-			}
+				"advancedLabel": "Advanced: chunking, embedding vendor/model, vector DB",
+				"chunkingHeading": "Chunking",
+				"chunkingParamsHint": "Defaults work for most documents — adjust only if you have a reason to. You can change these later from the Knowledge Store detail view, but changes only apply to content indexed after the edit.",
+				"embeddingHeading": "Embedding",
+				"storageHeading": "Storage"
+			},
+			"adding": "Adding...",
+			"titleAddContent": "Add Content"
 		}
 	},
 	"capability": {

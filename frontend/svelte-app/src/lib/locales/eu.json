@@ -367,6 +367,8 @@
 		"close": "Itxi"
 	},
 	"common": {
+		"close": "Itxi",
+		"next": "Hurrengoa",
 		"loading": "Kargatzen...",
 		"error": "Errorea",
 		"success": "Arrakasta",
@@ -1224,7 +1226,17 @@
 			"itemsIngested": "elementu sartu dira",
 			"runInBackground": "Bigarren mailan jarraitu",
 			"retry": "Sartzea berriz saiatu",
-			"backgroundToast": "Sartzea bigarren mailan jarraitzen du. Aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu."
+			"backgroundToast": "Sartzea bigarren mailan jarraitzen du. Aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
+			"done": "Indexazioa osatuta",
+			"etaHeuristic": "~1–2 min elementuko",
+			"etaMinutes": "~{n} min geratzen dira",
+			"etaSeconds": "~{n}s geratzen dira",
+			"ingesting": "indexatzen",
+			"ofConnector": "/",
+			"processing": "Edukia prozesatzen…",
+			"retryComingSoon": "Berriz saiatzeko funtzioa laster egongo da erabilgarri.",
+			"retryQueued": "Berriz saiatzea ilaran.",
+			"viewKs": "Ikusi Ezagutza-biltegia"
 		},
 		"removeModal": {
 			"title": "Ezagutza-biltegitik Kendu",
@@ -1243,7 +1255,54 @@
 			"noItems": "Hautatu gutxienez elementu bat.",
 			"noItems2": "Liburutegi honek ez du ingeritzeko prest dagoen elementurik.",
 			"submit": "Ezagutza-biltegira Gehitu",
-			"submitting": "Gehitzen..."
+			"submitting": "Gehitzen...",
+			"duplicateWarning1": "Elementu 1 jada Ezagutza-biltegi honetan dago eta saltatu egingo da.",
+			"duplicateWarningN": "{n} elementu jada Ezagutza-biltegi honetan daude eta saltatu egingo dira.",
+			"emptyTag": "(hutsik — ezer gehitzeko)",
+			"fromLibrary": "Liburutegitik:",
+			"itemPlural": "elementu",
+			"itemSingular": "elementu",
+			"libraryAllFailedHint": "Liburutegi honetako elementu guztiek huts egin dute inportatzean. Itzuli eta aukeratu beste liburutegi bat.",
+			"libraryEmptyHint": "Liburutegi honek ez du indexatzeko prest dagoen elementurik. Itzuli eta aukeratu beste liburutegi bat, edo inportatu edukia hona lehenik.",
+			"libraryHint": "Aukeratu indexatu beharreko elementuak dituen liburutegia.",
+			"libraryRequired": "Aukeratu liburutegi bat jarraitzeko.",
+			"reviewHint": "Berrikusi zer indexatuko den eta egin klik Gehitu botoian.",
+			"reviewItems": "Indexatzeko elementuak",
+			"stepItems": "Elementuak",
+			"stepLibrary": "Liburutegia",
+			"stepReview": "Berrikusi"
+		},
+		"addDescription": "Gehitu deskribapena",
+		"chunkingParams": "Zatiketa-parametroak",
+		"collapseDetail": "Ezkutatu blokeatutako konfigurazioa",
+		"deletedSuffix": "(ezabatua)",
+		"editDescription": "Editatu deskribapena",
+		"editName": "Editatu izena",
+		"expandDetail": "Erakutsi blokeatutako konfigurazioa",
+		"filterLibrary": "Liburutegia",
+		"filterLibraryAll": "Liburutegi guztiak",
+		"filterLibraryClear": "Garbitu iragazkia",
+		"lockedConfigHint": "Konfigurazioa sortu ondoren blokeatzen da",
+		"nameRequired": "Izena beharrezkoa da.",
+		"noContentForLibrary": "Hautatutako liburutegiko elementurik ez dago Ezagutza-biltegi honi lotuta.",
+		"results": "Emaitzak",
+		"totalChunks": "Zatiak guztira",
+		"viewItem": "Ikusi elementua",
+		"items": {
+			"title": "Elementuak"
+		},
+		"options": {
+			"unavailableBody": "Ezagutza-biltegien zerbitzaria ez dago erabilgarri. Ziurtatu lamb-kb-server martxan dagoela eta saiatu berriro.",
+			"unavailableTitle": "Ezagutza-biltegien zerbitzaria ez dago erabilgarri"
+		},
+		"params": {
+			"editButton": "Editatu",
+			"editNotice": "Aldaketak gorde ondoren indexatutako edukiari soilik aplikatzen zaizkio; lehendik dauden zatiek sortu zituzten parametroak mantentzen dituzte.",
+			"noParams": "Estrategia honek ez du parametro editagarririk.",
+			"saveFailed": "Ezin izan dira zatiketa-parametroak eguneratu.",
+			"saved": "Zatiketa-parametroak eguneratuta. Indexazio berriei soilik aplikatzen zaizkie.",
+			"schemaFailed": "Ezin izan da zatiketa-parametroen eskema kargatu. Saiatu berriro geroago.",
+			"usingDefaults": "Estrategiaren balio lehenetsiak erabiltzen."
 		}
 	},
 	"knowledge": {
@@ -1268,7 +1327,8 @@
 			},
 			"lockedConfigNotice": {
 				"title": "Ezarpen hauek ezin dira geroago aldatu.",
-				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat."
+				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat.",
+				"paramsBody": "Zatiketa-parametroak geroago edita daitezke, baina aldaketak indexatu berri den edukiari soilik aplikatzen zaizkio; lehendik dauden zatiek hasieran sortu zituzten parametroak mantentzen dituzte."
 			},
 			"step6": {
 				"chunkingLabel": "Chunking strategy",
@@ -1276,11 +1336,15 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan."
+				"noVendorConfigured": "Zure erakundeak ez du embedding hornitzailerik konfiguratuta. Eskatu administratzaile bati API gako bat gehitzeko erakundearen ezarpenetan.",
+				"modelRequired": "APIak ez du modelorik itzuli hornitzaile honentzat; idatzi modelo-izen bat jarraitzeko."
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
-				"description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian."
+				"description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian.",
+				"heading": "Hautatu indexatzeko elementuak",
+				"newBadge": "BERRIA",
+				"noItems": "Liburutegi honek ez du prest dagoen elementurik. Urrats hau saltatu eta edukia geroago gehi dezakezu."
 			},
 			"step8": {
 				"title": "Review & create",
@@ -1298,14 +1362,19 @@
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
 				"progressIngest": "Queuing {n} item(s) for ingestion...",
-				"retry": "Saiatu berriro"
+				"retry": "Saiatu berriro",
+				"ksNameTaken": "Jada badago \"{name}\" izeneko Ezagutza-biltegi bat.",
+				"libraryNameTaken": "Jada badago \"{name}\" izeneko liburutegi bat.",
+				"pluginAuto": "Automatikoki hautatua",
+				"submitAdd": "Gehitu"
 			},
 			"step9": {
 				"heading": "Dena prest dago",
 				"description": "Zure Liburutegia eta Ezagutza-biltegia prest daude. Ingestioa atzeko planoan exekutatzen da — aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
 				"openLibrary": "Liburutegia ireki",
 				"createAnother": "Beste bat sortu",
-				"toast": "Ezagutza-biltegia sortuta."
+				"toast": "Ezagutza-biltegia sortuta.",
+				"openKS": "Ireki Ezagutza-biltegia"
 			},
 			"creating": "Sortzen...",
 			"draft": {
@@ -1328,7 +1397,10 @@
 				"shareHint": "Geroago alda dezakezu Liburutegiaren xehetasun ikuspegitik.",
 				"advancedLabel": "Aurreratua: inportazio plugina eta parametroak",
 				"noPlugins": "Ez dago inportazio pluginik.",
-				"pluginLabel": "Inportazio plugina"
+				"pluginLabel": "Inportazio plugina",
+				"descriptionLabel": "Deskribapena",
+				"pluginParamsHint": "Balio lehenetsiak pluginetik datoz eta dokumentu gehienetan funtzionatzen dute; aldatu beharrezkoa bada soilik.",
+				"pluginParamsLabel": "Pluginaren parametroak"
 			},
 			"libraryContent": {
 				"title": "Liburutegiaren edukia",
@@ -1343,7 +1415,14 @@
 				"queuedSources": "Iturri zerrendatuak",
 				"optionalHint": "Eduki gehitzea hemen aukerakoa da — fitxategiak, URLak edo YouTubeko transkripzioak ere geroago gehi ditzakezu Bibliotekaren xehetasun-ikuspegitik. Oharra: Knowledge Store batek soilik bere Bibliotekan dauden elementuak ingeritu ditzake; beraz, orain saltatzen duzuna Bibliotekara gehitu beharko duzu lehenik.",
 				"uploadNote": "Edukia inportatuko da \"Sortu\" sakatzean Berrikuspena urratsean.",
-				"emptyHint": "Ez dago iturririk ilaran. Urrats hau saltatu dezakezu."
+				"emptyHint": "Ez dago iturririk ilaran. Urrats hau saltatu dezakezu.",
+				"dropHint": "Hainbat fitxategi gehi ditzakezu; Sortu sakatzean inportatuko dira.",
+				"dropTitle": "Jaregin fitxategiak hemen edo egin klik kargatzeko",
+				"noPlugins": "Une honetan ez dago inportazio-pluginik gaituta.",
+				"perFileParams": "Fitxategi bakoitzeko pluginaren parametroak",
+				"pluginLabel": "Inportazio-plugina",
+				"pluginParamsHint": "Balio lehenetsiak pluginetik datoz eta dokumentu gehienetan funtzionatzen dute; aldatu beharrezkoa bada soilik.",
+				"pluginParamsLabel": "Pluginaren parametroak"
 			},
 			"ksStep": {
 				"title": "Knowledge Store konfigurazioa",
@@ -1360,8 +1439,15 @@
 				"shareHint": "Geroago alda dezakezu Knowledge Store xehetasun ikuspegitik.",
 				"vectorIndexingLabel": "Bektore-indexazioa: zatiketa, txertaketa hornitzaile/eredua, datu-base bektoriala",
 				"otherIndexingLabel": "Beste indexazio-estrategia bat (laster)",
-				"otherIndexingHint": "Etorkizuneko bertsio batean, beste indexazio-estrategia batzuk (bektorialaz haratago) hemen hautatu ahal izango dira."
-			}
+				"otherIndexingHint": "Etorkizuneko bertsio batean, beste indexazio-estrategia batzuk (bektorialaz haratago) hemen hautatu ahal izango dira.",
+				"chunkingHeading": "Zatiketa",
+				"chunkingParamsHint": "Balio lehenetsiek dokumentu gehienetan funtzionatzen dute; egokitu arrazoiren bat baduzu soilik. Geroago alda ditzakezu Ezagutza-biltegiaren xehetasun-ikuspegitik, baina aldaketak edizioaren ondoren indexatutako edukiari soilik aplikatzen zaizkio.",
+				"embeddingHeading": "Embedding",
+				"storageHeading": "Biltegiratzea",
+				"advancedLabel": "Aurreratua: zatiketa, embedding hornitzailea/modeloa, vector DB"
+			},
+			"adding": "Gehitzen...",
+			"titleAddContent": "Gehitu edukia"
 		}
 	},
 	"capability": {
