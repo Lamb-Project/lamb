@@ -1257,9 +1257,6 @@
 			"next": "Hurrengoa",
 			"back": "Atzera",
 			"skip": "Saltatu",
-			"create": "Sortu",
-			"cancel": "Utzi",
-			"abort": "Bertan behera utzi",
 			"useExisting": "Erabili lehendik dagoen bat",
 			"createNew": "Sortu berri bat",
 			"advancedLabel": "Ezarpen aurreratuak",
@@ -1273,57 +1270,9 @@
 				"title": "Ezarpen hauek ezin dira geroago aldatu.",
 				"body": "Zatiketa-estrategia, txertaketa-hornitzaile/eredua eta datu-base bektoriala Knowledge Store sortzen denean blokeatzen dira. Aldatzeko, sortu Knowledge Store berri bat."
 			},
-			"editDefaults": "Lehenetsiak editatu",
-			"progress": "{current}. urratsa, {total}etik",
-			"step0": {
-				"title": "Aukeratu Liburutegi bat",
-				"description": "Erabili lehendik dagoen Liburutegi bat edo sortu berri bat.",
-				"newLibrary": "Sortu Liburutegi berri bat",
-				"existingLibrary": "Erabili lehendik dagoen Liburutegi bat",
-				"pickLibrary": "Aukeratu Liburutegi bat"
-			},
-			"step1": {
-				"title": "Liburutegiaren xehetasunak",
-				"description": "Eman izen bat zure Liburutegiari eta deskribapen aukerakoa.",
-				"nameLabel": "Liburutegiaren izena",
-				"descriptionLabel": "Deskribapena (aukerakoa)",
-				"sharedLabel": "Erakundearekin partekatu"
-			},
-			"step2": {
-				"title": "Liburutegiaren inportazio-ezarpenak",
-				"description": "Lehenetsiak kasu gehienetan funtzionatzen dute. Zabaldu inportazio-pluginak pertsonalizatzeko.",
-				"defaultPluginLabel": "Inportazio-plugin lehenetsia"
-			},
-			"step3": {
-				"title": "Hasierako edukia gehitu",
-				"description": "Aukeran, igo fitxategi bat edo gehiago orain. Beti gehiago gehi ditzakezu geroago.",
-				"uploadHint": "Jaregin fitxategiak hemen edo egin klik arakatzeko",
-				"uploaded": "igota",
-				"processing": "prozesatzen",
-				"ready": "prest",
-				"failed": "huts egin du"
-			},
-			"step4": {
-				"title": "Aukeratu Ezagutza-biltegi bat",
-				"description": "Erabili lehendik dagoen Ezagutza-biltegi bat edo sortu berri bat.",
-				"newKs": "Sortu Ezagutza-biltegi berri bat",
-				"existingKs": "Erabili lehendik dagoen Ezagutza-biltegi bat",
-				"pickKs": "Aukeratu Ezagutza-biltegi bat"
-			},
-			"step5": {
-				"title": "Ezagutza-biltegiaren xehetasunak",
-				"description": "Ezagutza-biltegiaren izena eta deskribapen aukerakoa.",
-				"nameLabel": "Ezagutza-biltegiaren izena",
-				"descriptionLabel": "Deskribapena (aukerakoa)",
-				"sharedLabel": "Erakundearekin partekatu"
-			},
 			"step6": {
-				"title": "Knowledge Store configuration",
-				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
-				"embeddingVendorLabel": "Embedding vendor",
-				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
@@ -1331,22 +1280,16 @@
 			},
 			"step7": {
 				"title": "Aukeratu ingeritzeko elementuak",
-				"description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian.",
-				"allItems": "Elementu guztiak"
+				"description": "Aukeratu zein liburutegiko elementu indexatu Ezagutza-biltegian."
 			},
 			"step8": {
 				"title": "Review & create",
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
-				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Ingeritzeko elementuak",
 				"submit": "Create",
-				"submitting": "Creating...",
 				"heading": "Review & create",
-				"ingestionHeading": "Ingestion",
-				"ingestionCount": "{n} item(s) will be ingested",
-				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1358,25 +1301,17 @@
 				"retry": "Saiatu berriro"
 			},
 			"step9": {
-				"title": "Dena prest",
 				"heading": "Dena prest dago",
 				"description": "Zure Liburutegia eta Ezagutza-biltegia prest daude. Ingestioa atzeko planoan exekutatzen da — aurrerapena Ezagutza-biltegiaren orrian ikus dezakezu.",
-				"openKs": "Ezagutza-biltegia ireki",
 				"openLibrary": "Liburutegia ireki",
 				"createAnother": "Beste bat sortu",
 				"toast": "Ezagutza-biltegia sortuta."
 			},
-			"stepProgress": "{n}. urratsa {total}etik",
 			"creating": "Sortzen...",
 			"draft": {
 				"banner": "Bukaeratu gabeko zirriborro bat duzu {time}tik.",
 				"resume": "Jarraitu",
-				"discard": "Baztertu",
-				"savePrompt": {
-					"title": "Zirriborro gisa gorde?",
-					"body": "Zure aurrerapena gordeta egongo da saioa edo fitxa itxi arte.",
-					"save": "Zirriborroa gorde"
-				}
+				"discard": "Baztertu"
 			},
 			"libraryStep": {
 				"title": "Liburutegiaren konfigurazioa",
@@ -1393,22 +1328,15 @@
 				"shareHint": "Geroago alda dezakezu Liburutegiaren xehetasun ikuspegitik.",
 				"advancedLabel": "Aurreratua: inportazio plugina eta parametroak",
 				"noPlugins": "Ez dago inportazio pluginik.",
-				"pluginLabel": "Inportazio plugina",
-				"pluginNote": "Plugin bakoitzeko parametroak geroago pertsonaliza daitezke liburutegiaren xehetasun ikuspegitik."
+				"pluginLabel": "Inportazio plugina"
 			},
 			"libraryContent": {
 				"title": "Liburutegiaren edukia",
 				"heading": "Hasierako edukia",
-				"description": "Gehitu edukia zure Liburutegi berriari orain (aukerakoa). Edukia geroago ere gehi dezakezu.",
-				"sourceTypeFiles": "Fitxategiak",
-				"sourceTypeUrl": "URL",
-				"sourceTypeYouTube": "YouTube",
-				"pickLabel": "Fitxategiak hautatu",
 				"invalidUrl": "HTTP(S) URL baliodun bat behar da.",
 				"invalidYoutubeUrl": "YouTube URL baliodun bat behar da.",
 				"titleOptional": "Izenburua (aukerakoa)",
 				"youtubeUrl": "YouTube URL",
-				"ytLanguage": "Transkripzioaren hizkuntza",
 				"addUrl": "+ URL gehitu",
 				"addYouTube": "+ YouTube gehitu",
 				"queuedLabel": "Iturri ilarakoak",

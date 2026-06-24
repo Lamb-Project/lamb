@@ -1257,9 +1257,6 @@
 			"next": "Següent",
 			"back": "Enrere",
 			"skip": "Ometre",
-			"create": "Crear",
-			"cancel": "Cancel·lar",
-			"abort": "Avortar",
 			"useExisting": "Utilitzar un d'existent",
 			"createNew": "Crear-ne un de nou",
 			"advancedLabel": "Configuració avançada",
@@ -1273,57 +1270,9 @@
 				"title": "Aquests ajustos no es poden canviar més tard.",
 				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge."
 			},
-			"editDefaults": "Editar valors per defecte",
-			"progress": "Pas {current} de {total}",
-			"step0": {
-				"title": "Tria una Biblioteca",
-				"description": "Utilitza una Biblioteca existent o crea'n una de nova.",
-				"newLibrary": "Crear una nova Biblioteca",
-				"existingLibrary": "Utilitzar una Biblioteca existent",
-				"pickLibrary": "Tria una Biblioteca"
-			},
-			"step1": {
-				"title": "Detalls de la Biblioteca",
-				"description": "Posa un nom a la teva Biblioteca i una descripció opcional.",
-				"nameLabel": "Nom de la Biblioteca",
-				"descriptionLabel": "Descripció (opcional)",
-				"sharedLabel": "Compartir amb l'organització"
-			},
-			"step2": {
-				"title": "Configuració d'importació de la Biblioteca",
-				"description": "Els valors per defecte funcionen per a la majoria de casos. Expandeix per personalitzar els plugins d'importació.",
-				"defaultPluginLabel": "Plugin d'importació per defecte"
-			},
-			"step3": {
-				"title": "Afegir contingut inicial",
-				"description": "Opcionalment, puja un o més fitxers ara. Sempre en podràs afegir més més tard.",
-				"uploadHint": "Arrossega els fitxers aquí o fes clic per examinar",
-				"uploaded": "pujat",
-				"processing": "processant",
-				"ready": "a punt",
-				"failed": "fallit"
-			},
-			"step4": {
-				"title": "Tria un Magatzem de Coneixement",
-				"description": "Utilitza un Magatzem de Coneixement existent o crea'n un de nou.",
-				"newKs": "Crear un nou Magatzem de Coneixement",
-				"existingKs": "Utilitzar un Magatzem de Coneixement existent",
-				"pickKs": "Tria un Magatzem de Coneixement"
-			},
-			"step5": {
-				"title": "Detalls del Magatzem de Coneixement",
-				"description": "Nom i descripció opcional per al Magatzem de Coneixement.",
-				"nameLabel": "Nom del Magatzem de Coneixement",
-				"descriptionLabel": "Descripció (opcional)",
-				"sharedLabel": "Compartir amb l'organització"
-			},
 			"step6": {
-				"title": "Knowledge Store configuration",
-				"description": "These choices control chunking and embedding. They are LOCKED after creation.",
 				"chunkingLabel": "Chunking strategy",
 				"vectorDbLabel": "Vector DB backend",
-				"embeddingVendorLabel": "Embedding vendor",
-				"embeddingModelLabel": "Embedding model",
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
@@ -1331,22 +1280,16 @@
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
-				"description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement.",
-				"allItems": "Tots els elements"
+				"description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement."
 			},
 			"step8": {
 				"title": "Review & create",
 				"description": "Review your choices below. Click Create to proceed.",
 				"libraryHeading": "Library",
 				"ksHeading": "Knowledge Store",
-				"itemsHeading": "Items to ingest",
 				"itemsToIngest": "Elements a ingerir",
 				"submit": "Create",
-				"submitting": "Creating...",
 				"heading": "Review & create",
-				"ingestionHeading": "Ingestion",
-				"ingestionCount": "{n} item(s) will be ingested",
-				"libraryPlugin": "Import plugin: {plugin}",
 				"libraryFileCount": "{n} file(s) to upload",
 				"libraryUrlCount": "{n} URL/YouTube source(s) to import",
 				"progressLibrary": "Creating library...",
@@ -1358,25 +1301,17 @@
 				"retry": "Torna a intentar"
 			},
 			"step9": {
-				"title": "Tot llest",
 				"heading": "Tot a punt",
 				"description": "La teva Biblioteca i el Magatzem de Coneixement estan a punt. La ingesta s'executa en segon pla — pots veure el progrés a la pàgina del Magatzem de Coneixement.",
-				"openKs": "Obrir Magatzem de Coneixement",
 				"openLibrary": "Obrir Biblioteca",
 				"createAnother": "Crear-ne un altre",
 				"toast": "Magatzem de Coneixement creat."
 			},
-			"stepProgress": "Pas {n} de {total}",
 			"creating": "Creant...",
 			"draft": {
 				"banner": "Tens un esborrany sense acabar de {time}.",
 				"resume": "Reprendre",
-				"discard": "Descartar",
-				"savePrompt": {
-					"title": "Desar com a esborrany?",
-					"body": "El teu progrés es guardarà fins que tanquis la sessió o la pestanya.",
-					"save": "Desar esborrany"
-				}
+				"discard": "Descartar"
 			},
 			"libraryStep": {
 				"title": "Configuració de Biblioteca",
@@ -1393,22 +1328,15 @@
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de la Biblioteca.",
 				"advancedLabel": "Avançat: complement d'importació i paràmetres",
 				"noPlugins": "No hi ha complements d'importació disponibles.",
-				"pluginLabel": "Complement d'importació",
-				"pluginNote": "Els paràmetres per complement es poden personalitzar més tard des de la vista de detall de la biblioteca."
+				"pluginLabel": "Complement d'importació"
 			},
 			"libraryContent": {
 				"title": "Contingut de Biblioteca",
 				"heading": "Contingut inicial",
-				"description": "Afegeix contingut a la teva nova Biblioteca ara (opcional). També pots ometre-ho i afegir contingut més tard.",
-				"sourceTypeFiles": "Fitxers",
-				"sourceTypeUrl": "URL",
-				"sourceTypeYouTube": "YouTube",
-				"pickLabel": "Seleccionar fitxers",
 				"invalidUrl": "Es requereix una URL HTTP(S) vàlida.",
 				"invalidYoutubeUrl": "Es requereix una URL de YouTube vàlida.",
 				"titleOptional": "Títol (opcional)",
 				"youtubeUrl": "URL de YouTube",
-				"ytLanguage": "Idioma de la transcripció",
 				"addUrl": "+ Afegir URL",
 				"addYouTube": "+ Afegir YouTube",
 				"queuedLabel": "Fonts a la cua",
