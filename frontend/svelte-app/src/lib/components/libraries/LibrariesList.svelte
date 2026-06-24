@@ -109,7 +109,7 @@
 	let activePredicates = $derived.by(() => {
 		/** @type {Array<(item: any) => boolean>} */
 		const preds = [];
-		if (sharingFilter === 'my') preds.push((l) => l.is_owner !== false);
+		if (sharingFilter === 'my') preds.push((l) => l.is_owner !== false && !l.is_shared);
 		if (sharingFilter === 'shared') preds.push((l) => l.is_shared === true);
 		if (hasItemsFilter === 'with-items') preds.push((l) => (l.item_count ?? 0) > 0);
 		if (hasItemsFilter === 'empty') preds.push((l) => (l.item_count ?? 0) === 0);
