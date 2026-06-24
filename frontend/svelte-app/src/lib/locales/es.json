@@ -367,6 +367,8 @@
 		"close": "Cerrar"
 	},
 	"common": {
+		"close": "Cerrar",
+		"next": "Siguiente",
 		"loading": "Cargando...",
 		"error": "Error",
 		"success": "Éxito",
@@ -1224,7 +1226,17 @@
 			"itemsIngested": "elementos ingeridos",
 			"runInBackground": "Continuar en segundo plano",
 			"retry": "Reintentar ingestión",
-			"backgroundToast": "La ingestión continúa en segundo plano. Sigue el progreso en la página del Almacén de Conocimiento."
+			"backgroundToast": "La ingestión continúa en segundo plano. Sigue el progreso en la página del Almacén de Conocimiento.",
+			"done": "Indexación completada",
+			"etaHeuristic": "~1–2 min por elemento",
+			"etaMinutes": "~{n} min restantes",
+			"etaSeconds": "~{n}s restantes",
+			"ingesting": "indexando",
+			"ofConnector": "de",
+			"processing": "Procesando contenido…",
+			"retryComingSoon": "La función de reintentar estará disponible pronto.",
+			"retryQueued": "Reintento en cola.",
+			"viewKs": "Ver Almacén de Conocimiento"
 		},
 		"removeModal": {
 			"title": "Quitar del Almacén de Conocimiento",
@@ -1243,7 +1255,54 @@
 			"noItems": "Selecciona al menos un elemento.",
 			"noItems2": "Esta biblioteca no tiene elementos listos para ingerir.",
 			"submit": "Añadir al Almacén de Conocimiento",
-			"submitting": "Añadiendo..."
+			"submitting": "Añadiendo...",
+			"duplicateWarning1": "1 elemento ya está en este Almacén de Conocimiento y se omitirá.",
+			"duplicateWarningN": "{n} elementos ya están en este Almacén de Conocimiento y se omitirán.",
+			"emptyTag": "(vacío — nada que añadir)",
+			"fromLibrary": "De la biblioteca:",
+			"itemPlural": "elementos",
+			"itemSingular": "elemento",
+			"libraryAllFailedHint": "Todos los elementos de esta biblioteca han fallado al importarse. Vuelve atrás y elige otra biblioteca.",
+			"libraryEmptyHint": "Esta biblioteca no tiene elementos listos para indexar. Vuelve atrás y elige otra biblioteca, o importa contenido en esta primero.",
+			"libraryHint": "Elige la biblioteca que contiene los elementos a indexar.",
+			"libraryRequired": "Elige una biblioteca para continuar.",
+			"reviewHint": "Revisa lo que se indexará y luego haz clic en Añadir.",
+			"reviewItems": "Elementos a indexar",
+			"stepItems": "Elementos",
+			"stepLibrary": "Biblioteca",
+			"stepReview": "Revisar"
+		},
+		"addDescription": "Añadir descripción",
+		"chunkingParams": "Parámetros de fragmentación",
+		"collapseDetail": "Ocultar configuración bloqueada",
+		"deletedSuffix": "(eliminado)",
+		"editDescription": "Editar descripción",
+		"editName": "Editar nombre",
+		"expandDetail": "Mostrar configuración bloqueada",
+		"filterLibrary": "Biblioteca",
+		"filterLibraryAll": "Todas las bibliotecas",
+		"filterLibraryClear": "Borrar filtro",
+		"lockedConfigHint": "La configuración se bloquea tras la creación",
+		"nameRequired": "El nombre es obligatorio.",
+		"noContentForLibrary": "Ningún elemento de la biblioteca seleccionada está vinculado a este Almacén de Conocimiento.",
+		"results": "Resultados",
+		"totalChunks": "Total de fragmentos",
+		"viewItem": "Ver elemento",
+		"items": {
+			"title": "Elementos"
+		},
+		"options": {
+			"unavailableBody": "Servidor de Almacenes de Conocimiento no disponible. Asegúrate de que lamb-kb-server esté en ejecución e inténtalo de nuevo.",
+			"unavailableTitle": "Servidor de Almacenes de Conocimiento no disponible"
+		},
+		"params": {
+			"editButton": "Editar",
+			"editNotice": "Los cambios solo se aplican al contenido indexado tras guardar; los fragmentos existentes conservan los parámetros con los que se crearon.",
+			"noParams": "Esta estrategia no tiene parámetros editables.",
+			"saveFailed": "No se pudieron actualizar los parámetros de fragmentación.",
+			"saved": "Parámetros de fragmentación actualizados. Solo se aplican a las nuevas indexaciones.",
+			"schemaFailed": "No se pudo cargar el esquema de parámetros de fragmentación. Inténtalo más tarde.",
+			"usingDefaults": "Usando los valores por defecto de la estrategia."
 		}
 	},
 	"knowledge": {
@@ -1268,7 +1327,8 @@
 			},
 			"lockedConfigNotice": {
 				"title": "Estos ajustes no se pueden cambiar después.",
-				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén."
+				"body": "La estrategia de fragmentación, el proveedor/modelo de embeddings y la base de datos vectorial quedan bloqueados al crear el Almacén de Conocimiento. Para cambiarlos, crea un nuevo Almacén.",
+				"paramsBody": "Los parámetros de fragmentación se pueden editar más tarde, pero los cambios solo se aplican al contenido recién indexado; los fragmentos existentes conservan los parámetros con los que se crearon originalmente."
 			},
 			"step6": {
 				"chunkingLabel": "Chunking strategy",
@@ -1276,11 +1336,15 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización."
+				"noVendorConfigured": "Tu organización no tiene proveedores de embeddings configurados. Pide a un administrador que añada una clave de API en la configuración de la organización.",
+				"modelRequired": "La API no devolvió modelos para este proveedor; escribe un nombre de modelo para continuar."
 			},
 			"step7": {
 				"title": "Elige elementos para ingerir",
-				"description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento."
+				"description": "Elige qué elementos de la biblioteca indexar en el Almacén de Conocimiento.",
+				"heading": "Selecciona elementos para indexar",
+				"newBadge": "NUEVO",
+				"noItems": "Esta biblioteca no tiene elementos listos. Puedes omitir este paso y añadir contenido más tarde."
 			},
 			"step8": {
 				"title": "Review & create",
@@ -1298,14 +1362,19 @@
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
 				"progressIngest": "Queuing {n} item(s) for ingestion...",
-				"retry": "Reintentar"
+				"retry": "Reintentar",
+				"ksNameTaken": "Ya existe un Almacén de Conocimiento llamado \"{name}\".",
+				"libraryNameTaken": "Ya existe una biblioteca llamada \"{name}\".",
+				"pluginAuto": "Seleccionado automáticamente",
+				"submitAdd": "Añadir"
 			},
 			"step9": {
 				"heading": "¡Todo listo!",
 				"description": "Tu Biblioteca y Almacén de Conocimiento están listos. La ingesta se ejecuta en segundo plano — puedes ver el progreso en la página del Almacén de Conocimiento.",
 				"openLibrary": "Abrir Biblioteca",
 				"createAnother": "Crear otro",
-				"toast": "Almacén de Conocimiento creado."
+				"toast": "Almacén de Conocimiento creado.",
+				"openKS": "Abrir Almacén de Conocimiento"
 			},
 			"creating": "Creando...",
 			"draft": {
@@ -1328,7 +1397,10 @@
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle de la Biblioteca.",
 				"advancedLabel": "Avanzado: plugin de importación y parámetros",
 				"noPlugins": "No hay plugins de importación disponibles.",
-				"pluginLabel": "Plugin de importación"
+				"pluginLabel": "Plugin de importación",
+				"descriptionLabel": "Descripción",
+				"pluginParamsHint": "Los valores por defecto provienen del plugin y funcionan para la mayoría de documentos; cámbialos solo si es necesario.",
+				"pluginParamsLabel": "Parámetros del plugin"
 			},
 			"libraryContent": {
 				"title": "Contenido de Biblioteca",
@@ -1343,7 +1415,14 @@
 				"queuedSources": "Fuentes en cola",
 				"optionalHint": "Añadir contenido aquí es opcional — también puedes añadir archivos, URLs o transcripciones de YouTube más tarde desde la vista de detalle de la Biblioteca. Nota: un Knowledge Store solo puede ingerir elementos que existan en su Biblioteca, así que lo que omitas ahora deberás añadirlo antes a la Biblioteca.",
 				"uploadNote": "El contenido se importará cuando hagas clic en \"Crear\" en el paso de Revisión.",
-				"emptyHint": "No hay contenido en cola. Puedes omitir este paso."
+				"emptyHint": "No hay contenido en cola. Puedes omitir este paso.",
+				"dropHint": "Puedes añadir varios archivos; se importarán cuando hagas clic en Crear.",
+				"dropTitle": "Suelta archivos aquí o haz clic para subir",
+				"noPlugins": "No hay plugins de importación habilitados actualmente.",
+				"perFileParams": "Parámetros del plugin por archivo",
+				"pluginLabel": "Plugin de importación",
+				"pluginParamsHint": "Los valores por defecto provienen del plugin y funcionan para la mayoría de documentos; cámbialos solo si es necesario.",
+				"pluginParamsLabel": "Parámetros del plugin"
 			},
 			"ksStep": {
 				"title": "Configuración de Almacén de Conocimiento",
@@ -1360,8 +1439,15 @@
 				"shareHint": "Puedes cambiarlo más tarde desde la vista de detalle del Almacén de Conocimiento.",
 				"vectorIndexingLabel": "Indexación vectorial: fragmentación, proveedor/modelo de embeddings, base de datos vectorial",
 				"otherIndexingLabel": "Otra estrategia de indexación (próximamente)",
-				"otherIndexingHint": "En una versión futura se podrán seleccionar aquí otras estrategias de indexación (más allá de la vectorial)."
-			}
+				"otherIndexingHint": "En una versión futura se podrán seleccionar aquí otras estrategias de indexación (más allá de la vectorial).",
+				"chunkingHeading": "Fragmentación",
+				"chunkingParamsHint": "Los valores por defecto funcionan para la mayoría de documentos; ajústalos solo si tienes un motivo. Puedes cambiarlos más tarde desde la vista de detalle del Almacén de Conocimiento, pero los cambios solo se aplican al contenido indexado después de la edición.",
+				"embeddingHeading": "Embedding",
+				"storageHeading": "Almacenamiento",
+				"advancedLabel": "Avanzado: fragmentación, proveedor/modelo de embedding, vector DB"
+			},
+			"adding": "Añadiendo...",
+			"titleAddContent": "Añadir contenido"
 		}
 	},
 	"capability": {

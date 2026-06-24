@@ -367,6 +367,8 @@
 		"close": "Tancar"
 	},
 	"common": {
+		"close": "Tancar",
+		"next": "Següent",
 		"loading": "Carregant...",
 		"error": "S'ha produït un error",
 		"success": "Èxit!",
@@ -1224,7 +1226,17 @@
 			"itemsIngested": "elements ingerits",
 			"runInBackground": "Continuar en segon pla",
 			"retry": "Tornar a intentar la ingestió",
-			"backgroundToast": "La ingestió continua en segon pla. Pots seguir el progrés a la pàgina del Magatzem de Coneixement."
+			"backgroundToast": "La ingestió continua en segon pla. Pots seguir el progrés a la pàgina del Magatzem de Coneixement.",
+			"done": "Indexació completada",
+			"etaHeuristic": "~1–2 min per element",
+			"etaMinutes": "~{n} min restants",
+			"etaSeconds": "~{n}s restants",
+			"ingesting": "indexant",
+			"ofConnector": "de",
+			"processing": "Processant contingut…",
+			"retryComingSoon": "La funció de reintentar estarà disponible aviat.",
+			"retryQueued": "Reintent a la cua.",
+			"viewKs": "Veure el Magatzem de Coneixement"
 		},
 		"removeModal": {
 			"title": "Treure del Magatzem de Coneixement",
@@ -1243,7 +1255,54 @@
 			"noItems": "Selecciona almenys un element.",
 			"noItems2": "Aquesta biblioteca no té elements a punt per ingerir.",
 			"submit": "Afegir al Magatzem de Coneixement",
-			"submitting": "Afegint..."
+			"submitting": "Afegint...",
+			"duplicateWarning1": "1 element ja és en aquest Magatzem de Coneixement i s'ometrà.",
+			"duplicateWarningN": "{n} elements ja són en aquest Magatzem de Coneixement i s'ometran.",
+			"emptyTag": "(buit — res a afegir)",
+			"fromLibrary": "De la biblioteca:",
+			"itemPlural": "elements",
+			"itemSingular": "element",
+			"libraryAllFailedHint": "Tots els elements d'aquesta biblioteca han fallat en importar-se. Torna enrere i tria una altra biblioteca.",
+			"libraryEmptyHint": "Aquesta biblioteca no té elements a punt per indexar. Torna enrere i tria una altra biblioteca, o importa-hi contingut primer.",
+			"libraryHint": "Tria la biblioteca que conté els elements a indexar.",
+			"libraryRequired": "Tria una biblioteca per continuar.",
+			"reviewHint": "Revisa què s'indexarà i després fes clic a Afegir.",
+			"reviewItems": "Elements a indexar",
+			"stepItems": "Elements",
+			"stepLibrary": "Biblioteca",
+			"stepReview": "Revisar"
+		},
+		"addDescription": "Afegir descripció",
+		"chunkingParams": "Paràmetres de fragmentació",
+		"collapseDetail": "Amaga la configuració bloquejada",
+		"deletedSuffix": "(eliminat)",
+		"editDescription": "Edita la descripció",
+		"editName": "Edita el nom",
+		"expandDetail": "Mostra la configuració bloquejada",
+		"filterLibrary": "Biblioteca",
+		"filterLibraryAll": "Totes les biblioteques",
+		"filterLibraryClear": "Esborra el filtre",
+		"lockedConfigHint": "La configuració es bloqueja després de la creació",
+		"nameRequired": "El nom és obligatori.",
+		"noContentForLibrary": "Cap element de la biblioteca seleccionada no està vinculat a aquest Magatzem de Coneixement.",
+		"results": "Resultats",
+		"totalChunks": "Total de fragments",
+		"viewItem": "Veure l'element",
+		"items": {
+			"title": "Elements"
+		},
+		"options": {
+			"unavailableBody": "Servidor de Magatzems de Coneixement no disponible. Assegura't que lamb-kb-server s'estigui executant i torna-ho a provar.",
+			"unavailableTitle": "Servidor de Magatzems de Coneixement no disponible"
+		},
+		"params": {
+			"editButton": "Edita",
+			"editNotice": "Els canvis només s'apliquen al contingut indexat després de desar; els fragments existents conserven els paràmetres amb què es van crear.",
+			"noParams": "Aquesta estratègia no té paràmetres editables.",
+			"saveFailed": "No s'han pogut actualitzar els paràmetres de fragmentació.",
+			"saved": "Paràmetres de fragmentació actualitzats. Només s'apliquen a les noves indexacions.",
+			"schemaFailed": "No s'ha pogut carregar l'esquema de paràmetres de fragmentació. Torna-ho a provar més tard.",
+			"usingDefaults": "Utilitzant els valors per defecte de l'estratègia."
 		}
 	},
 	"knowledge": {
@@ -1268,7 +1327,8 @@
 			},
 			"lockedConfigNotice": {
 				"title": "Aquests ajustos no es poden canviar més tard.",
-				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge."
+				"body": "L'estratègia de fragmentació, el proveïdor/model d'embeddings i la base de dades vectorial queden bloquejats en crear l'Emmagatzematge de Coneixement. Per canviar-los, crea un nou Emmagatzematge.",
+				"paramsBody": "Els paràmetres de fragmentació es poden editar més tard, però els canvis només s'apliquen al contingut acabat d'indexar; els fragments existents conserven els paràmetres amb què es van crear originalment."
 			},
 			"step6": {
 				"chunkingLabel": "Chunking strategy",
@@ -1276,11 +1336,15 @@
 				"vendorLabel": "Embedding vendor",
 				"modelLabel": "Embedding model",
 				"endpointLabel": "Embedding endpoint (optional)",
-				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització."
+				"noVendorConfigured": "La teva organització no té proveïdors d'embeddings configurats. Demana a un administrador que afegeixi una clau d'API a la configuració de l'organització.",
+				"modelRequired": "L'API no ha retornat cap model per a aquest proveïdor; escriu un nom de model per continuar."
 			},
 			"step7": {
 				"title": "Tria elements per ingerir",
-				"description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement."
+				"description": "Tria quins elements de la biblioteca indexar al Magatzem de Coneixement.",
+				"heading": "Selecciona elements per indexar",
+				"newBadge": "NOU",
+				"noItems": "Aquesta biblioteca no té elements a punt. Pots ometre aquest pas i afegir contingut més tard."
 			},
 			"step8": {
 				"title": "Review & create",
@@ -1298,14 +1362,19 @@
 				"progressImportUrl": "Importing {url} ({n}/{total})...",
 				"progressKS": "Creating Knowledge Store...",
 				"progressIngest": "Queuing {n} item(s) for ingestion...",
-				"retry": "Torna a intentar"
+				"retry": "Torna a intentar",
+				"ksNameTaken": "Ja existeix un Magatzem de Coneixement anomenat \"{name}\".",
+				"libraryNameTaken": "Ja existeix una biblioteca anomenada \"{name}\".",
+				"pluginAuto": "Seleccionat automàticament",
+				"submitAdd": "Afegir"
 			},
 			"step9": {
 				"heading": "Tot a punt",
 				"description": "La teva Biblioteca i el Magatzem de Coneixement estan a punt. La ingesta s'executa en segon pla — pots veure el progrés a la pàgina del Magatzem de Coneixement.",
 				"openLibrary": "Obrir Biblioteca",
 				"createAnother": "Crear-ne un altre",
-				"toast": "Magatzem de Coneixement creat."
+				"toast": "Magatzem de Coneixement creat.",
+				"openKS": "Obrir Magatzem de Coneixement"
 			},
 			"creating": "Creant...",
 			"draft": {
@@ -1328,7 +1397,10 @@
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de la Biblioteca.",
 				"advancedLabel": "Avançat: complement d'importació i paràmetres",
 				"noPlugins": "No hi ha complements d'importació disponibles.",
-				"pluginLabel": "Complement d'importació"
+				"pluginLabel": "Complement d'importació",
+				"descriptionLabel": "Descripció",
+				"pluginParamsHint": "Els valors per defecte provenen del connector i funcionen per a la majoria de documents; canvia'ls només si cal.",
+				"pluginParamsLabel": "Paràmetres del connector"
 			},
 			"libraryContent": {
 				"title": "Contingut de Biblioteca",
@@ -1343,7 +1415,14 @@
 				"queuedSources": "Fonts a la cua",
 				"optionalHint": "Afegir contingut aquí és opcional — també pots afegir fitxers, URLs o transcripcions de YouTube més tard des de la vista de detall de la Biblioteca. Nota: un Knowledge Store només pot ingerir elements que existeixin a la seva Biblioteca, per tant el que ometis ara hauràs d'afegir-ho abans a la Biblioteca.",
 				"uploadNote": "El contingut s'importarà quan facis clic a \"Crear\" al pas de Revisió.",
-				"emptyHint": "No hi ha contingut a la cua. Pots ometre aquest pas."
+				"emptyHint": "No hi ha contingut a la cua. Pots ometre aquest pas.",
+				"dropHint": "Pots afegir diversos fitxers; s'importaran quan facis clic a Crear.",
+				"dropTitle": "Deixa anar fitxers aquí o fes clic per pujar-los",
+				"noPlugins": "No hi ha cap connector d'importació habilitat actualment.",
+				"perFileParams": "Paràmetres del connector per fitxer",
+				"pluginLabel": "Connector d'importació",
+				"pluginParamsHint": "Els valors per defecte provenen del connector i funcionen per a la majoria de documents; canvia'ls només si cal.",
+				"pluginParamsLabel": "Paràmetres del connector"
 			},
 			"ksStep": {
 				"title": "Configuració d'Emmagatzematge de Coneixement",
@@ -1360,8 +1439,15 @@
 				"shareHint": "Ho pots canviar més tard des de la vista de detall de l'Emmagatzematge de Coneixement.",
 				"vectorIndexingLabel": "Indexació vectorial: fragmentació, proveïdor/model d'embeddings, base de dades vectorial",
 				"otherIndexingLabel": "Una altra estratègia d'indexació (properament)",
-				"otherIndexingHint": "En una versió futura es podran seleccionar aquí altres estratègies d'indexació (més enllà de la vectorial)."
-			}
+				"otherIndexingHint": "En una versió futura es podran seleccionar aquí altres estratègies d'indexació (més enllà de la vectorial).",
+				"chunkingHeading": "Fragmentació",
+				"chunkingParamsHint": "Els valors per defecte funcionen per a la majoria de documents; ajusta'ls només si tens un motiu. Pots canviar-los més tard des de la vista de detall del Magatzem de Coneixement, però els canvis només s'apliquen al contingut indexat després de l'edició.",
+				"embeddingHeading": "Embedding",
+				"storageHeading": "Emmagatzematge",
+				"advancedLabel": "Avançat: fragmentació, proveïdor/model d'embedding, vector DB"
+			},
+			"adding": "Afegint...",
+			"titleAddContent": "Afegir contingut"
 		}
 	},
 	"capability": {
