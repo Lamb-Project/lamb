@@ -50,7 +50,7 @@ This index helps you find exactly what you need in the LAMB documentation. Start
 | Add Knowledge Base support | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.1 Knowledge Base |
 | Implement LTI integration | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.2 LTI Integration |
 | Add assistant sharing | [lamb_architecture_v2.md](./lamb_architecture_v2.md) | §8.3 Assistant Sharing |
-
+| Design assistant test scenarios | [evaluation_design_notes.md](./evaluation_design_notes.md) | Full doc |
 ---
 
 ## 📁 Documentation Map
