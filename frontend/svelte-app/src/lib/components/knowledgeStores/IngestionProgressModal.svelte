@@ -9,9 +9,9 @@
     * Top progress strip showing "{completedCount} of {total} items
       ingested" + ETA (heuristic until ≥1 completes, then derived).
     * Status badges via shared `statusBadgeProps`.
-    * Failed items expose a `<IconButton icon={RefreshCw}>` retry — the
-      backend endpoint is not implemented yet, so the stub surfaces a
-      `toast.info("Coming soon.")`.
+    * Failed items expose a `<IconButton icon={RefreshCw}>` retry that
+      re-queues the indexing job (the KB Server reuses the cached payload
+      and credentials); the item optimistically flips back to processing.
     * Footer: ghost "Close" or "Run in background" + primary "View
       Knowledge Store". "Run in background" fires a `toast.info`.
     * Polling continues after close so the parent list can show a
@@ -204,14 +204,9 @@
 				})
 			);
 		} catch (/** @type {any} */ err) {
-			if (err?.code === 'not_implemented') {
-				toast.info(
-					$_('knowledgeStores.ingestionProgress.retryComingSoon', {
-						default: 'Retry feature coming soon.'
-					})
-				);
-				return;
-			}
+			// The optimistic flip only runs after a successful queue, so the
+			// item is still 'failed' here — just surface the backend message
+			// (e.g. a 410 when the retry window has elapsed).
 			toast.error(err?.message || 'Retry failed.');
 		}
 	}

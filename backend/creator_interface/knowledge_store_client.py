@@ -434,6 +434,24 @@ class KnowledgeStoreClient:
         config = self._get_ks_config(creator_user)
         return await self._request("POST", f"/jobs/{job_id}/cancel", config)
 
+    async def retry_job(self, job_id: str,
+                        creator_user: Dict[str, Any] = None) -> Dict:
+        """Retry a failed ingestion job, reusing its cached credentials.
+
+        The KB Server keeps the document payload and embedding credentials in
+        memory across attempts, so the retry does not re-send them. Raises an
+        ``HTTPException`` with the KB Server's status code on 404/409/410 (job
+        missing, not retryable / exhausted, or credentials expired).
+        """
+        config = self._get_ks_config(creator_user)
+        return await self._request("POST", f"/jobs/{job_id}/retry", config)
+
+    async def get_job_retry_available(self, job_id: str,
+                                      creator_user: Dict[str, Any] = None) -> Dict:
+        """Report whether a failed job can still be retried in place."""
+        config = self._get_ks_config(creator_user)
+        return await self._request("GET", f"/jobs/{job_id}/retry-available", config)
+
     # ------------------------------------------------------------------
     # Org-level discovery (for the UI options endpoint)
     # ------------------------------------------------------------------

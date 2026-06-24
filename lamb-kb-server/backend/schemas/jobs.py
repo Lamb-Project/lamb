@@ -22,3 +22,11 @@ class JobStatusResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class RetryAvailability(BaseModel):
+    """Whether a failed job can be retried in place, with attempt accounting."""
+
+    available: bool
+    attempts: int
+    max_attempts: int
