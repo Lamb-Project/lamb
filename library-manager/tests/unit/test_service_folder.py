@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from _helpers import unique_id
 from database.models import ContentItem, Library
-from sqlalchemy.exc import IntegrityError
 from services import folder_service
 from services.folder_service import (
     FolderConflictError,
@@ -337,8 +336,8 @@ def test_delete_folder_collision_renames_with_suffix(db_session, lib):
     """delete_folder appends ``(2)`` when a reparented subfolder name collides.
 
     NOTE: the deleted folder is at the library root so its children reparent
-    to a NULL parent. This is the only code path the suffix logic survives —
-    see the bug reported in the final summary for the non-NULL-parent case.
+    to a NULL parent. The non-root case is covered by
+    test_delete_folder_collision_under_nonroot_parent.
     """
     # Root already has a "Drafts".
     folder_service.create_folder(
@@ -376,23 +375,12 @@ def test_delete_folder_collision_increments_suffix(db_session, lib):
     assert collide.name == "Drafts (3)"
 
 
-@pytest.mark.xfail(
-    raises=IntegrityError,
-    strict=True,
-    reason=(
-        "BUG: delete_folder sets sub.parent_folder_id before _next_available_name "
-        "computes the deduped name; the autoflush during that query writes the still-"
-        "colliding name and violates uq_folder_sibling_name when the new parent is "
-        "non-NULL. Masked for root (NULL) reparents because SQLite treats NULL as "
-        "distinct. Fix: assign sub.name before sub.parent_folder_id, or wrap in "
-        "db.no_autoflush. When fixed, this strict xfail will fail — unmark it then."
-    ),
-)
 def test_delete_folder_collision_under_nonroot_parent(db_session, lib):
-    """A reparented subfolder colliding under a NON-root parent should be renamed.
+    """A reparented subfolder colliding under a NON-root parent is renamed.
 
-    Pins the known delete_folder bug (see xfail reason). The expected behaviour
-    is that the collided 'Drafts' is renamed to 'Drafts (2)' under the parent.
+    The collided 'Drafts' is renamed to 'Drafts (2)' under the parent. The
+    deduped name is computed before parent_folder_id is reassigned, so the
+    autoflush during _next_available_name never writes a colliding row.
     """
     parent = folder_service.create_folder(
         db_session, library_id=lib, name="Parent", parent_folder_id=None
