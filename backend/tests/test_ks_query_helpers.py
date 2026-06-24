@@ -1,5 +1,8 @@
 import pytest
-from lamb.completions.rag._ks_query_helpers import _extract_sources
+from lamb.completions.rag._ks_query_helpers import (
+    _extract_sources,
+    build_context_and_sources,
+)
 
 
 class TestExtractSources:
@@ -60,3 +63,48 @@ class TestExtractSources:
         sources = _extract_sources("ks-1", results)
         assert len(sources) == 1
         assert sources[0]["title"] == "Source"
+
+
+class TestBuildContextAndSources:
+    def test_empty_input_returns_empty(self):
+        context, sources = build_context_and_sources([])
+        assert context == ""
+        assert sources == []
+
+    def test_numbers_chunks_and_aligns_sources(self):
+        ks_results = [
+            ("ks-1", [
+                {"text": "first chunk", "score": 0.9, "metadata": {"source_title": "Doc A"}},
+                {"text": "second chunk", "score": 0.8, "metadata": {"source_title": "Doc B"}},
+            ]),
+        ]
+        context, sources = build_context_and_sources(ks_results)
+        # Context blocks are prefixed with their 1-based citation number.
+        assert context == "[1] first chunk\n\n[2] second chunk"
+        # Each source carries the matching n.
+        assert [s["n"] for s in sources] == [1, 2]
+        assert sources[0]["title"] == "Doc A"
+        assert sources[1]["title"] == "Doc B"
+
+    def test_numbering_is_continuous_across_knowledge_stores(self):
+        ks_results = [
+            ("ks-1", [{"text": "a", "score": 0.9, "metadata": {}}]),
+            ("ks-2", [{"text": "b", "score": 0.7, "metadata": {}}]),
+        ]
+        context, sources = build_context_and_sources(ks_results)
+        assert context == "[1] a\n\n[2] b"
+        assert sources[0]["n"] == 1 and sources[0]["knowledge_store_id"] == "ks-1"
+        assert sources[1]["n"] == 2 and sources[1]["knowledge_store_id"] == "ks-2"
+
+    def test_empty_text_chunks_are_skipped(self):
+        ks_results = [
+            ("ks-1", [
+                {"text": "", "score": 0.9, "metadata": {}},
+                {"text": "   ", "score": 0.9, "metadata": {}},
+                {"text": "real", "score": 0.9, "metadata": {}},
+            ]),
+        ]
+        context, sources = build_context_and_sources(ks_results)
+        assert context == "[1] real"
+        assert len(sources) == 1
+        assert sources[0]["n"] == 1

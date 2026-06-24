@@ -28,7 +28,7 @@ from lamb.logging_config import get_logger
 from lamb.completions.rag._ks_query_helpers import (
     serialize_assistant,
     query_one_ks,
-    _extract_sources,
+    build_context_and_sources,
 )
 
 logger = get_logger(__name__, component="RAG")
@@ -93,8 +93,7 @@ async def _run(
     )
 
     all_responses: Dict[str, Any] = {}
-    sources: List[Dict[str, Any]] = []
-    contexts: List[str] = []
+    successful: List[tuple] = []
 
     for ks_id, result in zip(ks_ids, raw_responses):
         all_responses[ks_id] = result
@@ -102,15 +101,11 @@ async def _run(
             data = result.get("data", {}) or {}
             chunks = data.get("results", []) or []
             logger.info(f"KS {ks_id}: {len(chunks)} chunks returned")
-            sources.extend(_extract_sources(ks_id, chunks))
-            for chunk in chunks:
-                text = chunk.get("text") or ""
-                if text:
-                    contexts.append(text)
+            successful.append((ks_id, chunks))
         else:
             logger.warning(f"KS {ks_id}: {result.get('error', 'unknown error')}")
 
-    combined_context = "\n\n".join(contexts) if contexts else ""
+    combined_context, sources = build_context_and_sources(successful)
 
     return {
         "context": combined_context,

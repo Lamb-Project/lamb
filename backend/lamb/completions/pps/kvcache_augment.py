@@ -19,6 +19,55 @@ DEFAULT_RAG_PROMPT_TEMPLATE = (
     "Context:\n{context}\n\nQuestion: {user_input}"
 )
 
+CITATION_INSTRUCTION = (
+    "When you use information from the context above, cite the supporting "
+    "source inline using its bracketed number, e.g. [1] or [2][3]. Place the "
+    "citation immediately after the statement it supports. Only cite numbers "
+    "that appear in the context; do not invent citations."
+)
+
+
+def _format_sources_block(sources: List[Dict[str, Any]]) -> str:
+    """Render a numbered ``## Available Sources`` markdown block.
+
+    Each source is labelled with its citation number ``n`` (assigned by the
+    KS RAG processor so it aligns with the ``[N]`` markers in the context). A
+    relevance score is shown when available.
+    """
+    if not sources:
+        return ""
+    lines = ["\n\n## Available Sources\n"]
+    for i, source in enumerate(sources, 1):
+        n = source.get("n", i)
+        title = source.get("title", "Unknown")
+        url = source.get("url", "")
+        score = source.get("score")
+        score_str = (
+            f" (relevance: {score:.3f})" if isinstance(score, (int, float)) else ""
+        )
+        if url:
+            lines.append(f"[{n}] [{title}]({url}){score_str}")
+        else:
+            lines.append(f"[{n}] {title}{score_str}")
+    return "\n".join(lines)
+
+
+def _build_full_context(rag_context: Any) -> str:
+    """Combine retrieved context, the numbered sources block, and the inline
+    citation instruction into the text that replaces ``{context}``.
+
+    The citation instruction is only appended when there are sources to cite,
+    so answers without retrieved context are never told to fabricate markers.
+    """
+    if not isinstance(rag_context, dict):
+        return str(rag_context) if rag_context else ""
+    context = rag_context.get("context", "") or ""
+    sources = rag_context.get("sources", []) or []
+    sources_block = _format_sources_block(sources)
+    if sources_block:
+        return context + sources_block + "\n\n" + CITATION_INSTRUCTION
+    return context
+
 
 def _has_vision_capability(assistant: Assistant) -> bool:
     if not assistant:
@@ -101,18 +150,7 @@ def prompt_processor(
                 augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    full_context = context + sources_text
+                    full_context = _build_full_context(rag_context)
                     augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     augmented_text = augmented_text.replace("{context}", "")
@@ -140,18 +178,7 @@ def prompt_processor(
                 prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 if rag_context:
-                    context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                    sources_text = ""
-                    if isinstance(rag_context, dict) and "sources" in rag_context:
-                        sources = rag_context["sources"]
-                        if sources:
-                            sources_text = "\n\n## Available Sources\n\n"
-                            for i, source in enumerate(sources, 1):
-                                title = source.get("title", "Unknown")
-                                url = source.get("url", "")
-                                similarity = source.get("similarity", 0)
-                                sources_text += f"{i}. [{title}]({url}) (similarity: {similarity:.3f})\n"
-                    full_context = context + sources_text
+                    full_context = _build_full_context(rag_context)
                     prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     prompt = prompt.replace("{context}", "")
@@ -182,8 +209,8 @@ def prompt_processor(
                     user_input_text = str(last_message)
 
                 prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
-                context = rag_context.get("context", "") if isinstance(rag_context, dict) else str(rag_context)
-                prompt = prompt.replace("{context}", "\n\n" + context + "\n\n")
+                full_context = _build_full_context(rag_context)
+                prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
 
                 processed_messages.append({
                     "role": messages[-1]['role'],
