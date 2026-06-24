@@ -151,4 +151,12 @@ SQLite with WAL mode (`data/library-manager.db`). Tables:
 | `content_images` | Extracted images linked to content items |
 | `import_jobs` | Persistent job queue for async processing |
 
-Tables are created automatically on first startup via SQLAlchemy `create_all`.
+The schema is managed with Alembic. Migrations live in `backend/migrations/` and
+are run automatically up to `head` at startup (`init_db` → `_run_migrations`).
+Databases created before Alembic adoption (tables present, no `alembic_version`)
+are stamped to the baseline revision before upgrading, so existing data is
+preserved. To create a new migration after changing the models:
+
+```bash
+cd backend && alembic -c alembic.ini revision --autogenerate -m "describe change"
+```

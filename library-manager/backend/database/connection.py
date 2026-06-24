@@ -1,19 +1,19 @@
 """Database connection management.
 
 Provides a single engine and session factory for the Library Manager's
-SQLite database. All tables are created on first call to ``init_db``.
+SQLite database. The schema is brought to ``head`` with Alembic on the first
+call to ``init_db`` (see ``_run_migrations``).
 """
 
 import logging
 from collections.abc import Generator
+from pathlib import Path
 
 from config import DB_PATH
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
-
-from database.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -82,27 +82,39 @@ def init_db() -> None:
 
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
-    Base.metadata.create_all(bind=_engine)
-    _apply_lightweight_migrations(_engine)
+    _run_migrations()
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info("Database initialized at %s", DB_PATH)
 
 
-def _apply_lightweight_migrations(engine: Engine) -> None:
-    """Idempotently add additive schema deltas not handled by ``create_all``.
+def _run_migrations() -> None:
+    """Bring the database schema to ``head`` using Alembic.
 
-    ``Base.metadata.create_all`` creates missing tables but never adds new
-    columns to existing ones. Every new column we ship lives here, gated by
-    a ``PRAGMA table_info`` check so re-running is a no-op. This runs on
-    every startup, matching the project's existing on-boot schema setup.
+    Databases created by the historical ``create_all`` + ad-hoc-ALTER path
+    already have the tables but no ``alembic_version`` row. Those are stamped
+    to the baseline revision first so the baseline migration is not re-applied
+    on top of the existing schema; any later revisions then run normally.
     """
-    with engine.begin() as conn:
-        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(content_items)")}
-        if "folder_id" not in cols:
-            conn.exec_driver_sql("ALTER TABLE content_items ADD COLUMN folder_id TEXT")
-            logger.info("Schema migration: added content_items.folder_id")
+    from alembic import command  # noqa: PLC0415
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+
+    inspector = inspect(_engine)
+    has_schema = inspector.has_table("content_items")
+    has_version = inspector.has_table("alembic_version")
+    if has_schema and not has_version:
+        base_rev = ScriptDirectory.from_config(cfg).get_base()
+        command.stamp(cfg, base_rev)
+        logger.info("Stamped pre-Alembic database to baseline revision %s", base_rev)
+
+    command.upgrade(cfg, "head")
+    logger.info("Database schema migrated to head")
 
 
 def get_session() -> Generator[Session, None, None]:
