@@ -1,6 +1,7 @@
 from typing import Dict, Any, List, Optional
 from lamb.lamb_classes import Assistant
 import json
+import re
 from lamb.logging_config import get_logger
 
 logger = get_logger(__name__, component="MAIN")
@@ -27,26 +28,48 @@ CITATION_INSTRUCTION = (
 )
 
 
-def _build_full_context(rag_context: Any) -> str:
-    """Build the text that replaces ``{context}``: the numbered context plus the
-    inline citation instruction.
+def _build_full_context(rag_context: Any, cite: bool = True) -> str:
+    """Build the text that replaces ``{context}``.
 
     The retrieved context is already prefixed per chunk with ``[N]`` markers by
-    the KS RAG processor, so the model can cite from it directly. We do NOT
-    inject a visible sources list here — the source titles and clickable links
-    are rendered by the OpenWebUI citations panel (see
-    ``lamb.completions.citation_sources``), so echoing a second list in the
-    answer would be redundant and would surface non-clickable raw URLs. The
-    citation instruction is only appended when there are sources to cite, so
-    answers without retrieved context are never told to fabricate markers.
+    the KS RAG processor. When ``cite`` is True we keep those markers and append
+    the inline citation instruction so the model cites — the clickable source
+    list is then rendered separately (see ``lamb.completions.citation_sources``).
+
+    When ``cite`` is False (the assistant did NOT opt in to exposing sources),
+    we strip the ``[N]`` prefixes and omit the instruction, so the answer has no
+    citation markers at all — students never see ``[1]`` pointing at a source
+    they cannot open.
     """
     if not isinstance(rag_context, dict):
         return str(rag_context) if rag_context else ""
     context = rag_context.get("context", "") or ""
     sources = rag_context.get("sources", []) or []
-    if sources:
+    if sources and cite:
         return context + "\n\n" + CITATION_INSTRUCTION
+    if not cite and context:
+        # Drop the per-chunk "[N] " citation prefixes so the model has no cue
+        # to emit citation markers it cannot link to.
+        context = re.sub(r"(?m)^\[\d+\]\s+", "", context)
     return context
+
+
+def _exposes_sources(assistant: Assistant) -> bool:
+    """Whether this assistant opts in to student-clickable cited sources.
+
+    Mirrors ``_has_vision_capability``; defaults to False so citations are only
+    produced when the creator enabled ``capabilities.expose_sources``.
+    """
+    if not assistant:
+        return False
+    metadata_str = getattr(assistant, 'metadata', None) or getattr(assistant, 'api_callback', None)
+    if not metadata_str:
+        return False
+    try:
+        capabilities = json.loads(metadata_str).get('capabilities', {}) or {}
+        return bool(capabilities.get('expose_sources', False))
+    except (json.JSONDecodeError, AttributeError):
+        return False
 
 
 def _has_vision_capability(assistant: Assistant) -> bool:
@@ -86,6 +109,10 @@ def prompt_processor(
     messages = request.get('messages', [])
     if not messages:
         return messages
+
+    # Only cite (inline [N] markers + clickable sources) when the assistant
+    # opted in to exposing sources; otherwise produce no citation markers.
+    cite = _exposes_sources(assistant)
 
     last_message = messages[-1]['content']
     processed_messages = []
@@ -130,7 +157,7 @@ def prompt_processor(
                 augmented_text = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 if rag_context:
-                    full_context = _build_full_context(rag_context)
+                    full_context = _build_full_context(rag_context, cite)
                     augmented_text = augmented_text.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     augmented_text = augmented_text.replace("{context}", "")
@@ -158,7 +185,7 @@ def prompt_processor(
                 prompt = assistant.prompt_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
 
                 if rag_context:
-                    full_context = _build_full_context(rag_context)
+                    full_context = _build_full_context(rag_context, cite)
                     prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
                 else:
                     prompt = prompt.replace("{context}", "")
@@ -189,7 +216,7 @@ def prompt_processor(
                     user_input_text = str(last_message)
 
                 prompt = effective_template.replace("{user_input}", "\n\n" + user_input_text + "\n\n")
-                full_context = _build_full_context(rag_context)
+                full_context = _build_full_context(rag_context, cite)
                 prompt = prompt.replace("{context}", "\n\n" + full_context + "\n\n")
 
                 processed_messages.append({
