@@ -2,7 +2,7 @@
 
 from urllib.parse import parse_qs, urlparse
 
-from lamb.completions.citation_sources import build_owi_sources
+from lamb.completions.citation_sources import build_owi_sources, build_sources_markdown
 from creator_interface.permalink_signing import verify
 
 
@@ -62,3 +62,37 @@ class TestBuildOwiSources:
         # No permalink → no signed URL (OWI renders it non-clickable).
         assert out[0]["source"]["url"] == ""
         assert out[0]["document"][0].startswith("**Doc**")
+
+
+class TestBuildSourcesMarkdown:
+    def test_empty_when_no_sources(self):
+        assert build_sources_markdown({"sources": []}) == ""
+        assert build_sources_markdown(None) == ""
+
+    def test_renders_clickable_numbered_list(self):
+        md = build_sources_markdown({"sources": [_source(1)]})
+        assert "**Sources**" in md
+        # [N] marker plus a clickable markdown link to the signed view page.
+        assert "[1] [noa-ventura-cv.pdf](http" in md
+        # Not the reference-definition form (OWI strips "[1]: url").
+        assert "[1]:" not in md
+
+    def test_groups_chunks_from_same_item_into_one_line(self):
+        # Two chunks from the same item → one line listing BOTH numbers so each
+        # inline marker resolves: "[1][2] [filename](url)".
+        a = _source(1)
+        b = _source(2)  # same permalinks/item as _source default
+        md = build_sources_markdown({"sources": [a, b]})
+        assert md.count("[noa-ventura-cv.pdf](") == 1  # one clickable link
+        assert "[1][2] [noa-ventura-cv.pdf](http" in md
+
+    def test_distinct_items_each_listed(self):
+        a = _source(1)
+        b = _source(
+            2,
+            permalink_markdown="/docs/3/lib-2/item-2/content",
+            permalink_original="/docs/3/lib-2/item-2/original/other.pdf",
+        )
+        md = build_sources_markdown({"sources": [a, b]})
+        assert "noa-ventura-cv.pdf" in md and "other.pdf" in md
+        assert "[1]" in md and "[2]" in md

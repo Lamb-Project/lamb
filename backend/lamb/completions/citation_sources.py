@@ -1,12 +1,18 @@
-"""Build the ``sources`` payload that Open WebUI renders as a citations panel.
+"""Render RAG citations so a student can click through to the cited item.
 
-LAMB controls the full SSE stream to Open WebUI. OWI natively parses a
-top-level ``sources`` field out of the stream, renders a clickable, persisted
-citations panel, and auto-links inline ``[N]`` markers in the answer to it —
-but only when the source's ``name`` is the literal string ``"N"`` and its
-``url`` is an absolute ``http(s)`` link. This module maps LAMB's internal RAG
-sources to that exact shape, minting org-scoped HMAC-signed "view" URLs so a
-student can open the cited item without logging in.
+Open WebUI's backend, on the normal (websocket) chat path, forwards only the
+assistant's ``content`` from an external model's stream — it drops any
+top-level ``sources`` field (it renders only sources it generates itself). So
+to surface clickable citations through OWI we append a Markdown **Sources**
+section to the answer content; OWI renders it like any other markdown.
+
+Each source links to a LAMB-served view page via an org-scoped, HMAC-signed
+"capability" URL (see ``creator_interface.permalink_signing``) so a logged-out
+student can open the cited item. The inline ``[N]`` markers in the body point
+at the numbered list.
+
+``build_owi_sources`` (the OWI ``sources`` schema) is kept for non-streaming /
+spec-compliant clients that *do* consume the field.
 """
 
 from __future__ import annotations
@@ -48,13 +54,60 @@ def _signed_view_url(org: str, lib: str, item: str, filename: str) -> str:
     return f"{base}/docs/public/{org}/{lib}/{item}/view?name={quote(filename)}&sig={sig}"
 
 
+def build_sources_markdown(rag_context: Any) -> str:
+    """Build a Markdown 'Sources' section appended to the answer content.
+
+    Sources are grouped by library item (chunks are numbered individually by
+    the RAG processor, but several chunks often come from the same document).
+    Each line lists every citation number that points at the item followed by a
+    clickable link, e.g. ``[1][3][5] [cv.pdf](https://…/view?…)`` — so every
+    inline ``[N]`` marker in the answer resolves to a clickable entry. Returns
+    ``""`` when there are no sources. Lines deliberately avoid the ``[N]: url``
+    reference-definition form, which OWI strips.
+    """
+    if not isinstance(rag_context, dict):
+        return ""
+    groups: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for src in rag_context.get("sources", []) or []:
+        n = src.get("n")
+        filename = src.get("title") or "Source"
+        url = ""
+        parsed = _parse_permalink(src)
+        item_key = None
+        if parsed:
+            org, lib, item, original_filename = parsed
+            item_key = f"{org}/{lib}/{item}"
+            filename = original_filename or filename
+            try:
+                url = _signed_view_url(org, lib, item, filename)
+            except Exception:  # noqa: BLE001 — never let citation building break a chat
+                logger.warning("Failed to sign citation URL for source %s", n)
+        key = item_key or f"_{n}"
+        if key not in groups:
+            groups[key] = {"ns": [], "filename": filename, "url": url}
+            order.append(key)
+        if n is not None:
+            groups[key]["ns"].append(n)
+
+    if not order:
+        return ""
+    lines: List[str] = []
+    for key in order:
+        g = groups[key]
+        marks = "".join(f"[{n}]" for n in sorted(g["ns"])) or "-"
+        link = f"[{g['filename']}]({g['url']})" if g["url"] else g["filename"]
+        lines.append(f"{marks} {link}")
+    return "\n\n---\n\n**Sources**\n\n" + "\n\n".join(lines) + "\n"
+
+
 def build_owi_sources(rag_context: Any) -> List[Dict[str, Any]]:
     """Map LAMB RAG sources to Open WebUI's citations schema.
 
-    Each entry is named with its 1-based citation number so OWI auto-links the
-    inline ``[N]`` markers, carries the supporting excerpt under the real
-    filename, and points at a signed view URL. Returns ``[]`` when there are no
-    sources (so no citations event is emitted).
+    Kept for non-streaming responses and any spec-compliant client that
+    consumes a top-level ``sources`` field. (OWI's websocket chat path drops
+    this for external models — the Markdown section above is what reaches the
+    student there.)
     """
     if not isinstance(rag_context, dict):
         return []
@@ -64,7 +117,6 @@ def build_owi_sources(rag_context: Any) -> List[Dict[str, Any]]:
         name = str(n) if n is not None else (src.get("title") or "?")
         text = src.get("text") or ""
         filename = src.get("title") or "Source"
-
         url = ""
         parsed = _parse_permalink(src)
         if parsed:
@@ -72,13 +124,11 @@ def build_owi_sources(rag_context: Any) -> List[Dict[str, Any]]:
             filename = original_filename or filename
             try:
                 url = _signed_view_url(org, lib, item, filename)
-            except Exception:  # noqa: BLE001 — never let citation building break a chat
+            except Exception:  # noqa: BLE001
                 logger.warning("Failed to sign citation URL for source %s", name)
-
         excerpt = f"**{filename}**\n\n{text}" if text else f"**{filename}**"
         score = src.get("score")
         owi.append({
-            # name == "N" so OWI links the inline [N] marker to this entry.
             "source": {"name": name, "url": url},
             "document": [excerpt],
             "metadata": [{"name": name, "filename": filename}],

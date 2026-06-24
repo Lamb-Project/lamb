@@ -510,27 +510,32 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
-                # Build the OpenWebUI citations payload from the retrieved RAG
-                # sources and emit it as one SSE event just before [DONE] so OWI
-                # renders a clickable, persisted citations panel and links the
-                # inline [N] markers to it.
-                from lamb.completions.citation_sources import build_owi_sources  # noqa: PLC0415
-                owi_sources = build_owi_sources(rag_context)
-                sources_event = (
-                    f"data: {json.dumps({'sources': owi_sources})}\n\n"
-                    if owi_sources else None
-                )
+                # Append a Markdown "Sources" section (clickable signed links)
+                # to the answer content just before [DONE]. We deliver it as
+                # answer CONTENT — not a top-level `sources` field — because
+                # Open WebUI's chat path forwards only `choices[].delta.content`
+                # from an external model and drops any `sources` field.
+                from lamb.completions.citation_sources import build_sources_markdown  # noqa: PLC0415
+                sources_md = build_sources_markdown(rag_context)
+                sources_chunk = None
+                if sources_md:
+                    _delta = {"choices": [{
+                        "index": 0,
+                        "delta": {"content": sources_md},
+                        "finish_reason": None,
+                    }]}
+                    sources_chunk = f"data: {json.dumps(_delta)}\n\n"
                 sources_sent = False
                 async for chunk in generator:
                     if (
-                        sources_event and not sources_sent
+                        sources_chunk and not sources_sent
                         and isinstance(chunk, str) and "data: [DONE]" in chunk
                     ):
-                        yield sources_event
+                        yield sources_chunk
                         sources_sent = True
                     yield chunk
-                if sources_event and not sources_sent:
-                    yield sources_event
+                if sources_chunk and not sources_sent:
+                    yield sources_chunk
                 # Log usage when stream completes for tracked connectors
                 if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
                     db_manager.log_token_usage(
