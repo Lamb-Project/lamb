@@ -38,6 +38,16 @@ if not lamb_token:
 lamb_token = lamb_token.strip()
 
 LAMB_BEARER_TOKEN = lamb_token
+
+# Secret used to HMAC-sign public citation permalinks (the signed "capability"
+# URLs students click from chat). Per-org keys are derived from this master
+# secret, so rotating it revokes every signed link at once. MUST be stable
+# across restarts — if it changes, links in existing chats stop resolving.
+# Falls back to LAMB_BEARER_TOKEN so the feature works out of the box, but a
+# dedicated value is recommended in production.
+LAMB_PERMALINK_SIGNING_SECRET = (
+    os.getenv('LAMB_PERMALINK_SIGNING_SECRET') or lamb_token
+)
 PIPELINES_BEARER_TOKEN = lamb_token  # Legacy alias for backward compatibility
 PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./lamb_assistants")
 

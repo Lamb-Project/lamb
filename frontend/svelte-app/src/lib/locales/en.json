@@ -268,6 +268,10 @@
         "requiredForModelPrefix": "Required for this model - ",
         "geminiDescription": "Allow this assistant to generate images using Google Gemini"
       },
+      "exposeSources": {
+        "label": "Let students open cited sources",
+        "description": "Show students clickable links to open and download the documents this assistant cites in its answers. Off by default."
+      },
 			"ragProcessor": {
 				"label": "RAG Processor"
 			},

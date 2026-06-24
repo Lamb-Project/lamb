@@ -53,6 +53,7 @@ export function createAssistantFormState() {
 		// --- Capabilities ---
 		visionEnabled: false,
 		imageGenerationEnabled: false,
+		exposeSourcesEnabled: false,
 
 		// --- Knowledge Base state ---
 		/** @type {any[]} */
@@ -172,6 +173,7 @@ export function resetFormFieldsToDefaults(form, getAvailableModels) {
 	form.documentRagEnabled = false;
 	form.visionEnabled = false;
 	form.imageGenerationEnabled = false;
+	form.exposeSourcesEnabled = false;
 }
 
 /**
@@ -248,6 +250,7 @@ export function populateFormFields(form, data, getAvailableModels, preserveDescr
 		try {
 			form.visionEnabled = metadata?.capabilities?.vision || false;
 			form.imageGenerationEnabled = metadata?.capabilities?.image_generation || false;
+			form.exposeSourcesEnabled = metadata?.capabilities?.expose_sources || false;
 		} catch (e) {
 			console.warn('Failed to parse vision capability from metadata:', e);
 			form.visionEnabled = false;

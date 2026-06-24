@@ -130,6 +130,10 @@
         "requiredForModelPrefix": "Necesario para este modelo - ",
         "geminiDescription": "Permitir que este asistente genere imágenes usando Google Gemini"
       },
+      "exposeSources": {
+        "label": "Permitir que los estudiantes abran las fuentes citadas",
+        "description": "Muestra a los estudiantes enlaces para abrir y descargar los documentos que este asistente cita en sus respuestas. Desactivado por defecto."
+      },
 			"ragProcessor": {
 				"label": "Procesador RAG"
 			},

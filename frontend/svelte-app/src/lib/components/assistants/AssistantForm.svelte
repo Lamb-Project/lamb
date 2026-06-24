@@ -495,6 +495,7 @@
 					bind:selectedRagProcessor={form.selectedRagProcessor}
 					bind:visionEnabled={form.visionEnabled}
 					bind:imageGenerationEnabled={form.imageGenerationEnabled}
+					bind:exposeSourcesEnabled={form.exposeSourcesEnabled}
 					bind:RAG_Top_k={form.RAG_Top_k}
 					ownedKnowledgeBases={form.ownedKnowledgeBases}
 					sharedKnowledgeBases={form.sharedKnowledgeBases}

@@ -257,6 +257,26 @@ def get_assistant_details(assistant: int) -> Any:
     return assistant_details
 
 
+def _assistant_exposes_sources(assistant: Any) -> bool:
+    """Whether this assistant opts in to student-clickable cited-source links.
+
+    Reads ``metadata.capabilities.expose_sources`` (mirroring the vision /
+    image_generation capability flags). Defaults to False, so existing
+    assistants — and any whose JSON lacks the key — never expose their cited
+    documents until the creator explicitly enables it.
+    """
+    if not assistant:
+        return False
+    metadata_str = getattr(assistant, "metadata", None) or getattr(assistant, "api_callback", None)
+    if not metadata_str:
+        return False
+    try:
+        capabilities = json.loads(metadata_str).get("capabilities", {}) or {}
+        return bool(capabilities.get("expose_sources", False))
+    except (json.JSONDecodeError, AttributeError):
+        return False
+
+
 def _provider_for_connector(connector: str) -> str | None:
     """Map connector name to provider string used in model_pricing table."""
     return {"openai": "openai", "anthropic": "anthropic"}.get(connector)
@@ -484,6 +504,9 @@ async def run_lamb_assistant(
         rag_context = await get_rag_context(request, rag_processors, plugin_config["rag_processor"], assistant_details)
         document_context = await get_rag_context(request, rag_processors, plugin_config.get("document_rag", ""), assistant_details)
         messages = process_completion_request(request, assistant_details, plugin_config, rag_context, pps, document_context)
+        # Clickable source links are opt-in per assistant (default off): only
+        # expose cited documents to students when the creator enabled it.
+        expose_sources = _assistant_exposes_sources(assistant_details)
         stream = request.get("stream", False)
         llm = plugin_config.get("llm") # Get LLM from config
 
@@ -510,8 +533,32 @@ async def run_lamb_assistant(
                 generator, usage_out = llm_response, None
 
             async def _tracked_stream():
+                # Append a Markdown "Sources" section (clickable signed links)
+                # to the answer content just before [DONE]. We deliver it as
+                # answer CONTENT — not a top-level `sources` field — because
+                # Open WebUI's chat path forwards only `choices[].delta.content`
+                # from an external model and drops any `sources` field.
+                from lamb.completions.citation_sources import build_sources_markdown  # noqa: PLC0415
+                sources_md = build_sources_markdown(rag_context) if expose_sources else ""
+                sources_chunk = None
+                if sources_md:
+                    _delta = {"choices": [{
+                        "index": 0,
+                        "delta": {"content": sources_md},
+                        "finish_reason": None,
+                    }]}
+                    sources_chunk = f"data: {json.dumps(_delta)}\n\n"
+                sources_sent = False
                 async for chunk in generator:
+                    if (
+                        sources_chunk and not sources_sent
+                        and isinstance(chunk, str) and "data: [DONE]" in chunk
+                    ):
+                        yield sources_chunk
+                        sources_sent = True
                     yield chunk
+                if sources_chunk and not sources_sent:
+                    yield sources_chunk
                 # Log usage when stream completes for tracked connectors
                 if connector != "ollama" and usage_out and provider and assistant_details.organization_id is not None:
                     db_manager.log_token_usage(
@@ -560,6 +607,13 @@ async def run_lamb_assistant(
                         "sources": rag_context.get("sources", []),
                     }
                 }
+
+            # Attach OpenWebUI-shaped citations so the panel renders on the
+            # non-streaming path too (standard OpenAI clients ignore the key).
+            from lamb.completions.citation_sources import build_owi_sources  # noqa: PLC0415
+            owi_sources = build_owi_sources(rag_context) if expose_sources else []
+            if owi_sources:
+                llm_response["sources"] = owi_sources
 
             return Response(
                 content=json.dumps(llm_response, indent=2), # Ensure pretty printing if desired
