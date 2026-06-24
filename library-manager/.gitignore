@@ -30,4 +30,5 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 .coverage
-tests/.yt_cache/
+# Note: tests/.yt_cache/ cassettes ARE committed so the YouTube tests run
+# offline on a fresh clone. Do not ignore them.
