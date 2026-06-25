@@ -15,6 +15,7 @@
 
 	import { onMount } from 'svelte';
 	import { _ } from '$lib/i18n';
+    import { renderMarkdownWithMath } from '$lib/utils/renderMarkdown.js';
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import {
 		getAssistantChats,
@@ -654,7 +655,7 @@
 																	<div
 																		class="text-sm leading-relaxed break-words whitespace-pre-wrap"
 																	>
-																		{message.content}
+																		{@html renderMarkdownWithMath(message.content)}
 																	</div>
 																</div>
 															</div>

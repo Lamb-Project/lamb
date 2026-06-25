@@ -38,6 +38,16 @@ if not lamb_token:
 lamb_token = lamb_token.strip()
 
 LAMB_BEARER_TOKEN = lamb_token
+
+# Secret used to HMAC-sign public citation permalinks (the signed "capability"
+# URLs students click from chat). Per-org keys are derived from this master
+# secret, so rotating it revokes every signed link at once. MUST be stable
+# across restarts — if it changes, links in existing chats stop resolving.
+# Falls back to LAMB_BEARER_TOKEN so the feature works out of the box, but a
+# dedicated value is recommended in production.
+LAMB_PERMALINK_SIGNING_SECRET = (
+    os.getenv('LAMB_PERMALINK_SIGNING_SECRET') or lamb_token
+)
 PIPELINES_BEARER_TOKEN = lamb_token  # Legacy alias for backward compatibility
 PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./lamb_assistants")
 
@@ -109,16 +119,26 @@ if not SIGNUP_SECRET_KEY:
 # LAMB Native Authentication
 # JWT secret for signing LAMB-issued tokens. Resolution order:
 #   1. LAMB_JWT_SECRET (explicit, for full OWI decoupling)
-#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY env vars
-#   3. OWI's hardcoded default ("t0p-s3cr3t") — matches open_webui/env.py
-# This ensures zero-config compatibility: LAMB signs tokens with the same
-# secret OWI uses, so existing OWI tokens decode seamlessly.
+#   2. WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY (legacy OWI env vars — zero-config
+#      compat: LAMB signs with the same secret OWI uses, so OWI tokens decode)
+#   3. OWI's historical default ("t0p-s3cr3t") as a last resort.
+# When the explicit var is absent we fall back to the legacy OWI variables rather
+# than failing. The literal default is insecure (the auth layer trusts the JWT
+# `role` claim), so warn loudly and require an override in production (#412).
 LAMB_JWT_SECRET = (
     os.getenv('LAMB_JWT_SECRET')
     or os.getenv('WEBUI_SECRET_KEY')
     or os.getenv('WEBUI_JWT_SECRET_KEY')
-    or 't0p-s3cr3t'
 )
+if not LAMB_JWT_SECRET:
+    import sys
+    LAMB_JWT_SECRET = 't0p-s3cr3t'
+    print(
+        "WARNING [config]: no LAMB_JWT_SECRET / WEBUI_SECRET_KEY / WEBUI_JWT_SECRET_KEY "
+        "set; falling back to the insecure default JWT secret. Set a strong secret "
+        "before production — the auth layer trusts the JWT role claim (#412).",
+        file=sys.stderr,
+    )
 
 # OWI Admin Configuration
 OWI_ADMIN_NAME = os.getenv('OWI_ADMIN_NAME')

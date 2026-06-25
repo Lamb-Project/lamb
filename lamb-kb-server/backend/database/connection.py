@@ -1,18 +1,18 @@
 """Database connection management.
 
 Provides a single engine and session factory for the KB Server's SQLite
-metadata database. All tables are created on first call to ``init_db``.
+metadata database. The schema is brought to ``head`` with Alembic on the
+first call to ``init_db`` (see ``_run_migrations``).
 """
 
 import logging
 from collections.abc import Generator
+from pathlib import Path
 
 from config import DB_PATH
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-
-from database.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +31,42 @@ def _enable_sqlite_wal(dbapi_conn, _connection_record) -> None:  # noqa: ANN001
 _lock_file = None
 
 
+def _run_migrations() -> None:
+    """Bring the database schema to ``head`` using Alembic.
+
+    Databases created by the historical ``create_all`` path already have the
+    tables but no ``alembic_version`` row. Those are stamped to the baseline
+    revision first so the baseline migration is not re-applied on top of the
+    existing schema; any later revisions then run normally.
+    """
+    from alembic import command  # noqa: PLC0415
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+
+    inspector = inspect(_engine)
+    has_schema = inspector.has_table("collections")
+    has_version = inspector.has_table("alembic_version")
+    if has_schema and not has_version:
+        base_rev = ScriptDirectory.from_config(cfg).get_base()
+        command.stamp(cfg, base_rev)
+        logger.info("Stamped pre-Alembic database to baseline revision %s", base_rev)
+
+    command.upgrade(cfg, "head")
+    logger.info("Database schema migrated to head")
+
+
 def init_db() -> None:
-    """Create the engine, enable SQLite optimizations, and create all tables.
+    """Create the engine, enable SQLite optimizations, and migrate the schema.
 
     Acquires an exclusive file lock on the data directory to prevent two
-    instances from running against the same storage simultaneously.
+    instances from running against the same storage simultaneously, then runs
+    Alembic migrations up to ``head``.
 
-    Safe to call multiple times — tables are created only if they do not
-    already exist.
+    Safe to call multiple times.
 
     Raises:
         RuntimeError: If another instance holds the lock.
@@ -63,14 +91,6 @@ def init_db() -> None:
             "Only one instance may run per data directory."
         ) from exc
 
-    # Remember whether we're opening a pre-existing DB. If yes, after
-    # ``create_all`` (which is a no-op on existing tables) we additionally
-    # run lightweight ALTER TABLE migrations so new columns get added to
-    # already-populated installations. On a fresh DB the model definition
-    # already includes everything, so we skip the migration round-trip —
-    # that keeps init_db's hot path minimal.
-    db_existed = DB_PATH.exists()
-
     _engine = create_engine(
         f"sqlite:///{DB_PATH}",
         pool_pre_ping=True,
@@ -79,9 +99,13 @@ def init_db() -> None:
 
     event.listen(_engine, "connect", _enable_sqlite_wal)
 
-    Base.metadata.create_all(bind=_engine)
-    if db_existed:
-        _run_lightweight_migrations(_engine)
+    # Bring the schema to head with Alembic, then apply the KG-RAG columns
+    # via the idempotent lightweight path. Those columns are declared on the
+    # model but are not yet part of the Alembic baseline, so we add them here
+    # for fresh DBs; the migration skips any column that already exists, so it
+    # is also safe on installations created by the historical create_all path.
+    _run_migrations()
+    _run_lightweight_migrations(_engine)
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 

@@ -128,15 +128,15 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 10_000 });
 
     // Sub-tabs
-    const librariesTab = page.getByRole("button", { name: /^Libraries$/ });
-    const ksTab = page.getByRole("button", { name: /^Knowledge Stores$/ });
+    const librariesTab = page.getByRole("tab", { name: /^Libraries$/ });
+    const ksTab = page.getByRole("tab", { name: /^Knowledge Stores$/ });
     await expect(librariesTab).toBeVisible();
     await expect(ksTab).toBeVisible();
 
     // The redundant top-right "Create Knowledge" button has been removed.
     // The contextual + New Library button on the Libraries tab is the
     // primary create affordance now.
-    const newLibBtn = page.getByRole("button", { name: /\+\s*New Library/i });
+    const newLibBtn = page.getByRole("button", { name: /New Library|Create a new Library/i });
     await expect(newLibBtn).toBeVisible();
   });
 
@@ -145,16 +145,16 @@ test.describe.serial("Knowledge Store UI", () => {
     // Wait for the app to fully hydrate — Logout button appears after session + layout init.
     await expect(page.getByRole("button", { name: /^Logout$/i })).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: /^Knowledge Stores$/ }).click();
+    await page.getByRole("tab", { name: /^Knowledge Stores$/ }).click();
 
     // URL should now carry section=knowledge-stores
     await expect(page).toHaveURL(/[?&]section=knowledge-stores/);
 
     // The KS list toolbar should show the "+ New Knowledge Store" button.
-    await expect(page.getByRole("button", { name: /\+\s*New Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /New Knowledge Store|Create a Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
 
     // Switch back to Libraries.
-    await page.getByRole("button", { name: /^Libraries$/ }).click();
+    await page.getByRole("tab", { name: /^Libraries$/ }).click();
     await expect(page).toHaveURL(/[?&]section=libraries(\b|&|$)/);
   });
 
@@ -163,7 +163,7 @@ test.describe.serial("Knowledge Store UI", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // The KS list toolbar button confirms KnowledgeStoresList rendered.
-    await expect(page.getByRole("button", { name: /\+\s*New Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /New Knowledge Store|Create a Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
 
     // The Knowledge Stores sub-tab should be the active one. The active
     // button has the [#2271b3] color class — easiest stable check is that
@@ -188,10 +188,10 @@ test.describe.serial("Knowledge Store UI", () => {
     await expect(page.getByText(seededKsName)).toBeVisible({ timeout: 10_000 });
 
     // Table column headers should be present.
+    // Redesigned list: 5 columns (Name, Items, Sharing, Created, Actions);
+    // Embedding/Chunking/Vector-DB moved into the row-expansion.
     await expect(page.getByRole("columnheader", { name: /^Name$/i })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: /^Embedding$/i })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: /^Chunking$/i })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: /^#$/ })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /^Items$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Sharing$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Created$/i })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: /^Actions$/i })).toBeVisible();
@@ -200,9 +200,9 @@ test.describe.serial("Knowledge Store UI", () => {
   test("+ New Knowledge Store button opens the create modal", async ({ page }) => {
     await page.goto("/libraries?section=knowledge-stores");
     await page.waitForLoadState("domcontentloaded");
-    await expect(page.getByRole("button", { name: /\+\s*New Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /New Knowledge Store|Create a Knowledge Store/i })).toBeVisible({ timeout: 10_000 });
 
-    await page.getByRole("button", { name: /\+\s*New Knowledge Store/i }).first().click();
+    await page.getByRole("button", { name: /New Knowledge Store|Create a Knowledge Store/i }).first().click();
 
     // The CreateKnowledgeStoreModal dialog should open.
     const dialog = page.getByRole("dialog");

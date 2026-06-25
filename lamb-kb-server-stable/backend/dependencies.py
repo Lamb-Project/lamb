@@ -2,8 +2,18 @@ import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# Get API key from environment variable or use default
-API_KEY = os.getenv("LAMB_API_KEY", "0p3n-w3bu!")
+# API key from env. Backwards-compatible: fall back to the historical default
+# so existing installs keep working, but warn loudly — it must be overridden in
+# production (#413).
+import sys
+API_KEY = os.getenv("LAMB_API_KEY")
+if not API_KEY:
+    API_KEY = "0p3n-w3bu!"
+    print(
+        "WARNING [kb-server]: LAMB_API_KEY not set; using the insecure default token. "
+        "Set LAMB_API_KEY to a strong value in production.",
+        file=sys.stderr,
+    )
 
 # Security scheme
 security = HTTPBearer(

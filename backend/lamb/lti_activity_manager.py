@@ -9,6 +9,7 @@ activity configuration, and student launch.
 import os
 import re
 import time
+import secrets
 import hmac
 import hashlib
 import base64
@@ -303,9 +304,12 @@ class LtiActivityManager:
         for aid in to_add:
             owi_model.add_group_to_model(f"lamb_assistant.{aid}", owi_group_id, "read")
 
-        # Remove group from old models
+        # Remove group from old models (check the result — it used to silently
+        # fail because remove_group_from_model was broken, #399)
         for aid in to_remove:
-            owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
+            ok = owi_model.remove_group_from_model(f"lamb_assistant.{aid}", owi_group_id, "read")
+            if not ok:
+                logger.warning(f"Failed to remove group {owi_group_id} from model lamb_assistant.{aid} (access may persist)")
 
         # Update DB
         if to_remove:
@@ -358,7 +362,7 @@ class LtiActivityManager:
             owi_user = self.owi_user_manager.create_user(
                 name=display_name,
                 email=email,
-                password=f"lti_activity_{activity['id']}",
+                password=secrets.token_urlsafe(32),  # Random; header-trust signin, not this password (#411)
                 role="user"
             )
             if not owi_user:

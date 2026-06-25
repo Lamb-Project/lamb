@@ -1,11 +1,11 @@
 <!--
   @component StepLibrarySetup
-  Combined Step 1 of the 5-step wizard.
+  Step 1 of the 5-step wizard.
   Radio: "Create new library" / "Use existing library".
 
-  When "Use existing": shows library dropdown (from former Step0).
+  When "Use existing": shows library dropdown.
   When "Create new": shows name + description + sharing toggle + collapsible
-    "Advanced: import plugin & params" (from former Step2).
+    "Advanced: import plugin & params".
 
   Emits:
     - update: partial WizardState patch

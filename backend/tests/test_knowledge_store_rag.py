@@ -1,226 +1,162 @@
-"""Unit tests for ``lamb.completions.rag.knowledge_store_rag``.
+"""Direct tests for the knowledge_store_rag RAG processor (_run).
 
-The module-level ``_client`` (KB Server v2 HTTP client) and ``_db`` (LAMB DB
-manager) are replaced with fakes so nothing touches the network or a real
-database. Covers the serialization/source-extraction helpers, the per-KS
-query wrapper, and the async ``_run`` / ``rag_processor`` orchestration.
+Covers the multi-KS fan-out, the early-return guards, error handling per
+Knowledge Store, and the [N]-numbered context / aligned sources produced via
+the shared _ks_query_helpers.build_context_and_sources.
 """
 
-from __future__ import annotations
-
-import asyncio
-from types import SimpleNamespace
-
 import pytest
+from unittest.mock import AsyncMock, patch
 
-import lamb.completions.rag.knowledge_store_rag as ksr
-
-
-class _FakeClient:
-    def __init__(self, *, query_result=None, query_exc=None, api_key="sk-resolved"):
-        self._query_result = query_result or {"results": []}
-        self._query_exc = query_exc
-        self._api_key = api_key
-        self.query_calls = []
-
-    def resolve_embedding_api_key(self, *, creator_user, vendor):
-        return self._api_key
-
-    async def query(self, **kwargs):
-        self.query_calls.append(kwargs)
-        if self._query_exc is not None:
-            raise self._query_exc
-        return self._query_result
+from lamb.lamb_classes import Assistant
 
 
-class _FakeDB:
-    def __init__(self, store=None):
-        self._store = store
-
-    def get_knowledge_store(self, ks_id):
-        return self._store
-
-
-@pytest.fixture
-def patch_module(monkeypatch):
-    def _apply(*, client, db):
-        monkeypatch.setattr(ksr, "_client", client)
-        monkeypatch.setattr(ksr, "_db", db)
-
-    return _apply
-
-
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
+def _make_assistant(**overrides):
+    defaults = {
+        "id": 1,
+        "name": "Test",
+        "description": "",
+        "system_prompt": "",
+        "prompt_template": "",
+        "RAG_collections": "ks-1",
+        "RAG_Top_k": 3,
+        "owner": "user@test.com",
+        "api_callback": "",
+        "pre_retrieval_endpoint": "",
+        "post_retrieval_endpoint": "",
+        "RAG_endpoint": "",
+    }
+    defaults.update(overrides)
+    return Assistant(**defaults)
 
 
-def test_serialize_assistant_none():
-    assert ksr._serialize_assistant(None) == {}
+def _ks_success(chunks):
+    return {"status": "success", "data": {"results": chunks}}
 
 
-def test_serialize_assistant_json_safe_and_fallback():
-    class _Weird:
-        def __init__(self):
-            self.id = "a1"
-            self.name = "Asst"
-            self.RAG_Top_k = 3
-            # Not JSON-serializable -> stringified.
-            self.RAG_collections = object()
+@pytest.mark.asyncio
+async def test_returns_numbered_context_and_aligned_sources():
+    from lamb.completions.rag import knowledge_store_rag
 
-    out = ksr._serialize_assistant(_Weird())
-    assert out["id"] == "a1"
-    assert out["name"] == "Asst"
-    assert isinstance(out["RAG_collections"], str)  # fell back to str()
+    assistant = _make_assistant()
+    messages = [{"role": "user", "content": "What is photosynthesis?"}]
+    resp = _ks_success([
+        {"text": "Photosynthesis converts light.", "score": 0.9,
+         "metadata": {"source_title": "Bio"}},
+        {"text": "It happens in chloroplasts.", "score": 0.8,
+         "metadata": {"source_title": "Bio"}},
+    ])
+
+    with patch.object(knowledge_store_rag, "query_one_ks",
+                      new=AsyncMock(return_value=resp)) as mock_query:
+        result = await knowledge_store_rag.rag_processor(messages, assistant)
+
+    mock_query.assert_called_once_with("ks-1", "What is photosynthesis?", 3, "user@test.com")
+    # Context chunks are numbered and sources carry the matching n.
+    assert result["context"] == (
+        "[1] Photosynthesis converts light.\n\n[2] It happens in chloroplasts."
+    )
+    assert [s["n"] for s in result["sources"]] == [1, 2]
 
 
-def test_build_user_dict_from_owner():
-    assert ksr._build_user_dict_from_owner("a@b.com") == {"email": "a@b.com"}
+@pytest.mark.asyncio
+async def test_uses_last_user_message_as_query():
+    from lamb.completions.rag import knowledge_store_rag
 
-
-def test_extract_sources_full_metadata():
-    results = [
-        {
-            "score": 0.9,
-            "text": "chunk text",
-            "metadata": {
-                "source_title": "Doc Title",
-                "source_item_id": "item-1",
-                "permalink_original": "/docs/o/l/i/orig",
-                "permalink_markdown": "/docs/o/l/i/md",
-                "permalink_page": "/docs/o/l/i/p1",
-                "library_id": "lib-1",
-                "library_name": "Lib One",
-            },
-        }
+    assistant = _make_assistant()
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "the real question"},
     ]
-    sources = ksr._extract_sources("ks-1", results)
-    s = sources[0]
-    assert s["knowledge_store_id"] == "ks-1"
-    assert s["title"] == "Doc Title"
-    assert s["score"] == 0.9
-    assert s["library_id"] == "lib-1"
-    # primary url prefers permalink_page.
-    assert s["url"] == "/docs/o/l/i/p1"
-    assert s["permalink_markdown"] == "/docs/o/l/i/md"
+    with patch.object(knowledge_store_rag, "query_one_ks",
+                      new=AsyncMock(return_value=_ks_success([]))) as mock_query:
+        await knowledge_store_rag.rag_processor(messages, assistant)
+    mock_query.assert_called_once_with("ks-1", "the real question", 3, "user@test.com")
 
 
-def test_extract_sources_title_fallback_and_no_permalink():
-    results = [{"score": 0.1, "metadata": {}}]
-    sources = ksr._extract_sources("ks-1", results)
-    assert sources[0]["title"] == "Source"  # final fallback
-    assert "url" not in sources[0]
+@pytest.mark.asyncio
+async def test_multiple_knowledge_stores_queried_and_numbered_continuously():
+    from lamb.completions.rag import knowledge_store_rag
+
+    assistant = _make_assistant(RAG_collections="ks-1,ks-2")
+    messages = [{"role": "user", "content": "q"}]
+
+    async def fake_query(ks_id, *_a, **_k):
+        if ks_id == "ks-1":
+            return _ks_success([{"text": "from one", "score": 0.9, "metadata": {}}])
+        return _ks_success([{"text": "from two", "score": 0.7, "metadata": {}}])
+
+    with patch.object(knowledge_store_rag, "query_one_ks", new=AsyncMock(side_effect=fake_query)) as mock_query:
+        result = await knowledge_store_rag.rag_processor(messages, assistant)
+
+    assert mock_query.call_count == 2
+    assert {c.args[0] for c in mock_query.call_args_list} == {"ks-1", "ks-2"}
+    # Citation numbers are continuous across stores.
+    assert result["context"] == "[1] from one\n\n[2] from two"
+    assert result["sources"][0]["knowledge_store_id"] == "ks-1"
+    assert result["sources"][1]["knowledge_store_id"] == "ks-2"
 
 
-# ---------------------------------------------------------------------------
-# _query_one_ks
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_failed_knowledge_store_contributes_nothing():
+    from lamb.completions.rag import knowledge_store_rag
+
+    assistant = _make_assistant(RAG_collections="ks-1,ks-2")
+    messages = [{"role": "user", "content": "q"}]
+
+    async def fake_query(ks_id, *_a, **_k):
+        if ks_id == "ks-1":
+            return {"status": "error", "error": "boom"}
+        return _ks_success([{"text": "good", "score": 0.7, "metadata": {}}])
+
+    with patch.object(knowledge_store_rag, "query_one_ks", new=AsyncMock(side_effect=fake_query)):
+        result = await knowledge_store_rag.rag_processor(messages, assistant)
+
+    # Only the successful KS contributes; numbering restarts cleanly at 1.
+    assert result["context"] == "[1] good"
+    assert len(result["sources"]) == 1
+    # The raw responses still record both stores for diagnostics.
+    assert set(result["raw_responses"].keys()) == {"ks-1", "ks-2"}
 
 
-def test_query_one_ks_not_found(patch_module):
-    patch_module(client=_FakeClient(), db=_FakeDB(store=None))
-    out = asyncio.run(ksr._query_one_ks("ks-x", "q", 3, "owner@x.com"))
-    assert out["status"] == "error"
-    assert "not found" in out["error"]
+@pytest.mark.asyncio
+async def test_no_collections_returns_early():
+    from lamb.completions.rag import knowledge_store_rag
+
+    assistant = _make_assistant(RAG_collections="")
+    messages = [{"role": "user", "content": "hi"}]
+    result = await knowledge_store_rag.rag_processor(messages, assistant)
+    assert "No Knowledge Stores specified" in result["context"]
+    assert result["sources"] == []
 
 
-def test_query_one_ks_success(patch_module):
-    client = _FakeClient(query_result={"results": [{"text": "hi"}]})
-    patch_module(
-        client=client,
-        db=_FakeDB(store={"embedding_vendor": "openai", "embedding_endpoint": ""}),
-    )
-    out = asyncio.run(ksr._query_one_ks("ks-1", "q", 5, "owner@x.com"))
-    assert out["status"] == "success"
-    assert out["data"]["results"][0]["text"] == "hi"
-    assert client.query_calls[0]["top_k"] == 5
+@pytest.mark.asyncio
+async def test_whitespace_only_collections_returns_early():
+    from lamb.completions.rag import knowledge_store_rag
+
+    assistant = _make_assistant(RAG_collections="  , ,")
+    messages = [{"role": "user", "content": "hi"}]
+    result = await knowledge_store_rag.rag_processor(messages, assistant)
+    assert "RAG_collections is empty" in result["context"]
+    assert result["sources"] == []
 
 
-def test_query_one_ks_query_exception(patch_module):
-    client = _FakeClient(query_exc=RuntimeError("boom"))
-    patch_module(
-        client=client,
-        db=_FakeDB(store={"embedding_vendor": "ollama"}),
-    )
-    out = asyncio.run(ksr._query_one_ks("ks-1", "q", 3, "owner@x.com"))
-    assert out["status"] == "error"
-    assert "boom" in out["error"]
+@pytest.mark.asyncio
+async def test_no_user_message_returns_early():
+    from lamb.completions.rag import knowledge_store_rag
+
+    assistant = _make_assistant()
+    messages = [{"role": "assistant", "content": "only assistant"}]
+    result = await knowledge_store_rag.rag_processor(messages, assistant)
+    assert "No user message found" in result["context"]
+    assert result["sources"] == []
 
 
-# ---------------------------------------------------------------------------
-# _run / rag_processor
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_no_assistant_returns_early():
+    from lamb.completions.rag import knowledge_store_rag
 
-
-def _assistant(**over):
-    base = dict(
-        id="a1", name="Asst", RAG_collections="ks-1, ks-2", RAG_Top_k=4,
-        owner="owner@x.com",
-    )
-    base.update(over)
-    return SimpleNamespace(**base)
-
-
-def test_run_no_assistant():
-    out = asyncio.run(ksr._run([{"role": "user", "content": "q"}], None, None))
-    assert "No Knowledge Stores specified" in out["context"]
-    assert out["sources"] == []
-
-
-def test_run_no_rag_collections():
-    a = _assistant(RAG_collections="")
-    out = asyncio.run(ksr._run([{"role": "user", "content": "q"}], a, None))
-    assert "No Knowledge Stores specified" in out["context"]
-
-
-def test_run_no_user_message():
-    a = _assistant()
-    out = asyncio.run(ksr._run([{"role": "system", "content": "x"}], a, None))
-    assert "No user message found" in out["context"]
-
-
-def test_run_collections_only_whitespace():
-    a = _assistant(RAG_collections="  ,  , ")
-    out = asyncio.run(ksr._run([{"role": "user", "content": "q"}], a, None))
-    assert "empty or improperly formatted" in out["context"]
-
-
-def test_run_success_aggregates_two_stores(patch_module):
-    client = _FakeClient(
-        query_result={"results": [{"text": "chunk A", "score": 0.8, "metadata": {}}]}
-    )
-    patch_module(
-        client=client,
-        db=_FakeDB(store={"embedding_vendor": "openai", "embedding_endpoint": ""}),
-    )
-    a = _assistant(RAG_collections="ks-1, ks-2")
-    out = asyncio.run(ksr._run([{"role": "user", "content": "what is X?"}], a, None))
-    # Two stores each return one chunk -> combined context + 2 sources.
-    assert out["context"].count("chunk A") == 2
-    assert len(out["sources"]) == 2
-    assert set(out["raw_responses"]) == {"ks-1", "ks-2"}
-
-
-def test_run_partial_failure(patch_module):
-    # The DB returns None for the store -> _query_one_ks errors for both.
-    patch_module(client=_FakeClient(), db=_FakeDB(store=None))
-    a = _assistant(RAG_collections="ks-1")
-    out = asyncio.run(ksr._run([{"role": "user", "content": "q"}], a, None))
-    assert out["context"] == ""  # no successful chunks
-    assert out["raw_responses"]["ks-1"]["status"] == "error"
-
-
-def test_rag_processor_delegates_to_run(patch_module):
-    client = _FakeClient(
-        query_result={"results": [{"text": "hi", "metadata": {}}]}
-    )
-    patch_module(
-        client=client,
-        db=_FakeDB(store={"embedding_vendor": "openai"}),
-    )
-    a = _assistant(RAG_collections="ks-1")
-    out = asyncio.run(
-        ksr.rag_processor([{"role": "user", "content": "q"}], assistant=a)
-    )
-    assert "hi" in out["context"]
-    assert out["assistant_data"]["id"] == "a1"
+    result = await knowledge_store_rag.rag_processor([{"role": "user", "content": "x"}], None)
+    assert "No Knowledge Stores specified" in result["context"]
+    assert result["sources"] == []

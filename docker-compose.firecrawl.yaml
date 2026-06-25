@@ -1,6 +1,7 @@
 services:
   firecrawl:
-    build: https://github.com/firecrawl/firecrawl.git#main:apps/api
+    # Use the prebuilt image (no BuildKit/buildx needed). Was: build from git apps/api.
+    image: ghcr.io/firecrawl/firecrawl:latest
     environment:
       HOST: 0.0.0.0
       PORT: ${FIRECRAWL_INTERNAL_PORT:-3002}
@@ -144,7 +145,8 @@ services:
 
   firecrawl-postgres:
     # Firecrawl's repo builds a custom image with pg_cron and init SQL.
-    build: https://github.com/firecrawl/firecrawl.git#main:apps/nuq-postgres
+    # Use the prebuilt image (no BuildKit/buildx needed). Was: build from git apps/nuq-postgres.
+    image: ghcr.io/firecrawl/nuq-postgres:latest
     command: postgres -c log_min_messages=WARNING -c log_statement=none -c cron.log_run=off -c cron.log_statement=off
     environment:
       POSTGRES_USER: ${FIRECRAWL_POSTGRES_USER:-postgres}

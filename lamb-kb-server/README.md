@@ -107,7 +107,7 @@ ruff check backend/ tests/
 
 The e2e tier requires Docker (Qdrant + Ollama containers brought up automatically by the session fixture). If `QDRANT_TEST_PORT` and `OLLAMA_TEST_PORT` env vars are set, the fixture uses those pre-started containers instead of spinning up its own. If Docker is unavailable, the entire e2e tier is skipped with a clear message.
 
-Combined coverage hits **99%** line + branch on `backend/` (572 tests). The remaining 1% is structurally unreachable: a `sys.exit(1)` startup guard, an `ImportError` re-raise inside an `except ImportError` block, and a defensive branch the splitter algorithm never enters.
+Combined coverage is **~94%** line + branch on `backend/` (594 tests). The uncovered remainder is dominated by code paths that the e2e tier exercises only over real HTTP — that work runs in a uvicorn subprocess the parent `pytest-cov` process cannot instrument — together with a few structurally unreachable guards: a `sys.exit(1)` startup guard, an `ImportError` re-raise inside an `except ImportError` block, and a defensive branch the splitter algorithm never enters.
 
 ### Docker
 
@@ -156,7 +156,15 @@ SQLite at `$DATA_DIR/kb-server.db`, WAL mode enabled at connection time. Two tab
 - `collections` — one row per KB (immutable store setup).
 - `ingestion_jobs` — persistent queue (document text lives here until processed; credentials do not).
 
-Schema is managed with `Base.metadata.create_all` (no Alembic migrations).
+Schema is managed with Alembic. Migrations live in `backend/migrations/` and are
+run automatically up to `head` at startup (`init_db` → `_run_migrations`). Databases
+created before Alembic adoption are detected (tables present, no `alembic_version`)
+and stamped to the baseline revision before upgrading, so existing data is preserved.
+To create a new migration after changing the models:
+
+```bash
+cd backend && alembic -c alembic.ini revision --autogenerate -m "describe change"
+```
 
 Per-org vector storage lives under `$DATA_DIR/storage/{organization_id}/{collection_id}/`.
 

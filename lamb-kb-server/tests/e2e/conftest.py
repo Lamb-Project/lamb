@@ -1,8 +1,11 @@
 """E2E-tier fixtures: real uvicorn subprocess + docker stack + VCR.
 
-The docker-compose stack (Qdrant + Ollama) is brought up at session start
+The docker-compose stack (Qdrant only) is brought up at session start
 and torn down at session end via ``tests/e2e/_compose.py``. If Docker
 isn't available the entire e2e tier is skipped with a clear message.
+
+Embeddings are produced by an OpenAI-compatible endpoint (LM Studio running
+on the host). No Ollama is used or required anywhere in the e2e tier.
 """
 
 from __future__ import annotations
@@ -24,6 +27,21 @@ from tests._helpers import AUTH_HEADERS  # noqa: F401  (re-exported for tests)
 
 _E2E_ROOT = Path(__file__).resolve().parent
 _KB_ROOT = _E2E_ROOT.parent.parent
+
+# --- LM Studio (OpenAI-compatible) embedding configuration -----------------
+# LM Studio runs on the host. From inside a --network host container,
+# ``localhost:1234`` reaches it directly; ``host.docker.internal`` works as a
+# fallback for bridge-networked runs. Both are tried by ``_resolve_embedding``.
+_LMSTUDIO_HOSTS = (
+    os.environ.get("LMSTUDIO_BASE_URL"),
+    "http://localhost:1234/v1",
+    "http://host.docker.internal:1234/v1",
+)
+EMBEDDING_VENDOR = "openai"
+EMBEDDING_MODEL = os.environ.get(
+    "LMSTUDIO_EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5"
+)
+EMBEDDING_API_KEY = "lm-studio"
 
 
 def _docker_available() -> bool:
@@ -89,81 +107,91 @@ def _wait_for_http(url: str, timeout: float = 30.0) -> bool:
     return False
 
 
-def _wait_for_ollama_model(ollama_url: str, model: str, timeout: float = 300.0) -> bool:
-    """Poll ``/api/tags`` until *model* is listed (pull complete)."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def _resolve_embedding_base_url() -> str | None:
+    """Return the first reachable LM Studio base URL (``.../v1``), or None.
+
+    Probes ``GET {base}/models`` on each candidate host. Returns the base URL
+    (suitable for appending ``/embeddings``) of the first that responds.
+    """
+    for base in _LMSTUDIO_HOSTS:
+        if not base:
+            continue
+        base = base.rstrip("/")
         try:
-            r = httpx.get(f"{ollama_url}/api/tags", timeout=5.0)
+            r = httpx.get(f"{base}/models", timeout=3.0)
             if r.status_code == 200:
-                models = [m.get("name", "") for m in r.json().get("models", [])]
-                if any(name.startswith(model) for name in models):
-                    return True
+                return base
         except Exception:
-            pass
-        time.sleep(2.0)
-    return False
+            continue
+    return None
 
 
 @pytest.fixture(scope="session")
 def docker_stack() -> Iterator[dict]:
-    """Bring up Qdrant + Ollama containers for the e2e tier.
+    """Bring up the Qdrant container for the e2e tier and resolve LM Studio.
 
-    If ``QDRANT_TEST_PORT`` and ``OLLAMA_TEST_PORT`` environment variables are
-    already set (i.e. the stack was started externally before the test session),
-    the fixture skips compose_up/down and simply verifies the containers are
-    reachable at those ports. This allows running the e2e tier against a
-    pre-started stack without port conflicts or container name collisions.
+    If ``QDRANT_TEST_PORT`` is already set (i.e. the stack was started
+    externally before the test session), the fixture skips compose_up/down and
+    simply verifies Qdrant is reachable at that port. This allows running the
+    e2e tier against a pre-started stack without port conflicts or container
+    name collisions.
+
+    Embeddings are served by LM Studio (OpenAI-compatible) on the host. The
+    fixture probes for a reachable endpoint and skips the tier if none is found.
     """
-    if not _docker_available():
-        pytest.skip("Docker not available; skipping e2e tier")
-
-    from tests.e2e._compose import compose_down, compose_up
+    embedding_base = _resolve_embedding_base_url()
+    if embedding_base is None:
+        pytest.skip(
+            "LM Studio (OpenAI-compatible) endpoint not reachable at "
+            f"{[h for h in _LMSTUDIO_HOSTS if h]}; start LM Studio with an "
+            "embedding model loaded"
+        )
+    embedding = {
+        "vendor": EMBEDDING_VENDOR,
+        "model": EMBEDDING_MODEL,
+        # Plugins/tests append nothing — they receive a full /embeddings URL.
+        "api_endpoint": f"{embedding_base}/embeddings",
+        "api_key": EMBEDDING_API_KEY,
+    }
 
     # --- Pre-started stack mode -------------------------------------------
-    # When the orchestrator (or CI) has already brought up the stack, detect
-    # it via env vars OR by inspecting the well-known container names. This
-    # avoids port conflicts and container name collisions when re-running tests.
+    # When the orchestrator (or CI) has already brought up Qdrant, detect it
+    # via env var OR by inspecting the well-known container name. This avoids
+    # port conflicts and container name collisions when re-running tests.
+    #
+    # This mode requires NO local docker CLI (the test runner may itself be a
+    # container with Qdrant reachable over the network), so it is checked before
+    # any docker-availability gating.
     pre_qdrant_port = os.environ.get("QDRANT_TEST_PORT")
-    pre_ollama_port = os.environ.get("OLLAMA_TEST_PORT")
-
-    # Fall back to docker inspect if env vars not set but containers exist.
-    if not pre_qdrant_port:
+    if not pre_qdrant_port and _docker_available():
         discovered = _container_host_port("kbs-test-qdrant", 6333)
         if discovered:
             pre_qdrant_port = str(discovered)
-    if not pre_ollama_port:
-        discovered = _container_host_port("kbs-test-ollama", 11434)
-        if discovered:
-            pre_ollama_port = str(discovered)
 
-    if pre_qdrant_port and pre_ollama_port:
+    if pre_qdrant_port:
         qdrant_url = f"http://127.0.0.1:{pre_qdrant_port}"
-        ollama_url = f"http://127.0.0.1:{pre_ollama_port}"
         if not _wait_for_http(f"{qdrant_url}/", timeout=10):
             pytest.skip(f"Pre-started Qdrant not reachable at {qdrant_url}")
-        if not _wait_for_http(f"{ollama_url}/api/tags", timeout=10):
-            pytest.skip(f"Pre-started Ollama not reachable at {ollama_url}")
-        if not _wait_for_ollama_model(ollama_url, "nomic-embed-text", timeout=300):
-            pytest.skip(
-                f"Pre-started Ollama at {ollama_url} does not have "
-                f"nomic-embed-text pulled (run: ollama pull nomic-embed-text)"
-            )
         yield {
             "qdrant_url": qdrant_url,
-            "ollama_url": ollama_url,
             "qdrant_port": int(pre_qdrant_port),
-            "ollama_port": int(pre_ollama_port),
+            "embedding": embedding,
         }
         return  # do NOT tear down a pre-started stack
 
     # --- Self-managed stack mode ------------------------------------------
+    # No pre-started Qdrant; bring one up via docker compose. This path needs a
+    # local docker CLI.
+    if not _docker_available():
+        pytest.skip(
+            "Docker not available and no pre-started Qdrant (set "
+            "QDRANT_TEST_PORT); skipping e2e tier"
+        )
+
+    from tests.e2e._compose import compose_down, compose_up
+
     qdrant_port = _free_port()
-    ollama_port = _free_port()
-    env = {
-        "QDRANT_TEST_PORT": str(qdrant_port),
-        "OLLAMA_TEST_PORT": str(ollama_port),
-    }
+    env = {"QDRANT_TEST_PORT": str(qdrant_port)}
 
     try:
         compose_up(env)
@@ -171,25 +199,15 @@ def docker_stack() -> Iterator[dict]:
         pytest.skip(f"docker compose up failed: {exc}")
 
     qdrant_url = f"http://127.0.0.1:{qdrant_port}"
-    ollama_url = f"http://127.0.0.1:{ollama_port}"
 
     if not _wait_for_http(f"{qdrant_url}/", timeout=30):
         compose_down(env)
         pytest.skip("Qdrant container failed to become ready")
-    if not _wait_for_http(f"{ollama_url}/api/tags", timeout=60):
-        compose_down(env)
-        pytest.skip("Ollama container failed to become ready")
-    # Wait for the embedding model to finish pulling — /api/tags returns 200
-    # before the model is ready, so tests racing the pull see 404s.
-    if not _wait_for_ollama_model(ollama_url, "nomic-embed-text", timeout=300):
-        compose_down(env)
-        pytest.skip("Ollama failed to pull nomic-embed-text within 300s")
 
     info = {
         "qdrant_url": qdrant_url,
-        "ollama_url": ollama_url,
         "qdrant_port": qdrant_port,
-        "ollama_port": ollama_port,
+        "embedding": embedding,
     }
     try:
         yield info
@@ -214,6 +232,7 @@ def _spawn_kb_server(data_dir: str, env_overrides: dict[str, str] | None = None)
             "MAX_CONCURRENT_INGESTIONS": "2",
             "INGESTION_TASK_TIMEOUT_SECONDS": "30",
             "VECTOR_DB_QDRANT": "ENABLE",
+            "EMBEDDING_OPENAI": "ENABLE",
             "EMBEDDING_LOCAL": "DISABLE",
             "QDRANT_URL": "",  # local on-disk mode by default
         }
@@ -270,7 +289,7 @@ def kb_server_process_standalone() -> Iterator[dict]:
     """Launch the KB server in a subprocess on a free port — no Docker required.
 
     Use this fixture for tests that only need a live KB server (auth, routing,
-    error paths, capability listings) and do NOT need real Ollama or Qdrant
+    error paths, capability listings) and do NOT need real embeddings or Qdrant
     services.  Tests that perform actual ingestion with real embeddings must
     use ``kb_server_process`` (which depends on ``docker_stack``).
     """
@@ -295,14 +314,14 @@ def kb_server_process(docker_stack: dict) -> Iterator[dict]:
         shutil.rmtree(data_dir, ignore_errors=True)
 
 
-def _make_no_chromadb_fixture(ollama_url: str) -> Iterator[dict]:
+def _make_no_chromadb_fixture(embedding_endpoint: str) -> Iterator[dict]:
     """Shared implementation for the two-phase 503-backend-unavailable fixture.
 
     Phase 1: spawn a default-config server, create a chromadb-backed collection
-    (using *ollama_url* for the embedding endpoint — Ollama is never contacted),
-    stop the server. Phase 2: spawn a second server against the same DATA_DIR
-    with ``VECTOR_DB_CHROMADB=DISABLE`` so the persisted collection's backend is
-    no longer registered. Yields ``{"info": phase2_info, "collection_id": str}``.
+    (using *embedding_endpoint* — the endpoint is never contacted), stop the
+    server. Phase 2: spawn a second server against the same DATA_DIR with
+    ``VECTOR_DB_CHROMADB=DISABLE`` so the persisted collection's backend is no
+    longer registered. Yields ``{"info": phase2_info, "collection_id": str}``.
     """
     data_dir = tempfile.mkdtemp(prefix="kbs-e2e-503-")
 
@@ -316,9 +335,9 @@ def _make_no_chromadb_fixture(ollama_url: str) -> Iterator[dict]:
             "chunking_strategy": "simple",
             "chunking_params": {"chunk_size": 400, "chunk_overlap": 0},
             "embedding": {
-                "vendor": "ollama",
-                "model": "nomic-embed-text",
-                "api_endpoint": f"{ollama_url}/api/embeddings",
+                "vendor": EMBEDDING_VENDOR,
+                "model": EMBEDDING_MODEL,
+                "api_endpoint": embedding_endpoint,
             },
             "vector_db_backend": "chromadb",
         }
@@ -343,11 +362,11 @@ def _make_no_chromadb_fixture(ollama_url: str) -> Iterator[dict]:
 def kb_server_no_chromadb_standalone() -> Iterator[dict]:
     """Two-phase 503-backend-unavailable fixture — no Docker required.
 
-    Ollama is listed as the embedding vendor in the collection payload but is
-    never contacted: 503 fires before the embedding callable is invoked, so
-    a dummy (unreachable) endpoint suffices.
+    The embedding endpoint is listed in the collection payload but is never
+    contacted: 503 fires before the embedding callable is invoked, so a dummy
+    (unreachable) endpoint suffices.
     """
-    yield from _make_no_chromadb_fixture("http://127.0.0.1:19999")
+    yield from _make_no_chromadb_fixture("http://127.0.0.1:19999/v1/embeddings")
 
 
 @pytest.fixture
@@ -359,12 +378,10 @@ def kb_server_no_chromadb(docker_stack: dict) -> Iterator[dict]:
     with ``VECTOR_DB_CHROMADB=DISABLE`` so the persisted collection's backend is
     no longer registered. Yields ``{"info": phase2_info, "collection_id": str}``.
 
-    Depends on docker_stack only because Ollama is the simplest registered
-    embedding vendor available to a fresh subprocess (the test fake plugin
-    only registers in the test process). Ollama is not actually contacted —
-    503 fires before the embedding callable is invoked.
+    The embedding endpoint is the LM Studio endpoint but is not actually
+    contacted — 503 fires before the embedding callable is invoked.
     """
-    yield from _make_no_chromadb_fixture(docker_stack["ollama_url"])
+    yield from _make_no_chromadb_fixture(docker_stack["embedding"]["api_endpoint"])
 
 
 @pytest.fixture

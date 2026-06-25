@@ -64,12 +64,14 @@ pytest -m "not slow"           # skip slow tests
 # Setup (first time only)
 python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[all,dev]"
 
-# Run tests
-pytest tests/ -v               # all 52 tests
-pytest tests/ --cov=backend    # with coverage report
+# Run tests (3 tiers: unit / integration / e2e — see tests/README.md)
+./scripts/run_tests.sh         # all tiers + the 95% line+branch coverage gate
+pytest tests/unit/ -q          # a single tier (unit | integration | e2e)
+pytest -m "not slow" -q        # skip subprocess/Docker tests
+pytest tests/unit/ tests/integration/ --cov=backend --cov-branch --cov-fail-under=95
 ruff check backend/ tests/ --select E,F,W,I,UP,SIM --target-version py311  # lint
 ```
-Tests use an in-process ASGI client (no server needed). YouTube transcript test uses a cached response in `tests/.yt_cache/` to avoid rate limits.
+Unit tests call modules directly; integration tests use an in-process ASGI client against the real DB + worker; e2e tests hit a `uvicorn` subprocess over real HTTP (plus a Docker smoke test that skips without a daemon). External SDKs (markitdown, Firecrawl, PyMuPDF, OpenAI) are mocked at their import boundary; YouTube uses a cached response in `tests/.yt_cache/`. Combined `backend/` line+branch coverage is enforced at ≥95%.
 
 ### Applying backend env changes in Docker
 ```bash
@@ -131,7 +133,7 @@ These terms are used consistently throughout the codebase and must not be confus
 - Every imported document is stored in a common structured format: `metadata.json` + `source_ref.json` + `original/` + `content/full.md` + `content/pages/` + `content/images/`.
 - Five import plugins (simple, markitdown, markitdown_plus, url, youtube), each governed by a tri-state env var (`DISABLE|SIMPLIFIED|ADVANCED`).
 - Internal service: no CORS, no published ports, non-root Docker container, single-instance file lock.
-- 52 tests, 80% coverage. Full README at `library-manager/README.md`.
+- ~710 tests across unit/integration/e2e tiers; ≥95% line+branch coverage gate (currently ~98%). Full README at `library-manager/README.md`; tier contract at `library-manager/tests/README.md`.
 
 **LAMB integration:** Creator Interface endpoints (`/creator/libraries/...`) validate ACL and proxy to the Library Manager. The `lamb-cli` commands (`lamb library ...`) are in `lamb-cli/src/lamb_cli/commands/library.py`. Svelte frontend at `/libraries` route with components in `frontend/svelte-app/src/lib/components/libraries/`.
 

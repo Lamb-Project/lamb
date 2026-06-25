@@ -9,7 +9,7 @@ where applicable.
 
 **Embedding vendor in helpers:** The e2e subprocess does NOT register the
 ``FakeEmbedding`` test double — that is only available in unit/integration tiers.
-We use ``ollama`` with a dummy endpoint for error-path tests that only need a
+We use ``openai`` with a dummy endpoint for error-path tests that only need a
 collection to *exist* (they fail before any embedding is invoked).
 """
 
@@ -46,14 +46,14 @@ def _minimal_collection_payload(
     name: str | None = None,
     *,
     chunking_strategy: str = "simple",
-    embedding_vendor: str = "ollama",
-    embedding_model: str = "nomic-embed-text",
+    embedding_vendor: str = "openai",
+    embedding_model: str = "text-embedding-nomic-embed-text-v1.5",
     embedding_endpoint: str = "http://127.0.0.1:19999",  # unreachable — not called
     vector_db_backend: str = "chromadb",
 ) -> dict:
     """Build a minimal CreateCollectionRequest payload.
 
-    Defaults use ``ollama`` with an intentionally unreachable endpoint because
+    Defaults use ``openai`` with an intentionally unreachable endpoint because
     error-path tests that only create/list/delete collections never actually
     invoke the embedding backend.  The endpoint will not be contacted.
     """
@@ -493,8 +493,8 @@ def test_422_missing_required_field_name(http_standalone: httpx.Client) -> None:
         "organization_id": org_id,
         "chunking_strategy": "simple",
         "embedding": {
-            "vendor": "ollama",
-            "model": "nomic-embed-text",
+            "vendor": "openai",
+            "model": "text-embedding-nomic-embed-text-v1.5",
         },
         "vector_db_backend": "chromadb",
     }

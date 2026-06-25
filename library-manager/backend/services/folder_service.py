@@ -272,10 +272,15 @@ def delete_folder(db: Session, folder_id: str) -> str:
         .all()
     )
     for sub in subfolders:
-        sub.parent_folder_id = new_parent_id
+        # Compute the deduped name against the destination parent BEFORE
+        # reassigning parent_folder_id. _next_available_name issues queries
+        # that trigger an autoflush; if the row were already reparented with
+        # its still-colliding name, that flush would violate
+        # uq_folder_sibling_name when the parent is non-NULL.
         sub.name = _next_available_name(
             db, folder.library_id, new_parent_id, sub.name, exclude_id=sub.id
         )
+        sub.parent_folder_id = new_parent_id
 
     db.delete(folder)
     db.commit()

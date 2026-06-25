@@ -42,6 +42,14 @@ MAX_EMBED_CHARS: int = int(os.getenv("MAX_EMBED_CHARS", "30000"))
 RESPLIT_CHUNK_SIZE: int = int(os.getenv("RESPLIT_CHUNK_SIZE", "4000"))
 RESPLIT_OVERLAP: int = 200
 MAX_JOB_ATTEMPTS: int = int(os.getenv("KB_MAX_JOB_ATTEMPTS", "3"))
+# How long (minutes) to retain a failed job's embedding credentials in memory
+# so it can be retried without the client re-sending them. Sized to span the
+# initial attempt plus the remaining retries (≈ MAX_JOB_ATTEMPTS × the task
+# timeout). After this window the credentials are purged and a retry requires
+# a fresh add-content request (ADR-4: credentials are never persisted).
+RETRY_CACHE_TTL_MINUTES: int = int(
+    os.getenv("KB_RETRY_CACHE_TTL_MINUTES", "90")
+)
 
 # --- Payload limits ---
 # Hard cap on add-content request bodies. Default 200 MB.

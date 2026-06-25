@@ -5,7 +5,7 @@ Each test owns an isolated ``data_dir`` and manages its own server lifecycle.
 The session-scoped ``kb_server_process`` fixture is intentionally NOT used
 here because these tests require independent start/kill/restart cycles.
 
-``docker_stack`` is the only session fixture used (Ollama container for
+``docker_stack`` is the only session fixture used (embeddings/Qdrant for
 real embeddings).  Vector storage uses Qdrant **local on-disk mode** so
 each test's ``data_dir`` is fully self-contained and isolated — no shared
 remote Qdrant instance is involved.
@@ -153,9 +153,8 @@ def _poll_job_status(
 # ---------------------------------------------------------------------------
 
 
-def _make_collection_payload(ollama_url: str, name: str = "crash-test") -> dict:
-    """Return a ``POST /collections`` body using Ollama embeddings + Qdrant local."""
-    ollama_endpoint = f"{ollama_url}/api/embeddings"
+def _make_collection_payload(emb_endpoint: str, name: str = "crash-test") -> dict:
+    """Return a ``POST /collections`` body using LM Studio embeddings + Qdrant local."""
     return {
         "organization_id": "org-crash-test",
         "name": name,
@@ -163,17 +162,16 @@ def _make_collection_payload(ollama_url: str, name: str = "crash-test") -> dict:
         # chunk_overlap must be < chunk_size — use chunk_overlap (not 'overlap').
         "chunking_params": {"chunk_size": 500, "chunk_overlap": 50},
         "embedding": {
-            "vendor": "ollama",
-            "model": "nomic-embed-text",
-            "api_endpoint": ollama_endpoint,
+            "vendor": "openai",
+            "model": "text-embedding-nomic-embed-text-v1.5",
+            "api_endpoint": emb_endpoint,
         },
         "vector_db_backend": "qdrant",
     }
 
 
-def _make_add_content_payload(ollama_url: str, text: str, source_id: str = "item-1") -> dict:
+def _make_add_content_payload(emb_endpoint: str, text: str, source_id: str = "item-1") -> dict:
     """Return a ``POST /collections/{id}/add-content`` body."""
-    ollama_endpoint = f"{ollama_url}/api/embeddings"
     return {
         "documents": [
             {
@@ -184,7 +182,7 @@ def _make_add_content_payload(ollama_url: str, text: str, source_id: str = "item
         ],
         "embedding_credentials": {
             "api_key": "",
-            "api_endpoint": ollama_endpoint,
+            "api_endpoint": emb_endpoint,
         },
     }
 
@@ -198,7 +196,7 @@ class TestSigkillThenRestartResumesPendingJobs:
     """Queue several jobs, SIGKILL mid-flight, restart, confirm all terminal."""
 
     def test_sigkill_then_restart_resumes_pending_jobs(self, docker_stack: dict) -> None:
-        ollama_url = docker_stack["ollama_url"]
+        emb_endpoint = docker_stack["embedding"]["api_endpoint"]
 
         data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
         port1 = _free_port()
@@ -210,13 +208,12 @@ class TestSigkillThenRestartResumesPendingJobs:
             base1 = f"http://127.0.0.1:{port1}"
             assert _wait_health(base1, timeout=30), "Server #1 failed to start"
 
-            ollama_endpoint = f"{ollama_url}/api/embeddings"
 
             with httpx.Client(base_url=base1, timeout=30.0) as client:
-                # Create a collection that uses Ollama (real embedding, slower than fake).
+                # Create a collection that uses LM Studio (real embedding, slower than fake).
                 col_r = client.post(
                     "/collections",
-                    json=_make_collection_payload(ollama_url, name="resume-test"),
+                    json=_make_collection_payload(emb_endpoint, name="resume-test"),
                     headers=_AUTH_HEADERS,
                 )
                 assert col_r.status_code == 201, col_r.text
@@ -243,7 +240,7 @@ class TestSigkillThenRestartResumesPendingJobs:
                             ],
                             "embedding_credentials": {
                                 "api_key": "",
-                                "api_endpoint": ollama_endpoint,
+                                "api_endpoint": emb_endpoint,
                             },
                         },
                         headers=_AUTH_HEADERS,
@@ -263,7 +260,7 @@ class TestSigkillThenRestartResumesPendingJobs:
                             break
                     if not found_processing:
                         time.sleep(0.3)
-                # Even if we didn't observe 'processing' (fast Ollama on GPU),
+                # Even if we didn't observe 'processing' (fast embeddings),
                 # the SIGKILL still exercises the recovery path.
 
             # --- SIGKILL server #1 ---
@@ -303,7 +300,7 @@ class TestSigkillThenRestartResumesPendingJobs:
 
 def test_sigkill_preserves_completed_jobs(docker_stack: dict) -> None:
     """A completed job is still retrievable after SIGKILL + restart."""
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
 
     data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
     port = _free_port()
@@ -318,7 +315,7 @@ def test_sigkill_preserves_completed_jobs(docker_stack: dict) -> None:
             # Create collection.
             col_r = client.post(
                 "/collections",
-                json=_make_collection_payload(ollama_url, name="preserve-jobs-test"),
+                json=_make_collection_payload(emb_endpoint, name="preserve-jobs-test"),
                 headers=_AUTH_HEADERS,
             )
             assert col_r.status_code == 201, col_r.text
@@ -328,7 +325,7 @@ def test_sigkill_preserves_completed_jobs(docker_stack: dict) -> None:
             add_r = client.post(
                 f"/collections/{col_id}/add-content",
                 json=_make_add_content_payload(
-                    ollama_url,
+                    emb_endpoint,
                     "LAMB helps teachers build AI learning assistants easily.",
                     source_id="item-preserve",
                 ),
@@ -379,7 +376,7 @@ def test_sigkill_preserves_completed_jobs(docker_stack: dict) -> None:
 
 def test_sigkill_preserves_collection_metadata(docker_stack: dict) -> None:
     """Collections created before SIGKILL are still listed and accessible after restart."""
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
 
     data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
     port = _free_port()
@@ -395,7 +392,7 @@ def test_sigkill_preserves_collection_metadata(docker_stack: dict) -> None:
             for i in range(3):
                 r = client.post(
                     "/collections",
-                    json=_make_collection_payload(ollama_url, name=f"meta-test-{i}"),
+                    json=_make_collection_payload(emb_endpoint, name=f"meta-test-{i}"),
                     headers=_AUTH_HEADERS,
                 )
                 assert r.status_code == 201, r.text
@@ -444,7 +441,7 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
     alongside the SQLite database.  Both survive the crash and the restarted
     server should serve identical query results.
     """
-    ollama_url = docker_stack["ollama_url"]
+    emb_endpoint = docker_stack["embedding"]["api_endpoint"]
 
     data_dir = tempfile.mkdtemp(prefix="kbs-crash-")
     port = _free_port()
@@ -455,7 +452,6 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
         base = f"http://127.0.0.1:{port}"
         assert _wait_health(base, timeout=30), "Server failed to start"
 
-        ollama_endpoint = f"{ollama_url}/api/embeddings"
         query_text = "LAMB open-source educators AI learning"
 
         # 5 short documents → 5 vectors after simple chunking (each fits in 500 chars).
@@ -475,7 +471,7 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
             # Create collection.
             col_r = client.post(
                 "/collections",
-                json=_make_collection_payload(ollama_url, name="vector-persist-test"),
+                json=_make_collection_payload(emb_endpoint, name="vector-persist-test"),
                 headers=_AUTH_HEADERS,
             )
             assert col_r.status_code == 201, col_r.text
@@ -488,7 +484,7 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
                     "documents": docs,
                     "embedding_credentials": {
                         "api_key": "",
-                        "api_endpoint": ollama_endpoint,
+                        "api_endpoint": emb_endpoint,
                     },
                 },
                 headers=_AUTH_HEADERS,
@@ -509,7 +505,7 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
                     "top_k": 5,
                     "embedding_credentials": {
                         "api_key": "",
-                        "api_endpoint": ollama_endpoint,
+                        "api_endpoint": emb_endpoint,
                     },
                 },
                 headers=_AUTH_HEADERS,
@@ -538,7 +534,7 @@ def test_sigkill_preserves_chromadb_storage(docker_stack: dict) -> None:
                     "top_k": 5,
                     "embedding_credentials": {
                         "api_key": "",
-                        "api_endpoint": ollama_endpoint,
+                        "api_endpoint": emb_endpoint,
                     },
                 },
                 headers=_AUTH_HEADERS,

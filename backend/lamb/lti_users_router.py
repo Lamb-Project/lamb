@@ -9,6 +9,7 @@ from lamb.owi_bridge.owi_group import OwiGroupManager
 from lamb.logging_config import get_logger
 from urllib.parse import unquote
 import os
+import secrets
 import hmac
 import hashlib
 import base64
@@ -61,7 +62,7 @@ async def create_lti_user(request: Request, current_user: str = Depends(get_curr
             owi_user = owi_user_manager.create_user(
                 name=lti_user.user_display_name,
                 email=lti_user.user_email,
-                password=lti_user.assistant_id,  # Using assistant_id as password
+                password=secrets.token_urlsafe(32),  # Random; mirror users sign in via header-trust, not this password (#411)
                 role="user"
             )
 
@@ -209,7 +210,7 @@ async def sign_in_lti_user(request: Request, current_user: str = Depends(get_cur
                 owi_user = owi_user_manager.create_user(
                     name=username,
                     email=email,
-                    password=str(published_assistant['assistant_id']),
+                    password=secrets.token_urlsafe(32),  # Random; header-trust signin, not this password (#411)
                     role="user"
                 )
 

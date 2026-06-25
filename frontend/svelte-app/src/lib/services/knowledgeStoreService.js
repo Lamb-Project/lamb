@@ -339,29 +339,32 @@ export async function queryKnowledgeStore(ksId, data) {
 }
 
 /**
- * Retry a failed ingestion for a single content link.
+ * Retry a failed indexing job for a single content link.
  *
- * NOTE: the backend does not yet expose a dedicated retry endpoint —
- * this stub currently throws a `not_implemented` error. The
- * IngestionProgressModal surfaces a `toast.info("Coming soon.")` when
- * this rejects with that code, keeping the affordance discoverable
- * without blocking the user. When the backend endpoint lands, replace
- * the body of this function with the corresponding axios call.
+ * The KB Server keeps the document payload and embedding credentials in memory
+ * across attempts, so nothing is re-sent. On failure the backend's detail
+ * message is surfaced via the thrown error (e.g. a 410 when the retention
+ * window has elapsed and the content must be re-added).
  *
  * @param {string} ksId
  * @param {string} libraryItemId
- * @returns {Promise<{ message: string }>}
+ * @returns {Promise<{ message: string, job_id: string, status: string }>}
  */
 export async function retryIngestion(ksId, libraryItemId) {
 	if (!browser) throw new Error('Browser only.');
-	// Touch the params so lint stays happy until the backend wires up.
-	void ksId;
-	void libraryItemId;
-	const err = /** @type {Error & { code?: string }} */ (
-		new Error('Retry ingestion is not yet supported by the backend.')
-	);
-	err.code = 'not_implemented';
-	throw err;
+	const url = getApiUrl(`/knowledge-stores/${ksId}/content/${libraryItemId}/retry`);
+	try {
+		const response = await axios.post(url, {}, { headers: authHeaders() });
+		return response.data;
+	} catch (/** @type {any} */ err) {
+		const detail = err?.response?.data?.detail;
+		if (detail) {
+			const e = /** @type {Error & { status?: number }} */ (new Error(detail));
+			e.status = err?.response?.status;
+			throw e;
+		}
+		throw err;
+	}
 }
 
 /**

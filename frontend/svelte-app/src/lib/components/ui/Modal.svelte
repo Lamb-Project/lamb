@@ -203,7 +203,7 @@
 			<!-- Footer (shrink-0) -->
 			{#if footer}
 				<div
-					class="border-border bg-surface-muted flex shrink-0 flex-row-reverse items-center gap-2 border-t px-6 py-4"
+					class="border-border bg-surface-muted flex shrink-0 flex-row-reverse items-center gap-2 rounded-b-xl border-t px-6 py-4"
 				>
 					{@render footer({ close })}
 				</div>

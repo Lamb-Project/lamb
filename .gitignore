@@ -202,7 +202,6 @@ docs/
 frontend-architecture-diagrams.md
 opencode.json
 package-lock.json
-
 .playwright-mcp
 
 aac_logs/
@@ -212,3 +211,6 @@ aac_logs/
 .worktrees/
 .agents/
 skills-lock.json
+test-results/
+testing/load/document-cache-test/
+testing/load/kv-cache-classroom/

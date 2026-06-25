@@ -649,6 +649,56 @@ async def get_content_link(
     return link
 
 
+@router.post("/{ks_id}/content/{library_item_id}/retry")
+async def retry_content(
+    ks_id: str,
+    library_item_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+):
+    """Retry a failed indexing job for a single content link.
+
+    The KB Server retains the document payload and embedding credentials in
+    memory across attempts, so the retry re-uses them — nothing is re-sent.
+    Propagates the KB Server's response:
+
+    - 404 if the link or job is unknown,
+    - 409 if the job is not failed or has exhausted its retries,
+    - 410 if the retention window elapsed (the user must re-add the content).
+    """
+    auth.require_knowledge_store_access(ks_id, level="owner")
+    link = _db.get_kb_content_link(ks_id, library_item_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="Content link not found")
+
+    job_id = link.get("kb_job_id")
+    if not job_id:
+        raise HTTPException(
+            status_code=409,
+            detail="This content has no indexing job to retry.",
+        )
+
+    job = await _client.retry_job(job_id, creator_user=auth.user)
+
+    # The KB Server flipped the job back to pending; mirror that on the link so
+    # the UI shows the spinner again and resumes polling.
+    # Pass an empty string (not None) so the previous error is actually
+    # cleared — update_kb_content_link_status skips fields that are None.
+    _db.update_kb_content_link_status(
+        link_id=link["id"],
+        status="pending",
+        error_message="",
+    )
+    _audit(auth, "knowledge_store.retry_content", "knowledge_store", ks_id, {
+        "library_item_id": library_item_id,
+        "kb_job_id": job_id,
+    })
+    return {
+        "message": "Indexing retry queued.",
+        "job_id": job_id,
+        "status": job.get("status", "pending"),
+    }
+
+
 @router.delete("/{ks_id}/content/{library_item_id}")
 async def remove_content(
     ks_id: str,

@@ -27,6 +27,7 @@ from datetime import datetime
 import config
 from utils.name_sanitizer import sanitize_assistant_name_with_prefix
 from lamb.logging_config import get_logger
+from creator_interface.metadata_validators import validate_update_plugin_metadata as _validate_metadata
 
 # Configuration
 # Use LAMB_BACKEND_HOST for internal server-to-server requests
@@ -316,61 +317,10 @@ def sanitize_filename(filename: str) -> str:
     return filename[:100] if filename else "assistant_export"
 
 
-REQUIRED_PLUGIN_METADATA_KEYS = (
-    "prompt_processor",
-    "connector",
-    "llm",
-    "rag_processor",
-)
-
-
 def validate_update_plugin_metadata(
     original_body: Dict[str, Any]
 ) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Validate assistant plugin metadata for updates.
-
-    Updates must provide complete plugin metadata so the backend never replaces a
-    valid stored configuration with partial or blank data.
-
-    Returns:
-        Tuple[Optional[str], Optional[str]]: (normalized_metadata_json, error_message)
-    """
-    raw_metadata = original_body.get("metadata", original_body.get("api_callback"))
-
-    if raw_metadata is None:
-        return None, (
-            "Assistant updates must include metadata with prompt_processor, "
-            "connector, llm, and rag_processor."
-        )
-
-    if isinstance(raw_metadata, dict):
-        metadata_dict = raw_metadata
-    elif isinstance(raw_metadata, str):
-        if not raw_metadata.strip():
-            return None, "Assistant metadata cannot be empty on update."
-        try:
-            parsed = json.loads(raw_metadata)
-        except json.JSONDecodeError as e:
-            return None, f"Assistant metadata must be valid JSON: {str(e)}"
-        if not isinstance(parsed, dict):
-            return None, "Assistant metadata must be a JSON object."
-        metadata_dict = parsed
-    else:
-        return None, "Assistant metadata must be a JSON string or object."
-
-    missing_keys = [
-        key for key in REQUIRED_PLUGIN_METADATA_KEYS
-        if not isinstance(metadata_dict.get(key), str) or not metadata_dict.get(key).strip()
-    ]
-    if missing_keys:
-        return None, (
-            "Assistant metadata is incomplete. Missing required plugin fields: "
-            + ", ".join(missing_keys)
-        )
-
-    normalized_metadata = json.dumps(metadata_dict)
-    return normalized_metadata, None
+    return _validate_metadata(original_body)
 
 
 def _ensure_metadata_defaults(metadata_raw) -> str:
@@ -556,8 +506,8 @@ async def create_assistant_directly(request: Request, auth: AuthContext = Depend
         def check_assistant_exists(prefixed_name: str) -> bool:
             """Check if an assistant with this name exists for this owner"""
             try:
-                existing = db_manager.get_assistant_by_name_and_owner(
-                    prefixed_name, 
+                existing = db_manager.get_assistant_by_name(
+                    prefixed_name,
                     creator_user['email']
                 )
                 return existing is not None
@@ -1218,6 +1168,11 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         creator_user = auth.user
         logger.info(f"User {creator_user.get('email')} attempting to update assistant {assistant_id}.")
 
+        # Enforce object-level authorization before any mutation (#408).
+        # 404 (not 403) when the caller has no access at all, to avoid
+        # leaking existence; owner or org-admin required to modify.
+        auth.require_assistant_access(assistant_id, level="owner_or_admin")
+
         # Fetch current assistant to merge with partial updates (#328)
         assistant_service = AssistantService()
         current = assistant_service.get_assistant_by_id(assistant_id)
@@ -1264,6 +1219,12 @@ async def update_assistant_proxy(assistant_id: int, request: Request, auth: Auth
         if error:
             logger.error(f"Error preparing update body for assistant {assistant_id}: {error}")
             raise HTTPException(status_code=400, detail=error)
+
+        # Owner is immutable on update — never derive it from the caller (#408).
+        # prepare_assistant_body() sets owner to the calling user (correct for
+        # create, an ownership-takeover hole on update); preserve the existing owner.
+        new_body["owner"] = current.owner
+
         logger.info(f"Prepared body for update (Assistant ID {assistant_id}): {new_body}")
 
         # Create a mock request object with the prepared body

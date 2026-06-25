@@ -94,7 +94,8 @@ class OrganizationConfigResolver:
         # Support both current and legacy shapes.
         # - Newer docs/configs: org_config.kb_server.{url, api_key}
         # - Older configs: setups[setup_name].knowledge_base.{server_url, api_token}
-        kb_config = setup.get("knowledge_base", {}) or org_config.get("kb_server", {})
+        # Merge both, with kb_server (newer) taking priority for overlapping keys.
+        kb_config = {**setup.get("knowledge_base", {}), **org_config.get("kb_server", {})}
         
         # Fallback to env vars for system org
         if not kb_config and self.organization.get('is_system', False):
@@ -107,10 +108,18 @@ class OrganizationConfigResolver:
         if kb_config:
             server_url = kb_config.get("server_url") or kb_config.get("url")
             api_token = kb_config.get("api_token") or kb_config.get("api_key") or kb_config.get("token")
-            return {
+            result = {
                 "server_url": server_url,
                 "api_token": api_token,
             }
+            # Include embedding model and collection defaults if configured
+            embedding_model = kb_config.get("embedding_model")
+            if embedding_model:
+                result["embedding_model"] = embedding_model
+            collection_defaults = kb_config.get("collection_defaults")
+            if collection_defaults:
+                result["collection_defaults"] = collection_defaults
+            return result
 
         return {}
     
@@ -175,11 +184,20 @@ class OrganizationConfigResolver:
 
         if ks_config:
             return {
-                "server_url": ks_config.get("server_url") or ks_config.get("url"),
+                # Fall back to env when the org block carries only allow-lists
+                # (e.g. allowed_embedding_models) and omits the server URL/token,
+                # so a partial knowledge_store config still resolves the server.
+                "server_url": (
+                    ks_config.get("server_url")
+                    or ks_config.get("url")
+                    or os.getenv("LAMB_KB_SERVER_V2", "http://kb-server:9092")
+                ),
                 "api_token": (
                     ks_config.get("api_token")
                     or ks_config.get("api_key")
                     or ks_config.get("token")
+                    or os.getenv("LAMB_KB_SERVER_V2_TOKEN")
+                    or None
                 ),
                 "allowed_vector_db_backends": ks_config.get("allowed_vector_db_backends", []),
                 "allowed_chunking_strategies": ks_config.get("allowed_chunking_strategies", []),

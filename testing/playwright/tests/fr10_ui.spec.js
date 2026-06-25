@@ -235,10 +235,21 @@ test.describe.serial("FR-10 - UI surface", () => {
     const rowText = page.getByText("FR-10 UI Doc").first();
     await expect(rowText).toBeVisible({ timeout: 10000 });
 
-    // Click the per-row Delete button (has title="Delete").
-    const deleteButtons = page.getByRole("button", { name: /Delete|Eliminar|Borrar/i });
-    expect(await deleteButtons.count()).toBeGreaterThan(0);
-    await deleteButtons.first().click();
+    // Open the item ROW's actions overflow menu, then click Delete. The row
+    // delete control lives inside a per-row OverflowMenu (trigger aria-label
+    // "More actions"); scope to the row so we don't hit another row's menu.
+    const itemRow = page.locator("tr", { hasText: "FR-10 UI Doc" }).first();
+    const moreBtn = itemRow.getByRole("button", { name: /More actions/i });
+    // Bring the trigger fully into view BEFORE clicking. The OverflowMenu's
+    // Dropdown closes on window scroll (closeOnScroll), so if Playwright's
+    // click auto-scrolls the button into view it fires the scroll handler and
+    // closes the menu the same click just opened. Pre-scrolling avoids that.
+    await moreBtn.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await moreBtn.click();
+    const deleteItem = page.getByRole("menuitem", { name: /Delete|Eliminar|Borrar/i }).first();
+    await expect(deleteItem).toBeVisible({ timeout: 10000 });
+    await deleteItem.click();
 
     // The UI opens a "blocked" modal (pre-flight KS check found references).
     // The confirm button is hidden (hideConfirm=true) in this mode; instead
