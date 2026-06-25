@@ -107,7 +107,7 @@ ruff check backend/ tests/
 
 The e2e tier requires Docker (Qdrant + Ollama containers brought up automatically by the session fixture). If `QDRANT_TEST_PORT` and `OLLAMA_TEST_PORT` env vars are set, the fixture uses those pre-started containers instead of spinning up its own. If Docker is unavailable, the entire e2e tier is skipped with a clear message.
 
-Combined coverage hits **99%** line + branch on `backend/` (572 tests). The remaining 1% is structurally unreachable: a `sys.exit(1)` startup guard, an `ImportError` re-raise inside an `except ImportError` block, and a defensive branch the splitter algorithm never enters.
+Combined coverage is **~94%** line + branch on `backend/` (594 tests). The uncovered remainder is dominated by code paths that the e2e tier exercises only over real HTTP — that work runs in a uvicorn subprocess the parent `pytest-cov` process cannot instrument — together with a few structurally unreachable guards: a `sys.exit(1)` startup guard, an `ImportError` re-raise inside an `except ImportError` block, and a defensive branch the splitter algorithm never enters.
 
 ### Docker
 

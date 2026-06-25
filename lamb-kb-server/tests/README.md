@@ -1,6 +1,6 @@
 # Test suite
 
-Three tiers, each with its own scope, fixtures, and runtime profile. The combined run hits **99% line + branch coverage** on `backend/`.
+Three tiers, each with its own scope, fixtures, and runtime profile. The combined run reaches **~94% line + branch coverage** on `backend/` (the e2e tier's server runs in a subprocess the parent coverage process cannot instrument, so its server-side paths are not counted).
 
 | Tier | Where | Tests | Runtime | What it proves |
 |---|---|---|---|---|
