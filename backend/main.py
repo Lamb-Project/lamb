@@ -57,6 +57,19 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events and schedule DB maintenance jobs."""
     # Startup
     logger.info("Starting LAMB application")
+
+    # Run database migrations once at startup (idempotent — the
+    # schema_version table ensures each migration only runs once even
+    # across multiple workers).
+    try:
+        from lamb.migrations import MigrationRunner
+        db = LambDatabaseManager()
+        MigrationRunner(db).apply_all()
+        logger.info("Database migrations checked/applied successfully")
+    except Exception as e:
+        logger.error(f"Failed to run database migrations: {e}")
+        raise
+
     await start_news_cache_refresh_loop()
     logger.info("News cache refresh loop started")
 

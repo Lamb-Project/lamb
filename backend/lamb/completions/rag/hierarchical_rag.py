@@ -366,7 +366,12 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                         original_url = None
                         markdown_url = None
                         images_folder = None
-                        
+
+                        # Citation URL (external canonical URL for the source document)
+                        citation_url = None
+                        if "citation" in metadata:
+                            citation_url = metadata["citation"]
+
                         # New metadata fields from markitdown_plus_ingest plugin
                         if "original_file_url" in metadata:
                             original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
@@ -374,13 +379,13 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                             markdown_url = f"{KB_SERVER_URL}{metadata['markdown_file_url']}"
                         if "images_folder_url" in metadata:
                             images_folder = f"{KB_SERVER_URL}{metadata['images_folder_url']}"
-                        
+
                         # Legacy file_url field
                         if "file_url" in metadata:
                             source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
-                        
-                        # Prefer original_file_url for the main source, fall back to file_url
-                        main_url = original_url or source_url
+
+                        # Priority: citation > original_file_url > file_url
+                        main_url = citation_url or original_url or source_url
                         
                         if main_url:
                             source_entry = {
