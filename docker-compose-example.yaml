@@ -173,7 +173,7 @@ services:
       - PIP_CACHE_DIR=/root/.cache/pip
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
-      - GLOBAL_LOG_LEVEL=WARNING
+      - GLOBAL_LOG_LEVEL=${GLOBAL_LOG_LEVEL:-WARNING}
       - LAMB_LIBRARY_SERVER=http://library-manager:9091
       - LAMB_LIBRARY_TOKEN=${LIBRARY_MANAGER_TOKEN:-change-me}
       - LAMB_KB_SERVER_V2=http://kb-server:9092

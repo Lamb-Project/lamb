@@ -253,6 +253,11 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                         if "source_url" in metadata:
                             remote_source_url = metadata["source_url"]
 
+                        # Citation URL (external canonical URL for the source document)
+                        citation_url = None
+                        if "citation" in metadata:
+                            citation_url = metadata["citation"]
+
                         # New metadata fields from markitdown_plus_ingest plugin
                         if "original_file_url" in metadata:
                             original_url = f"{KB_SERVER_URL}{metadata['original_file_url']}"
@@ -265,8 +270,8 @@ async def rag_processor(messages: List[Dict[str, Any]], assistant: Assistant = N
                         if "file_url" in metadata:
                             source_url = f"{KB_SERVER_URL}{metadata['file_url']}"
 
-                        # Priority: remote_source_url (YouTube) > original_file_url > file_url
-                        main_url = remote_source_url or original_url or source_url
+                        # Priority: citation > remote_source_url (YouTube) > original_file_url > file_url
+                        main_url = citation_url or remote_source_url or original_url or source_url
 
                         if main_url:
                             source_entry = {

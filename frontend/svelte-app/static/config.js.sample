@@ -13,7 +13,8 @@ window.LAMB_CONFIG = {
   // API endpoints
 	api: {
 		// Base URL for the LAMB backend API (use absolute URL in dev)
-		baseUrl: 'http://localhost:9099/creator',
+		// baseUrl: 'http://localhost:9099/creator',
+    baseUrl: '/creator',
 
 		// Full URL to the LAMB server (used for browser-side requests)
 		// This should match the LAMB_WEB_HOST environment variable
